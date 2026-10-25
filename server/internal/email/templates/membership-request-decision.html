@@ -1,0 +1,31 @@
+{{define "subject"}}{{if eq .Decision "approved"}}{{t "account.membershipDecision.approved.subject" "org" .OrgName}}{{else}}{{t "account.membershipDecision.rejected.subject" "org" .OrgName}}{{end}}{{end}}
+{{define "preheader"}}{{if eq .Decision "approved"}}{{t "account.membershipDecision.approved.preheader" "org" .OrgName}}{{else}}{{t "account.membershipDecision.rejected.preheader" "org" .OrgName}}{{end}}{{end}}
+{{template "base.html" .}}
+{{define "content"}}
+    <h1>{{template "membership-decision-title" .}}</h1>
+    {{if eq .Decision "approved"}}
+    <p>{{tHTML (printf "account.membershipDecision.approved.body.%s" .Role) "org" .OrgName}}</p>
+    {{if .DashboardURL}}
+    <div class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" (t "account.membershipDecision.approved.cta" "org" .OrgName) "Variant" "success"}}</div>
+    {{template "fallback-link" .DashboardURL}}
+    {{end}}
+    {{else}}
+    <p>{{tHTML "account.membershipDecision.rejected.body" "org" .OrgName}}</p>
+    {{if .Reason}}
+    <p>{{t "account.membershipDecision.rejected.reasonIntro"}}</p>
+    <blockquote class="quote">{{.Reason}}</blockquote>
+    {{end}}
+    <p class="meta">{{t "account.membershipDecision.rejected.retry"}}</p>
+    {{end}}
+{{end}}
+{{define "text"}}{{template "membership-decision-title" .}}
+
+{{if eq .Decision "approved"}}{{t (printf "account.membershipDecision.approved.bodyText.%s" .Role) "org" .OrgName}}
+{{if .DashboardURL}}
+{{t "common.textField" "label" (t "account.membershipDecision.approved.cta" "org" .OrgName) "value" .DashboardURL}}
+{{end}}{{else}}{{t "account.membershipDecision.rejected.bodyText" "org" .OrgName}}
+{{if .Reason}}
+{{t "account.membershipDecision.rejected.reasonIntro"}} {{.Reason}}
+{{end}}
+{{t "account.membershipDecision.rejected.retry"}}
+{{end}}{{end}}{{define "membership-decision-title"}}{{if eq .Decision "approved"}}{{t "account.membershipDecision.approved.title"}}{{else}}{{t "account.membershipDecision.rejected.title"}}{{end}}{{end}}

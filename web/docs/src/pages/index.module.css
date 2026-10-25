@@ -1,0 +1,284 @@
+/* Docs landing page. The hero sits on the shared .sp-aurora navy surface in
+   both themes, like the website's; the sections below use the --sp-* tokens
+   from custom.css, so they follow light and dark without a second set. */
+
+/* ------------------------------------------------------------------- hero */
+
+.hero {
+  padding: 5rem 0 4.5rem;
+}
+
+.heroInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.9rem;
+  margin-bottom: 1.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(6px);
+}
+
+.heroTitle {
+  max-width: 48rem;
+  margin: 0 0 1.25rem;
+  font-size: clamp(2.3rem, 5vw, 3.6rem);
+  font-weight: 750;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.heroLead {
+  max-width: 38rem;
+  margin: 0 0 2rem;
+  font-size: clamp(1.02rem, 1.6vw, 1.15rem);
+  line-height: 1.6;
+  color: rgba(226, 232, 244, 0.82);
+}
+
+.heroCtas {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.heroMeta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 1.5rem;
+  margin: 1.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.88rem;
+  color: rgba(226, 232, 244, 0.75);
+}
+
+.heroMeta li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.heroMeta svg {
+  width: 16px;
+  height: 16px;
+  color: var(--sp-luminous);
+}
+
+.heroMeta a {
+  color: rgba(226, 232, 244, 0.9);
+  text-decoration: underline;
+  text-decoration-color: rgba(226, 232, 244, 0.35);
+  text-underline-offset: 3px;
+}
+
+.heroMeta a:hover {
+  color: #fff;
+  text-decoration-color: #fff;
+}
+
+/* --------------------------------------------------------------- sections */
+
+.section {
+  padding: 4rem 0;
+}
+
+.sectionAlt {
+  background: var(--sp-surface-alt);
+  border-top: 1px solid var(--sp-border);
+  border-bottom: 1px solid var(--sp-border);
+}
+
+.sectionTitle {
+  margin-bottom: 1.5rem;
+  font-size: clamp(1.45rem, 2.4vw, 1.8rem);
+  letter-spacing: -0.03em;
+}
+
+.sectionLead {
+  margin-top: -0.75rem;
+  color: var(--sp-muted);
+}
+
+/* ------------------------------------------------------------------ cards */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.card,
+.helpCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 1.5rem;
+  border: 1px solid var(--sp-border);
+  border-radius: 14px;
+  background: var(--sp-surface);
+  box-shadow: var(--sp-shadow-sm);
+  color: var(--sp-text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.card:hover,
+.helpCard:hover {
+  border-color: var(--ifm-color-primary);
+  box-shadow: var(--sp-shadow-md);
+  transform: translateY(-2px);
+  color: var(--sp-text);
+  text-decoration: none;
+}
+
+.cardIcon {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-bottom: 0.6rem;
+  border-radius: 10px;
+  background: var(--sp-tint);
+  color: var(--ifm-color-primary);
+}
+
+.cardIcon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.cardTitle,
+.helpTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1.08rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--sp-heading);
+}
+
+.cardTitle::after,
+.helpTitle::after {
+  content: '→';
+  color: var(--ifm-color-primary);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.card:hover .cardTitle::after,
+.helpCard:hover .helpTitle::after {
+  opacity: 1;
+  transform: none;
+}
+
+.cardText {
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--sp-muted);
+}
+
+/* ------------------------------------------------------- install + popular */
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 3.5rem;
+  align-items: start;
+}
+
+.after {
+  font-size: 0.92rem;
+  color: var(--sp-muted);
+}
+
+.more {
+  font-weight: 600;
+}
+
+.popular {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.popular a {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-weight: 500;
+  color: var(--sp-heading);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.popular a::after {
+  content: '→';
+  color: var(--sp-muted);
+}
+
+.popular a:hover {
+  background: var(--sp-surface);
+  border-color: var(--sp-border);
+  color: var(--sp-heading);
+  text-decoration: none;
+}
+
+.popular a:hover::after {
+  color: var(--ifm-color-primary);
+}
+
+/* ------------------------------------------------------------------- help */
+
+.help {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+/* ----------------------------------------------------------------- mobile */
+
+@media (max-width: 996px) {
+  .grid,
+  .help {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* minmax(0, ...): a bare 1fr would grow to the install command's width. */
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.5rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero {
+    padding: 3.5rem 0 3rem;
+  }
+
+  .grid,
+  .help {
+    grid-template-columns: 1fr;
+  }
+
+  .section {
+    padding: 3rem 0;
+  }
+}

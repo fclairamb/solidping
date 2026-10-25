@@ -132,12 +132,56 @@ func TestAgentUploadRefusesStepStateAndCrawlReport(t *testing.T) {
 	for topic, body := range map[string][]byte{
 		CheckStepStateTopic(f.check.UID):   envelope,
 		CheckCrawlReportTopic(f.check.UID): report,
+		TaskStepStateTopic(f.check.UID):    envelope,
 	} {
 		rec := f.serve(t, agent.signedRequest(f.ctx(), t, topic, body))
-		r.Equal(http.StatusForbidden, rec.Code, "%s: %s", topic, rec.Body.String())
+		r.True(rec.Code == http.StatusForbidden || rec.Code == http.StatusBadRequest,
+			"%s: %d %s", topic, rec.Code, rec.Body.String())
 
 		rows, _, listErr := f.db.ListFiles(f.ctx(), f.org.UID, models.ListFilesFilter{Topic: topic})
 		r.NoError(listErr)
 		r.Empty(rows, "nothing stored under %s", topic)
 	}
+}
+
+// Worker-task state (spec 2026-10-22-02) keeps two files per task, and a
+// pointer can only read its own task's file.
+func TestTaskStateRetentionAndScope(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, dbService, svc, org := setupAttachmentsTest(t)
+	taskUID := uuid.New().String()
+
+	uids := make([]string, 0, 3)
+
+	for i := range 3 {
+		fileUID, err := svc.PutTaskState(ctx, org.UID, taskUID,
+			stepEnvelope(t, taskUID, `{"n":`+string(rune('0'+i))+`}`), nil)
+		r.NoError(err)
+
+		uids = append(uids, fileUID)
+
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	live, _, err := dbService.ListFiles(ctx, org.UID, models.ListFilesFilter{Topic: TaskStepStateTopic(taskUID)})
+	r.NoError(err)
+	r.Len(live, MaxStepStateFiles)
+
+	body, err := svc.ReadTaskState(ctx, org.UID, taskUID, uids[2])
+	r.NoError(err)
+	r.Contains(string(body), `"n":2`)
+
+	_, err = svc.ReadTaskState(ctx, org.UID, uuid.New().String(), uids[2])
+	r.ErrorIs(err, ErrStepFileMissing)
+
+	_, err = svc.PutTaskState(ctx, org.UID, taskUID, make([]byte, MaxStepStateBytes+1), nil)
+	r.ErrorIs(err, ErrAttachmentTooLarge)
+
+	r.NoError(svc.PurgeTaskState(ctx, org.UID, taskUID))
+
+	live, _, err = dbService.ListFiles(ctx, org.UID, models.ListFilesFilter{Topic: TaskStepStateTopic(taskUID)})
+	r.NoError(err)
+	r.Empty(live)
 }

@@ -27,13 +27,15 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
-	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
+	"github.com/fclairamb/solidping/server/internal/checkworker/tasks"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crawltask"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/dbfault"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/discoverytask"
 	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/errorreport"
@@ -45,11 +47,13 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/tracediag"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
+	"github.com/fclairamb/solidping/server/internal/plugins"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/stats"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/version"
+	"github.com/fclairamb/solidping/server/internal/workertasks"
 )
 
 // Errors returned by the check runner.
@@ -169,6 +173,11 @@ type CheckWorker struct {
 	getChecker  func(checkerdef.CheckType) (checkerdef.Checker, bool)
 	parseConfig func(checkerdef.CheckType) (checkerdef.Config, bool)
 
+	// activation is this process's server-level check-type gate. It filters
+	// the plugin types the worker advertises, so a SaaS cloud worker never
+	// claims an unsafe (exec, nagios) plugin type (spec 2026-10-17-05 §19).
+	activation *checkerdef.ActivationResolver
+
 	// Channel-based architecture fields
 	poolSize         int                   // Number of runner goroutines
 	availableRunners atomic.Int32          // Runners waiting for jobs
@@ -199,10 +208,6 @@ type CheckWorker struct {
 	busySlow         atomic.Int32
 	fastLaneReserved int // reserved fast-only slots, clamped to [0, poolSize−1]
 
-	// busyBulk counts in-flight multi-step slices (bulk lane, spec
-	// 2026-10-03-03), with the same claim-time accounting as busySlow.
-	busyBulk atomic.Int32
-
 	// Cost-aware, plan-weighted scheduling (spec 2026-06-30-09): schedParams is
 	// the pure math config that deprioritizes slow checks (and credits paid
 	// tiers) by pushing each job's effective scheduled_at on reschedule. It only
@@ -223,6 +228,58 @@ type CheckWorker struct {
 	// is what agent mode and tests rely on: an agent has no database of its
 	// own, so it never installs a latch.
 	faults *dbfault.Latch
+
+	// taskClient, when set, runs the worker-task loop (spec 2026-10-22-02)
+	// for every registered executor, taskSlots tasks per executor at once.
+	taskClient tasks.Client
+	taskSlots  int
+}
+
+// EnableTasks turns on the worker-task loop: the in-process client on a
+// cloud worker, the signed HTTP client on an agent. It only starts in Run
+// when an executor is registered.
+func (r *CheckWorker) EnableTasks(client tasks.Client, slots int) {
+	r.taskClient = client
+	r.taskSlots = slots
+}
+
+// taskIdentity is the cloud worker's identity for the in-process task client.
+func (r *CheckWorker) taskIdentity() workertasks.WorkerIdentity {
+	identity := workertasks.WorkerIdentity{Slots: r.taskSlots}
+
+	if worker := r.getWorker(); worker != nil {
+		identity.UID = worker.UID
+
+		if worker.Region != nil {
+			identity.Region = *worker.Region
+		}
+	}
+
+	return identity
+}
+
+// startTasks runs the worker-task loop under the worker's egress guard.
+func (r *CheckWorker) startTasks(ctx context.Context) {
+	executors := tasks.Registered()
+	if r.taskClient == nil || len(executors) == 0 {
+		return
+	}
+
+	loop := &tasks.Loop{
+		Client:    r.taskClient,
+		Executors: executors,
+		Slots:     r.taskSlots,
+		Guard:     r.egressGuard,
+		Logger:    slog.Default().With("component", "worker_tasks"),
+		InfoLogs:  r.config.IsAgentMode(),
+	}
+
+	r.wg.Add(1)
+
+	go func() {
+		defer r.wg.Done()
+		loop.Run(ctx)
+	}()
 }
 
 // SetFaultLatch installs the process-wide structural-fault latch. Set by the
@@ -257,13 +314,18 @@ func NewCheckWorker(
 	directBackend := backend.NewDirectBackend(
 		dbService, checkJobSvc, incidentSvc, svc.EventNotifier, svc.Credentials,
 	)
-	// Multi-step checks (spec 2026-10-03-03) keep their state and reports on
-	// the attachment rail, written by this process only.
-	directBackend.SetStepStore(attachmentSvc)
-
 	worker := newCheckWorker(cfg, directBackend)
 	worker.dbService = dbService
 	worker.services = svc
+
+	// Worker tasks (website crawls) run in-process through the same service
+	// the agents reach over HTTP, BulkLaneMax of them at once.
+	if svc.WorkerTasks != nil {
+		worker.EnableTasks(
+			backend.NewDirectTaskClient(svc.WorkerTasks, worker.taskIdentity),
+			worker.schedParams.EffectiveBulkLaneMax(),
+		)
+	}
 
 	// A local trace runs from this process, so it answers to this process's
 	// egress policy: never trace towards an address a check was refused.
@@ -308,6 +370,24 @@ func newInProcessIncidentService(
 	return incidentSvc, attachmentSvc
 }
 
+// discoveryExecutor returns the discovery executor of an agent whose operator
+// set SP_AGENT_DISCOVERY_ENABLED, over its allow-list; nil otherwise. The
+// allow-list was validated at startup.
+func discoveryExecutor(cfg *config.Config) *discoverytask.Executor {
+	if !cfg.IsAgentMode() || !cfg.Agent.DiscoveryEnabled {
+		return nil
+	}
+
+	prefixes, err := cfg.Agent.DiscoveryPrefixes()
+	if err != nil {
+		slog.Error("Agent discovery disabled: invalid allow-list", "error", err)
+
+		return nil
+	}
+
+	return discoverytask.NewExecutor(prefixes)
+}
+
 // NewAgentCheckWorker creates a check runner for agent mode: no database, no
 // services registry — everything flows through the given (remote) backend.
 // Self-stats and the entitlements gate are in-process concerns and are
@@ -320,6 +400,16 @@ func NewAgentCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend
 // conveniences (dbService/services), which the in-process wrapper fills in.
 func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *CheckWorker {
 	logger := slog.Default().With("component", "check_worker")
+
+	// Every worker, cloud or agent, runs website crawls as worker tasks
+	// (spec 2026-10-22-03). Registering is idempotent.
+	tasks.Register(crawltask.NewExecutor(cfg.EnvRefAllowed))
+
+	// LAN discovery runs only on an agent whose operator enabled it (spec
+	// 2026-10-22-04): no executor, no "discovery" capability, no chunk claimed.
+	if executor := discoveryExecutor(cfg); executor != nil {
+		tasks.Register(executor)
+	}
 
 	poolSize := cfg.Server.CheckWorker.Nb
 	if poolSize <= 0 {
@@ -392,6 +482,7 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 		stats:       stats.NewProcessingStats(time.Minute, time.Minute, logger),
 		getChecker:  registry.GetChecker,
 		parseConfig: registry.ParseConfig,
+		activation:  activation,
 		// Channel-based architecture
 		poolSize:         poolSize,
 		fastLaneReserved: fastLaneReserved,
@@ -442,6 +533,9 @@ func (r *CheckWorker) Run(ctx context.Context) error {
 	r.wg.Add(1)
 	go r.expressLoop(ctx)
 
+	// 6b. Worker tasks (spec 2026-10-22-02), when enabled and an executor runs.
+	r.startTasks(ctx)
+
 	// Per-runner, per-job and stop lines are DEBUG, so a quiet node logs
 	// nothing until a check changes status (incidents.logStatusChange). On a
 	// server, the INFO "Check worker started" summary is written by
@@ -491,7 +585,7 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 		Slug:         identity.Slug,
 		Name:         identity.Name,
 		Region:       &region,
-		Capabilities: egressreport.Current(ctx),
+		Capabilities: backend.Capabilities(ctx, r.advertisedPluginTypes()),
 		Version:      &agentVersion,
 	}
 
@@ -540,7 +634,7 @@ func (r *CheckWorker) heartbeatLoop(ctx context.Context) {
 // process, so re-sending it every beat is just a cheap package-level read.
 func (r *CheckWorker) updateHeartbeat(ctx context.Context) {
 	if err := r.backend.Heartbeat(
-		ctx, r.getWorker().UID, egressreport.Current(ctx), version.Get().Version,
+		ctx, r.getWorker().UID, backend.Capabilities(ctx, r.advertisedPluginTypes()), version.Get().Version,
 	); err != nil {
 		r.logger.ErrorContext(ctx, "Failed to update heartbeat", "error", err)
 	}
@@ -625,6 +719,30 @@ func nextPollDelay(nextEligibleIn time.Duration) time.Duration {
 	return nextEligibleIn
 }
 
+// advertisedPluginTypes is the loaded plugin types this worker's activation
+// gate enables: what it claims and reports. An unsafe type left off on a SaaS
+// cloud node is not advertised, so its jobs never land here (spec
+// 2026-10-17-05 §19). An agent enforces its own host's config, which enables
+// every type by default. An http plugin whose service is down is not
+// advertised either (spec 2026-10-17-06), so its jobs go to nodes whose
+// service is up.
+func (r *CheckWorker) advertisedPluginTypes() []string {
+	loaded := plugins.Advertised(registry.PluginTypes())
+	if r.activation == nil {
+		return loaded
+	}
+
+	out := make([]string, 0, len(loaded))
+
+	for _, checkType := range loaded {
+		if r.activation.IsTypeEnabled(checkerdef.CheckType(checkType), nil) {
+			out = append(out, checkType)
+		}
+	}
+
+	return out
+}
+
 // fetchAndDistributeJobs claims jobs from the database and sends them to
 // runners. Returns the claim's next-eligible hint (0 when none, or when the
 // claim was skipped because no runner was free — a completion wakes the
@@ -640,22 +758,20 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 	}
 
 	// Per-lane reservation (spec 2026-07-01-03 D3): fast may fill every free
-	// slot; slow and bulk share the budget left above the fast floor.
-	limits := scheduling.LaneLimits(
-		available, r.poolSize, r.fastLaneReserved,
-		int(r.busySlow.Load()), int(r.busyBulk.Load()), r.schedParams.EffectiveBulkLaneMax(),
-	)
+	// slot; slow gets the budget left above the fast floor.
+	limits := scheduling.LaneLimits(available, r.poolSize, r.fastLaneReserved, int(r.busySlow.Load()))
 
 	cfg := r.config.Server.CheckWorker
 	fetchStart := time.Now()
 	worker := r.getWorker()
+	// Advertise the plugin types this process loaded: a plugin-type job is
+	// only claimed by a worker that can run it (spec 2026-10-17-05 §17).
 	jobs, nextIn, err := r.backend.ClaimJobs(
-		ctx,
+		checkjobsvc.WithPluginTypes(ctx, r.advertisedPluginTypes()),
 		worker.UID,
 		worker.Region,
 		limits.Fast,
 		limits.Slow,
-		limits.Bulk,
 		cfg.FetchMaxAhead,
 	)
 	prommetrics.RecordCheckStage("fetch", time.Since(fetchStart).Seconds())
@@ -702,25 +818,20 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 	return nextIn, nil
 }
 
-// accountClaimedLanes counts freshly claimed slow and bulk jobs as in flight
+// accountClaimedLanes counts freshly claimed slow jobs as in flight
 // (claim-time accounting, D4) and records the per-lane claim metrics.
 func (r *CheckWorker) accountClaimedLanes(jobs []*models.CheckJob) {
-	slowClaimed, bulkClaimed := 0, 0
+	slowClaimed := 0
 
 	for _, job := range jobs {
-		switch job.Lane {
-		case scheduling.LaneSlow:
+		if job.Lane == scheduling.LaneSlow {
 			r.busySlow.Add(1)
 			slowClaimed++
-		case scheduling.LaneBulk:
-			r.busyBulk.Add(1)
-			bulkClaimed++
 		}
 	}
 
-	prommetrics.RecordLaneClaims(prommetrics.LaneLabelFast, len(jobs)-slowClaimed-bulkClaimed)
+	prommetrics.RecordLaneClaims(prommetrics.LaneLabelFast, len(jobs)-slowClaimed)
 	prommetrics.RecordLaneClaims(prommetrics.LaneLabelSlow, slowClaimed)
-	prommetrics.RecordLaneClaims(prommetrics.LaneLabelBulk, bulkClaimed)
 }
 
 // expressLoop subscribes to check.created and runs the freshly-created
@@ -769,7 +880,8 @@ func (r *CheckWorker) handleExpressEvent(ctx context.Context, logger *slog.Logge
 	}
 
 	worker := r.getWorker()
-	jobs, err := r.backend.ClaimJobsForCheck(ctx, worker.UID, worker.Region, msg.CheckUID)
+	jobs, err := r.backend.ClaimJobsForCheck(
+		checkjobsvc.WithPluginTypes(ctx, r.advertisedPluginTypes()), worker.UID, worker.Region, msg.CheckUID)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
 			logger.WarnContext(ctx, "express claim failed",
@@ -830,11 +942,8 @@ func (r *CheckWorker) runnerLoop(ctx context.Context, id int) {
 
 		// A finished slow-lane job frees its reserved-budget slot (the
 		// matching increment happened in the fetcher at claim time).
-		switch job.Lane {
-		case scheduling.LaneSlow:
+		if job.Lane == scheduling.LaneSlow {
 			r.busySlow.Add(-1)
-		case scheduling.LaneBulk:
-			r.busyBulk.Add(-1)
 		}
 
 		// Signal completion to wake fetcher (non-blocking)
@@ -1078,12 +1187,6 @@ func (r *CheckWorker) executeJob(
 	// would look green.
 	if refErr := r.materializeConfig(checkJob); refErr != nil {
 		return r.saveErrorResult(ctx, checkJob, refErr)
-	}
-
-	// Multi-step checks (spec 2026-10-03-03) run one bounded slice per claim
-	// instead of one Execute: their own budget, units and state.
-	if stepChecker, isStep := r.stepCheckerFor(checkerdef.CheckType(checkType)); isStep {
-		return r.executeStepJob(ctx, logger, checkJob, stepChecker)
 	}
 
 	// 2. Parse check configuration
@@ -1742,6 +1845,11 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 // figure, so charging them a per-minute token would let server plumbing eat a
 // customer's execution budget and tick their skipped-today counter.
 //
+// A job this gate already deferred may borrow from the bucket
+// (ReserveJobExecution): claim priority alone cannot save a
+// long-period check whose single attempt per period always lands just after
+// its siblings drained the bucket.
+//
 // Returns deferred=true when the job was turned away (the caller must stop and
 // return err); false means the check may run.
 func (r *CheckWorker) applyRateLimitGate(
@@ -1756,7 +1864,7 @@ func (r *CheckWorker) applyRateLimitGate(
 		return false, nil
 	}
 
-	rateErr := entSvc.ReserveCheckExecution(ctx, checkJob.OrganizationUID)
+	rateErr := entSvc.ReserveJobExecution(ctx, checkJob)
 	if rateErr == nil {
 		return false, nil
 	}

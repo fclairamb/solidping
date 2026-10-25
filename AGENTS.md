@@ -3,7 +3,7 @@
 Agent instructions for every coding agent (Claude Code, Codex, Cursor, Copilot, Gemini CLI). Each `CLAUDE.md` in the repo is a one-line `@AGENTS.md` stub so Claude Code loads the same file. Edit `AGENTS.md`, never the stub.
 
 ## Core technologies
-- **Backend**: Go 1.24+ (see `server/AGENTS.md` for details)
+- **Backend**: Go, exact version pinned in `server/go.mod` (see `server/AGENTS.md` for details)
 - **Dashboard**: React + TanStack Router (see `web/dash0/AGENTS.md` for details)
 - **Infrastructure**: Docker Compose with PostgreSQL for monitoring data storage
 - **Monitoring**: Multi-protocol ping/health checking with distributed worker system
@@ -47,6 +47,7 @@ No Docker or Postgres is needed. SQLite is the default database. Full runbook: [
 | `make test` | Run backend tests (`-short`: SQLite only, skips every Postgres suite) (`wiki/testing/test-layers.md`) |
 | `make test-postgres` | Run the Postgres test layer (non-short, `-p 4`, `SP_TEST_REQUIRE_POSTGRES=1`) — exactly what the `backend-postgres` CI job runs, ~13 min |
 | `make test-slow` | Run the `slowtests` build-tagged layer (live network + Docker); nightly in CI |
+| `make test-upgrade` | Boot each released version (3 latest + previous minor, SQLite and Postgres), then HEAD on its database; needs docker (`wiki/testing/test-layers.md`) |
 | `make test-dash` | Run dash0 Playwright tests |
 | `make lint` | Lint backend + dash |
 | `make fmt` | Format all code |

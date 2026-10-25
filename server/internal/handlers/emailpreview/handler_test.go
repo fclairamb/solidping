@@ -130,7 +130,7 @@ func TestPreview_ColorSchemeDarkActivatesTheDarkBlock(t *testing.T) {
 	body := rec.Body.String()
 	r.NotContains(body, "prefers-color-scheme", "the media query survived — the dark block never fires in an iframe")
 	r.Contains(body, "@media all")
-	r.Contains(body, "background-color: #141e28", "the dark card surface is gone, so this is not a dark preview at all")
+	r.Contains(body, "background-color: #161e27", "the dark card surface is gone, so this is not a dark preview at all")
 
 	// The light pin is NOT rewritten: the preview only unconditionalizes the
 	// media block, it does not simulate un-pinning the mail.
@@ -138,10 +138,10 @@ func TestPreview_ColorSchemeDarkActivatesTheDarkBlock(t *testing.T) {
 }
 
 // TestPreview_DefaultsToTheUntouchedTemplate is the positive control for the
-// test above: without the param — and with an explicit colorScheme=light — the
-// endpoint must serve byte-identical bytes to what the mailer sends, media
-// query and all. Without this, a rewrite that fired unconditionally would still
-// pass the dark test.
+// test above: without the param the endpoint must serve byte-identical bytes
+// to what the mailer sends, media query and all. An explicit colorScheme=light
+// switches the dark block off, because an iframe follows the viewer's OS
+// scheme and would otherwise show the dark palette under the "light" choice.
 func TestPreview_DefaultsToTheUntouchedTemplate(t *testing.T) {
 	t.Parallel()
 
@@ -155,7 +155,8 @@ func TestPreview_DefaultsToTheUntouchedTemplate(t *testing.T) {
 
 	light := doGet(t, router, "/api/mgmt/email-preview/incident-created.html?colorScheme=light")
 	r.Equal(http.StatusOK, light.Code)
-	r.Equal(plain.Body.String(), light.Body.String())
+	r.NotContains(light.Body.String(), "@media (prefers-color-scheme: dark)")
+	r.Contains(light.Body.String(), "@media not all")
 }
 
 // TestPreview_ColorSchemeDoesNotTouchThePlaintextPart — the plaintext
@@ -278,6 +279,10 @@ func TestPreview_RendersTheBrandedHeader(t *testing.T) {
 	body := rec.Body.String()
 	r.Contains(body, `src="https://preview.example/d/logo.png"`)
 	r.Contains(body, `alt="SolidPing"`)
-	// Premailer really ran: the class-based rules are inlined as style="…".
-	r.Contains(body, "background-color:#07112a")
+	// Premailer really ran: the class-based rules are inlined as style="…"
+	// (the white card on the grey page).
+	r.Contains(body, "background-color:#f3f5f8")
+	r.Contains(body, "background-color:#ffffff;border-radius:12px")
+	// The logo sits above the card on the page background, not on a navy bar.
+	r.NotContains(body, "#07112a")
 }

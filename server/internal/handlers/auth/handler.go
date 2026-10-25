@@ -303,6 +303,10 @@ func (h *Handler) UpdateMe(writer http.ResponseWriter, req *http.Request) error 
 
 	resp, err := h.svc.UpdateProfile(req.Context(), claims, updateReq)
 	if err != nil {
+		if errors.Is(err, ErrUnsupportedLocale) || errors.Is(err, ErrInvalidTimezone) {
+			return h.WriteErrorErr(writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+		}
+
 		if handled, writeErr := h.handleEmailChangeError(writer, req, err); handled {
 			return writeErr
 		}
@@ -806,6 +810,15 @@ func (h *Handler) handleChangePasswordError(writer http.ResponseWriter, request 
 	case errors.Is(err, ErrInvalidCredentials):
 		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			err.Error(), err)
+	case errors.Is(err, ErrInvalidEmail):
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"Must be a valid email address", err)
+	case errors.Is(err, ErrFirstLoginEmailNotAllowed), errors.Is(err, ErrDefaultEmailRefused):
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
+			err.Error(), err)
+	case errors.Is(err, ErrEmailAlreadyTaken):
+		return h.WriteErrorErr(writer, request, http.StatusConflict, base.ErrorCodeConflict,
+			"This email address is already used by another account", err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}

@@ -8,14 +8,14 @@ import (
 )
 
 // TestPortTableCoherence guards against drift between the authoritative
-// defaultPorts table, the derived defaultPortList(), and the suggestion engine.
+// defaultPorts table, the derived DefaultPortList(), and the suggestion engine.
 func TestPortTableCoherence(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 
-	list := defaultPortList()
-	r.Len(list, len(defaultPorts), "defaultPortList must have one entry per defaultPorts spec")
+	list := DefaultPortList()
+	r.Len(list, len(defaultPorts), "DefaultPortList must have one entry per defaultPorts spec")
 
 	for i, spec := range defaultPorts {
 		r.Equal(spec.Port, list[i], "defaultPortList order must match defaultPorts")
@@ -58,5 +58,5 @@ func TestDefaultPortListMatchesSpec(t *testing.T) {
 
 	r := require.New(t)
 	want := []int{22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 5432, 6379, 8080, 8443}
-	r.Equal(want, defaultPortList())
+	r.Equal(want, DefaultPortList())
 }

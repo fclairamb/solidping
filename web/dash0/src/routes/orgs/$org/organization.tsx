@@ -1,9 +1,10 @@
-import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Building } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { TabNav } from "@/components/shared/tab-nav";
 import { PageHeader } from "@/components/shared/page-header";
+import { CreateInvitationDialog } from "@/components/shared/create-invitation-dialog";
 import { useOrgMembershipRequests } from "@/api/hooks";
 import { isOrgDeleted } from "@/api/client";
 
@@ -16,6 +17,12 @@ function OrganizationLayout() {
   const { org } = Route.useParams();
   const { user, isLoading } = useAuth();
   const navigate = useNavigate();
+  const matchRoute = useMatchRoute();
+  // The invite button sits in the header, above the tabs, on the two tabs
+  // that list people.
+  const showInvite =
+    !!matchRoute({ to: "/orgs/$org/organization/members" }) ||
+    !!matchRoute({ to: "/orgs/$org/organization/invitations" });
   const { data: pendingData } = useOrgMembershipRequests(org, {
     status: "pending",
     enabled: !!user?.isAdmin,
@@ -75,6 +82,7 @@ function OrganizationLayout() {
         icon={Building}
         title={t("org:layout.title")}
         description={t("org:layout.subtitle")}
+        actions={showInvite ? <CreateInvitationDialog org={org} /> : undefined}
       />
       <TabNav tabs={tabs} org={org} />
       <Outlet />

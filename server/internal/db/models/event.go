@@ -296,6 +296,18 @@ const (
 	// socket closes: before it, a disconnect left no trace at all and
 	// last_seen_at simply stopped moving.
 	EventTypeAgentDisconnected EventType = "agent.disconnected"
+
+	// EventTypeDiscoveryScanStarted records a discovery scan being started
+	// (spec 2026-10-22-04). The payload carries scan_type, region, cidr_count,
+	// cidrs (first 32), address_count and port_count; the agents' daily address
+	// quota sums address_count over the region-bound ones.
+	EventTypeDiscoveryScanStarted EventType = "discovery.scan_started"
+	// EventTypeDiscoveryScanCanceled records a discovery scan being canceled.
+	EventTypeDiscoveryScanCanceled EventType = "discovery.scan_canceled"
+	// EventTypeDiscoveryChunkRefused records an agent refusing a discovery
+	// chunk (not allowed, disabled, egress refused, invalid), at most once per
+	// scan and agent. System actor; target is the agent.
+	EventTypeDiscoveryChunkRefused EventType = "discovery.chunk_refused"
 )
 
 // check.placement_changed payload keys and reasons (spec 2026-09-25-06).
@@ -446,6 +458,13 @@ type ListEventsFilter struct {
 	// Cursor-based pagination
 	CursorTimestamp *time.Time // Optional: events with created_at < this timestamp
 	CursorUID       *string    // Optional: for same timestamp, events with UID < this
+
+	// Ascending lists oldest first on (created_at, uid); the cursor then means
+	// "strictly after" and the comparisons flip.
+	Ascending bool
+	// SettledBefore only admits events created before this instant (forward
+	// listings hold back rows that may still be committed out of order).
+	SettledBefore *time.Time
 
 	Limit int // Optional: pagination limit
 }

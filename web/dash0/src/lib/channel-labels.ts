@@ -33,6 +33,7 @@ const TRANSLATED_CHANNELS = new Set([
   "matrix",
   "zulip",
   "pagerduty",
+  "a2a",
   "pushover",
   "slack",
   "slack-webhook",

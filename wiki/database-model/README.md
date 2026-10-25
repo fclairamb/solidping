@@ -1,6 +1,6 @@
 # Database Model
 
-Index for the SolidPing database schema: **50 tables**, grouped by domain. Each
+Index for the SolidPing database schema: **52 tables**, grouped by domain. Each
 child page documents its tables with a purpose line, a column table, foreign
 keys, and notable indexes or constraints.
 
@@ -11,7 +11,7 @@ keys, and notable indexes or constraints.
 | [core.md](core.md) | 4 | organizations, parameters, app_settings, files |
 | [auth.md](auth.md) | 9 | users, user_providers, user_passkeys, user_tokens, user_contacts, organization_providers, organization_members, membership_requests, oauth_clients |
 | [checks.md](checks.md) | 7 | checks, check_groups, check_jobs, check_dependencies, labels, check_labels, workers |
-| [agents.md](agents.md) | 2 | agents, agent_enrollment_tokens |
+| [agents.md](agents.md) | 3 | agents, agent_enrollment_tokens, org_plugin_types |
 | [results-incidents.md](results-incidents.md) | 6 | results, incidents, incident_notifications, incident_member_checks, severities, events |
 | [notifications.md](notifications.md) | 10 | integrations, check_channels, escalation policies/steps/targets, on-call schedules/users/overrides, user_notification_routes, email_suppressions |
 | [status-pages.md](status-pages.md) | 5 | status_pages, status_page_sections, status_page_resources, status_page_subscriber, status_updates |
@@ -19,6 +19,7 @@ keys, and notable indexes or constraints.
 | [discovery.md](discovery.md) | 1 | discovered_checks |
 | [entitlements.md](entitlements.md) | 2 | org_entitlements, org_entitlement_audits |
 | [jobs.md](jobs.md) | 2 | jobs, state_entries |
+| [worker-tasks.md](worker-tasks.md) | 1 | worker_tasks |
 | [schema-notes.md](schema-notes.md) | — | Behavioural notes: slug aliases, parameter keys, roles, results statuses, credential encryption |
 | [patterns.md](patterns.md) | — | Entity-relationship overview, design patterns, file locations |
 

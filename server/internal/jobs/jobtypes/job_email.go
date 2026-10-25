@@ -10,6 +10,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -47,6 +48,13 @@ type EmailJobConfig struct {
 	// mail. Empty is therefore the correct default and the sender skips both
 	// headers for it.
 	ListUnsubscribeURL string `json:"listUnsubscribeUrl,omitempty"`
+
+	// Locale and Timezone are the recipient's language and IANA zone, resolved
+	// by the enqueuer, which knows who the mail is for (spec 2026-10-21-01).
+	// The job may run later and has no other way to know. Empty means
+	// English, UTC (i18n.New falls back for each one independently).
+	Locale   string `json:"locale,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // EmailJobDefinition is the factory for email jobs.
@@ -184,6 +192,8 @@ func (r *EmailJobRun) buildMessage(jctx *jobdef.JobContext) (*email.Message, err
 		// (password-reset, password-changed, registration, invitation) travels
 		// this path, which is exactly why the default must be "no".
 		SupportReplyable: email.SupportReplyable(r.config.Template),
+		Locale:           r.config.Locale,
+		Timezone:         r.config.Timezone,
 	}
 
 	// Use template if specified
@@ -193,7 +203,7 @@ func (r *EmailJobRun) buildMessage(jctx *jobdef.JobContext) (*email.Message, err
 		}
 
 		subject, html, text, err := jctx.Services.EmailFormatter.Format(
-			r.config.Template, r.config.TemplateData)
+			r.config.Template, i18n.New(r.config.Locale, r.config.Timezone), r.config.TemplateData)
 		if err != nil {
 			return nil, fmt.Errorf("formatting template %s: %w", r.config.Template, err)
 		}

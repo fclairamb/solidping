@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -80,6 +81,12 @@ func (f *fakeJobSvc) RetryJob(_ context.Context, job *models.Job) (*models.Job, 
 
 func (f *fakeJobSvc) CreateJob(
 	_ context.Context, _, _ string, _ json.RawMessage, _ *jobsvc.JobOptions,
+) (*models.Job, error) {
+	return nil, errNotImplemented
+}
+
+func (f *fakeJobSvc) CreateJobAdmitted(
+	_ context.Context, _, _ string, _ json.RawMessage, _ func(context.Context, bun.Tx) error,
 ) (*models.Job, error) {
 	return nil, errNotImplemented
 }

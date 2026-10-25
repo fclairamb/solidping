@@ -24,7 +24,7 @@ something that was not true. Read this before concluding "flake", "green" or
   `completed/failure` back to `in_progress`. Require two consecutive stable reads, and
   prefer the REST jobs API over `gh pr checks` buckets.
 - **The E2E "server was DOWN" banner is script text.** If the job died at setup
-  (for example `failed to bind host port ... 55432 ... address already in use`), the
+  (for example `failed to bind host port ... address already in use`), the
   unconditional banner follows. Look for the setup error before believing it.
 - **`gh run view --log-failed` refuses while any job still runs.** Use
   `gh api repos/fclairamb/solidping/check-runs/<id>/annotations` for lint findings

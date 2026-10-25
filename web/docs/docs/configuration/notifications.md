@@ -25,6 +25,7 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Matrix | Available | Client-Server API |
 | Zulip | Available | Bot API |
 | PagerDuty | Available | Events API v2 |
+| AI agent (A2A) | Available | [Agent2Agent protocol](../features/ai-agent-a2a.md) |
 | Pushover | Available | API integration |
 | Web Push | Available | Browser push (VAPID) |
 | SMS / Voice | Available | [SMS & Voice](./sms.md) (server-provided by default, per-organization Twilio as an override) |
@@ -720,6 +721,9 @@ Add a ntfy connection in SolidPing with:
   alert except recoveries, which stay at the default priority.
 - **Access token** (`auth_token`, optional, API only): sent as a bearer token, stored encrypted.
 
+Notifications carry a click-through link to the incident (ntfy's `Click` field) when
+SolidPing's base URL is configured. A program reading the topic gets the incident uid from it.
+
 ### Example
 
 ```
@@ -964,7 +968,7 @@ specification, so receivers can verify it came from SolidPing.
 
 - `resolvedAt` and `durationSeconds` are `null` while the incident is active.
 - `resolutionType` (`auto`, `manual`, `expired`, `escalated`, `disabled`,
-  `check_deleted`) is only present once the incident is resolved.
+  `check_deleted`, `check_disabled`) is only present once the incident is resolved.
 - `acknowledgedAt` is only present once the incident has been acknowledged.
 - `recoveryPeriodSeconds` is `null` until the incident has relapsed at least once.
 - `regions` holds the slugs (not labels) of the regions that saw the failure,

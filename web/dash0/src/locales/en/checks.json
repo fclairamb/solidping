@@ -300,6 +300,7 @@
     "heartbeatIntervalHint": "Check will be marked as down if no heartbeat is received within this interval",
     "emailIntervalHint": "Check will be marked as down if no email is received within this interval",
     "privateRegionTitle": "Runs on your own deported agents",
+    "crawlAgentUpgradeHint": "This location's agents cannot run website crawls yet. Upgrade the agent to select it.",
     "privateRegionBadge": "Private",
     "selectRegionsHint": "Select the regions where this check should run",
     "authenticationAndSecrets": "Authentication & secrets",
@@ -489,7 +490,9 @@
     "js": "JavaScript",
     "jsDescription": "Run custom JavaScript monitoring scripts",
     "prometheus": "Prometheus",
-    "prometheusDescription": "Alert on Prometheus metric thresholds"
+    "prometheusDescription": "Alert on Prometheus metric thresholds",
+    "vendor-status": "Vendor status page",
+    "vendor-statusDescription": "Alert when a vendor's status page (GitHub, Cloudflare, OpenAI...) reports an outage"
   },
   "freebox": {
     "discover": "Discover from Freebox",
@@ -674,6 +677,7 @@
       "rangeDayShort": "D",
       "rangeWeekShort": "W",
       "rangeMonthShort": "M",
+      "rangeLabel": "Time range",
       "noDataAvailable": "No data available",
       "noData": "No data",
       "showingAllRegions": "Showing all regions ({{regions}})",
@@ -727,6 +731,9 @@
       "title": "Credentials need re-sealing for this private location",
       "description": "This check runs in a private location and its stored credentials are sealed to a different set of agents than the ones currently active — an agent was enrolled or revoked since they were saved, so agents can't decrypt them and the check will fail. SolidPing can't re-seal them itself (it can't read them either): re-enter and save the credentials to fix this.",
       "action": "Re-save credentials"
+    },
+    "regionWarnings": {
+      "title": "This check does not run in every region"
     },
     "configuration": "Configuration",
     "configurationDescription": "Check settings and parameters",
@@ -792,6 +799,13 @@
     "disable": "Disable",
     "enableToast": "Check enabled",
     "disableToast": "Check disabled",
+    "disableDialog": {
+      "title": "Disable this check?",
+      "description_one": "This check has {{count}} open incident.",
+      "description_other": "This check has {{count}} open incidents.",
+      "resolve_one": "Also resolve the open incident",
+      "resolve_other": "Also resolve the open incidents"
+    },
     "toggleFailed": "Failed to update check",
     "descriptionLabel": "Description",
     "typeLabel": "Type",
@@ -1465,7 +1479,11 @@
     "crawlMaxPagesRange": "Max pages must be between 1 and {{max}}",
     "crawlMaxRunRange": "Max run duration must be between {{min}} and {{max}} minutes",
     "healthMaxAge": "Max age must be a duration such as 10m (0 disables)",
-    "aiContractRequired": "The contract needs at least one line when there is a prompt"
+    "aiContractRequired": "The contract needs at least one line when there is a prompt",
+    "vendorStatusUrl": "Status page URL is required",
+    "vendorStatusHttps": "Status page URL must start with https://",
+    "pluginInvalidJson": "The config is not valid JSON: {{detail}}",
+    "pluginNotAnObject": "The config must be a JSON object."
   },
   "health": {
     "format": "Health format",
@@ -1679,5 +1697,24 @@
       "ttfb": "Server response (TTFB)",
       "download": "Download"
     }
+  },
+  "vendorStatus": {
+    "vendor": "Vendor",
+    "search": "Search a vendor",
+    "custom": "Custom URL",
+    "url": "Status page URL",
+    "urlHelp": "Root of a Statuspage v2 status page (https only), for example https://status.acme.com.",
+    "components": "Components",
+    "componentsHelp": "Leave all unticked to watch the whole page.",
+    "loading": "Loading components...",
+    "componentsError": "Could not read this status page (is it a Statuspage v2 page?).",
+    "detail": {
+      "title": "Vendor incidents",
+      "noIncidents": "No active incident reported by the vendor."
+    }
+  },
+  "plugin": {
+    "configLabel": "Configuration (JSON)",
+    "configHelp": "This check type comes from a server plugin. Edit its configuration as JSON; it is checked against the plugin's schema."
   }
 }

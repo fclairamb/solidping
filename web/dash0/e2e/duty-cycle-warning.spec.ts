@@ -1,4 +1,9 @@
-import { test, expect, mockSloCoverage } from "./fixtures";
+import {
+  test,
+  expect,
+  mockSloCoverage,
+  stubSavedPreferences,
+} from "./fixtures";
 import type { Page } from "@playwright/test";
 
 // Duty-cycle warning on the check detail page (spec 2026-07-01-04 D3): when
@@ -86,15 +91,19 @@ test.describe("Check detail duty-cycle warning", () => {
     expect(box).not.toBeNull();
     expect(box!.width).toBeLessThanOrEqual(375);
 
-    // All four locales render a translated warning (language detector reads
-    // localStorage first; a distinctive fragment pins each translation).
+    // All four locales render a translated warning (a distinctive fragment
+    // pins each translation). A signed-in dashboard takes its language from
+    // the account, so the saved one is stubbed along with the local one.
     const localizedFragments: Record<string, string> = {
       fr: "créneau de supervision",
       de: "Monitoring-Slot",
       es: "slot de monitorización",
       en: "monitoring slot",
     };
+    let savedLanguage = "en";
+    await stubSavedPreferences(page, () => ({ locale: savedLanguage }));
     for (const [lng, fragment] of Object.entries(localizedFragments)) {
+      savedLanguage = lng;
       await page.evaluate(
         (language) => localStorage.setItem("solidping_language", language),
         lng,

@@ -919,15 +919,6 @@ func (s *Service) UpdateUser(ctx context.Context, uid string, update *models.Use
 		query = query.Set("totp_enabled = ?", *update.TOTPEnabled)
 	}
 
-	if update.TOTPRecoveryCodes != nil {
-		codesJSON, jsonErr := json.Marshal(*update.TOTPRecoveryCodes)
-		if jsonErr != nil {
-			return fmt.Errorf("failed to marshal recovery codes: %w", jsonErr)
-		}
-
-		query = query.Set("totp_recovery_codes = ?", string(codesJSON))
-	}
-
 	if update.MustChangePassword != nil {
 		query = query.Set("must_change_password = ?", *update.MustChangePassword)
 	}
@@ -936,13 +927,45 @@ func (s *Service) UpdateUser(ctx context.Context, uid string, update *models.Use
 		query = query.Set("demo = ?", *update.Demo)
 	}
 
+	query, err := setUserJSONColumns(query, update)
+	if err != nil {
+		return err
+	}
+
 	if update.LastActiveAt != nil {
 		query = query.Set("last_active_at = ?", *update.LastActiveAt)
 	}
 
-	_, err := query.Exec(ctx)
+	_, err = query.Exec(ctx)
 
 	return err
+}
+
+// setUserJSONColumns adds the JSON-column assignments of a user update.
+func setUserJSONColumns(query *bun.UpdateQuery, update *models.UserUpdate) (*bun.UpdateQuery, error) {
+	if update.TOTPRecoveryCodes != nil {
+		codesJSON, err := json.Marshal(*update.TOTPRecoveryCodes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal recovery codes: %w", err)
+		}
+
+		query = query.Set("totp_recovery_codes = ?", string(codesJSON))
+	}
+
+	if update.Preferences == nil {
+		return query, nil
+	}
+
+	if update.Preferences.IsEmpty() {
+		return query.Set("preferences = NULL"), nil
+	}
+
+	prefsJSON, err := json.Marshal(update.Preferences)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal preferences: %w", err)
+	}
+
+	return query.Set("preferences = ?", string(prefsJSON)), nil
 }
 
 func (s *Service) DeleteUser(ctx context.Context, uid string) error {
@@ -4087,8 +4110,16 @@ func (s *Service) ListIncidents(
 ) ([]*models.Incident, int64, error) {
 	var incidents []*models.Incident
 
+	order := []string{"started_at DESC", "uid DESC"}
+	cmp := "<"
+
+	if filter.Ascending {
+		order = []string{"started_at ASC", "uid ASC"}
+		cmp = ">"
+	}
+
 	query := applyIncidentsFilter(
-		s.db.NewSelect().Model(&incidents).Order("started_at DESC"),
+		s.db.NewSelect().Model(&incidents).Order(order...),
 		filter,
 	)
 
@@ -4096,11 +4127,15 @@ func (s *Service) ListIncidents(
 
 	if filter.CursorTimestamp != nil {
 		if filter.CursorUID != nil {
-			query = query.Where("(started_at < ? OR (started_at = ? AND uid < ?))",
+			query = query.Where("(started_at "+cmp+" ? OR (started_at = ? AND uid "+cmp+" ?))",
 				*filter.CursorTimestamp, *filter.CursorTimestamp, *filter.CursorUID)
 		} else {
-			query = query.Where("started_at < ?", *filter.CursorTimestamp)
+			query = query.Where("started_at "+cmp+" ?", *filter.CursorTimestamp)
 		}
+	}
+
+	if filter.SettledBefore != nil {
+		query = query.Where("started_at < ?", *filter.SettledBefore)
 	}
 
 	if filter.Limit > 0 {
@@ -4268,23 +4303,37 @@ func (s *Service) ListEvents(ctx context.Context, filter *models.ListEventsFilte
 
 	query := s.db.NewSelect().
 		Model(&events).
-		Where("organization_uid = ?", filter.OrganizationUID).
-		// uid is part of the sort key, not decoration: the keyset cursor's
-		// predicate is (created_at < ? OR (created_at = ? AND uid < ?)), which
-		// only works if rows sharing a created_at have a DEFINED order. Without
-		// this tie-break an audit trail — which bulk-inserts within the same
-		// microsecond constantly — could skip events at a page boundary.
-		Order("created_at DESC", "uid DESC")
+		Where("organization_uid = ?", filter.OrganizationUID)
+
+	// uid is part of the sort key, not decoration: the keyset cursor's
+	// predicate is (created_at < ? OR (created_at = ? AND uid < ?)), which
+	// only works if rows sharing a created_at have a DEFINED order. Without
+	// this tie-break an audit trail — which bulk-inserts within the same
+	// microsecond constantly — could skip events at a page boundary.
+	if filter.Ascending {
+		query = query.Order("created_at ASC", "uid ASC")
+	} else {
+		query = query.Order("created_at DESC", "uid DESC")
+	}
 
 	query = applyEventFilters(query, filter)
 
 	if filter.CursorTimestamp != nil {
+		cmp := "<"
+		if filter.Ascending {
+			cmp = ">"
+		}
+
 		if filter.CursorUID != nil {
-			query = query.Where("(created_at < ? OR (created_at = ? AND uid < ?))",
+			query = query.Where("(created_at "+cmp+" ? OR (created_at = ? AND uid "+cmp+" ?))",
 				*filter.CursorTimestamp, *filter.CursorTimestamp, *filter.CursorUID)
 		} else {
-			query = query.Where("created_at < ?", *filter.CursorTimestamp)
+			query = query.Where("created_at "+cmp+" ?", *filter.CursorTimestamp)
 		}
+	}
+
+	if filter.SettledBefore != nil {
+		query = query.Where("created_at < ?", *filter.SettledBefore)
 	}
 
 	if filter.Limit > 0 {

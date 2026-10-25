@@ -1,0 +1,93 @@
+{
+  "subject": "{org}, {period}: {pct} de disponibilidad",
+  "heading": "Informe de disponibilidad de {org}, {period}",
+  "preheader": {
+    "withData": "{pct} de disponibilidad · {incidents} · {period}",
+    "noData": "Sin datos de disponibilidad · {incidents} · {period}"
+  },
+  "incidents_one": "{count} incidente",
+  "incidents_other": "{count} incidentes",
+  "title": "Informe de disponibilidad",
+  "noData": "Sin datos",
+  "metricLabel": "Disponibilidad · {period}",
+  "versus": "frente a {period} ({previous})",
+  "period": {
+    "range": "{start} – {end}",
+    "versusWeek": "la semana del {start} al {end}"
+  },
+  "scope": {
+    "all": "Todas las comprobaciones ({count})",
+    "named_one": "{name} ({count} comprobación)",
+    "named_other": "{name} ({count} comprobaciones)"
+  },
+  "downAll": {
+    "check": "{check} estuvo sin servicio durante todo el periodo.",
+    "every": "Todas las comprobaciones monitorizadas estuvieron sin servicio durante todo el periodo."
+  },
+  "labels": {
+    "checksMonitored": "Comprobaciones monitorizadas",
+    "incidents": "Incidentes",
+    "totalDowntime": "Tiempo de inactividad total"
+  },
+  "incidentStats": {
+    "longest": "{duration} como máximo",
+    "average": "{duration} de media"
+  },
+  "delta": {
+    "points": "{value} puntos",
+    "percent": "{value} %",
+    "noChange": "sin cambios"
+  },
+  "latency": {
+    "title": "Tiempo de respuesta",
+    "average": "Media",
+    "range": "Más rápido / más lento",
+    "slowProbes": "Sondas lentas"
+  },
+  "units": {
+    "ms": "{value} ms",
+    "s": "{value} s"
+  },
+  "slow": {
+    "samples_one": "{count} muestra",
+    "samples_other": "{count} muestras",
+    "peaks_one": "{count} pico",
+    "peaks_other": "{count} picos",
+    "both": "{samples} y {peaks} por encima de {threshold}",
+    "some": "{counted} por encima de {threshold}",
+    "none": "ninguna por encima de {threshold}",
+    "peakNote": "Un pico es un periodo agregado cuya muestra más lenta superó {threshold}; los datos más antiguos se guardan agregados, lo que impide contar las muestras con exactitud.",
+    "includesFailures": "Los tiempos de respuesta incluyen las muestras fallidas."
+  },
+  "checks": {
+    "title": "Por comprobación · las peores primero",
+    "truncated": "Se muestran las {shown} comprobaciones con menor disponibilidad de un total de {total}.",
+    "downAllPeriod": "sin servicio todo el periodo"
+  },
+  "strip": {
+    "label": "Disponibilidad diaria, {start} – {end} (UTC)",
+    "legend": "{label}: verde ≥ {good}, ámbar ≥ {warn}, naranja ≥ {poor}, rojo por debajo. El gris indica que ese día no se registró nada, así que una comprobación creada a mitad del periodo aparece en gris, no en rojo.",
+    "budgetNote_one": "Las barras diarias solo se muestran para {count} comprobación, la de menor disponibilidad; el resto se omitió para que este correo no supere el tamaño a partir del cual los clientes de correo lo recortan.",
+    "budgetNote_other": "Las barras diarias solo se muestran para las {count} comprobaciones con menor disponibilidad; el resto se omitió para que este correo no supere el tamaño a partir del cual los clientes de correo lo recortan."
+  },
+  "slo": {
+    "title": "Objetivos",
+    "vsTarget": "{value} / meta {target}",
+    "budgetRemaining": "Presupuesto restante: {budget}",
+    "state": {
+      "healthy": "Saludable",
+      "atRisk": "En riesgo",
+      "breached": "Incumplido"
+    }
+  },
+  "cta": "Abrir el panel",
+  "text": {
+    "overall": "Disponibilidad global",
+    "versus": "frente a {period}: {previous}",
+    "latencyHeading": "Tiempo de respuesta:",
+    "perCheck": "Por comprobación, las peores primero:",
+    "perCheckTruncated": "Por comprobación, las peores primero (se muestran las {shown} comprobaciones con menor disponibilidad de un total de {total}):",
+    "objectivesHeading": "Objetivos:",
+    "budgetRemaining": "presupuesto restante {budget}"
+  }
+}

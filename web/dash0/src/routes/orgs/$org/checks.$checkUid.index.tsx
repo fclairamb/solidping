@@ -78,6 +78,7 @@ import { Switch } from "@/components/ui/switch";
 import { CollapsibleCode } from "@/components/shared/copyable-code";
 import { CheckRegionOutageBanner } from "@/components/shared/region-outage-banner";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
   Card,
@@ -137,6 +138,7 @@ import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { SloCoverageChip } from "@/components/slos/slo-coverage-chip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
+import { RegionWarningsAlert } from "@/components/checks/region-warnings-alert";
 import { CheckPublicationHint } from "@/components/checks/check-publication-hint";
 import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status-page-dialog";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
@@ -154,6 +156,7 @@ import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
 import { DnsChangesCard } from "@/components/checks/dns-changes-card";
 import { CrawlCard } from "@/components/checks/crawl-card";
 import { HealthCard } from "@/components/checks/health-card";
+import { VendorStatusCard } from "@/components/checks/vendor-status-card";
 import { isEvaluationOutput } from "@/components/checks/evaluation-card";
 import { isPassiveCheckType } from "@/lib/check-scheduling";
 import {
@@ -725,6 +728,8 @@ function CheckDetailPage() {
   const navigate = useNavigate();
   const router = useRouter();
   const { user: authUser } = useAuth();
+  const [disableDialogOpen, setDisableDialogOpen] = useState(false);
+  const [resolveOnDisable, setResolveOnDisable] = useState(true);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(publish === true);
   const [editingSlug, setEditingSlug] = useState(false);
@@ -1142,11 +1147,33 @@ function CheckDetailPage() {
     }
   };
 
-  const handleToggleEnabled = async () => {
+  const { data: activeIncidents } = useIncidents(org, {
+    checkUid: check?.uid,
+    state: "active",
+    size: 100,
+    enabled: !!check?.uid,
+  });
+  const openIncidentCount = activeIncidents?.data?.length ?? 0;
+
+  // Disabling a check with open incidents asks whether to close them too:
+  // a disabled check has no jobs, so nothing else ever would.
+  const handleDisableClick = () => {
+    if (check?.enabled && openIncidentCount > 0) {
+      setResolveOnDisable(true);
+      setDisableDialogOpen(true);
+      return;
+    }
+    handleToggleEnabled();
+  };
+
+  const handleToggleEnabled = async (resolveOpenIncidents?: boolean) => {
     if (!check) return;
     const next = !check.enabled;
     try {
-      await updateCheck.mutateAsync({ enabled: next });
+      await updateCheck.mutateAsync({
+        enabled: next,
+        ...(resolveOpenIncidents ? { resolveOpenIncidents: true } : {}),
+      });
       toast.success(
         next
           ? (t("checks:detail.enableToast") ?? "Check enabled")
@@ -1227,7 +1254,7 @@ function CheckDetailPage() {
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0 flex-1 basis-64">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <h1 className="min-w-0 max-w-full truncate text-2xl font-bold tracking-tight sm:text-3xl">
+              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl min-w-0 max-w-full truncate">
                 {checkDisplayName}
               </h1>
               {check.enabled === false ? (
@@ -1430,7 +1457,8 @@ function CheckDetailPage() {
                   : (t("checks:detail.enable") ?? "Enable")
               }
               disabled={updateCheck.isPending}
-              onClick={handleToggleEnabled}
+              onClick={handleDisableClick}
+              data-testid="check-toggle-enabled"
             >
               <Power className="h-4 w-4 md:mr-2" />
               <span className="hidden md:inline">
@@ -1439,6 +1467,47 @@ function CheckDetailPage() {
                   : t("checks:detail.enable")}
               </span>
             </Button>
+            <AlertDialog
+              open={disableDialogOpen}
+              onOpenChange={setDisableDialogOpen}
+            >
+              <AlertDialogContent data-testid="disable-check-dialog">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {t("checks:detail.disableDialog.title")}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t("checks:detail.disableDialog.description", {
+                      count: openIncidentCount,
+                    })}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="disable-resolve-incidents"
+                    checked={resolveOnDisable}
+                    onCheckedChange={(v) => setResolveOnDisable(v === true)}
+                    data-testid="disable-check-resolve-checkbox"
+                  />
+                  <Label htmlFor="disable-resolve-incidents">
+                    {t("checks:detail.disableDialog.resolve", {
+                      count: openIncidentCount,
+                    })}
+                  </Label>
+                </div>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid="disable-check-cancel">
+                    {t("common:cancel")}
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => handleToggleEnabled(resolveOnDisable)}
+                    data-testid="disable-check-confirm"
+                  >
+                    {t("checks:detail.disable")}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Button
               asChild
               variant="default"
@@ -1601,6 +1670,7 @@ function CheckDetailPage() {
           location's active agents. Re-saving the credentials (Edit, above) is
           the only fix — the server cannot re-seal what it cannot read. */}
       <NeedsResealAlert needsReseal={check.needsReseal} />
+      <RegionWarningsAlert warnings={check.regionWarnings} />
 
       {/* Region outage (spec 2026-09-25-03): a region this check runs from is
           offline. Blind (every region down) means the check is not running at
@@ -1667,14 +1737,39 @@ function CheckDetailPage() {
           checkUid={checkUid}
           periodMs={periodMs}
           timeRange={graphPeriod ?? "day"}
-          view="timing"
-          onViewChange={() => undefined}
+          zoomFrom={graphFrom}
+          zoomTo={graphTo}
           onTimeRangeChange={(range) =>
+            navigate({
+              to: ".",
+              search: (prev) => {
+                const nextPeriod = range !== "day" ? range : undefined;
+                // As on the response time chart, a new range drops the zoom.
+                return {
+                  ...prev,
+                  graphPeriod: nextPeriod,
+                  ...(nextPeriod !== prev.graphPeriod
+                    ? {
+                        graphFrom: undefined,
+                        graphTo: undefined,
+                        graphSelected: undefined,
+                      }
+                    : {}),
+                };
+              },
+              replace: true,
+            })
+          }
+          onZoomChange={(from, to) =>
             navigate({
               to: ".",
               search: (prev) => ({
                 ...prev,
-                graphPeriod: range !== "day" ? range : undefined,
+                graphFrom: from,
+                graphTo: to,
+                ...(from == null || to == null
+                  ? { graphSelected: undefined }
+                  : {}),
               }),
               replace: true,
             })
@@ -1757,7 +1852,7 @@ function CheckDetailPage() {
         refetchInterval={refetchInterval}
       />
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>{t("checks:detail.configuration")}</CardTitle>
@@ -1788,7 +1883,13 @@ function CheckDetailPage() {
                 <div className="text-sm font-medium text-muted-foreground">
                   {t("checks:detail.checkInterval")}
                 </div>
-                <div>{check.period}</div>
+                {/* Same wording as the header ("Every 10s"), never the raw
+                    HH:MM:SS wire format. */}
+                <div>
+                  {headerPeriodMs != null
+                    ? t("checks:detail.every", { period: formatDurationCoarse(headerPeriodMs) })
+                    : check.period}
+                </div>
               </div>
             )}
             {/* Placement + regions + per-region last result + the automatic
@@ -2039,6 +2140,14 @@ function CheckDetailPage() {
         <HealthCard
           org={org}
           checkUid={checkUid}
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
+        />
+      )}
+
+      {check.type === "vendor-status" && (
+        <VendorStatusCard
           output={
             check.lastResult?.output as Record<string, unknown> | undefined
           }

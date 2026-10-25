@@ -77,7 +77,15 @@ Query parameters:
 - `with` - comma-separated: `check`, `members` (`members` also adds `checkGroupSlug`;
   both are opt-in — omitted by default, and the default response costs zero extra
   member/group queries)
-- `cursor` - pagination cursor
+- `cursor` - opaque keyset cursor over `(started_at, uid)`; hand back `pagination.cursor`
+  verbatim. An unparseable cursor (including the bare UIDs older versions handed out)
+  starts from the first page. With `order=asc` it means "strictly after this incident".
+- `order` - `desc` (default, newest first) or `asc` (oldest first). `asc` always returns
+  `pagination.cursor` for the last row, even on the last page, and an empty page returns
+  the cursor it was given: store it and resume from it. Incidents younger than 5 s are held
+  back (settle window), so a consumer sees one at most 5 s late and never skips one.
+  `asc` lists **new** incidents; changes to existing ones (acked, resolved, reopened) are
+  events: follow `GET /events?type=incident&order=asc` for the full lifecycle.
 - `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
 `pagination.total` is the count of incidents matching the request's filters
@@ -192,6 +200,12 @@ Query parameters:
 - `cursor` - pagination cursor. Opaque keyset cursor over
   `(created_at, uid)`; hand back `pagination.cursor` verbatim. An unparseable
   cursor is ignored (first page) rather than rejected.
+- `order` - `desc` (default, newest first) or `asc` (oldest first on `(created_at, uid)`;
+  the cursor then means "strictly after this event"). `asc` always returns
+  `pagination.cursor` for the last row, even on the last page, and an empty page returns
+  the cursor it was given. Events younger than 5 s are held back (settle window): a consumer
+  sees an event at most 5 s late, never skips one. `since` / `until` combine with `cursor`.
+  Also accepted on `/checks/:uid/events` and `/incidents/:uid/events`.
 - `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
 Response items carry `uid`, `eventType`, `actorType`

@@ -1,21 +1,17 @@
-{{define "subject"}}Confirm your SolidPing account{{end}}
-{{define "preheader"}}One click to confirm your address and finish setting up SolidPing.{{end}}
+{{define "subject"}}{{t "account.registration.subject"}}{{end}}
+{{define "preheader"}}{{t "account.registration.preheader"}}{{end}}
 {{template "base.html" .}}
 {{define "content"}}
-    <h1>Confirm your account</h1>
-    <p>Hi,</p>
-    <p>You're almost there. Click below to confirm your SolidPing account and finish setting things up.</p>
-    <div class="cta-wrap">{{template "button" dict "URL" .ConfirmURL "Label" "Confirm account" "Variant" "success"}}</div>
-    <p>Or paste this link into your browser:</p>
-    <p class="fallback">{{link .ConfirmURL ""}}</p>
-    <p class="meta">This confirmation link expires in 3 days. If you didn't sign up for SolidPing, you can safely ignore this email.</p>
+    <h1>{{t "account.registration.title"}}</h1>
+    <p>{{t "account.registration.intro"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .ConfirmURL "Label" (t "account.registration.cta") "Variant" "success"}}</div>
+    {{template "fallback-link" .ConfirmURL}}
+    <p class="meta">{{t "account.registration.expiry" "expiresIn" (tn "account.duration.days" 3)}}</p>
 {{end}}
-{{define "text"}}Confirm your account
+{{define "text"}}{{t "account.registration.title"}}
 
-Hi,
-
-You're almost there. Confirm your SolidPing account to finish setting things up:
+{{t "account.registration.introText"}}
 {{.ConfirmURL}}
 
-This confirmation link expires in 3 days. If you didn't sign up for SolidPing, you can safely ignore this email.
+{{t "account.registration.expiry" "expiresIn" (tn "account.duration.days" 3)}}
 {{end}}

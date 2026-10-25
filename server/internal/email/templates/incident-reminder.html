@@ -1,55 +1,35 @@
-{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[STILL DOWN] {{.CheckName}} not acknowledged{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}🔴 {{t "incident.reminder.subject" "check" .CheckName}}{{if .IncidentNumber}} (#{{.IncidentNumber}}){{end}}{{end}}
 {{define "preheader"}}{{.ReminderText}}.{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Still down"}}{{end}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" (t "incident.pill.stillDown")}}{{end}}
 {{define "content"}}
-    <h1>{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}} is still down</h1>
-    <p>{{.ReminderText}}. Nobody has taken this incident yet.</p>
+    {{$check := nolink .CheckName}}{{if .CheckURL}}{{$check = tHTML "incident.checkLink" "url" .CheckURL "check" $check}}{{end}}
+    <h1>{{tHTML "incident.reminder.title" "check" $check}}</h1>
+    <p class="lead">{{t "incident.reminder.lead" "reminder" .ReminderText}}</p>
+    {{template "cause" .}}
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        <tr><td class="label">Check</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</td></tr>
-        <tr><td class="label">Type</td><td class="value">{{.CheckType}}</td></tr>
+        {{if .CheckTarget}}<tr><td class="label">{{t "common.labels.target"}}</td><td class="value">{{nolink .CheckTarget}}</td></tr>{{end}}
+        <tr><td class="label">{{t "common.labels.since"}}</td><td class="value">{{date .StartedAt}}</td></tr>
         {{if .RegionText}}<tr><td class="label">{{.RegionTitle}}</td><td class="value">{{.RegionText}}</td></tr>{{end}}
-        <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
-        <tr><td class="label">Failure count</td><td class="value">{{.FailureCount}}</td></tr>
-        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
+        <tr><td class="label">{{t "incident.labels.failedChecks"}}</td><td class="value">{{.FailureCount}}</td></tr>
+        {{if .IncidentNumber}}<tr><td class="label">{{t "common.labels.incident"}}</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
     </table>
-    {{if or .IncidentURL .AckURL}}
-    <table class="actions-table" role="presentation" cellpadding="0" cellspacing="0" border="0">
-        <tr>
-            {{if .AckURL}}
-            <td class="action-cell">{{template "button" dict "URL" .AckURL "Label" "Acknowledge incident" "Variant" "primary"}}</td>
-            {{end}}
-            {{if .IncidentURL}}
-            <td class="action-cell">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "secondary"}}</td>
-            {{end}}
-        </tr>
-    </table>
-    {{end}}
-    {{if .AckURL}}
-    <p class="meta">This link is valid for 7 days. Following it confirms you have seen the incident and stops these reminders.</p>
-    {{end}}
-    <p class="footnote">Incident reference <span class="mono">{{.IncidentUID}}</span> — quote it if you contact support.</p>
+    {{template "incident-actions" .}}
 {{end}}
-{{define "text"}}{{.CheckName}} is still down
+{{define "text"}}{{t "incident.reminder.title" "check" .CheckName}}
 
-{{.ReminderText}}. Nobody has taken this incident yet.
+{{t "incident.reminder.textBody" "reminder" .ReminderText}}
 
-Check: {{.CheckName}}
-{{if .CheckURL}}Check URL: {{.CheckURL}}
-{{end}}Type: {{.CheckType}}
-{{if .RegionText}}{{.RegionTitle}}: {{.RegionText}}
-{{end}}Started at: {{.StartedAt}}
-Failure count: {{.FailureCount}}
-{{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
-{{end}}Incident ID: {{.IncidentUID}}
-{{if .IncidentURL}}
-View incident: {{.IncidentURL}}
-{{end}}{{if .AckURL}}
-Acknowledge this incident: {{.AckURL}}
-(link valid for 7 days, stops these reminders)
+{{t "common.textField" "label" (t "common.labels.check") "value" .CheckName}}
+{{if .CheckURL}}{{t "common.textField" "label" (t "common.labels.checkURL") "value" .CheckURL}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.type") "value" .CheckType}}
+{{if .RegionText}}{{t "common.textField" "label" .RegionTitle "value" .RegionText}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.startedAt") "value" (date .StartedAt)}}
+{{t "common.textField" "label" (t "incident.labels.failureCount") "value" .FailureCount}}
+{{if .IncidentNumber}}{{t "common.textField" "label" (t "common.labels.incident") "value" (printf "#%v" .IncidentNumber)}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.incidentId") "value" .IncidentUID}}
+{{template "incident-actions-text" .}}{{if .AckURL}}
+{{t "incident.reminder.ackStopsReminders"}}
 {{end}}
-This is an automated notification from SolidPing.
-{{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
-Docs: {{.DocsURL}}{{end}}{{if .UnsubscribeURL}}
-Unsubscribe from alerts{{if .UnsubscribeCheckName}} for {{.UnsubscribeCheckName}}{{end}}: {{.UnsubscribeURL}}{{end}}
-{{end}}
+{{t "common.footer.automated"}}
+{{template "footer-text" .}}{{end}}

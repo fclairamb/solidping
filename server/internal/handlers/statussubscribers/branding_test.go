@@ -1,6 +1,7 @@
 package statussubscribers_test
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -125,9 +126,10 @@ func TestSubscriberMailHonorsHideBranding(t *testing.T) {
 	r.Contains(html, "Acme Status")
 }
 
-// TestSubscriberMailFallsBackToTheSolidPingLogo — a page with no logo of its
-// own and no white-label opt-in wears the product logo.
-func TestSubscriberMailFallsBackToTheSolidPingLogo(t *testing.T) {
+// TestSubscriberMailWithoutALogoNamesThePage — a page with no logo of its own
+// and no white-label opt-in is named as text in the header, with a "sent by
+// SolidPing" attribution: the reader subscribed to the page, not to SolidPing.
+func TestSubscriberMailWithoutALogoNamesThePage(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -143,5 +145,10 @@ func TestSubscriberMailFallsBackToTheSolidPingLogo(t *testing.T) {
 
 	msgs := sender.sent()
 	r.Len(msgs, 1)
-	r.Contains(msgs[0].HTML, brandingBaseURL+"/d/logo.png")
+
+	html := msgs[0].HTML
+	r.Regexp(`<span class="header-logo"[^>]*>`+regexp.QuoteMeta(setup.page.Name)+`</span>`, html)
+	r.Contains(html, "sent by SolidPing")
+	r.NotContains(html, brandingBaseURL+"/d/logo.png")
+	r.NotContains(html, "<img")
 }

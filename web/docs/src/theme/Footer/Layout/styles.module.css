@@ -1,0 +1,97 @@
+/* Navy in both themes, like the website's footer: the docs close on the same
+   surface as every other SolidPing page. */
+.footer {
+  background: var(--sp-navy);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 4rem 0 2rem;
+}
+
+.top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2.2fr);
+  gap: 3rem;
+}
+
+@media (max-width: 996px) {
+  .top {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+}
+
+.brandLogo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* The theme's FooterLogo wraps the image in a link with its own margin. */
+.brandLogo a {
+  display: flex;
+  line-height: 0;
+}
+
+.brandLogo img {
+  height: 28px;
+  width: auto;
+  margin: 0;
+}
+
+.brandName {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.tagline {
+  margin: 1rem 0 0;
+  max-width: 18rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: rgba(226, 232, 244, 0.68);
+}
+
+/* The theme renders the columns as .row > .col.footer__col. */
+.links :global(.row) {
+  margin: 0;
+}
+
+.links :global(.footer__col) {
+  padding: 0 0 1.5rem;
+  min-width: 9rem;
+}
+
+.links :global(.footer__title) {
+  margin-bottom: 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.links :global(.footer__item) {
+  margin: 0 0 0.55rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.links :global(.footer__link-item svg) {
+  display: none;
+}
+
+.bottom {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.82rem;
+  color: rgba(226, 232, 244, 0.55);
+}
+
+@media (max-width: 996px) {
+  .links :global(.footer__col) {
+    flex: 0 0 50%;
+    max-width: 50%;
+  }
+}

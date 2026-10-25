@@ -1,0 +1,278 @@
+[
+  {
+    "slug": "github",
+    "name": "GitHub",
+    "url": "https://www.githubstatus.com",
+    "category": "developer"
+  },
+  {
+    "slug": "cloudflare",
+    "name": "Cloudflare",
+    "url": "https://www.cloudflarestatus.com",
+    "category": "infrastructure"
+  },
+  {
+    "slug": "atlassian",
+    "name": "Atlassian (Jira, Confluence, Bitbucket)",
+    "url": "https://status.atlassian.com",
+    "category": "developer"
+  },
+  {
+    "slug": "bitbucket",
+    "name": "Bitbucket",
+    "url": "https://bitbucket.status.atlassian.com",
+    "category": "developer"
+  },
+  {
+    "slug": "anthropic",
+    "name": "Anthropic",
+    "url": "https://status.claude.com",
+    "category": "ai"
+  },
+  {
+    "slug": "openai",
+    "name": "OpenAI",
+    "url": "https://status.openai.com",
+    "category": "ai"
+  },
+  {
+    "slug": "discord",
+    "name": "Discord",
+    "url": "https://discordstatus.com",
+    "category": "communication"
+  },
+  {
+    "slug": "twilio",
+    "name": "Twilio",
+    "url": "https://status.twilio.com",
+    "category": "communication"
+  },
+  {
+    "slug": "digitalocean",
+    "name": "DigitalOcean",
+    "url": "https://status.digitalocean.com",
+    "category": "infrastructure"
+  },
+  {
+    "slug": "datadog",
+    "name": "Datadog",
+    "url": "https://status.datadoghq.com",
+    "category": "monitoring"
+  },
+  {
+    "slug": "vercel",
+    "name": "Vercel",
+    "url": "https://www.vercel-status.com",
+    "category": "infrastructure"
+  },
+  {
+    "slug": "netlify",
+    "name": "Netlify",
+    "url": "https://www.netlifystatus.com",
+    "category": "infrastructure"
+  },
+  {
+    "slug": "sentry",
+    "name": "Sentry",
+    "url": "https://status.sentry.io",
+    "category": "monitoring"
+  },
+  {
+    "slug": "circleci",
+    "name": "CircleCI",
+    "url": "https://status.circleci.com",
+    "category": "developer"
+  },
+  {
+    "slug": "npm",
+    "name": "npm",
+    "url": "https://status.npmjs.org",
+    "category": "developer"
+  },
+  {
+    "slug": "dropbox",
+    "name": "Dropbox",
+    "url": "https://status.dropbox.com",
+    "category": "productivity"
+  },
+  {
+    "slug": "zoom",
+    "name": "Zoom",
+    "url": "https://status.zoom.us",
+    "category": "communication"
+  },
+  {
+    "slug": "reddit",
+    "name": "Reddit",
+    "url": "https://www.redditstatus.com",
+    "category": "social"
+  },
+  {
+    "slug": "hashicorp",
+    "name": "HashiCorp",
+    "url": "https://status.hashicorp.com",
+    "category": "infrastructure"
+  },
+  {
+    "slug": "mailgun",
+    "name": "Mailgun",
+    "url": "https://status.mailgun.com",
+    "category": "communication"
+  },
+  {
+    "slug": "sendgrid",
+    "name": "SendGrid",
+    "url": "https://status.sendgrid.com",
+    "category": "communication"
+  },
+  {
+    "slug": "linode",
+    "name": "Linode (Akamai)",
+    "url": "https://status.linode.com",
+    "category": "infrastructure"
+  },
+  {
+    "slug": "render",
+    "name": "Render",
+    "url": "https://status.render.com",
+    "category": "infrastructure"
+  },
+  {
+    "slug": "flyio",
+    "name": "Fly.io",
+    "url": "https://status.flyio.net",
+    "category": "infrastructure"
+  },
+  {
+    "slug": "supabase",
+    "name": "Supabase",
+    "url": "https://status.supabase.com",
+    "category": "infrastructure"
+  },
+  {
+    "slug": "planetscale",
+    "name": "PlanetScale",
+    "url": "https://www.planetscalestatus.com",
+    "category": "infrastructure"
+  },
+  {
+    "slug": "hubspot",
+    "name": "HubSpot",
+    "url": "https://status.hubspot.com",
+    "category": "business"
+  },
+  {
+    "slug": "notion",
+    "name": "Notion",
+    "url": "https://www.notion-status.com",
+    "category": "productivity"
+  },
+  {
+    "slug": "figma",
+    "name": "Figma",
+    "url": "https://status.figma.com",
+    "category": "productivity"
+  },
+  {
+    "slug": "linear",
+    "name": "Linear",
+    "url": "https://linearstatus.com",
+    "category": "productivity"
+  },
+  {
+    "slug": "docker",
+    "name": "Docker",
+    "url": "https://www.dockerstatus.com",
+    "category": "developer"
+  },
+  {
+    "slug": "coinbase",
+    "name": "Coinbase",
+    "url": "https://status.coinbase.com",
+    "category": "payments"
+  },
+  {
+    "slug": "shopify",
+    "name": "Shopify",
+    "url": "https://www.shopifystatus.com",
+    "category": "business"
+  },
+  {
+    "slug": "statuspage",
+    "name": "Atlassian Statuspage",
+    "url": "https://metastatuspage.com",
+    "category": "developer"
+  },
+  {
+    "slug": "mongodb",
+    "name": "MongoDB Atlas",
+    "url": "https://status.mongodb.com",
+    "category": "infrastructure"
+  },
+  {
+    "slug": "newrelic",
+    "name": "New Relic",
+    "url": "https://status.newrelic.com",
+    "category": "monitoring"
+  },
+  {
+    "slug": "squarespace",
+    "name": "Squarespace",
+    "url": "https://status.squarespace.com",
+    "category": "business"
+  },
+  {
+    "slug": "bitly",
+    "name": "Bitly",
+    "url": "https://status.bitly.com",
+    "category": "business"
+  },
+  {
+    "slug": "airtable",
+    "name": "Airtable",
+    "url": "https://status.airtable.com",
+    "category": "productivity"
+  },
+  {
+    "slug": "canva",
+    "name": "Canva",
+    "url": "https://www.canvastatus.com",
+    "category": "productivity"
+  },
+  {
+    "slug": "cloudinary",
+    "name": "Cloudinary",
+    "url": "https://status.cloudinary.com",
+    "category": "infrastructure"
+  },
+  {
+    "slug": "mixpanel",
+    "name": "Mixpanel",
+    "url": "https://www.mixpanelstatus.com",
+    "category": "monitoring"
+  },
+  {
+    "slug": "segment",
+    "name": "Segment",
+    "url": "https://status.segment.com",
+    "category": "monitoring"
+  },
+  {
+    "slug": "launchdarkly",
+    "name": "LaunchDarkly",
+    "url": "https://status.launchdarkly.com",
+    "category": "developer"
+  },
+  {
+    "slug": "pinecone",
+    "name": "Pinecone",
+    "url": "https://status.pinecone.io",
+    "category": "ai"
+  },
+  {
+    "slug": "perplexity",
+    "name": "Perplexity",
+    "url": "https://status.perplexity.com",
+    "category": "ai"
+  }
+]

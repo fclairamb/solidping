@@ -14,6 +14,7 @@ import (
 	"github.com/wneessen/go-mail"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 func TestSender_DisabledNoOp(t *testing.T) {
@@ -165,7 +166,7 @@ func TestSendEmail_Integration(t *testing.T) {
 		"IncidentURL": "https://solidping.com/d/orgs/default/incidents/inc-integration-test",
 	}
 
-	_, html, _, err := formatter.Format("incident-created.html", data)
+	_, html, _, err := formatter.Format("incident-created.html", i18n.English, data)
 	r.NoError(err)
 
 	result, err := sender.Send(context.Background(), &Message{
@@ -372,4 +373,113 @@ func TestDynamicSender_UsesProviderConfig(t *testing.T) {
 	res, err := sender.Send(context.Background(), &Message{Recipients: Recipients{To: []string{"a@acme.com"}}})
 	r.NoError(err)
 	r.False(res.Sent)
+}
+
+// TestBuildMessage_ThreadHeaders pins incident threading: every mail about one
+// incident points at the same <ThreadID@from-domain> root, and a mail without
+// a ThreadID carries neither header.
+func TestBuildMessage_ThreadHeaders(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		from     string
+		threadID string
+		want     string
+	}{
+		{"from domain", "noreply@acme.com", "incident.inc-123", "<incident.inc-123@acme.com>"},
+		{"no domain in from", "noreply", "incident.inc-123", "<incident.inc-123@solidping.invalid>"},
+		{"no thread id", "noreply@acme.com", "", ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			sender := NewSender(&config.EmailConfig{
+				Enabled: true, Host: "localhost", Port: 587, From: tc.from,
+			}, slog.Default())
+
+			// setThreadHeaders is called directly for the domain-less case:
+			// buildMessage would reject a From without a domain first.
+			mailMsg := mail.NewMsg()
+			sender.setThreadHeaders(mailMsg, &Message{ThreadID: tc.threadID})
+
+			if tc.want == "" {
+				r.Empty(mailMsg.GetGenHeader(mail.HeaderInReplyTo))
+				r.Empty(mailMsg.GetGenHeader(mail.HeaderReferences))
+
+				return
+			}
+
+			r.Equal([]string{tc.want}, mailMsg.GetGenHeader(mail.HeaderInReplyTo))
+			r.Equal([]string{tc.want}, mailMsg.GetGenHeader(mail.HeaderReferences))
+		})
+	}
+}
+
+// TestBuildMessage_ThreadHeadersReachTheWire is the end-to-end half: the
+// headers survive buildMessage and serialization.
+func TestBuildMessage_ThreadHeadersReachTheWire(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	sender := NewSender(&config.EmailConfig{
+		Enabled: true, Host: "localhost", Port: 587, From: "noreply@acme.com",
+	}, slog.Default())
+
+	mailMsg, err := sender.buildMessage(&Message{
+		Recipients: Recipients{To: []string{"to@example.com"}},
+		Subject:    "Hello",
+		HTML:       "<p>Hi there</p>",
+		ThreadID:   IncidentThreadID("inc-123"),
+	})
+	r.NoError(err)
+
+	var buf bytes.Buffer
+	_, err = mailMsg.WriteTo(&buf)
+	r.NoError(err)
+
+	wire := buf.String()
+	r.Contains(wire, "In-Reply-To: <incident.inc-123@acme.com>")
+	r.Contains(wire, "References: <incident.inc-123@acme.com>")
+}
+
+func TestGetAuthType(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]mail.SMTPAuthType{
+		"plain":    mail.SMTPAuthPlain,
+		"cram-md5": mail.SMTPAuthCramMD5,
+		"noauth":   mail.SMTPAuthNoAuth,
+		"login":    mail.SMTPAuthLogin,
+		"":         mail.SMTPAuthLogin,
+		"unknown":  mail.SMTPAuthLogin,
+	}
+
+	for authType, want := range cases {
+		sender := NewSender(&config.EmailConfig{Enabled: true, AuthType: authType}, slog.Default())
+		require.Equal(t, want, sender.getAuthType(), authType)
+	}
+}
+
+func TestSetRecipients_CCBCCAndReplyTo(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	sender := NewSender(&config.EmailConfig{Enabled: true}, slog.Default())
+	msg := mail.NewMsg()
+
+	r.NoError(sender.setRecipients(msg, &Recipients{
+		To:      []string{"to@example.com"},
+		CC:      []string{"cc@example.com"},
+		BCC:     []string{"bcc@example.com"},
+		ReplyTo: "reply@example.com",
+	}))
+	r.Len(msg.GetToString(), 1)
+	r.Len(msg.GetAddrHeader(mail.HeaderCc), 1)
+	r.Len(msg.GetAddrHeader(mail.HeaderReplyTo), 1)
+
+	r.Error(sender.setRecipients(mail.NewMsg(), &Recipients{To: []string{"not an address"}}))
 }

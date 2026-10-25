@@ -21,6 +21,7 @@
   "switchOrganization": "Switch Organization",
   "logOut": "Log out",
   "language": "Language",
+  "languageSaveFailed": "Could not save your language choice.",
   "save": "Save",
   "saving": "Saving...",
   "cancel": "Cancel",
@@ -81,7 +82,8 @@
     "slack": "Slack",
     "discord": "Discord",
     "webhook": "Webhook",
-    "telegram": "Telegram"
+    "telegram": "Telegram",
+    "a2a": "AI agent (A2A)"
   },
   "myNotifications": {
     "empty": {

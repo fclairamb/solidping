@@ -462,6 +462,11 @@ func TestCapabilityMapPublishesExactlyTheRegistry(t *testing.T) {
 		regions.CapabilityIPv4:    regions.CapabilityYes,
 		regions.CapabilityIPv6:    regions.CapabilityYes,
 		regions.CapabilityBrowser: regions.CapabilityYes,
+		// The worker-task capability (spec 2026-10-22-03) is published too:
+		// this worker reported none, so the region cannot run crawls.
+		regions.CapabilityCrawl: regions.CapabilityNo,
+		// Discovery (spec 2026-10-22-04) likewise.
+		regions.CapabilityDiscovery: regions.CapabilityNo,
 	}, caps, "an unpublished capability a worker reports must not leak into the API")
 }
 
@@ -537,4 +542,36 @@ func TestAggregationIsAnyNotAllPerCapability(t *testing.T) {
 	caps := env.capsOf(t.Context(), "eu")
 	r.Equal(regions.CapabilityYes, caps[regions.CapabilityIPv4])
 	r.Equal(regions.CapabilityYes, caps[regions.CapabilityIPv6])
+}
+
+func TestOwnsPrivateRegion(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newCapEnv(t)
+	ctx := t.Context()
+
+	org := env.org("acme")
+	other := env.org("other")
+	r.NoError(env.svc.SetOrgCustomRegions(ctx, org.UID, []regions.RegionDefinition{{Slug: "dc1", Name: "DC 1"}}))
+
+	owned, err := env.svc.OwnsPrivateRegion(ctx, org.UID, "@dc1")
+	r.NoError(err)
+	r.True(owned)
+
+	owned, err = env.svc.OwnsPrivateRegion(ctx, other.UID, "@dc1")
+	r.NoError(err)
+	r.False(owned, "another org's @dc1 is not owned")
+
+	owned, err = env.svc.OwnsPrivateRegion(ctx, org.UID, "@dc2")
+	r.NoError(err)
+	r.False(owned)
+
+	owned, err = env.svc.OwnsPrivateRegion(ctx, org.UID, "eu-west-1")
+	r.NoError(err)
+	r.False(owned, "a cloud slug is not a private region")
+
+	owned, err = env.svc.OwnsPrivateRegion(ctx, org.UID, "@acmetech/dc1")
+	r.NoError(err)
+	r.False(owned, "the legacy spelling is refused")
 }

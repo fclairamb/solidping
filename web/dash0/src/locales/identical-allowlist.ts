@@ -112,6 +112,7 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   "common:channels.matrix": ["fr", "de", "es"], // "Matrix"
   "common:channels.zulip": ["fr", "de", "es"], // "Zulip"
   "common:channels.pagerduty": ["fr", "de", "es"], // "PagerDuty"
+  "integrations:a2a.protocolVersion": ["fr", "de", "es"], // "A2A {{version}}"
   "common:channels.pushover": ["fr", "de", "es"], // "Pushover"
   "common:channels.slack": ["fr", "de", "es"], // "Slack"
   "common:channels.discord": ["fr", "de", "es"], // "Discord"

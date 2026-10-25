@@ -38,6 +38,12 @@ const (
 	// deployment: `lan` under an enforcing egress policy, `container` where
 	// docker checks are refused (SaaS, not an agent node).
 	CodeNotAvailable = "DISCOVERY_NOT_AVAILABLE"
+	// CodeRegionUnavailable is returned when a region-bound scan names a
+	// private region with no live agent reporting discovery (spec 2026-10-22-04).
+	CodeRegionUnavailable = "DISCOVERY_REGION_UNAVAILABLE"
+	// CodeQuotaExceeded is returned when a region-bound scan would take the org
+	// over its daily agent-discovery address quota.
+	CodeQuotaExceeded = "DISCOVERY_QUOTA_EXCEEDED"
 )
 
 // DiscoveryError is a coded validation/precondition failure from a discovery
@@ -70,6 +76,15 @@ type Deps struct {
 	// DockerBlocked is the docker-check rule (SaaS and not an agent node): when
 	// set, container discovery is refused exactly where docker checks are.
 	DockerBlocked bool
+	// Regions resolves a region-bound scan's private region (spec
+	// 2026-10-22-04). Nil refuses every region.
+	Regions RegionService
+}
+
+// RegionService is what a region-bound scan needs from the regions service.
+type RegionService interface {
+	OwnsPrivateRegion(ctx context.Context, orgUID, region string) (bool, error)
+	HasLiveAgentWith(ctx context.Context, orgUID, region, capability string) (bool, error)
 }
 
 // Restricted is implemented by discovery types that some deployments refuse.
@@ -98,8 +113,10 @@ type Definition interface {
 	Source() models.DiscoverySource
 	// BuildJob validates parameters and returns the job to enqueue. For chunked
 	// types it returns the PLAN job type (fan-out happens inside that job's Run,
-	// unchanged). A validation failure returns a *DiscoveryError.
-	BuildJob(ctx context.Context, deps Deps, orgUID string,
+	// unchanged). region is the private region the scan runs from ("" = the
+	// server); only `lan` accepts one, the caller refuses it for the others. A
+	// validation failure returns a *DiscoveryError.
+	BuildJob(ctx context.Context, deps Deps, orgUID, region string,
 		parameters json.RawMessage) (jobType string, jobConfig json.RawMessage, err error)
 }
 

@@ -1,51 +1,31 @@
-{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[UNACKNOWLEDGED] {{.CheckName}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
-{{define "preheader"}}{{.AckActor}} withdrew the acknowledgment. The incident is unowned again and escalation resumes.{{end}}
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}🟠 {{t "incident.unacknowledged.title" "check" .CheckName}}{{if .IncidentNumber}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{t "incident.unacknowledged.preheader" "actor" .AckActor}}{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "down" "Label" "Unacknowledged"}}{{end}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "down" "Label" (t "incident.pill.unacknowledged")}}{{end}}
 {{define "content"}}
-    <h1>{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}} is unowned again</h1>
-    <p><strong>{{.AckActor}}</strong> withdrew the acknowledgment{{if .AckVia}} {{.AckVia}}{{end}} on the incident for <strong>{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</strong>. Nobody is on it.</p>
-    <p>Escalation resumes from the step the acknowledgment interrupted, so the pages that already went out are not repeated.</p>
+    {{$check := nolink .CheckName}}{{if .CheckURL}}{{$check = tHTML "incident.checkLink" "url" .CheckURL "check" $check}}{{end}}
+    <h1>{{tHTML "incident.unacknowledged.title" "check" $check}}</h1>
+    <p class="lead">{{if .AckVia}}{{tHTML "incident.unacknowledged.leadVia" "actor" .AckActor "via" .AckVia}}{{else}}{{tHTML "incident.unacknowledged.lead" "actor" .AckActor}}{{end}}</p>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        <tr><td class="label">Withdrawn by</td><td class="value">{{.AckActor}}</td></tr>
-        {{if .AckVia}}<tr><td class="label">Via</td><td class="value">{{.AckVia}}</td></tr>{{end}}
-        <tr><td class="label">Check</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</td></tr>
-        <tr><td class="label">Type</td><td class="value">{{.CheckType}}</td></tr>
-        <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
-        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
+        <tr><td class="label">{{t "common.labels.since"}}</td><td class="value">{{date .StartedAt}}</td></tr>
+        {{if .IncidentNumber}}<tr><td class="label">{{t "common.labels.incident"}}</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
     </table>
-    <table class="action-row" role="presentation" cellpadding="0" cellspacing="0">
-        <tr>
-            {{if .IncidentURL}}
-            <td class="action-cell">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</td>
-            {{end}}
-            {{if .AckURL}}
-            <td class="action-cell">{{template "button" dict "URL" .AckURL "Label" "Acknowledge incident" "Variant" "secondary"}}</td>
-            {{end}}
-        </tr>
-    </table>
-    <p class="footnote">Incident reference <span class="mono">{{.IncidentUID}}</span> — quote it if you contact support.</p>
+    {{template "incident-actions" .}}
 {{end}}
-{{define "text"}}{{.CheckName}} is unowned again
+{{define "text"}}{{t "incident.unacknowledged.textTitle" "check" .CheckName}}
 
-{{.AckActor}} withdrew the acknowledgment{{if .AckVia}} {{.AckVia}}{{end}} on the incident for {{.CheckName}}. Nobody is on it.
+{{if .AckVia}}{{t "incident.unacknowledged.textBodyVia" "actor" .AckActor "via" .AckVia "check" .CheckName}}{{else}}{{t "incident.unacknowledged.textBody" "actor" .AckActor "check" .CheckName}}{{end}}
 
-Escalation resumes from the step the acknowledgment interrupted, so the pages that already went out are not repeated.
+{{t "incident.unacknowledged.textResume"}}
 
-Withdrawn by: {{.AckActor}}
-{{if .AckVia}}Via: {{.AckVia}}
-{{end}}Check: {{.CheckName}}
-{{if .CheckURL}}Check URL: {{.CheckURL}}
-{{end}}Type: {{.CheckType}}
-Started at: {{.StartedAt}}
-{{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
-{{end}}Incident ID: {{.IncidentUID}}
-{{if .IncidentURL}}
-View incident: {{.IncidentURL}}
-{{end}}{{if .AckURL}}Acknowledge incident: {{.AckURL}}
-{{end}}
-This is an automated notification from SolidPing.
-{{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
-Docs: {{.DocsURL}}{{end}}{{if .UnsubscribeURL}}
-Unsubscribe from alerts{{if .UnsubscribeCheckName}} for {{.UnsubscribeCheckName}}{{end}}: {{.UnsubscribeURL}}{{end}}
-{{end}}
+{{t "common.textField" "label" (t "incident.labels.withdrawnBy") "value" .AckActor}}
+{{if .AckChannel}}{{t "common.textField" "label" (t "incident.labels.via") "value" .AckChannel}}
+{{end}}{{t "common.textField" "label" (t "common.labels.check") "value" .CheckName}}
+{{if .CheckURL}}{{t "common.textField" "label" (t "common.labels.checkURL") "value" .CheckURL}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.type") "value" .CheckType}}
+{{t "common.textField" "label" (t "incident.labels.startedAt") "value" (date .StartedAt)}}
+{{if .IncidentNumber}}{{t "common.textField" "label" (t "common.labels.incident") "value" (printf "#%v" .IncidentNumber)}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.incidentId") "value" .IncidentUID}}
+{{template "incident-actions-text" .}}
+{{t "common.footer.automated"}}
+{{template "footer-text" .}}{{end}}

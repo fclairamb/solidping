@@ -5,41 +5,43 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 // Focus ring (every variant): a 2px --ring ring pushed 2px OUT from the edge
-// by a --background-colored offset. The gap is what keeps the ring visible on
-// the gradient default button, whose own blue would swallow a ring drawn flush
-// against it. Same recipe as the Switch.
+// by a --background-colored offset, so it stays visible on the solid fills.
 //
-// Default variant (electric identity, spec 2026-09-24-01): bg-primary stays
-// as the background-color underneath bg-primary-gradient, so the button still
-// reads blue if the gradient ever fails to paint. Labels sit only on
-// --primary-gradient (>= 4.4:1 white at every stop), never on the brighter
-// --accent-gradient. The hover lift is behind motion-safe:.
+// Children are spaced by gap-2. Many call sites still give a leading icon its
+// own mr-2 (the old pattern); [&>svg]:mr-0 cancels it so the gap is not
+// doubled.
+//
+// A hairline shadow at most, and hover changes the color only, never the
+// position. The default variant is the one gradient button: the tonal
+// --primary-gradient over the solid --primary-fill, with a white label; hover
+// slides the gradient to its darker half (a background-position transition,
+// the button itself does not move). Every other variant is flat.
 //
 // Brand variant: the solid crimson of the logo, for the primary action of the
 // auth pages (login, register…), whose card already carries the crimson top
 // border. Anywhere else, the primary action stays on the default variant.
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 [&>svg]:mr-0",
   {
     variants: {
       variant: {
         default:
-          "bg-primary bg-primary-gradient text-gradient-foreground inset-shadow-highlight shadow-primary hover:brightness-105 hover:shadow-primary-hover motion-safe:hover:-translate-y-px",
+          "bg-primary-fill bg-primary-gradient text-primary-fill-foreground shadow-xs transition-[color,background-position] duration-300 hover:bg-bottom-right",
         brand:
-          "bg-brand text-brand-foreground inset-shadow-highlight shadow-sm hover:bg-brand/90 motion-safe:hover:-translate-y-px",
+          "bg-brand text-brand-foreground shadow-xs hover:bg-brand/90",
         destructive:
-          "bg-destructive text-destructive-foreground shadow-destructive hover:bg-destructive/90 hover:shadow-destructive-hover dark:bg-destructive/80 dark:hover:bg-destructive/70",
+          "bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90 dark:bg-destructive/80 dark:hover:bg-destructive/70",
         outline:
-          "border border-input bg-control shadow-sm hover:bg-accent hover:text-accent-foreground",
+          "border border-input bg-control shadow-xs hover:bg-accent hover:text-accent-foreground",
         secondary:
-          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
         default: "h-9 px-4 py-2",
-        sm: "h-8 rounded-lg px-3 text-xs",
-        lg: "h-10 rounded-lg px-8",
+        sm: "h-8 rounded-md px-3 text-xs",
+        lg: "h-10 rounded-md px-8",
         icon: "h-9 w-9",
       },
     },

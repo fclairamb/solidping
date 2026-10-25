@@ -137,6 +137,7 @@
       "schemeLight": "Hell",
       "schemeDark": "Dunkel",
       "schemeDarkHint": "Aktiviert den prefers-color-scheme-Block der Vorlage — das, was Apple Mail und Thunderbird im Dunkelmodus zeigen. Gmail unterstützt ihn nicht und bleibt hell.",
+      "localeLabel": "Vorschausprache",
       "refresh": "Aktualisieren",
       "retry": "Erneut versuchen",
       "loading": "Wird geladen…",

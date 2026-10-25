@@ -92,11 +92,14 @@ func envNameForKoanfPath(path string) (string, bool) {
 func manualReaderEnvVars() []string {
 	out := append(manualReaderServerEnvVars(), manualReaderPlatformEnvVars()...)
 	out = append(out, manualReaderHeartbeatEnvVars()...)
+	out = append(out, manualReaderAgentEnvVars()...)
 
 	return append(out,
 		// applyEgressEnv: egress.allow_private_targets is snake_case, so
 		// koanf's env loader can never reach it.
 		EnvEgressAllowPrivate,
+		// applyToolsEnv: tools.denied_hosts is snake_case.
+		EnvToolsDeniedHosts,
 		// applyKubernetesEnv — kubernetes.allow_in_cluster is snake_case and
 		// its env name does not follow the kubernetes.* path.
 		EnvK8sAllowInCluster,
@@ -147,9 +150,23 @@ func manualReaderHeartbeatEnvVars() []string {
 	}
 }
 
+// manualReaderAgentEnvVars covers applyAgentEnv.
+func manualReaderAgentEnvVars() []string {
+	return []string{
+		"SP_AGENT_SERVER_URL",
+		"SP_AGENT_ENROLLMENT_TOKEN",
+		"SP_AGENT_KEYS_FILE",
+		"SP_AGENT_KEYS",
+		"SP_AGENT_NAME",
+		"SP_AGENT_PRINT_KEYS",
+		"SP_AGENT_DISCOVERY_ENABLED",
+		"SP_AGENT_DISCOVERY_CIDRS",
+	}
+}
+
 // manualReaderServerEnvVars covers Load's own bare reads and the helpers that
 // configure request serving: rate limiting, password hashing, jobs, realtime,
-// agents, auth, the server hosts (docs / custom-domain CNAME), in-server ACME
+// auth, the server hosts (docs / custom-domain CNAME), in-server ACME
 // (manualReaderACMEEnvVars) and check scheduling.
 func manualReaderServerEnvVars() []string {
 	return append([]string{
@@ -211,13 +228,6 @@ func manualReaderServerEnvVars() []string {
 		"SP_REALTIME_PING_INTERVAL",
 		"SP_REALTIME_MAX_CONNECTIONS",
 		"SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION",
-		// applyAgentEnv
-		"SP_AGENT_SERVER_URL",
-		"SP_AGENT_ENROLLMENT_TOKEN",
-		"SP_AGENT_KEYS_FILE",
-		"SP_AGENT_KEYS",
-		"SP_AGENT_NAME",
-		"SP_AGENT_PRINT_KEYS",
 		// applyAuthEnv
 		"SP_AUTH_ACCESS_TOKEN_EXPIRY",
 		"SP_AUTH_REFRESH_TOKEN_EXPIRY",

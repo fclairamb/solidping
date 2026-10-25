@@ -1,0 +1,82 @@
+{
+  "months": {
+    "short": {
+      "jan": "ene",
+      "feb": "feb",
+      "mar": "mar",
+      "apr": "abr",
+      "may": "may",
+      "jun": "jun",
+      "jul": "jul",
+      "aug": "ago",
+      "sep": "sept",
+      "oct": "oct",
+      "nov": "nov",
+      "dec": "dic"
+    },
+    "long": {
+      "jan": "enero",
+      "feb": "febrero",
+      "mar": "marzo",
+      "apr": "abril",
+      "may": "mayo",
+      "jun": "junio",
+      "jul": "julio",
+      "aug": "agosto",
+      "sep": "septiembre",
+      "oct": "octubre",
+      "nov": "noviembre",
+      "dec": "diciembre"
+    }
+  },
+  "date": {
+    "dateTime": "{day} {month}, {time} {zone}",
+    "dateTimeYear": "{day} {month} {year}, {time} {zone}",
+    "day": "{day} {month}",
+    "dayYear": "{day} {month} {year}",
+    "month": "{month} de {year}"
+  },
+  "duration": {
+    "days": "{n} d",
+    "hours": "{n} h",
+    "minutes": "{n} min",
+    "seconds": "{n} s"
+  },
+  "header": {
+    "sentBy": "enviado por SolidPing",
+    "logoAlt": "Logotipo"
+  },
+  "footer": {
+    "orgSentBy": "{org} · enviado por",
+    "sentBy": "Enviado por",
+    "dashboard": "Panel",
+    "stopAlerts": "Dejar de recibir alertas de {check}",
+    "unsubscribe": "Cancelar la suscripción",
+    "automated": "Esta es una notificación automática de SolidPing."
+  },
+  "incidentActions": {
+    "ack": "Me encargo",
+    "viewIncident": "Ver incidente",
+    "ackExplain": "«Me encargo» avisa a tu equipo de que te ocupas del incidente y detiene el escalado.",
+    "ackExpires": "El enlace es válido hasta el {date}."
+  },
+  "labels": {
+    "check": "Comprobación",
+    "target": "Destino",
+    "checkURL": "URL de la comprobación",
+    "since": "Desde",
+    "incident": "Incidente",
+    "docs": "Documentación"
+  },
+  "textField": "{label}: {value}",
+  "fallbackLink": "¿El botón no funciona? Copia y pega este enlace en tu navegador:",
+  "supportReply": {
+    "notice": "Puedes responder directamente a este correo para hablar con una persona: leemos todas las respuestas."
+  },
+  "list": {
+    "and": "{head} y {last}",
+    "andBeforeVowel": "{head} e {last}",
+    "or": "{head} o {last}",
+    "orBeforeVowel": "{head} u {last}"
+  }
+}

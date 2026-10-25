@@ -1,23 +1,19 @@
-{{define "subject"}}You're invited to join {{.OrgName}} on SolidPing{{end}}
-{{define "preheader"}}Join {{.OrgName}} as {{.Role}}. The invitation expires in {{.ExpiresIn}}.{{end}}
+{{define "subject"}}{{t "account.invitation.subject" "org" .OrgName}}{{end}}
+{{define "preheader"}}{{t (printf "account.invitation.preheader.%s" .Role) "org" .OrgName "expiresIn" .ExpiresIn}}{{end}}
 {{template "base.html" .}}
 {{define "content"}}
-    <h1>You're invited to {{.OrgName}}</h1>
-    <p>Hi,</p>
-    <p>{{if .InviterName}}{{.InviterName}} has invited you{{else}}You've been invited{{end}} to join <strong>{{.OrgName}}</strong> on SolidPing as <strong>{{.Role}}</strong>.</p>
-    <div class="cta-wrap">{{template "button" dict "URL" .InviteURL "Label" "Accept invitation" "Variant" "success"}}</div>
-    <p>Or paste this link into your browser:</p>
-    <p class="fallback">{{link .InviteURL ""}}</p>
-    <p class="meta">This invitation expires in {{.ExpiresIn}}. If you weren't expecting this, you can safely ignore this email.</p>
+    <h1>{{t "account.invitation.title" "org" .OrgName}}</h1>
+    <p>{{if .InviterName}}{{tHTML (printf "account.invitation.body.byInviter.%s" .Role) "inviter" .InviterName "org" .OrgName}}{{else}}{{tHTML (printf "account.invitation.body.anonymous.%s" .Role) "org" .OrgName}}{{end}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .InviteURL "Label" (t "account.invitation.cta") "Variant" "success"}}</div>
+    {{template "fallback-link" .InviteURL}}
+    <p class="meta">{{t "account.invitation.expiry" "expiresIn" .ExpiresIn}}</p>
 {{end}}
-{{define "text"}}You're invited to {{.OrgName}}
+{{define "text"}}{{t "account.invitation.title" "org" .OrgName}}
 
-Hi,
+{{if .InviterName}}{{t (printf "account.invitation.bodyText.byInviter.%s" .Role) "inviter" .InviterName "org" .OrgName}}{{else}}{{t (printf "account.invitation.bodyText.anonymous.%s" .Role) "org" .OrgName}}{{end}}
 
-{{if .InviterName}}{{.InviterName}} has invited you{{else}}You've been invited{{end}} to join {{.OrgName}} on SolidPing as {{.Role}}.
-
-Accept your invitation:
+{{t "account.invitation.acceptText"}}
 {{.InviteURL}}
 
-This invitation expires in {{.ExpiresIn}}. If you weren't expecting this, you can safely ignore this email.
+{{t "account.invitation.expiry" "expiresIn" .ExpiresIn}}
 {{end}}

@@ -481,6 +481,7 @@ func allocator(ctx context.Context, current Settings, pin *hostPin) (context.Con
 	// Copy before appending: DefaultExecAllocatorOptions is a package-level
 	// array and appending to a full slice of it would write into it.
 	opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
+	opts = append(opts, chromedp.WSURLReadTimeout(chromeStartTimeout))
 	if current.ChromePath != "" {
 		opts = append(opts, chromedp.ExecPath(current.ChromePath))
 	}
@@ -494,6 +495,15 @@ func allocator(ctx context.Context, current Settings, pin *hostPin) (context.Con
 
 	return chromedp.NewExecAllocator(ctx, opts...)
 }
+
+// chromeStartTimeout is how long a freshly launched Chrome has to print its
+// DevTools URL before chromedp gives up with "websocket url timeout reached".
+// It is chromedp's own default, made explicit because that timeout is separate
+// from every context deadline and so is invisible from the caller's budget.
+// A package variable only so the live tests can widen it on a starved machine.
+//
+//nolint:gochecknoglobals // tunable by the live tests only; production never writes it
+var chromeStartTimeout = 20 * time.Second
 
 // browserContext opens the per-execution browser context.
 //

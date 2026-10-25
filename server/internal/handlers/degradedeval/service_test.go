@@ -100,7 +100,9 @@ func (s *evalSetup) submit(t *testing.T, status models.ResultStatus, durationMs 
 	s.submitTagged(t, status, durationMs, false)
 }
 
-// submitTagged is submit with the maintenance tag, for the non-slot test.
+// submitTagged is submit with the maintenance tag, for the non-slot test. A
+// maintenance-tagged probe skips the per-probe incident path, as it does in
+// production where the active maintenance window suppresses it.
 func (s *evalSetup) submitTagged(
 	t *testing.T, status models.ResultStatus, durationMs float32, maintenance bool,
 ) {
@@ -111,8 +113,10 @@ func (s *evalSetup) submitTagged(
 	result.Maintenance = maintenance
 	require.NoError(t, s.dbSvc.CreateResult(t.Context(), result))
 
-	check := s.reload(t)
-	require.NoError(t, s.incidents.ProcessCheckResult(context.Background(), check, result))
+	if !maintenance {
+		check := s.reload(t)
+		require.NoError(t, s.incidents.ProcessCheckResult(context.Background(), check, result))
+	}
 
 	s.clk.Advance(testPeriod)
 }
@@ -235,6 +239,50 @@ func TestPositiveControlContinuousOutage(t *testing.T) {
 
 	r.Empty(s.incidentsOfKind(t, models.IncidentKindDegraded),
 		"suppressed while a check incident is open — do not weaken this rule")
+}
+
+// TestRecoveredOutageDoesNotOpenDegraded replays the 2026-10-16 region outage:
+// a 13-minute outage was reported as down, recovered, and the next sweep opened
+// a degraded incident from the very same failures, still inside the window. The
+// failures of an outage already reported stay out of the degraded window.
+func TestRecoveredOutageDoesNotOpenDegraded(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newEvalSetup(t, nil)
+
+	s.up(t, 30, 100)
+
+	for range 12 {
+		s.down(t)
+	}
+
+	s.up(t, 3, 100)
+
+	checkIncidents := s.incidentsOfKind(t, models.IncidentKindCheck)
+	r.Len(checkIncidents, 1)
+	r.Equal(models.IncidentStateResolved, checkIncidents[0].State, "the outage recovered")
+
+	s.evaluate(t)
+
+	r.Empty(s.incidentsOfKind(t, models.IncidentKindDegraded),
+		"the outage was already reported as down, its failures are not intermittence")
+
+	// Positive control: intermittence after the recovery, past the reopen
+	// cooldown, is still detected.
+	s.up(t, 30, 100)
+
+	for range 6 {
+		s.down(t)
+		s.up(t, 4, 100)
+	}
+
+	s.evaluate(t)
+
+	degradedIncidents := s.incidentsOfKind(t, models.IncidentKindDegraded)
+	r.Len(degradedIncidents, 1, "failures after the recovery still trip the 5-of-60 rule")
+	r.EqualValues(6, degradedIncidents[0].Details["degraded_failure_count"])
+	r.Len(s.incidentsOfKind(t, models.IncidentKindCheck), 1, "and no outage was reopened")
 }
 
 // --- The slow rule, and its sequencing ------------------------------------
@@ -364,6 +412,8 @@ func TestMaintenanceProbesAreNotSlots(t *testing.T) {
 		s.up(t, 1, 100)
 	}
 
+	r.Empty(s.incidentsOfKind(t, models.IncidentKindCheck), "no outage was confirmed")
+
 	s.evaluate(t)
 	r.Len(s.incidentsOfKind(t, models.IncidentKindDegraded), 1)
 }
@@ -480,9 +530,7 @@ func TestDegradedEscalatesIntoOutage(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	s := newEvalSetup(t, func(check *models.Check) {
-		check.ConfirmationPeriodSeconds = 0 // open the outage on the first failure
-	})
+	s := newEvalSetup(t, nil)
 
 	s.up(t, 10, 100)
 
@@ -491,13 +539,17 @@ func TestDegradedEscalatesIntoOutage(t *testing.T) {
 		s.up(t, 4, 100)
 	}
 
+	r.Empty(s.incidentsOfKind(t, models.IncidentKindCheck), "intermittence, not an outage")
+
 	s.evaluate(t)
 
 	degradedIncident := s.activeDegraded(t)
 	r.NotNil(degradedIncident)
 
-	// Now the target actually goes down and stays down.
-	s.down(t)
+	// Now the target actually goes down and stays down past the confirmation period.
+	for range 3 {
+		s.down(t)
+	}
 
 	outages := s.incidentsOfKind(t, models.IncidentKindCheck)
 	r.Len(outages, 1)
@@ -519,10 +571,22 @@ func TestDegradedEscalatesIntoOutage(t *testing.T) {
 	s.evaluate(t)
 	r.Nil(s.activeDegraded(t))
 
-	// Once the outage resolves and the check is still intermittent, a NEW
-	// degraded incident opens — the evaluator simply runs again.
+	// Once the outage resolves, the failures already reported stay out of the
+	// window: nothing opens on the recovery itself.
 	s.up(t, 1, 100)
 	r.Empty(s.activeCheckIncident(t), "the outage resolved")
+
+	s.evaluate(t)
+	r.Nil(s.activeDegraded(t), "the failures before the recovery were already reported")
+
+	// When the check is intermittent again, past the reopen cooldown (a failure
+	// inside it reopens the outage instead), a NEW degraded incident opens.
+	s.up(t, 30, 100)
+
+	for range 5 {
+		s.down(t)
+		s.up(t, 4, 100)
+	}
 
 	s.evaluate(t)
 

@@ -34,17 +34,19 @@ export function CheckSummaryCards({
   const showRegionAges = regionsDisagree(check.regionFreshness);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    // Three columns at every width: stacked full-width, the three short
+    // facts cost a phone a whole screen before the chart.
+    <div className="grid grid-cols-3 gap-3 sm:gap-4">
       {/* Uptime / Downtime card */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+      <Card className="h-full">
+        <CardContent className="p-3 sm:p-5">
+          <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground sm:gap-2 sm:text-sm">
             {isUp ? (
-              <ArrowUp className="h-4 w-4 text-green-500" />
+              <ArrowUp className="h-4 w-4 shrink-0 text-status-ok" />
             ) : isDown ? (
-              <ArrowDown className="h-4 w-4 text-red-500" />
+              <ArrowDown className="h-4 w-4 shrink-0 text-status-error" />
             ) : isStale ? (
-              <Clock className="h-4 w-4" />
+              <Clock className="h-4 w-4 shrink-0" />
             ) : (
               <ArrowUp className="h-4 w-4" />
             )}
@@ -56,7 +58,7 @@ export function CheckSummaryCards({
                   ? t("detail.summary.noDataFor")
                   : t("detail.summary.statusFallback")}
           </div>
-          <div className="text-2xl font-bold" data-testid="summary-status-duration">
+          <div className="text-base font-semibold tabular-nums tracking-tight sm:text-2xl" data-testid="summary-status-duration">
             {statusSince ? (
               <LiveDuration since={statusSince} />
             ) : (
@@ -67,13 +69,13 @@ export function CheckSummaryCards({
       </Card>
 
       {/* Last checked card */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-            <Clock className="h-4 w-4" />
+      <Card className="h-full">
+        <CardContent className="p-3 sm:p-5">
+          <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground sm:gap-2 sm:text-sm">
+            <Clock className="h-4 w-4 shrink-0" />
             {t("detail.summary.lastChecked")}
           </div>
-          <div className="text-2xl font-bold" data-testid="summary-last-checked">
+          <div className="text-base font-semibold tabular-nums tracking-tight sm:text-2xl" data-testid="summary-last-checked">
             {lastChecked ? (
               <LiveDurationAgo since={lastChecked} />
             ) : (
@@ -117,25 +119,25 @@ export function CheckSummaryCards({
         >
           <Card
             data-testid="incidents-card"
-            className="cursor-pointer transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover"
+            className="h-full cursor-pointer transition-shadow hover:shadow-card-hover"
           >
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                <AlertTriangle className="h-4 w-4" />
+            <CardContent className="p-3 sm:p-5">
+              <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground sm:gap-2 sm:text-sm">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
                 {t("detail.summary.incidents")}
               </div>
-              <div className="text-2xl font-bold">{totalIncidents}</div>
+              <div className="text-base font-semibold tabular-nums tracking-tight sm:text-2xl">{totalIncidents}</div>
             </CardContent>
           </Card>
         </Link>
       ) : (
-        <Card data-testid="incidents-card">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-              <AlertTriangle className="h-4 w-4" />
+        <Card data-testid="incidents-card" className="h-full">
+          <CardContent className="p-3 sm:p-5">
+            <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground sm:gap-2 sm:text-sm">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
               {t("detail.summary.incidents")}
             </div>
-            <div className="text-2xl font-bold">{totalIncidents}</div>
+            <div className="text-base font-semibold tabular-nums tracking-tight sm:text-2xl">{totalIncidents}</div>
           </CardContent>
         </Card>
       )}

@@ -24,6 +24,11 @@ const (
 	// screenshots of runs that opened no incident, and "Capture now" captures
 	// (spec 2026-09-25-34).
 	EntityChecks = "checks"
+	// EntityTasks is the entity segment for worker-task attachments: the
+	// state a multi-slice task carries between slices (spec 2026-10-22-02).
+	// Written in-process only: no authorizer is registered for it, so the
+	// agent upload endpoint refuses it.
+	EntityTasks = "tasks"
 	// KindScreenshot is the kind segment for a page capture.
 	KindScreenshot = "screenshot"
 	// KindTraceroute is the kind segment for an MTR-style path capture taken
@@ -113,12 +118,25 @@ func CheckCrawlReportTopic(checkUID string) string {
 	return CheckTopicPrefix(checkUID) + KindCrawlReport
 }
 
+// TaskStepStateTopic returns the topic a worker task's state is stored under.
+func TaskStepStateTopic(taskUID string) string {
+	return EntityTasks + "/" + taskUID + "/" + KindStepState
+}
+
 // appendKeepFor returns how many files an append-and-prune check topic keeps,
-// or 0 for a replace-on-write topic. Check screenshots keep 5, step state 2,
-// crawl reports 5.
+// or 0 for a replace-on-write topic. Check screenshots keep 5, step state 2
+// (checks and worker tasks), crawl reports 5.
 func appendKeepFor(topic string) int {
 	parsed, err := ParseTopic(topic)
-	if err != nil || parsed.Entity != EntityChecks {
+	if err != nil {
+		return 0
+	}
+
+	if parsed.Entity == EntityTasks && parsed.Kind == KindStepState {
+		return MaxStepStateFiles
+	}
+
+	if parsed.Entity != EntityChecks {
 		return 0
 	}
 

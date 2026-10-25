@@ -11,6 +11,7 @@ const (
 	RecordTypeNS    = "NS"
 	RecordTypeTXT   = "TXT"
 	RecordTypeSOA   = "SOA"
+	RecordTypeCAA   = "CAA"
 
 	// DefaultRecordType is the type queried when the config sets none.
 	DefaultRecordType = RecordTypeA
@@ -27,6 +28,7 @@ var validRecordTypes = map[string]bool{
 	RecordTypeNS:    true,
 	RecordTypeTXT:   true,
 	RecordTypeSOA:   true,
+	RecordTypeCAA:   true,
 }
 
 // IsValidRecordType reports whether s (upper-cased) is a supported record type.

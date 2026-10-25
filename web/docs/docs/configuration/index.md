@@ -183,6 +183,9 @@ used, so edits made through the API are preserved across restarts.
 | `SP_CHECK_ENV_ALLOWLIST` | - | Comma-separated environment variable names a check's `${env:NAME}` reference may read on this process, e.g. `SP_ACME_API_TOKEN,SP_ACME_DB_PASSWORD`. Empty (the default) means `${env:}` resolves nothing. Each private-location agent reads its own. See [Secrets: parameters and references](/cli#secrets-parameters-and-references) |
 | `SP_K8S_ALLOW_IN_CLUSTER` | `false` | Let a Kubernetes cluster connection use in-cluster mode, i.e. authenticate with the service-account token mounted into SolidPing's own pod. Off by default: a member could otherwise point a connection at the server's own cluster. Self-hosted only. See [Cluster connection](/features/check-types#cluster-connection) |
 | `SP_EGRESS_ALLOW_PRIVATE` | derived | Let this process's checks reach non-public addresses (loopback, RFC 1918, link-local, cloud metadata…). Unset: allowed on self-hosted and on agents, denied on SaaS shared workers. See [Egress policy](/configuration/egress-policy) |
+| `SP_TOOLS_ENABLED` | `false` | Turn on the anonymous `POST /api/v1/tools/run` endpoint, which runs one `http`, `ssl`, `dns` or `tcp` check once for a visitor (the public tools of www.solidping.io). Also the `tools.enabled` system parameter. It always refuses private targets, whatever `SP_EGRESS_ALLOW_PRIVATE` says. Limits: 10 runs a minute and 100 a day per IP, 16 in flight, results cached 60 s |
+| `SP_PLUGINS_DIR` | - | Directory of check plugins: one folder per plugin, each with a `manifest.json` declaring `x-` check types. Unset turns plugins off. Each private-location agent reads its own. See [Check plugins](/features/plugins) |
+| `SP_TOOLS_DENIED_HOSTS` | - | Comma-separated host names the tools endpoint refuses, subdomains included, on top of the instance's own base URL host and docs host, e.g. `solidping.io` |
 
 ### Logging
 

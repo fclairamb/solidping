@@ -1,20 +1,17 @@
-{{define "subject"}}Your SolidPing email address was changed{{end}}
-{{define "preheader"}}Changed on {{.ChangedAt}}. If that wasn't you, act now.{{end}}
+{{define "subject"}}{{t "account.emailChanged.subject"}}{{end}}
+{{define "preheader"}}{{t "account.securityNotice.preheader" "date" (date .ChangedAt)}}{{end}}
 {{template "base.html" .}}
 {{define "content"}}
-    <h1>Your email address was changed</h1>
-    <p>Hi,</p>
-    <p>The email address of your SolidPing account was changed from {{.OldEmail}} to {{.NewEmail}} on {{.ChangedAt}}.</p>
-    <p>You now sign in with {{.NewEmail}}. This address will no longer receive account emails.</p>
-    <p class="meta">If this wasn't you, contact your administrator immediately. Your account may be compromised.</p>
+    <h1>{{t "account.emailChanged.title"}}</h1>
+    <p>{{t "account.emailChanged.body" "oldEmail" .OldEmail "newEmail" .NewEmail "date" (date .ChangedAt)}}</p>
+    <p>{{t "account.emailChanged.newAddress" "newEmail" .NewEmail}}</p>
+    <p class="meta">{{t "account.securityNotice.warning"}}</p>
 {{end}}
-{{define "text"}}Your email address was changed
+{{define "text"}}{{t "account.emailChanged.title"}}
 
-Hi,
+{{t "account.emailChanged.body" "oldEmail" .OldEmail "newEmail" .NewEmail "date" (date .ChangedAt)}}
 
-The email address of your SolidPing account was changed from {{.OldEmail}} to {{.NewEmail}} on {{.ChangedAt}}.
+{{t "account.emailChanged.newAddress" "newEmail" .NewEmail}}
 
-You now sign in with {{.NewEmail}}. This address will no longer receive account emails.
-
-If this wasn't you, contact your administrator immediately. Your account may be compromised.
+{{t "account.securityNotice.warning"}}
 {{end}}

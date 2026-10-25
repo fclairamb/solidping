@@ -105,6 +105,9 @@ var (
 	ErrExclusiveNodeRole = errors.New("node role cannot be combined with other roles")
 	// ErrAgentServerURLRequired is returned when role is "agent" but no server URL is set.
 	ErrAgentServerURLRequired = errors.New("SP_AGENT_SERVER_URL is required when SP_NODE_ROLE is set to 'agent'")
+	// ErrInvalidDiscoveryCIDRs is returned when SP_AGENT_DISCOVERY_ENABLED is
+	// set without a valid SP_AGENT_DISCOVERY_CIDRS allow-list.
+	ErrInvalidDiscoveryCIDRs = errors.New("invalid SP_AGENT_DISCOVERY_CIDRS")
 	// ErrRegionRequiredForChecks is returned when role is "checks" but region is not set.
 	ErrRegionRequiredForChecks = errors.New("SP_NODE_REGION is required when SP_NODE_ROLE is set to 'checks'")
 	// ErrInvalidAggregationRetention is returned when an aggregation retention value is < 1.
@@ -224,6 +227,14 @@ type AgentConfig struct {
 	// only to bootstrap an env-only (SP_AGENT_KEYS) deployment that has no
 	// writable volume to read the keys file from, then unset it.
 	PrintKeys bool `koanf:"print_keys"`
+	// DiscoveryEnabled lets this agent run LAN discovery chunks of its private
+	// region (spec 2026-10-22-04) — SP_AGENT_DISCOVERY_ENABLED. Off by default:
+	// only the agent's operator can authorize discovery, never the server.
+	DiscoveryEnabled bool `koanf:"discovery_enabled"`
+	// DiscoveryCIDRs is the IPv4 allow-list a discovery chunk must fall inside
+	// — SP_AGENT_DISCOVERY_CIDRS, comma-separated. Required when discovery is
+	// enabled.
+	DiscoveryCIDRs []string `koanf:"discovery_cidrs"`
 }
 
 // OTelConfig contains OpenTelemetry configuration.
@@ -612,6 +623,8 @@ type Config struct {
 	App          AppConfig          `koanf:"app"`
 	Deployment   DeploymentConfig   `koanf:"deployment"`
 	Egress       EgressConfig       `koanf:"egress"`
+	Tools        ToolsConfig        `koanf:"tools"`
+	Plugins      PluginsConfig      `koanf:"plugins"`
 	Kubernetes   KubernetesConfig   `koanf:"kubernetes"`
 	WebPush      WebPushConfig      `koanf:"webpush"`
 	PostHog      PostHogConfig      `koanf:"posthog"`
@@ -735,6 +748,63 @@ type EgressConfig struct {
 	//
 	// Resolve through Config.EgressAllowsPrivateTargets, never this field.
 	AllowPrivateTargets *bool `koanf:"allow_private_targets"`
+}
+
+// EnvToolsDeniedHosts is the env override of tools.denied_hosts, read by hand
+// in applyToolsEnv: the key is snake_case, which koanf's env loader turns into
+// tools.denied.hosts.
+const EnvToolsDeniedHosts = "SP_TOOLS_DENIED_HOSTS"
+
+// PluginsConfig configures check plugins (spec 2026-10-17-05).
+type PluginsConfig struct {
+	// Dir is the operator's plugin directory (SP_PLUGINS_DIR): one folder per
+	// plugin, each with a manifest.json. Empty turns plugins off.
+	Dir string `koanf:"dir"`
+}
+
+// ToolsConfig configures the anonymous "run a check once" endpoint behind the
+// public tools on www.solidping.io (POST /api/v1/tools/run).
+type ToolsConfig struct {
+	// Enabled turns the endpoint on (SP_TOOLS_ENABLED, system parameter
+	// tools.enabled). Off by default: a self-hosted instance never exposes an
+	// anonymous probe by accident.
+	Enabled bool `koanf:"enabled"`
+
+	// DeniedHosts lists extra host names the endpoint refuses to probe, on top
+	// of the instance's own base URL host and docs host. A name also denies its
+	// subdomains. Comma-separated in SP_TOOLS_DENIED_HOSTS.
+	DeniedHosts []string `koanf:"denied_hosts"`
+}
+
+// ToolsDeniedHosts returns the lowercase host names the tools endpoint refuses
+// to probe: the instance's own public hosts plus Tools.DeniedHosts.
+func (c *Config) ToolsDeniedHosts() []string {
+	hosts := make([]string, 0, len(c.Tools.DeniedHosts)+2)
+
+	if parsed, err := url.Parse(strings.TrimSpace(c.Server.BaseURL)); err == nil && parsed.Hostname() != "" {
+		hosts = append(hosts, strings.ToLower(parsed.Hostname()))
+	}
+
+	if docs := strings.TrimSpace(c.Server.DocsHost); docs != "" {
+		hosts = append(hosts, strings.ToLower(docs))
+	}
+
+	for _, host := range c.Tools.DeniedHosts {
+		if host = strings.ToLower(strings.TrimSpace(host)); host != "" {
+			hosts = append(hosts, host)
+		}
+	}
+
+	return hosts
+}
+
+func applyToolsEnv(cfg *ToolsConfig) {
+	raw := strings.TrimSpace(os.Getenv(EnvToolsDeniedHosts))
+	if raw == "" {
+		return
+	}
+
+	cfg.DeniedHosts = strings.Split(raw, ",")
 }
 
 // EgressAllowsPrivateTargets is the effective egress policy of the check
@@ -1973,9 +2043,9 @@ type SchedulingConfig struct {
 	// with a startup warning when out of range. Default 5; 0 disables the
 	// reservation (slow may fill the pool, pre-lane behavior).
 	FastLaneReserved int `koanf:"fast_lane_reserved"`
-	// BulkLaneMax caps the multi-step slices (bulk lane, spec 2026-10-03-03)
-	// in flight per worker. Bulk shares the non-reserved part of the pool
-	// with the slow lane, slow first. Default 4; <= 0 falls back to 4.
+	// BulkLaneMax caps the worker tasks (website crawl slices, spec
+	// 2026-10-22-03) a cloud worker runs at once, outside its runner pool.
+	// Default 4; <= 0 falls back to 4.
 	BulkLaneMax int `koanf:"bulk_lane_max"`
 	// BulkSliceBudgetMs is the wall-clock budget of one multi-step slice in
 	// ms. Default 10000; <= 0 falls back to it; clamped to 60000.
@@ -2407,6 +2477,7 @@ func Load() (*Config, error) {
 	applyRuntimeEnv(&cfg.Runtime)
 	applyRealtimeEnv(&cfg.Realtime)
 	applyEgressEnv(&cfg.Egress)
+	applyToolsEnv(&cfg.Tools)
 	applyKubernetesEnv(&cfg.Kubernetes)
 	applyHeadersEnv(&cfg.Headers)
 	applyAIEnv(&cfg.AI)
@@ -2701,6 +2772,22 @@ func applyAgentEnv(cfg *AgentConfig) {
 	if v := os.Getenv("SP_AGENT_PRINT_KEYS"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			cfg.PrintKeys = b
+		}
+	}
+
+	if v := os.Getenv("SP_AGENT_DISCOVERY_ENABLED"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.DiscoveryEnabled = b
+		}
+	}
+
+	if v := os.Getenv("SP_AGENT_DISCOVERY_CIDRS"); v != "" {
+		cfg.DiscoveryCIDRs = nil
+
+		for _, part := range strings.Split(v, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				cfg.DiscoveryCIDRs = append(cfg.DiscoveryCIDRs, part)
+			}
 		}
 	}
 }
@@ -3584,6 +3671,12 @@ func (c *Config) validateNodeConfig() error {
 	// the very first run — a persisted identity replaces it).
 	if roles.Has(NodeRoleAgent) && c.Agent.ServerURL == "" {
 		return ErrAgentServerURLRequired
+	}
+
+	if c.Agent.DiscoveryEnabled || len(c.Agent.DiscoveryCIDRs) > 0 {
+		if _, err := c.Agent.DiscoveryPrefixes(); err != nil {
+			return err
+		}
 	}
 
 	// Any node that registers a `workers` row (check worker and/or job worker)

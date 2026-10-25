@@ -16,6 +16,7 @@ import (
 	"github.com/dop251/goja"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // Budgets and caps for the `tcp` / `udp` / `websocket` globals (spec
@@ -283,6 +284,11 @@ func (h *socketHandle) dial(address string, opts map[string]any) map[string]any 
 	}
 
 	defer cancel()
+
+	// Checked on the name, before it is resolved.
+	if err := egress.HostAllowlistFrom(h.runtime.execCtx).Check(address); err != nil {
+		return socketFailure(err)
+	}
 
 	if dialer := checkerdef.TunnelDialerFrom(h.runtime.execCtx); dialer != nil {
 		return h.dialTunneled(ctx, dialer, address, options)

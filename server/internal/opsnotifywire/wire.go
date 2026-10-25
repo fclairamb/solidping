@@ -20,6 +20,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
@@ -62,14 +63,16 @@ func unavailable(reason string) error {
 
 // emailJobConfig is the wire shape of an email job's payload.
 //
-// Deliberately a local three-field struct rather than jobtypes.EmailJobConfig:
+// Deliberately a local struct rather than jobtypes.EmailJobConfig:
 // `jobs/jobtypes` imports THIS package (to build the transport for the
 // watchdog and the operator-notice job), so importing it back would be a
 // cycle. The JSON tags are the contract and must match EmailJobConfig's.
 type emailJobConfig struct {
-	To      []string `json:"to"`
-	Subject string   `json:"subject"`
-	Text    string   `json:"text"`
+	To       []string `json:"to"`
+	Subject  string   `json:"subject"`
+	Text     string   `json:"text"`
+	Locale   string   `json:"locale,omitempty"`
+	Timezone string   `json:"timezone,omitempty"`
 }
 
 // BuildOption customizes a single Build call. The only option today is the
@@ -122,13 +125,24 @@ func Build(dbSvc db.Service, registry *services.Registry, cfg *config.Config, op
 
 // enqueueEmail hands the notice to the normal email job chain, so it inherits
 // the retry policy and SMTP configuration every other mail uses.
+//
+// The subject and text arrive written in loc, the recipient super admin's
+// language (spec 2026-10-21-01, decision 11), or English for a notice queued
+// before the upgrade; the job carries it, as every email job does. Every
+// other medium keeps the English text.
 func enqueueEmail(registry *services.Registry) opsnotify.EnqueueEmailFunc {
-	return func(ctx context.Context, orgUID, to, subject, text string) error {
+	return func(ctx context.Context, orgUID, address string, loc i18n.Locale, subject, text string) error {
 		if registry == nil || registry.Jobs == nil {
 			return errNoJobService
 		}
 
-		payload, err := json.Marshal(emailJobConfig{To: []string{to}, Subject: subject, Text: text})
+		payload, err := json.Marshal(emailJobConfig{
+			To:       []string{address},
+			Subject:  subject,
+			Text:     text,
+			Locale:   loc.Lang(),
+			Timezone: loc.Timezone(),
+		})
 		if err != nil {
 			return fmt.Errorf("encode operator notice email: %w", err)
 		}

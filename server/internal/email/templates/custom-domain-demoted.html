@@ -1,46 +1,27 @@
-{{define "subject"}}Your status page stopped serving on {{.Domain}}{{end}}
-{{define "preheader"}}DNS re-verification kept failing, so {{.Domain}} no longer serves your status page.{{end}}
+{{define "subject"}}🟠 {{t "alerts.customDomain.subject" "domain" .Domain}}{{end}}
+{{define "preheader"}}{{t "alerts.customDomain.preheader" "domain" .Domain}}{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Custom domain disabled"}}{{end}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" (t "alerts.customDomain.pill")}}{{end}}
 {{define "content"}}
-    <h1>{{nolink .Domain}} is no longer serving your status page</h1>
-    <p>Hi,</p>
-    <p>
-      The custom domain <strong>{{nolink .Domain}}</strong> on the status page
-      <strong>{{.StatusPageName}}</strong> ({{.OrgName}}) failed its DNS
-      re-verification for several days in a row, so SolidPing has stopped
-      serving the page on it. Visitors now get an error page instead of your
-      status page.
-    </p>
-    <p>The last check reported:</p>
+    {{- $domain := nolink .Domain}}
+    <h1>{{tHTML "alerts.customDomain.heading" "domain" $domain}}</h1>
+    <p>{{tHTML "alerts.customDomain.stopped" "domain" (tHTML "alerts.emphasis" "text" $domain) "page" (tHTML "alerts.emphasis" "text" .StatusPageName) "org" .OrgName}}</p>
+    <p>{{t "alerts.customDomain.lastCheck"}}</p>
     <p class="fallback">{{nolink .Diagnostic}}</p>
-    <p>
-      To fix it: confirm the domain's CNAME record still points at the target
-      shown on the status page's settings, then click <strong>Verify</strong>.
-      If DNS starts resolving correctly again on its own, SolidPing will also
-      restore the domain by itself after several consecutive successful checks.
-    </p>
+    <p>{{tHTML "alerts.customDomain.fix" "verify" (tHTML "alerts.emphasis" "text" (t "alerts.customDomain.verify"))}}</p>
     {{if .SettingsURL}}
-    <div class="cta-wrap">{{template "button" dict "URL" .SettingsURL "Label" "Open status page settings" "Variant" "primary"}}</div>
+    <div class="cta-wrap">{{template "button" dict "URL" .SettingsURL "Label" (t "alerts.customDomain.openSettings") "Variant" "primary"}}</div>
     {{end}}
 {{end}}
-{{define "text"}}{{.Domain}} is no longer serving your status page
+{{define "text"}}{{t "alerts.customDomain.heading" "domain" .Domain}}
 
-Hi,
+{{t "alerts.customDomain.stopped" "domain" .Domain "page" .StatusPageName "org" .OrgName}}
 
-The custom domain {{.Domain}} on the status page {{.StatusPageName}} ({{.OrgName}})
-failed its DNS re-verification for several days in a row, so SolidPing has
-stopped serving the page on it. Visitors now get an error page instead of your
-status page.
-
-The last check reported:
+{{t "alerts.customDomain.lastCheck"}}
 
   {{.Diagnostic}}
 
-To fix it: confirm the domain's CNAME record still points at the target shown on
-the status page's settings, then click Verify. If DNS starts resolving correctly
-again on its own, SolidPing will also restore the domain by itself after several
-consecutive successful checks.
+{{t "alerts.customDomain.fix" "verify" (t "alerts.customDomain.verify")}}
 {{if .SettingsURL}}
 {{.SettingsURL}}
 {{end}}{{end}}

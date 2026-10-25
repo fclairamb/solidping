@@ -16,6 +16,7 @@ import {
   Users,
   Webhook,
   Bot,
+  Sparkles,
 } from "lucide-react";
 import type { ConnectionType } from "@/api/hooks";
 
@@ -44,6 +45,7 @@ const ICONS: Record<ConnectionType, typeof Webhook> = {
   webpush: BellRing,
   kubernetes: Boxes,
   twilio: Phone,
+  a2a: Sparkles,
 };
 
 export function IntegrationIcon({ type, className }: IntegrationIconProps) {
@@ -95,6 +97,8 @@ export function integrationLabel(type: ConnectionType): string {
       return "Kubernetes";
     case "twilio":
       return "Twilio (SMS / Voice)";
+    case "a2a":
+      return "AI agent (A2A)";
     default:
       return type;
   }

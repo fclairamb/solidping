@@ -3,9 +3,13 @@ package notifications
 import (
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // Detail keys written by the burn evaluator (handlers/incidents/slo_burn.go).
@@ -80,50 +84,84 @@ func BurnInfoFor(incident *models.Incident) *BurnInfo {
 		BudgetRemaining: time.Duration(jsonFloat(details[burnKeyBudgetRemainingSecs])) * time.Second,
 	}
 
-	info.PolicyLabel = "Slow burn"
-	if info.PolicyKind == models.SLOAlertPolicyKindFast {
-		info.PolicyLabel = "Fast burn"
-	}
-
+	info.PolicyLabel = info.policyLabelIn(i18n.English)
 	info.ProjectedExhaustion = jsonTime(details[burnKeyProjectedExhaustion])
 
 	return info
 }
 
+// policyLabelIn is the policy's human name, "Fast burn" / "Slow burn", in the
+// reader's language. PolicyLabel holds the English one.
+func (b *BurnInfo) policyLabelIn(loc i18n.Locale) string {
+	if b.PolicyKind == models.SLOAlertPolicyKindFast {
+		return loc.T("incident.burn.policy.fast")
+	}
+
+	return loc.T("incident.burn.policy.slow")
+}
+
+// severityLabelIn names the policy's severity ("critical", "warning") in the
+// reader's language. An unknown value is shown as stored.
+func (b *BurnInfo) severityLabelIn(loc i18n.Locale) string {
+	switch b.Severity {
+	case models.SLOAlertSeverityCritical, models.SLOAlertSeverityWarning:
+		return loc.T("incident.burn.severity." + b.Severity)
+	default:
+		return b.Severity
+	}
+}
+
 // RateText renders a burn rate the way an operator reads it.
 func (b *BurnInfo) RateText() string {
-	return fmt.Sprintf("%.1fx", b.LongRate)
+	return multiplierIn(i18n.English, b.LongRate)
 }
 
 // ShortRateText renders the confirmation window's rate.
 func (b *BurnInfo) ShortRateText() string {
-	return fmt.Sprintf("%.1fx", b.ShortRate)
+	return multiplierIn(i18n.English, b.ShortRate)
 }
 
 // ThresholdText renders the configured threshold.
 func (b *BurnInfo) ThresholdText() string {
-	return fmt.Sprintf("%.1fx", b.Threshold)
+	return multiplierIn(i18n.English, b.Threshold)
 }
 
 // BudgetRemainingText renders the remaining error budget as a duration, or
 // "exhausted" once it has gone negative. Never a bare negative number: "-3h12m
 // remaining" is a sentence nobody should have to parse at 3am.
 func (b *BurnInfo) BudgetRemainingText() string {
+	return b.budgetRemainingTextIn(i18n.English)
+}
+
+// budgetRemainingTextIn is BudgetRemainingText in the reader's language.
+func (b *BurnInfo) budgetRemainingTextIn(loc i18n.Locale) string {
 	if b.BudgetRemaining <= 0 {
-		return "exhausted"
+		return loc.T("incident.burn.exhausted")
 	}
 
-	return humanDuration(b.BudgetRemaining)
+	return humanDurationIn(loc, b.BudgetRemaining)
 }
 
 // ProjectedExhaustionText renders when the budget runs out, or a plain
-// statement that it is not projected to inside this window.
+// statement that it is not projected to inside this window. Always UTC and
+// never with a year: the format chat channels have always shown.
 func (b *BurnInfo) ProjectedExhaustionText() string {
 	if b.ProjectedExhaustion.IsZero() {
-		return "not within this window"
+		return b.projectedExhaustionTextIn(i18n.English)
 	}
 
-	return b.ProjectedExhaustion.UTC().Format("2006-01-02 15:04:05 UTC")
+	return b.ProjectedExhaustion.UTC().Format("Jan 2, 15:04 UTC")
+}
+
+// projectedExhaustionTextIn is ProjectedExhaustionText for a mail: in the
+// reader's language and timezone, with the year when it is not this one. Same
+// English as ProjectedExhaustionText within the current year.
+func (b *BurnInfo) projectedExhaustionTextIn(loc i18n.Locale) string {
+	if b.ProjectedExhaustion.IsZero() {
+		return loc.T("incident.burn.notWithinWindow")
+	}
+
+	return loc.Date(b.ProjectedExhaustion)
 }
 
 // WindowText names the two windows the rates cover.
@@ -144,34 +182,61 @@ func (b *BurnInfo) SummaryLines() []string {
 	}
 }
 
-// humanDuration renders a duration in the coarsest unit that stays honest.
+// humanDuration renders a duration in the coarsest unit that stays honest:
+// "5m", "1h30m", "1d2h".
 func humanDuration(duration time.Duration) string {
+	return humanDurationIn(i18n.English, duration)
+}
+
+// humanDurationIn is humanDuration in the reader's language ("1 h 30 min").
+func humanDurationIn(loc i18n.Locale, duration time.Duration) string {
+	const key = "incident.burn.duration."
+
 	if duration <= 0 {
-		return "0m"
+		return loc.T(key+"minutes", "n", 0)
 	}
 
 	switch {
 	case duration < time.Hour:
-		return fmt.Sprintf("%dm", int(math.Round(duration.Minutes())))
+		return loc.T(key+"minutes", "n", int(math.Round(duration.Minutes())))
 	case duration < 24*time.Hour:
 		hours := int(duration / time.Hour)
 		minutes := int((duration % time.Hour) / time.Minute)
 
 		if minutes == 0 {
-			return fmt.Sprintf("%dh", hours)
+			return loc.T(key+"hours", "n", hours)
 		}
 
-		return fmt.Sprintf("%dh%dm", hours, minutes)
+		return loc.T(key+"hoursMinutes", "hours", hours, "minutes", minutes)
 	default:
 		days := int(duration / (24 * time.Hour))
 		hours := int((duration % (24 * time.Hour)) / time.Hour)
 
 		if hours == 0 {
-			return fmt.Sprintf("%dd", days)
+			return loc.T(key+"days", "n", days)
 		}
 
-		return fmt.Sprintf("%dd%dh", days, hours)
+		return loc.T(key+"daysHours", "days", days, "hours", hours)
 	}
+}
+
+// multiplierIn renders a burn rate or threshold: "14.4x", "14,4x" in French.
+func multiplierIn(loc i18n.Locale, rate float64) string {
+	return oneDecimalIn(loc, rate) + "x"
+}
+
+// oneDecimalIn renders value like %.1f (same rounding, no thousands
+// separator) with the reader's decimal separator: "93.8" in English, "93,8"
+// in French. Shared with channels that keep their English output, which a
+// grouped or differently rounded number would change.
+func oneDecimalIn(loc i18n.Locale, value float64) string {
+	text := strconv.FormatFloat(value, 'f', 1, 64)
+
+	if sep := strings.TrimFunc(loc.Number(1.5, 1), unicode.IsDigit); sep != "." {
+		text = strings.Replace(text, ".", sep, 1)
+	}
+
+	return text
 }
 
 // jsonString / jsonFloat / jsonTime read a JSONB detail value defensively: the

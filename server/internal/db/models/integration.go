@@ -55,6 +55,12 @@ const (
 	// the same "one thread per incident" outcome Slack works hard to emulate
 	// with reverse threads.
 	ConnectionTypeZulip ConnectionType = "zulip"
+	// ConnectionTypeA2A hands incidents to an AI agent over the Agent2Agent
+	// protocol: SolidPing is the A2A client and sends one message per incident
+	// event to the agent described by an Agent Card. Named "a2a" in code and
+	// "AI agent (A2A)" in the UI, never plain "agent": that word already means
+	// the deported check agents (internal/agents).
+	ConnectionTypeA2A ConnectionType = "a2a"
 )
 
 // Capabilities describes what roles an integration type can play. The two
@@ -94,6 +100,10 @@ func CapabilitiesFor(t ConnectionType) Capabilities {
 		return Capabilities{CanSource: true}
 	case ConnectionTypeTwilio:
 		return Capabilities{CanNotify: true, CanSendSMS: true, CanPlaceCall: true}
+	case ConnectionTypeA2A:
+		// Listed explicitly (the default would give the same answer) so the
+		// capability of the AI-agent channel is a visible decision.
+		return Capabilities{CanNotify: true, CanSource: false}
 	default: // all current notification sinks
 		return Capabilities{CanNotify: true}
 	}

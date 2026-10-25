@@ -66,7 +66,8 @@ func runJSScriptDef() ToolDefinition {
 			"only NAMES the secret parameters the script reads (secrets.NAME): they run empty, never " +
 			"with real values. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
-			propScript:  stringProp("The js check script (a function body that returns {status, ...})."),
+			propScript: withMaxLength(
+				stringProp("The js check script (a function body that returns {status, ...})."), maxLongStringLength),
 			propEnv:     objectProp("Plaintext parameters exposed as env.NAME, e.g. {\"BASE_URL\": \"https://acme.com\"}."),
 			propSecrets: arrayOfStringsProp("Names of the secret parameters the script reads; they run empty."),
 			propTimeout: stringProp("Run timeout as a duration string (default and max 30s)."),
@@ -135,7 +136,7 @@ func (h *Handler) toolRunJSScript(ctx context.Context, _ string, args map[string
 		secrets[name] = ""
 	}
 
-	result, err := h.runner().Run(ctx, script, stringMapArg(args, propEnv), secrets, timeout)
+	result, err := h.runner().Run(ctx, script, stringMapArg(args, propEnv), secrets, nil, timeout)
 	if err != nil {
 		return errorResult(err.Error())
 	}

@@ -446,6 +446,8 @@ func TestIsImpersonationAllowed(t *testing.T) {
 		{"DELETE", ImpersonationPatternToken, false},
 		{"DELETE", ImpersonationPathTokenCurrent, false},
 		{"POST", ImpersonationPatternImpersonate, false},
+		{"POST", ImpersonationPatternDiscoveryScans, false},
+		{"GET", ImpersonationPatternDiscoveryScans, true},
 	}
 
 	for _, tc := range tests {

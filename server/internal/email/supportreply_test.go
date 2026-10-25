@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 const testSupportMailbox = "support@acme.com"
@@ -186,7 +187,7 @@ func TestSupportReply_NoticeInBothBodies(t *testing.T) {
 
 	// Asserted on the struct, not the wire, because quoted-printable encoding
 	// can split a long line and hide a substring that is genuinely present.
-	r.Contains(msg.Text, SupportReplyNoticeText)
+	r.Contains(msg.Text, SupportReplyNoticeText(i18n.English))
 	r.Contains(msg.HTML, "You can reply directly to this email")
 	// It landed inside the document, not after </body>.
 	r.Less(strings.Index(msg.HTML, "You can reply directly"), strings.Index(msg.HTML, "</body>"))
@@ -207,8 +208,40 @@ func TestSupportReply_IsIdempotent(t *testing.T) {
 	applySupportReply(msg, testSupportMailbox)
 	applySupportReply(msg, testSupportMailbox)
 
-	r.Equal(1, strings.Count(msg.Text, SupportReplyNoticeText))
+	r.Equal(1, strings.Count(msg.Text, SupportReplyNoticeText(i18n.English)))
 	r.Equal(1, strings.Count(msg.HTML, "You can reply directly to this email"))
+}
+
+// TestSupportReply_SpeaksTheReadersLanguage: the notice follows
+// Message.Locale, and the idempotency check does not depend on the language a
+// previous pass wrote it in.
+func TestSupportReply_SpeaksTheReadersLanguage(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	french := SupportReplyNoticeText(i18n.New(i18n.LangFrench, ""))
+	r.NotEqual(SupportReplyNoticeText(i18n.English), french, "precondition: the catalog translates it")
+
+	msg := &Message{
+		Recipients:       Recipients{To: []string{"user@acme.com"}},
+		HTML:             "<html><body><p>Panne</p></body></html>",
+		Text:             "Panne",
+		SupportReplyable: true,
+		Locale:           i18n.LangFrench,
+	}
+
+	applySupportReply(msg, testSupportMailbox)
+	r.Contains(msg.Text, french)
+	r.Contains(msg.HTML, supportReplyNoticeMarker)
+	r.NotContains(msg.Text, SupportReplyNoticeText(i18n.English))
+
+	// A second pass in another language adds nothing: the check is not a
+	// substring of one language.
+	msg.Locale = i18n.LangGerman
+	applySupportReply(msg, testSupportMailbox)
+	r.Equal(1, strings.Count(msg.Text, french))
+	r.Equal(1, strings.Count(msg.HTML, supportReplyNoticeMarker))
+	r.NotContains(msg.Text, SupportReplyNoticeText(i18n.New(i18n.LangGerman, "")))
 }
 
 func TestAutomationHeaders(t *testing.T) {

@@ -3,6 +3,7 @@ import { Navigate, createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -11,12 +12,18 @@ import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
 import { changePassword } from "@/api/password";
 import { ApiError, getToken } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
-
-const MIN_PASSWORD_LENGTH = 8;
+import { validateForcedChange, type ForcedChangeError } from "@/lib/forced-password-change";
 
 export const Route = createFileRoute("/change-password")({
   component: ForcedPasswordChangePage,
 });
+
+const ERROR_KEYS: Record<ForcedChangeError, string> = {
+  emailMismatch: "auth:forcedEmailMismatch",
+  emailDefault: "auth:forcedEmailDefault",
+  passwordTooShort: "auth:passwordTooShort",
+  passwordMismatch: "account:security.password.mismatch",
+};
 
 /**
  * The forced-rotation screen (spec 2026-08-23-04).
@@ -36,6 +43,11 @@ export const Route = createFileRoute("/change-password")({
  * The most common visitor is the seeded bootstrap admin on a brand-new
  * install, whose password is published in a public repository — hence the
  * explanatory copy rather than a bare form.
+ *
+ * While that admin still signs in with the published default address
+ * (`mustChangeEmail`), the screen also offers an email and its confirmation
+ * (spec 2026-10-13-02). Both are optional: left empty, no email is sent and
+ * the screen behaves as before.
  */
 function ForcedPasswordChangePage() {
   const { t } = useTranslation(["auth", "account", "common"]);
@@ -43,25 +55,25 @@ function ForcedPasswordChangePage() {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [email, setEmail] = useState("");
+  const [emailConfirm, setEmailConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const askEmail = Boolean(user?.mustChangeEmail);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (next.length < MIN_PASSWORD_LENGTH) {
-      setError(t("auth:passwordTooShort"));
-      return;
-    }
-    if (next !== confirm) {
-      setError(t("account:security.password.mismatch"));
+    const checked = validateForcedChange({ askEmail, email, emailConfirm, next, confirm });
+    if (checked.error) {
+      setError(t(ERROR_KEYS[checked.error]));
       return;
     }
 
     setSaving(true);
     try {
-      await changePassword(next, current);
+      await changePassword(next, current, checked.email);
       // Full reload rather than a router navigation: the rotation revoked the
       // other sessions and cleared the server-side flag, and a hard load is
       // the simplest way to guarantee every cached query and the auth context
@@ -112,6 +124,38 @@ function ForcedPasswordChangePage() {
               <p className="text-sm text-muted-foreground break-all">
                 {t("auth:mustChangePasswordFor", { email: user.email })}
               </p>
+            )}
+
+            {askEmail && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="forced-email">{t("auth:forcedEmailLabel")}</Label>
+                  <Input
+                    id="forced-email"
+                    data-testid="forced-email"
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={saving}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="forced-email-confirm">
+                    {t("auth:forcedEmailConfirmLabel")}
+                  </Label>
+                  <Input
+                    id="forced-email-confirm"
+                    data-testid="forced-email-confirm"
+                    type="email"
+                    autoComplete="email"
+                    value={emailConfirm}
+                    onChange={(e) => setEmailConfirm(e.target.value)}
+                    disabled={saving}
+                  />
+                </div>
+              </>
             )}
 
             <div className="space-y-2">

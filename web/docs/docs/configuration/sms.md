@@ -450,6 +450,18 @@ self-hosted deployment is **unlimited** by default — the operator's own
 credentials pay, so SolidPing does not meter them. Managed plans set explicit
 monthly caps, visible on the organization's **Usage** page.
 
+The monthly caps count only sends made on the **server-provided** credentials.
+A bring-your-own send is billed to the organization's own Twilio account, so it
+neither consumes nor is refused by the monthly SMS or call cap: only the
+per-organization hourly guard applies to it. Modes are decided per channel: an
+integration without a voice number places calls on the server's credentials,
+and those calls do count. WhatsApp always counts (it has no bring-your-own
+mode).
+
+The first time a channel's monthly cap refuses a send in a month, the
+organization's owners and admins get one email about it. Hourly-guard refusals
+do not send it.
+
 ## Trial accounts
 
 A Twilio trial account is fine for a first end-to-end test, with three caveats:

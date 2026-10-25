@@ -30,7 +30,7 @@ SP_RUNMODE=test SP_DB_RESET=true SP_DB_TYPE=postgres \
   SP_DB_URL="postgres://solidping:solidping@localhost:55432/solidping_e2e?sslmode=disable" \
   PORT=4300 SP_DB_MIGRATION_GUARD_MODE=warn \
   SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE=0 SP_SERVER_RATE_LIMITING_MAX_CONCURRENT=0 \
-  SP_AUTH_REGISTRATION_EMAIL_PATTERN='.*' \
+  SP_AUTH_REGISTRATION_EMAIL_PATTERN='.*' SP_PLUGINS_DIR="$PWD/plugins" \
   ./solidping serve > /tmp/e2e-sidecar/server.log 2>&1 &
 echo $! > /tmp/e2e-sidecar/pid
 curl -s http://localhost:4300/d/ | grep -o '<title>[^<]*</title>'   # must say SolidPing

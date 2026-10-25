@@ -1,6 +1,6 @@
 ---
 sidebar_position: 1
-slug: /
+slug: /intro
 title: Introduction
 ---
 
@@ -10,7 +10,7 @@ SolidPing is a **distributed monitoring platform** designed for checking the ava
 
 ## Key Features
 
-- **43 Check Types** - HTTP/HTTPS, TCP, UDP, ICMP, DNS, DNSBL, NTP, SSL, Domain, WebSocket, Prometheus, VNC, website crawl, health endpoint, headless browser, custom JS, heartbeat, databases (PostgreSQL, MySQL, Redis, MongoDB, MSSQL, Oracle, ClickHouse), email (SMTP, IMAP, POP3, and passive JMAP inbox), messaging (gRPC, Kafka, RabbitMQ, MQTT), SSH, RDP, FTP, SFTP, SNMP, Docker, Kubernetes, SIP, game servers (A2S, Minecraft), Freebox lines, and more
+- **44 Check Types** - HTTP/HTTPS, TCP, UDP, ICMP, DNS, DNSBL, NTP, SSL, Domain, WebSocket, Prometheus, VNC, website crawl, health endpoint, vendor status page, headless browser, custom JS, heartbeat, databases (PostgreSQL, MySQL, Redis, MongoDB, MSSQL, Oracle, ClickHouse), email (SMTP, IMAP, POP3, and passive JMAP inbox), messaging (gRPC, Kafka, RabbitMQ, MQTT), SSH, RDP, FTP, SFTP, SNMP, Docker, Kubernetes, SIP, game servers (A2S, Minecraft), Freebox lines, and more
 - **Distributed Workers & System Agents** - Execute checks from multiple locations and regions with lease-based job distribution; system agents cover regions over an outbound-only WebSocket, without any database exposure
 - **Multi-Tenant Architecture** - Organization-scoped data isolation with role-based access control and TOTP two-factor authentication
 - **Low Resource Footprint** - Single binary with PostgreSQL or SQLite as the only dependency
@@ -98,8 +98,8 @@ exactly one login. SolidPing takes you straight to a "set a new password"
 screen, and the account can do nothing else until you complete it.
 :::
 
-Change the seeded admin email from **Account > Profile** after first login, or set
-`SP_ADMIN_EMAIL` before the first start. See [Changing an email address](/configuration/authentication#changing-an-email-address).
+The same screen asks for your own email address (optional, and changeable later
+from **Account > Profile**). You can also set `SP_ADMIN_EMAIL` before the first start. See [Changing an email address](/configuration/authentication#changing-an-email-address).
 
 The `default` organization starts with about ten example checks: HTTP, DNS, SSL,
 TCP and ping against public endpoints. They need no local service. They are

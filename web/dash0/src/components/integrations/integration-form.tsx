@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
   Check,
@@ -68,6 +69,8 @@ import {
   useSyncIntegrationIdentities,
   useSetIntegrationIdentity,
   useDeleteIntegrationIdentity,
+  useResolveA2ACard,
+  type A2ACardResult,
 } from "@/api/hooks";
 import { useDiscordBotEnabled } from "@/api/public-config";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -200,7 +203,7 @@ export function IntegrationForm({ type, initial, initialName, onChange, org, cha
           exists (channelUid present). Data sources (Freebox, Kubernetes) are
           not notification targets: Freebox has nothing to test, and Kubernetes
           has its own "test connection" probe inside its panel. */}
-      {channelUid && type !== "freebox" && type !== "kubernetes" && (
+      {channelUid && type !== "freebox" && type !== "kubernetes" && type !== "a2a" && (
         <TestNotificationSection
           org={org}
           channelUid={channelUid}
@@ -621,6 +624,15 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
     case "twilio":
       return (
         <TwilioPanel settings={settings} update={update} />
+      );
+    case "a2a":
+      return (
+        <A2APanel
+          settings={settings}
+          update={update}
+          org={org}
+          channelUid={channelUid}
+        />
       );
     case "msteams-bot":
       return (
@@ -2698,22 +2710,235 @@ function SecretPanel({
   label,
   value,
   onChange,
+  testId,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
+  testId?: string;
 }) {
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
+        data-testid={testId}
         type="password"
         autoComplete="new-password"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
+    </div>
+  );
+}
+
+// A2APanel configures an AI agent reached over A2A (spec 2026-10-18-02): the
+// Agent Card URL, how SolidPing authenticates, and free-text instructions
+// added to every message. Its Test button resolves the card from the current,
+// possibly unsaved, values and shows the agent SolidPing would talk to.
+function A2APanel({
+  settings,
+  update,
+  org,
+  channelUid,
+}: {
+  settings: Record<string, unknown>;
+  update: (key: string, value: unknown) => void;
+  org?: string;
+  channelUid?: string;
+}) {
+  const { t } = useTranslation("integrations");
+  // The create page does not pass org down; read it from the route then.
+  const routeOrg = (useParams({ strict: false }) as { org?: string }).org;
+  const resolve = useResolveA2ACard(org ?? routeOrg ?? "");
+  const [result, setResult] = useState<A2ACardResult | null>(null);
+  const auth = (settings.auth as string) || "none";
+
+  function handleTest() {
+    resolve.mutate(
+      { settings, integrationUid: channelUid },
+      {
+        onSuccess: (res) => setResult(res),
+        onError: (err) =>
+          setResult({
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+      },
+    );
+  }
+
+  return (
+    <div className="space-y-3" data-testid="a2a-panel">
+      <div className="space-y-2">
+        <Label htmlFor="ch-a2a-card-url">
+          {t("a2a.cardUrl", "Agent Card URL")}
+        </Label>
+        <Input
+          id="ch-a2a-card-url"
+          data-testid="a2a-card-url"
+          type="url"
+          placeholder="https://agent.acme.com"
+          value={(settings.agent_card_url as string) || ""}
+          onChange={(e) => update("agent_card_url", e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "a2a.cardUrlHint",
+            "The full Agent Card URL, or the agent's origin: /.well-known/agent-card.json is then added.",
+          )}
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="ch-a2a-auth">{t("a2a.auth", "Authentication")}</Label>
+        <Select value={auth} onValueChange={(v) => update("auth", v)}>
+          <SelectTrigger id="ch-a2a-auth" data-testid="a2a-auth">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none" data-testid="a2a-auth-none">
+              {t("a2a.authNone", "None")}
+            </SelectItem>
+            <SelectItem value="bearer" data-testid="a2a-auth-bearer">
+              {t("a2a.authBearer", "Bearer token")}
+            </SelectItem>
+            <SelectItem value="api_key" data-testid="a2a-auth-api-key">
+              {t("a2a.authApiKey", "API key header")}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {auth === "bearer" && (
+        <SecretPanel
+          id="ch-a2a-token"
+          testId="a2a-token"
+          label={t("a2a.token", "Bearer token")}
+          value={(settings.token as string) || ""}
+          onChange={(v) => update("token", v)}
+        />
+      )}
+
+      {auth === "api_key" && (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="ch-a2a-api-key-header">
+              {t("a2a.apiKeyHeader", "Header name")}
+            </Label>
+            <Input
+              id="ch-a2a-api-key-header"
+              data-testid="a2a-api-key-header"
+              placeholder="X-Api-Key"
+              value={(settings.api_key_header as string) || ""}
+              onChange={(e) => update("api_key_header", e.target.value)}
+            />
+          </div>
+          <SecretPanel
+            id="ch-a2a-api-key-value"
+            testId="a2a-api-key-value"
+            label={t("a2a.apiKeyValue", "API key")}
+            value={(settings.api_key_value as string) || ""}
+            onChange={(v) => update("api_key_value", v)}
+          />
+        </>
+      )}
+
+      <div className="space-y-2">
+        <Label htmlFor="ch-a2a-instructions">
+          {t("a2a.instructions", "Instructions (optional)")}
+        </Label>
+        <Textarea
+          id="ch-a2a-instructions"
+          data-testid="a2a-instructions"
+          rows={3}
+          placeholder={t(
+            "a2a.instructionsPlaceholder",
+            "Investigate and report your findings, do not restart anything",
+          )}
+          value={(settings.instructions as string) || ""}
+          onChange={(e) => update("instructions", e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "a2a.instructionsHint",
+            "Added to every message. The agent can investigate with SolidPing's MCP tools: give it an MCP token.",
+          )}
+        </p>
+      </div>
+
+      <div
+        className="space-y-2 rounded border p-3"
+        data-testid="a2a-test-section"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <Label className="font-medium">
+              {t("a2a.testTitle", "Test the agent")}
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "a2a.testHelp",
+                "Fetch the Agent Card with the values above. Nothing is sent to the agent.",
+              )}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={resolve.isPending || !settings.agent_card_url}
+            onClick={handleTest}
+            data-testid="a2a-test"
+          >
+            {resolve.isPending ? (
+              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="mr-1 h-4 w-4" />
+            )}
+            {t("a2a.testButton", "Test")}
+          </Button>
+        </div>
+        {result && !result.success && (
+          <Badge variant="destructive" data-testid="a2a-test-error">
+            {result.error || t("a2a.testFailed", "Failed")}
+          </Badge>
+        )}
+        {result?.success && result.agent && (
+          <div className="space-y-1 text-sm" data-testid="a2a-test-result">
+            <div>
+              <span className="font-medium" data-testid="a2a-agent-name">
+                {result.agent.name}
+              </span>{" "}
+              <Badge variant="success" data-testid="a2a-agent-version">
+                {t("a2a.protocolVersion", "A2A {{version}}", {
+                  version: result.agent.protocolVersion,
+                })}
+              </Badge>
+            </div>
+            {result.agent.description && (
+              <p className="text-xs text-muted-foreground">
+                {result.agent.description}
+              </p>
+            )}
+            {result.agent.skills.length > 0 ? (
+              <ul className="list-inside list-disc text-xs" data-testid="a2a-agent-skills">
+                {result.agent.skills.map((skill) => (
+                  <li key={skill.id} data-testid="a2a-agent-skill">
+                    <span className="font-medium">{skill.name}</span>
+                    {skill.description ? `: ${skill.description}` : ""}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {t("a2a.noSkills", "The card lists no skills.")}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

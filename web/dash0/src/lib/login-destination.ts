@@ -1,5 +1,6 @@
 import { DASH_BASE } from "./base-path";
 import { setLastAuthMethod } from "./last-auth-method";
+import { isMonitorReturnTo } from "./pending-check";
 
 /**
  * Resolves where a just-authenticated user should land.
@@ -72,6 +73,11 @@ export function resolveDestination(
   // The invited org is one the user is not a member of yet, so the org-match
   // rule would always drop it.
   if (isInviteReturnTo(returnTo, basepath)) {
+    return { href: returnTo };
+  }
+  // "Monitor this" deep link (spec 2026-10-14-03): org-less, so the org-match
+  // rule below would drop it. The /monitor route re-filters its own query.
+  if (isMonitorReturnTo(returnTo, basepath)) {
     return { href: returnTo };
   }
   if (

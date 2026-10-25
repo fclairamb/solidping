@@ -52,7 +52,7 @@ func TestDegradedIncidentSchedulesNoEscalation(t *testing.T) {
 	_, err = svc.OpenDegradedIncident(ctx, &OpenDegradedIncidentRequest{
 		Check:     check,
 		StartedAt: time.Now().Add(-30 * time.Minute),
-		Title:     "acme is degraded: 7 failures in the last 60 probes (88.3%)",
+		Title:     "acme is degraded: 7 failures in the last 60 probes (88.3% available)",
 		Snapshot: &DegradedSnapshot{
 			Failures: 5, FailuresWindow: 60, FailureSlots: 60, FailureMatches: 7,
 			FailuresFired: true, AvailabilityPct: &pct, ResolveWindow: 60, CurrentlyUp: true,

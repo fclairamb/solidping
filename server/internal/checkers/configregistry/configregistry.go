@@ -58,6 +58,7 @@ import (
 	sslconfig "github.com/fclairamb/solidping/server/internal/checkers/checkssl/config"
 	tcpconfig "github.com/fclairamb/solidping/server/internal/checkers/checktcp/config"
 	udpconfig "github.com/fclairamb/solidping/server/internal/checkers/checkudp/config"
+	vendorstatusconfig "github.com/fclairamb/solidping/server/internal/checkers/checkvendorstatus/config"
 	vncconfig "github.com/fclairamb/solidping/server/internal/checkers/checkvnc/config"
 	websocketconfig "github.com/fclairamb/solidping/server/internal/checkers/checkwebsocket/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
@@ -157,9 +158,15 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &crawlconfig.CrawlConfig{}, true
 	case checkerdef.CheckTypeHealth:
 		return &healthconfig.HealthConfig{}, true
+	case checkerdef.CheckTypeVendorStatus:
+		return &vendorstatusconfig.VendorStatusConfig{}, true
 	case checkerdef.CheckTypeSleep:
 		return &sleepconfig.SleepConfig{}, true
 	default:
+		if ext, ok := lookupExternal(checkType); ok {
+			return ext.newConfig(), true
+		}
+
 		return nil, false
 	}
 }
@@ -273,9 +280,15 @@ func ValidateSpec(checkType checkerdef.CheckType, spec *checkerdef.CheckSpec) er
 		return crawlconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeHealth:
 		return healthconfig.ValidateSpec(spec)
+	case checkerdef.CheckTypeVendorStatus:
+		return vendorstatusconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeSleep:
 		return sleepconfig.ValidateSpec(spec)
 	default:
+		if ext, ok := lookupExternal(checkType); ok {
+			return ext.validate(spec)
+		}
+
 		return ErrUnknownType
 	}
 }

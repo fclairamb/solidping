@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -99,9 +98,9 @@ func (s *GotifySender) Send(ctx context.Context, jctx *jobdef.JobContext, payloa
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := readCappedBody(resp.Body, senderMaxResponseBody)
 
-		return fmt.Errorf("%w: status %d: %s", errGotifyRequestFailed, resp.StatusCode, string(respBody))
+		return fmt.Errorf("%w: status %d: %s", errGotifyRequestFailed, resp.StatusCode, bodySnippet(respBody))
 	}
 
 	return nil
@@ -223,8 +222,8 @@ func (s *GotifySender) buildDownBody(payload *Payload, checkName string) string 
 func (s *GotifySender) buildResolvedBody(payload *Payload, checkName string) string {
 	var builder strings.Builder
 
-	if ResolvedByCheckDeletion(payload.Incident) {
-		builder.WriteString(checkDeletedSentence + "\n")
+	if closedWithoutRecovery(payload.Incident) {
+		builder.WriteString(closedSentence(payload.Incident) + "\n")
 	}
 
 	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)

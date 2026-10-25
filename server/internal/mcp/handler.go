@@ -190,6 +190,7 @@ func NewHandler(
 	// delete_check tells whoever was paged that the check's incident closed,
 	// exactly as over the HTTP API (spec 2026-10-08-02).
 	handler.checksSvc.SetCheckDeletedIncidentNotifier(incidentsSvc)
+	handler.checksSvc.SetCheckDisableIncidentResolver(incidentsSvc)
 
 	if cfg != nil {
 		handler.baseURL = cfg.Server.BaseURL

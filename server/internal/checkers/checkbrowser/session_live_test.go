@@ -188,6 +188,7 @@ func TestSessionDrivesARealPage(t *testing.T) {
 	r := require.New(t)
 
 	withSettings(t, settings)
+	widenChromeStart(t)
 
 	fixture := liveFixtureServer(t)
 	base := browserReachableURL(t, fixture.URL)
@@ -295,6 +296,7 @@ func TestSessionSelectorsAreCSSOnly(t *testing.T) {
 	r := require.New(t)
 
 	withSettings(t, settings)
+	widenChromeStart(t)
 
 	base := browserReachableURL(t, liveFixtureServer(t).URL)
 
@@ -320,6 +322,19 @@ func TestSessionSelectorsAreCSSOnly(t *testing.T) {
 	text, err = session.Text(ctx, "button")
 	r.NoError(err)
 	r.Equal("clicked", text)
+}
+
+// widenChromeStart lifts the launch-to-DevTools-URL wait for one test. Chrome's
+// cold start is CPU-bound, and the default 20 s elapses silently ("websocket
+// url timeout reached") when the full suite starves the machine, whatever the
+// test's own context allows. Production keeps the default.
+func widenChromeStart(t *testing.T) {
+	t.Helper()
+
+	previous := chromeStartTimeout
+	chromeStartTimeout = 90 * time.Second
+
+	t.Cleanup(func() { chromeStartTimeout = previous })
 }
 
 // contextWithTimeout is t.Context() with a deadline, kept as a helper so the
@@ -349,6 +364,7 @@ func TestBrowserCheckCapturesARealScreenshot(t *testing.T) {
 	r := require.New(t)
 
 	withSettings(t, settings)
+	widenChromeStart(t)
 
 	fixture := liveFixtureServer(t)
 	base := browserReachableURL(t, fixture.URL)
@@ -413,6 +429,7 @@ func TestBrowserCheckKeepsScreenshotOnRealTimeout(t *testing.T) {
 	r := require.New(t)
 
 	withSettings(t, settings)
+	widenChromeStart(t)
 
 	fixture := liveFixtureServer(t)
 	base := browserReachableURL(t, fixture.URL)
@@ -425,7 +442,12 @@ func TestBrowserCheckKeepsScreenshotOnRealTimeout(t *testing.T) {
 	// reported as an error, not a timeout, and failed this test for a reason
 	// it is not about. The selector never appears, so the probe still runs to
 	// its full timeout and then captures.
-	const probeTimeout = 8 * time.Second
+	//
+	// Measured Chrome cold start (open + viewport): 1.2 s on an idle machine,
+	// 2.6 s with 3x CPU oversubscription; under a full parallel `make test`
+	// (load average ~30 on 10 cores, ~15 other test binaries) it exceeded the
+	// former 8 s. 20 s leaves the same order of margin over the loaded figure.
+	const probeTimeout = 20 * time.Second
 
 	cfg := &BrowserConfig{
 		URL:          base + "/login",

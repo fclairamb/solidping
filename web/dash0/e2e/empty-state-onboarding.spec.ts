@@ -490,7 +490,7 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
       // (non-empty) mode rather than into some blank in-between state.
       await expect(page.getByTestId("kpi-tile-monitored")).toBeVisible();
       await expect(page.getByTestId("kpi-tile-monitored")).toContainText(
-        "1 Active",
+        "1 total endpoints",
       );
     });
 

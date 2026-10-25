@@ -328,7 +328,8 @@ They use `pg_advisory_xact_lock(<class>, hashtext(<key>))`:
   single-bigint supervisor keys above, so a hashed key can never exclude a
   supervisor.
 - The class id is hand-allocated from `0x5002_0000 + <sequence>` ("SP 02") and
-  listed in the same `dblock` doc comment (`0x50020001` = `ClassGlobalCounter`).
+  listed in the same `dblock` doc comment (`0x50020001` = `ClassGlobalCounter`,
+  `0x50020002` = `ClassDiscoveryScanStart`).
 - A transaction lock is released at commit or rollback, so it is safe to take
   through the pool. A `hashtext` collision only serializes two unrelated keys.
 - SQLite needs no lock: its single connection serializes the transaction.

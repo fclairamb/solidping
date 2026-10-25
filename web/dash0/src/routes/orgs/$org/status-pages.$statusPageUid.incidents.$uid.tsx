@@ -126,7 +126,7 @@ function PublicationEditorPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight break-words">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl break-words">
             {publication.title}
           </h1>
           <div className="mt-1 flex flex-wrap items-center gap-2">

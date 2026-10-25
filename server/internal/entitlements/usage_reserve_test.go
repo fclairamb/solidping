@@ -198,3 +198,175 @@ func TestReserveWhatsApp_RunawayGuard(t *testing.T) {
 	r.ErrorAs(err, &qErr)
 	r.Equal("whatsapp_runaway_per_hour", qErr.LimitName)
 }
+
+// setupSaaSReserveService builds a service on the SaaS defaults, where every
+// phone channel is capped at 0 per month (spec 2026-10-17-03).
+func setupSaaSReserveService(t *testing.T) (*Service, *models.Organization) {
+	t.Helper()
+
+	svc, org := setupReserveService(t)
+	svc.defaults = DefaultsFor(config.DeploymentModeSaaS)
+
+	fixed := time.Now()
+	svc.now = func() time.Time { return fixed }
+
+	return svc, org
+}
+
+func monthlyCounter(t *testing.T, svc *Service, orgUID, kind string) int {
+	t.Helper()
+
+	count, err := svc.db.GetMonthlyUsage(t.Context(), orgUID, kind, monthStart(svc.now()))
+	require.NoError(t, err)
+
+	return count
+}
+
+// TestReserveInstanceSend_ZeroCapRefused: an instance-credential send at the
+// SaaS default cap of 0 is refused, and the refusal is a monthly-cap one.
+func TestReserveInstanceSend_ZeroCapRefused(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org := setupSaaSReserveService(t)
+
+	smsErr := svc.ReserveSMS(ctx, org.UID)
+	r.ErrorIs(smsErr, ErrEntitlementExceeded)
+	r.True(IsMonthlyCapRefusal(smsErr))
+
+	callErr := svc.ReserveCall(ctx, org.UID)
+	r.ErrorIs(callErr, ErrEntitlementExceeded)
+	r.True(IsMonthlyCapRefusal(callErr))
+}
+
+// TestReserveInstanceSend_CapNWritesCounter: at cap N the instance path writes
+// the counter N times and refuses the N+1th; Usage reports the counters.
+func TestReserveInstanceSend_CapNWritesCounter(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org := setupSaaSReserveService(t)
+
+	r.NoError(svc.Set(ctx, org.UID, Entitlements{
+		Limits: Limits{MaxSmsPerMonth: Int(3), MaxCallsPerMonth: Int(2)},
+		Source: models.EntitlementSourceAdmin,
+	}, "tester", "small caps"))
+
+	for i := range 3 {
+		r.NoError(svc.ReserveSMS(ctx, org.UID), "sms %d", i+1)
+	}
+	r.ErrorIs(svc.ReserveSMS(ctx, org.UID), ErrEntitlementExceeded)
+
+	for i := range 2 {
+		r.NoError(svc.ReserveCall(ctx, org.UID), "call %d", i+1)
+	}
+	r.ErrorIs(svc.ReserveCall(ctx, org.UID), ErrEntitlementExceeded)
+
+	r.Equal(3, monthlyCounter(t, svc, org.UID, models.UsageCounterKindSMS))
+	r.Equal(2, monthlyCounter(t, svc, org.UID, models.UsageCounterKindVoice))
+
+	usage, err := svc.Usage(ctx, org.UID)
+	r.NoError(err)
+	r.Equal(3, usage.SmsThisMonth)
+	r.Equal(2, usage.CallsThisMonth)
+}
+
+// TestReserveOwnCredentials_IgnoresMonthlyCap: a bring-your-own send at cap 0
+// is allowed and writes no org_usage_counters row. This is the bug the spec
+// fixes: the org pays its own Twilio bill.
+func TestReserveOwnCredentials_IgnoresMonthlyCap(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org := setupSaaSReserveService(t)
+
+	// Positive control: the same org is refused on the instance path.
+	r.ErrorIs(svc.ReserveSMS(ctx, org.UID), ErrEntitlementExceeded)
+
+	r.NoError(svc.ReserveSMSOwnCredentials(ctx, org.UID))
+	r.NoError(svc.ReserveCallOwnCredentials(ctx, org.UID))
+
+	var rows int
+
+	err := svc.db.DB().NewSelect().Model((*models.OrgUsageCounter)(nil)).
+		Where("organization_uid = ?", org.UID).ColumnExpr("count(*)").Scan(ctx, &rows)
+	r.NoError(err)
+	r.Equal(0, rows, "a bring-your-own send must not write a counter row")
+}
+
+// TestReserveOwnCredentials_KeepsRunawayGuard: the 31st bring-your-own SMS in
+// an hour is refused by the runaway guard, which is not a monthly-cap refusal.
+func TestReserveOwnCredentials_KeepsRunawayGuard(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org := setupSaaSReserveService(t)
+
+	for i := range defaultSMSRunawayPerHour {
+		r.NoError(svc.ReserveSMSOwnCredentials(ctx, org.UID), "sms %d", i+1)
+	}
+
+	err := svc.ReserveSMSOwnCredentials(ctx, org.UID)
+	r.ErrorIs(err, ErrEntitlementExceeded)
+
+	var qErr *QuotaError
+	r.ErrorAs(err, &qErr)
+	r.Equal("sms_runaway_per_hour", qErr.LimitName)
+	r.False(IsMonthlyCapRefusal(err))
+}
+
+// TestClaimMonthlyCapNotice: one claim per kind per month, a new one the next
+// month.
+func TestClaimMonthlyCapNotice(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org := setupReserveService(t)
+
+	may := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return may }
+
+	claimed, err := svc.ClaimMonthlyCapNotice(ctx, org.UID, models.UsageCounterKindSMS)
+	r.NoError(err)
+	r.True(claimed)
+
+	claimed, err = svc.ClaimMonthlyCapNotice(ctx, org.UID, models.UsageCounterKindSMS)
+	r.NoError(err)
+	r.False(claimed, "second claim in the same month")
+
+	claimed, err = svc.ClaimMonthlyCapNotice(ctx, org.UID, models.UsageCounterKindVoice)
+	r.NoError(err)
+	r.True(claimed, "another kind has its own claim")
+
+	svc.now = func() time.Time { return may.AddDate(0, 1, 0) }
+
+	claimed, err = svc.ClaimMonthlyCapNotice(ctx, org.UID, models.UsageCounterKindSMS)
+	r.NoError(err)
+	r.True(claimed, "a new month claims again")
+}
+
+// TestUpgradeURL points at the platform's upgrade page, never at billing, and
+// is empty when no template is configured or the base URL is unknown.
+func TestUpgradeURL(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	svc, _ := setupReserveService(t)
+
+	r.Empty(svc.UpgradeURL(ctx, "https://app.acme.com", "acme"), "no template: no button")
+
+	r.NoError(svc.db.SetSystemParameter(ctx, ParamUpgradeURLTemplate, "https://billing.acme.com/{org}/plans", false))
+
+	got := svc.UpgradeURL(ctx, "https://app.acme.com", "acme")
+	r.Equal("https://app.acme.com/d/orgs/acme/upgrade", got)
+	r.NotContains(got, "billing.acme.com")
+	r.NotContains(got, "#bt=")
+
+	r.Empty(svc.UpgradeURL(ctx, "", "acme"), "no base URL: no button")
+}

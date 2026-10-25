@@ -187,6 +187,7 @@ export interface Check {
     | "prometheus"
     | "crawl"
     | "health"
+    | "vendor-status"
     | "sleep";
   config?: Record<string, unknown>;
   /**
@@ -206,6 +207,13 @@ export interface Check {
    * Undefined when the check targets no private location.
    */
   needsReseal?: boolean;
+  /**
+   * Detail responses only, recomputed on every read: why the check does not
+   * run in some of its regions right now. Today REGION_NO_PLUGIN, a plugin
+   * check in a region whose live workers did not load the plugin (spec
+   * 2026-10-17-05 §17). Undefined when there is none.
+   */
+  regionWarnings?: { name: string; message: string; code?: string }[];
   /**
    * Where the check runs. For a pinned check, the user's explicit list; for an
    * automatically placed one, the CURRENT placement, chosen by the scheduler
@@ -408,6 +416,7 @@ export interface CreateCheckRequest {
     | "prometheus"
     | "crawl"
     | "health"
+    | "vendor-status"
     | "sleep";
   config: Record<string, unknown>;
   /** An explicit list pins the check. Omit to let it be placed automatically. */
@@ -446,6 +455,9 @@ export interface CreateCheckRequest {
 }
 
 export interface UpdateCheckRequest {
+  /** With `enabled: false`, also close the check's open incidents (spec
+   * 2026-10-23-01). */
+  resolveOpenIncidents?: boolean;
   /** Per-check path-trace policy: `inherit`, `on` or `off` (spec
    * 2026-08-21-10). `inherit` is what puts a check back under the org default;
    * omitting the field leaves it unchanged. */
@@ -736,7 +748,8 @@ export interface IncidentDetail {
     | "expired"
     | "escalated"
     | "disabled"
-    | "check_deleted";
+    | "check_deleted"
+    | "check_disabled";
   failureCount?: number;
   relapseCount?: number;
   /**
@@ -1021,6 +1034,7 @@ export function useUpdateCheck(org: string, uid: string) {
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
       queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
       queryClient.invalidateQueries({ queryKey: ["check", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["incidents", org] });
     },
   });
 }
@@ -4090,6 +4104,11 @@ export function useRegister() {
       password: string;
       // Campaign context from the landing URL; see lib/attribution.ts.
       attribution?: SignupAttribution;
+      // The browser's language and timezone, the preferences the account
+      // starts with (spec 2026-10-21-01): its first emails, the confirmation
+      // included, are written in them.
+      locale?: string;
+      timezone?: string;
     }) =>
       apiFetch<{ message: string }>("/api/v1/auth/register", {
         method: "POST",
@@ -4600,7 +4619,15 @@ export function useAcceptInvite() {
     // is accepted only by that account (spec 2026-10-16-06), and the normal
     // 401 refresh applies. Signed out (the create-account form) stays
     // anonymous.
-    mutationFn: (data: { token: string; name?: string; password?: string }) =>
+    // locale/timezone seed the preferences of an account the acceptance
+    // creates (spec 2026-10-21-01); an existing account keeps its own.
+    mutationFn: (data: {
+      token: string;
+      name?: string;
+      password?: string;
+      locale?: string;
+      timezone?: string;
+    }) =>
       apiFetch<AcceptInviteResponse>("/api/v1/auth/accept-invite", {
         method: "POST",
         body: JSON.stringify(data),
@@ -4720,11 +4747,17 @@ export interface EmailTemplateSummary {
  * server runs with SP_RUNMODE=test — outside it the query 404s and the page
  * shows its "not available" state rather than an error toast.
  */
-export function useEmailPreviewIndex() {
+// locale is the preview language (en when omitted); the subjects come back in
+// it.
+export function useEmailPreviewIndex(locale: string = "en") {
   return useQuery({
-    queryKey: ["email-preview-index"],
+    queryKey: ["email-preview-index", locale],
     queryFn: () =>
-      apiFetch<{ data: EmailTemplateSummary[] }>("/api/mgmt/email-preview"),
+      apiFetch<{ data: EmailTemplateSummary[] }>(
+        locale === "en"
+          ? "/api/mgmt/email-preview"
+          : `/api/mgmt/email-preview?locale=${encodeURIComponent(locale)}`,
+      ),
     staleTime: 30000,
     retry: false,
   });
@@ -5154,6 +5187,27 @@ export interface CheckTypeInfo {
    * (spec 2026-09-11-01).
    */
   secretFields?: string[];
+  /** Set on a type loaded from a server plugin (spec 2026-10-17-05). */
+  plugin?: { name: string; version: string };
+}
+
+/** A check type's config JSON Schema (GET /api/v1/orgs/:org/check-types/:type/schema). */
+export type CheckConfigSchema = Record<string, unknown>;
+
+/**
+ * Reads the schema through the org route, which also serves the plugin types
+ * the org's private-location agents reported (spec 2026-10-17-05 §18).
+ */
+export function useCheckConfigSchema(org: string, checkType: string, enabled = true) {
+  return useQuery({
+    queryKey: ["check-types", org, "schema", checkType],
+    queryFn: () =>
+      apiFetch<CheckConfigSchema>(
+        `/api/v1/orgs/${encodeURIComponent(org)}/check-types/${encodeURIComponent(checkType)}/schema`,
+      ),
+    staleTime: 5 * 60 * 1000,
+    enabled: enabled && !!org && !!checkType,
+  });
 }
 
 export function useCheckTypes(org: string) {
@@ -5692,7 +5746,8 @@ export type ConnectionType =
   | "freebox"
   | "webpush"
   | "kubernetes"
-  | "twilio";
+  | "twilio"
+  | "a2a";
 
 // Capabilities mirror the backend capability registry
 // (server/internal/db/models/integration.go `CapabilitiesFor`). The two flags
@@ -5727,6 +5782,7 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   webpush: NOTIFY,
   kubernetes: SOURCE,
   twilio: NOTIFY,
+  a2a: NOTIFY,
 };
 
 /** Whether an integration type can receive notifications (act as a channel). */
@@ -5877,6 +5933,34 @@ export function useTestIntegration(org: string) {
         `/api/v1/orgs/${org}/integrations/${integrationUid}/test`,
         { method: "POST" },
       ),
+  });
+}
+
+// AI agent (A2A): resolve the Agent Card for possibly unsaved settings, so
+// the form can show the agent name, skills and protocol version before
+// saving. integrationUid lets the server fill in stored secrets the form
+// does not echo back.
+export interface A2AAgentInfo {
+  name: string;
+  description?: string;
+  protocolVersion: string;
+  interfaceUrl: string;
+  skills: { id: string; name: string; description?: string }[];
+}
+
+export interface A2ACardResult {
+  success: boolean;
+  agent?: A2AAgentInfo;
+  error?: string;
+}
+
+export function useResolveA2ACard(org: string) {
+  return useMutation({
+    mutationFn: (body: { settings: Record<string, unknown>; integrationUid?: string }) =>
+      apiFetch<A2ACardResult>(`/api/v1/orgs/${org}/integrations/a2a/resolve-card`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
   });
 }
 
@@ -6666,6 +6750,10 @@ export interface DiscoveryScanProgress {
   derivedStatus: "pending" | "running" | "success" | "failed";
   groupCount: number;
   checkCount: number;
+  /** Private region (@slug) an agent-run scan runs from; absent for the server. */
+  region?: string;
+  /** Error code of an agent-run scan's latest failed chunk. */
+  lastErrorCode?: string;
 }
 
 export type DiscoverySource = "lan" | "freebox" | "container" | "kubernetes";
@@ -6675,6 +6763,9 @@ export type DiscoverySource = "lan" | "freebox" | "container" | "kubernetes";
 export interface DiscoveryType {
   type: string;
   source: DiscoverySource;
+  /** False when the server may not run this type (lan under an enforcing
+   * egress policy): the scan then needs a private region. Absent = available. */
+  serverAvailable?: boolean;
 }
 
 // DiscoveredCheck is one suggested check produced by a scan. Rows are grouped for
@@ -6684,6 +6775,8 @@ export interface DiscoveredCheck {
   organizationUid: string;
   jobUid: string;
   source: DiscoverySource;
+  /** Private region (@slug) of the scan that found the row; absent for the server. */
+  region?: string;
   groupKey: string;
   groupLabel: string;
   name: string;
@@ -6700,6 +6793,8 @@ export interface DiscoveredCheck {
 export interface StartDiscoveryScanRequest {
   type: string;
   parameters: Record<string, unknown>;
+  /** Private region (@slug) to run a lan scan from; omitted = the server. */
+  region?: string;
 }
 
 // PromoteChecksRequest promotes one or more discovered checks into real checks.
@@ -7187,6 +7282,12 @@ export interface EntitlementsUsage {
    * persistent counter, not a live count — sent messages cannot be un-sent.
    */
   whatsappThisMonth: number;
+  /**
+   * SMS / voice calls sent on the instance's credentials in the current UTC
+   * month (bring-your-own Twilio sends are not counted).
+   */
+  smsThisMonth: number;
+  callsThisMonth: number;
   /** Count of live service-level objectives. */
   slos: number;
   /**

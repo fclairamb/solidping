@@ -244,7 +244,44 @@ func (r *NotificationJobRun) buildPayload(
 		// Which regions saw the failure, labeled at send time (spec
 		// 2026-10-12-15). Nil when none is known.
 		Regions: resolveRegionInfo(ctx, jctx, log, incident),
+		// Stable across retries of this delivery (spec 2026-10-18-02).
+		EventKey: rootJobUID(ctx, jctx),
 	}
+}
+
+// maxRetryChainWalk bounds the walk back to the first job of a retry chain.
+// The retry cap is far below it; the bound only guards against a cycle.
+const maxRetryChainWalk = 32
+
+// rootJobUID returns the UID of the first job of the current job's retry
+// chain. A retry is a clone with a new UID whose PreviousJobUID points at the
+// attempt before it, so the first UID is the one id that names this delivery
+// across every attempt. Returns "" without a job, and the oldest UID it could
+// reach when a lookup fails.
+func rootJobUID(ctx context.Context, jctx *jobdef.JobContext) string {
+	if jctx == nil || jctx.Job == nil {
+		return ""
+	}
+
+	uid := jctx.Job.UID
+	previous := jctx.Job.PreviousJobUID
+
+	for range maxRetryChainWalk {
+		if previous == nil || *previous == "" || jctx.Services == nil || jctx.Services.Jobs == nil {
+			break
+		}
+
+		uid = *previous
+
+		job, err := jctx.Services.Jobs.GetJob(ctx, uid)
+		if err != nil || job == nil {
+			break
+		}
+
+		previous = job.PreviousJobUID
+	}
+
+	return uid
 }
 
 // resolveRegionInfo reads the incident's regions and attaches the dashboard

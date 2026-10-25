@@ -11,23 +11,26 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/uptimereport"
 )
 
 // recordingMailer captures every SendReport call so tests can assert exactly
 // how many mails were enqueued, without a real queue.
 type recordingMailer struct {
-	mu   sync.Mutex
-	sent []string // recipients
+	mu    sync.Mutex
+	sent  []string // recipients
+	hints []recipient.Hint
 }
 
 func (m *recordingMailer) SendReport(
-	_ context.Context, _, recipient string, _ *uptimereport.Data, _ string,
+	_ context.Context, _, address string, hint recipient.Hint, _ *uptimereport.Data, _ string,
 ) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.sent = append(m.sent, recipient)
+	m.sent = append(m.sent, address)
+	m.hints = append(m.hints, hint)
 
 	return nil
 }
@@ -97,13 +100,13 @@ func TestTestSend_SuppressedRecipient(t *testing.T) {
 	env := setupTestSendEnv(t)
 	schedule := env.createSchedule(t)
 
-	const recipient = "unsubscribed@example.com"
+	const address = "unsubscribed@example.com"
 
 	ctx := context.Background()
-	sup := models.NewEmailSuppression(env.org.UID, recipient, nil, models.EmailSuppressionSourceLink)
+	sup := models.NewEmailSuppression(env.org.UID, address, nil, models.EmailSuppressionSourceLink)
 	require.NoError(t, env.svc.db.CreateEmailSuppression(ctx, sup))
 
-	err := env.svc.TestSend(ctx, env.org.Slug, schedule.UID, recipient, time.Now())
+	err := env.svc.TestSend(ctx, env.org.Slug, schedule.UID, address, recipient.Hint{}, time.Now())
 
 	require.ErrorIs(t, err, ErrRecipientSuppressed,
 		"suppressed recipient must surface ErrRecipientSuppressed, not a silent nil success")
@@ -119,12 +122,16 @@ func TestTestSend_NonSuppressedRecipient(t *testing.T) {
 	env := setupTestSendEnv(t)
 	schedule := env.createSchedule(t)
 
-	const recipient = "operator@example.com"
+	const address = "operator@example.com"
 
-	err := env.svc.TestSend(context.Background(), env.org.Slug, schedule.UID, recipient, time.Now())
+	// The caller's language reaches the mailer, for an address with no account.
+	caller := recipient.Hint{Locale: "fr", Timezone: "Europe/Paris"}
+
+	err := env.svc.TestSend(context.Background(), env.org.Slug, schedule.UID, address, caller, time.Now())
 
 	require.NoError(t, err)
-	require.Equal(t, []string{recipient}, env.mailer.sentTo())
+	require.Equal(t, []string{address}, env.mailer.sentTo())
+	require.Equal(t, []recipient.Hint{caller}, env.mailer.hints)
 }
 
 // TestTestSend_ZeroCheckOrgStillSends is spec case 13. TestSend is the manual
@@ -140,11 +147,11 @@ func TestTestSend_ZeroCheckOrgStillSends(t *testing.T) {
 	env := setupTestSendEnv(t)
 	schedule := env.createSchedule(t)
 
-	const recipient = "operator@example.com"
+	const address = "operator@example.com"
 
-	err := env.svc.TestSend(context.Background(), env.org.Slug, schedule.UID, recipient, time.Now())
+	err := env.svc.TestSend(context.Background(), env.org.Slug, schedule.UID, address, recipient.Hint{}, time.Now())
 
 	require.NoError(t, err)
-	require.Equal(t, []string{recipient}, env.mailer.sentTo(),
+	require.Equal(t, []string{address}, env.mailer.sentTo(),
 		"a manual test send must still mail an empty report, unlike the scheduled sweep")
 }

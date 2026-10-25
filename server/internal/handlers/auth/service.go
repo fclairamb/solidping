@@ -29,6 +29,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
@@ -56,6 +58,9 @@ type emailJobConfig struct {
 	Subject      string   `json:"subject"`
 	Template     string   `json:"template,omitempty"`
 	TemplateData any      `json:"templateData,omitempty"`
+	// Locale and Timezone: the recipient's, see jobtypes.EmailJobConfig.
+	Locale   string `json:"locale,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // Internal property/key constants used in JSONMap fields and OAuth flows.
@@ -348,6 +353,18 @@ type UserInfo struct {
 	// UserInfo also describes OTHER people (the membership-request admin
 	// view), where it would be noise.
 	Demo bool `json:"demo,omitempty"`
+	// MustChangeEmail asks the forced first-login screen to also collect a
+	// real email (spec 2026-10-13-02). It holds only while the account must
+	// rotate its password AND still signs in with the published seed address
+	// (defaults.Email), so a seed made with SP_ADMIN_EMAIL, an ordinary
+	// forced reset, or an account with a real address never sees it.
+	// omitempty for the same reason as MustChangePassword.
+	MustChangeEmail bool `json:"mustChangeEmail,omitempty"`
+	// Preferences is the language and timezone the server writes to this user
+	// in (spec 2026-10-21-01). newUserInfo always sets it, {} when nothing is
+	// stored, so the dashboard knows to report the browser's values. omitempty
+	// keeps it out of the descriptions of OTHER people.
+	Preferences *models.UserPreferences `json:"preferences,omitempty"`
 }
 
 // newUserInfo builds the user payload every login-shaped response and /auth/me
@@ -373,6 +390,8 @@ func newUserInfo(user *models.User, role string) *UserInfo {
 		Role:               role,
 		MustChangePassword: user.MustChangePassword,
 		Demo:               user.Demo,
+		MustChangeEmail:    mustChangeEmail(user),
+		Preferences:        preferencesInfo(user),
 	}
 }
 
@@ -521,6 +540,9 @@ type UpdateProfileRequest struct {
 	// impersonation sessions.
 	Email           *string `json:"email,omitempty"`
 	CurrentPassword *string `json:"currentPassword,omitempty"`
+	// Preferences updates the language and timezone of the user's emails,
+	// field by field (spec 2026-10-21-01).
+	Preferences *PreferencesRequest `json:"preferences,omitempty"`
 }
 
 // LogoutResponse contains the response data for a logout operation.
@@ -634,17 +656,22 @@ func (s *Service) CheckMembershipSlot(ctx context.Context, orgUID string) error 
 // check whether email sending is enabled instance-wide
 // (s.fullCfg.Email.Enabled): a queued job for a disabled sender is a no-op
 // at send time.
+//
+// loc is the reader's language and timezone, resolved here at enqueue time
+// (spec 2026-10-21-01): the job renders with it as is.
 func (s *Service) enqueueEmail(
-	ctx context.Context, orgUID, recipient, template string, data any,
+	ctx context.Context, orgUID, address, template string, loc i18n.Locale, data any,
 ) bool {
-	if s.jobsSvc == nil || recipient == "" {
+	if s.jobsSvc == nil || address == "" {
 		return false
 	}
 
 	cfg := emailJobConfig{
-		To:           []string{recipient},
+		To:           []string{address},
 		Template:     template,
 		TemplateData: data,
+		Locale:       loc.Lang(),
+		Timezone:     loc.Timezone(),
 	}
 
 	raw, err := json.Marshal(cfg)
@@ -1779,8 +1806,24 @@ func (s *Service) getUserInfoNoOrg(ctx context.Context, claims *Claims) (*MeResp
 	}, nil
 }
 
-// UpdateProfile updates the current user's profile fields.
+// UpdateProfile updates the current user's profile fields. Every field is
+// optional: a preferences-only PATCH is as valid as a name-only one.
 func (s *Service) UpdateProfile(ctx context.Context, claims *Claims, req UpdateProfileRequest) (*MeResponse, error) {
+	// Preferences are validated before anything is written, so a bad locale
+	// never leaves a half-applied email change behind.
+	var prefs *models.UserPreferences
+
+	if req.Preferences != nil {
+		user, err := s.db.GetUser(ctx, claims.UserUID)
+		if err != nil || user == nil {
+			return nil, ErrUserNotFound
+		}
+
+		if prefs, err = mergePreferences(user.Preferences, req.Preferences); err != nil {
+			return nil, err
+		}
+	}
+
 	if req.Email != nil {
 		// A changed email is applied together with the name, in one UPDATE.
 		changed, err := s.changeOwnEmail(ctx, claims, req)
@@ -1789,16 +1832,17 @@ func (s *Service) UpdateProfile(ctx context.Context, claims *Claims, req UpdateP
 		}
 
 		if changed {
-			return s.GetUserInfo(ctx, claims)
+			req.Name = nil
 		}
 	}
 
-	if req.Name == nil {
+	if req.Name == nil && prefs == nil {
 		return s.GetUserInfo(ctx, claims)
 	}
 
 	update := models.UserUpdate{
-		Name: req.Name,
+		Name:        req.Name,
+		Preferences: prefs,
 	}
 
 	if err := s.db.UpdateUser(ctx, claims.UserUID, &update); err != nil {
@@ -2424,6 +2468,11 @@ type RegisterRequest struct {
 	// normalizeSignupAttribution before it is stored, so a client cannot use
 	// it to park arbitrary data on a user row.
 	Attribution *models.SignupAttribution `json:"attribution,omitempty"`
+	// Locale and Timezone are the browser's language and IANA zone, the
+	// preferences the account starts with (spec 2026-10-21-01). Optional and
+	// lenient: an unsupported value is dropped, never refused.
+	Locale   string `json:"locale,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // RegisterResponse contains the response after registration.
@@ -2489,6 +2538,8 @@ const registerAntiEnumFiller = "solidping-registration-timing-filler-0000"
 // path for the race where an account was created by some OTHER path between
 // Register and confirmation — that caller already proved mailbox ownership by
 // holding the token, so it isn't an enumeration surface.
+//
+//nolint:gocritic // req is the decoded wire shape, passed by value like every request of this service
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
 	// Check if registration is enabled. Read the LIVE value: the
 	// registration_email_pattern is applied by the systemconfig overlay AFTER
@@ -2567,6 +2618,10 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		(*stateValue)[keyAttribution] = attribution
 	}
 
+	if prefs := signupPreferences(req.Locale, req.Timezone); prefs != nil {
+		(*stateValue)[keyPreferences] = prefs
+	}
+
 	ttl := registrationTTL
 
 	if err := s.db.SetStateEntry(ctx, nil, registrationKeyPrefix+req.Email, stateValue, &ttl); err != nil {
@@ -2576,7 +2631,9 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 	// Send confirmation email asynchronously via the email job
 	confirmURL := fmt.Sprintf("%s%s/confirm-registration/%s",
 		s.fullCfg.Server.BaseURL, config.DashboardBasePath, token)
-	s.enqueueEmail(ctx, "", req.Email, "registration.html",
+	// No account yet: the mail is written in the language and zone the
+	// signup form sent, the ones the account will start with.
+	s.enqueueEmail(ctx, "", req.Email, "registration.html", i18n.New(req.Locale, req.Timezone),
 		map[string]any{"ConfirmURL": confirmURL},
 	)
 
@@ -2651,6 +2708,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	user.Name = regName
 	user.PasswordHash = &regHash
 	user.SignupAttribution = signupAttributionFromState(val[keyAttribution])
+	user.Preferences = signupPreferencesFromState(val[keyPreferences])
 
 	now := time.Now()
 	user.EmailVerifiedAt = &now
@@ -2852,6 +2910,7 @@ func (s *Service) RequestPasswordReset(
 	}
 
 	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
+	loc := recipient.ForUser(user)
 
 	// An SSO-only user (no password hash) still has a recoverable account
 	// as long as they have at least one linked provider — the reset link
@@ -2873,7 +2932,7 @@ func (s *Service) RequestPasswordReset(
 			return successMsg, nil
 		}
 
-		ssoProviderLabel = s.providerLabelList(providers)
+		ssoProviderLabel = loc.ListOr(s.providerLabels(providers))
 	}
 
 	// Per-user cap: drop silently above the limit. Returning success keeps
@@ -2921,7 +2980,7 @@ func (s *Service) RequestPasswordReset(
 		templateData["Providers"] = ssoProviderLabel
 	}
 
-	s.enqueueEmail(ctx, "", req.Email, emailTemplate, templateData)
+	s.enqueueEmail(ctx, "", req.Email, emailTemplate, loc, templateData)
 
 	return successMsg, nil
 }
@@ -2977,13 +3036,13 @@ func (s *Service) providerLabel(providerType models.ProviderType) string {
 	}
 }
 
-// providerLabelList turns a user's linked providers into a deduplicated,
-// human-joined list ("Google", or "Google or GitHub" for two, or
-// "Google, GitHub or Microsoft" for three or more). Labels are sorted
-// alphabetically first so the email is deterministic regardless of the
-// order ListUserProvidersByUser happens to return (created_at DESC, which
-// ties when two providers are linked in the same request).
-func (s *Service) providerLabelList(providers []*models.UserProvider) string {
+// providerLabels turns a user's linked providers into the deduplicated
+// labels the email joins with i18n.Locale.ListOr ("Google, GitHub or
+// Microsoft", "Google, GitHub ou Microsoft"). Labels are sorted
+// alphabetically so the email is deterministic regardless of the order
+// ListUserProvidersByUser happens to return (created_at DESC, which ties when
+// two providers are linked in the same request).
+func (s *Service) providerLabels(providers []*models.UserProvider) []string {
 	seen := make(map[string]bool, len(providers))
 	labels := make([]string, 0, len(providers))
 
@@ -2999,14 +3058,7 @@ func (s *Service) providerLabelList(providers []*models.UserProvider) string {
 
 	sort.Strings(labels)
 
-	switch len(labels) {
-	case 0:
-		return ""
-	case 1:
-		return labels[0]
-	default:
-		return strings.Join(labels[:len(labels)-1], ", ") + " or " + labels[len(labels)-1]
-	}
+	return labels
 }
 
 // bumpCounter atomically counts one attempt against the global counter at
@@ -3116,8 +3168,8 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 
 	// Confirmation email so the legitimate user sees a record of the
 	// change even if the attacker controls the password-reset link.
-	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
-		map[string]any{tmplKeyChangedAt: time.Now().UTC().Format(time.RFC1123)},
+	s.enqueueEmail(ctx, "", user.Email, "password-changed.html", recipient.ForUser(user),
+		map[string]any{tmplKeyChangedAt: time.Now().UTC()},
 	)
 
 	return &ResetPasswordResponse{
@@ -3129,9 +3181,15 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 //
 // CurrentPassword is required when the account already has a password, and
 // ignored when it does not (the SSO-only "set a password" case).
+//
+// Email is optional. It is accepted only while the caller is in the
+// mustChangeEmail state (the seeded admin on the published default address,
+// spec 2026-10-13-02), and is then written in the same UPDATE as the new
+// password. Every other email change goes through PATCH /auth/me.
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"currentPassword"`
 	NewPassword     string `json:"newPassword"`
+	Email           string `json:"email,omitempty"`
 }
 
 // ChangePasswordResponse confirms the rotation.
@@ -3180,43 +3238,21 @@ func (s *Service) ChangePassword(
 		return nil, ErrUserNotFound
 	}
 
-	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
-
-	if hasPassword {
-		// Always run the verify — even for an empty currentPassword — so the
-		// "field missing" and "field wrong" cases cost the same time.
-		if !passwords.Verify(req.CurrentPassword, *user.PasswordHash) {
-			return nil, ErrInvalidCurrentPassword
-		}
+	if err = checkPasswordChange(user, req); err != nil {
+		return nil, err
 	}
 
-	if len(req.NewPassword) < minPasswordLength {
-		return nil, fmt.Errorf("%w: password must be at least %d characters",
-			ErrInvalidCredentials, minPasswordLength)
-	}
-
-	// A no-op rotation that reports success is misleading: the user believes
-	// their password changed and the confirmation email says so too.
-	if hasPassword && passwords.Verify(req.NewPassword, *user.PasswordHash) {
-		return nil, fmt.Errorf("%w: new password must be different from the current one",
-			ErrInvalidCredentials)
-	}
-
-	hash, err := passwords.Hash(req.NewPassword)
+	// The optional first-login email runs only after every password rule
+	// passed, so a wrong current password never changes the address.
+	newEmail, err := s.firstLoginEmail(ctx, user, req.Email)
 	if err != nil {
-		return nil, fmt.Errorf("failed to hash password: %w", err)
+		return nil, err
 	}
 
-	// Satisfying a forced rotation is the whole point of the flag: clear it in
-	// the same UPDATE as the hash, so a crash between the two can never leave
-	// an account with a new password and a stale block on it.
-	rotationCleared := false
+	oldEmail := user.Email
 
-	if err := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{
-		PasswordHash:       &hash,
-		MustChangePassword: &rotationCleared,
-	}); err != nil {
-		return nil, fmt.Errorf("failed to update password: %w", err)
+	if err = s.persistPasswordChange(ctx, user, req.NewPassword, newEmail); err != nil {
+		return nil, err
 	}
 
 	// Best-effort: the rotation already succeeded, so a stale counter is the
@@ -3230,13 +3266,94 @@ func (s *Service) ChangePassword(
 	// caller's own grant, which must keep working.
 	s.revokeRefreshTokensForUserExcept(ctx, user.UID, currentRefreshUID)
 
-	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
-		map[string]any{tmplKeyChangedAt: time.Now().UTC().Format(time.RFC1123)},
+	if newEmail != "" {
+		// No "email changed" notice: the old address is the published default
+		// one, which nobody on this install controls.
+		s.recordEmailChanged(ctx, &emailChange{
+			user: user, newEmail: newEmail, changedBy: emailChangedBySelf, actorUID: user.UID,
+		}, oldEmail)
+	}
+
+	// user.Email is already the new address when one was set.
+	s.enqueueEmail(ctx, "", user.Email, "password-changed.html", recipient.ForUser(user),
+		map[string]any{tmplKeyChangedAt: time.Now().UTC()},
 	)
 
 	return &ChangePasswordResponse{
 		Message: "Your password has been updated.",
 	}, nil
+}
+
+// checkPasswordChange applies the password rules of ChangePassword: the
+// current password (when the account has one), the minimum length, and "must
+// differ".
+func checkPasswordChange(user *models.User, req ChangePasswordRequest) error {
+	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
+
+	if hasPassword {
+		// Always run the verify — even for an empty currentPassword — so the
+		// "field missing" and "field wrong" cases cost the same time.
+		if !passwords.Verify(req.CurrentPassword, *user.PasswordHash) {
+			return ErrInvalidCurrentPassword
+		}
+	}
+
+	if len(req.NewPassword) < minPasswordLength {
+		return fmt.Errorf("%w: password must be at least %d characters",
+			ErrInvalidCredentials, minPasswordLength)
+	}
+
+	// A no-op rotation that reports success is misleading: the user believes
+	// their password changed and the confirmation email says so too.
+	if hasPassword && passwords.Verify(req.NewPassword, *user.PasswordHash) {
+		return fmt.Errorf("%w: new password must be different from the current one",
+			ErrInvalidCredentials)
+	}
+
+	return nil
+}
+
+// persistPasswordChange writes the new hash, clears must_change_password and,
+// when newEmail is set, the new address, all in ONE update. On success
+// user.Email holds the address now on file.
+func (s *Service) persistPasswordChange(
+	ctx context.Context, user *models.User, newPassword, newEmail string,
+) error {
+	hash, err := passwords.Hash(newPassword)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// Satisfying a forced rotation is the whole point of the flag: clear it in
+	// the same UPDATE as the hash, so a crash between the two can never leave
+	// an account with a new password and a stale block on it. The first-login
+	// email rides on the same UPDATE for the same reason.
+	rotationCleared := false
+
+	update := &models.UserUpdate{
+		PasswordHash:       &hash,
+		MustChangePassword: &rotationCleared,
+	}
+	if newEmail != "" {
+		update.Email = &newEmail
+		update.ClearEmailVerifiedAt = true
+	}
+
+	if err := s.db.UpdateUser(ctx, user.UID, update); err != nil {
+		// ensureEmailAvailable loses a race against a concurrent signup or
+		// change: the unique index is the real guard.
+		if newEmail != "" && db.IsUniqueViolation(err) {
+			return ErrEmailAlreadyTaken
+		}
+
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	if newEmail != "" {
+		user.Email = newEmail
+	}
+
+	return nil
 }
 
 // revokeRefreshTokensForUser deletes every session refresh token attached to
@@ -3529,30 +3646,38 @@ func getAllowedInviteExpirations() map[string]time.Duration {
 // ErrInvalidExpiresIn is returned when an invalid expiresIn value is provided.
 var ErrInvalidExpiresIn = errors.New("invalid expiresIn: must be one of 1h, 6h, 12h, 24h, 48h, 1w")
 
-// inviteExpirationLabels maps each accepted expiresIn code to the
-// human-readable phrase shown in the invitation email ("This invitation
-// expires in ..."). Kept as a literal map (rather than deriving from
-// time.Duration.String(), which renders machine-ish output like "168h0m0s")
-// so the email always reads naturally. Keys mirror
-// getAllowedInviteExpirations exactly.
-func inviteExpirationLabels() map[string]string {
-	return map[string]string{
-		"1h":            "1 hour",
-		"6h":            "6 hours",
-		"12h":           "12 hours",
-		durationLabel24: "24 hours",
-		"48h":           "48 hours",
-		"1w":            "7 days",
+// inviteLifetime is how the invitation email words an expiresIn code: a count
+// of account.duration.hours or account.duration.days.
+type inviteLifetime struct {
+	count int
+	unit  string
+}
+
+// inviteLifetimes maps each accepted expiresIn code to the phrase shown in
+// the invitation email ("This invitation expires in ..."). Kept as a literal
+// map (rather than deriving from the time.Duration, which would read "168
+// hours" or need a rounding rule) so the email always reads naturally. Keys
+// mirror getAllowedInviteExpirations exactly.
+func inviteLifetimes() map[string]inviteLifetime {
+	const hours, days = "account.duration.hours", "account.duration.days"
+
+	return map[string]inviteLifetime{
+		"1h":            {1, hours},
+		"6h":            {6, hours},
+		"12h":           {12, hours},
+		durationLabel24: {24, hours},
+		"48h":           {48, hours},
+		"1w":            {7, days},
 	}
 }
 
-// humanizeInviteExpiresIn converts an expiresIn code (e.g. "24h") into the
-// human-readable phrase used in the invitation email. Falls back to the raw
-// code for any value outside getAllowedInviteExpirations — defensive only,
-// CreateInvitation already validates the code before this is ever called.
-func humanizeInviteExpiresIn(expiresIn string) string {
-	if label, ok := inviteExpirationLabels()[expiresIn]; ok {
-		return label
+// InviteExpiresIn words an expiresIn code (e.g. "24h") in loc for the
+// invitation email: "24 hours", "24 heures", "24 Stunden". Falls back to the
+// raw code for any value outside getAllowedInviteExpirations (defensive only:
+// CreateInvitation validates the code first). Exported for the email preview.
+func InviteExpiresIn(loc i18n.Locale, expiresIn string) string {
+	if lifetime, ok := inviteLifetimes()[expiresIn]; ok {
+		return loc.Tn(lifetime.unit, lifetime.count)
 	}
 
 	return expiresIn
@@ -3607,6 +3732,11 @@ type AcceptInviteRequest struct {
 	Token    string `json:"token"`
 	Name     string `json:"name"`
 	Password string `json:"password"`
+	// Locale and Timezone seed the preferences of an account created by the
+	// acceptance (an existing account keeps its own). Optional and lenient,
+	// like RegisterRequest's.
+	Locale   string `json:"locale,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // CreateInvitation creates an invitation for a user to join an organization.
@@ -3839,7 +3969,7 @@ func (s *Service) GetInviteInfo(ctx context.Context, token string) (*InviteInfoR
 // holds it (spec 2026-10-16-06). Every check runs before any write, so a
 // refused attempt creates nothing and leaves the invitation in place.
 //
-//nolint:cyclop,funlen // Invitation acceptance requires multiple steps
+//nolint:cyclop,funlen,gocritic // multiple steps; req is the decoded wire shape, passed by value
 func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, callerUID string) (*LoginResponse, error) {
 	// Find the invitation across orgs. matchedEntry.Key is the key that
 	// actually matched (hashed, or legacy plaintext), so the deletes below
@@ -3881,6 +4011,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, cal
 		user.Name = req.Name
 		user.PasswordHash = &hash
 		user.EmailVerifiedAt = &now
+		user.Preferences = signupPreferences(req.Locale, req.Timezone)
 
 		if createErr := createUserAndCapture(ctx, s.db, user, signupMethodInvite); createErr != nil {
 			return nil, fmt.Errorf("failed to create user: %w", createErr)
@@ -4419,24 +4550,32 @@ func (s *Service) sendInvitationEmail(
 		return false
 	}
 
-	inviterName := s.getInviterName(ctx, inviterUID)
+	inviter, err := s.db.GetUser(ctx, inviterUID)
+	if err != nil {
+		inviter = nil
+	}
+
+	// An invitee who already has an account reads its own language; a new
+	// address reads the inviter's, the best guess at hand.
+	loc := recipient.NewResolver(s.db).ForAddress(ctx, "", recipientEmail, recipient.HintFromUser(inviter))
 
 	viewModel := map[string]any{
 		"Role":        role,
-		"InviterName": inviterName,
+		"InviterName": inviterName(inviter),
 		"InviteURL":   inviteURL,
-		"ExpiresIn":   humanizeInviteExpiresIn(expiresIn),
+		"ExpiresIn":   InviteExpiresIn(loc, expiresIn),
 	}
 	email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)
 
-	queued := s.enqueueEmail(ctx, org.UID, recipientEmail, "invitation.html", viewModel)
+	queued := s.enqueueEmail(ctx, org.UID, recipientEmail, "invitation.html", loc, viewModel)
 
 	return s.fullCfg.Email.Enabled && queued
 }
 
-func (s *Service) getInviterName(ctx context.Context, inviterUID string) string {
-	inviter, err := s.db.GetUser(ctx, inviterUID)
-	if err != nil || inviter == nil {
+// inviterName is how the invitation names its sender: the name, else the
+// address, else "" (the email then words the invitation without a sender).
+func inviterName(inviter *models.User) string {
+	if inviter == nil {
 		return ""
 	}
 

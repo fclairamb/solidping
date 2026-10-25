@@ -63,7 +63,7 @@
   "clusterNamespaces": "Namespaces (optional)",
   "clusterNamespacesHelp": "Kommagetrennte Namespaces zum Scannen. Leer lassen, um alle sichtbaren Namespaces zu scannen.",
   "replicaCount": "{{ready}}/{{desired}} bereit",
-  "workerNote": "Hinweis: Erkennungsscans laufen auf dem integrierten Worker. Bei Multi-Site-Deployments läuft der Scan nur vom Server-Host aus.",
+  "workerNote": "Hinweis: Erkennungsscans laufen auf dem integrierten Worker oder, falls gewählt, von einem privaten Standort aus.",
   "startScan": "Scan starten",
   "cancel": "Abbrechen",
   "name": "Prüfungsname",
@@ -95,5 +95,24 @@
   },
   "selectFreeboxChannel": "Freebox-Kanal auswählen",
   "noFreeboxChannels": "Keine gekoppelten Freebox-Kanäle",
-  "largeRangeWarning": "Großer Bereich: ~{{hosts}} Adressen in {{chunks}} Blöcken. Dieser Scan kann lange dauern (Stunden bis Tage)."
+  "largeRangeWarning": "Großer Bereich: ~{{hosts}} Adressen in {{chunks}} Blöcken. Dieser Scan kann lange dauern (Stunden bis Tage).",
+  "scanRegionUnavailable": "Kein Agent dieses Standorts ist bereit zum Scannen. Setzen Sie SP_AGENT_DISCOVERY_ENABLED auf seinem Agent.",
+  "scanQuotaExceeded": "Das Tageslimit gescannter Adressen von privaten Standorten ist für diese Organisation erreicht. Versuchen Sie es morgen (UTC) erneut.",
+  "regionLabel": "Ausführen von",
+  "regionPlaceholder": "Standort wählen",
+  "regionServer": "Server (Standard)",
+  "regionDiscoveryOff": "Erkennung nicht aktiviert (SP_AGENT_DISCOVERY_ENABLED auf seinem Agent)",
+  "regionHelp": "Vom Server aus scannen oder von einem privaten Standort, um ein Netzwerk zu erreichen, das der Server nicht sieht.",
+  "regionRequiredHelp": "Dieser Server kann das LAN nicht selbst scannen. Wählen Sie einen privaten Standort.",
+  "workerNoteRegion": "Dieser Scan läuft von {{region}} aus, im Netzwerk des Agents. Nur vom Betreiber erlaubte Bereiche können gescannt werden.",
+  "runsFrom": "Läuft von {{region}}",
+  "failedChunks_one": "{{count}} Abschnitt fehlgeschlagen",
+  "failedChunks_other": "{{count}} Abschnitte fehlgeschlagen",
+  "promoteRegionNote": "Aus diesem Scan übernommene Checks laufen von {{region}} aus.",
+  "chunkError": {
+    "DISCOVERY_NOT_ALLOWED": "Der Bereich liegt außerhalb dessen, was der Betreiber des Agents erlaubt hat (SP_AGENT_DISCOVERY_CIDRS).",
+    "DISCOVERY_DISABLED": "Die Erkennung ist auf dem Agent nicht aktiviert (SP_AGENT_DISCOVERY_ENABLED).",
+    "DISCOVERY_EGRESS_REFUSED": "Die Egress-Richtlinie des Agents hat den Scan abgelehnt.",
+    "DISCOVERY_INVALID_CHUNK": "Der Agent hat den Abschnitt als ungültig abgelehnt."
+  }
 }

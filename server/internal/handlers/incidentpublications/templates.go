@@ -11,7 +11,7 @@
 // PUBLIC display name, which the page already renders.
 package incidentpublications
 
-import "strings"
+import "github.com/fclairamb/solidping/server/internal/i18n"
 
 // templateSet is one language's worth of public narrative strings. The `%s`
 // slot is always the resource's public display name — never a check slug,
@@ -103,23 +103,18 @@ var publicTemplates = map[string]templateSet{
 
 // defaultLanguage is the fallback for any page whose language is unset or not
 // translated here. English, matching the subscriber-mail templates.
-const defaultLanguage = "en"
+const defaultLanguage = i18n.LangEnglish
 
 // templatesFor resolves a page language ("fr", "fr-FR", "" …) to a template
 // set, falling back to English. Matching is on the primary subtag and is
 // case-insensitive, so "FR-ca" resolves to French rather than silently
 // dropping to English.
 func templatesFor(language *string) templateSet {
-	if language == nil || *language == "" {
+	if language == nil {
 		return publicTemplates[defaultLanguage]
 	}
 
-	lang := strings.ToLower(strings.TrimSpace(*language))
-	if idx := strings.IndexAny(lang, "-_"); idx > 0 {
-		lang = lang[:idx]
-	}
-
-	if set, ok := publicTemplates[lang]; ok {
+	if set, ok := publicTemplates[i18n.Normalize(*language)]; ok {
 		return set
 	}
 

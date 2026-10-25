@@ -56,7 +56,7 @@ func (d *ContainerDefinition) Availability(deps Deps) error {
 // unix:// or tcp:// — and returns the container_discovery job to enqueue. A bad
 // endpoint scheme returns the foundation's DISCOVERY_INVALID_PARAMETERS.
 func (d *ContainerDefinition) BuildJob(
-	_ context.Context, deps Deps, _ string, parameters json.RawMessage,
+	_ context.Context, deps Deps, _, _ string, parameters json.RawMessage,
 ) (string, json.RawMessage, error) {
 	if err := d.Availability(deps); err != nil {
 		return "", nil, err

@@ -56,11 +56,21 @@ func TestScanObeysEgressGuard(t *testing.T) {
 
 	scanners := map[string]func(ctx context.Context, port int) ([]DiscoveredHost, error){
 		"Scan": func(ctx context.Context, port int) ([]DiscoveredHost, error) {
-			return Scan(ctx, &Config{CIDRs: []string{"127.0.0.1/32"}, Ports: []int{port}})
+			res, err := Scan(ctx, &Config{CIDRs: []string{"127.0.0.1/32"}, Ports: []int{port}})
+			if err != nil {
+				return nil, err
+			}
+
+			return res.Hosts, nil
 		},
 		"ScanHosts": func(ctx context.Context, port int) ([]DiscoveredHost, error) {
-			return ScanHosts(ctx, []HostInput{{IP: net.ParseIP("127.0.0.1"), HostnameHint: "box"}},
+			res, err := ScanHosts(ctx, []HostInput{{IP: net.ParseIP("127.0.0.1"), HostnameHint: "box"}},
 				&Config{Ports: []int{port}})
+			if err != nil {
+				return nil, err
+			}
+
+			return res.Hosts, nil
 		},
 	}
 

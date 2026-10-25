@@ -1,7 +1,6 @@
 package uptimereport
 
 import (
-	"fmt"
 	"math"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -18,16 +17,11 @@ const (
 	deltaNeutralColor = "#6b7280"
 )
 
-// noChangeText is the phrasing for a zero delta. It is words rather than
-// "+0.00%" on purpose — a signed zero reads as a measurement, and readers
-// round it into "we improved".
-const noChangeText = "no change"
-
 // availabilityDeltaPrecision is how many decimals an availability movement is
-// reported to, matching formatPct. A movement that rounds away at this
-// precision IS "no change" — reporting "+0.000 pts" would be noise dressed up
-// as a trend.
-const availabilityDeltaPrecision = 3
+// reported to, matching the availability figures (pctDecimals). A movement
+// that rounds away at this precision IS "no change": reporting "+0.000 pts"
+// would be noise dressed up as a trend.
+const availabilityDeltaPrecision = pctDecimals
 
 // responseDeltaPrecision is how many decimals a response-time movement is
 // reported to, in percent.
@@ -56,52 +50,6 @@ func roundTo(value float64, decimals int) float64 {
 	return math.Round(value*factor) / factor
 }
 
-// formatSignedFloat renders a movement with an explicit sign, or the "no
-// change" wording when it rounds to zero.
-func formatSignedFloat(value float64, decimals int, suffix string) string {
-	rounded := roundTo(value, decimals)
-	if rounded == 0 {
-		return noChangeText
-	}
-
-	return fmt.Sprintf("%+.*f%s", decimals, rounded, suffix)
-}
-
-// formatSignedCount renders an integer movement with an explicit sign, or the
-// "no change" wording at zero.
-func formatSignedCount(value int) string {
-	if value == 0 {
-		return noChangeText
-	}
-
-	return fmt.Sprintf("%+d", value)
-}
-
-// formatMillis renders a response time. Below a second it is whole
-// milliseconds (a tenth of a millisecond is noise on a network probe); at or
-// above, seconds with two decimals, because "1483 ms" is harder to read at a
-// glance than "1.48 s".
-func formatMillis(millis float64) string {
-	if millis >= 1000 {
-		return fmt.Sprintf("%.2f s", millis/1000)
-	}
-
-	return fmt.Sprintf("%.0f ms", millis)
-}
-
-// slowThresholdLabel renders uptimebar.SlowSampleThresholdMillis for copy. A
-// whole number of seconds reads as "1 s", not as formatMillis' "1.00 s" — the
-// threshold is a round configured value, not a measurement.
-func slowThresholdLabel() string {
-	const millisPerSecond = 1000.0
-
-	if math.Mod(uptimebar.SlowSampleThresholdMillis, millisPerSecond) == 0 {
-		return fmt.Sprintf("%g s", uptimebar.SlowSampleThresholdMillis/millisPerSecond)
-	}
-
-	return formatMillis(uptimebar.SlowSampleThresholdMillis)
-}
-
 // isDownAllPeriod reports whether a scope measured data and every single probe
 // failed. It is deliberately NOT "availability is low": the guards this drives
 // (suppress the latency block, suppress the response-time delta) exist because
@@ -123,7 +71,8 @@ type trendInputs struct {
 	previousIncidents int
 }
 
-// applyTrend fills the delta fields, or leaves every Show* flag false.
+// applyTrend fills the delta flags and figures, or leaves every Show* flag
+// false.
 //
 // The load-bearing rule: with no previous-period data (a new org, a new check,
 // a schedule's first run) NOTHING is rendered — not "±0.00%", not a gray dash.
@@ -135,19 +84,19 @@ func applyTrend(data *Data, inputs *trendInputs) {
 	}
 
 	data.HasPreviousData = true
-	data.PreviousAvailabilityPct = formatPct(prevPct)
+	data.Figures.PreviousAvailability = prevPct
 	data.PreviousIncidentCount = inputs.previousIncidents
 
 	if curPct, ok := inputs.current.AvailabilityPct(); ok {
 		delta := roundTo(curPct-prevPct, availabilityDeltaPrecision)
 		data.ShowAvailabilityDelta = true
-		data.AvailabilityDeltaText = formatSignedFloat(delta, availabilityDeltaPrecision, " pts")
+		data.Figures.AvailabilityDelta = delta
 		data.AvailabilityDeltaColor = deltaColor(delta)
 	}
 
 	incidentDelta := inputs.currentIncidents - inputs.previousIncidents
 	data.ShowIncidentDelta = true
-	data.IncidentDeltaText = formatSignedCount(incidentDelta)
+	data.Figures.IncidentDelta = incidentDelta
 	// Fewer incidents is better, so the improvement is the negated movement.
 	data.IncidentDeltaColor = deltaColor(float64(-incidentDelta))
 
@@ -175,13 +124,13 @@ func applyResponseDelta(data *Data, inputs *trendInputs) {
 	delta := roundTo((currentAvg-previousAvg)/previousAvg*100, responseDeltaPrecision)
 
 	data.ShowResponseDelta = true
-	data.ResponseDeltaText = formatSignedFloat(delta, responseDeltaPrecision, "%")
+	data.Figures.ResponseDelta = delta
 	// Faster is better, so the improvement is the negated movement.
 	data.ResponseDeltaColor = deltaColor(-delta)
-	data.PreviousAvgResponseTime = formatMillis(previousAvg)
+	data.Figures.PreviousAvgResponse = previousAvg
 }
 
-// applyLatency fills the response-time block, or leaves HasLatency false.
+// applyLatency fills the response-time figures, or leaves HasLatency false.
 //
 // Suppressed for a scope that was down the whole period (see isDownAllPeriod)
 // and for a scope that measured no duration at all. A grid of zeros is worse
@@ -197,50 +146,16 @@ func applyLatency(data *Data, overall uptimebar.BucketStats) {
 	}
 
 	data.HasLatency = true
-	data.AvgResponseTime = formatMillis(avg)
+	data.Figures.AvgResponse = avg
 
 	if low, high, hasRange := overall.DurationRange(); hasRange {
-		data.MinResponseTime = formatMillis(low)
-		data.MaxResponseTime = formatMillis(high)
+		data.Figures.HasResponseRange = true
+		data.Figures.MinResponse = low
+		data.Figures.MaxResponse = high
 	}
 
-	data.SlowLine = slowLine(overall.SlowSamples, overall.SlowPeaks)
-	if overall.SlowPeaks > 0 {
-		data.SlowNote = fmt.Sprintf(
-			"A peak is a rolled-up period whose slowest sample exceeded %s; "+
-				"older data is stored as rollups, which cannot report an exact sample count.",
-			slowThresholdLabel())
-	}
-
-	data.LatencyNote = "Response times include failed samples."
-}
-
-// slowLine phrases the slow-probe stat honestly across tiers: raw rows yield an
-// exact SAMPLE count, rollups can only yield a PEAK count (a period that held
-// at least one slow probe). A window that straddles the retention boundary has
-// both, and the two are never summed into one misleading number.
-func slowLine(samples, peaks int32) string {
-	threshold := slowThresholdLabel()
-
-	switch {
-	case samples > 0 && peaks > 0:
-		return fmt.Sprintf("%s and %s above %s",
-			pluralize(samples, "sample"), pluralize(peaks, "peak"), threshold)
-	case peaks > 0:
-		return fmt.Sprintf("%s above %s", pluralize(peaks, "peak"), threshold)
-	case samples > 0:
-		return fmt.Sprintf("%s above %s", pluralize(samples, "sample"), threshold)
-	default:
-		return "none above " + threshold
-	}
-}
-
-func pluralize(count int32, noun string) string {
-	if count == 1 {
-		return fmt.Sprintf("%d %s", count, noun)
-	}
-
-	return fmt.Sprintf("%d %ss", count, noun)
+	data.Figures.SlowSamples = overall.SlowSamples
+	data.Figures.SlowPeaks = overall.SlowPeaks
 }
 
 // Day-strip colors. Discrete states, not the continuous availabilityTextColor

@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
 )
 
@@ -225,7 +226,9 @@ func (s *Service) SendPagingNudge(ctx context.Context, orgSlug, memberUID string
 	viewModel := map[string]any{"NotificationsURL": link}
 	email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)
 
-	subject, htmlBody, textBody, err := s.formatter.Format("paging-nudge.html", viewModel)
+	loc := recipient.ForUser(user)
+
+	subject, htmlBody, textBody, err := s.formatter.Format("paging-nudge.html", loc, viewModel)
 	if err != nil {
 		return fmt.Errorf("format paging nudge: %w", err)
 	}
@@ -236,6 +239,8 @@ func (s *Service) SendPagingNudge(ctx context.Context, orgSlug, memberUID string
 		HTML:             htmlBody,
 		Text:             textBody,
 		SupportReplyable: email.SupportReplyable("paging-nudge.html"),
+		Locale:           loc.Lang(),
+		Timezone:         loc.Timezone(),
 	}); err != nil {
 		return fmt.Errorf("send paging nudge: %w", err)
 	}

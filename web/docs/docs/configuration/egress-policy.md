@@ -207,6 +207,13 @@ same kinds of targets still are not:
 
 - The Freebox pairing calls made when you connect a box.
 
+The public tools endpoint (`POST /api/v1/tools/run`, off unless
+`SP_TOOLS_ENABLED=true`) does not follow this policy: it always refuses
+non-public targets, even with `SP_EGRESS_ALLOW_PRIVATE=true`, and also refuses
+a name when any of its addresses is non-public. Its DNS lookup asks a public
+resolver (1.1.1.1, then 8.8.8.8), never the system one, and refuses internal
+names (`.local`, `.internal`, `.cluster.local`, single labels...).
+
 ### Discovery
 
 [Network discovery](../features/discovery.md) runs in the API/jobs process
@@ -216,7 +223,11 @@ and follows the same policy:
   (SaaS by default, or `SP_EGRESS_ALLOW_PRIVATE=false`). Starting one answers
   `403 DISCOVERY_NOT_AVAILABLE`, and the source is hidden from the scan form.
   A public-only LAN scan would only turn the server into an internet port
-  scanner.
+  scanner. A LAN scan can still run through a
+  [private location](../features/private-locations.md#scan-the-locations-network):
+  its agent scans its own network, bounded by the agent's own allow-list.
+  Under an enforcing policy, a private location is the only way to run LAN
+  discovery.
 - **Every probed address is checked** before any ICMP echo, TCP connect or
   reverse-DNS lookup, and TCP connects dial through the policy. For Freebox
   discovery this means the hosts the box reports are not probed from a

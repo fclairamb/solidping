@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/slo"
 	"github.com/fclairamb/solidping/server/internal/uptimereport"
 )
@@ -51,10 +52,12 @@ const maxRecipients = 50
 
 // Mailer enqueues one rendered report email. It is an interface so the handler
 // package does not depend on the jobs package (and so tests can assert the
-// exact payload without a queue).
+// exact payload without a queue). hint is the reader's language when address
+// has no account (recipient.Resolver.ForAddress).
 type Mailer interface {
 	SendReport(
-		ctx context.Context, orgUID, recipient string, data *uptimereport.Data, unsubscribeURL string,
+		ctx context.Context, orgUID, address string, hint recipient.Hint, data *uptimereport.Data,
+		unsubscribeURL string,
 	) error
 }
 
@@ -266,22 +269,25 @@ func (s *Service) Delete(ctx context.Context, orgSlug, uid string) error {
 }
 
 // TestSend renders the schedule's report for the period that most recently
-// closed and mails it to a single caller-supplied address.
+// closed and mails it to a single caller-supplied address. hint is the
+// caller's language and timezone, used when address has no account.
 //
 // It deliberately does NOT fan out to the schedule's recipients: "let me see
 // what this looks like" must never be a button that mails forty people.
-func (s *Service) TestSend(ctx context.Context, orgSlug, uid, recipient string, now time.Time) error {
+func (s *Service) TestSend(
+	ctx context.Context, orgSlug, uid, address string, hint recipient.Hint, now time.Time,
+) error {
 	org, row, err := s.resolve(ctx, orgSlug, uid)
 	if err != nil {
 		return err
 	}
 
-	recipient = strings.TrimSpace(recipient)
-	if recipient == "" {
+	address = strings.TrimSpace(address)
+	if address == "" {
 		return ErrNoTestRecipient
 	}
 
-	if _, parseErr := mail.ParseAddress(recipient); parseErr != nil {
+	if _, parseErr := mail.ParseAddress(address); parseErr != nil {
 		return ErrInvalidRecipient
 	}
 
@@ -293,7 +299,7 @@ func (s *Service) TestSend(ctx context.Context, orgSlug, uid, recipient string, 
 	// unsubscribe from a digest they are configuring — but honoring the
 	// suppression list here too means there is exactly one code path that can
 	// mail a suppressed address, and it is closed.
-	suppressed, err := s.db.IsEmailSuppressed(ctx, org.UID, recipient, "")
+	suppressed, err := s.db.IsEmailSuppressed(ctx, org.UID, address, "")
 	if err != nil {
 		return fmt.Errorf("check suppression: %w", err)
 	}
@@ -312,9 +318,9 @@ func (s *Service) TestSend(ctx context.Context, orgSlug, uid, recipient string, 
 	// Even a test send carries the unsubscribe link: the whole point is to see
 	// what the real digest looks like, and a preview missing the footer would
 	// hide exactly the part an operator most needs to check.
-	unsubscribeURL := uptimereport.UnsubscribeURL(s.cfg, org.Slug, recipient, now)
+	unsubscribeURL := uptimereport.UnsubscribeURL(s.cfg, org.Slug, address, now)
 
-	return s.mailer.SendReport(ctx, org.UID, recipient, data, unsubscribeURL)
+	return s.mailer.SendReport(ctx, org.UID, address, hint, data, unsubscribeURL)
 }
 
 func (s *Service) resolve(

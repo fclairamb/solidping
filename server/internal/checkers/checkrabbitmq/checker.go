@@ -350,6 +350,39 @@ type nodeInfo struct {
 	DiskFreeAlarm bool   `json:"disk_free_alarm"`
 }
 
+// managementMaxResponseBody caps how much of a management API answer the
+// checker reads. A real /api/nodes or alarms answer is a few KiB per node;
+// the host is user-chosen, so an uncapped read lets it fill the server's
+// memory (spec 2026-10-20-01).
+const managementMaxResponseBody = 1 << 20
+
+// managementErrorSnippet caps how much of an error body goes into a result.
+const managementErrorSnippet = 512
+
+// errManagementResponseTooLarge is returned when an answer goes over
+// managementMaxResponseBody: parsing a truncated body would mislead.
+var errManagementResponseTooLarge = errors.New("management API response too large")
+
+// readManagementBody reads at most managementMaxResponseBody bytes. Over the
+// cap it returns the truncated body with errManagementResponseTooLarge.
+func readManagementBody(r io.Reader) ([]byte, error) {
+	body, _ := io.ReadAll(io.LimitReader(r, managementMaxResponseBody+1))
+	if len(body) > managementMaxResponseBody {
+		return body[:managementMaxResponseBody], errManagementResponseTooLarge
+	}
+
+	return body, nil
+}
+
+// managementSnippet returns body short enough for an error message.
+func managementSnippet(body []byte) string {
+	if len(body) <= managementErrorSnippet {
+		return string(body)
+	}
+
+	return string(body[:managementErrorSnippet]) + "…[truncated]"
+}
+
 // errNodesRequestFailed wraps a non-200 /api/nodes response into a static,
 // wrapped error (err113) while still naming the actual status/body.
 var errNodesRequestFailed = errors.New("management API request failed")
@@ -380,10 +413,14 @@ func fetchNodes(ctx context.Context, cfg *RabbitMQConfig, mgmtPort int) ([]nodeI
 
 	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, readErr := readManagementBody(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: status %d: %s", errNodesRequestFailed, resp.StatusCode, string(body))
+		return nil, fmt.Errorf("%w: status %d: %s", errNodesRequestFailed, resp.StatusCode, managementSnippet(body))
+	}
+
+	if readErr != nil {
+		return nil, fmt.Errorf("/api/nodes: %w", readErr)
 	}
 
 	var nodes []nodeInfo
@@ -649,14 +686,18 @@ func (c *RabbitMQChecker) doManagementRequest(
 
 	metrics["connection_time_ms"] = durationMs(time.Since(start))
 
-	body, _ := io.ReadAll(resp.Body)
+	body, readErr := readManagementBody(resp.Body)
 	metrics["total_time_ms"] = durationMs(time.Since(start))
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK || readErr != nil {
 		output["status_code"] = resp.StatusCode
 		output[checkerdef.OutputKeyError] = fmt.Sprintf(
-			"management API returned status %d: %s", resp.StatusCode, string(body),
+			"management API returned status %d: %s", resp.StatusCode, managementSnippet(body),
 		)
+
+		if resp.StatusCode == http.StatusOK {
+			output[checkerdef.OutputKeyError] = readErr.Error()
+		}
 
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusDown,

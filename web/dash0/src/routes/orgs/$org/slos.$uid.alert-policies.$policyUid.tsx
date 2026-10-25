@@ -104,7 +104,7 @@ function PolicyForm({
       />
 
       <Card>
-        <CardContent className="space-y-5 pt-6">
+        <CardContent className="space-y-5 pt-[var(--card-pad,1.5rem)]">
           <div className="flex items-start justify-between gap-4 rounded-md border p-3">
             <div className="min-w-0">
               <Label htmlFor="policy-enabled">{t("slos:alerting.enable")}</Label>
@@ -120,7 +120,7 @@ function PolicyForm({
             />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="policy-long">{t("slos:alerting.longWindow")}</Label>
               <Input
@@ -155,7 +155,7 @@ function PolicyForm({
             </p>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="policy-threshold">{t("slos:alerting.threshold")}</Label>
               <Input

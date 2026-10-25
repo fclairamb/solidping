@@ -1119,7 +1119,7 @@ func TestFastLaneFloorInvariant(t *testing.T) {
 	// Shutdown; let in-flight sleeps drain.
 	cancel()
 	select {
-	case <-runDone:
+	case <-runDone: //nolint:errcheck // exit error irrelevant here
 	case <-time.After(10 * time.Second):
 		t.Fatal("worker did not shut down")
 	}

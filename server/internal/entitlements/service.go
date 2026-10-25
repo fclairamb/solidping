@@ -118,6 +118,16 @@ func WithTelegramRunawayCap(perHour int) Option {
 	}
 }
 
+// WithClock overrides the service's clock, which decides the month a counter
+// or a cap notice belongs to. For tests outside this package; nil is ignored.
+func WithClock(now func() time.Time) Option {
+	return func(s *Service) {
+		if now != nil {
+			s.now = now
+		}
+	}
+}
+
 // NewService builds an entitlements service with the given defaults.
 // staleAfter of zero disables stale fallback (self-hosted default).
 //
@@ -313,6 +323,31 @@ func (s *Service) CheckMembership(ctx context.Context, orgUID string) error {
 //
 // nil cap = unlimited (skip lookup, no allocation).
 func (s *Service) ReserveCheckExecution(ctx context.Context, orgUID string) error {
+	return s.reserveCheckExecution(ctx, orgUID, false)
+}
+
+// ReserveDeferredCheckExecution is ReserveCheckExecution for a job the gate
+// already turned away at least once (models.CheckJob.RateLimitDeferred). On a
+// drained bucket it may borrow: the bucket goes into debt, down to one burst
+// below zero, and the next on-time arrivals of the org are deferred instead.
+//
+// Without it a long-period check starves forever: its one attempt per period
+// lands on the same UID-hash second, and when frequent siblings drain the
+// bucket just before that second, the claim priority it earned is worth
+// nothing (prod 2026-10-18, two hourly checks with zero results for 27 hours).
+// The debt is repaid by refill, so the org's long-run rate stays at the cap.
+func (s *Service) ReserveDeferredCheckExecution(ctx context.Context, orgUID string) error {
+	return s.reserveCheckExecution(ctx, orgUID, true)
+}
+
+// ReserveJobExecution is the rate gate of a claimed job: it borrows
+// (ReserveDeferredCheckExecution) when the gate deferred the job last time,
+// and reserves normally otherwise.
+func (s *Service) ReserveJobExecution(ctx context.Context, job *models.CheckJob) error {
+	return s.reserveCheckExecution(ctx, job.OrganizationUID, job.RateLimitDeferred())
+}
+
+func (s *Service) reserveCheckExecution(ctx context.Context, orgUID string, borrow bool) error {
 	resolved, err := s.Resolve(ctx, orgUID)
 	if err != nil {
 		return fmt.Errorf("resolve entitlements: %w", err)
@@ -331,7 +366,7 @@ func (s *Service) ReserveCheckExecution(ctx context.Context, orgUID string) erro
 	}
 
 	bucket := s.limiterFor(orgUID, limit)
-	if !bucket.allow(s.now()) {
+	if !bucket.allow(s.now(), borrow) {
 		return &QuotaError{
 			LimitName:    "MaxChecksPerMinute",
 			Limit:        limit,
@@ -602,6 +637,9 @@ func nullFillLimits(dst, src *Limits) {
 	if src.MaxAITokensPerDay != nil {
 		dst.MaxAITokensPerDay = src.MaxAITokensPerDay
 	}
+	if src.MaxDiscoveryAgentAddressesPerDay != nil {
+		dst.MaxDiscoveryAgentAddressesPerDay = src.MaxDiscoveryAgentAddressesPerDay
+	}
 	if src.WhiteLabel != nil {
 		dst.WhiteLabel = src.WhiteLabel
 	}
@@ -773,14 +811,15 @@ func (b *tokenBucket) refillLocked(now time.Time) {
 }
 
 // allow consumes one token if available. Returns false when the bucket
-// is empty.
-func (b *tokenBucket) allow(now time.Time) bool {
+// is empty. With borrow, it may also take the bucket into debt, down to
+// -capacity: the debt bounds the overshoot to one extra burst.
+func (b *tokenBucket) allow(now time.Time, borrow bool) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	b.refillLocked(now)
 
-	if b.tokens >= 1 {
+	if b.tokens >= 1 || (borrow && b.tokens > -float64(b.capacity)) {
 		b.tokens--
 
 		return true

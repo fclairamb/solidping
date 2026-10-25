@@ -11,6 +11,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkvnc"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // maxVNCActions caps the session methods one execution may call, a budget
@@ -80,6 +81,10 @@ func (r *jsRuntime) openVNCSession(opts map[string]any) (*goja.Object, map[strin
 	parsed := parseVNCConnectOptions(opts)
 	if parsed.host == "" {
 		return nil, nil, errVNCHostRequired
+	}
+
+	if err := egress.HostAllowlistFrom(r.execCtx).Check(parsed.host); err != nil {
+		return nil, vncFailuref("%s", err.Error()), nil
 	}
 
 	// Counted BEFORE anything is dialed: a refused connect still spends its unit.

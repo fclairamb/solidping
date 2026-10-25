@@ -123,6 +123,7 @@ func (s *SMTPSender) buildMessage(msg *Message) (*mail.Msg, error) {
 	s.setBody(mailMsg, msg)
 	setListUnsubscribeHeaders(mailMsg, msg)
 	setAutomationHeaders(mailMsg, msg)
+	s.setThreadHeaders(mailMsg, msg)
 
 	return mailMsg, nil
 }
@@ -148,6 +149,24 @@ func setAutomationHeaders(mailMsg *mail.Msg, msg *Message) {
 	if msg.SupportMirror {
 		mailMsg.SetGenHeader(HeaderSupportMirror, "1")
 	}
+}
+
+// setThreadHeaders points the message at a conversation root that is never
+// sent itself: the id only has to be stable and shared by every message of the
+// thread.
+func (s *SMTPSender) setThreadHeaders(mailMsg *mail.Msg, msg *Message) {
+	if msg.ThreadID == "" {
+		return
+	}
+
+	domain := "solidping.invalid"
+	if at := strings.LastIndex(s.config.From, "@"); at >= 0 && at < len(s.config.From)-1 {
+		domain = s.config.From[at+1:]
+	}
+
+	root := "<" + msg.ThreadID + "@" + domain + ">"
+	mailMsg.SetGenHeader(mail.HeaderInReplyTo, root)
+	mailMsg.SetGenHeader(mail.HeaderReferences, root)
 }
 
 // setListUnsubscribeHeaders sets RFC 2369 List-Unsubscribe and RFC 8058

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://solidping.io/schemas/checks/vendor-status.json",
+  "properties": {
+    "url": {
+      "type": "string"
+    },
+    "components": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "provider": {
+      "type": "string"
+    }
+  },
+  "type": "object",
+  "required": [
+    "url"
+  ],
+  "title": "vendor-status check config",
+  "description": "Alert when a vendor's status page (GitHub, Cloudflare, OpenAI...) reports an outage.\n\nDESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected.\n\nurl is the status page root (https only). A trailing slash and an /api/v2/... suffix are stripped. Only pages serving the Atlassian Statuspage v2 summary (/api/v2/summary.json) are supported.\n\ncomponents lists component ids; empty watches the whole page. A listed id that the page no longer has makes the check error.",
+  "x-solidping-check-type": "vendor-status",
+  "x-solidping-notes": [
+    "url is the status page root (https only). A trailing slash and an /api/v2/... suffix are stripped. Only pages serving the Atlassian Statuspage v2 summary (/api/v2/summary.json) are supported.",
+    "components lists component ids; empty watches the whole page. A listed id that the page no longer has makes the check error."
+  ],
+  "x-solidping-secret-fields": [],
+  "x-solidping-validation": {
+    "authority": "go",
+    "command": "sp checks validate <manifest>",
+    "note": "DESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected."
+  }
+}

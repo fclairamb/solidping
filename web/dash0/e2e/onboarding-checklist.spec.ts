@@ -384,8 +384,17 @@ test.describe("Getting-started checklist", () => {
     await openDashboard(page, orgSlug);
     await expect(page.getByTestId("onboarding-checklist")).toBeVisible();
 
+    // The card hides from local state, so its absence does not prove the
+    // write landed. Wait for the PUT before any reload can abort it.
+    const dismissSaved = page.waitForResponse(
+      (r) =>
+        r.url().includes("/api/v1/me/ui-state/") &&
+        r.request().method() === "PUT" &&
+        r.ok(),
+    );
     await page.getByTestId("onboarding-dismiss").click();
     await expect(page.getByTestId("onboarding-checklist")).toHaveCount(0);
+    await dismissSaved;
 
     // A full reload rebuilds the page from the server's answer. The old
     // localStorage banner would also have survived this, which is why the

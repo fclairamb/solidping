@@ -20,6 +20,10 @@ const (
 	// KeyHideBranding is the white-label opt-in: no logo, and no SolidPing
 	// attribution, anywhere in the message.
 	KeyHideBranding = "HideBranding"
+	// KeyBrandIsSender says the mail speaks for BrandName rather than for
+	// SolidPing (status-page subscriber mail). Without a logo, the header then
+	// shows BrandName as text instead of the SolidPing logo.
+	KeyBrandIsSender = "BrandIsSender"
 )
 
 // ApplyOrgBranding stamps an organization's branding onto an email view model.
@@ -64,6 +68,7 @@ func ApplyStatusPageBranding(viewModel map[string]any, pageName string, logoURL 
 
 	viewModel[KeyBrandName] = pageName
 	viewModel[KeyHideBranding] = hideBranding
+	viewModel[KeyBrandIsSender] = true
 
 	if hideBranding {
 		viewModel[KeyOrgLogoURL] = ""

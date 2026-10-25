@@ -19,6 +19,7 @@ Global user accounts with authentication.
 | totp_secret | text | Base32-encoded TOTP secret for 2FA (NULL if not configured) |
 | totp_enabled | boolean | Whether TOTP two-factor authentication is active |
 | totp_recovery_codes | jsonb | JSON array of hashed one-time recovery codes for 2FA bypass |
+| preferences | jsonb | `{"locale": "en\|fr\|de\|es", "timezone": "<IANA zone>"}`, each key optional: the language and timezone of the user's emails (spec 2026-10-21-01, migration `030_v0_41_0`). NULL when never set (English, UTC). Validated in Go (`internal/i18n`), no CHECK. |
 
 **Foreign Keys**: None (global entity)
 

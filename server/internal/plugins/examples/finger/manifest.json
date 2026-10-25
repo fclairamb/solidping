@@ -1,0 +1,6 @@
+{
+  "name": "finger",
+  "protocol": "http",
+  "url": "http://127.0.0.1:7979",
+  "secretEnv": "SP_PLUGIN_FINGER_KEYS"
+}

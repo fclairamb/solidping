@@ -11,24 +11,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/agentauth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
-
-// Signed-request headers. Identical to the agent WebSocket reconnect headers —
-// same scheme, same skew, same replay guard — because an agent that can prove
-// it is itself for a socket upgrade can prove it the same way for an upload.
-// Reusing the scheme is the point: no second credential, no bearer token, and
-// no S3 credentials on an agent, ever.
-const (
-	headerAgentUID  = "X-Sp-Agent-Uid"
-	headerTimestamp = "X-Sp-Timestamp"
-	headerNonce     = "X-Sp-Nonce"
-	headerSignature = "X-Sp-Signature"
-)
-
-// nonceRetention mirrors agentws: twice the accepted clock skew, so a captured
-// signature cannot be replayed anywhere inside the window it is valid in.
-const nonceRetention = 2 * agents.DefaultClockSkew
 
 // uploadRateWindow / uploadRateBurst bound how often one agent may upload.
 //
@@ -52,7 +37,7 @@ type Handler struct {
 	base.HandlerBase
 	svc        *Service
 	dbService  db.Service
-	nonces     agents.NonceGuard
+	auth       *agentauth.Authenticator
 	authorizer *AuthorizerRegistry
 	limiter    *agentRateLimiter
 	logger     *slog.Logger
@@ -69,7 +54,7 @@ func NewHandler(svc *Service, dbService db.Service, cfg *config.Config) *Handler
 		HandlerBase: base.NewHandlerBase(cfg),
 		svc:         svc,
 		dbService:   dbService,
-		nonces:      agents.NewStoredNonceGuard(dbService, db.ErrAgentNonceReplayed),
+		auth:        agentauth.New(dbService, agents.NewStoredNonceGuard(dbService, db.ErrAgentNonceReplayed)),
 		authorizer:  registry,
 		limiter:     newAgentRateLimiter(uploadRateWindow, uploadRateBurst),
 		logger:      slog.Default().With("component", "agent_attachments"),
@@ -79,7 +64,7 @@ func NewHandler(svc *Service, dbService db.Service, cfg *config.Config) *Handler
 // SetNonceGuard swaps the replay guard. For tests and for embeddings with no
 // `agent_nonces` table — same escape hatch agentws exposes.
 func (h *Handler) SetNonceGuard(guard agents.NonceGuard) {
-	h.nonces = guard
+	h.auth.SetNonceGuard(guard)
 }
 
 // Registry exposes the authorizer registry so a future attachment kind can
@@ -102,7 +87,7 @@ type UploadResponse struct {
 // topic's authorizer who owns it (which is where the org comes from), and only
 // then read and sniff the body.
 func (h *Handler) Upload(writer http.ResponseWriter, req *http.Request) error {
-	agent, authErr := h.authenticate(req)
+	agent, authErr := h.auth.Authenticate(req)
 	if authErr != nil {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken,
 			"Invalid agent signature")
@@ -235,55 +220,6 @@ func rawTopic(topic ParsedTopic) string {
 // name says" assumption spec 2026-09-13-01 removed.
 func attachmentName(topic ParsedTopic) string {
 	return topic.Entity + "-" + topic.EntityUID + "-" + topic.Kind
-}
-
-// errUnauthenticated is the single message every authentication failure
-// produces. Distinguishing "unknown agent" from "bad signature" would leak
-// which agent uids exist.
-var errUnauthenticated = errors.New("invalid agent signature")
-
-// authenticate verifies the signed headers exactly the way the WS reconnect
-// does: known active agent, timestamp inside the skew, nonce not seen before
-// (cluster-wide, DB-backed), Ed25519 signature over method|path|timestamp|nonce.
-func (h *Handler) authenticate(req *http.Request) (*models.Agent, error) {
-	agentUID := req.Header.Get(headerAgentUID)
-	timestamp := req.Header.Get(headerTimestamp)
-	nonce := req.Header.Get(headerNonce)
-	signature := req.Header.Get(headerSignature)
-
-	if agentUID == "" || timestamp == "" || nonce == "" || signature == "" {
-		return nil, errUnauthenticated
-	}
-
-	agent, err := h.dbService.GetAgent(req.Context(), agentUID)
-	if err != nil || agent == nil {
-		return nil, errUnauthenticated
-	}
-
-	if agent.Status != models.AgentStatusActive {
-		return nil, errUnauthenticated
-	}
-
-	if tsErr := agents.ValidateTimestamp(timestamp, time.Now(), agents.DefaultClockSkew); tsErr != nil {
-		return nil, errUnauthenticated
-	}
-
-	// Replay guard BEFORE the signature check, same order as agentws: a valid
-	// signature presented twice must fail the second time, and the guard is
-	// what makes that true. Fails closed — a store error rejects the upload.
-	if nonceErr := h.nonces.CheckAndStore(
-		req.Context(), agent.UID, nonce, time.Now(), nonceRetention,
-	); nonceErr != nil {
-		return nil, errUnauthenticated
-	}
-
-	if sigErr := agents.VerifySignature(
-		agent.Ed25519PublicKey, req.Method, req.URL.Path, timestamp, nonce, signature,
-	); sigErr != nil {
-		return nil, errUnauthenticated
-	}
-
-	return agent, nil
 }
 
 // agentRateLimiter is a per-agent fixed-window counter. Fixed window rather

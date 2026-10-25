@@ -25,6 +25,10 @@ const schemaCacheControl = "public, max-age=86400"
 // encode in `x-solidping-notes`. Use `POST /orgs/:org/checks/validate` (or
 // `sp checks validate`) to find out whether a config is actually accepted.
 //
+// A plugin type (spec 2026-10-17-05) is served the same way, from its
+// manifest schema plus an `x-solidping-plugin` key. That one IS the validator
+// of its type.
+//
 // Public because it carries no organization data — it describes this build's
 // check types, exactly like `GET /api/v1/check-types`.
 func (h *Handler) GetConfigSchema(writer http.ResponseWriter, req *http.Request) error {

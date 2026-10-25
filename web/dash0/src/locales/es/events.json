@@ -88,7 +88,10 @@
     "auth.impersonation_started": "Suplantación iniciada",
     "auth.email_changed": "Correo electrónico cambiado",
     "agent.connected": "Agente conectado",
-    "agent.disconnected": "Agente desconectado"
+    "agent.disconnected": "Agente desconectado",
+    "discovery.scan_started": "Escaneo de descubrimiento iniciado",
+    "discovery.scan_canceled": "Escaneo de descubrimiento cancelado",
+    "discovery.chunk_refused": "Lote de descubrimiento rechazado"
   },
   "descriptions": {
     "org.activation.signup_completed": "Tu organización está configurada y lista para empezar.",
@@ -148,6 +151,7 @@
       "status_page": "Páginas de estado",
       "maintenance_window": "Ventanas de mantenimiento",
       "config": "Configuración como código",
+      "discovery": "Descubrimiento",
       "check": "Comprobaciones",
       "incident": "Incidencias",
       "org": "Organización",

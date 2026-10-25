@@ -15,32 +15,12 @@ them up). Full details: [`web/dash0/showcase/README.md`](../../web/dash0/showcas
 Run it with:
 
 ```bash
-# Two nodes, one throwaway Postgres database, two regions — the recipe the
-# committed cut uses, because a single node hides the region picker.
-PGPASSWORD=postgres psql -h localhost -p 55432 -U postgres \
-  -c "DROP DATABASE IF EXISTS solidping_showcase" \
-  -c "CREATE DATABASE solidping_showcase"
-export SP_DB_TYPE=postgres
-export SP_DB_URL='postgres://postgres:postgres@localhost:55432/solidping_showcase?sslmode=disable'
-PORT=4321 SP_NODE_NAME=showcase-eu SP_NODE_REGION=eu-west \
-  SP_REGIONS='[{"slug":"eu-west","emoji":"🇪🇺","name":"EU West"},{"slug":"us-east","emoji":"🇺🇸","name":"US East"}]' \
-  ./solidping serve &
-PORT=4322 SP_NODE_NAME=showcase-us SP_NODE_ROLE=checks SP_NODE_REGION=us-east \
-  ./solidping serve &
-E2E_BASE_URL=http://localhost:4321/d/ make showcase
-
-# Single node, SQLite — the fallback. Faster, but NO regions beat.
+# Single node, SQLite: what a plain `docker run` starts, so one region and no
+# region picker on camera.
 rm -rf /tmp/showcase-db && mkdir -p /tmp/showcase-db
 PORT=4321 SP_DB_TYPE=sqlite SP_DB_DIR=/tmp/showcase-db ./solidping serve &
 E2E_BASE_URL=http://localhost:4321/d/ make showcase
 ```
-
-**Regions come from `SP_REGIONS`, not from the workers.** It is the JSON seed
-for the `regions` system parameter (`server/internal/app/regions_seed.go`); a
-worker's `SP_NODE_REGION` only *picks* one of those definitions, and a worker
-whose region is not defined refuses to start. `SP_NODE_NAME` is not optional
-either: worker identity is derived from the hostname, so two nodes on one
-machine would otherwise register as the same worker.
 
 **The database must be genuinely fresh.** Since spec 2026-09-16-05 the take
 films the forced password rotation, which only a never-used default-mode
@@ -126,7 +106,7 @@ regeneration can come later, once the recorded flows have proven stable.
 2. A Playwright recording (`video: "on"`, fixed 1280×800 viewport, light theme)
    of **setup to first result**: the first sign-in with the seeded credentials,
    the **forced password rotation** a fresh install imposes, then checks list →
-   New check → name + URL → interval → regions → save → check detail page — no
+   New check → name + URL → interval → save → check detail page — no
    check-type step, because the form already opens on HTTP and picking it filmed
    a no-op — driven with a painted cursor, eased travel and character-by-character
    typing rather than `fill()` and bare clicks.
@@ -136,14 +116,6 @@ regeneration can come later, once the recorded flows have proven stable.
    > is why the first screen every new install shows had never been on camera.
    > `uiFirstLogin()` now drives it through the real form, and `apiLogin()` /
    > `ensureCleanShowcaseOrg()` only run afterwards.
-
-   > **The regions beat is conditional.** `check-form.tsx` renders the region
-   > picker only when `availableRegions.length > 1`, and the showcase spec
-   > gates the beat — cue included — on `regionCount > 0`. A single-node
-   > side-car offers exactly one region, so the run silently omits the step;
-   > `postprocess.ts` warns and writes "First results" instead of "Results from
-   > two regions", so the caption can never claim something the footage does not
-   > show. The two-node recipe above is what the committed cut used.
 3. Named still frames captured during the same run (at 2×, published at 1×).
 4. Post-processing: head/tail trimmed, a **camera move** applied from the
    recording's cue list, a **segment plan** applied (below), the two segments
@@ -284,64 +256,63 @@ from the binaries. Update this block whenever `make showcase` is re-run and the
 output is committed. Sizes are KiB/MiB — the units `postprocess.ts` prints, so
 they match the run log line for line.
 
-- **Date:** 2026-09-25 — re-cut for the electric-blue identity and the
-  always-dark navy sidebar (specs `2026-09-24-01` / `2026-09-24-02`), with the
-  detail-page dwell extended from one check period to four. The previous cut
-  (2026-09-16, spec `2026-09-16-05-showcase-setup-video`) was the first to film
-  the setup itself and the first with a regions beat
-- **App version on camera:** `v0.32.0-7-ged2c0f7b4` (sidebar footer of the
-  stills)
-- **Side-car used:** the **two-node Postgres** recipe above — node A
-  (`api,jobs,checks`, `eu-west`, :4321) and node B (`checks`, `us-east`) sharing
-  a throwaway `solidping_showcase` database on the dev Postgres (:55432), with
-  `SP_REGIONS` declaring 🇪🇺 EU West and 🇺🇸 US East. That is what makes the
-  region picker render and puts two series on the detail page's chart
+- **Date:** 2026-10-18 — re-cut so the take shows what a plain `docker run`
+  gives you: **one region, no region picker**. The 2026-09-25 cut had been
+  filmed against a two-node, two-region side-car and advertised "two regions",
+  which a fresh install never shows. Earlier cuts: 2026-09-25 (electric-blue
+  identity, always-dark sidebar, four-period dwell) and 2026-09-16 (spec
+  `2026-09-16-05-showcase-setup-video`, the first to film the setup itself)
+- **App version on camera:** `v0.38.6-19-g3a6100892` (sidebar footer of the
+  stills). The binary was built from a tree with uncommitted showcase edits, so
+  the version was pinned with `make build-backend VERSION=0.38.6-19-g3a6100892`
+  to avoid a `-dirty` suffix on camera
+- **Side-car used:** the single-node SQLite recipe above, on :4321 from a
+  binary built from the working tree (`make build-dash0 copy-dash0
+  build-backend`). `GET /api/v1/regions` returned the one `default` region
 - **Terminal segment:** `docker run -p 4000:4000 -v solidping-data:/data
-  ghcr.io/fclairamb/solidping`, held past `Starting HTTP server`. Reused as-is
-  from the 2026-09-16 take (`make showcase-cut` path: the terminal has no
-  dashboard design on it). Filmed against
-  an image **built from the working tree** and tagged with the published name
-  (`SHOWCASE_DOCKER_PULL=0`): `:latest` is still amd64-only, and under emulation
-  on Apple silicon it boots too slowly for the hold and prints an emulation-only
+  ghcr.io/fclairamb/solidping`, held past `Starting HTTP server`. **Not
+  re-filmed:** reused from the 2026-09-16 take (the segment has no dashboard
+  and no regions on it), copied into `showcase/output/terminal/` before running
+  `postprocess.ts`. `terminal.ts` refuses to run while :4000 is held, and a
+  `make dev` loop was on it. It was filmed against an image **built from the
+  working tree** and tagged with the published name
+  (`SHOWCASE_DOCKER_PULL=0`): `:latest` was amd64-only, and under emulation on
+  Apple silicon it boots too slowly for the hold and prints an emulation-only
   "slow SQL query" wall of DDL on camera. Re-film against the published image
   once the arm64 build ships
 - **Filmed check:** `GET https://solidping.io/api/mgmt/health`, named
-  "Production API", at a **10-second** interval from **both** regions
+  "Production API", at a **10-second** interval, from the single region
 - **Interval decision:** 5 seconds was asked for first and is **not on offer** —
   `globalMinPeriodSeconds` in `check-form.tsx` is 10, independent of the org's
   rate entitlement. So the four-period dwell is ~43 s and the time-lapse below
   applies
-- **Time-lapse decision:** the 43.6 s between the `detail-page` and `chart` cues
-  is published at **4×** (~10.9 s) with "4× speed" burned into the top-right
-  corner for exactly that stretch. One **cut** (untagged, because nothing is on
-  screen during it) removes the post-rotation reload; the other three were
-  offered and declined by the plan as too short (0.86 s, 1.11 s and 0.24 s),
+- **Time-lapse decision:** the 43.46 s between the `detail-page` and `chart` cues
+  is published at **4×** with "4× speed" burned into the top-right corner for
+  exactly that stretch. One **cut** (untagged, because nothing is on screen
+  during it) removes the post-rotation reload (1.71 s); the other three were
+  offered and declined by the plan as too short (0.88 s, 0.79 s and 0.02 s),
   which is the machinery working as intended
-- **Video:** 46.68 s, 1280×800, 25 fps, 1167 frames, with the terminal
-  segment at 8.52 s of it. Longer than the 37.9 s cut it replaces because of the
-  four-period dwell
-- **Encodes:** `setup-to-first-result.mp4` — AV1 (`libsvtav1`), 3 512 892 B
-  (3.35 MB); `setup-to-first-result.h264.mp4` — H.264 (`libx264`), 2 245 909 B
-  (2.14 MB)
+- **Video:** 44.80 s, 1280×800, 25 fps, 1120 frames, with the terminal
+  segment at 8.52 s of it. Captions: "Run it", "First login", "First check",
+  "First results"
+- **Encodes:** `setup-to-first-result.mp4` — AV1 (`libsvtav1`), 3 484 430 B
+  (3.32 MB); `setup-to-first-result.h264.mp4` — H.264 (`libx264`), 2 148 673 B
+  (2.05 MB)
 - **README video:** the H.264 cut, uploaded as a GitHub attachment rather than
   committed. **Not yet re-uploaded for this cut** — the README still plays the
-  2026-09-16 one until someone follows "The README video is uploaded by hand". It replaced a
-  2 459 187 B (2.35 MB) GIF that showed neither the terminal nor the camera move
-- **Stills, published (1×, 1280×800, committed):** `01-checks-list.png` 248 KB,
-  `02-check-form-filled.png` 180 KB, `03-check-detail.png` 244 KB
-- **Stills, originals (2×, 2560×1600, git-ignored scratch):** 420 KB / 278 KB /
-  412 KB — still above the ~250 KB bar that keeps the 1× versions published
-- **16 cue points, max zoom 1.50×.** Two beats are deliberately absent: there is
-  **no check-type step** (the form opens on HTTP, so picking it filmed "HTTP" →
-  "HTTP") and **no push-in on the New check button** (that click changes route,
-  and a zoom that snaps straight back out for the navigation reads as a glitch)
-- **The regions beat is present** — the form shows both regions ticked with an
-  automatic 5 s spread, and the detail page's chart plots EU West and US East as
-  separate series with a per-region selector above them. This is the first
-  committed cut where that is true
+  previous one, which says "two regions" in its caption, until someone follows
+  "Refreshing the README video"
+- **Stills, published (1×, 1280×800, committed):** `01-checks-list.png` 210 KB,
+  `02-check-form-filled.png` 173 KB, `03-check-detail.png` 231 KB
+- **Stills, originals (2×, ignored scratch):** 328 KB / 274 KB / 353 KB
+- **15 cue points, max zoom 1.50×.** Three beats are deliberately absent: there
+  is **no check-type step** (the form opens on HTTP, so picking it filmed
+  "HTTP" → "HTTP"), **no regions step** (a single node offers one region, so
+  the form has no picker) and **no push-in on the New check button** (that
+  click changes route, and a zoom that snaps straight back out for the
+  navigation reads as a glitch)
 - **The detail page is held for four full intervals plus 2.5 s, and until four
-  results per region have landed** (6 EU West and 5 US East points on the
-  committed still).** The dwell is what makes the chart meaningful: waiting
+  results have landed.** The dwell is what makes the chart meaningful: waiting
   only for a second result is not enough, because the scheduler aligns runs to
   wall-clock boundaries, so the tick after the creation run can land a second or
   two later and the chart then plots two points across a two-second window

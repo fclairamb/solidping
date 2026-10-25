@@ -40,9 +40,9 @@ import {
  *    below (`apiLogin`, `ensureCleanShowcaseOrg`) only run once the account is
  *    already through the rotation screen on camera;
  * 2. creating an HTTP check, the flow the old cut had, unchanged;
- * 3. the first results arriving — from **two regions** when the server offers
- *    more than one, which is the beat the previous cut could never film
- *    because the recommended side-car was a single node.
+ * 3. the first results arriving. The take is filmed against a single node,
+ *    exactly what the `docker run` in the opening segment starts, so it shows
+ *    one region and no region picker.
  *
  * ## The choreography
  *
@@ -206,35 +206,13 @@ test("setup to first result", async ({ page }, testInfo) => {
     console.log(`showcase: filming a ${chosenInterval?.label} interval`);
     await beat(page, 450);
 
-    // 8. Regions — tick every offered region so the check runs from everywhere.
-    //    The picker only renders when the server offers more than one region
-    //    (`availableRegions.length > 1` in check-form.tsx), which is what the
-    //    two-node side-car recipe in showcase/README.md exists to arrange.
-    const regions = page.locator('[data-testid^="region-option-"]');
-    const regionCount = await regions.count();
-    console.log(`showcase: the form offers ${regionCount} region option(s)`);
-    if (regionCount > 0) {
-      await focus(page, [regions.first(), regions.last()], {
-        zoom: 1.3,
-        label: "regions",
-      });
-    }
-    for (let i = 0; i < regionCount; i++) {
-      const region = regions.nth(i);
-      const box = region.getByRole("checkbox");
-      if ((await box.getAttribute("data-state")) !== "checked") {
-        await clickOn(page, region, { durationMs: 260 });
-        await beat(page, 260);
-      }
-    }
-
-    // 9. Full frame for the still and for the save — never zoom across a route
+    // 8. Full frame for the still and for the save — never zoom across a route
     //    change.
     await focus(page, null, { label: "form-complete" });
     await beat(page, 900);
     await still(page, "02-check-form-filled");
 
-    // 10. Scroll down to the submit button, then save → land on the check
+    // 9. Scroll down to the submit button, then save → land on the check
     //     detail page.
     //
     //     The scroll is explicit and on camera. Playwright would auto-scroll as
@@ -262,13 +240,13 @@ test("setup to first result", async ({ page }, testInfo) => {
     await page.waitForLoadState("networkidle");
     const detailArrivedAt = Date.now();
 
-    // 11. Let the detail page settle: long enough for the "Check created
+    // 10. Let the detail page settle: long enough for the "Check created
     //     successfully" toast to expire, so the published still is not a
     //     screenshot of a notification sitting on top of the search box.
     await focus(page, null, { label: "detail-page" });
     await beat(page, 2200);
 
-    // 12. Hold past DETAIL_DWELL_PERIODS full periods before the still is
+    // 11. Hold past DETAIL_DWELL_PERIODS full periods before the still is
     //     taken, so the plotted points are genuine intervals apart (see
     //     DETAIL_DWELL_MARGIN_MS).
     const dwellMs =
@@ -279,12 +257,12 @@ test("setup to first result", async ({ page }, testInfo) => {
       await beat(page, dwellRemaining);
     }
 
-    // 13. ...and only then confirm the check has actually reported
-    //     DETAIL_DWELL_PERIODS times from every region, so the published frame
-    //     shows a populated results table and a response-time chart with a
-    //     line in it rather than an empty state. The table lists one row per
-    //     run per region, and a single-node server shows no region picker.
-    const expectedRows = DETAIL_DWELL_PERIODS * Math.max(1, regionCount);
+    // 12. ...and only then confirm the check has actually reported
+    //     DETAIL_DWELL_PERIODS times, so the published frame shows a populated
+    //     results table and a response-time chart with a line in it rather than
+    //     an empty state. A plain `docker run` is a single node in a single
+    //     region, so the table has one row per run.
+    const expectedRows = DETAIL_DWELL_PERIODS;
     const resultRows = page.locator('[data-testid^="result-row-"]');
     await expect
       .poll(() => resultRows.count(), { timeout: 60_000, intervals: [500] })
@@ -292,7 +270,7 @@ test("setup to first result", async ({ page }, testInfo) => {
     await beat(page, 800);
     await still(page, "03-check-detail");
 
-    // 14. A slow Ken-Burns push-in toward the status / response-time area, then
+    // 13. A slow Ken-Burns push-in toward the status / response-time area, then
     //     an ease back out so the loop point is seamless.
     const chart = page.getByTestId("response-time-chart-wrapper");
     await focus(page, (await chart.count()) > 0 ? chart.first() : null, {

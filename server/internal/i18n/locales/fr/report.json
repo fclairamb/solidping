@@ -1,0 +1,93 @@
+{
+  "subject": "{org}, {period} : {pct} de disponibilité",
+  "heading": "{org} : rapport de disponibilité, {period}",
+  "preheader": {
+    "withData": "{pct} de disponibilité · {incidents} · {period}",
+    "noData": "Aucune donnée de disponibilité · {incidents} · {period}"
+  },
+  "incidents_one": "{count} incident",
+  "incidents_other": "{count} incidents",
+  "title": "Rapport de disponibilité",
+  "noData": "Aucune donnée",
+  "metricLabel": "Disponibilité · {period}",
+  "versus": "par rapport à {period} ({previous})",
+  "period": {
+    "range": "{start} – {end}",
+    "versusWeek": "la semaine du {start} au {end}"
+  },
+  "scope": {
+    "all": "Tous les contrôles ({count})",
+    "named_one": "{name} ({count} contrôle)",
+    "named_other": "{name} ({count} contrôles)"
+  },
+  "downAll": {
+    "check": "{check} a été en panne pendant toute la période.",
+    "every": "Tous les contrôles surveillés ont été en panne pendant toute la période."
+  },
+  "labels": {
+    "checksMonitored": "Contrôles surveillés",
+    "incidents": "Incidents",
+    "totalDowntime": "Indisponibilité totale"
+  },
+  "incidentStats": {
+    "longest": "{duration} au maximum",
+    "average": "{duration} en moyenne"
+  },
+  "delta": {
+    "points": "{value} pt",
+    "percent": "{value} %",
+    "noChange": "stable"
+  },
+  "latency": {
+    "title": "Temps de réponse",
+    "average": "Moyenne",
+    "range": "Plus rapide / plus lent",
+    "slowProbes": "Sondes lentes"
+  },
+  "units": {
+    "ms": "{value} ms",
+    "s": "{value} s"
+  },
+  "slow": {
+    "samples_one": "{count} mesure",
+    "samples_other": "{count} mesures",
+    "peaks_one": "{count} pic",
+    "peaks_other": "{count} pics",
+    "both": "{samples} et {peaks} au-dessus de {threshold}",
+    "some": "{counted} au-dessus de {threshold}",
+    "none": "aucune au-dessus de {threshold}",
+    "peakNote": "Un pic est une période agrégée dont la mesure la plus lente a dépassé {threshold} ; les données plus anciennes sont stockées sous forme agrégée, ce qui ne permet pas de compter les mesures exactement.",
+    "includesFailures": "Les temps de réponse incluent les mesures en échec."
+  },
+  "checks": {
+    "title": "Par contrôle · les moins bons en premier",
+    "truncated": "Seuls les {shown} contrôles (sur {total}) à la plus faible disponibilité sont affichés.",
+    "downAllPeriod": "en panne toute la période"
+  },
+  "strip": {
+    "label": "Disponibilité quotidienne, {start} – {end} (UTC)",
+    "legend": "{label} : vert ≥ {good}, ambre ≥ {warn}, orange ≥ {poor}, rouge en dessous. Le gris signifie que rien n'a été enregistré ce jour-là : un contrôle créé en cours de période apparaît en gris, pas en rouge.",
+    "budgetNote_one": "Les barres quotidiennes ne sont affichées que pour {count} contrôle, celui à la plus faible disponibilité ; celles des autres contrôles ont été omises pour que cet e-mail ne dépasse pas la taille au-delà de laquelle les messageries le tronquent.",
+    "budgetNote_other": "Les barres quotidiennes ne sont affichées que pour les {count} contrôles à la plus faible disponibilité ; celles des autres contrôles ont été omises pour que cet e-mail ne dépasse pas la taille au-delà de laquelle les messageries le tronquent."
+  },
+  "slo": {
+    "title": "Objectifs",
+    "vsTarget": "{value} / cible {target}",
+    "budgetRemaining": "Budget restant : {budget}",
+    "state": {
+      "healthy": "Sain",
+      "atRisk": "À risque",
+      "breached": "Dépassé"
+    }
+  },
+  "cta": "Ouvrir le tableau de bord",
+  "text": {
+    "overall": "Disponibilité globale",
+    "versus": "par rapport à {period} : {previous}",
+    "latencyHeading": "Temps de réponse :",
+    "perCheck": "Par contrôle, les moins bons en premier :",
+    "perCheckTruncated": "Par contrôle, les moins bons en premier (les {shown} contrôles sur {total} à la plus faible disponibilité) :",
+    "objectivesHeading": "Objectifs :",
+    "budgetRemaining": "budget restant {budget}"
+  }
+}

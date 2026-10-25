@@ -69,7 +69,7 @@ func TestPagingNudgeCarriesTheOrgLogo(t *testing.T) {
 	html := fx.mailer.last.HTML
 	r.Contains(html, brandingMembersBaseURL+"/pub/assets/org-logo-uid")
 	r.Contains(html, `alt="Acme Corp"`)
-	r.Contains(html, "Acme Corp — sent by SolidPing")
+	r.Regexp(`Acme Corp · sent by <a href="https://solidping\.io"[^>]*>SolidPing</a>`, html)
 	r.NotContains(html, "/d/logo.png")
 }
 
@@ -92,5 +92,5 @@ func TestPagingNudgeFallsBackToTheProductLogo(t *testing.T) {
 	html := fx.mailer.last.HTML
 	r.Contains(html, brandingMembersBaseURL+"/d/logo.png")
 	r.Contains(html, `alt="SolidPing"`)
-	r.Contains(html, "Acme Corp — sent by SolidPing")
+	r.Regexp(`Acme Corp · sent by <a href="https://solidping\.io"[^>]*>SolidPing</a>`, html)
 }

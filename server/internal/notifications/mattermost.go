@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -82,9 +81,9 @@ func (s *MattermostSender) Send(ctx context.Context, jctx *jobdef.JobContext, pa
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := readCappedBody(resp.Body, senderMaxResponseBody)
 
-		return fmt.Errorf("%w: status %d: %s", errMattermostWebhookFailed, resp.StatusCode, string(respBody))
+		return fmt.Errorf("%w: status %d: %s", errMattermostWebhookFailed, resp.StatusCode, bodySnippet(respBody))
 	}
 
 	return nil
@@ -278,8 +277,8 @@ func (s *MattermostSender) buildResolvedFields(payload *Payload, checkName strin
 		{Short: true, Title: mmFieldCheck, Value: checkName},
 	}
 
-	if ResolvedByCheckDeletion(payload.Incident) {
-		fields = append(fields, mattermostField{Short: false, Title: "Reason", Value: checkDeletedSentence})
+	if closedWithoutRecovery(payload.Incident) {
+		fields = append(fields, mattermostField{Short: false, Title: "Reason", Value: closedSentence(payload.Incident)})
 	}
 
 	if payload.Incident.ResolvedAt != nil {

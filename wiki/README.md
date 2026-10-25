@@ -28,6 +28,7 @@
   - [api-specification/mcp-oauth.md](api-specification/mcp-oauth.md) — MCP endpoint and the embedded OAuth 2.1 authorization server
   - [api-specification/system.md](api-specification/system.md) — Regions, system parameters, email inbox, activation, scheduling lane load
   - [api-specification/test-and-static.md](api-specification/test-and-static.md) — Test-mode endpoints, SPA/docs/static routes, metrics, CORS preflight
+  - [api-specification/tools.md](api-specification/tools.md) — Public check tools: anonymous, guarded, rate-limited `POST /api/v1/tools/run`
   - [api-specification/errors.md](api-specification/errors.md) — Error envelope and standard error codes
 - [database-model/README.md](database-model/README.md) — Database schema index: all 50 tables grouped by domain, plus the entity-relationship overview
   - [database-model/core.md](database-model/core.md) — Tenancy root and configuration: organizations, parameters, app_settings, files
@@ -52,7 +53,7 @@ the relevant code.
 
 - [features/notifications-and-escalation.md](features/notifications-and-escalation.md) — How a check failure becomes a page: incident lifecycle, channel fan-out, escalation policies, on-call resolution, suppression layers (maintenance windows, cascade rollup, ack/snooze).
 - [features/degraded-detection.md](features/degraded-detection.md) — The second, statistical detector beside the confirmation period: the "M of the last N countable probes" rule over failures and over slow successes, the `degraded` incident kind (no cascade, no paging escalation, no auto-publish), the suppression rule that makes it shippable, the off-for-existing/on-for-new per-check rollout, and the availability-denominator regression to watch.
-- [features/multistep-checks.md](features/multistep-checks.md) — Multi-step checks (the website crawl): slices on the bulk lane, state on the attachment rail, fencing, units per slice, run deadline and failures.
+- [features/multistep-checks.md](features/multistep-checks.md) — Multi-step checks (the website crawl): a run is a worker task of kind crawl (cloud workers and agents), its job leased to the run, units reserved and refunded server-side, report diff, run deadline and failures.
 - [features/check-dependencies.md](features/check-dependencies.md) — Hard vs soft dependency edges, cascade rollup walk, parent-resolve re-evaluation, correlation windows, edge cases.
 - [features/entitlements.md](features/entitlements.md) — Per-org limits (`maxChecks`, `maxUsers`, `maxChecksPerMinute`) and where each is enforced; defaults per deployment mode, resolution (defaults → row → live usage), sources, stale fallback, audit log. Note: there are **no** feature toggles.
 - [features/saas-mode.md](features/saas-mode.md) — `SP_DEPLOYMENT_MODE=saas`: billing-service signed writes, signing-key rotation, the upgrade-token secret and its operator migration, `make dev-saas`.
@@ -84,6 +85,7 @@ Project-wide standards and naming rules.
 - [conventions/agent-commands.md](conventions/agent-commands.md) — Agent-neutral bodies of the `/idea` and `/sync-pg-to-sqlite` slash commands.
 - [conventions/dash0-translations.md](conventions/dash0-translations.md) — dash0 i18n rules: locale parity tests, the untranslated-JSX lint rule, per-locale terminology.
 - [conventions/email-templates.md](conventions/email-templates.md) — Transactional email templates: required blocks (preheader, text), the label/value fact grid, and why the subject and plaintext parts render through text/template
+- [conventions/email-i18n.md](conventions/email-i18n.md) — Localized emails (en, fr, de, es): catalogs and namespace ownership, template funcs (`t`, `tn`, `date`...), resolving a recipient's locale, tone per language, tests
 - [conventions/event-colors.md](conventions/event-colors.md) — Event color scheme: per-type color assignments for check and incident events
 - [conventions/frontend-errors.md](conventions/frontend-errors.md) — Frontend error handling by HTTP status code
 - [conventions/files.md](conventions/files.md) — File storage seam: backends (local FS, S3), signed URLs, group conventions

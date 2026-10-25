@@ -636,8 +636,6 @@ func TestWorkerPoolEnvBinds(t *testing.T) {
 
 // TestWorkerPoolYAMLKeys proves the nesting documented in the configuration
 // page (server.job_worker.nb / server.check_worker.nb) loads.
-//
-//nolint:paralleltest // t.Chdir changes the process working directory
 func TestWorkerPoolYAMLKeys(t *testing.T) {
 	r := require.New(t)
 
