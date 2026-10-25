@@ -15,8 +15,10 @@ func TestRegionMigrationErrorMapper(t *testing.T) {
 	h := &Handler{HandlerBase: base.NewHandlerBase(&config.Config{})}
 
 	testsupport.AssertErrorMapping(t, h.writeRegionMigrationError, []testsupport.ErrorCase{
-		testsupport.Case(ErrRegionMigrationMissingSlug, testsupport.ClientError), testsupport.Case(ErrRegionMigrationSameSlug, testsupport.ClientError),
-		testsupport.Case(ErrRegionMigrationPrivateToCloud, testsupport.ClientError), testsupport.Case(ErrRegionMigrationTargetUnknown, testsupport.ClientError),
+		testsupport.Case(ErrRegionMigrationMissingSlug, testsupport.ClientError),
+		testsupport.Case(ErrRegionMigrationSameSlug, testsupport.ClientError),
+		testsupport.Case(ErrRegionMigrationPrivateToCloud, testsupport.ClientError),
+		testsupport.Case(ErrRegionMigrationTargetUnknown, testsupport.ClientError),
 		testsupport.Case(http.ErrAbortHandler, http.StatusInternalServerError),
 	})
 }

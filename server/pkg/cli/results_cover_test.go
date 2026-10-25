@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-//nolint:paralleltest,lll // coverRun swaps process-global stdio and HOME
+//nolint:paralleltest // coverRun swaps process-global stdio and HOME
 func TestCLIResultsCover(t *testing.T) {
 	row := `{"uid":"` + cuid + `","checkSlug":"web","status":"up","durationMs":12.5,"region":"eu",` +
 		`"periodType":"raw","periodStart":"` + cts + `","fallback":{"reason":"rolled_up_to_day"}}`

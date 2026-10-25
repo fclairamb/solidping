@@ -15,7 +15,10 @@ func TestCreateErrorMapperCoversEverySentinel(t *testing.T) {
 	h := &Handler{HandlerBase: base.NewHandlerBase(&config.Config{})}
 
 	testsupport.AssertErrorMapping(t, h.handleCreateError, []testsupport.ErrorCase{
-		testsupport.Case(ErrOrganizationNotFound, 404), testsupport.Case(ErrTitleRequired, testsupport.ClientError), testsupport.Case(ErrInvalidTimeRange, testsupport.ClientError), testsupport.Case(ErrInvalidRecurrence, testsupport.ClientError),
+		testsupport.Case(ErrOrganizationNotFound, 404),
+		testsupport.Case(ErrTitleRequired, testsupport.ClientError),
+		testsupport.Case(ErrInvalidTimeRange, testsupport.ClientError),
+		testsupport.Case(ErrInvalidRecurrence, testsupport.ClientError),
 		testsupport.Case(http.ErrAbortHandler, http.StatusInternalServerError),
 	})
 }
@@ -27,7 +30,8 @@ func TestUpdateErrorMapperCoversEverySentinel(t *testing.T) {
 
 	testsupport.AssertErrorMapping(t, h.handleUpdateError, []testsupport.ErrorCase{
 		testsupport.Case(ErrOrganizationNotFound, 404), testsupport.Case(ErrMaintenanceWindowNotFound, 404),
-		testsupport.Case(ErrInvalidTimeRange, testsupport.ClientError), testsupport.Case(ErrInvalidRecurrence, testsupport.ClientError),
+		testsupport.Case(ErrInvalidTimeRange, testsupport.ClientError),
+		testsupport.Case(ErrInvalidRecurrence, testsupport.ClientError),
 		testsupport.Case(http.ErrAbortHandler, http.StatusInternalServerError),
 	})
 }

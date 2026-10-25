@@ -1,12 +1,12 @@
 package statussubscribers
 
 import (
-	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"net/http"
 	"testing"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 

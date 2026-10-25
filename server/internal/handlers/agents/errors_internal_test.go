@@ -1,13 +1,13 @@
 package agents
 
 import (
-	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
-	"github.com/fclairamb/solidping/server/internal/regions"
 	"net/http"
 	"testing"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 

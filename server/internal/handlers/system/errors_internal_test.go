@@ -15,7 +15,9 @@ func TestErrorMapperCoversEverySentinel(t *testing.T) {
 	h := &Handler{HandlerBase: base.NewHandlerBase(&config.Config{})}
 
 	testsupport.AssertErrorMapping(t, h.handleError, []testsupport.ErrorCase{
-		testsupport.Case(ErrParameterNotFound, 404), testsupport.Case(ErrInvalidParameterKey, 400), testsupport.Case(ErrInvalidParameter, testsupport.ClientError),
+		testsupport.Case(ErrParameterNotFound, 404),
+		testsupport.Case(ErrInvalidParameterKey, 400),
+		testsupport.Case(ErrInvalidParameter, testsupport.ClientError),
 		testsupport.Case(http.ErrAbortHandler, http.StatusInternalServerError),
 	})
 }

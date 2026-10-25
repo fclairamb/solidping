@@ -15,7 +15,9 @@ func TestErrorMapperCoversEverySentinel(t *testing.T) {
 	h := &Handler{HandlerBase: base.NewHandlerBase(&config.Config{})}
 
 	testsupport.AssertErrorMapping(t, h.writePutError, []testsupport.ErrorCase{
-		testsupport.Case(ErrEmptyAttachment, 400), testsupport.Case(ErrAttachmentTooLarge, 413), testsupport.Case(ErrUnsupportedMediaType, 415),
+		testsupport.Case(ErrEmptyAttachment, 400),
+		testsupport.Case(ErrAttachmentTooLarge, 413),
+		testsupport.Case(ErrUnsupportedMediaType, 415),
 		testsupport.Case(http.ErrAbortHandler, http.StatusInternalServerError),
 	})
 }

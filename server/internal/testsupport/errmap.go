@@ -27,20 +27,20 @@ func AssertErrorMapping(
 ) {
 	t.Helper()
 
-	for _, tc := range cases {
-		t.Run(tc.Err.Error(), func(t *testing.T) {
+	for _, testCase := range cases {
+		t.Run(testCase.Err.Error(), func(t *testing.T) {
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 
-			require.NoError(t, mapper(rec, req, tc.Err))
-			if tc.Status == ClientError {
+			require.NoError(t, mapper(rec, req, testCase.Err))
+			if testCase.Status == ClientError {
 				require.GreaterOrEqual(t, rec.Code, http.StatusBadRequest, rec.Body.String())
 				require.Less(t, rec.Code, http.StatusInternalServerError, rec.Body.String())
 
 				return
 			}
 
-			require.Equal(t, tc.Status, rec.Code, rec.Body.String())
+			require.Equal(t, testCase.Status, rec.Code, rec.Body.String())
 		})
 	}
 }

@@ -309,7 +309,7 @@ jobs:
       - name: Backend coverage gate
         if: ${{ !cancelled() }}
         env:
-          COVERAGE_MIN: "85"
+          COVERAGE_MIN: "87"
         run: |
           set -euo pipefail
           ../scripts/coverage.sh filter "$RUNNER_TEMP/coverage.raw.out" coverage.out
@@ -323,7 +323,7 @@ jobs:
       - name: Publish coverage badge
         if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'fclairamb/solidping' }}
         env:
-          COVERAGE_MIN: "85"
+          COVERAGE_MIN: "87"
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail

@@ -15,7 +15,9 @@ func TestErrorMapperCoversEverySentinel(t *testing.T) {
 	h := &Handler{HandlerBase: base.NewHandlerBase(&config.Config{})}
 
 	testsupport.AssertErrorMapping(t, h.handleError, []testsupport.ErrorCase{
-		testsupport.Case(ErrOrganizationNotFound, 404), testsupport.Case(ErrCheckNotFound, 404), testsupport.Case(ErrConnectionNotFound, 404),
+		testsupport.Case(ErrOrganizationNotFound, 404),
+		testsupport.Case(ErrCheckNotFound, 404),
+		testsupport.Case(ErrConnectionNotFound, 404),
 		testsupport.Case(ErrNotNotifyCapable, 400), testsupport.Case(ErrMSTeamsBotUnknownDestination, 400),
 		testsupport.Case(http.ErrAbortHandler, http.StatusInternalServerError),
 	})

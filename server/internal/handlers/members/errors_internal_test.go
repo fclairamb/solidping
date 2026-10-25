@@ -15,7 +15,9 @@ func TestErrorMapperCoversEverySentinel(t *testing.T) {
 	h := &Handler{HandlerBase: base.NewHandlerBase(&config.Config{})}
 
 	testsupport.AssertErrorMapping(t, h.handleProvisioningError, []testsupport.ErrorCase{
-		testsupport.Case(ErrContactTypeNotProvisionable, testsupport.ClientError), testsupport.Case(ErrInvalidContactValue, testsupport.ClientError), testsupport.Case(ErrContactAlreadyExists, 409),
+		testsupport.Case(ErrContactTypeNotProvisionable, testsupport.ClientError),
+		testsupport.Case(ErrInvalidContactValue, testsupport.ClientError),
+		testsupport.Case(ErrContactAlreadyExists, 409),
 		testsupport.Case(ErrEmailSenderNotConfigured, 400),
 		testsupport.Case(http.ErrAbortHandler, http.StatusInternalServerError),
 	})
