@@ -13,7 +13,7 @@ func TestRedirectLoginError(t *testing.T) {
 	r := require.New(t)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/github/login?org=nope", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/auth/github/login?org=nope", nil)
 
 	r.NoError(redirectLoginError(rec, req, "ORGANIZATION_NOT_FOUND", "Organization not found"))
 	r.Equal(http.StatusFound, rec.Code)
