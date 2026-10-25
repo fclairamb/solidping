@@ -407,7 +407,7 @@ function MailboxFields({
           <span className="text-sm">{t("mail.useImplicitTls")}</span>
         </label>
         {(state.tls || state.port === implicitTLSPort) && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground" data-testid="check-implicit-tls-hint">
             {t("mail.implicitTlsPortHint", { port: implicitTLSPort })}
           </p>
         )}

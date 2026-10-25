@@ -377,7 +377,7 @@ function Row({ org, integration, onDelete }: RowProps) {
         <IntegrationStatus integration={integration} className="mt-1 pl-[2.375rem] sm:hidden" />
       </TableCell>
       <TableCell className="hidden whitespace-nowrap sm:table-cell">
-        <Badge variant="outline" className="font-mono text-xs font-normal">
+        <Badge variant="outline" className="font-mono text-xs font-normal" data-testid="integration-type-label">
           {integrationLabel(integration.type)}
         </Badge>
       </TableCell>

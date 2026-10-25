@@ -51,7 +51,7 @@ export function NotFound({
 
   return (
     <div className="text-center py-12">
-      <Card className="max-w-md mx-auto">
+      <Card className="max-w-md mx-auto" data-testid="not-found">
         <CardHeader>
           <div className="flex justify-center mb-2">
             <FileQuestion className="h-10 w-10 text-muted-foreground" />

@@ -377,7 +377,7 @@ function HeartbeatEndpoint({
   return (
     <div>
       <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="text-sm font-medium text-muted-foreground">
+        <div className="text-sm font-medium text-muted-foreground" data-testid="heartbeat-endpoint-title">
           {t("endpoints.heartbeat.title")}
         </div>
         <AlertDialog>
@@ -433,7 +433,7 @@ function HeartbeatEndpoint({
           </button>
         </div>
         <div>
-          <div className="text-xs text-muted-foreground mb-1">
+          <div className="text-xs text-muted-foreground mb-1" data-testid="heartbeat-curl-label">
             {t("endpoints.heartbeat.curl")}
           </div>
           <div className="bg-muted rounded-md p-3 text-sm font-mono break-all flex items-start gap-2">

@@ -2661,7 +2661,7 @@ export function CheckForm({
                 {getFieldError(fieldErrors, "timeout") ? (
                   <p className="text-xs text-destructive">{getFieldError(fieldErrors, "timeout")}</p>
                 ) : (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground" data-testid="check-timeout-hint">
                     {t("form.timeoutHint")}
                   </p>
                 )}

@@ -29,10 +29,10 @@ test.describe("Matrix channel", () => {
     await page.waitForLoadState("networkidle");
 
     const name = `E2E Matrix ${Date.now()}`;
-    await page.getByLabel("Name").fill(name);
-    await page.getByLabel(/homeserver url/i).fill("https://matrix.org");
-    await page.locator("#ch-matrix-token").fill("syt_e2e_secret_token");
-    await page.getByLabel(/^room/i).fill("!abcdef:matrix.org");
+    await page.getByTestId("ch-name").fill(name);
+    await page.getByTestId("ch-matrix-homeserver").fill("https://matrix.org");
+    await page.getByTestId("ch-matrix-token").fill("syt_e2e_secret_token");
+    await page.getByTestId("ch-matrix-room").fill("!abcdef:matrix.org");
 
     await page.getByRole("button", { name: /create integration/i }).click();
     await page.waitForURL((url) =>
@@ -44,22 +44,21 @@ test.describe("Matrix channel", () => {
 
     // 2. Lists with icon/label on the integrations index.
     await page.goto("orgs/test/integrations");
-    await expect(page.getByText(name)).toBeVisible({ timeout: 15000 });
-    await expect(
-      page.getByText("Matrix", { exact: true }).first(),
-    ).toBeVisible();
+    const row = page.getByTestId(`integration-row-${uid}`);
+    await expect(row.getByTestId("integration-name")).toHaveText(name, { timeout: 15000 });
+    await expect(row.getByTestId("integration-type-label")).toHaveText("Matrix");
 
     // 3. Edit: the homeserver URL and room persist; the access token is
     // never echoed back (it round-trips server-side, see the Go
     // integration test covering the encrypted-envelope round trip).
     await page.goto(`orgs/test/integrations/${uid}`);
-    await expect(page.getByLabel(/homeserver url/i)).toHaveValue(
+    await expect(page.getByTestId("ch-matrix-homeserver")).toHaveValue(
       "https://matrix.org",
     );
-    await expect(page.getByLabel(/^room/i)).toHaveValue("!abcdef:matrix.org");
-    await expect(page.locator("#ch-matrix-token")).toHaveValue("");
+    await expect(page.getByTestId("ch-matrix-room")).toHaveValue("!abcdef:matrix.org");
+    await expect(page.getByTestId("ch-matrix-token")).toHaveValue("");
 
-    await page.getByLabel(/^room/i).fill("!updated:matrix.org");
+    await page.getByTestId("ch-matrix-room").fill("!updated:matrix.org");
     // Wait for the PATCH itself, not for the page to look idle. The reload
     // below refetches the integration, so if it starts before the save lands
     // the form renders the PRE-EDIT room and the assertion reads a stale
@@ -76,7 +75,7 @@ test.describe("Matrix channel", () => {
     await saved;
 
     await page.goto(`orgs/test/integrations/${uid}`);
-    await expect(page.getByLabel(/^room/i)).toHaveValue("!updated:matrix.org");
+    await expect(page.getByTestId("ch-matrix-room")).toHaveValue("!updated:matrix.org");
 
     // 4. Delete via the UI.
     await page.getByRole("button", { name: /delete integration/i }).click();
@@ -85,7 +84,7 @@ test.describe("Matrix channel", () => {
     await dialog.getByRole("button", { name: /delete/i }).click();
 
     await page.waitForURL((url) => url.pathname.endsWith("/integrations"));
-    await expect(page.getByText(name)).toHaveCount(0);
+    await expect(page.getByTestId(`integration-row-${uid}`)).toHaveCount(0);
 
     // Cleanup in case the UI delete assertion above ever regresses.
     await deleteConnection(page, token, uid);

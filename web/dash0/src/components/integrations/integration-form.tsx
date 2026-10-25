@@ -460,6 +460,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             <Label htmlFor="ch-topic">{t("form.ntfyTopic", "Topic")}</Label>
             <Input
               id="ch-topic"
+              data-testid="ch-topic"
               value={(settings.topic as string) || ""}
               onChange={(e) => update("topic", e.target.value)}
               placeholder="solidping-alerts"
@@ -471,6 +472,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             </Label>
             <Input
               id="ch-priority"
+              data-testid="ch-priority"
               type="number"
               min={1}
               max={5}
@@ -502,6 +504,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             </Label>
             <Input
               id="ch-gotify-priority"
+              data-testid="ch-gotify-priority"
               type="number"
               min={0}
               max={10}
@@ -522,6 +525,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             </Label>
             <Input
               id="ch-matrix-homeserver"
+              data-testid="ch-matrix-homeserver"
               type="url"
               value={(settings.homeserverUrl as string) || ""}
               onChange={(e) => update("homeserverUrl", e.target.value)}
@@ -538,6 +542,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             <Label htmlFor="ch-matrix-room">{t("form.matrixRoom", "Room")}</Label>
             <Input
               id="ch-matrix-room"
+              data-testid="ch-matrix-room"
               value={(settings.roomId as string) || ""}
               onChange={(e) => update("roomId", e.target.value)}
               placeholder="!abcdef:matrix.org"
@@ -565,6 +570,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             </Label>
             <Input
               id="ch-zulip-bot-email"
+              data-testid="ch-zulip-bot-email"
               type="email"
               value={(settings.bot_email as string) || ""}
               onChange={(e) => update("bot_email", e.target.value)}
@@ -581,6 +587,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             <Label htmlFor="ch-zulip-stream">{t("form.zulipStream", "Stream")}</Label>
             <Input
               id="ch-zulip-stream"
+              data-testid="ch-zulip-stream"
               value={(settings.stream as string) || ""}
               onChange={(e) => update("stream", e.target.value)}
               placeholder="alerts"
@@ -1194,6 +1201,7 @@ function WebhookSigningPanel({ settings, org, channelUid }: WebhookSigningPanelP
           <div className="flex items-center gap-2">
             <Input
               id="ch-signing-secret"
+              data-testid="ch-signing-secret"
               readOnly
               value={secret}
               className="font-mono text-xs"
@@ -2725,7 +2733,7 @@ function SecretPanel({
       <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
-        data-testid={testId}
+        data-testid={testId ?? id}
         type="password"
         autoComplete="new-password"
         value={value}
@@ -3036,6 +3044,7 @@ function TwilioPanel({
         </Label>
         <Input
           id="ch-twilio-mss"
+          data-testid="ch-twilio-mss"
           placeholder="MG…"
           value={(settings.messaging_service_sid as string) || ""}
           onChange={(e) => update("messaging_service_sid", e.target.value)}
@@ -3048,6 +3057,7 @@ function TwilioPanel({
         </Label>
         <Input
           id="ch-twilio-voice-from"
+          data-testid="ch-twilio-voice-from"
           placeholder="+15551234567"
           value={(settings.voice_from_number as string) || ""}
           onChange={(e) => update("voice_from_number", e.target.value)}

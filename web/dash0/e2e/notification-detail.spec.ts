@@ -15,12 +15,10 @@ test.describe("Notification delivery detail", () => {
     const page = authenticatedPage;
 
     // The new flat route: /orgs/:org/notifications/:uid
-    await page.goto(
-      `${DASH_BASE}/orgs/test/notifications/does-not-exist`,
-    );
+    await page.goto(`${DASH_BASE}/orgs/test/notifications/does-not-exist`);
 
     // Friendly not-found card from QueryErrorView.
-    await expect(page.getByText(/not found/i).first()).toBeVisible();
+    await expect(page.getByTestId("not-found")).toBeVisible();
   });
 
   // Deterministically seeded in test mode (server/test/testdata/testdata.go,
@@ -40,13 +38,19 @@ test.describe("Notification delivery detail", () => {
       `${DASH_BASE}/orgs/test/notifications/${SEEDED_NOTIF_UID}?from=incident:${SEEDED_INCIDENT_UID}`,
     );
 
-    await expect(page.getByRole("heading", { name: "Notification" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Notification" }),
+    ).toBeVisible();
 
     // The translated label is visible...
-    await expect(page.getByText("Incident Created")).toBeVisible();
+    await expect(page.getByTestId("event-type-badge")).toContainText(
+      "Incident Created",
+    );
     // ...and the raw event-type string is no longer rendered as a bare <code>
     // element (it still lives in the badge's title attribute for debugging).
-    await expect(page.locator("code", { hasText: "incident.created" })).toHaveCount(0);
+    expect(await page.locator("code").allTextContents()).not.toContain(
+      "incident.created",
+    );
   });
 
   // Legacy redirect: the old nested URL forwards to the flat route.
@@ -121,7 +125,9 @@ test.describe("Notification delivery detail", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page
+      .context()
+      .grantPermissions(["clipboard-read", "clipboard-write"]);
 
     const notifUid = "22222222-2222-2222-2222-222222222222";
 
@@ -165,24 +171,28 @@ test.describe("Notification delivery detail", () => {
     await page.waitForLoadState("networkidle");
 
     // The Delivery section is present with the status-code badge and duration.
-    await expect(page.getByText("Delivery", { exact: true })).toBeVisible();
-    await expect(page.getByText("503", { exact: true })).toBeVisible();
-    await expect(page.getByText("1234 ms")).toBeVisible();
+    await expect(page.getByTestId("notification-delivery-card")).toBeVisible();
     await expect(
-      page.getByText("https://hooks.example.com/incidents"),
-    ).toBeVisible();
+      page.getByTestId("notification-delivery-status-code"),
+    ).toHaveText("503");
+    await expect(page.getByTestId("notification-delivery-duration")).toHaveText(
+      "1234 ms",
+    );
+    await expect(
+      page.getByTestId("notification-delivery-request-url"),
+    ).toContainText("https://hooks.example.com/incidents");
 
     // The response body is copyable: expand and copy it.
-    const responseSummary = page.getByText("Response body");
+    const responseSummary = page.getByTestId("notification-response-body");
     await expect(responseSummary).toBeVisible();
-    await page
-      .getByRole("button", { name: /Copy Response body/i })
-      .click();
+    await page.getByRole("button", { name: /Copy Response body/i }).click();
     const clip = await page.evaluate(() => navigator.clipboard.readText());
     expect(clip).toContain("service unavailable");
 
     // The request payload is also offered as a collapsible.
-    await expect(page.getByText("Request payload")).toBeVisible();
+    await expect(
+      page.getByTestId("notification-request-payload"),
+    ).toBeVisible();
   });
 
   // Criterion 5: a notification with no deliveryDetails renders the page with
@@ -222,9 +232,13 @@ test.describe("Notification delivery detail", () => {
     );
 
     // The page renders normally...
-    await expect(page.getByRole("heading", { name: "Notification" })).toBeVisible();
-    await expect(page.getByText("Delivery timeline")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Notification" }),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("notification-delivery-timeline-title"),
+    ).toBeVisible();
     // ...but the Delivery section (exact "Delivery" card title) is absent.
-    await expect(page.getByText("Delivery", { exact: true })).toHaveCount(0);
+    await expect(page.getByTestId("notification-delivery-card")).toHaveCount(0);
   });
 });
