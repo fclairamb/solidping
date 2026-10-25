@@ -2254,7 +2254,7 @@ function SlackMemberMapping({
           <p className="font-medium">
             {t("form.slackMemberMapping", "Member mapping")}
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground" data-testid="member-mapping-help">
             {variant === "discord"
               ? t(
                   "form.discordMemberMappingHelp",
@@ -2289,7 +2289,7 @@ function SlackMemberMapping({
           <span>{t("form.slackLoading", "Loading…")}</span>
         </div>
       ) : isError ? (
-        <p className="text-destructive text-xs">
+        <p className="text-destructive text-xs" data-testid="member-mapping-error">
           {t("form.slackMappingError", "Could not load the member mapping.")}
         </p>
       ) : identities.length === 0 ? (

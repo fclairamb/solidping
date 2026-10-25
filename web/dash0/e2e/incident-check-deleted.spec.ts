@@ -66,7 +66,7 @@ test.describe("Incident closed by check deletion", () => {
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
     await expect(page.getByTestId("incident-details-title")).toBeVisible();
-    await expect(page.getByText("Resolved", { exact: true }).first()).toBeVisible({
+    await expect(page.getByTestId("incident-status-badge")).toHaveText("Resolved", {
       timeout: 10000,
     });
 

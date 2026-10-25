@@ -118,7 +118,9 @@ test.describe("Checks page request fan-out", () => {
 
       // The page fully rendered its sections (a seeded check is visible).
       await expect(
-        page.getByText(`E2E Fanout Check ${ts}-0`),
+        page.locator(
+          `[data-testid="check-row-name"][data-check-name="E2E Fanout Check ${ts}-0"]`,
+        ),
       ).toBeVisible({ timeout: 10000 });
       // Small settle window to capture any synchronous per-section fan-out.
       await page.waitForTimeout(1000);

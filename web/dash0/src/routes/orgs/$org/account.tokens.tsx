@@ -83,7 +83,7 @@ function TokenRow({
   const { t } = useTranslation("account");
   const { t: tCommon } = useTranslation("common");
   return (
-    <TableRow>
+    <TableRow data-testid="token-row" data-token-name={token.name}>
       <TableCell className="font-medium">{token.name || t("tokens.unnamed")}</TableCell>
       <TableCell className="text-muted-foreground">
         {formatRelativeTime(new Date(token.createdAt), tCommon)}

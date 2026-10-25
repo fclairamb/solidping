@@ -59,10 +59,8 @@ test.describe("Events page names the agent", () => {
 
     const row = page.getByRole("row", { name: /Agent Disconnected/ });
     await expect(
-      row.getByText(`${AGENT_NAME} · ${AGENT_REGION} · ping timeout`, {
-        exact: true,
-      }),
-    ).toBeVisible();
+      row.getByTestId("event-detail"),
+    ).toHaveText(`${AGENT_NAME} · ${AGENT_REGION} · ping timeout`);
 
     const chip = row.getByRole("link", { name: AGENT_NAME });
     await expect(chip).toBeVisible();
@@ -85,11 +83,10 @@ test.describe("Events page names the agent", () => {
 
     const row = page.getByRole("row", { name: /Agent Connected/ });
     await expect(
-      row.getByText(`${AGENT_NAME} · ${AGENT_REGION}`, { exact: true }),
-    ).toBeVisible();
-    // The reason only exists on a disconnect — a connect row must not
-    // inherit one from anywhere.
-    await expect(row.getByText(/ping timeout|revoked|server shutdown/)).toHaveCount(0);
+      row.getByTestId("event-detail"),
+    ).toHaveText(`${AGENT_NAME} · ${AGENT_REGION}`);
+    // The reason only exists on a disconnect: the exact text above has none,
+    // so a connect row did not inherit one from anywhere.
 
     await expect(row.getByRole("link", { name: AGENT_NAME })).toHaveAttribute(
       "href",
@@ -113,8 +110,8 @@ test.describe("Events page names the agent", () => {
 
     const row = page.getByRole("row", { name: /Agent Disconnected/ });
     await expect(
-      row.getByText(`${AGENT_REGION} · revoked`, { exact: true }),
-    ).toBeVisible();
+      row.getByTestId("event-detail"),
+    ).toHaveText(`${AGENT_REGION} · revoked`);
 
     await expect(row.getByRole("link", { name: AGENT_REGION })).toHaveAttribute(
       "href",

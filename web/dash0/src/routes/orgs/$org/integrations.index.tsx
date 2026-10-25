@@ -259,7 +259,7 @@ function IntegrationsListPage() {
               <RefreshCw
                 className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
               />
-              <span className="hidden sm:inline">{t("common:refresh")}</span>
+              <span className="hidden sm:inline" data-testid="refresh-label">{t("common:refresh")}</span>
             </Button>
           </div>
 
@@ -323,7 +323,9 @@ function EmptyState({ org }: { org: string }) {
   return (
     <Card className="shadow-card">
       <CardHeader>
-        <CardTitle className="text-base font-semibold">{t("empty.title", "No integrations yet")}</CardTitle>
+        <CardTitle className="text-base font-semibold" data-testid="integrations-empty-title">
+          {t("empty.title", "No integrations yet")}
+        </CardTitle>
         <CardDescription>
           {t(
             "empty.body",

@@ -123,7 +123,7 @@ base.describe("Redirect to an accessible org", () => {
 
     // The redirect is explained rather than silent — otherwise the URL just
     // changes under the visitor with no hint that their link was wrong.
-    await expect(page.getByText(new RegExp(FOREIGN_ORG))).toBeVisible({
+    await expect(page.locator("[data-sonner-toaster]")).toContainText(new RegExp(FOREIGN_ORG), {
       timeout: 10000,
     });
 

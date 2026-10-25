@@ -122,8 +122,8 @@ test.describe("Discovery from a private location", () => {
     await page.getByRole("button", { name: /start scan/i }).click();
 
     await expect(
-      page.getByText(/No agent of this location is ready to scan/),
-    ).toBeVisible();
+      page.locator("[data-sonner-toaster]"),
+    ).toContainText(/No agent of this location is ready to scan/);
     expect(body?.region).toBe("@dc1");
     expect(body?.type).toBe("lan");
     // Positive control: still on the form.

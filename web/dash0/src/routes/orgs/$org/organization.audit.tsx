@@ -514,6 +514,7 @@ function AuditPage() {
                         <div
                           className="truncate text-sm"
                           title={targetLabel(event)}
+                          data-testid="audit-target"
                         >
                           {targetLabel(event)}
                         </div>

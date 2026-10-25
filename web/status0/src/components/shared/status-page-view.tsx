@@ -498,7 +498,7 @@ export function StatusPageView({
           the element — never dangerouslySetInnerHTML here. It sits first in
           the tree and arrives in the same payload as the content, so the page
           paints already themed (no flash of default styling). */}
-      {customCss ? <style>{customCss}</style> : null}
+      {customCss ? <style data-testid="status-custom-css">{customCss}</style> : null}
       {/* Brand bar — white surface with a brand-pink logo. The brand
           color is confined to the logo so the page reads as one
           continuous document; the status banner below uses status

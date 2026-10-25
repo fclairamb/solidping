@@ -231,7 +231,7 @@ test.describe("Superadmin entitlements editor", () => {
     await page.goto("orgs/test/server/entitlements/acmetech");
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByText("Something went wrong")).toHaveCount(0);
+    await expect(page.getByTestId("server-error")).toHaveCount(0);
 
     // The editor is really there — not merely the absence of the error.
     await expect(page.getByTestId("entitlements-input-maxChecks")).toHaveValue(
@@ -239,8 +239,8 @@ test.describe("Superadmin entitlements editor", () => {
     );
     // And the trail reads as empty rather than missing.
     await expect(
-      page.getByText("No entitlement change recorded yet."),
-    ).toBeVisible();
+      page.getByTestId("entitlements-audit-empty"),
+    ).toHaveText("No entitlement change recorded yet.");
   });
 
   test("an API 403 renders Permission Denied in place, never a redirect", async ({
@@ -264,7 +264,7 @@ test.describe("Superadmin entitlements editor", () => {
     await page.goto("orgs/test/server/entitlements");
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByText("Permission Denied")).toBeVisible();
+    await expect(page.getByTestId("permission-denied")).toBeVisible();
     expect(page.url()).toContain("/server/entitlements");
     expect(page.url()).not.toContain("/login");
   });

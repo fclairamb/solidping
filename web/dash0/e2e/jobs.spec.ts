@@ -48,7 +48,7 @@ test.describe("Super-admin Jobs page", () => {
     // The shared breadcrumb bar (rendered by the org layout) carries the Jobs
     // crumb. On the list page it is an active (non-link) crumb, so scoping to
     // the header and asserting the text is present is enough.
-    await expect(page.locator("header").getByText(/^jobs$/i)).toBeVisible();
+    await expect(page.locator('header span[aria-current="page"]')).toHaveText(/^jobs$/i);
 
     // The "This org / All orgs (system)" toggle is super-admin only.
     const allOrgsBtn = page.getByTestId("scope-all-orgs");
@@ -58,7 +58,7 @@ test.describe("Super-admin Jobs page", () => {
     // Switch to all-orgs mode; an Org column header should appear in the table.
     await allOrgsBtn.click();
     await expect(
-      page.locator("thead").getByText(/^org$/i).first(),
+      page.getByTestId("jobs-col-org").first(),
     ).toBeVisible({ timeout: 10000 });
 
     // Switch to the check-schedule tab.
@@ -191,9 +191,9 @@ test.describe("Super-admin Jobs page", () => {
     // Only drill in when the test org has at least one scheduled check.
     if (await openFirstScheduledCheck()) {
       // The detail page states secrets are never exposed.
-      await expect(
-        page.getByText(/secret values are never exposed/i),
-      ).toBeVisible();
+      await expect(page.getByTestId("job-secrets-hidden")).toContainText(
+        /secret values are never exposed/i,
+      );
 
       // A back arrow returns to the jobs index.
       await page.getByRole("button", { name: /^back$/i }).click();

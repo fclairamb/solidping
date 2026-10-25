@@ -417,6 +417,7 @@ function HostSection({
           <span
             className={`text-base font-semibold truncate ${isNoHost ? "text-muted-foreground italic" : ""}`}
             data-testid="host-section-name"
+            data-host-name={hostKey ?? ""}
           >
             {isNoHost ? t("noHostBucket") : hostKey}
           </span>
@@ -551,7 +552,7 @@ function CheckRow({
                   <Waypoints className="h-3.5 w-3.5" />
                 </span>
               </TooltipTrigger>
-              <TooltipContent>
+              <TooltipContent data-testid="check-tunnel-tooltip">
                 {t("tunnel.viaTooltip", { name: bastion ? checkLabel(bastion) : t("tunnel.viaTitle") })}
               </TooltipContent>
             </Tooltip>
@@ -2135,7 +2136,7 @@ function ChecksIndexPage() {
                   onChange={(e) => setImportToken(e.target.value)}
                   placeholder="••••••••"
                 />
-                <Alert>
+                <Alert data-testid="import-token-notice">
                   <AlertTitle>{t("dialog.importTokenNoticeTitle")}</AlertTitle>
                   <AlertDescription>{t("dialog.importTokenNotice")}</AlertDescription>
                 </Alert>

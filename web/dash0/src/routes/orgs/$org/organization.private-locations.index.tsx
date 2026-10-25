@@ -619,7 +619,7 @@ function AgentsCard({ org }: { org: string }) {
       <AlertDialog open={!!pendingRevoke} onOpenChange={(open) => !open && setPendingRevoke(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
+            <AlertDialogTitle data-testid="agent-revoke-dialog-title">
               {pendingIsPurge
                 ? t("privateLocations.agents.removeTitle", "Remove this agent?")
                 : t("privateLocations.agents.revokeTitle", "Revoke this agent?")}

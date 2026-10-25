@@ -172,7 +172,9 @@ function CheckJobDetailPage() {
               <p className="mt-1 text-sm">{t("detail.noEncryptedKeys")}</p>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">{t("detail.secretsHidden")}</p>
+          <p className="text-xs text-muted-foreground" data-testid="job-secrets-hidden">
+            {t("detail.secretsHidden")}
+          </p>
         </CardContent>
       </Card>
     </div>

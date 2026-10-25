@@ -56,7 +56,9 @@ export function PageHeader({
       <div className="min-w-0 flex-1 basis-[calc(100%-3rem)] sm:basis-40">
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
         {description ? (
-          <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground" data-testid="page-header-description">
+            {description}
+          </p>
         ) : null}
       </div>
       {actions || docsHref ? (

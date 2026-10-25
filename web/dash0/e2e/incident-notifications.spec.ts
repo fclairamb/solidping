@@ -87,7 +87,7 @@ test.describe("Incident notifications", () => {
         .getByTestId("notifications-card")
         .getByRole("columnheader", { name: "Event", exact: true }),
     ).toBeVisible();
-    await expect(row.getByText("Incident Created")).toBeVisible();
+    await expect(row).toContainText("Incident Created");
   });
 
   test("My alerts route loads", async ({ authenticatedPage }) => {
@@ -103,9 +103,9 @@ test.describe("Incident notifications", () => {
     await expect(h1).toBeVisible();
     await expect(h1).toHaveClass(/sm:text-2xl/);
     await expect(h1).toHaveClass(/font-semibold/);
-    await expect(
-      page.getByText("Incidents you were paged for, in reverse chronological order.")
-    ).toBeVisible();
+    await expect(page.getByTestId("page-header-description")).toHaveText(
+      "Incidents you were paged for, in reverse chronological order.",
+    );
   });
 
   test("My alerts sidebar entry navigates to the correct page", async ({

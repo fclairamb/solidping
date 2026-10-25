@@ -16,7 +16,7 @@ export function PermissionDenied({ org }: { org: string }) {
 
   return (
     <div className="text-center py-12">
-      <Card className="max-w-md mx-auto">
+      <Card className="max-w-md mx-auto" data-testid="permission-denied">
         <CardHeader>
           <div className="flex justify-center mb-2">
             <ShieldX className="h-10 w-10 text-destructive" />
@@ -83,7 +83,7 @@ export function ServerError({
 
   return (
     <div className="text-center py-12">
-      <Card className="max-w-md mx-auto">
+      <Card className="max-w-md mx-auto" data-testid="server-error">
         <CardHeader>
           <div className="flex justify-center mb-2">
             <AlertTriangle className="h-10 w-10 text-destructive" />

@@ -126,7 +126,7 @@ test.describe("SMTP send mode", () => {
       .click();
 
     // Picking the check computes and displays the resolved recipient.
-    await expect(page.getByText(expectedDeliveryTo)).toBeVisible();
+    await expect(page.getByTestId("check-smtp-delivery-to")).toContainText(expectedDeliveryTo);
 
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
@@ -161,7 +161,7 @@ test.describe("SMTP send mode", () => {
     await expect(page.getByTestId("check-smtp-delivery-select")).toContainText(
       deliveryName,
     );
-    await expect(page.getByText(expectedDeliveryTo)).toBeVisible();
+    await expect(page.getByTestId("check-smtp-delivery-to")).toContainText(expectedDeliveryTo);
   });
 
   test("empty-state shows plain text with no check-creation affordance", async ({
@@ -195,9 +195,9 @@ test.describe("SMTP send mode", () => {
     // false-positive on.
     const section = page.getByTestId("check-smtp-send-mode-section");
     await expect(page.getByTestId("check-smtp-delivery-select")).toHaveCount(0);
-    await expect(
-      section.getByText("No email checks in this organization yet."),
-    ).toBeVisible();
+    await expect(section.getByTestId("check-smtp-no-email-checks")).toContainText(
+      "No email checks in this organization yet.",
+    );
     await expect(section.getByRole("link")).toHaveCount(0);
     await expect(section.getByRole("button", { name: /create/i })).toHaveCount(0);
   });

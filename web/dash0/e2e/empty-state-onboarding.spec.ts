@@ -95,7 +95,7 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
       page.getByRole("heading", { name: /ai assistants/i }),
     ).toBeVisible();
     const origin = await page.evaluate(() => window.location.origin);
-    await expect(page.getByText(`${origin}/api/v1/mcp`).first()).toBeVisible();
+    await expect(page.getByTestId("mcp-url")).toContainText(`${origin}/api/v1/mcp`);
   });
 
   test("hero stays usable at mobile width, quick-create first", async ({
@@ -539,7 +539,7 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
       await expect(
         page.locator('[data-testid="check-detail-header"] h1'),
       ).toContainText("HTTP — acme.com");
-      await expect(page.getByText("https://acme.com").first()).toBeVisible();
+      await expect(page.getByTestId("check-meta-target")).toContainText("https://acme.com");
     });
 
     // Spec 2026-09-16-01: the one-click path, end to end — a signup whose

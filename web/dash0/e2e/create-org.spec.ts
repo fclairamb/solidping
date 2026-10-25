@@ -138,9 +138,9 @@ test.describe("Create org from /no-org", () => {
     // The new org-scoped session must have been adopted — no "access
     // denied" screen, and no 401/403 anywhere along the way (create-org or
     // the dashboard's own API calls).
-    await expect(
-      page.getByText(/access to this organization is denied/i),
-    ).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText(
+      /access to this organization is denied/i,
+    );
     expect(
       forbiddenUrls,
       `unexpected 403s: ${forbiddenUrls.join(", ")}`,
@@ -319,9 +319,9 @@ test.describe("/no-org proposes an organization to a fresh account", () => {
       ?.split("/")[0];
     expect(landedSlug).toBe(expectedSlug);
 
-    await expect(
-      page.getByText(/access to this organization is denied/i),
-    ).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText(
+      /access to this organization is denied/i,
+    );
     expect(
       forbiddenUrls,
       `unexpected 403s: ${forbiddenUrls.join(", ")}`,
@@ -332,8 +332,8 @@ test.describe("/no-org proposes an organization to a fresh account", () => {
     //    change" in spec 2026-09-07-01). It shows up in more than one place
     //    (dashboard header, sidebar org switcher) — .first() is enough here.
     await expect(
-      page.getByText(`${firstName}'s organization`).first(),
-    ).toBeVisible();
+      page.getByTestId("sidebar-org-name"),
+    ).toContainText(`${firstName}'s organization`);
   });
 
   test("an unnamed fresh user still gets a non-empty proposal", async ({

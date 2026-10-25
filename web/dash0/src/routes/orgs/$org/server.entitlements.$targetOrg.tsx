@@ -556,7 +556,7 @@ function AuditTrail({
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground" data-testid="entitlements-audit-empty">
             {t("entitlements.detail.auditEmpty")}
           </p>
         ) : (

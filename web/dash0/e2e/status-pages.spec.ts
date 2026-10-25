@@ -149,7 +149,7 @@ test.describe("Status pages list toolbar", () => {
     await expect(headerCluster.getByRole("link", { name: "New Status Page" })).toBeVisible();
 
     // Refresh sits in the same toolbar row as the search input, to its right.
-    const searchInput = page.getByPlaceholder("Search status pages...");
+    const searchInput = page.getByTestId("status-pages-search");
     await expect(searchInput).toBeVisible();
     const toolbarRow = page
       .locator("div.flex.flex-wrap.items-center.gap-4")

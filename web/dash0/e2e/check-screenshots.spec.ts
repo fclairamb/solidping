@@ -164,7 +164,7 @@ test.describe("Check page screenshots", () => {
       await button.click();
       expect((await accepted).status()).toBe(202);
 
-      await expect(page.getByText(/Capture requested/)).toBeVisible();
+      await expect(page.locator("[data-sonner-toaster]")).toContainText(/Capture requested/);
       await expect(page.getByTestId("check-screenshots-pending")).toBeVisible();
       await expect(button).toBeDisabled();
 
@@ -180,7 +180,7 @@ test.describe("Check page screenshots", () => {
       // through to the server, and the refusal becomes a readable message.
       await page.reload();
       await page.getByTestId("check-screenshots-capture-now").click();
-      await expect(page.getByText(/Capture now is rate limited\. Try again in \d+ s\./)).toBeVisible();
+      await expect(page.locator("[data-sonner-toaster]")).toContainText(/Capture now is rate limited\. Try again in \d+ s\./);
     } finally {
       await deleteCheck(page, token, uid);
     }
@@ -266,8 +266,8 @@ test.describe("Check page screenshots", () => {
         "the capture timed out after 5s",
       );
       await expect(
-        page.getByText("The capture failed: the capture timed out after 5s"),
-      ).toBeVisible();
+        page.locator("[data-sonner-toaster]"),
+      ).toContainText("The capture failed: the capture timed out after 5s");
       await expect(page.getByTestId("check-screenshots-pending")).toHaveCount(0);
       await expect(button).toBeEnabled();
       await expect(button).toContainText("Capture now");

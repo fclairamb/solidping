@@ -61,10 +61,16 @@ test.describe("Membership requests", () => {
     const test = page.locator("#testEmail");
 
     await test.fill("alice@example.com");
-    await expect(page.getByText("✓").first()).toBeVisible();
+    await expect(page.getByTestId("email-pattern-test-result")).toHaveAttribute(
+      "data-result",
+      "match",
+    );
 
     await test.fill("alice@gmail.com");
-    await expect(page.getByText("✗").first()).toBeVisible();
+    await expect(page.getByTestId("email-pattern-test-result")).toHaveAttribute(
+      "data-result",
+      "no-match",
+    );
   });
 
   test("?tab=requests on the members page redirects to the requests route", async ({

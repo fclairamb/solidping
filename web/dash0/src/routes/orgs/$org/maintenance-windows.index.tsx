@@ -362,7 +362,10 @@ function MaintenanceWindowsIndexPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
+        <div
+          className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card"
+          data-testid="mw-empty"
+        >
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
             <Wrench className="h-6 w-6 text-muted-foreground" />
           </div>

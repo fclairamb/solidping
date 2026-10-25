@@ -123,7 +123,7 @@ test.describe("Escalation assignment", () => {
       const body = await patch.json();
       expect(body.defaultEscalationPolicyUid).toBe(policy.uid);
 
-      await expect(page.getByText(/settings saved/i)).toBeVisible();
+      await expect(page.getByTestId("escalation-saved")).toContainText(/settings saved/i);
     } finally {
       await clearOrgDefault(page, token);
       await deleteAllPolicies(page, token);
@@ -142,9 +142,9 @@ test.describe("Escalation assignment", () => {
       await page.goto("orgs/test/escalation-policies");
       await page.waitForLoadState("networkidle");
 
-      const row = page
-        .getByTestId("policy-row")
-        .filter({ hasText: `E2E Silent ${stamp}` });
+      const row = page.locator(
+        `[data-testid="policy-row"][data-policy-name="E2E Silent ${stamp}"]`,
+      );
       await expect(row.getByTestId("policy-silent-badge")).toBeVisible();
       await expect(row.getByTestId("policy-silent-badge")).toContainText(
         /silent/i,
@@ -174,9 +174,9 @@ test.describe("Escalation assignment", () => {
       await page.goto("orgs/test/escalation-policies");
       await page.waitForLoadState("networkidle");
 
-      const row = page
-        .getByTestId("policy-row")
-        .filter({ hasText: `E2E Used ${stamp}` });
+      const row = page.locator(
+        `[data-testid="policy-row"][data-policy-name="E2E Used ${stamp}"]`,
+      );
       await row.getByRole("button", { name: /delete/i }).click();
 
       const usage = page.getByTestId("policy-delete-usage");

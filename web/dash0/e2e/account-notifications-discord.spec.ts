@@ -293,7 +293,7 @@ test.describe("Account Notifications — Discord", () => {
       .click();
 
     await expect(
-      page.getByText(/open your DMs for server members/i).first(),
-    ).toBeVisible();
+      page.locator("[data-sonner-toaster]"),
+    ).toContainText(/open your DMs for server members/i);
   });
 });

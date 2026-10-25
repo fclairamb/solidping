@@ -378,6 +378,8 @@ function SettingsPage() {
               />
               {testResult && (
                 <p
+                  data-testid="email-pattern-test-result"
+                  data-result={testResult}
                   className={`text-xs ${
                     testResult === "match"
                       ? "text-green-600"
@@ -498,7 +500,7 @@ function SettingsPage() {
             )}
 
             {escalationSaved && (
-              <Alert>
+              <Alert data-testid="escalation-saved">
                 <Check className="h-4 w-4" />
                 <AlertDescription>{t("settings.saved")}</AlertDescription>
               </Alert>
