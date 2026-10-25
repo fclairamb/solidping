@@ -379,11 +379,6 @@
       "count": 19
     }
   },
-  "e2e/integrations.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 41
-    }
-  },
   "e2e/invitations.spec.ts": {
     "testid-local/no-text-locators": {
       "count": 8
@@ -621,7 +616,7 @@
   },
   "src/components/checks/form/sections/notifications.tsx": {
     "testid-local/require-testid-on-interactive": {
-      "count": 3
+      "count": 1
     }
   },
   "src/components/checks/form/types/game.tsx": {
@@ -721,7 +716,7 @@
   },
   "src/components/integrations/integration-form.tsx": {
     "testid-local/require-testid-on-interactive": {
-      "count": 13
+      "count": 11
     }
   },
   "src/components/integrations/sms-mode-panel.tsx": {
@@ -1071,7 +1066,7 @@
   },
   "src/routes/orgs/$org/integrations.$integrationUid.tsx": {
     "testid-local/require-testid-on-interactive": {
-      "count": 6
+      "count": 5
     }
   },
   "src/routes/orgs/$org/integrations.index.tsx": {

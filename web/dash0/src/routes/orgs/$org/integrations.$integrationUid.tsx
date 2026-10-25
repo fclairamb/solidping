@@ -72,7 +72,7 @@ function RecentNotificationsSection({
   );
 
   return (
-    <Card>
+    <Card data-testid="recent-notifications-card">
       <CardHeader>
         <CardTitle className="text-base">{t("recentNotifications.title")}</CardTitle>
       </CardHeader>
@@ -179,7 +179,7 @@ function SuppressionsSection({ org }: { org: string }) {
   };
 
   return (
-    <Card>
+    <Card data-testid="suppressions-card">
       <CardHeader>
         <CardTitle className="text-base">{t("suppressions.title")}</CardTitle>
       </CardHeader>
@@ -196,7 +196,7 @@ function SuppressionsSection({ org }: { org: string }) {
           </p>
         )}
         {!isLoading && !error && (!rows || rows.length === 0) && (
-          <p className="text-sm text-muted-foreground py-4 text-center">
+          <p className="text-sm text-muted-foreground py-4 text-center" data-testid="suppressions-empty">
             {t("suppressions.empty")}
           </p>
         )}
@@ -213,11 +213,11 @@ function SuppressionsSection({ org }: { org: string }) {
               </TableHeader>
               <TableBody>
                 {rows.map((row) => (
-                  <TableRow key={row.uid}>
-                    <TableCell className="font-medium break-all">
+                  <TableRow key={row.uid} data-testid="suppression-row">
+                    <TableCell className="font-medium break-all" data-testid="suppression-email">
                       {row.email}
                     </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="text-sm" data-testid="suppression-scope">
                       {row.checkUid ? (
                         row.checkName || row.checkUid
                       ) : (
@@ -238,6 +238,7 @@ function SuppressionsSection({ org }: { org: string }) {
                         size="icon"
                         className="text-destructive hover:text-destructive"
                         aria-label={t("suppressions.resubscribeAria", { email: row.email })}
+                        data-testid={`suppression-resubscribe-${row.uid}`}
                         disabled={deleteSuppression.isPending}
                         onClick={() => handleResubscribe(row.uid, row.email)}
                       >

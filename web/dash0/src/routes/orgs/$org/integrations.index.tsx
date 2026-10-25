@@ -359,7 +359,7 @@ function Row({ org, integration, onDelete }: RowProps) {
   const { t } = useTranslation("integrations");
 
   return (
-    <TableRow className="hover:bg-muted/40 transition-colors">
+    <TableRow className="hover:bg-muted/40 transition-colors" data-testid={`integration-row-${integration.uid}`}>
       <TableCell className="w-full max-w-0">
         <Link
           to="/orgs/$org/integrations/$integrationUid"

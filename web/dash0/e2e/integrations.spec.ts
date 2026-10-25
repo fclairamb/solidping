@@ -203,9 +203,9 @@ test.describe("Notification Channels", () => {
     await expect(page.locator("#ch-default")).not.toBeChecked();
 
     const channelName = `E2E Webhook ${Date.now()}`;
-    await page.getByLabel("Name").fill(channelName);
+    await page.getByTestId("ch-name").fill(channelName);
     await page
-      .getByLabel(/webhook url/i)
+      .getByTestId("ch-url")
       .fill("https://example.com/webhook");
     await page.getByRole("button", { name: /create integration/i }).click();
 
@@ -220,7 +220,7 @@ test.describe("Notification Channels", () => {
 
     // 2. Channel appears in the list
     await page.goto("orgs/test/integrations");
-    await expect(page.getByText(channelName)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId(`integration-row-${channelUid}`)).toBeVisible({ timeout: 15000 });
 
     // 3. Create a check via API and bind the channel via the edit UI
     const checkResp = await page.request.post(
@@ -240,7 +240,7 @@ test.describe("Notification Channels", () => {
     await page.goto(`orgs/test/checks/${check.uid}/edit`);
 
     // Toggle the new channel on
-    const channelLabel = page.getByText(channelName, { exact: true });
+    const channelLabel = page.getByTestId(`notify-via-${channelUid}`);
     await expect(channelLabel).toBeVisible({ timeout: 15000 });
     await channelLabel.click();
     await page.getByTestId("check-submit-button").click();
@@ -261,7 +261,7 @@ test.describe("Notification Channels", () => {
 
     // 4. Unbind via the edit page
     await page.goto(`orgs/test/checks/${check.uid}/edit`);
-    await page.getByText(channelName, { exact: true }).click();
+    await page.getByTestId(`notify-via-${channelUid}`).click();
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL((url) => !url.pathname.endsWith("/edit"));
 
@@ -283,7 +283,7 @@ test.describe("Notification Channels", () => {
     await dialog.getByRole("button", { name: /delete/i }).click();
 
     await page.waitForURL((url) => url.pathname.endsWith("/integrations"));
-    await expect(page.getByText(channelName)).toHaveCount(0);
+    await expect(page.getByTestId(`integration-row-${channelUid}`)).toHaveCount(0);
 
     // Cleanup
     await deleteCheck(page, token, check.uid);
@@ -383,8 +383,8 @@ test.describe("Notification Channels", () => {
 
     const name = `E2E Teams ${Date.now()}`;
     const workflowUrl = "https://example.logic.azure.com/workflows/abc123";
-    await page.getByLabel("Name").fill(name);
-    await page.getByLabel(/webhook url/i).fill(workflowUrl);
+    await page.getByTestId("ch-name").fill(name);
+    await page.getByTestId("ch-url").fill(workflowUrl);
 
     await page.getByRole("button", { name: /create integration/i }).click();
     await page.waitForURL((url) =>
@@ -397,7 +397,7 @@ test.describe("Notification Channels", () => {
     // Reload the edit page — the workflow URL persists (round-trips through
     // the msteams webhook_url settings key on both save and reload).
     await page.goto(`orgs/test/integrations/${uid}`);
-    await expect(page.getByLabel(/webhook url/i)).toHaveValue(workflowUrl);
+    await expect(page.getByTestId("ch-url")).toHaveValue(workflowUrl);
 
     await deleteConnection(page, token, uid);
   });
@@ -413,8 +413,8 @@ test.describe("Notification Channels", () => {
 
     const name = `E2E Slack webhook ${Date.now()}`;
     const hookUrl = "https://hooks.slack.com/services/T0000/B0000/abcdef";
-    await page.getByLabel("Name").fill(name);
-    await page.getByLabel(/webhook url/i).fill(hookUrl);
+    await page.getByTestId("ch-name").fill(name);
+    await page.getByTestId("ch-url").fill(hookUrl);
 
     await page.getByRole("button", { name: /create integration/i }).click();
     await page.waitForURL((url) =>
@@ -425,7 +425,7 @@ test.describe("Notification Channels", () => {
     const uid = page.url().split("/").pop()!;
 
     await page.goto(`orgs/test/integrations/${uid}`);
-    await expect(page.getByLabel(/webhook url/i)).toHaveValue(hookUrl);
+    await expect(page.getByTestId("ch-url")).toHaveValue(hookUrl);
 
     await deleteConnection(page, token, uid);
   });
@@ -437,11 +437,11 @@ test.describe("Notification Channels", () => {
 
     await page.goto("orgs/test/integrations/new?type=slack-webhook");
 
-    await page.getByLabel("Name").fill(`E2E Slack invalid ${Date.now()}`);
-    await page.getByLabel(/webhook url/i).fill("https://example.com/hook");
+    await page.getByTestId("ch-name").fill(`E2E Slack invalid ${Date.now()}`);
+    await page.getByTestId("ch-url").fill("https://example.com/hook");
     await page.getByRole("button", { name: /create integration/i }).click();
 
-    await expect(page.getByText(/hooks\.slack\.com/).first()).toBeVisible();
+    await expect(page.locator("[data-sonner-toast]").first()).toContainText(/hooks\.slack\.com/);
     await expect(page).toHaveURL(/integrations\/new/);
   });
 
@@ -461,14 +461,14 @@ test.describe("Notification Channels", () => {
     await page.goto("orgs/test/integrations/new?type=discord");
 
     await expect(page.getByTestId("discord-not-connected")).toBeVisible();
-    await expect(
-      page.getByText(/does not have the Discord bot configured/i),
-    ).toBeVisible();
+    await expect(page.getByTestId("discord-not-connected")).toContainText(
+      /does not have the Discord bot configured/i,
+    );
 
     const name = `E2E Discord webhook ${Date.now()}`;
     const hookUrl = "https://discord.com/api/webhooks/123456789/acme-token";
-    await page.getByLabel("Name").fill(name);
-    await page.getByLabel(/webhook url/i).fill(hookUrl);
+    await page.getByTestId("ch-name").fill(name);
+    await page.getByTestId("ch-url").fill(hookUrl);
 
     await page.getByRole("button", { name: /create integration/i }).click();
     await page.waitForURL((url) =>
@@ -479,7 +479,7 @@ test.describe("Notification Channels", () => {
     const uid = page.url().split("/").pop()!;
 
     await page.goto(`orgs/test/integrations/${uid}`);
-    await expect(page.getByLabel(/webhook url/i)).toHaveValue(hookUrl);
+    await expect(page.getByTestId("ch-url")).toHaveValue(hookUrl);
 
     // Stored as a webhook-only integration: no bot fields.
     const stored = await page.request
@@ -506,11 +506,11 @@ test.describe("Notification Channels", () => {
 
     await page.goto("orgs/test/integrations/new?type=discord");
 
-    await page.getByLabel("Name").fill(`E2E Discord invalid ${Date.now()}`);
-    await page.getByLabel(/webhook url/i).fill("https://example.com/hook");
+    await page.getByTestId("ch-name").fill(`E2E Discord invalid ${Date.now()}`);
+    await page.getByTestId("ch-url").fill("https://example.com/hook");
     await page.getByRole("button", { name: /create integration/i }).click();
 
-    await expect(page.getByText(/must be a Discord webhook/i).first()).toBeVisible();
+    await expect(page.locator("[data-sonner-toast]").first()).toContainText(/must be a Discord webhook/i);
     await expect(page).toHaveURL(/integrations\/new/);
   });
 
@@ -526,9 +526,9 @@ test.describe("Notification Channels", () => {
     await expect(panel).toBeVisible();
 
     // The empty-device message should appear.
-    await expect(
-      panel.getByText(/No devices subscribed yet/i),
-    ).toBeVisible();
+    await expect(panel.getByTestId("webpush-no-subscriptions")).toContainText(
+      /No devices subscribed yet/i,
+    );
   });
 
   test("freebox source is hidden from the check Notify via picker", async ({
@@ -582,8 +582,8 @@ test.describe("Notification Channels", () => {
     await page.goto(`orgs/test/checks/${check.uid}/edit`);
 
     // The notify-capable webhook appears; the freebox source does not.
-    await expect(page.getByText(webhookName, { exact: true })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(freeboxName, { exact: true })).toHaveCount(0);
+    await expect(page.getByTestId(`notify-via-${webhook.uid}`)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId(`notify-via-${freebox.uid}`)).toHaveCount(0);
 
     // The API also rejects binding the freebox source as a notify target.
     const bindResp = await page.request.put(
@@ -628,7 +628,7 @@ test.describe("Notification Channels", () => {
 
     await page.goto(`orgs/test/checks/${check.uid}/edit`);
 
-    await expect(page.getByText("No channels yet.")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("notify-via-empty")).toContainText("No channels yet.", { timeout: 15000 });
     await expect(page.getByRole("link", { name: /create one/i })).toBeVisible();
 
     await deleteCheck(page, token, check.uid);
@@ -727,7 +727,7 @@ test.describe("Notification Channels", () => {
     await expect(page.getByTestId("webhook-send-test-tooltip")).toHaveCount(0);
 
     // 2. Edit the name → dirty: Save enabled, Send test disabled.
-    await page.getByLabel("Name").fill(`${name} edited`);
+    await page.getByTestId("ch-name").fill(`${name} edited`);
     await expect(saveBtn).toBeEnabled();
     await expect(sendTest).toBeDisabled();
 
@@ -802,14 +802,14 @@ test.describe("Integration detail — recent notifications", () => {
 
     await page.goto(`orgs/test/integrations/${webhook.uid}`);
 
-    await expect(page.getByText("Recent notifications")).toBeVisible();
+    await expect(page.getByTestId("recent-notifications-card")).toBeVisible();
 
     // The translated, emoji-bearing label is visible...
-    await expect(page.getByText("Incident Resolved")).toBeVisible();
+    await expect(page.getByTestId("event-type-badge")).toContainText("Incident Resolved");
     // ...and the raw eventType is no longer rendered as a bare mono-styled
     // table cell (it still lives in the badge's title attribute for
     // debugging, same as the notification detail page).
-    await expect(page.locator("td.font-mono", { hasText: "incident.resolved" })).toHaveCount(0);
+    await expect(page.locator("td.font-mono")).toHaveCount(0);
 
     await deleteConnection(page, token, webhook.uid);
   });
@@ -891,22 +891,18 @@ test.describe("Email suppressions section", () => {
 
     // Both rows render: the check-scoped one with its resolved check name,
     // and the org-wide one labeled "All checks".
-    await expect(page.getByText("unsubscribed@example.com")).toBeVisible();
-    await expect(page.getByText("Production API")).toBeVisible();
-    await expect(page.getByText("org-wide-unsub@example.com")).toBeVisible();
-    await expect(page.getByText("All checks")).toBeVisible();
+    const emails = page.getByTestId("suppression-email");
+    const scopes = page.getByTestId("suppression-scope");
+    await expect(emails).toHaveText(["unsubscribed@example.com", "org-wide-unsub@example.com"]);
+    await expect(scopes).toHaveText(["Production API", "All checks"]);
 
     // Re-subscribe (delete) the check-scoped row via its ghost Trash2 button.
-    await page
-      .getByRole("button", { name: /re-subscribe unsubscribed@example.com/i })
-      .click();
+    await page.getByTestId(`suppression-resubscribe-${suppressionUid}`).click();
 
     // The row disappears once the list is refetched after the mutation.
-    await expect(page.getByText("unsubscribed@example.com")).toHaveCount(0, {
+    await expect(emails).toHaveText(["org-wide-unsub@example.com"], {
       timeout: 15000,
     });
-    // The other recipient is unaffected.
-    await expect(page.getByText("org-wide-unsub@example.com")).toBeVisible();
 
     await deleteConnection(page, token, integration.uid);
   });
@@ -944,9 +940,9 @@ test.describe("Email suppressions section", () => {
 
     await page.goto(`orgs/test/integrations/${integration.uid}`);
 
-    await expect(
-      page.getByText(/no one has unsubscribed/i),
-    ).toBeVisible();
+    await expect(page.getByTestId("suppressions-empty")).toContainText(
+      /no one has unsubscribed/i,
+    );
 
     await deleteConnection(page, token, integration.uid);
   });
@@ -967,13 +963,13 @@ test.describe("Email integration recipients", () => {
     await page.waitForLoadState("networkidle");
 
     const name = `E2E Email Multi ${Date.now()}`;
-    await page.getByLabel("Name").fill(name);
+    await page.getByTestId("ch-name").fill(name);
 
     // Type a single space-separated string into the chip input's free-text
     // field, then blur — commits both tokens via parseEmailList.
     const recipientsField = page.getByTestId("email-recipients-input");
     await recipientsField.fill("a@x.example.com b@y.example.com");
-    await page.getByLabel("Name").click(); // blur the recipients field
+    await page.getByTestId("ch-name").click(); // blur the recipients field
 
     await expect(page.getByTestId("email-recipients-chip-0")).toContainText(
       "a@x.example.com",
@@ -1010,7 +1006,7 @@ test.describe("Email integration recipients", () => {
     await page.goto("orgs/test/integrations/new?type=email");
     await page.waitForLoadState("networkidle");
     await page
-      .getByLabel("Name")
+      .getByTestId("ch-name")
       .fill(`E2E Email Comma ${Date.now()}`);
 
     const recipientsField = page.getByTestId("email-recipients-input");
@@ -1044,7 +1040,7 @@ test.describe("Email integration recipients", () => {
     // button's disabled state is driven purely by recipient validity, not
     // entangled with the edit page's separate isDirty gating.
     await page.goto("orgs/test/integrations/new?type=email");
-    await page.getByLabel("Name").fill(`E2E Email Invalid ${Date.now()}`);
+    await page.getByTestId("ch-name").fill(`E2E Email Invalid ${Date.now()}`);
 
     const recipientsField = page.getByTestId("email-recipients-input");
     const createBtn = page.getByRole("button", {

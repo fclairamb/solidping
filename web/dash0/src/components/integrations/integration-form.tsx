@@ -150,6 +150,7 @@ export function IntegrationForm({ type, initial, initialName, onChange, org, cha
         <Label htmlFor="ch-name">{t("form.name", "Name")}</Label>
         <Input
           id="ch-name"
+          data-testid="ch-name"
           value={name}
           required
           onChange={(e) => setName(e.target.value)}
@@ -1106,7 +1107,7 @@ function WebPushChannelPanel({ settings, onChange, org, isEdit: _isEdit }: WebPu
       </p>
 
       {subs.length === 0 ? (
-        <p className="text-sm text-muted-foreground italic">
+        <p className="text-sm text-muted-foreground italic" data-testid="webpush-no-subscriptions">
           {t(
             "form.webpushNoSubscriptions",
             "No devices subscribed yet. Click the button below to add this browser.",
@@ -2696,6 +2697,7 @@ function UrlPanel({
       <Label htmlFor="ch-url">{label}</Label>
       <Input
         id="ch-url"
+        data-testid="ch-url"
         type="url"
         value={value}
         onChange={(e) => onChange(e.target.value)}

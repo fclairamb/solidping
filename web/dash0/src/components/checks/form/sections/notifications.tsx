@@ -38,11 +38,12 @@ export function NotifyViaSection({
     return (
       <div className="space-y-2">
         <Label>{t("form.notifyVia")}</Label>
-        <div className="rounded border border-dashed p-3 text-sm text-muted-foreground">
+        <div className="rounded border border-dashed p-3 text-sm text-muted-foreground" data-testid="notify-via-empty">
           {t("form.noChannelsYet")}{" "}
           <Link
             to="/orgs/$org/integrations/new"
             params={{ org }}
+            data-testid="notify-via-create-link"
             className="font-medium text-primary underline-offset-4 hover:underline"
           >
             {t("form.createOneChannel")}
@@ -68,6 +69,7 @@ export function NotifyViaSection({
             >
               <Checkbox
                 id={cbId}
+                data-testid={cbId}
                 checked={checked}
                 onCheckedChange={() => onToggle(c.uid)}
               />
