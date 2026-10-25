@@ -49,6 +49,7 @@ Out of scope: the earlier rejection (2026-10-16) of "a member with write access 
 3. Treat a run where the allowlist refuses a host like `CheckHosts` failing today. The candidate is refused, and the refusal is in the attempt event.
 4. Apply the same runtime allowlist to the verification run in `storeCandidate` (`repair.go:425-433`).
 5. Decide what the scheduled runs of an auto-applied repair do. Recommended: keep the allowlist only for AI-loop runs, and refuse `repair: auto` for a candidate whose static host set is empty while the previous script's was not.
+   - Superseded by spec `2026-10-24-01` (finding R1): that rule only caught a candidate showing no host at all. Now every run with real secrets of a version `repair: auto` applied is held to the hosts of the version before it (`ai.repair_hosts`, bound by `ai.repair_grant`), a refusal sets the check back to `repair: propose`, and `repair: auto` proposes any candidate with a network call whose host its text does not show (`hiddenHost`).
 
 ## Tests
 
