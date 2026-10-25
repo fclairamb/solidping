@@ -80,3 +80,27 @@ func (h *FaultHook) Sweep(t *testing.T, scenario func(arm func())) {
 		run(n)
 	}
 }
+
+// MaxFreshFaults caps how many queries SweepFresh fails in turn.
+const MaxFreshFaults = 400
+
+// SweepFresh is Sweep for an operation that cannot be replayed on one database
+// (a seeder that skips itself once its data exists). newRun builds a fresh
+// database with a FaultHook installed and returns the hook and the operation;
+// it is called once to count the operation's queries, then once per query
+// with that query failing. The operation must tolerate failing.
+func SweepFresh(t *testing.T, newRun func() (*FaultHook, func())) {
+	t.Helper()
+
+	hook, operation := newRun()
+	hook.armed.Store(true)
+	operation()
+
+	total := min(hook.seen.Load(), MaxFreshFaults)
+	for n := int64(1); n <= total; n++ {
+		hook, operation = newRun()
+		hook.failAt.Store(n)
+		hook.armed.Store(true)
+		operation()
+	}
+}
