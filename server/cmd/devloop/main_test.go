@@ -87,11 +87,25 @@ func TestNewSink(t *testing.T) {
 	r.Equal(os.Stdout, newSink(filepath.Join(blocker, "sub"), "backend", 1024, 1))
 }
 
+// relTempDir returns a temporary directory as a path relative to the package
+// directory. isExcludedDir looks at every path component and "tmp" is
+// excluded, so a t.TempDir() under Linux's /tmp would be skipped entirely
+// (devloop itself only ever watches the relative root ".").
+func relTempDir(t *testing.T) string {
+	t.Helper()
+
+	dir, err := os.MkdirTemp(".", "watchtest-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
+	return dir
+}
+
 func TestAddWatchesAndHandleEvent(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	root := t.TempDir()
+	root := relTempDir(t)
 	r.NoError(os.MkdirAll(filepath.Join(root, "pkg", "sub"), 0o755))
 	r.NoError(os.MkdirAll(filepath.Join(root, "vendor", "dep"), 0o755))
 	r.NoError(os.WriteFile(filepath.Join(root, "pkg", "a.go"), []byte("package pkg\n"), 0o600))
@@ -127,7 +141,7 @@ func TestDebounce(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	root := t.TempDir()
+	root := relTempDir(t)
 	watcher, err := fsnotify.NewWatcher()
 	r.NoError(err)
 	r.NoError(watcher.Add(root))
