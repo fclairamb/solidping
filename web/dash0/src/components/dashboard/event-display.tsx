@@ -122,6 +122,8 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   "check.ai_repair_attempted": { emoji: "🤖", tone: TONE_SLATE },
   "check.ai_repair_proposed": { emoji: "📝", tone: TONE_AMBER },
   "check.ai_repair_applied": { emoji: "🛠️", tone: TONE_VIOLET },
+  // A repaired script reached a host outside its grant: back to a human.
+  "check.ai_repair_revoked": { emoji: "🚫", tone: TONE_AMBER },
   "check.ai_usage": { emoji: "🧮", tone: TONE_SLATE },
   // One of the org's private-location agents connected or lost its connection
   // (spec 2026-09-25-05). The disconnect is amber, not destructive: a single
@@ -388,6 +390,7 @@ export const EVENT_TYPE_MARKS: Record<string, EventMark> = {
   "check.ai_repair_attempted": { icon: Sparkles, tone: MARK_QUIET },
   "check.ai_repair_proposed": { icon: Sparkles, tone: MARK_WARNING },
   "check.ai_repair_applied": { icon: Wrench, tone: MARK_SUCCESS },
+  "check.ai_repair_revoked": { icon: ShieldAlert, tone: MARK_WARNING },
   "check.ai_usage": { icon: Cpu, tone: MARK_QUIET },
   "agent.connected": { icon: Plug, tone: MARK_SUCCESS },
   "agent.disconnected": { icon: Unplug, tone: MARK_WARNING },

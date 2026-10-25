@@ -1936,7 +1936,7 @@ func (s *Service) queueLifecycleNotifications(
 		// check's timeline, never paged. An applied auto-repair notifies its
 		// owner by email from the repair itself.
 		models.EventTypeCheckAIRepairAttempted, models.EventTypeCheckAIRepairProposed,
-		models.EventTypeCheckAIRepairApplied, models.EventTypeAIUsage,
+		models.EventTypeCheckAIRepairApplied, models.EventTypeCheckAIRepairRevoked, models.EventTypeAIUsage,
 		// A health incident's failing components changing (spec
 		// 2026-10-03-05) is a timeline update on an incident that already
 		// paged: recorded, never paged again.

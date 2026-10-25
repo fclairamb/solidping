@@ -25,6 +25,7 @@
     "check.ai_repair_attempted": "Réparation IA tentée",
     "check.ai_repair_proposed": "Réparation IA proposée",
     "check.ai_repair_applied": "Réparation IA appliquée",
+    "check.ai_repair_revoked": "Réparation IA automatique révoquée",
     "check.ai_usage": "Consommation IA",
     "incident.created": "Incident créé",
     "incident.opened": "Incident ouvert",

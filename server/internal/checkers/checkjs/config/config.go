@@ -189,6 +189,60 @@ func (c *JSConfig) GetConfig() map[string]any {
 	return cfg
 }
 
+// RepairAllowlist is the host allowlist a script `repair: auto` applied is
+// held to (spec 2026-10-24-01), and whether this config carries one. A grant
+// bound to another script or env does not hold.
+func (c *JSConfig) RepairAllowlist() ([]string, bool) {
+	if c.AI == nil || c.AI.RepairGrant == "" || c.AI.RepairGrant != RepairDigest(c.Script, c.Env) {
+		return nil, false
+	}
+
+	return c.AI.RepairHosts, true
+}
+
+// NormalizeConfig drops a repair grant the stored script or env no longer
+// matches: a human edit of an auto-repaired script clears its allowlist.
+// Implements checkerdef.ConfigNormalizer.
+func (c *JSConfig) NormalizeConfig(configMap map[string]any) (map[string]any, error) {
+	block, ok := configMap[fieldAI].(map[string]any)
+	if !ok {
+		return configMap, nil
+	}
+
+	_, hasHosts := block[aiKeyRepairHosts]
+	_, hasGrant := block[aiKeyRepairGrant]
+
+	if !hasHosts && !hasGrant {
+		return configMap, nil
+	}
+
+	parsed := &JSConfig{}
+	if err := parsed.FromMap(configMap); err != nil {
+		// Validation reports it.
+		return configMap, nil //nolint:nilerr // the validator owns the error
+	}
+
+	if _, held := parsed.RepairAllowlist(); held {
+		return configMap, nil
+	}
+
+	out := make(map[string]any, len(configMap))
+	for key, value := range configMap {
+		out[key] = value
+	}
+
+	cleared := make(map[string]any, len(block))
+	for key, value := range block {
+		if key != aiKeyRepairHosts && key != aiKeyRepairGrant {
+			cleared[key] = value
+		}
+	}
+
+	out[fieldAI] = cleared
+
+	return out, nil
+}
+
 // stringMapToAny widens a string map for the config map, which is JSON-shaped.
 func stringMapToAny(in map[string]string) map[string]any {
 	out := make(map[string]any, len(in))

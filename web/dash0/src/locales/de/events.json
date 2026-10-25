@@ -25,6 +25,7 @@
     "check.ai_repair_attempted": "KI-Reparatur versucht",
     "check.ai_repair_proposed": "KI-Reparatur vorgeschlagen",
     "check.ai_repair_applied": "KI-Reparatur angewendet",
+    "check.ai_repair_revoked": "Automatische KI-Reparatur widerrufen",
     "check.ai_usage": "KI-Verbrauch",
     "incident.created": "Vorfall erstellt",
     "incident.opened": "Vorfall eröffnet",

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -373,7 +374,7 @@ func (s *Service) recordAttempt(
 func (s *Service) attemptRepair(ctx context.Context, target *repairTarget) (*RepairOutcome, ai.Usage, error) {
 	previous := target.cfg.Script
 	env := target.cfg.Env
-	allowed := repairHosts(previous, env)
+	allowed := grantedHosts(target.cfg)
 
 	rec := &runRecorder{
 		runner: s.runner,
@@ -431,7 +432,7 @@ func (s *Service) storeCandidate(ctx context.Context, target *repairTarget, cand
 
 	guardErr := CheckCandidate(cfg.Script, candidate, cfg.Env)
 	if guardErr == nil {
-		verify, err := s.runner.Run(ctx, candidate, cfg.Env, target.secrets, repairHosts(cfg.Script, cfg.Env), cfg.Timeout)
+		verify, err := s.runner.Run(ctx, candidate, cfg.Env, target.secrets, grantedHosts(cfg), cfg.Timeout)
 		if err != nil {
 			guardErr = err
 		} else if !verify.Up() {
@@ -448,13 +449,18 @@ func (s *Service) storeCandidate(ctx context.Context, target *repairTarget, cand
 		reason += " (not applied: " + guardErr.Error() + ")"
 	}
 
-	// The allowlist only holds the AI-loop runs. A candidate whose hosts the
-	// text no longer shows (built at runtime) would run on schedule with the
-	// secrets and no allowlist, so it is proposed, never applied.
-	if guardErr == nil && mode == jsconfig.RepairAuto && hostsHidden(cfg.Script, candidate, cfg.Env) {
-		reason += " (not applied: the candidate's hosts cannot be read from its text)"
+	// An applied candidate is held on schedule to the hosts the previous
+	// version reached (its repair grant), which is the boundary. On top of it,
+	// a candidate that can reach a host its text does not show is proposed,
+	// never applied: the loop and the verification run only refuse the
+	// connections they make, and a branch they never took could still run on
+	// schedule.
+	if guardErr == nil && mode == jsconfig.RepairAuto {
+		if hidden := hiddenHost(cfg.Script, candidate, cfg.Env); hidden != "" {
+			reason += " (not applied: the candidate can reach a host its text does not show: " + hidden + ")"
 
-		return s.proposeRepair(ctx, target, candidate, reason)
+			return s.proposeRepair(ctx, target, candidate, reason)
+		}
 	}
 
 	if guardErr == nil && mode == jsconfig.RepairAuto {
@@ -553,11 +559,21 @@ func (s *Service) appliedRepairWithin(ctx context.Context, checkUID string, wind
 // repairedConfig is the check's config with the candidate script and the ai
 // block's model and timestamp refreshed. Secrets are not in it: they never
 // change in a repair, and every write path keeps the current ones.
-func (s *Service) repairedConfig(target *repairTarget, candidate string) map[string]any {
+//
+// granted carries the repair allowlist (spec 2026-10-24-01): only a version
+// `repair: auto` applies is held to the hosts the version before it reached.
+// A proposal carries none, a human approves it.
+func (s *Service) repairedConfig(target *repairTarget, candidate string, granted bool) map[string]any {
 	now := s.now().UTC().Truncate(time.Second)
 	block := *target.cfg.AI
 	block.Model = s.client.Model
 	block.GeneratedAt = &now
+	block.RepairHosts, block.RepairGrant = nil, ""
+
+	if granted {
+		block.RepairHosts = grantedHosts(target.cfg)
+		block.RepairGrant = jsconfig.RepairDigest(candidate, target.cfg.Env)
+	}
 
 	out := map[string]any{}
 
@@ -571,11 +587,28 @@ func (s *Service) repairedConfig(target *repairTarget, candidate string) map[str
 	return out
 }
 
+// grantedHosts is the allowlist of an applied repair: the hosts the previous
+// version reached, narrowed to its own grant when it was itself an applied
+// repair. Never nil, so an empty grant still serializes and allows nothing.
+func grantedHosts(previous *checkjs.JSConfig) []string {
+	hosts := repairHosts(previous.Script, previous.Env)
+
+	if held, ok := previous.RepairAllowlist(); ok {
+		hosts = slices.DeleteFunc(hosts, func(host string) bool { return !slices.Contains(held, host) })
+	}
+
+	if hosts == nil {
+		hosts = []string{}
+	}
+
+	return hosts
+}
+
 func (s *Service) proposeRepair(
 	ctx context.Context, target *repairTarget, candidate, reason string,
 ) (*RepairOutcome, error) {
 	proposed := *target.check
-	proposed.Config = models.JSONMap(s.repairedConfig(target, candidate))
+	proposed.Config = models.JSONMap(s.repairedConfig(target, candidate, false))
 
 	labels, err := s.db.GetLabelsForCheck(ctx, target.check.UID)
 	if err != nil {
@@ -629,7 +662,7 @@ func (s *Service) applyRepair(
 		source.BaseVersion = &base
 	}
 
-	config := s.repairedConfig(target, candidate)
+	config := s.repairedConfig(target, candidate, true)
 	req := &checks.UpdateCheckRequest{Config: &config}
 
 	_, err = s.checks.UpdateCheck(dbctx.WithChange(ctx, source), target.org.Slug, target.check.UID, req)
