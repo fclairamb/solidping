@@ -809,7 +809,11 @@ test.describe("Integration detail — recent notifications", () => {
     // ...and the raw eventType is no longer rendered as a bare mono-styled
     // table cell (it still lives in the badge's title attribute for
     // debugging, same as the notification detail page).
-    await expect(page.locator("td.font-mono")).toHaveCount(0);
+    const eventCell = page.locator(
+      '[data-testid="recent-notification-event"][data-event-type="incident.resolved"]',
+    );
+    await expect(eventCell).toHaveCount(1);
+    await expect(eventCell).not.toContainText("incident.resolved");
 
     await deleteConnection(page, token, webhook.uid);
   });

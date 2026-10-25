@@ -48,9 +48,8 @@ test.describe("Notification delivery detail", () => {
     );
     // ...and the raw event-type string is no longer rendered as a bare <code>
     // element (it still lives in the badge's title attribute for debugging).
-    expect(await page.locator("code").allTextContents()).not.toContain(
-      "incident.created",
-    );
+    const codeTexts = await page.locator("code").allTextContents();
+    expect(codeTexts.filter((t) => t.includes("incident.created"))).toEqual([]);
   });
 
   // Legacy redirect: the old nested URL forwards to the flat route.

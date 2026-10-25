@@ -129,7 +129,10 @@ function RecentNotificationsSection({
                   <TableCell className="text-sm capitalize">
                     {row.channelType}
                   </TableCell>
-                  <TableCell>
+                  <TableCell
+                    data-testid="recent-notification-event"
+                    data-event-type={row.eventType}
+                  >
                     <EventTypeBadge eventType={row.eventType} t={tEvents} />
                   </TableCell>
                   <TableCell className="text-sm">
