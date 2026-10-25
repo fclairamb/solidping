@@ -1,0 +1,1382 @@
+{
+  "e2e/accessible-org-redirect.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/account-notifications-delete.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 4
+    }
+  },
+  "e2e/account-notifications-discord.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/account-notifications-telegram.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/account-notifications-whatsapp.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 4
+    }
+  },
+  "e2e/account-notifications.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/account-password.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/availability.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 20
+    }
+  },
+  "e2e/badges.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/blast-radius-mobile.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/channels-discord-bot.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/channels-matrix.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 10
+    }
+  },
+  "e2e/check-chart-availability-strip.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 5
+    }
+  },
+  "e2e/check-copy-curl.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/check-crawl.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/check-dependencies.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 8
+    }
+  },
+  "e2e/check-detail.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 34
+    }
+  },
+  "e2e/check-group-collapse.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 5
+    }
+  },
+  "e2e/check-group-escalation.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/check-groups.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 23
+    }
+  },
+  "e2e/check-health.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/check-heartbeat-evaluation-rows.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/check-heartbeat-push.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/check-http-expected-status-codes.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/check-http-request-body-headers.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/check-live-subscription-slug.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/check-run-now.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/check-scheduling.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/check-screenshots.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/check-smtp-send-mode.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/check-ssh-tunnel.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 4
+    }
+  },
+  "e2e/check-vnc.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/checks-import-sources.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/checks-index-empty-group-no-skeleton.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 5
+    }
+  },
+  "e2e/checks-index-filter-hides-empty-groups.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 4
+    }
+  },
+  "e2e/checks-index-group-pagination.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 6
+    }
+  },
+  "e2e/checks-index-host-view.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 4
+    }
+  },
+  "e2e/checks-index-status-type-filters.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 19
+    }
+  },
+  "e2e/checks-request-fanout.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/checks-search-url-param.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 9
+    }
+  },
+  "e2e/checks-stale.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/checks.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 15
+    }
+  },
+  "e2e/command-menu.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 35
+    }
+  },
+  "e2e/confirm-registration-no-org.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/create-org.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/dashboard.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 16
+    }
+  },
+  "e2e/demo-account.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 5
+    }
+  },
+  "e2e/device-authorization.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/discord-member-mapping.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/discovery-egress-policy.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/discovery-promote.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 7
+    }
+  },
+  "e2e/discovery-region.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/discovery-scan-method.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 4
+    }
+  },
+  "e2e/discovery.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 19
+    }
+  },
+  "e2e/dns-check.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/dnsbl-card.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/electric-identity-auth.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/electric-identity-primitives.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/empty-state-onboarding.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/entitlements-usage.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/escalation-assignment.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/escalation-policies.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/events-agent-identity.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 4
+    }
+  },
+  "e2e/first-visit-no-session-expired.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/incident-ack-actor.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/incident-check-deleted.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/incident-comments.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 4
+    }
+  },
+  "e2e/incident-detail-header-overflow.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/incident-failure-details.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/incident-mobile.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/incident-notifications.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/incident-probe-response.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/incident-timestamps.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/incidents-list-check-name.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/incidents-list-kind.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/incidents.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 19
+    }
+  },
+  "e2e/integrations.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 41
+    }
+  },
+  "e2e/invitations.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 8
+    }
+  },
+  "e2e/jobs.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/kubernetes-clusters.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/listing-pages-style.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/live-updates-handshake.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/live-updates.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 20
+    }
+  },
+  "e2e/magic-wand.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 6
+    }
+  },
+  "e2e/maintenance-windows.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/mcp-page.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/member-last-seen.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/member-paging-coverage.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 4
+    }
+  },
+  "e2e/membership-requests.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/notification-detail.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 11
+    }
+  },
+  "e2e/onboarding-checklist.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/oncall-create.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/oncall-edit.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/organization-audit.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/organization-settings.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 5
+    }
+  },
+  "e2e/private-location-liveness.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/private-locations.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/refresh-button-responsive.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 4
+    }
+  },
+  "e2e/report-schedules.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 7
+    }
+  },
+  "e2e/responsive-tables-mobile.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 17
+    }
+  },
+  "e2e/server-activation.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/server-admin.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 19
+    }
+  },
+  "e2e/server-entitlements.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/server-mail-secret-first-save.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/server-users.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/sidebar.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 4
+    }
+  },
+  "e2e/slos.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 7
+    }
+  },
+  "e2e/sms-mode.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/sso-handoff.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/status-page-appearance.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/status-page-custom-domain.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/status-page-from-check.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/status-page-group-resource.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/status-page-section-selector.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/status-pages.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 1
+    }
+  },
+  "e2e/status-update-edit-clear-fields.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 2
+    }
+  },
+  "e2e/status-update-publication-link.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 3
+    }
+  },
+  "e2e/status-updates.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 6
+    }
+  },
+  "e2e/tokens.spec.ts": {
+    "testid-local/no-text-locators": {
+      "count": 4
+    }
+  },
+  "src/components/checks/check-config-view.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/checks/check-summary-cards.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/checks/crawl-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/checks/dependencies-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/checks/form/sections/escalation.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/checks/form/sections/notifications.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/checks/form/types/game.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 9
+    }
+  },
+  "src/components/checks/form/types/infra.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/checks/form/types/messaging.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/components/checks/pinned-result-box.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/checks/publish-on-status-page-dialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/checks/response-time-chart.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/checks/smtp-delivery-detail.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/checks/tunnel-detail.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/checks/vendor-status-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/dashboard/dashboard-page.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 8
+    }
+  },
+  "src/components/dashboard/empty-state-onboarding.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/dashboard/event-log-table.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/components/dashboard/my-on-call.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/dashboard/onboarding-checklist.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/escalation/step-target-row.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/components/feedback/FeedbackDialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/incidents/incident-publications-panel.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/incidents/snooze-dialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/components/integrations/freebox-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/components/integrations/integration-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 13
+    }
+  },
+  "src/components/integrations/sms-mode-panel.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/layout/AppSidebar.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/components/oncall/on-call-schedule-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 10
+    }
+  },
+  "src/components/security/RecoveryCodesDialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/security/TOTPDisableDialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/security/TOTPSetupDialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/shared/check-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/components/shared/check-group-picker.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/check-multi-picker.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/shared/check-picker.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/check-rate-limit-banner.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/shared/comment-body.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/copyable-code.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/shared/create-invitation-dialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 12
+    }
+  },
+  "src/components/shared/create-org-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/shared/danger-zone.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/demo-banner.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/docs-link.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/error-boundary.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/shared/error-views.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/components/shared/faceted-filter.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/freebox-lan-discovery.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/shared/label-input.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/maintenance-window-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/shared/new-check-group-dialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/shared/org-profile-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/region-outage-banner.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/stale-publications-banner.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/status-page-badge-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/status-page-custom-domain.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/shared/status-page-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 16
+    }
+  },
+  "src/components/shared/status-page-subscribers.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/shared/status-page-tv-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/shared/status-page-widget-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/status-update-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/components/shared/tab-nav.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/slos/alerting-section.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/slos/report-schedule-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/slos/slo-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/support/support-gate.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/ui/password-input.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/__root.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/change-password.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/confirm-registration.$token.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/forgot-password.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/invite.$token.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/no-org.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/orgs/$org.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 23
+    }
+  },
+  "src/routes/orgs/$org/account.mcp.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/account.notifications.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 9
+    }
+  },
+  "src/routes/orgs/$org/account.organizations.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/account.profile.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/account.security.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/account.sessions.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/account.tokens.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/routes/orgs/$org/check-groups.$uid.edit.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/checks.$checkUid.badges.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/checks.$checkUid.history.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/checks.$checkUid.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 19
+    }
+  },
+  "src/routes/orgs/$org/checks.$checkUid.results.$resultUid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/checks.describe.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/checks.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 16
+    }
+  },
+  "src/routes/orgs/$org/checks.scheduling.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/escalation-policies.$uid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 11
+    }
+  },
+  "src/routes/orgs/$org/escalation-policies.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/routes/orgs/$org/escalation-policies.new.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 11
+    }
+  },
+  "src/routes/orgs/$org/events.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/incidents.$incidentUid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 19
+    }
+  },
+  "src/routes/orgs/$org/incidents.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/integrations.$integrationUid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/orgs/$org/integrations.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 10
+    }
+  },
+  "src/routes/orgs/$org/integrations.new.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/orgs/$org/jobs.$jobUid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/jobs.check.$checkJobUid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/jobs.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/orgs/$org/login.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/orgs/$org/maintenance-windows.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/orgs/$org/me.notifications.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/notifications.$notificationUid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/oauth.consent.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 8
+    }
+  },
+  "src/routes/orgs/$org/on-call.$uid.edit.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/on-call.$uid.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 9
+    }
+  },
+  "src/routes/orgs/$org/on-call.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/routes/orgs/$org/on-call.new.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/organization.audit.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/organization.discovery.$jobUid.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 12
+    }
+  },
+  "src/routes/orgs/$org/organization.discovery.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/organization.discovery.new.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 15
+    }
+  },
+  "src/routes/orgs/$org/organization.invitations.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/organization.members.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/orgs/$org/organization.members_.$memberUid.paging.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/organization.parameters.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/organization.private-locations.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/organization.private-locations.register.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/organization.report-schedules.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/orgs/$org/organization.requests.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 12
+    }
+  },
+  "src/routes/orgs/$org/organization.settings.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/routes/orgs/$org/organization.usage.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/register.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/orgs/$org/server.aggregation.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/server.analytics.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 10
+    }
+  },
+  "src/routes/orgs/$org/server.auth.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/orgs/$org/server.discord.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/server.email-inbox.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 15
+    }
+  },
+  "src/routes/orgs/$org/server.entitlements.$targetOrg.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/server.entitlements.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/server.mail.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 16
+    }
+  },
+  "src/routes/orgs/$org/server.notifications.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/server.performance.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/server.slack.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/server.users.$uid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/server.users.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/server.web.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 8
+    }
+  },
+  "src/routes/orgs/$org/slos.$uid.alert-policies.$policyUid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/slos.$uid.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/slos.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/status-pages.$statusPageUid.appearance.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/orgs/$org/status-pages.$statusPageUid.edit.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/status-pages.$statusPageUid.incidents.$uid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/status-pages.$statusPageUid.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 34
+    }
+  },
+  "src/routes/orgs/$org/status-pages.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 8
+    }
+  },
+  "src/routes/orgs/$org/status-updates.$updateUid.edit.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/status-updates.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/orgs/$org/status-updates.new.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/test.bulk.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/orgs/$org/test.emails.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/test.generate.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/routes/orgs/$org/test.reset.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/test.templates.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/routes/reset-password.$token.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  }
+}

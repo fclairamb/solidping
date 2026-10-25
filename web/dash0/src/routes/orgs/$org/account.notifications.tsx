@@ -436,7 +436,7 @@ function RouteRow({
         {contactTypeIcon(route.contact.type)}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="font-medium text-sm">
+        <div className="font-medium text-sm" data-testid={`route-type-${route.contact.uid}`}>
           {contactTypeLabel(route.contact.type)}
         </div>
         <div className="text-sm text-muted-foreground truncate">
@@ -479,6 +479,7 @@ function RouteRow({
           <Badge
             variant="outline"
             className="mt-1 text-xs text-yellow-600 border-yellow-400"
+            data-testid={`route-unverified-${route.contact.uid}`}
           >
             {route.contact.type === "whatsapp"
               ? t("notifications.whatsapp.unverifiedBadge")

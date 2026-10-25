@@ -1809,7 +1809,7 @@ export function CheckForm({
                     <SelectTrigger data-testid="check-period-select"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {intervalOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        <SelectItem key={opt.value} value={opt.value} data-testid={`check-period-option-${opt.value}`}>{opt.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
