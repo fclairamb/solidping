@@ -114,7 +114,7 @@ test.describe("Check live subscription: slug vs uid", () => {
 
     // Unaffected by this change: QueryErrorView's friendly not-found card,
     // not a crash and not the (unrelated) live-error badge.
-    await expect(page.getByText(/not found/i).first()).toBeVisible();
+    await expect(page.getByTestId("not-found")).toContainText(/not found/i);
     await expect(page.getByTestId("check-live-error-badge")).toHaveCount(0);
   });
 });

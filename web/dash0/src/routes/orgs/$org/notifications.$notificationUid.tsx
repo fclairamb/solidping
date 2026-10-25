@@ -195,7 +195,7 @@ function DeliverySection({
     : [];
 
   return (
-    <Card>
+    <Card data-testid="notification-delivery-card">
       <CardHeader>
         <CardTitle className="text-base">{t("notificationDetail.delivery.title")}</CardTitle>
       </CardHeader>
@@ -204,7 +204,7 @@ function DeliverySection({
           {d.httpStatusCode !== undefined && d.httpStatusCode > 0 && (
             <span className="flex items-center gap-2">
               <span className="text-muted-foreground">{t("notificationDetail.delivery.status")}</span>
-              <Badge variant={statusCodeVariant(d.httpStatusCode)}>
+              <Badge variant={statusCodeVariant(d.httpStatusCode)} data-testid="notification-delivery-status-code">
                 {d.httpStatusCode}
               </Badge>
             </span>
@@ -212,20 +212,24 @@ function DeliverySection({
           {d.durationMs !== undefined && (
             <span className="flex items-center gap-1.5 text-muted-foreground">
               <Timer className="h-4 w-4" />
-              <span>{d.durationMs} ms</span>
+              <span data-testid="notification-delivery-duration">{d.durationMs} ms</span>
             </span>
           )}
         </div>
 
         {d.requestUrl && (
-          <div className="space-y-1">
+          <div className="space-y-1" data-testid="notification-delivery-request-url">
             <div className="text-muted-foreground text-xs">{t("notificationDetail.delivery.requestUrl")}</div>
             <CopyableInline value={d.requestUrl} label={t("notificationDetail.delivery.requestUrlLabel")} />
           </div>
         )}
 
         {d.requestBody && (
-          <CollapsibleCode label={t("notificationDetail.delivery.requestPayload")} value={d.requestBody} />
+          <CollapsibleCode
+            label={t("notificationDetail.delivery.requestPayload")}
+            value={d.requestBody}
+            data-testid="notification-request-payload"
+          />
         )}
 
         {d.responseBody && (
@@ -233,6 +237,7 @@ function DeliverySection({
             label={isEmail ? t("notificationDetail.delivery.smtpResponse") : t("notificationDetail.delivery.responseBody")}
             value={d.responseBody}
             defaultOpen={notif.status === "failed"}
+            data-testid="notification-response-body"
           />
         )}
 
@@ -355,7 +360,7 @@ function NotificationDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{tInt("notificationDetail.timeline.title")}</CardTitle>
+          <CardTitle className="text-base" data-testid="notification-delivery-timeline-title">{tInt("notificationDetail.timeline.title")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           <TimelineRow

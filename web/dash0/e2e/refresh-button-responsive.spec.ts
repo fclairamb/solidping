@@ -33,12 +33,12 @@ test.describe("Header refresh button responsiveness", () => {
     // ---- Desktop (>= sm): button is visible WITH its text label. ----
     await page.setViewportSize(DESKTOP);
     await expect(refresh).toBeVisible();
-    await expect(refresh.getByText("Refresh")).toBeVisible();
+    await expect(refresh.getByTestId("refresh-label")).toBeVisible();
 
     // ---- Mobile (< sm): button stays visible (icon-only); label hidden. ----
     await page.setViewportSize(MOBILE);
     await expect(refresh).toBeVisible();
-    await expect(refresh.getByText("Refresh")).toBeHidden();
+    await expect(refresh.getByTestId("refresh-label")).toBeHidden();
 
     // Accessible name is retained in the icon-only state.
     await expect(refresh).toHaveAccessibleName("Refresh");
@@ -78,14 +78,14 @@ test.describe("Header refresh button responsiveness", () => {
 
     // ---- Desktop (>= sm): the "Refresh" label is visible. ----
     await page.setViewportSize(DESKTOP);
-    await expect(refresh.getByText("Refresh")).toBeVisible();
+    await expect(refresh.getByTestId("refresh-label")).toBeVisible();
     // Accessible even with the label shown.
     await expect(refresh).toHaveAccessibleName("Refresh");
 
     // ---- Mobile (< sm): the label hides; the button stays icon-only. ----
     await page.setViewportSize(MOBILE);
     await expect(refresh).toBeVisible();
-    await expect(refresh.getByText("Refresh")).toBeHidden();
+    await expect(refresh.getByTestId("refresh-label")).toBeHidden();
     // Still labelled for screen readers when icon-only.
     await expect(refresh).toHaveAccessibleName("Refresh");
 

@@ -93,7 +93,7 @@ function WebSettingsPage() {
             </Alert>
           )}
           {saved && (
-            <Alert>
+            <Alert data-testid="settings-saved">
               <Check className="h-4 w-4" />
               <AlertDescription>{t("server:saved")}</AlertDescription>
             </Alert>
@@ -103,6 +103,7 @@ function WebSettingsPage() {
             <Label htmlFor="baseUrl">{t("server:web.baseUrl")}</Label>
             <Input
               id="baseUrl"
+              data-testid="server-web-base-url-input"
               type="url"
               placeholder={t("server:web.baseUrlPlaceholder")}
               value={baseUrl}
@@ -120,6 +121,7 @@ function WebSettingsPage() {
               <div className="flex items-center gap-2">
                 <Input
                   id="jwtSecret"
+                  data-testid="server-web-jwt-secret-input"
                   type="password"
                   value="******"
                   disabled
@@ -141,6 +143,7 @@ function WebSettingsPage() {
                 <div className="relative flex-1">
                   <Input
                     id="jwtSecret"
+                    data-testid="server-web-jwt-secret-input"
                     type={showJwt ? "text" : "password"}
                     placeholder={t("server:web.jwtSecretPlaceholder")}
                     value={jwtSecret}

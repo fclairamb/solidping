@@ -132,7 +132,7 @@ test.describe("Members last seen", () => {
     await expect(viaIcon).toBeVisible();
 
     await viaIcon.hover();
-    const tooltip = page.getByRole("tooltip").filter({ hasText: "Dashboard" });
+    const tooltip = page.getByRole("tooltip").first();
     await expect(tooltip).toBeVisible({ timeout: 5000 });
     await expect(tooltip).toContainText("Dashboard");
     await expect(tooltip).toContainText("API token");

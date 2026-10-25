@@ -66,7 +66,11 @@ export function DependencyWarningHint({ warning }: DependencyWarningHintProps) {
           <Info className="h-3.5 w-3.5" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 space-y-1 p-3">
+      <PopoverContent
+        align="start"
+        className="w-72 space-y-1 p-3"
+        data-testid="dependency-warning-content"
+      >
         <p className="text-sm font-medium">{title}</p>
         <p className="text-xs text-muted-foreground">{body}</p>
       </PopoverContent>

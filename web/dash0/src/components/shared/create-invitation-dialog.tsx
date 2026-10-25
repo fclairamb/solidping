@@ -125,7 +125,7 @@ export function CreateInvitationDialog({
           <div className="space-y-4">
             {result.emailSent ? (
               <>
-                <Alert variant="success">
+                <Alert variant="success" data-testid="invitation-email-sent">
                   <Mail className="h-4 w-4" />
                   <AlertDescription>
                     {t("invitations.emailSentTo", { email: sentEmail })}
@@ -157,7 +157,7 @@ export function CreateInvitationDialog({
               </>
             ) : (
               <>
-                <Alert variant="warning">
+                <Alert variant="warning" data-testid="invitation-email-not-configured">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
                     {t("invitations.emailNotConfigured")}
@@ -203,6 +203,7 @@ export function CreateInvitationDialog({
                 <Label htmlFor="inviteEmail">{tc("email")}</Label>
                 <Input
                   id="inviteEmail"
+                  data-testid="invitation-email-input"
                   type="email"
                   placeholder={t("invitations.emailPlaceholder")}
                   value={email}

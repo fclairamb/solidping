@@ -343,7 +343,7 @@ function Breadcrumbs({ org }: { org: string }) {
             {incidentLabel}
           </Link>
           <BreadcrumbSeparator />
-          <span className={activeClass}>{notifLabel}</span>
+          <span className={activeClass} aria-current="page">{notifLabel}</span>
         </>
       );
     }
@@ -367,7 +367,7 @@ function Breadcrumbs({ org }: { org: string }) {
             {integrationLabel}
           </Link>
           <BreadcrumbSeparator />
-          <span className={activeClass}>{notifLabel}</span>
+          <span className={activeClass} aria-current="page">{notifLabel}</span>
         </>
       );
     }
@@ -380,14 +380,14 @@ function Breadcrumbs({ org }: { org: string }) {
           {t("integrations")}
         </Link>
         <BreadcrumbSeparator />
-        <span className={activeClass}>{notifLabel}</span>
+        <span className={activeClass} aria-current="page">{notifLabel}</span>
       </>
     );
   }
 
   if (isDashboard) {
     return (
-      <span className={activeClass}>
+      <span className={activeClass} aria-current="page">
         <LayoutDashboard className={iconClass} />
         {t("dashboard")}
       </span>
@@ -422,18 +422,18 @@ function Breadcrumbs({ org }: { org: string }) {
         {checkUid || isNewCheck || isScheduling ? (
           <Link to="/orgs/$org/checks" params={{ org }} className={linkClass}><ListChecks className={iconClass} />{t("checks")}</Link>
         ) : (
-          <span className={activeClass}><ListChecks className={iconClass} />{t("checks")}</span>
+          <span className={activeClass} aria-current="page"><ListChecks className={iconClass} />{t("checks")}</span>
         )}
         {isNewCheck && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("new")}</span>
+            <span className={activeClass} aria-current="page">{t("new")}</span>
           </>
         )}
         {isScheduling && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("scheduling")}</span>
+            <span className={activeClass} aria-current="page">{t("scheduling")}</span>
           </>
         )}
         {checkUid && (
@@ -444,20 +444,20 @@ function Breadcrumbs({ org }: { org: string }) {
                 {checkName}
               </Link>
             ) : (
-              <span className={activeClass}>{checkName}</span>
+              <span className={activeClass} aria-current="page">{checkName}</span>
             )}
           </>
         )}
         {isCheckEdit && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("edit")}</span>
+            <span className={activeClass} aria-current="page">{t("edit")}</span>
           </>
         )}
         {isCheckBadges && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass} data-testid="badge-breadcrumb">
+            <span className={activeClass} aria-current="page" data-testid="badge-breadcrumb">
               <BadgeCheck className={iconClass} />
               {t("badges")}
             </span>
@@ -466,7 +466,7 @@ function Breadcrumbs({ org }: { org: string }) {
         {isCheckHistory && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass} data-testid="history-breadcrumb">
+            <span className={activeClass} aria-current="page" data-testid="history-breadcrumb">
               {t("history")}
             </span>
           </>
@@ -474,7 +474,7 @@ function Breadcrumbs({ org }: { org: string }) {
         {isCheckResult && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{resultLabel}</span>
+            <span className={activeClass} aria-current="page">{resultLabel}</span>
           </>
         )}
       </>
@@ -491,9 +491,9 @@ function Breadcrumbs({ org }: { org: string }) {
           {t("checks")}
         </Link>
         <BreadcrumbSeparator />
-        <span className={activeClass}>{groupLabel}</span>
+        <span className={activeClass} aria-current="page">{groupLabel}</span>
         <BreadcrumbSeparator />
-        <span className={activeClass}>{t("edit")}</span>
+        <span className={activeClass} aria-current="page">{t("edit")}</span>
       </>
     );
   }
@@ -507,12 +507,12 @@ function Breadcrumbs({ org }: { org: string }) {
         {incidentUid ? (
           <Link to="/orgs/$org/incidents" params={{ org }} search={{ state: "all" as const, showSuppressed: undefined, checkUid: undefined }} className={linkClass}><AlertTriangle className={iconClass} />{t("incidents")}</Link>
         ) : (
-          <span className={activeClass}><AlertTriangle className={iconClass} />{t("incidents")}</span>
+          <span className={activeClass} aria-current="page"><AlertTriangle className={iconClass} />{t("incidents")}</span>
         )}
         {incidentUid && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{incidentLabel}</span>
+            <span className={activeClass} aria-current="page">{incidentLabel}</span>
           </>
         )}
       </>
@@ -520,7 +520,7 @@ function Breadcrumbs({ org }: { org: string }) {
   }
 
   if (isEvents) {
-    return <span className={activeClass}><Calendar className={iconClass} />{t("events")}</span>;
+    return <span className={activeClass} aria-current="page"><Calendar className={iconClass} />{t("events")}</span>;
   }
 
   // Account section
@@ -547,12 +547,12 @@ function Breadcrumbs({ org }: { org: string }) {
         {subLabel ? (
           <Link to="/orgs/$org/account/profile" params={{ org }} className={linkClass}><User2 className={iconClass} />{t("account", { ns: "common" })}</Link>
         ) : (
-          <span className={activeClass}><User2 className={iconClass} />{t("account", { ns: "common" })}</span>
+          <span className={activeClass} aria-current="page"><User2 className={iconClass} />{t("account", { ns: "common" })}</span>
         )}
         {subLabel && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{subLabel}</span>
+            <span className={activeClass} aria-current="page">{subLabel}</span>
           </>
         )}
       </>
@@ -606,7 +606,7 @@ function Breadcrumbs({ org }: { org: string }) {
         {subLabel ? (
           <Link to="/orgs/$org/organization/members" params={{ org }} className={linkClass}><Building className={iconClass} />{t("organization", { ns: "common" })}</Link>
         ) : (
-          <span className={activeClass}><Building className={iconClass} />{t("organization", { ns: "common" })}</span>
+          <span className={activeClass} aria-current="page"><Building className={iconClass} />{t("organization", { ns: "common" })}</span>
         )}
         {subLabel && (
           <>
@@ -614,38 +614,38 @@ function Breadcrumbs({ org }: { org: string }) {
             {hasDeepLeaf && sectionPath ? (
               <Link to={sectionPath} params={{ org }} className={linkClass}>{subLabel}</Link>
             ) : (
-              <span className={activeClass}>{subLabel}</span>
+              <span className={activeClass} aria-current="page">{subLabel}</span>
             )}
           </>
         )}
         {isPrivateLocationsRegister && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("register")}</span>
+            <span className={activeClass} aria-current="page">{t("register")}</span>
           </>
         )}
         {isReportScheduleNew && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("new")}</span>
+            <span className={activeClass} aria-current="page">{t("new")}</span>
           </>
         )}
         {isReportScheduleDetail && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{reportScheduleTitle}</span>
+            <span className={activeClass} aria-current="page">{reportScheduleTitle}</span>
           </>
         )}
         {isDiscoveryNew && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("new")}</span>
+            <span className={activeClass} aria-current="page">{t("new")}</span>
           </>
         )}
         {discoveryJobUid && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{discoveryJobUid.slice(0, 8)}</span>
+            <span className={activeClass} aria-current="page">{discoveryJobUid.slice(0, 8)}</span>
           </>
         )}
       </>
@@ -665,12 +665,12 @@ function Breadcrumbs({ org }: { org: string }) {
         {subLabel ? (
           <Link to="/orgs/$org/server/web" params={{ org }} className={linkClass}><Server className={iconClass} />{t("server", { ns: "common" })}</Link>
         ) : (
-          <span className={activeClass}><Server className={iconClass} />{t("server", { ns: "common" })}</span>
+          <span className={activeClass} aria-current="page"><Server className={iconClass} />{t("server", { ns: "common" })}</span>
         )}
         {subLabel && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{subLabel}</span>
+            <span className={activeClass} aria-current="page">{subLabel}</span>
           </>
         )}
       </>
@@ -687,18 +687,18 @@ function Breadcrumbs({ org }: { org: string }) {
         {statusPageUid || isNew ? (
           <Link to="/orgs/$org/status-pages" params={{ org }} className={linkClass}><Globe className={iconClass} />{t("statusPages")}</Link>
         ) : (
-          <span className={activeClass}><Globe className={iconClass} />{t("statusPages")}</span>
+          <span className={activeClass} aria-current="page"><Globe className={iconClass} />{t("statusPages")}</span>
         )}
         {isNew && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("new")}</span>
+            <span className={activeClass} aria-current="page">{t("new")}</span>
           </>
         )}
         {statusPageUid && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{pageName}</span>
+            <span className={activeClass} aria-current="page">{pageName}</span>
           </>
         )}
       </>
@@ -718,26 +718,26 @@ function Breadcrumbs({ org }: { org: string }) {
             <Megaphone className={iconClass} />{t("statusUpdates")}
           </Link>
         ) : (
-          <span className={activeClass}>
+          <span className={activeClass} aria-current="page">
             <Megaphone className={iconClass} />{t("statusUpdates")}
           </span>
         )}
         {isNew && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("new")}</span>
+            <span className={activeClass} aria-current="page">{t("new")}</span>
           </>
         )}
         {updateUid && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{label}</span>
+            <span className={activeClass} aria-current="page">{label}</span>
           </>
         )}
         {isEdit && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("edit")}</span>
+            <span className={activeClass} aria-current="page">{t("edit")}</span>
           </>
         )}
       </>
@@ -747,7 +747,7 @@ function Breadcrumbs({ org }: { org: string }) {
   const isTest = matches.some((m) => m.routeId.startsWith("/orgs/$org/test"));
   if (isTest) {
     return (
-      <span className={activeClass}>
+      <span className={activeClass} aria-current="page">
         <Bug className={iconClass} />
         {t("testTools")}
       </span>
@@ -764,18 +764,18 @@ function Breadcrumbs({ org }: { org: string }) {
         {integrationUid || isNew ? (
           <Link to="/orgs/$org/integrations" params={{ org }} className={linkClass}><Bell className={iconClass} />{t("integrations")}</Link>
         ) : (
-          <span className={activeClass}><Bell className={iconClass} />{t("integrations")}</span>
+          <span className={activeClass} aria-current="page"><Bell className={iconClass} />{t("integrations")}</span>
         )}
         {isNew && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("new")}</span>
+            <span className={activeClass} aria-current="page">{t("new")}</span>
           </>
         )}
         {integrationUid && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{integrationName}</span>
+            <span className={activeClass} aria-current="page">{integrationName}</span>
           </>
         )}
       </>
@@ -792,18 +792,18 @@ function Breadcrumbs({ org }: { org: string }) {
         {uid || isNew ? (
           <Link to="/orgs/$org/on-call" params={{ org }} className={linkClass}><CalendarClock className={iconClass} />{t("onCall")}</Link>
         ) : (
-          <span className={activeClass}><CalendarClock className={iconClass} />{t("onCall")}</span>
+          <span className={activeClass} aria-current="page"><CalendarClock className={iconClass} />{t("onCall")}</span>
         )}
         {isNew && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("new")}</span>
+            <span className={activeClass} aria-current="page">{t("new")}</span>
           </>
         )}
         {uid && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{scheduleName}</span>
+            <span className={activeClass} aria-current="page">{scheduleName}</span>
           </>
         )}
       </>
@@ -820,18 +820,18 @@ function Breadcrumbs({ org }: { org: string }) {
         {uid || isNew ? (
           <Link to="/orgs/$org/escalation-policies" params={{ org }} className={linkClass}><ArrowUpRight className={iconClass} />{t("escalationPolicies")}</Link>
         ) : (
-          <span className={activeClass}><ArrowUpRight className={iconClass} />{t("escalationPolicies")}</span>
+          <span className={activeClass} aria-current="page"><ArrowUpRight className={iconClass} />{t("escalationPolicies")}</span>
         )}
         {isNew && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("new")}</span>
+            <span className={activeClass} aria-current="page">{t("new")}</span>
           </>
         )}
         {uid && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{policyName}</span>
+            <span className={activeClass} aria-current="page">{policyName}</span>
           </>
         )}
       </>
@@ -840,7 +840,7 @@ function Breadcrumbs({ org }: { org: string }) {
 
   if (isDesignReference) {
     return (
-      <span className={activeClass}>
+      <span className={activeClass} aria-current="page">
         <Palette className={iconClass} />
         {t("designReference")}
       </span>
@@ -868,7 +868,7 @@ function Breadcrumbs({ org }: { org: string }) {
             {t("jobs")}
           </Link>
         ) : (
-          <span className={activeClass}>
+          <span className={activeClass} aria-current="page">
             <Workflow className={iconClass} />
             {t("jobs")}
           </span>
@@ -876,7 +876,7 @@ function Breadcrumbs({ org }: { org: string }) {
         {isDetail && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{leaf}</span>
+            <span className={activeClass} aria-current="page">{leaf}</span>
           </>
         )}
       </>
@@ -898,7 +898,7 @@ function Breadcrumbs({ org }: { org: string }) {
             {t("maintenanceWindows")}
           </Link>
         ) : (
-          <span className={activeClass}>
+          <span className={activeClass} aria-current="page">
             <Wrench className={iconClass} />
             {t("maintenanceWindows")}
           </span>
@@ -906,7 +906,7 @@ function Breadcrumbs({ org }: { org: string }) {
         {isMwNew && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("new")}</span>
+            <span className={activeClass} aria-current="page">{t("new")}</span>
           </>
         )}
         {isDetailOrEdit && (
@@ -924,14 +924,14 @@ function Breadcrumbs({ org }: { org: string }) {
                 {title}
               </Link>
             ) : (
-              <span className={activeClass}>{title}</span>
+              <span className={activeClass} aria-current="page">{title}</span>
             )}
           </>
         )}
         {isMwEdit && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("edit")}</span>
+            <span className={activeClass} aria-current="page">{t("edit")}</span>
           </>
         )}
       </>
@@ -949,7 +949,7 @@ function Breadcrumbs({ org }: { org: string }) {
             {t("slos")}
           </Link>
         ) : (
-          <span className={activeClass}>
+          <span className={activeClass} aria-current="page">
             <Target className={iconClass} />
             {t("slos")}
           </span>
@@ -957,7 +957,7 @@ function Breadcrumbs({ org }: { org: string }) {
         {isSlosNew && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("new")}</span>
+            <span className={activeClass} aria-current="page">{t("new")}</span>
           </>
         )}
         {isDetailOrEdit && (
@@ -972,14 +972,14 @@ function Breadcrumbs({ org }: { org: string }) {
                 {title}
               </Link>
             ) : (
-              <span className={activeClass}>{title}</span>
+              <span className={activeClass} aria-current="page">{title}</span>
             )}
           </>
         )}
         {isSlosEdit && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{t("edit")}</span>
+            <span className={activeClass} aria-current="page">{t("edit")}</span>
           </>
         )}
       </>
@@ -988,7 +988,7 @@ function Breadcrumbs({ org }: { org: string }) {
 
   if (isNotifications) {
     return (
-      <span className={activeClass}>
+      <span className={activeClass} aria-current="page">
         <BellRing className={iconClass} />
         {t("myAlerts")}
       </span>
@@ -1225,7 +1225,9 @@ function OrgLayout() {
         <header className="relative flex h-12 shrink-0 items-center gap-2 border-b bg-background/60 px-4 backdrop-blur">
           <SidebarTrigger className="-ml-1" data-testid="sidebar-trigger" />
           <Separator orientation="vertical" className="mr-2 h-4" />
-          <Breadcrumbs org={org} />
+          <div className="contents" data-testid="breadcrumbs">
+            <Breadcrumbs org={org} />
+          </div>
           <div className="ml-auto flex items-center gap-1">
             {bugReportEnabled && (
               <FeedbackButton onClick={() => void feedback.open()} isCapturing={feedback.isCapturing} />

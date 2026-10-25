@@ -42,7 +42,7 @@ test.describe("Copy check as cURL", () => {
     await page.getByTestId("check-more-actions").click();
     await page.getByTestId("check-copy-curl").click();
 
-    await expect(page.getByText(/Request copied as cURL/)).toBeVisible();
+    await expect(page.locator("[data-sonner-toaster]")).toContainText(/Request copied as cURL/);
     const copied = await page.evaluate(() => navigator.clipboard.readText());
     expect(copied).toContain("'https://example.com/curl'");
     expect(copied).toContain("'X-Plain: visible-value'");

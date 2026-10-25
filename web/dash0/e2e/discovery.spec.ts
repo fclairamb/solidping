@@ -87,7 +87,7 @@ test.describe("Network Discovery", () => {
 
   test("can navigate to new scan form", async ({ page }) => {
     await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
-    await expect(page.getByLabel(/cidr/i)).toBeVisible();
+    await expect(page.getByRole("textbox", { name: /cidr/i })).toBeVisible();
     await expect(page.getByRole("checkbox")).toBeVisible();
     await expect(page.getByRole("button", { name: /start scan/i })).toBeDisabled();
   });
@@ -99,7 +99,7 @@ test.describe("Network Discovery", () => {
     await expect(methodSelect).toBeVisible();
     await expect(methodSelect).toHaveText(/IP range|LAN/i);
     // LAN fields (CIDR textarea) are shown by default.
-    await expect(page.getByLabel(/cidr/i)).toBeVisible();
+    await expect(page.getByRole("textbox", { name: /cidr/i })).toBeVisible();
   });
 
   test("Freebox method option is hidden when no granted channel exists", async ({ page }) => {
@@ -143,7 +143,7 @@ test.describe("Network Discovery", () => {
     const jobUid = page.url().split("/").pop() as string;
     await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
     // The uid is rendered on the detail page — blank if the API used the wrong casing.
-    await expect(page.getByText(jobUid)).toBeVisible();
+    await expect(page.getByTestId("discovery-scan-uid")).toHaveText(jobUid);
 
     // Back on the index, the table must render without throwing.
     await page.goto(`${DASH_BASE}/orgs/test/organization/discovery`);
@@ -164,7 +164,7 @@ test.describe("Network Discovery", () => {
     // UID — it has been removed. The header row should not contain it.
     const headerRow = page.locator("thead tr");
     if (await headerRow.count()) {
-      await expect(headerRow.getByText(/IP Address/i)).toHaveCount(0);
+      await expect(headerRow.getByRole("columnheader", { name: /IP Address/i })).toHaveCount(0);
     }
   });
 
@@ -177,8 +177,9 @@ test.describe("Network Discovery", () => {
     // discovery is a tab under Organization (spec 2026-09-16-09), not its own
     // top-level breadcrumb branch.
     const header = page.locator("header");
-    await expect(header.getByText(/organization/i)).toBeVisible();
-    await expect(header.getByText(/discovery/i)).toBeVisible();
+    const crumbs = header.getByTestId("breadcrumbs");
+    await expect(crumbs).toContainText(/organization/i);
+    await expect(crumbs).toContainText(/discovery/i);
   });
 
   // Fan-out: a range larger than a /20 (here a /18 → 4 bounded chunks) is now
@@ -197,7 +198,10 @@ test.describe("Network Discovery", () => {
     await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
 
     // The progress card surfaces the chunk count (4 chunks of the fan-out).
-    await expect(page.getByText(/\/\s*4\s*chunks/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("discovery-chunks-progress")).toContainText(
+      /\/\s*4\s*chunks/i,
+      { timeout: 15000 },
+    );
 
     // While the scan is active, the Stop button is offered. Click it and confirm.
     const stopButton = page.getByRole("button", { name: /stop scan/i }).first();
@@ -208,7 +212,10 @@ test.describe("Network Discovery", () => {
         .getByRole("alertdialog")
         .getByRole("button", { name: /stop scan/i })
         .click();
-      await expect(page.getByText(/scan stopped/i)).toBeVisible({ timeout: 10000 });
+      await expect(page.locator("[data-sonner-toaster]")).toContainText(
+        /scan stopped/i,
+        { timeout: 10000 },
+      );
     }
 
     // The new-scan form re-arms: its Start button is gated only by the confirm
@@ -264,7 +271,7 @@ test.describe("Network Discovery", () => {
     expect(backBox!.x).toBeGreaterThan(headingBox!.x);
 
     // At desktop width the Refresh button shows its "Refresh" label.
-    const refreshLabel = page.getByText(/^refresh$/i);
+    const refreshLabel = page.getByTestId("discovery-refresh-label");
     await expect(refreshLabel).toBeVisible();
 
     // The back arrow navigates back to the discovery index.
@@ -287,7 +294,7 @@ test.describe("Network Discovery", () => {
     await expect(
       page.getByRole("button", { name: /^refresh$/i }),
     ).toBeVisible();
-    await expect(page.getByText(/^refresh$/i)).toBeHidden();
+    await expect(page.getByTestId("discovery-refresh-label")).toBeHidden();
   });
 
   // The seeded scan renders its suggested checks GROUPED under 127.0.0.1, with a
@@ -297,7 +304,7 @@ test.describe("Network Discovery", () => {
     await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
 
     // A group card for 127.0.0.1 is shown.
-    const group = page.getByTestId("discovery-group").filter({ hasText: "127.0.0.1" });
+    const group = page.locator('[data-testid="discovery-group"][data-group-label="127.0.0.1"]');
     await expect(group.first()).toBeVisible();
 
     // It contains per-check rows (the seed has a TCP and an ICMP suggestion).
@@ -316,8 +323,7 @@ test.describe("Network Discovery", () => {
 
     // Tick the group's "select all" checkbox.
     await page
-      .getByTestId("discovery-group")
-      .filter({ hasText: "127.0.0.1" })
+      .locator('[data-testid="discovery-group"][data-group-label="127.0.0.1"]')
       .first()
       .getByRole("checkbox", { name: /select all in group/i })
       .check();
@@ -339,7 +345,7 @@ test.describe("Network Discovery", () => {
     await containerOption.click();
 
     // The container host textarea is shown, prefilled with the local socket.
-    const hostsField = page.getByLabel(/container host/i);
+    const hostsField = page.getByRole("textbox", { name: /container host/i });
     await expect(hostsField).toBeVisible();
     await expect(hostsField).toHaveValue(/unix:\/\/\/var\/run\/docker\.sock/);
   });
@@ -399,11 +405,11 @@ test.describe("Network Discovery", () => {
     await expect(
       page.getByRole("link", { name: /start new scan/i }),
     ).toBeVisible();
-    await expect(page.getByText(/start new scan/i)).toBeHidden();
+    await expect(page.getByTestId("discovery-new-scan-label")).toBeHidden();
 
     // Desktop width: the text label is revealed.
     await page.setViewportSize({ width: 1280, height: 800 });
-    await expect(page.getByText(/start new scan/i)).toBeVisible();
+    await expect(page.getByTestId("discovery-new-scan-label")).toBeVisible();
   });
 
   // Clicking anywhere in a scan row navigates to that scan's detail page (the
@@ -451,9 +457,9 @@ test.describe("Network Discovery", () => {
 
     const headerRow = page.locator("thead tr");
     if (await headerRow.count()) {
-      await expect(headerRow.getByText(/^CIDRs$/i)).toHaveCount(0);
+      await expect(headerRow.getByRole("columnheader", { name: /^CIDRs$/i })).toHaveCount(0);
       // The generic "Details" header replaces it.
-      await expect(headerRow.getByText(/^Details$/i)).toBeVisible();
+      await expect(headerRow.getByRole("columnheader", { name: /^Details$/i })).toBeVisible();
     }
   });
 
@@ -464,7 +470,7 @@ test.describe("Network Discovery", () => {
       page.getByRole("heading", { name: /my alerts/i }),
     ).toBeVisible();
     // Breadcrumb mirrors the page title.
-    await expect(page.locator("header").getByText(/my alerts/i)).toBeVisible();
+    await expect(page.getByTestId("breadcrumbs")).toContainText(/my alerts/i);
   });
 });
 
@@ -507,7 +513,7 @@ test.describe("Discovery legacy redirects and the organization route guard", () 
     await expect(
       page.getByRole("combobox", { name: /scan method/i }),
     ).toHaveText(/^(IP range \(LAN\)|Containers|Freebox)$/);
-    await expect(page.getByLabel(/select kubernetes cluster/i)).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: /select kubernetes cluster/i })).toHaveCount(0);
   });
 
   test("legacy /discovery/$jobUid redirects to /organization/discovery/$jobUid", async ({

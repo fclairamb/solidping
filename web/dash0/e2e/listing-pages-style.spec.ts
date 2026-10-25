@@ -151,7 +151,7 @@ test.describe("Listing pages share the checks-page chrome", () => {
       await expect(refresh).toBeVisible();
     } else {
       // Empty state — confirm the pick-a-type card is the visible body
-      await expect(page.getByText(/no integrations yet/i)).toBeVisible();
+      await expect(page.getByTestId("integrations-empty-title")).toBeVisible();
     }
   });
 });

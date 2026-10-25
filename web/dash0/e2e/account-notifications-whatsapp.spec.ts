@@ -76,7 +76,7 @@ authTest.describe("Account Notifications — WhatsApp", () => {
       await page.getByTestId("add-contact-input").fill("0612345678");
       await page.getByTestId("add-contact-submit").click();
 
-      await expect(page.getByText(/E\.164/)).toBeVisible();
+      await expect(page.getByTestId("add-contact-error")).toContainText(/E\.164/);
       expect(postReceived).toBe(false);
     },
   );
@@ -145,12 +145,16 @@ authTest.describe("Account Notifications — WhatsApp", () => {
 
       // The row renders with the correctly-cased channel label.
       const list = page.getByTestId("notification-routes-list");
-      await expect(list.getByText("WhatsApp", { exact: true })).toBeVisible();
+      await expect(
+        list.getByTestId(`route-type-${contactUid}`),
+      ).toHaveText("WhatsApp");
 
       // Verify dialog: WhatsApp-specific copy, shared code round-trip.
       await page.getByTestId(`verify-phone-${contactUid}`).click();
       await expect(page.getByTestId("verify-phone-dialog")).toBeVisible();
-      await expect(page.getByText(/on WhatsApp/i).first()).toBeVisible();
+      await expect(page.getByTestId("verify-phone-description")).toContainText(
+        /on WhatsApp/i,
+      );
 
       await page.getByTestId("verify-send-code").click();
       await expect.poll(() => verifyReceived).toBe(true);
@@ -193,7 +197,9 @@ authTest.describe("Account Notifications — WhatsApp", () => {
       await page.goto("orgs/test/me/notifications");
 
       // Correct brand casing — a plain CSS capitalize would render "Whatsapp".
-      await expect(page.getByText("WhatsApp", { exact: true })).toBeVisible();
+      await expect(page.getByTestId("notification-channel-notif-wa-1")).toHaveText(
+        "WhatsApp",
+      );
 
       // The reason must be prose, never the raw i18n key or the raw code.
       const reason = page.getByTestId("notification-reason-notif-wa-1");

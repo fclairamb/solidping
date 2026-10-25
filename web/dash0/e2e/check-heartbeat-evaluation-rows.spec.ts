@@ -225,8 +225,8 @@ test.describe("Heartbeat evaluation rows are distinguishable from beats", () => 
 
     // Every key the card owns — `message` included — is stripped from the raw
     // dump, so the Output card has nothing left to render and disappears.
-    await expect(page.getByText('"evaluation": true')).toHaveCount(0);
-    await expect(page.getByText('"lastSignalResultUid"')).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText('"evaluation": true');
+    await expect(page.locator("body")).not.toContainText('"lastSignalResultUid"');
 
     // Open the signal → the beat, WITHOUT the region param: the beat has no
     // region, so carrying ?region=eu would scope its prev/next neighbours to

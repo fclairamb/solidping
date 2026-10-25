@@ -663,11 +663,11 @@ function CommentsCard({
     );
 
   return (
-    <Card>
+    <Card data-testid="comments-card">
       <CardHeader>
         <div className="flex items-center gap-2">
           <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          <CardTitle>{t("comments.title")}</CardTitle>
+          <CardTitle data-testid="comments-title">{t("comments.title")}</CardTitle>
         </div>
         <CardDescription>{t("comments.description")}</CardDescription>
       </CardHeader>
@@ -912,7 +912,10 @@ function IncidentDetailPage() {
                 incident.checkSlug ||
                 t("fallbackTitle")}
             </h1>
-            <Badge variant={isActive ? "destructive" : "secondary"}>
+            <Badge
+              variant={isActive ? "destructive" : "secondary"}
+              data-testid="incident-status-badge"
+            >
               {isActive ? t("active") : t("resolved")}
             </Badge>
             {isActive && isSnoozed && incident.snoozedUntil && (
@@ -943,7 +946,7 @@ function IncidentDetailPage() {
               </Badge>
             )}
             {incident.escalatedAt && (
-              <Badge variant="outline">{t("escalated")}</Badge>
+              <Badge variant="outline" data-testid="incident-escalated-badge">{t("escalated")}</Badge>
             )}
             {(incident.flapLevel ?? 0) > 0 && (
               <FlappingBadge flapLevel={incident.flapLevel!} t={t} />
@@ -1067,7 +1070,7 @@ function IncidentDetailPage() {
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>{t("detail.incidentDetails")}</CardTitle>
+            <CardTitle data-testid="incident-details-title">{t("detail.incidentDetails")}</CardTitle>
             <CardDescription>
               {t("detail.incidentDetailsDescription")}
             </CardDescription>
@@ -1723,6 +1726,7 @@ function ProbeResponseCard({ incident }: { incident: IncidentDetail }) {
 
         {capture.body !== undefined && capture.body !== "" && (
           <CollapsibleCode
+            data-testid="probe-response-body"
             label={t("detail.probeResponse.bodyLabel")}
             value={capture.body}
           />
@@ -1861,7 +1865,7 @@ function BlastRadiusCard({
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
                     {child.pagingSuppressed && (
-                      <Badge variant="outline">
+                      <Badge variant="outline" data-testid="blast-radius-rolled-up">
                         {t("rollup.rolledUpBadge")}
                       </Badge>
                     )}

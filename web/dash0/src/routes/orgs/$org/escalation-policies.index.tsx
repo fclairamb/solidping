@@ -291,6 +291,7 @@ function PolicyRow({ org, policy, onDelete }: PolicyRowProps) {
   return (
     <TableRow
       data-testid="policy-row"
+      data-policy-name={policy.name}
       className="transition-colors hover:bg-muted/40"
     >
       <TableCell>

@@ -55,7 +55,7 @@ test.describe("Incident probe-response capture", () => {
     await expect(card).toContainText("request headers are never captured");
 
     // Body viewer is collapsed by default and expands to the captured body.
-    const body = card.locator("details", { hasText: "Response body" });
+    const body = card.getByTestId("probe-response-body");
     await expect(body).toBeVisible();
     await expect(body).not.toHaveAttribute("open", "");
 
@@ -89,7 +89,7 @@ test.describe("Incident probe-response capture", () => {
     await expect(notice).toContainText("48.0 KB");
 
     // A truncated body is still a body: it renders, with its marker.
-    const body = card.locator("details", { hasText: "Response body" });
+    const body = card.getByTestId("probe-response-body");
     await expect(body).toBeVisible();
     await body.locator("summary").click();
     await expect(body.locator("pre")).toContainText("[truncated]");
@@ -121,7 +121,7 @@ test.describe("Incident probe-response capture", () => {
       "HTTP/1.1 502 Bad Gateway",
     );
     await expect(
-      card.locator("details", { hasText: "Response body" }),
+      card.getByTestId("probe-response-body"),
     ).toHaveCount(0);
 
     await expect(

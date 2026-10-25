@@ -408,7 +408,7 @@ export function HttpRequestLine({
           />
         </div>
         {getFieldError(errors, "url") && (
-          <p className="text-xs text-destructive">
+          <p className="text-xs text-destructive" data-testid="check-url-error">
             {getFieldError(errors, "url")}
           </p>
         )}

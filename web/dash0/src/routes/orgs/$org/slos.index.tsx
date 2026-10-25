@@ -57,7 +57,11 @@ function SloRow({ slo, org, onDelete }: { slo: Slo; org: string; onDelete: (slo:
   const state = current?.state ?? "unknown";
 
   return (
-    <TableRow className="transition-colors hover:bg-muted/40" data-testid="slo-row">
+    <TableRow
+      className="transition-colors hover:bg-muted/40"
+      data-testid="slo-row"
+      data-slo-name={slo.name}
+    >
       <TableCell className="max-w-0">
         <Link
           to="/orgs/$org/slos/$uid"

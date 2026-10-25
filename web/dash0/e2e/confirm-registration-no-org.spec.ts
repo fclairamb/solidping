@@ -43,7 +43,7 @@ test.describe("Confirm registration with no matching org", () => {
     await page.getByRole("button", { name: "Create account" }).click();
 
     // "Check your email" success screen renders the address back.
-    await expect(page.getByText(email)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("register-confirmation-message")).toContainText(email, { timeout: 10000 });
 
     // Fetch the one-shot confirmation token the same way a real user would:
     // from the confirmation email, not the pending state entry. The entry

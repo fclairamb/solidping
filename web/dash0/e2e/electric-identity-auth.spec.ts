@@ -136,7 +136,7 @@ for (const theme of ["light", "dark"] as const) {
       expect(await panel.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
         theme === "dark" ? NAVY_DARK : NAVY_LIGHT,
       );
-      await expect(panel.getByText("SolidPing", { exact: true })).toBeVisible();
+      await expect(panel).toContainText("SolidPing");
       await expect(visibleLogos(page)).toHaveCount(1);
       expect(await hasHorizontalScroll(page)).toBe(false);
     });

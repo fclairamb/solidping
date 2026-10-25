@@ -303,16 +303,16 @@ test.describe("Getting-started checklist", () => {
     // actually works, not just that the button is clickable in isolation.
     await page.getByTestId("onboarding-test-alert").click();
     await expect(
-      page.getByText("Delivered to alice@acme.com"),
-    ).toBeVisible();
+      page.locator("[data-sonner-toaster]"),
+    ).toContainText("Delivered to alice@acme.com");
     expect(page.url()).toBe(dashboardUrl);
     await expect(page.getByTestId("onboarding-checklist")).toBeVisible();
 
     succeed = false;
     await page.getByTestId("onboarding-test-alert").click();
     await expect(
-      page.getByText("SMTP is not configured on this server"),
-    ).toBeVisible();
+      page.locator("[data-sonner-toaster]"),
+    ).toContainText("SMTP is not configured on this server");
 
     // --- The alerting step is derived: it flips when a channel appears, with
     // nothing stored.
@@ -421,7 +421,7 @@ test.describe("Getting-started checklist", () => {
 
     await page.goto(`orgs/${orgSlug}/account/profile`);
     await page.getByTestId("restore-onboarding-checklist").click();
-    await expect(page.getByText(/getting-started checklist is back/i)).toBeVisible();
+    await expect(page.locator("[data-sonner-toaster]")).toContainText(/getting-started checklist is back/i);
 
     await openDashboard(page, orgSlug);
     await expect(page.getByTestId("onboarding-checklist")).toBeVisible();

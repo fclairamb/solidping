@@ -107,6 +107,12 @@ const pages: PageEntry[] = [
   },
 ];
 
+/** Default testid of a page entry: command-menu-page-<path below the org>. */
+function pageTestId(path: string): string {
+  const slug = path.replace(/^\/orgs\/\$org\/?/, "").replace(/\//g, "-");
+  return `command-menu-page-${slug || "dashboard"}`;
+}
+
 const groupOrder: GroupKey[] = ["actions", "pages", "account", "organization"];
 
 const groupLabelKey: Record<GroupKey, string> = {
@@ -328,6 +334,7 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
           <Command.Group
             key={group}
             heading={t(groupLabelKey[group])}
+            data-testid={`command-menu-group-${group}`}
             className={groupHeadingClassName}
           >
             {items.map((page) => (
@@ -335,7 +342,7 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
                 key={page.path}
                 value={`${page.title} ${page.description ?? ""} ${group}`}
                 onSelect={() => goTo(page.path)}
-                data-testid={page.testId}
+                data-testid={page.testId ?? pageTestId(page.path)}
                 className={commandItemClassName}
               >
                 <page.icon className="h-4 w-4 text-muted-foreground" />
@@ -351,7 +358,7 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
         ))}
 
         {filteredOrgs.length > 0 && (
-          <Command.Group heading={t("command.groupSwitchOrg")} className={groupHeadingClassName}>
+          <Command.Group heading={t("command.groupSwitchOrg")} className={groupHeadingClassName} data-testid="command-menu-group-switch-org">
             {filteredOrgs.map((o) => (
               <Command.Item
                 key={o.slug}
@@ -371,12 +378,13 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
         )}
 
         {checks && checks.length > 0 && (
-          <Command.Group heading={t("command.groupChecks")} className={groupHeadingClassName}>
+          <Command.Group heading={t("command.groupChecks")} className={groupHeadingClassName} data-testid="command-menu-group-checks">
             {checks.map((check) => (
               <Command.Item
                 key={check.uid}
                 value={`${check.name || ""} ${check.slug || ""}`}
                 onSelect={() => goTo(`/orgs/$org/checks/${check.uid}`)}
+                data-testid={`command-menu-check-${check.uid}`}
                 className={commandItemClassName}
               >
                 <Activity className="h-4 w-4 text-muted-foreground" />
@@ -392,12 +400,13 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
         )}
 
         {filteredStatusPages.length > 0 && (
-          <Command.Group heading={t("command.groupStatusPages")} className={groupHeadingClassName}>
+          <Command.Group heading={t("command.groupStatusPages")} className={groupHeadingClassName} data-testid="command-menu-group-status-pages">
             {filteredStatusPages.map((page) => (
               <Command.Item
                 key={page.uid}
                 value={`${page.name} ${page.slug} statusPage`}
                 onSelect={() => goTo(`/orgs/$org/status-pages/${page.uid}`)}
+                data-testid={`command-menu-status-page-${page.uid}`}
                 className={commandItemClassName}
               >
                 <Globe className="h-4 w-4 text-muted-foreground" />
@@ -414,12 +423,14 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
           <Command.Group
             heading={t("command.groupEscalationPolicies")}
             className={groupHeadingClassName}
+            data-testid="command-menu-group-escalation-policies"
           >
             {filteredEscalationPolicies.map((policy) => (
               <Command.Item
                 key={policy.uid}
                 value={`${policy.name} escalationPolicy`}
                 onSelect={() => goTo(`/orgs/$org/escalation-policies/${policy.uid}`)}
+                data-testid={`command-menu-escalation-policy-${policy.uid}`}
                 className={commandItemClassName}
               >
                 <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
@@ -430,12 +441,13 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
         )}
 
         {filteredSlos.length > 0 && (
-          <Command.Group heading={t("command.groupSlos")} className={groupHeadingClassName}>
+          <Command.Group heading={t("command.groupSlos")} className={groupHeadingClassName} data-testid="command-menu-group-slos">
             {filteredSlos.map((slo) => (
               <Command.Item
                 key={slo.uid}
                 value={`${slo.name} ${slo.slug} slo`}
                 onSelect={() => goTo(`/orgs/$org/slos/${slo.uid}`)}
+                data-testid={`command-menu-slo-${slo.uid}`}
                 className={commandItemClassName}
               >
                 <Target className="h-4 w-4 text-muted-foreground" />

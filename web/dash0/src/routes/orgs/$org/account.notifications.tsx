@@ -143,7 +143,7 @@ function VerifyPhoneDialog({
       <DialogContent data-testid="verify-phone-dialog">
         <DialogHeader>
           <DialogTitle>{t(`${copyPrefix}.dialogTitle`)}</DialogTitle>
-          <DialogDescription>
+          <DialogDescription data-testid="verify-phone-description">
             {t(`${copyPrefix}.dialogDescription`, { phone })}
           </DialogDescription>
         </DialogHeader>
@@ -431,12 +431,17 @@ function RouteRow({
   const canTest = contactCanTest(route.contact.type, route.contact.verifiedAt);
 
   return (
-    <div className="flex items-center gap-3 py-3 border-b last:border-0">
+    <div
+      className="flex items-center gap-3 py-3 border-b last:border-0"
+      data-testid="notification-route-row"
+      data-contact-type={route.contact.type}
+      data-contact-value={route.contact.value}
+    >
       <div className="flex-none text-muted-foreground">
         {contactTypeIcon(route.contact.type)}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="font-medium text-sm">
+        <div className="font-medium text-sm" data-testid={`route-type-${route.contact.uid}`}>
           {contactTypeLabel(route.contact.type)}
         </div>
         <div className="text-sm text-muted-foreground truncate">
@@ -479,6 +484,7 @@ function RouteRow({
           <Badge
             variant="outline"
             className="mt-1 text-xs text-yellow-600 border-yellow-400"
+            data-testid={`route-unverified-${route.contact.uid}`}
           >
             {route.contact.type === "whatsapp"
               ? t("notifications.whatsapp.unverifiedBadge")
@@ -1049,7 +1055,7 @@ function AddContactForm({
         )}
 
         {error && (
-          <Alert variant="destructive">
+          <Alert variant="destructive" data-testid="add-contact-error">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error}</AlertDescription>
           </Alert>
@@ -1105,7 +1111,7 @@ function AddContactForm({
       <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
         <MonitorSmartphone className="h-4 w-4 text-muted-foreground flex-none" />
         <div className="flex-1 min-w-[12rem]">
-          <p className="text-sm font-medium">{t("notifications.addContact.addBrowserTitle")}</p>
+          <p className="text-sm font-medium" data-testid="add-contact-browser-title">{t("notifications.addContact.addBrowserTitle")}</p>
           <p className="text-xs text-muted-foreground">
             {t("notifications.addContact.addBrowserDescription")}
           </p>

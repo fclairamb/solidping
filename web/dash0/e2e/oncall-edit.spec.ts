@@ -62,7 +62,7 @@ test.describe("On-call schedule edit page", () => {
       await expect(
         header.getByRole("link", { name: /on-call/i }),
       ).toBeVisible();
-      await expect(header.getByText(originalName)).toBeVisible();
+      await expect(header.locator('span[aria-current="page"]')).toHaveText(originalName);
 
       await page.getByTestId("oncall-edit-button").click();
       await page.waitForURL(
@@ -70,7 +70,7 @@ test.describe("On-call schedule edit page", () => {
       );
 
       // The form pre-fills with the current name.
-      const nameInput = page.getByLabel(/^name/i).first();
+      const nameInput = page.getByTestId("oncall-name-input");
       await expect(nameInput).toHaveValue(originalName);
 
       const updatedName = `${originalName} edited`;

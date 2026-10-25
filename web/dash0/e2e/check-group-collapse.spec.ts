@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "./fixtures";
+import { groupSectionLocator } from "./locators";
 
 // Coverage for spec 2026-08-01-02: check-group sections gain a status badge +
 // compact member summary in their header, and become collapsible — a group
@@ -134,9 +135,7 @@ test.describe("Check group collapse", () => {
     await page.goto("orgs/test/checks");
     await page.waitForLoadState("networkidle");
 
-    const section = page
-      .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(group.name) });
+    const section = groupSectionLocator(page, group.name);
     await expect(section).toBeVisible({ timeout: 10000 });
 
     // Status badge reads "Degraded" (the group rollup status), and the
@@ -174,9 +173,7 @@ test.describe("Check group collapse", () => {
     await page.goto("orgs/test/checks");
     await page.waitForLoadState("networkidle");
 
-    const section = page
-      .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(group.name) });
+    const section = groupSectionLocator(page, group.name);
     await expect(section).toBeVisible({ timeout: 10000 });
 
     // Collapsed by default: the summary is visible, the rows are not.
@@ -216,9 +213,7 @@ test.describe("Check group collapse", () => {
     await page.goto("orgs/test/checks");
     await page.waitForLoadState("networkidle");
 
-    const section = page
-      .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(group.name) });
+    const section = groupSectionLocator(page, group.name);
     await expect(section).toBeVisible({ timeout: 10000 });
 
     // Starts collapsed (status is up); expand it manually.
@@ -232,9 +227,7 @@ test.describe("Check group collapse", () => {
     await page.reload();
     await page.waitForLoadState("networkidle");
 
-    const sectionAfterReload = page
-      .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(group.name) });
+    const sectionAfterReload = groupSectionLocator(page, group.name);
     await expect(sectionAfterReload).toBeVisible({ timeout: 10000 });
     await expect(sectionAfterReload.getByRole("link", { name: "Node A", exact: true })).toBeVisible();
     await expect(sectionAfterReload.getByTestId("group-header")).toHaveAttribute(
@@ -257,9 +250,7 @@ test.describe("Check group collapse", () => {
     await page.goto("orgs/test/checks");
     await page.waitForLoadState("networkidle");
 
-    const section = page
-      .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(group.name) });
+    const section = groupSectionLocator(page, group.name);
     await expect(section).toBeVisible({ timeout: 10000 });
     await expect(section.getByTestId("group-status-badge")).toBeVisible();
     await expect(section.getByTestId("group-member-summary")).toBeVisible();

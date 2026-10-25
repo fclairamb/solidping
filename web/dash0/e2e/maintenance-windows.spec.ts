@@ -76,7 +76,7 @@ test.describe("Maintenance windows", () => {
     // Either the empty-state card or a populated table is shown.
     await Promise.race([
       page
-        .getByText("No maintenance windows scheduled")
+        .getByTestId("mw-empty")
         .waitFor({ state: "visible", timeout: 5000 })
         .catch(() => {}),
       page
@@ -399,6 +399,7 @@ test.describe("Maintenance windows", () => {
     await fillSchedule(page, "2030-03-01T02:00", "2030-03-01T04:00");
     await page.getByTestId("mw-submit-button").click();
     await page.waitForURL(/\/maintenance-windows\/[^/]+$/, { timeout: 10000 });
+    const windowUid = new URL(page.url()).pathname.split("/").filter(Boolean).pop();
 
     // Delete from the detail page: open the confirm dialog then confirm.
     await page.getByTestId("mw-detail-delete-button").click();
@@ -414,6 +415,6 @@ test.describe("Maintenance windows", () => {
     ).toBeVisible();
 
     // The deleted window's title is no longer present in the list.
-    await expect(page.getByText(title, { exact: true })).toHaveCount(0);
+    await expect(page.getByTestId(`mw-row-view-${windowUid}`)).toHaveCount(0);
   });
 });

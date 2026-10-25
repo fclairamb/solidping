@@ -328,7 +328,10 @@ function MembersPage() {
                             )}
                           </span>
                           <div className="min-w-0">
-                            <span className="block truncate font-medium">
+                            <span
+                              className="block truncate font-medium"
+                              data-testid={`member-name-${member.email}`}
+                            >
                               {member.name || member.email}
                             </span>
                             <div className="mt-0.5 text-xs text-muted-foreground lg:hidden">

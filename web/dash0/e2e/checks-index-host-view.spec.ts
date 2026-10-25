@@ -104,7 +104,7 @@ test.describe("Checks index host view", () => {
 
     const hostSection = hostView
       .getByTestId("host-section")
-      .filter({ has: page.getByTestId("host-section-name").getByText("shared.example.com") });
+      .filter({ has: page.locator('[data-testid="host-section-name"][data-host-name="shared.example.com"]') });
     await expect(hostSection).toBeVisible();
 
     // Every fixture check is "up", so the section defaults to collapsed
@@ -121,7 +121,7 @@ test.describe("Checks index host view", () => {
     // "No host" section, separate from the real host's section.
     const noHostSection = hostView
       .getByTestId("host-section")
-      .filter({ has: page.getByTestId("host-section-name").getByText("No host") });
+      .filter({ has: page.locator('[data-testid="host-section-name"][data-host-name=""]') });
     await expect(noHostSection).toBeVisible();
     await noHostSection.getByTestId("host-section-header").click();
     await expect(noHostSection.getByRole("link", { name: "Heartbeat Node", exact: true })).toBeVisible();
@@ -145,7 +145,7 @@ test.describe("Checks index host view", () => {
 
     const hostSection = hostView
       .getByTestId("host-section")
-      .filter({ has: page.getByTestId("host-section-name").getByText("shared.example.com") });
+      .filter({ has: page.locator('[data-testid="host-section-name"][data-host-name="shared.example.com"]') });
     await expect(hostSection).toBeVisible();
     await hostSection.getByTestId("host-section-header").click();
     await expect(hostSection.getByRole("link", { name: "TCP Node", exact: true })).toBeVisible();
@@ -180,7 +180,7 @@ test.describe("Checks index host view", () => {
 
     const hostSection = hostView
       .getByTestId("host-section")
-      .filter({ has: page.getByTestId("host-section-name").getByText("no-duration.example.com") });
+      .filter({ has: page.locator('[data-testid="host-section-name"][data-host-name="no-duration.example.com"]') });
     await expect(hostSection).toBeVisible();
     await hostSection.getByTestId("host-section-header").click();
 

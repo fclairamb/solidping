@@ -1,5 +1,6 @@
 import { test, expect, API_BASE, type Page, DASH_BASE } from "./fixtures";
 import { expandSection } from "./section-helpers";
+import { checkNameLocator, groupNameLocator } from "./locators";
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
@@ -93,7 +94,7 @@ test.describe("Check Groups", () => {
 
     // Wait for the group to appear in the page
     await expect(
-      page.getByTestId("group-name").getByText(groupName)
+      groupNameLocator(page, groupName)
     ).toBeVisible({ timeout: 10000 });
 
     // Take screenshot
@@ -121,9 +122,9 @@ test.describe("Check Groups", () => {
     // Verify the group section exists and contains the check
     const groupSection = page
       .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(groupName) });
+      .filter({ has: groupNameLocator(page, groupName) });
     await expect(groupSection).toBeVisible({ timeout: 10000 });
-    await expect(groupSection.getByText(checkName)).toBeVisible({
+    await expect(checkNameLocator(groupSection, checkName)).toBeVisible({
       timeout: 10000,
     });
 
@@ -144,7 +145,7 @@ test.describe("Check Groups", () => {
     // Find the group section and open its edit page
     const groupSection = page
       .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(originalName) });
+      .filter({ has: groupNameLocator(page, originalName) });
     await expect(groupSection).toBeVisible({ timeout: 10000 });
 
     await groupSection.getByTestId("group-edit-button").click();
@@ -165,12 +166,12 @@ test.describe("Check Groups", () => {
 
     // Verify the name has changed
     await expect(
-      page.getByTestId("group-name").getByText(newName)
+      groupNameLocator(page, newName)
     ).toBeVisible({ timeout: 10000 });
 
     // Verify old name is gone
     await expect(
-      page.getByTestId("group-name").getByText(originalName)
+      groupNameLocator(page, originalName)
     ).not.toBeVisible();
 
     // Take screenshot
@@ -196,7 +197,7 @@ test.describe("Check Groups", () => {
     // Find the group section and open its edit page
     const groupSection = page
       .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(groupName) });
+      .filter({ has: groupNameLocator(page, groupName) });
     await expect(groupSection).toBeVisible({ timeout: 10000 });
 
     await groupSection.getByTestId("group-edit-button").click();
@@ -211,7 +212,7 @@ test.describe("Check Groups", () => {
     // Deleting navigates back to the checks list; the group is gone
     await page.waitForURL(/\/checks$/, { timeout: 10000 });
     await expect(
-      page.getByTestId("group-name").getByText(groupName)
+      groupNameLocator(page, groupName)
     ).not.toBeVisible({ timeout: 10000 });
 
     // Take screenshot
@@ -234,10 +235,10 @@ test.describe("Check Groups", () => {
 
     // Wait for both groups to be visible
     await expect(
-      page.getByTestId("group-name").getByText(`E2E First ${ts}`)
+      groupNameLocator(page, `E2E First ${ts}`)
     ).toBeVisible({ timeout: 10000 });
     await expect(
-      page.getByTestId("group-name").getByText(`E2E Second ${ts}`)
+      groupNameLocator(page, `E2E Second ${ts}`)
     ).toBeVisible({ timeout: 10000 });
 
     // Verify initial order: First should be before Second
@@ -251,7 +252,7 @@ test.describe("Check Groups", () => {
     const secondGroupSection = page
       .getByTestId("group-section")
       .filter({
-        has: page.getByTestId("group-name").getByText(`E2E Second ${ts}`),
+        has: groupNameLocator(page, `E2E Second ${ts}`),
       });
     await secondGroupSection.getByTestId("group-move-up-button").click();
 
@@ -359,7 +360,7 @@ test.describe("Check Groups", () => {
 
     const groupSection = page
       .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(groupName) });
+      .filter({ has: groupNameLocator(page, groupName) });
     await expect(groupSection).toBeVisible({ timeout: 10000 });
 
     // Negative control: the header row (which toggles collapse on click) must
@@ -388,7 +389,7 @@ test.describe("Check Groups", () => {
     await navigateToChecks(page);
     const groupSectionAfter = page
       .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(groupName) });
+      .filter({ has: groupNameLocator(page, groupName) });
     await expect(groupSectionAfter).toBeVisible({ timeout: 10000 });
     const expandedAfter = await groupSectionAfter
       .getByTestId("group-header")
@@ -447,9 +448,9 @@ test.describe("Check Groups", () => {
 
     const groupSection = page
       .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(groupName) });
+      .filter({ has: groupNameLocator(page, groupName) });
     await expect(groupSection).toBeVisible({ timeout: 10000 });
-    await expect(groupSection.getByText(checkName)).toBeVisible({
+    await expect(checkNameLocator(groupSection, checkName)).toBeVisible({
       timeout: 10000,
     });
 
@@ -495,15 +496,15 @@ test.describe("Check Groups", () => {
     await navigateToChecks(page);
 
     // The check should appear in "Ungrouped Checks" now
-    await expect(page.getByText(checkName)).toBeVisible({ timeout: 10000 });
+    await expect(checkNameLocator(page, checkName)).toBeVisible({ timeout: 10000 });
 
     // The group section should not contain this check
     const groupSection = page
       .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(groupName) });
+      .filter({ has: groupNameLocator(page, groupName) });
     // Group may still exist but should not contain the check
     if (await groupSection.isVisible()) {
-      await expect(groupSection.getByText(checkName)).not.toBeVisible();
+      await expect(checkNameLocator(groupSection, checkName)).not.toBeVisible();
     }
 
     // Clean up
@@ -531,17 +532,17 @@ test.describe("Check Groups", () => {
     // Verify the group section contains the grouped check
     const groupSection = page
       .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(groupName) });
+      .filter({ has: groupNameLocator(page, groupName) });
     await expect(groupSection).toBeVisible({ timeout: 10000 });
-    await expect(groupSection.getByText(groupedCheckName)).toBeVisible({
+    await expect(checkNameLocator(groupSection, groupedCheckName)).toBeVisible({
       timeout: 10000,
     });
 
     // Verify the ungrouped check appears outside the group section (in "Ungrouped Checks")
-    await expect(page.getByText(ungroupedCheckName)).toBeVisible({
+    await expect(checkNameLocator(page, ungroupedCheckName)).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.getByText("Ungrouped Checks")).toBeVisible();
+    await expect(page.getByTestId("ungrouped-checks-heading")).toBeVisible();
 
     // Take screenshot
     await page.screenshot({
@@ -577,7 +578,7 @@ test.describe("Check Groups", () => {
     await page.getByTestId("new-group-submit").click();
     await expect(dialog).not.toBeVisible({ timeout: 10000 });
     await expect(
-      page.getByTestId("group-name").getByText(groupName)
+      groupNameLocator(page, groupName)
     ).toBeVisible({ timeout: 10000 });
 
     // The group must be reachable by the slug we typed, not an auto-derived one.

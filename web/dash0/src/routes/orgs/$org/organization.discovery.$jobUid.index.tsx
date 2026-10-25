@@ -234,7 +234,7 @@ function GroupCard({
     promotable.length > 0 && promotable.every((c) => selected[c.uid]);
 
   return (
-    <Card data-testid="discovery-group">
+    <Card data-testid="discovery-group" data-group-label={group.label}>
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -271,6 +271,7 @@ function GroupCard({
             key={check.uid}
             className="flex items-center justify-between gap-3 rounded-md border p-2"
             data-testid="discovery-check-row"
+            data-check-type={check.type}
           >
             <label className="flex flex-1 items-center gap-3 text-sm">
               <Checkbox
@@ -289,7 +290,9 @@ function GroupCard({
             </label>
             <div className="flex items-center gap-1">
               {check.promotedToCheckUid ? (
-                <Badge variant="secondary">{t("promoted")}</Badge>
+                <Badge variant="secondary" data-testid="discovery-check-promoted">
+                  {t("promoted")}
+                </Badge>
               ) : (
                 <Button
                   variant="ghost"
@@ -417,7 +420,12 @@ function ScanDetailPage() {
                 <Badge variant={statusBadgeVariant(displayStatus)}>
                   {t(`scanStatus.${displayStatus}`, displayStatus)}
                 </Badge>
-                <span className="text-xs text-muted-foreground font-mono">{scan.uid}</span>
+                <span
+                  className="text-xs text-muted-foreground font-mono"
+                  data-testid="discovery-scan-uid"
+                >
+                  {scan.uid}
+                </span>
               </div>
             )}
             {progress?.region && (
@@ -454,7 +462,12 @@ function ScanDetailPage() {
             aria-label={t("refresh")}
           >
             <RefreshCw className={`h-4 w-4 sm:mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
-            <span className="hidden sm:inline">{t("refresh")}</span>
+            <span
+              className="hidden sm:inline"
+              data-testid="discovery-refresh-label"
+            >
+              {t("refresh")}
+            </span>
           </Button>
         </div>
       </div>
@@ -464,7 +477,10 @@ function ScanDetailPage() {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-sm">{t("progress")}</CardTitle>
-              <span className="text-xs text-muted-foreground">
+              <span
+                className="text-xs text-muted-foreground"
+                data-testid="discovery-chunks-progress"
+              >
                 {t("chunksProgress", {
                   completed: progress.completedChunks + progress.failedChunks,
                   total: progress.totalChunks,

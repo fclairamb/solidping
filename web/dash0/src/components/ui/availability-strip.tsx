@@ -123,7 +123,13 @@ function StripCell({
           )}
         />
       </TooltipTrigger>
-      <TooltipContent>
+      <TooltipContent
+        data-testid="availability-strip-tooltip"
+        data-has-data={cell.hasData ? "true" : "false"}
+        data-probes={
+          cell.hasData ? `${cell.successfulChecks}/${cell.totalChecks}` : undefined
+        }
+      >
         <div className="text-xs space-y-0.5">
           <p className="font-medium flex items-center gap-1.5 tabular-nums">
             <span
