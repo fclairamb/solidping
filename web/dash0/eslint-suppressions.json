@@ -169,11 +169,6 @@
       "count": 4
     }
   },
-  "e2e/checks-index-status-type-filters.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 19
-    }
-  },
   "e2e/checks-request-fanout.spec.ts": {
     "testid-local/no-text-locators": {
       "count": 1
