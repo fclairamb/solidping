@@ -21,11 +21,14 @@ export const Route = createFileRoute("/login")({
   // app predates the demo flag and must keep compiling without naming it.
   validateSearch: (
     search: Record<string, unknown>,
-  ): { returnTo?: string; demo?: true; notice?: LoginNotice } => ({
+  ): { returnTo?: string; demo?: true; notice?: LoginNotice; error_description?: string } => ({
     returnTo: typeof search.returnTo === "string" ? search.returnTo : undefined,
     demo: parseDemoFlag(search.demo),
     // The invitation page's "sign in to accept" notice (spec 2026-10-16-06).
     notice: parseLoginNotice(search.notice),
+    // Failure reason from a provider login that never started (unknown org).
+    error_description:
+      typeof search.error_description === "string" ? search.error_description : undefined,
   }),
   component: LoginRedirect,
 });
@@ -43,7 +46,7 @@ function getStoredOrg(): string | null {
 // Redirect old /login to org-based login. Prefer the last-visited org from
 // localStorage; fall back to "default" (the prod default org slug).
 function LoginRedirect() {
-  const { returnTo, demo, notice } = Route.useSearch();
+  const { returnTo, demo, notice, error_description } = Route.useSearch();
   const queryClient = useQueryClient();
   // Since spec 2026-09-12-01 the demo is signed into ONLY from the demo org's
   // own login page, so landing a demo visitor anywhere else costs an extra hop.
@@ -60,7 +63,7 @@ function LoginRedirect() {
       // A returnTo captured alongside the flag is still forwarded — the demo
       // auto-login ignores it, and an ordinary sign-in on the same page (the
       // flag-less case, or an instance with no demo) still needs it.
-      search={{ session_expired: false, returnTo, demo, notice }}
+      search={{ session_expired: false, returnTo, demo, notice, error_description }}
     />
   );
 }

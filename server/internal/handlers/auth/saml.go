@@ -38,12 +38,12 @@ func NewSAMLHandler(service *SAMLService, cfg *config.Config) *SAMLHandler {
 func (h *SAMLHandler) Login(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := req.URL.Query().Get("org")
 	if orgSlug == "" {
-		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "org parameter is required")
+		return redirectLoginError(writer, req, string(base.ErrorCodeValidationError), "org parameter is required")
 	}
 
 	// Validate that the org exists
 	if _, err := h.svc.db.GetOrganizationBySlug(req.Context(), orgSlug); err != nil {
-		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
+		return redirectLoginError(writer, req, string(base.ErrorCodeOrganizationNotFound), "Organization not found")
 	}
 
 	// Only a same-origin relative path may ride the state: the attacker mints
