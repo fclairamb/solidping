@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.42.0](https://github.com/fclairamb/solidping/compare/v0.41.0...v0.42.0) (2026-10-26)
+
+
+### Features
+
+* **ai:** hold auto-applied repairs to the previous version's hosts (+ scan specs) ([#663](https://github.com/fclairamb/solidping/issues/663)) ([37966e2](https://github.com/fclairamb/solidping/commit/37966e2dd1f044c70d52aefbcc4685357150b30f))
+* **api:** cursors on the events and incidents APIs ([#640](https://github.com/fclairamb/solidping/issues/640)) ([bbd32b9](https://github.com/fclairamb/solidping/commit/bbd32b98625c84ada3c61bab9a66d88c669aec28))
+* **auth:** ask the default admin for a real email on first login ([#673](https://github.com/fclairamb/solidping/issues/673)) ([e92e608](https://github.com/fclairamb/solidping/commit/e92e6082c15a79cb8198d0c403b7496a228e4f57))
+* **checks:** offer to resolve open incidents when a check is disabled ([#648](https://github.com/fclairamb/solidping/issues/648)) ([9553cdc](https://github.com/fclairamb/solidping/commit/9553cdc3b46b449979bfcd4bb6d16f43e634bf2e))
+* **dash0:** locate e2e and showcase elements by data-testid, with lint rules ([#672](https://github.com/fclairamb/solidping/issues/672)) ([1aceb52](https://github.com/fclairamb/solidping/commit/1aceb5279b67ab6f8abdb2b3f4d2a6247627d03f))
+* **mcp:** bound tool string inputs and disclose side effects ([#644](https://github.com/fclairamb/solidping/issues/644)) ([22039c7](https://github.com/fclairamb/solidping/commit/22039c726eeb0e7e79ee3bd54e0548212e66fe54))
+* **notifications:** ntfy notifications link to the incident ([#639](https://github.com/fclairamb/solidping/issues/639)) ([e466060](https://github.com/fclairamb/solidping/commit/e4660604b704abefb8adac37000849d0311358c5))
+
+
+### Bug Fixes
+
+* **ai:** hold AI loops to the check's hosts after a real-secrets run ([#646](https://github.com/fclairamb/solidping/issues/646)) ([7cf836d](https://github.com/fclairamb/solidping/commit/7cf836d2ad6b839ab48d29896c39865cfc32e7d8))
+* **ai:** hold every scheduled `repair: auto` run to its granted hosts ([#683](https://github.com/fclairamb/solidping/issues/683)) ([ae9d0ef](https://github.com/fclairamb/solidping/commit/ae9d0ef52afb28fa45da90e84e3530995608e7bc))
+* **ai:** hold the repair: auto host grant when the script or env holds a reference ([#678](https://github.com/fclairamb/solidping/issues/678)) ([de4e718](https://github.com/fclairamb/solidping/commit/de4e718f3421fe33aa6d4be0234b83ace8bb5b1b))
+* **auth:** redirect provider logins with an unknown org to the login page instead of raw JSON ([#676](https://github.com/fclairamb/solidping/issues/676)) ([6c4b4fd](https://github.com/fclairamb/solidping/commit/6c4b4fd141dc31fcec02118b9cc154178e621a07))
+* custom-domain status assets, CSS sample, incident header, check scroll ([#689](https://github.com/fclairamb/solidping/issues/689)) ([cdd89e0](https://github.com/fclairamb/solidping/commit/cdd89e036cd01a797c9c69ea0ad8af55091a0b70))
+* dashboard down count, mobile event log, browser retry, async report test send ([#680](https://github.com/fclairamb/solidping/issues/680)) ([f53c99b](https://github.com/fclairamb/solidping/commit/f53c99ba85abac3816a4f801f378501be1683017))
+* **jobs:** retry a due job promptly when its claim rolls back ([#674](https://github.com/fclairamb/solidping/issues/674)) ([f0edadd](https://github.com/fclairamb/solidping/commit/f0edadd6c858c1fe56a72f2847c1818adfa5fcc0))
+* **log:** drop error=&lt;nil&gt; from successful HTTP request logs ([#664](https://github.com/fclairamb/solidping/issues/664)) ([4579f59](https://github.com/fclairamb/solidping/commit/4579f5908867ce2119f2bb4ed430898fe170d712))
+* **deps:** update Go dependencies (goja, clickhouse-go v2.50.0, gosnmp v1.47.0, oapi-codegen v2.8.1, ojg v1.28.8, posthog-go v1.36.2 and the non-major group) ([#654](https://github.com/fclairamb/solidping/issues/654)) ([70d3bfb](https://github.com/fclairamb/solidping/commit/70d3bfb565952a142574b2e607948799a2875b54)) ([#685](https://github.com/fclairamb/solidping/issues/685)) ([8186068](https://github.com/fclairamb/solidping/commit/8186068842a7d57a93f4c00021939ce4e5892313)) ([#668](https://github.com/fclairamb/solidping/issues/668)) ([e536f52](https://github.com/fclairamb/solidping/commit/e536f5242f867c4c4437917388ec88501c23d912)) ([#651](https://github.com/fclairamb/solidping/issues/651)) ([bd93ee7](https://github.com/fclairamb/solidping/commit/bd93ee703d36529900d518e9360aef3f73f794c5)) ([#652](https://github.com/fclairamb/solidping/issues/652)) ([0d7366c](https://github.com/fclairamb/solidping/commit/0d7366cd32695e89bd5ba24cd1a3921f7a045ac2)) ([#687](https://github.com/fclairamb/solidping/issues/687)) ([4774086](https://github.com/fclairamb/solidping/commit/4774086e88873ffe24d2e83597d04dfa5e2b9ac7)) ([#638](https://github.com/fclairamb/solidping/issues/638)) ([b8453fb](https://github.com/fclairamb/solidping/commit/b8453fbeec5031d9b3703d50693afc2a0244b3a9)) ([#649](https://github.com/fclairamb/solidping/issues/649)) ([296ecdf](https://github.com/fclairamb/solidping/commit/296ecdf9dc39d4770ca70df51aafaed9ee9bc766)) ([#656](https://github.com/fclairamb/solidping/issues/656)) ([9aef341](https://github.com/fclairamb/solidping/commit/9aef341b69dff34ac502fe9334215e6003e6426e)) ([#688](https://github.com/fclairamb/solidping/issues/688)) ([dbced61](https://github.com/fclairamb/solidping/commit/dbced61fa6bbc73d16e49910df9d5401266f132f)) ([#659](https://github.com/fclairamb/solidping/issues/659)) ([575e17f](https://github.com/fclairamb/solidping/commit/575e17f33745e860c568e9b5415a0901cbf424f6)) ([#661](https://github.com/fclairamb/solidping/issues/661)) ([aa91cb6](https://github.com/fclairamb/solidping/commit/aa91cb6f0221d9ab4b2482ac0428851840ad2478)) ([#675](https://github.com/fclairamb/solidping/issues/675)) ([5666052](https://github.com/fclairamb/solidping/commit/566605200b471d2452f6c8b2f00ac8b2241f0e7f)) ([#650](https://github.com/fclairamb/solidping/issues/650)) ([fb01ef8](https://github.com/fclairamb/solidping/commit/fb01ef8b0b9e5257abfacc67b6aba1b50ee21d5b))
+
 ## [0.41.0](https://github.com/fclairamb/solidping/compare/v0.40.1...v0.41.0) (2026-10-22)
 
 
