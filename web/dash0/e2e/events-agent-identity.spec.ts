@@ -131,7 +131,7 @@ test.describe("Events page names the agent", () => {
     await page.waitForLoadState("networkidle");
 
     const row = page.getByRole("row", { name: /Agent Disconnected/ });
-    await expect(row.locator("div.pl-6")).toHaveCount(0);
+    await expect(row.getByTestId("event-detail")).toHaveCount(0);
     await expect(
       row.getByRole("link", { name: new RegExp(AGENT_NAME) }),
     ).toHaveCount(0);
