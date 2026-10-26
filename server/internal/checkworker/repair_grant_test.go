@@ -85,7 +85,7 @@ func runRepairGrantJob(
 }
 
 // grantSecrets is the secrets map of a check holding its token in `secrets`.
-var grantSecrets = map[string]any{"TOKEN": "s3cr3t-token-value"}
+func grantSecrets() map[string]any { return map[string]any{"TOKEN": "s3cr3t-token-value"} }
 
 // grantScript calls the granted host and, when env.FIRE is "yes", localhost
 // (standing for an attacker's host) with the secret.
@@ -162,7 +162,7 @@ func TestRepairGrantHoldsAScheduledRunWithAReference(t *testing.T) {
 			acmePort, acmeHits := repairSink(t)
 			evilPort, evilHits := repairSink(t)
 
-			result := runRepairGrantJob(t, grantScript(acmePort, evilPort)+tc.suffix, tc.env, grantSecrets, true)
+			result := runRepairGrantJob(t, grantScript(acmePort, evilPort)+tc.suffix, tc.env, grantSecrets(), true)
 			r.NotNil(result.Status)
 			r.Equal(int(checkerdef.StatusError), *result.Status, result.Output)
 			r.Equal(true, result.Output[checkjs.OutputKeyRepairRefused])
@@ -185,7 +185,7 @@ func TestRepairGrantScheduledRunControls(t *testing.T) {
 		acmePort, acmeHits := repairSink(t)
 		evilPort, evilHits := repairSink(t)
 
-		result := runRepairGrantJob(t, grantScript(acmePort, evilPort), map[string]any{"FIRE": "no"}, grantSecrets, true)
+		result := runRepairGrantJob(t, grantScript(acmePort, evilPort), map[string]any{"FIRE": "no"}, grantSecrets(), true)
 		r.Equal(int(checkerdef.StatusUp), *result.Status, result.Output)
 		r.NotContains(result.Output, checkjs.OutputKeyRepairRefused)
 		r.Equal(int32(1), acmeHits.Load())
@@ -200,7 +200,7 @@ func TestRepairGrantScheduledRunControls(t *testing.T) {
 		evilPort, evilHits := repairSink(t)
 
 		result := runRepairGrantJob(t, grantScript(acmePort, evilPort)+"\n// run ${var:uuid}",
-			map[string]any{"FIRE": "yes"}, grantSecrets, false)
+			map[string]any{"FIRE": "yes"}, grantSecrets(), false)
 		r.Equal(int(checkerdef.StatusUp), *result.Status, result.Output)
 		r.Equal(int32(1), acmeHits.Load())
 		r.Equal(int32(1), evilHits.Load(), "not held: the other host is reachable")
