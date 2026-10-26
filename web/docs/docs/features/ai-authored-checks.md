@@ -148,7 +148,8 @@ with a normal version restore. These fall back to a proposal instead:
 A version `repair: auto` applied can never reach, on schedule, a host the
 version before it could not. It stores those hosts in its `ai` block
 (`repair_hosts`, with `repair_grant` binding them to that script and env). Every
-run holding real secrets is held to them, as the repair loop was. A connection
+scheduled run of that version is held to them, whether its credentials sit in
+`secrets` or come from a `${param:…}` or `${env:…}` reference. A connection
 to any other host fails the run with an error, and the check goes back to
 `repair: propose`, so the next repair needs a human. Editing the script or the
 env drops the grant: a version you wrote is not held.

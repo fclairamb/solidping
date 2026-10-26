@@ -151,8 +151,9 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	defer cancel()
 
 	// A script `repair: auto` applied is held to the hosts the version before
-	// it reached, on every run with real secrets (spec 2026-10-24-01), as the
-	// repair loop held it. A caller that already holds the run (the AI loop)
+	// it reached, on every run (spec 2026-10-24-01). Whatever its `secrets`:
+	// a `${param:…}` or `${env:…}` reference in the env or the script carries
+	// a real value too once resolved (spec 2026-10-26-02). A caller that already holds the run (the AI loop)
 	// keeps its own list. The check worker decided it on the stored config,
 	// before references were resolved (spec 2026-10-25-01): the config here
 	// may hold their values, which no grant was issued for.
@@ -162,8 +163,7 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	}
 
 	var repairList *egress.HostAllowlist
-	if held && hasSecretValues(cfg.Secrets) &&
-		egress.HostAllowlistFrom(ctx) == nil {
+	if held && egress.HostAllowlistFrom(ctx) == nil {
 		repairList = egress.NewHostAllowlist(hosts)
 		ctx = egress.WithHostAllowlist(ctx, repairList)
 	}
@@ -252,17 +252,6 @@ func WithStoredRepairHold(ctx context.Context, stored map[string]any) context.Co
 	hosts, held := checkconfig.StoredRepairAllowlist(stored)
 
 	return context.WithValue(ctx, repairHoldKey{}, repairHold{hosts: hosts, held: held})
-}
-
-// hasSecretValues reports a secrets map holding at least one real value.
-func hasSecretValues(secrets map[string]string) bool {
-	for _, value := range secrets {
-		if value != "" {
-			return true
-		}
-	}
-
-	return false
 }
 
 // withheldHost names a refused host built at runtime: it may carry a secret.

