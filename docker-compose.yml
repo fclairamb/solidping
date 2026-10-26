@@ -22,7 +22,7 @@ services:
   # with `docker compose --profile browser up -d`. The main image is distroless
   # and carries no Chrome on purpose; the checker talks CDP to this container.
   browser:
-    image: chromedp/headless-shell:157.0.8103.15
+    image: chromedp/headless-shell:158.0.8117.2
     container_name: solidping-browser
     profiles: ["browser"]
     # --remote-allow-origins is required from Chrome 111 on for a websocket
