@@ -258,7 +258,7 @@
     "cssLabel": "CSS",
     "placeholder": ":root {\n  --brand: #ff5500;\n}",
     "limitsHint": "Hasta 64 KB. @import no está permitido, y url() solo carga imágenes y fuentes de este sitio o de URI data: : la política de seguridad de la página bloquea los hosts externos. Suba su logotipo en Personalización en su lugar.",
-    "importRejected": "@import no está permitido: incorpora las reglas directamente.",
+    "importRejected": "@import no está permitido, ni siquiera en un comentario. Elimínalo y pega directamente las reglas de la hoja importada.",
     "tooLarge": "Demasiado grande: la hoja de estilos puede ocupar como máximo 64 KB.",
     "save": "Guardar",
     "insertTemplate": "Insertar plantilla inicial",
@@ -269,7 +269,7 @@
     "previewDescription": "La página de estado real, con tu estilo mientras escribes. No se publica nada hasta que guardes.",
     "savedToast": "Apariencia guardada",
     "saveFailed": "No se pudo guardar la apariencia",
-    "rejected": "La hoja de estilos fue rechazada: revisa el tamaño y las reglas @import."
+    "rejected": "La hoja de estilos fue rechazada: como máximo 64 KB, y el texto @import no está permitido, ni siquiera en un comentario."
   },
   "badge": {
     "title": "Insignia",

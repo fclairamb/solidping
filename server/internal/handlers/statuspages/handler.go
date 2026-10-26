@@ -47,8 +47,8 @@ const (
 	historyPeriodMsg    = "History period must be one of: 24h, 7d, 30d, 90d"
 	customCSSSizeMsg    = "Custom CSS must be at most 64 KB"
 	passwordTooShortMsg = "The status page password must be at least 6 characters"
-	customCSSImportMsg  = "Custom CSS must not contain @import — inline the rules instead " +
-		"(external url() references are allowed)"
+	customCSSImportMsg  = "Custom CSS must not contain the text @import, not even in a comment: " +
+		"remove it and paste the rules of the imported stylesheet directly"
 	availabilityThresholdsMsg = "thresholdDegraded must be greater than 0, less than thresholdUp, " +
 		"and thresholdUp must be at most 100"
 )

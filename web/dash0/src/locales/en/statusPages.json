@@ -258,7 +258,7 @@
     "cssLabel": "CSS",
     "placeholder": ":root {\n  --brand: #ff5500;\n}",
     "limitsHint": "Up to 64 KB. @import is not allowed, and url() only loads images and fonts from this site or data: URIs: external hosts are blocked by the page's security policy. Upload your logo under Branding instead.",
-    "importRejected": "@import is not allowed — inline the rules instead.",
+    "importRejected": "@import is not allowed, not even in a comment. Remove it and paste the rules of the imported stylesheet directly.",
     "tooLarge": "Too large: the stylesheet must be at most 64 KB.",
     "save": "Save",
     "insertTemplate": "Insert starter template",
@@ -269,7 +269,7 @@
     "previewDescription": "The real status page, restyled as you type. Nothing is published until you save.",
     "savedToast": "Appearance saved",
     "saveFailed": "Failed to save the appearance",
-    "rejected": "The stylesheet was rejected — check the size and @import rules."
+    "rejected": "The stylesheet was rejected: it must be at most 64 KB and must not contain the text @import, not even in a comment."
   },
   "badge": {
     "title": "Badge",
