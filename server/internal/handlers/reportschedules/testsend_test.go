@@ -3,6 +3,7 @@ package reportschedules
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,8 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 )
@@ -178,4 +181,220 @@ func TestTestSendHandler_AnswersWithJobUID(t *testing.T) {
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
 	require.Len(t, env.enqueuer.queued(), 1)
+}
+
+// failingDB fails the chosen lookups, the way a database outage would.
+type failingDB struct {
+	db.Service
+
+	failGetSchedule bool
+	failSuppressed  bool
+}
+
+var errDBDown = errors.New("db down")
+
+func (f *failingDB) GetReportSchedule(ctx context.Context, orgUID, uid string) (*models.ReportSchedule, error) {
+	if f.failGetSchedule {
+		return nil, errDBDown
+	}
+
+	return f.Service.GetReportSchedule(ctx, orgUID, uid)
+}
+
+func (f *failingDB) IsEmailSuppressed(ctx context.Context, orgUID, email, scope string) (bool, error) {
+	if f.failSuppressed {
+		return false, errDBDown
+	}
+
+	return f.Service.IsEmailSuppressed(ctx, orgUID, email, scope)
+}
+
+func TestTestSend_RejectedRequests(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		slug    func(env *testSendEnv) string
+		uid     func(schedule Response) string
+		address string
+		// svc builds the service under test; nil keeps the env's.
+		svc     func(env *testSendEnv) *Service
+		wantErr error
+	}{
+		{
+			name:    "unknown organization",
+			slug:    func(*testSendEnv) string { return "nope" },
+			uid:     func(s Response) string { return s.UID },
+			address: "me@example.com",
+			wantErr: ErrOrganizationNotFound,
+		},
+		{
+			name:    "unknown schedule",
+			slug:    func(e *testSendEnv) string { return e.org.Slug },
+			uid:     func(Response) string { return "nope" },
+			address: "me@example.com",
+			wantErr: ErrReportScheduleNotFound,
+		},
+		{
+			name:    "blank address",
+			slug:    func(e *testSendEnv) string { return e.org.Slug },
+			uid:     func(s Response) string { return s.UID },
+			address: "   ",
+			wantErr: ErrNoTestRecipient,
+		},
+		{
+			name:    "malformed address",
+			slug:    func(e *testSendEnv) string { return e.org.Slug },
+			uid:     func(s Response) string { return s.UID },
+			address: "not an address",
+			wantErr: ErrInvalidRecipient,
+		},
+		{
+			name:    "no delivery configured",
+			slug:    func(e *testSendEnv) string { return e.org.Slug },
+			uid:     func(s Response) string { return s.UID },
+			address: "me@example.com",
+			svc:     func(e *testSendEnv) *Service { return NewService(e.svc.db, &config.Config{}, nil) },
+			wantErr: ErrNoTestRecipient,
+		},
+		{
+			name:    "schedule lookup outage",
+			slug:    func(e *testSendEnv) string { return e.org.Slug },
+			uid:     func(s Response) string { return s.UID },
+			address: "me@example.com",
+			svc: func(e *testSendEnv) *Service {
+				return NewService(&failingDB{Service: e.svc.db, failGetSchedule: true}, &config.Config{}, e.enqueuer)
+			},
+			wantErr: errDBDown,
+		},
+		{
+			name:    "suppression lookup outage",
+			slug:    func(e *testSendEnv) string { return e.org.Slug },
+			uid:     func(s Response) string { return s.UID },
+			address: "me@example.com",
+			svc: func(e *testSendEnv) *Service {
+				return NewService(&failingDB{Service: e.svc.db, failSuppressed: true}, &config.Config{}, e.enqueuer)
+			},
+			wantErr: errDBDown,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			env := setupTestSendEnv(t)
+			schedule := env.createSchedule(t)
+
+			svc := env.svc
+			if testCase.svc != nil {
+				svc = testCase.svc(env)
+			}
+
+			_, err := svc.TestSend(
+				context.Background(), testCase.slug(env), testCase.uid(schedule),
+				testCase.address, recipient.Hint{}, time.Now(),
+			)
+
+			require.ErrorIs(t, err, testCase.wantErr)
+			require.Empty(t, env.enqueuer.queued(), "a rejected request must queue nothing")
+		})
+	}
+}
+
+// failingEnqueuer is a queue that refuses the job.
+type failingEnqueuer struct{}
+
+func (failingEnqueuer) EnqueueTestSend(
+	context.Context, string, string, string, recipient.Hint, time.Time,
+) (string, error) {
+	return "", errDBDown
+}
+
+func TestTestSend_EnqueueFailureIsReturned(t *testing.T) {
+	t.Parallel()
+
+	env := setupTestSendEnv(t)
+	schedule := env.createSchedule(t)
+	svc := NewService(env.svc.db, &config.Config{}, failingEnqueuer{})
+
+	jobUID, err := svc.TestSend(
+		context.Background(), env.org.Slug, schedule.UID, "me@example.com", recipient.Hint{}, time.Now(),
+	)
+
+	require.ErrorIs(t, err, errDBDown)
+	require.Empty(t, jobUID)
+}
+
+// TestTestSendHandler_DefaultsToTheCaller pins the safety rule of the endpoint:
+// with no body, the test goes to the authenticated caller, in the caller's
+// language, never to the schedule's recipients. A body recipient wins over the
+// caller's address but the caller's language still applies.
+func TestTestSendHandler_DefaultsToTheCaller(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		body        string
+		wantAddress string
+	}{
+		{name: "no body", body: "", wantAddress: "caller@example.com"},
+		{name: "unparseable body", body: "{", wantAddress: "caller@example.com"},
+		{name: "override recipient", body: `{"recipient":"other@example.com"}`, wantAddress: "other@example.com"},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			env := setupTestSendEnv(t)
+			schedule := env.createSchedule(t)
+			handler := NewHandler(env.svc, &config.Config{})
+
+			router := httpx.New()
+			router.POST("/orgs/:org/report-schedules/:uid/test", handler.TestSend)
+
+			caller := &models.User{
+				Email:       "caller@example.com",
+				Preferences: &models.UserPreferences{Locale: "fr", Timezone: "Europe/Paris"},
+			}
+			ctx := context.WithValue(context.Background(), base.ContextKeyUser, caller)
+
+			req := httptest.NewRequestWithContext(
+				ctx, http.MethodPost,
+				"/orgs/"+env.org.Slug+"/report-schedules/"+schedule.UID+"/test",
+				strings.NewReader(testCase.body),
+			)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusAccepted, rec.Code)
+			require.Equal(t, []enqueuedTest{{
+				env.org.UID, schedule.UID, testCase.wantAddress,
+				recipient.Hint{Locale: "fr", Timezone: "Europe/Paris"},
+			}}, env.enqueuer.queued())
+		})
+	}
+}
+
+func TestTestSendHandler_NoAddressIsRejected(t *testing.T) {
+	t.Parallel()
+
+	env := setupTestSendEnv(t)
+	schedule := env.createSchedule(t)
+	handler := NewHandler(env.svc, &config.Config{})
+
+	router := httpx.New()
+	router.POST("/orgs/:org/report-schedules/:uid/test", handler.TestSend)
+
+	// No caller in the context and no body: nothing to send to.
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost,
+		"/orgs/"+env.org.Slug+"/report-schedules/"+schedule.UID+"/test", nil,
+	)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	require.Empty(t, env.enqueuer.queued())
 }
