@@ -82,3 +82,8 @@ to `specs/done/`, verify the issue is closed and, if the merge did not close it,
 hand:
 
     gh issue close 16 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+1. Replace the synchronous path: same route, now async, no `?sync=true` escape hatch. (autopilot: recommended answer)
+2. Toast only in v1; do not link the job page. (autopilot: recommended answer)
