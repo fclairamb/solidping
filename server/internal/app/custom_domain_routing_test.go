@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
@@ -264,6 +266,18 @@ func newCustomHostTestServer(t *testing.T) *Server {
 		return nil
 	})
 
+	// Echoes the status-page scope the custom-host router put on the request,
+	// so a test can assert the asset read is limited to the resolved page.
+	assets := main.NewGroup("/pub/status-page-assets")
+	assets.GET("/:uid", func(w http.ResponseWriter, req *http.Request) error {
+		pageUID, scoped := files.StatusPageScope(req.Context())
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, "asset scoped=%t page=%s", scoped, pageUID)
+
+		return nil
+	})
+
 	mgmt := main.NewGroup("/api/mgmt")
 	mgmt.GET("/version", func(w http.ResponseWriter, _ *http.Request) error {
 		w.WriteHeader(http.StatusOK)
@@ -295,6 +309,7 @@ func newCustomHostTestServer(t *testing.T) *Server {
 	// negative-cached (not a custom domain).
 	server.customDomainCache.set("status.acme.com", customDomainResolution{
 		page: &resolvedCustomDomain{
+			UID:     "page-main-uid",
 			OrgSlug: "acme", Slug: "main", Name: "Acme Status",
 			Visibility: models.StatusPageVisibilityPublic,
 		},
@@ -388,6 +403,19 @@ func TestHandlerWithCustomDomains(t *testing.T) {
 			host: "status.acme.com", path: "/embed/v1/widget.js",
 			wantStatus: http.StatusOK, wantBody: "embed-widget",
 			wantNotBody: "sp-page",
+		},
+		{
+			// The page's logo and favicon are same-origin paths: on a custom
+			// host they used to fall through to the SPA shell (text/html).
+			name: "custom host serves status page assets, scoped to its page",
+			host: "status.acme.com", path: "/pub/status-page-assets/file-uid",
+			wantStatus: http.StatusOK, wantBody: "asset scoped=true page=page-main-uid",
+			wantNotBody: "sp-page",
+		},
+		{
+			name: "demoted custom host does not serve status page assets",
+			host: "demoted.acme.com", path: "/pub/status-page-assets/file-uid",
+			wantStatus: http.StatusServiceUnavailable, wantNotBody: "asset",
 		},
 		{
 			// A demoted domain must not serve the widget either: it is still
