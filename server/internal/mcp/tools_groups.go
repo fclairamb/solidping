@@ -34,6 +34,7 @@ func listCheckGroupsDef() ToolDefinition {
 		Description: "List all check groups for the organization. Check groups bundle related " +
 			"checks together for shared incident handling and dashboard organization, and " +
 			"each entry carries its slug, rolled-up status and check count. " +
+			"Takes no parameters and returns every group in one unpaginated response. " +
 			"Read-only: works with mcp:read tokens.",
 		InputSchema:  objectSchema(map[string]any{}, nil),
 		OutputSchema: dataOutputSchema("Check groups on this page.", checkGroupOutputProps()),
