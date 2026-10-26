@@ -165,7 +165,7 @@ test.describe("Status page custom domain", () => {
     await expect(records).not.toContainText("TXT");
 
     // One record row => the "Type" label appears exactly once.
-    await expect(records.getByText("Type", { exact: true })).toHaveCount(1);
+    await expect(records.getByTestId("dns-record-row")).toHaveCount(1);
 
     // The record is named after the customer's domain.
     await expect(records).toContainText(domain);

@@ -156,7 +156,9 @@ test.describe("Status page section selectors", () => {
     // The dashboard lists the adopted check and marks its row as automatic.
     await page.goto(`orgs/test/status-pages/${statusPage.uid}`);
     await expect(
-      page.getByTestId("resource-row-name").filter({ hasText: checkName }),
+      page.locator(
+        `[data-testid="resource-row-name"][data-resource-name="${checkName}"]`,
+      ),
     ).toHaveCount(1);
     await expect(page.getByTestId("resource-row-auto-badge")).toHaveCount(1);
 

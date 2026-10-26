@@ -14,7 +14,7 @@ test.describe("Incident failure details", () => {
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${INCIDENT_UID}`);
 
-    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("incident-details-title")).toBeVisible();
 
     const card = page.getByTestId("failure-details-card");
     await expect(card).toBeVisible();

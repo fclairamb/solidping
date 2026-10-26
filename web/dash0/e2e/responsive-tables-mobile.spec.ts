@@ -101,13 +101,13 @@ test.describe("Checks list (mobile)", () => {
     await expect(
       row.getByRole("link", { name: LONG_CHECK_NAME }),
     ).toBeVisible();
-    await expect(row.getByText("42ms")).toBeVisible();
+    await expect(row.getByTestId("check-duration")).toHaveText("42ms");
     const actionsButton = row.getByRole("button").last();
     await expect(actionsButton).toBeVisible();
 
     // Secondary columns are hidden below their breakpoint.
     await expect(page.getByRole("columnheader", { name: "Type", exact: true })).toBeHidden();
-    await expect(page.getByText("Target", { exact: true })).toBeHidden();
+    await expect(page.getByRole("columnheader", { name: "Target", exact: true })).toBeHidden();
   });
 });
 
@@ -195,17 +195,17 @@ test.describe("Incidents list (mobile)", () => {
 
     // Always-visible: title (long, unbroken text truncated rather than
     // overflowing) and the started-at timestamp.
-    await expect(row.getByText(LONG_INCIDENT_TITLE)).toBeAttached();
+    await expect(row.getByTestId("incident-title")).toBeAttached();
     await expect(row.getByTestId("incident-started-at")).toBeVisible();
     await expect(row.getByTestId("incident-number")).toBeVisible();
 
     // The badge cluster (relapse + flapping + rolled-up) must all render —
     // flex-wrap lets them drop to a second line instead of forcing overflow.
-    await expect(row.getByText("rolled up")).toBeVisible();
+    await expect(row.getByTestId("incident-rolled-up-badge")).toBeVisible();
 
     // Secondary columns are hidden below their breakpoint.
-    await expect(page.getByText("Check", { exact: true })).toBeHidden();
-    await expect(page.getByText("Failures", { exact: true })).toBeHidden();
+    await expect(page.getByRole("columnheader", { name: "Check", exact: true })).toBeHidden();
+    await expect(page.getByRole("columnheader", { name: "Failures", exact: true })).toBeHidden();
   });
 });
 
@@ -268,13 +268,13 @@ test.describe("Members list (mobile)", () => {
     // The fixture uses the email as the display name on purpose ("long
     // email-as-name" is the overflow case), so this string appears in both
     // the name cell and the md-hidden email cell. first() is the name cell.
-    await expect(row.getByText(LONG_MEMBER_EMAIL).first()).toBeVisible();
+    await expect(row.getByTestId(`member-name-${LONG_MEMBER_EMAIL}`)).toBeVisible();
     await expect(row.getByTestId(`member-role-${LONG_MEMBER_EMAIL}`)).toBeVisible();
     await expect(row.getByRole("button", { name: "Remove" })).toBeVisible();
 
     // Secondary columns are hidden below their breakpoint.
-    await expect(page.getByText("Email", { exact: true })).toBeHidden();
-    await expect(page.getByText("Joined", { exact: true })).toBeHidden();
+    await expect(page.getByRole("columnheader", { name: "Email", exact: true })).toBeHidden();
+    await expect(page.getByRole("columnheader", { name: "Joined", exact: true })).toBeHidden();
   });
 });
 
@@ -359,9 +359,9 @@ test.describe("SLOs list (mobile)", () => {
     await expect(row.getByTestId("slo-row-delete")).toBeVisible();
 
     // Secondary columns are hidden below their breakpoint.
-    await expect(page.getByText("Scope", { exact: true })).toBeHidden();
-    await expect(page.getByText("Target", { exact: true })).toBeHidden();
-    await expect(page.getByText("Budget remaining", { exact: true })).toBeHidden();
+    await expect(page.getByRole("columnheader", { name: "Scope", exact: true })).toBeHidden();
+    await expect(page.getByRole("columnheader", { name: "Target", exact: true })).toBeHidden();
+    await expect(page.getByRole("columnheader", { name: "Budget remaining", exact: true })).toBeHidden();
   });
 });
 
@@ -407,8 +407,8 @@ test.describe("Integrations list (mobile)", () => {
     // Always-visible: name (long text truncated rather than overflowing),
     // status (moved under the name below sm, so the desktop Status cell is
     // hidden and only one badge is visible), and the row actions.
-    await expect(row.getByText(LONG_INTEGRATION_NAME)).toBeVisible();
-    await expect(row.getByText("Enabled").filter({ visible: true })).toHaveCount(1);
+    await expect(row.getByTestId("integration-name")).toHaveText(LONG_INTEGRATION_NAME);
+    await expect(row.getByTestId("integration-status-badge").filter({ visible: true })).toHaveText("Enabled");
 
     // The name column claims the spare width instead of being squeezed to a
     // few characters while the status and action columns hold it
@@ -421,8 +421,8 @@ test.describe("Integrations list (mobile)", () => {
     await expect(row.getByRole("link", { name: "Edit" })).toBeVisible();
 
     // Secondary columns are hidden below their breakpoint.
-    await expect(page.getByText("Type", { exact: true })).toBeHidden();
-    await expect(page.getByText("Used by", { exact: true })).toBeHidden();
-    await expect(page.getByText("Updated", { exact: true })).toBeHidden();
+    await expect(page.getByRole("columnheader", { name: "Type", exact: true })).toBeHidden();
+    await expect(page.getByRole("columnheader", { name: "Used by", exact: true })).toBeHidden();
+    await expect(page.getByRole("columnheader", { name: "Updated", exact: true })).toBeHidden();
   });
 });

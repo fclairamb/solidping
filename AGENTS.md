@@ -154,10 +154,9 @@ Exceptions:
 - Never delete the `specs/todos/` directory itself, even when it is empty.
 
 ## Batch branches
-`/implement-todos` and similar multi-spec runs integrate onto a dated batch branch (e.g. `batch/2026-06-23`).
-- On a batch branch, never change the current branch. Keep it checked out on the batch branch and do all integration there.
-- The working tree is shared with subagents and concurrent automations. A `git checkout` can strand the batch branch or race their git operations.
-- If a step genuinely needs an isolated branch, use a separate `git worktree` instead of switching this tree's current branch.
+`/implement-todos` integrates each spec on the branch of the PR that delivers it: the batch PR (`feat/todos-<date>`, a draft until all its specs are done), or the PR of a spec filed with `/todo --own` or `--group`.
+- Never change the current branch of a checkout a batch is working in. The working tree is shared with subagents and concurrent automations: a `git checkout` can strand the batch branch or race their git operations.
+- A step that needs another branch uses a separate `git worktree` (batch runs use `.claude/worktrees/todos`) instead of switching this tree's current branch.
 
 ## Agent instruction files
 

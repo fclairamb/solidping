@@ -375,10 +375,10 @@ test.describe("HTTP check expected-status codes", () => {
 
     // Both the RecipientsInput and the raw TokenChipsInput examples render
     // and wrap within the viewport width.
-    await expect(section.getByText("Email recipients — all valid")).toBeVisible();
-    await expect(
-      section.getByText("HTTP expected-status codes (exact or NXX wildcard)"),
-    ).toBeVisible();
+    await expect(section).toContainText("Email recipients — all valid");
+    await expect(section).toContainText(
+      "HTTP expected-status codes (exact or NXX wildcard)",
+    );
 
     expect(await hasHorizontalOverflow(page)).toBe(false);
   });

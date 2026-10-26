@@ -266,7 +266,7 @@ test.describe("Escalation policy editor", () => {
       ).toBeVisible();
       // Entity-name segment must render the policy name (regression: omitted
       // because `params.slug` was always undefined after the slug removal).
-      await expect(header.getByText(name)).toBeVisible();
+      await expect(header.locator('span[aria-current="page"]')).toHaveText(name);
     } finally {
       await deleteAllEscalationPolicies(page, token);
     }

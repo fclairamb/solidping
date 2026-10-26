@@ -29,7 +29,7 @@ test.describe("MCP page (AI assistants / MCP connector setup)", () => {
 
     // The MCP URL is rendered as visible text (CopyableCode) at least twice:
     // the top-level intro block and inside the Claude card.
-    await expect(page.getByText(expectedUrl).first()).toBeVisible();
+    await expect(page.getByTestId("mcp-url")).toContainText(expectedUrl);
 
     // Without ?from=get the contextual hint stays hidden.
     await expect(page.getByTestId("mcp-from-get-hint")).toHaveCount(0);

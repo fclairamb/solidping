@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { API_BASE } from "./fixtures";
+import { checkNameLocator } from "./locators";
 
 /**
  * The shared public live demo (spec 2026-09-06-02).
@@ -14,7 +15,9 @@ import { API_BASE } from "./fixtures";
  */
 
 /** Reads the instance's public config, which is what the login button keys on. */
-async function demoConfig(request: import("@playwright/test").APIRequestContext) {
+async function demoConfig(
+  request: import("@playwright/test").APIRequestContext,
+) {
   const response = await request.get(`${API_BASE}/api/v1/config`);
   expect(response.ok()).toBeTruthy();
 
@@ -169,7 +172,9 @@ test.describe("Public live demo", () => {
 
     // One click must land inside the DEMO org, banner and all.
     await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
     expect(page.url()).not.toContain("/orgs/test");
   });
 
@@ -189,7 +194,9 @@ test.describe("Public live demo", () => {
 
     await page.goto("orgs/test/login?demo=1");
     await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
 
     // Now the returning visit: the plain login URL of a DIFFERENT org.
     const forbiddenUrls: string[] = [];
@@ -208,7 +215,9 @@ test.describe("Public live demo", () => {
     await page.goto("orgs/test/login");
 
     await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
     expect(page.url()).not.toContain("/orgs/test");
     await page.waitForLoadState("networkidle");
     expect(
@@ -229,7 +238,9 @@ test.describe("Public live demo", () => {
     // redirect-if-already-authenticated effect used to win, sending the
     // visitor to /orgs/test instead of into the demo.
     await page.goto("orgs/test/login");
-    await page.getByTestId("login-title").waitFor({ state: "visible", timeout: 20000 });
+    await page
+      .getByTestId("login-title")
+      .waitFor({ state: "visible", timeout: 20000 });
     await page.getByTestId("login-email").fill("test@test.com");
     await page.getByTestId("login-password").fill("test");
     await page.getByTestId("login-submit").click();
@@ -238,7 +249,9 @@ test.describe("Public live demo", () => {
     await page.goto("orgs/test/login?demo=true");
 
     await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
     expect(page.url()).not.toContain("/orgs/test");
   });
 
@@ -251,7 +264,9 @@ test.describe("Public live demo", () => {
 
     await page.goto("orgs/test/login?demo=1");
     await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
 
     // Count login POSTs from here on: a valid demo session must short-circuit
     // to the demo org rather than authenticate all over again.
@@ -264,12 +279,16 @@ test.describe("Public live demo", () => {
 
     await page.goto("orgs/test/login?demo=true");
     await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
     // Landing on the DEMO org, not on /orgs/test, is half the assertion — the
     // demo account is not a member of `test` and would get Permission Denied.
     expect(page.url()).not.toContain("/orgs/test");
     await page.waitForLoadState("networkidle");
-    expect(logins, "a valid demo session must not log in again").toHaveLength(0);
+    expect(logins, "a valid demo session must not log in again").toHaveLength(
+      0,
+    );
   });
 
   // Spec 2026-09-12-01. The demo is signed into ONLY from the demo org's own
@@ -297,7 +316,9 @@ test.describe("Public live demo", () => {
     await page.getByTestId("login-demo").click();
 
     await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
 
     await expectNoAccessToast(page);
 
@@ -343,8 +364,12 @@ test.describe("Public live demo", () => {
 
       await page.goto(path);
 
-      await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-      await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+      await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), {
+        timeout: 20000,
+      });
+      await expect(page.getByTestId("demo-banner")).toBeVisible({
+        timeout: 20000,
+      });
 
       await expectNoAccessToast(page);
       expect(
@@ -362,7 +387,9 @@ test.describe("Public live demo", () => {
     const org = demo?.orgSlug as string;
 
     await page.goto("orgs/test/login");
-    await page.getByTestId("login-title").waitFor({ state: "visible", timeout: 20000 });
+    await page
+      .getByTestId("login-title")
+      .waitFor({ state: "visible", timeout: 20000 });
     await page.getByTestId("login-email").fill("test@test.com");
     await page.getByTestId("login-password").fill("test");
     await page.getByTestId("login-submit").click();
@@ -382,7 +409,9 @@ test.describe("Public live demo", () => {
     await page.goto("orgs/test/login?demo=1");
 
     await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
 
     await expectNoAccessToast(page);
     expect(strayOrgUrls(navigations, org)).toEqual([]);
@@ -407,17 +436,28 @@ test.describe("Public live demo", () => {
 
     await page.goto("orgs/test/login?demo=1");
     await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
 
     await page.goto("orgs/test");
 
     // Redirected into the org they CAN use, and told why.
     await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-    await expect(page.getByText(ACCESS_TOAST)).toBeVisible({ timeout: 20000 });
-    await expect
-      .poll(async () => (await toastsSeen(page)).filter((t) => ACCESS_TOAST.test(t)), {
+    await expect(page.locator("[data-sonner-toaster]")).toContainText(
+      ACCESS_TOAST,
+      {
         timeout: 20000,
-      })
+      },
+    );
+    await expect
+      .poll(
+        async () =>
+          (await toastsSeen(page)).filter((t) => ACCESS_TOAST.test(t)),
+        {
+          timeout: 20000,
+        },
+      )
       .not.toEqual([]);
   });
 
@@ -458,7 +498,9 @@ test.describe("Public live demo", () => {
     // own LOGIN page is an intermediate stop (`/orgs/<demo>/login?demo=true`),
     // which the regex above matches while the sign-in is still in flight.
     // Navigating away at that point aborts it and lands back on a login form.
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
 
     const name = `e2e-demo-edit-${Date.now()}`;
 
@@ -490,10 +532,14 @@ test.describe("Public live demo", () => {
     // Nothing a demo session would only be refused is offered: the channel
     // picker is replaced by the read-only note, and so is the dependency
     // editor once its section is expanded.
-    await expect(page.getByTestId("check-notifications-demo-note")).toBeVisible();
-    await expect(page.getByText("Notify via")).toHaveCount(0);
+    await expect(
+      page.getByTestId("check-notifications-demo-note"),
+    ).toBeVisible();
+    await expect(page.getByTestId("notify-via-section")).toHaveCount(0);
     await page.getByTestId("section-dependencies-trigger").click();
-    await expect(page.getByTestId("check-dependencies-demo-note")).toBeVisible();
+    await expect(
+      page.getByTestId("check-dependencies-demo-note"),
+    ).toBeVisible();
     await expect(page.getByTestId("dependency-add-button")).toHaveCount(0);
 
     // The escalation picker itself STAYS — escalationPolicyUid rides the
@@ -512,11 +558,17 @@ test.describe("Public live demo", () => {
     await page.getByTestId("check-submit-button").click();
 
     // Back on the detail page, showing the new name — and no refusal toast.
-    await page.waitForURL(/\/checks\/[0-9a-f-]{36}(\?.*)?$/, { timeout: 30000 });
+    await page.waitForURL(/\/checks\/[0-9a-f-]{36}(\?.*)?$/, {
+      timeout: 30000,
+    });
     await expect(
-      page.getByTestId("check-detail-header").getByRole("heading", { name: renamed }),
+      page
+        .getByTestId("check-detail-header")
+        .getByRole("heading", { name: renamed }),
     ).toBeVisible({ timeout: 20000 });
-    await expect(page.getByText(/read-only live demo/i)).toHaveCount(0);
+    await expect(page.locator("[data-sonner-toaster]")).not.toContainText(
+      /read-only live demo/i,
+    );
 
     // And deleting a check you created still works.
     await page.goto(checkUrl);
@@ -531,7 +583,7 @@ test.describe("Public live demo", () => {
       .getByRole("button", { name: "Delete", exact: true })
       .click();
     await page.waitForURL(/\/checks(\?.*)?$/, { timeout: 20000 });
-    await expect(page.getByText(renamed)).toHaveCount(0);
+    await expect(checkNameLocator(page, renamed)).toHaveCount(0);
 
     expect(
       policyPosts,
@@ -548,7 +600,9 @@ test.describe("Public live demo", () => {
     // is exactly the branch the demo may not take.
     await page.goto("orgs/test/login");
     await page.waitForLoadState("networkidle");
-    await page.getByTestId("login-title").waitFor({ state: "visible", timeout: 20000 });
+    await page
+      .getByTestId("login-title")
+      .waitFor({ state: "visible", timeout: 20000 });
     await page.getByTestId("login-email").fill("test@test.com");
     await page.getByTestId("login-password").fill("test");
     await page.getByTestId("login-submit").click();
@@ -572,9 +626,13 @@ test.describe("Public live demo", () => {
     await page.keyboard.press("Escape");
   });
 
-  test("the banner is on every page and cannot be dismissed", async ({ page }) => {
+  test("the banner is on every page and cannot be dismissed", async ({
+    page,
+  }) => {
     await page.goto("orgs/test/login?demo=1");
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
 
     const url = new URL(page.url());
     const org = url.pathname.split("/orgs/")[1]?.split("/")[0];
@@ -583,19 +641,25 @@ test.describe("Public live demo", () => {
     for (const path of ["checks", "incidents", "status-pages"]) {
       await page.goto(`orgs/${org}/${path}`);
       await page.waitForLoadState("networkidle");
-      await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+      await expect(page.getByTestId("demo-banner")).toBeVisible({
+        timeout: 20000,
+      });
     }
 
     // No dismiss affordance anywhere on the banner.
     const banner = page.getByTestId("demo-banner");
-    await expect(banner.getByRole("button", { name: /dismiss|close/i })).toHaveCount(0);
+    await expect(
+      banner.getByRole("button", { name: /dismiss|close/i }),
+    ).toHaveCount(0);
   });
 
   test("the settings pages offer a read-only note instead of a New button", async ({
     page,
   }) => {
     await page.goto("orgs/test/login?demo=1");
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
 
     const url = new URL(page.url());
     const org = url.pathname.split("/orgs/")[1]?.split("/")[0];
@@ -632,7 +696,9 @@ test.describe("Public live demo", () => {
     // not a member of. Asserting the destination is also the point — it is the
     // regression this test exists to catch.
     await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
 
     await page.goto(`orgs/${org}/checks/new`);
     await page.waitForLoadState("networkidle");
@@ -654,7 +720,9 @@ test.describe("Public live demo", () => {
     // Landing on the detail page proves the create succeeded; the note is the
     // conversion hook.
     await page.waitForURL(/\/checks\/[0-9a-f-]{36}/, { timeout: 30000 });
-    await expect(page.getByTestId("demo-check-note")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-check-note")).toBeVisible({
+      timeout: 20000,
+    });
   });
 
   // The edit ROUTE, not just the detail page, must refuse to render a form
@@ -670,29 +738,43 @@ test.describe("Public live demo", () => {
     const demo = await demoConfig(request);
 
     const login = await request.post(`${API_BASE}/api/v1/auth/login`, {
-      data: { org: demo?.orgSlug, email: demo?.email, password: demo?.password },
+      data: {
+        org: demo?.orgSlug,
+        email: demo?.email,
+        password: demo?.password,
+      },
     });
     const { accessToken } = await login.json();
 
-    const list = await request.get(`${API_BASE}/api/v1/orgs/${demo?.orgSlug}/checks`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    const list = await request.get(
+      `${API_BASE}/api/v1/orgs/${demo?.orgSlug}/checks`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    );
     const { data } = await list.json();
 
     const seeded = (data as { uid: string; createdBy?: string | null }[]).find(
       (check) => !check.createdBy,
     );
-    expect(seeded, "the demo org should carry a seeded, un-owned catalogue").toBeTruthy();
+    expect(
+      seeded,
+      "the demo org should carry a seeded, un-owned catalogue",
+    ).toBeTruthy();
 
     await page.goto("orgs/test/login?demo=1");
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
     const url = new URL(page.url());
     const org = url.pathname.split("/orgs/")[1]?.split("/")[0];
 
     await page.goto(`orgs/${org}/checks/${seeded?.uid}/edit`);
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByTestId("demo-check-note")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-check-note")).toBeVisible({
+      timeout: 20000,
+    });
     await expect(page.getByTestId("check-edit-clone-button")).toBeVisible();
     // The form itself must never have rendered — not just be hidden behind
     // the note — since the whole point is a visitor never fills out fields
@@ -708,7 +790,9 @@ test.describe("Public live demo", () => {
     page,
   }) => {
     await page.goto("orgs/test/login?demo=1");
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({
+      timeout: 20000,
+    });
     const url = new URL(page.url());
     const org = url.pathname.split("/orgs/")[1]?.split("/")[0];
 
@@ -722,6 +806,8 @@ test.describe("Public live demo", () => {
     await expect(
       page.getByTestId("status-page-add-section-demo-note").first(),
     ).toBeVisible({ timeout: 20000 });
-    await expect(page.getByLabel("Add Section")).toHaveCount(0);
+    await expect(
+      page.getByTestId("status-page-add-section-button"),
+    ).toHaveCount(0);
   });
 });

@@ -78,6 +78,8 @@ test.describe("Private location liveness monitor", () => {
     // The link opens the monitor's check page.
     await page.getByTestId(`liveness-monitor-link-${SLUG}`).click();
     await expect(page).toHaveURL(/\/checks\/[0-9a-f-]{36}/);
-    await expect(page.getByText("Private location: E2E Live").first()).toBeVisible();
+    await expect(page.getByTestId("check-detail-title")).toContainText(
+      "Private location: E2E Live",
+    );
   });
 });

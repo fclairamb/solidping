@@ -84,7 +84,7 @@ async function createCheckAndOpen(page: Page, name: string) {
 }
 
 function availabilityTable(page: Page) {
-  return page.locator("table").filter({ hasText: "Time period" });
+  return page.getByTestId("availability-card");
 }
 
 test.describe("Availability Table", () => {
@@ -111,20 +111,18 @@ test.describe("Availability Table", () => {
 
     // Exactly one data row, labelled "Since creation" with the real days of data.
     await expect(table.locator("tbody tr")).toHaveCount(1);
-    await expect(table.getByText("Since creation")).toBeVisible();
-    await expect(table.getByText("1d monitored")).toBeVisible();
-
-    // The fixed-window labels are gone — no more copy-paste rows.
-    await expect(table.getByText("Last hour")).toHaveCount(0);
-    await expect(table.getByText("Last 24 hours")).toHaveCount(0);
-    await expect(table.getByText("Last 30 days")).toHaveCount(0);
-    await expect(table.getByText("Last 90 days")).toHaveCount(0);
-    await expect(table.getByText("Last 365 days")).toHaveCount(0);
+    await expect(table.getByTestId("availability-row-label")).toHaveText([
+      "Since creation",
+    ]);
+    await expect(table.getByTestId("availability-monitored")).toHaveText(
+      "1d monitored",
+    );
 
     // The values appear exactly once instead of four times.
-    await expect(table.getByText("99.43%")).toHaveCount(1);
-    await expect(table.getByText("4m 27s")).toHaveCount(1);
-    await expect(table.getByText("10m 24s")).toHaveCount(2); // longest + avg
+    await expect(table.getByTestId("availability-value")).toHaveText(["99.43%"]);
+    await expect(table.getByTestId("availability-downtime")).toHaveText(["4m 27s"]);
+    await expect(table.getByTestId("availability-longest")).toHaveText(["10m 24s"]);
+    await expect(table.getByTestId("availability-average")).toHaveText(["10m 24s"]);
   });
 
   test("shows every distinct window for a mature check (none partial)", async ({
@@ -148,18 +146,21 @@ test.describe("Availability Table", () => {
     await expect(table).toBeVisible({ timeout: 10000 });
 
     await expect(table.locator("tbody tr")).toHaveCount(5);
-    await expect(table.getByText("Last hour")).toBeVisible();
-    await expect(table.getByText("Last 24 hours")).toBeVisible();
-    await expect(table.getByText("Last 30 days")).toBeVisible();
-    await expect(table.getByText("Last 90 days")).toBeVisible();
-    await expect(table.getByText("Last 365 days")).toBeVisible();
+    await expect(table.getByTestId("availability-row-label")).toHaveText([
+      "Last hour",
+      "Last 24 hours",
+      "Last 30 days",
+      "Last 90 days",
+      "Last 365 days",
+    ]);
 
     // No collapsed row and no "Nd monitored" caption for a mature check.
-    await expect(table.getByText("Since creation")).toHaveCount(0);
-    await expect(table.getByText(/monitored/)).toHaveCount(0);
+    await expect(table.getByTestId("availability-monitored")).toHaveCount(0);
 
-    await expect(table.getByText("99.99%")).toBeVisible();
-    await expect(table.getByText("95.0%")).toBeVisible();
+    const values = table.getByTestId("availability-value");
+    await expect(values).toHaveCount(5);
+    await expect(values.first()).toHaveText("99.99%");
+    await expect(values.last()).toHaveText("95.0%");
   });
 
   test("rows are inert — clicking does not navigate or change the chart", async ({

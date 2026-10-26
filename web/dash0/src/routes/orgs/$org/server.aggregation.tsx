@@ -194,7 +194,7 @@ function AggregationSettingsPage() {
                     className={cn(f.invalid && "border-destructive")}
                   />
                   {f.invalid ? (
-                    <p className="text-xs text-destructive">
+                    <p className="text-xs text-destructive" data-testid={`${f.testid}-error`}>
                       {t("server:aggregation.floorError")}
                     </p>
                   ) : (
@@ -211,8 +211,8 @@ function AggregationSettingsPage() {
               <Info className="h-4 w-4" />
               <AlertDescription>
                 <ul className="list-disc space-y-1 pl-4">
-                  <li>{t("server:aggregation.noteNoReaggregate")}</li>
-                  <li>{t("server:aggregation.noteRaiseNoRestore")}</li>
+                  <li data-testid="aggregation-note-no-reaggregate">{t("server:aggregation.noteNoReaggregate")}</li>
+                  <li data-testid="aggregation-note-no-restore">{t("server:aggregation.noteRaiseNoRestore")}</li>
                 </ul>
               </AlertDescription>
             </Alert>

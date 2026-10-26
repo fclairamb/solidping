@@ -155,6 +155,7 @@ export function CheckPicker({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("dependencies:searchChecks")}
+            data-testid="check-picker-search"
             className="h-8"
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") {
@@ -191,6 +192,7 @@ export function CheckPicker({
                   idx === activeIndex && "bg-accent text-accent-foreground",
                 )}
                 data-testid={`check-picker-option-${c.slug ?? c.uid}`}
+                data-check-name={c.name}
               >
                 <span className="flex flex-1 items-center gap-2 truncate">
                   {value === c.uid && <Check className="h-3.5 w-3.5" />}

@@ -20,7 +20,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/slo"
-	"github.com/fclairamb/solidping/server/internal/uptimereport"
 )
 
 // Service errors.
@@ -50,32 +49,28 @@ var (
 // maxRecipients bounds one schedule's fan-out. A digest is not a mailing list.
 const maxRecipients = 50
 
-// Mailer enqueues one rendered report email. It is an interface so the handler
-// package does not depend on the jobs package (and so tests can assert the
-// exact payload without a queue). hint is the reader's language when address
-// has no account (recipient.Resolver.ForAddress).
-type Mailer interface {
-	SendReport(
-		ctx context.Context, orgUID, address string, hint recipient.Hint, data *uptimereport.Data,
-		unsubscribeURL string,
-	) error
+// TestSendEnqueuer queues the background job that builds and mails a test
+// report. It is an interface so the handler package does not depend on the
+// jobs package (and so tests can assert the exact payload without a queue). hint
+// is the reader's language when address has no account.
+type TestSendEnqueuer interface {
+	EnqueueTestSend(
+		ctx context.Context, orgUID, scheduleUID, address string, hint recipient.Hint, now time.Time,
+	) (string, error)
 }
 
 // Service provides business logic for report-schedule management.
 type Service struct {
-	db      db.Service
-	cfg     *config.Config
-	builder *uptimereport.Builder
-	mailer  Mailer
+	db       db.Service
+	cfg      *config.Config
+	enqueuer TestSendEnqueuer
 }
 
-// NewService creates a new report-schedules service. builder and mailer may be
-// nil, in which case the test-send endpoint reports a 500 rather than pretending
-// to have sent something.
-func NewService(
-	dbService db.Service, cfg *config.Config, builder *uptimereport.Builder, mailer Mailer,
-) *Service {
-	return &Service{db: dbService, cfg: cfg, builder: builder, mailer: mailer}
+// NewService creates a new report-schedules service. enqueuer may be nil, in
+// which case the test-send endpoint reports a 500 rather than pretending to
+// have queued something.
+func NewService(dbService db.Service, cfg *config.Config, enqueuer TestSendEnqueuer) *Service {
+	return &Service{db: dbService, cfg: cfg, enqueuer: enqueuer}
 }
 
 // Response is a report schedule as returned by the API.
@@ -268,59 +263,49 @@ func (s *Service) Delete(ctx context.Context, orgSlug, uid string) error {
 	return s.db.DeleteReportSchedule(ctx, org.UID, row.UID)
 }
 
-// TestSend renders the schedule's report for the period that most recently
-// closed and mails it to a single caller-supplied address. hint is the
+// TestSend validates the request, then queues a background job that renders
+// the schedule's report for the period that most recently closed and mails it
+// to a single caller-supplied address. It returns the job uid. hint is the
 // caller's language and timezone, used when address has no account.
 //
 // It deliberately does NOT fan out to the schedule's recipients: "let me see
-// what this looks like" must never be a button that mails forty people.
+// what this looks like" must never be a button that mails forty people. The
+// report build, the slow part, runs in the job (jobtypes.ReportTestSendJobRun).
 func (s *Service) TestSend(
 	ctx context.Context, orgSlug, uid, address string, hint recipient.Hint, now time.Time,
-) error {
+) (string, error) {
 	org, row, err := s.resolve(ctx, orgSlug, uid)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	address = strings.TrimSpace(address)
 	if address == "" {
-		return ErrNoTestRecipient
+		return "", ErrNoTestRecipient
 	}
 
 	if _, parseErr := mail.ParseAddress(address); parseErr != nil {
-		return ErrInvalidRecipient
+		return "", ErrInvalidRecipient
 	}
 
-	if s.builder == nil || s.mailer == nil {
-		return fmt.Errorf("report delivery is not configured: %w", ErrNoTestRecipient)
+	if s.enqueuer == nil {
+		return "", fmt.Errorf("report delivery is not configured: %w", ErrNoTestRecipient)
 	}
 
 	// The test send goes to the authenticated caller, who by definition did not
-	// unsubscribe from a digest they are configuring — but honoring the
-	// suppression list here too means there is exactly one code path that can
-	// mail a suppressed address, and it is closed.
+	// unsubscribe from a digest they are configuring, but the suppression list
+	// is honored here (and again when the job runs) so the caller is told
+	// instead of shown a false success.
 	suppressed, err := s.db.IsEmailSuppressed(ctx, org.UID, address, "")
 	if err != nil {
-		return fmt.Errorf("check suppression: %w", err)
+		return "", fmt.Errorf("check suppression: %w", err)
 	}
 
 	if suppressed {
-		return ErrRecipientSuppressed
+		return "", ErrRecipientSuppressed
 	}
 
-	window, _ := uptimereport.Window(row, now)
-
-	data, err := s.builder.Build(ctx, org, row, window, now)
-	if err != nil {
-		return err
-	}
-
-	// Even a test send carries the unsubscribe link: the whole point is to see
-	// what the real digest looks like, and a preview missing the footer would
-	// hide exactly the part an operator most needs to check.
-	unsubscribeURL := uptimereport.UnsubscribeURL(s.cfg, org.Slug, address, now)
-
-	return s.mailer.SendReport(ctx, org.UID, address, hint, data, unsubscribeURL)
+	return s.enqueuer.EnqueueTestSend(ctx, org.UID, row.UID, address, hint, now)
 }
 
 func (s *Service) resolve(

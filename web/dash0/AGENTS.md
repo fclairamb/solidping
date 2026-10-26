@@ -260,9 +260,17 @@ The frontend is embedded in the Go backend:
 | `build` | Build for production (with type check) |
 | `build:no-check` | Build without type checking |
 | `lint` | Run ESLint over the whole app (red on base — see "e2e type-checking and lint" below) |
-| `lint:e2e` | Run ESLint over `e2e/` only — this is what CI enforces |
+| `lint:e2e` | Run ESLint over `e2e/` and `showcase/` only — this is what CI enforces |
 | `typecheck:e2e` | `tsc -p tsconfig.e2e.json` — type-check the Playwright suites |
 | `preview` | Preview production build |
+
+## Locators: `getByTestId`
+
+E2E specs (`e2e/`) and showcase specs (`showcase/`) locate with `getByTestId`. `getByText`, `getByPlaceholder`, `getByLabel`, `:has-text` and `text=` are not used as locators (lint rule `testid-local/no-text-locators`). Text stays an assertion on a testid-located element: `await expect(page.getByTestId("check-status")).toHaveText("Up")`. `getByRole` stays allowed (it also checks the accessible name); prefer `getByTestId` when both fit.
+
+- Add the `data-testid` in `src` on the element you target (kebab-case, descriptive). Interactive elements (`Button`, `Input`, `Textarea`, `SelectTrigger`, `Checkbox`, `Switch`, `a`, `Link`, `form`, dialog content, native `button`/`input`/`select`/`textarea`) must carry one, or spread `{...props}` (lint rule `testid-local/require-testid-on-interactive`).
+- Existing violations of both rules are baselined in `eslint-suppressions.json`. The baseline only shrinks: after migrating a file run `bunx eslint --prune-suppressions`. Never add to it (`--suppress-all`) for new code.
+- After a dash0 change the server embeds the build: `make build-dash0 copy-dash0` before a side-car run (`wiki/testing/local-e2e.md`).
 
 ## e2e type-checking and lint
 

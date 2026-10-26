@@ -449,7 +449,7 @@ function AuthSettingsPage() {
         </Alert>
       )}
       {saved && (
-        <Alert>
+        <Alert data-testid="settings-saved">
           <Check className="h-4 w-4" />
           <AlertDescription>{t("server:saved")}</AlertDescription>
         </Alert>
@@ -458,7 +458,7 @@ function AuthSettingsPage() {
       <p className="text-sm text-muted-foreground">{t("server:auth.helpText")}</p>
 
       {providers.map((provider) => (
-        <Card key={provider.name}>
+        <Card key={provider.name} data-testid={`provider-card-${provider.name.toLowerCase()}`}>
           <CardHeader className="flex flex-row items-center justify-between">
             <div className="space-y-1.5">
               <CardTitle className="text-lg">{provider.name}</CardTitle>
@@ -529,7 +529,7 @@ function AuthSettingsPage() {
                 const label = t(`server:auth.fields.${field.labelKey}`);
                 return (
                 <div key={field.key} className="space-y-2">
-                  <Label htmlFor={field.key}>{label}</Label>
+                  <Label htmlFor={field.key} data-testid={`provider-label-${field.key}`}>{label}</Label>
                   {field.secret &&
                   isSecretStored(field.key) &&
                   !editingSecrets.has(field.key) ? (
@@ -617,7 +617,10 @@ function AuthSettingsPage() {
                     </div>
                   )}
                   {field.helpKey && (
-                    <p className="text-xs text-muted-foreground">
+                    <p
+                      className="text-xs text-muted-foreground"
+                      data-testid={`provider-help-${field.key}`}
+                    >
                       {t(`server:auth.fieldHelp.${field.helpKey}`)}
                     </p>
                   )}
@@ -627,6 +630,7 @@ function AuthSettingsPage() {
               <div className="flex items-center gap-3">
                 <Button
                   onClick={() => handleSave(provider.name)}
+                  data-testid={`provider-save-${provider.name.toLowerCase()}`}
                   disabled={setParam.isPending || !isDirty(provider)}
                   variant={isDirty(provider) ? "default" : "secondary"}
                 >

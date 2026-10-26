@@ -219,7 +219,7 @@ test.describe("SMS mode panel", () => {
     await expect(page.getByTestId("sms-mode-badge")).toBeVisible();
     await expect(page.getByTestId("sms-mode-explanation")).toBeHidden();
 
-    const emptyHeading = page.getByText(/no integrations yet/i);
+    const emptyHeading = page.getByTestId("integrations-empty-title");
     await expect(emptyHeading).toBeVisible();
     const emptyBox = await emptyHeading.boundingBox();
     const emptyPanelBox = await emptyPanel.boundingBox();

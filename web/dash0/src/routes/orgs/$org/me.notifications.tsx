@@ -168,7 +168,10 @@ function MyNotificationsPage() {
                         </p>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell
+                      className="text-sm"
+                      data-testid={`notification-channel-${row.uid}`}
+                    >
                       {channelTypeLabel(t, row.channelType)}
                     </TableCell>
                   </TableRow>

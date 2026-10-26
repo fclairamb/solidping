@@ -40,12 +40,12 @@ func TestFoldCheckStatusCounts(t *testing.T) {
 			want: CheckStatsResponse{Total: 14, Enabled: 10, Disabled: 4},
 		},
 		{
-			name: "down counts toward both down and hardDown, enabled or not",
+			name: "down counts toward both down and hardDown, enabled checks only",
 			rows: []models.CheckStatusCount{
 				{Status: models.CheckStatusDown, Enabled: true, Count: 3},
 				{Status: models.CheckStatusDown, Enabled: false, Count: 2},
 			},
-			want: CheckStatsResponse{Total: 5, Enabled: 3, Disabled: 2, Down: 5, HardDown: 5},
+			want: CheckStatsResponse{Total: 5, Enabled: 3, Disabled: 2, Down: 3, HardDown: 3},
 		},
 		{
 			name: "warning, validating, degraded and created are never counted as down",

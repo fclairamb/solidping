@@ -88,7 +88,7 @@ test.describe("Checks import sources", () => {
     await page.getByTestId("import-confirm-button").click();
 
     // The imported check lands in the list.
-    await expect(page.getByText("e2e gatus api").first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="check-row-name"][data-check-name="e2e gatus api"]').first()).toBeVisible({ timeout: 10000 });
 
     await deleteCheckBySlug(page, token, "e2e-gatus-api");
   });
@@ -116,7 +116,7 @@ test.describe("Checks import sources", () => {
     await expect(page.getByTestId("import-preview-created")).toHaveText("1");
 
     await page.getByTestId("import-confirm-button").click();
-    await expect(page.getByText("e2e yaml export").first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="check-row-name"][data-check-name="e2e yaml export"]').first()).toBeVisible({ timeout: 10000 });
 
     await deleteCheckBySlug(page, token, "e2e-yaml-export");
   });
@@ -136,7 +136,7 @@ test.describe("Checks import sources", () => {
     // Better Stack takes a token instead of a file, and says so.
     await expect(page.getByTestId("import-token")).toBeVisible();
     await expect(page.getByTestId("import-payload")).toHaveCount(0);
-    await expect(page.getByText("The token is not stored")).toBeVisible();
+    await expect(page.getByTestId("import-token-notice")).toContainText("The token is not stored");
 
     // Preview stays disabled until a token is entered.
     await expect(page.getByTestId("import-preview-button")).toBeDisabled();

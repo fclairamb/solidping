@@ -44,7 +44,7 @@ test.describe("Kubernetes cluster connections", () => {
     await expect(page.getByTestId("kubernetes-api-server")).toBeVisible();
 
     const clusterName = `E2E Cluster ${Date.now()}`;
-    await page.getByLabel("Name").fill(clusterName);
+    await page.getByTestId("ch-name").fill(clusterName);
     await page
       .getByTestId("kubernetes-api-server")
       .fill("https://10.0.0.1:6443");

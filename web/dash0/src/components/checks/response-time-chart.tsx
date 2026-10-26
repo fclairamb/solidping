@@ -943,7 +943,9 @@ export function ResponseTimeChart({
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between space-y-0 pb-2">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <CardTitle>{t("detail.chart.title")}</CardTitle>
+          <CardTitle data-testid="response-time-chart-title">
+            {t("detail.chart.title")}
+          </CardTitle>
           {/* Window availability lives in the HEADER, not in the strip area.
               Below the 3h floor it is the ONLY availability figure on the chart
               (a single full-width cell reads as a broken 24-cell strip), and
@@ -1186,7 +1188,10 @@ export function ResponseTimeChart({
                       return (
                         <div className="rounded-md border bg-popover p-2 text-sm shadow-md">
                           {slug && (
-                            <p className="flex items-center gap-1.5 font-medium">
+                            <p
+                              className="flex items-center gap-1.5 font-medium"
+                              data-testid="response-time-chart-tooltip-region"
+                            >
                               <span
                                 className="inline-block h-2 w-2 shrink-0 rounded-sm"
                                 style={{

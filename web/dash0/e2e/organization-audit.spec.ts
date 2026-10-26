@@ -35,7 +35,9 @@ test.describe("Organization audit log", () => {
     await page.getByTestId("audit-family-filter").click();
     await page.getByRole("option", { name: /escalation polic/i }).click();
 
-    const row = page.getByTestId("audit-row").filter({ hasText: name });
+    const row = page
+      .getByTestId("audit-row")
+      .filter({ has: page.locator(`[data-testid="audit-target"][title="${name}"]`) });
     await expect(row).toBeVisible({ timeout: 10000 });
 
     // Attributed to the logged-in operator, not to "System" — this is the

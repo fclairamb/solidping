@@ -9012,7 +9012,7 @@ export function useDeleteReportSchedule(org: string) {
 export function useTestReportSchedule(org: string) {
   return useMutation({
     mutationFn: (uid: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/report-schedules/${uid}/test`, {
+      apiFetch<{ jobUid: string }>(`/api/v1/orgs/${org}/report-schedules/${uid}/test`, {
         method: "POST",
         body: JSON.stringify({}),
       }),

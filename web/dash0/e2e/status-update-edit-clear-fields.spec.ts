@@ -160,7 +160,9 @@ test.describe("Status update edit — clearing fields and stale cache", () => {
 
     await page.getByTestId("status-update-form-submit").click();
     await page.waitForURL(/\/status-updates\/?$/, { timeout: 10000 });
-    await expect(page.getByText(newTitle)).toBeVisible({ timeout: 10000 });
+    await expect(
+      page.locator(`[data-testid="status-update-row"][data-update-title="${newTitle}"]`),
+    ).toBeVisible({ timeout: 10000 });
 
     // Re-enter the edit page via an IN-APP client-side transition — clicking
     // the row's title <Link> (status-updates.index.tsx), NOT page.goto/reload.
@@ -170,9 +172,9 @@ test.describe("Status update edit — clearing fields and stale cache", () => {
     // invalidated by the save, or react-query would still be within the
     // 1-minute staleTime and would serve the pre-edit cached payload instead
     // of refetching.
-    const updatedRow = page
-      .getByTestId("status-update-row")
-      .filter({ hasText: newTitle });
+    const updatedRow = page.locator(
+      `[data-testid="status-update-row"][data-update-title="${newTitle}"]`,
+    );
     await updatedRow.getByTestId("status-update-row-title").click();
     await page.waitForURL(
       new RegExp(`/status-updates/${update.uid}/edit`),

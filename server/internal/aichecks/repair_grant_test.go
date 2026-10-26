@@ -152,3 +152,50 @@ func TestRevokeAutoRepair(t *testing.T) {
 	r.NoError(err)
 	r.False(flipped)
 }
+
+// A `repair: auto` candidate that adds a `${…}` reference is proposed, never
+// applied (spec 2026-10-25-01): resolution changes the script text at run
+// time. A reference the previous version already had does not block it.
+func TestRepairAutoProposesAnAddedReference(t *testing.T) {
+	t.Parallel()
+
+	const ref = "\n// run ${var:uuid}"
+
+	for _, previousHasIt := range []bool{false, true} {
+		t.Run(map[bool]string{false: "added", true: "already there"}[previousHasIt], func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			api := newSink(t)
+			fx := newFixture(t, always(fixedScript+ref), nil)
+			check := fx.createAICheck(t, api.srv.URL, "auto")
+
+			if previousHasIt {
+				stored, err := fx.db.GetCheck(fx.ctx, fx.org.UID, check.UID)
+				r.NoError(err)
+
+				cfg := map[string]any(stored.Config)
+				cfg["script"] = oldScript + ref
+				_, err = fx.checks.UpdateCheck(fx.ctx, fx.org.Slug, check.UID, &checks.UpdateCheckRequest{Config: &cfg})
+				r.NoError(err)
+			}
+
+			fx.driftResults(t, check.UID, 3, driftOutput())
+
+			outcome, err := fx.svc.Repair(fx.ctx, fx.org.UID, check.UID)
+			r.NoError(err)
+
+			if previousHasIt {
+				r.Equal(aichecks.OutcomeApplied, outcome.Outcome, outcome.Reason)
+				r.Equal(fixedScript+ref, fx.script(t, check.UID))
+
+				return
+			}
+
+			r.Equal(aichecks.OutcomeProposed, outcome.Outcome, outcome.Reason)
+			r.Contains(outcome.Reason,
+				"not applied: the candidate adds a reference the previous version did not have: ${var:uuid}")
+			r.Equal(oldScript, fx.script(t, check.UID))
+		})
+	}
+}

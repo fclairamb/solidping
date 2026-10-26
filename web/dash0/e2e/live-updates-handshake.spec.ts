@@ -174,7 +174,7 @@ test.describe("Live updates handshake", () => {
       // seconds, far under the fallback poll, so only the live hint path can
       // have produced it. No reload.
       await sendHeartbeat(page, check, "up");
-      await expect(page.getByText("Currently up for")).toBeVisible({
+      await expect(page.getByTestId("summary-status-label")).toContainText("Currently up for", {
         timeout: 4000,
       });
     } finally {

@@ -129,12 +129,12 @@ func TestRepairGrantLetsTheGrantedHostThrough(t *testing.T) {
 	r.True(acme.sawSecret())
 }
 
-// A grant does not hold a script it was not issued for (a human edit), nor a
-// run without secret values.
+// A run without secret values, or a config without a grant (a human-written
+// script, or one whose edit dropped the grant), is not held.
 func TestRepairGrantOnlyHoldsItsScriptWithSecrets(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"edited script", "no secrets"} {
+	for _, name := range []string{"no grant", "no secrets"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
@@ -142,8 +142,8 @@ func TestRepairGrantOnlyHoldsItsScriptWithSecrets(t *testing.T) {
 			acme, evil := newSecretSink(t), newSecretSink(t)
 			cfg := repairedConfig(acmeScript(acme.port, `"http://localhost:`+evil.port+`"`), []string{"127.0.0.1"})
 
-			if name == "edited script" {
-				cfg.Script += "\n// edited by alice"
+			if name == "no grant" {
+				cfg.AI.RepairGrant, cfg.AI.RepairHosts = "", nil
 			} else {
 				cfg.Secrets = map[string]string{"TOKEN": ""}
 			}
@@ -157,4 +157,46 @@ func TestRepairGrantOnlyHoldsItsScriptWithSecrets(t *testing.T) {
 			r.Equal(1, evil.hits(), "the new host is reachable")
 		})
 	}
+}
+
+// A grant left on a script it was not issued for (a write path that skipped
+// NormalizeConfig) fails closed: the run is held to no host (spec 2026-10-25-01).
+func TestRepairGrantStaleFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	acme, evil := newSecretSink(t), newSecretSink(t)
+	cfg := repairedConfig(acmeScript(acme.port, `"http://localhost:`+evil.port+`"`), []string{"127.0.0.1"})
+	cfg.Script += "\n// edited by alice"
+
+	result, err := (&JSChecker{}).Execute(context.Background(), cfg)
+	r.NoError(err)
+	r.Equal(checkerdef.StatusError, result.Status, result.Output)
+	r.Equal(true, result.Output[OutputKeyRepairRefused])
+	r.Zero(acme.hits(), "not even the granted host")
+	r.Zero(evil.hits())
+}
+
+// The hold decided on the stored config wins over the run's config, whose
+// resolved references no grant was issued for (spec 2026-10-25-01).
+func TestRepairGrantDecidedOnTheStoredConfig(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	acme, evil := newSecretSink(t), newSecretSink(t)
+	stored := repairedConfig(acmeScript(acme.port, `"http://localhost:`+evil.port+`"`)+"\n// ${var:uuid}",
+		[]string{"127.0.0.1"})
+	storedMap := stored.GetConfig()
+
+	resolved := repairedConfig(stored.Script, []string{"127.0.0.1"})
+	resolved.AI.RepairGrant = stored.AI.RepairGrant
+	resolved.Script = strings.Replace(stored.Script, "${var:uuid}", "0b8c6f0e-resolved", 1)
+
+	result, err := (&JSChecker{}).Execute(WithStoredRepairHold(context.Background(), storedMap), resolved)
+	r.NoError(err)
+	r.Equal(checkerdef.StatusError, result.Status, result.Output)
+	r.Equal(true, result.Output[OutputKeyRepairRefused])
+	r.Contains(result.Output["error"], "a host its AI repair was not granted: localhost")
+	r.Zero(evil.hits())
+	r.True(acme.sawSecret(), "positive control: the granted host was reached")
 }

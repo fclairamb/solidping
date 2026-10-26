@@ -157,6 +157,7 @@ export function CheckGroupPicker({
         <div className="border-b p-2">
           <Input
             ref={inputRef}
+            data-testid="check-group-picker-search"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);

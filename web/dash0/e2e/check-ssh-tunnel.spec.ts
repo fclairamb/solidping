@@ -357,19 +357,23 @@ test.describe("SSH tunnel UX gaps", () => {
     await page.goto("orgs/test/checks");
 
     // Narrow the paginated list to just this check.
-    await page.getByPlaceholder("Search checks...").fill(checkName);
-    const row = page.getByRole("row").filter({ hasText: checkName });
+    await page.getByTestId("checks-search-input").fill(checkName);
+    const row = page.getByTestId("check-row").filter({
+      has: page.locator(`[data-testid="check-row-name"][data-check-name=${JSON.stringify(checkName)}]`),
+    });
     await expect(row).toBeVisible();
     // Wait until the search has dropped the bastion from the list: the tooltip
     // must still name it then (the row fetches it). Hovering before the
     // filter landed used to pass only because the bastion was still loaded,
     // which made this test flaky (CI run 38119247079).
-    await expect(page.getByRole("row").filter({ hasText: bastionName })).toHaveCount(0);
+    await expect(page.getByTestId("check-row").filter({
+        has: page.locator(`[data-testid="check-row-name"][data-check-name=${JSON.stringify(bastionName)}]`),
+      })).toHaveCount(0);
 
     const indicator = row.getByTestId("check-tunnel-indicator");
     await expect(indicator).toBeVisible();
 
     await indicator.hover();
-    await expect(page.getByText(`via ${bastionName}`)).toBeVisible();
+    await expect(page.getByTestId("check-tunnel-tooltip")).toContainText(`via ${bastionName}`);
   });
 });

@@ -95,12 +95,12 @@ test.describe("Activation funnel org link to audit", () => {
     await expect(page.getByTestId("audit-page")).toBeVisible({
       timeout: 15000,
     });
-    await expect(page.getByText("Audit log")).toBeVisible();
+    await expect(page.getByTestId("audit-page")).toContainText("Audit log");
 
     // ...and specifically not either of the two ways this used to fail: a
     // Permission Denied card in place, or a bounce back to the org the
     // operator started from.
-    await expect(page.getByText("Permission Denied")).toHaveCount(0);
+    await expect(page.getByTestId("permission-denied")).toHaveCount(0);
     expect(page.url()).not.toContain("/orgs/test/");
   });
 

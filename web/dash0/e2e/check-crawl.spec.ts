@@ -46,7 +46,7 @@ test.describe("Website crawl check", () => {
     // The URL is required.
     await page.getByTestId("check-name-input").fill(`E2E crawl ${Date.now()}`);
     await page.getByTestId("check-submit-button").click();
-    await expect(page.getByText("URL is required").first()).toBeVisible();
+    await expect(page.getByTestId("check-form-error")).toContainText("URL is required");
 
     // Crawl this very server's dashboard shell, three pages at most, no
     // external links (the CI runner may have no outbound network).

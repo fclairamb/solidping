@@ -133,9 +133,9 @@ test.describe("HTTP check request body and headers", () => {
       await page.goto(`orgs/test/checks/${uid}/edit`);
       // The chip is seeded from the snake spelling; before the fix it showed
       // the default 200 and the save silently widened the check to accept it.
-      await expect(
-        page.getByTestId("check-expected-status-codes").getByText("201"),
-      ).toBeVisible();
+      await expect(page.getByTestId("check-expected-status-codes")).toContainText(
+        "201",
+      );
 
       await saveAndWait(page, uid);
 

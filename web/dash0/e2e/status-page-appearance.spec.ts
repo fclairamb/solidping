@@ -109,7 +109,7 @@ test.describe("Status page appearance editor", () => {
     // resolve under it and silently load dash0 instead of status0.
     await publicPage.goto(`${API_BASE}${STATUS_BASE}/test/${slug}`);
     await publicPage.waitForLoadState("networkidle");
-    await expect(publicPage.locator("style", { hasText: "--brand" })).toHaveCount(
+    await expect(publicPage.getByTestId("status-custom-css")).toHaveCount(
       0,
     );
 
@@ -172,7 +172,7 @@ test.describe("Status page appearance editor", () => {
           await publicPage.reload();
           await publicPage.waitForLoadState("networkidle");
 
-          return publicPage.locator("style", { hasText: "--brand" }).count();
+          return publicPage.getByTestId("status-custom-css").count();
         },
         { timeout: 20000 },
       )

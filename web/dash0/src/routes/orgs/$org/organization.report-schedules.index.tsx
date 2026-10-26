@@ -170,6 +170,7 @@ function ReportSchedulesIndexPage() {
                 <TableRow
                   key={schedule.uid}
                   data-testid="report-row"
+                  data-report-name={schedule.name}
                   className="transition-colors hover:bg-muted/40"
                 >
                   <TableCell>

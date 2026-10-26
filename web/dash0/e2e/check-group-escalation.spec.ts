@@ -142,7 +142,7 @@ test.describe("Check group escalation policy", () => {
       await page.waitForLoadState("networkidle");
       const groupSection = page
         .getByTestId("group-section")
-        .filter({ has: page.getByTestId("group-name").getByText(group.name) });
+        .filter({ has: page.locator(`[data-testid="group-name"][data-group-name=${JSON.stringify(group.name)}]`) });
       await expect(groupSection).toBeVisible({ timeout: 10000 });
       await expect(
         groupSection.getByTestId("group-escalation-indicator"),
@@ -255,7 +255,7 @@ test.describe("Check group escalation policy", () => {
       await page.waitForLoadState("networkidle");
       const groupSection = page
         .getByTestId("group-section")
-        .filter({ has: page.getByTestId("group-name").getByText(group.name) });
+        .filter({ has: page.locator(`[data-testid="group-name"][data-group-name=${JSON.stringify(group.name)}]`) });
       await expect(
         groupSection.getByTestId("group-escalation-indicator"),
       ).not.toBeVisible();

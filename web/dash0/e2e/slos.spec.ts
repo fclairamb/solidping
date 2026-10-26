@@ -84,9 +84,9 @@ test.describe("SLOs", () => {
 
     await expect(page.getByTestId("slo-table")).toBeVisible();
 
-    const row = page
-      .getByTestId("slo-row")
-      .filter({ hasText: FIXTURE_NAME })
+    const row = page.locator(
+      `[data-testid="slo-row"][data-slo-name=${JSON.stringify(FIXTURE_NAME)}]`,
+    )
       .first();
     await expect(row).toBeVisible();
 
@@ -110,9 +110,9 @@ test.describe("SLOs", () => {
 
     await page.goto("orgs/test/slos");
 
-    await page
-      .getByTestId("slo-row")
-      .filter({ hasText: FIXTURE_NAME })
+    await page.locator(
+      `[data-testid="slo-row"][data-slo-name=${JSON.stringify(FIXTURE_NAME)}]`,
+    )
       .first()
       .getByTestId("slo-row-name")
       .click();
@@ -281,7 +281,7 @@ test.describe("SLOs", () => {
 
     // Live-search picker: open, type, pick — same flow as the badges page.
     await page.getByTestId("slo-check-select").click();
-    await page.getByPlaceholder("Search checks").fill("notified-check");
+    await page.getByTestId("check-picker-search").fill("notified-check");
     await page.getByTestId("check-picker-option-notified-check").click();
 
     // The trigger must show the check's name, never its raw uid (spec
@@ -329,7 +329,7 @@ test.describe("SLOs", () => {
       await page.getByTestId("slo-scope-group").click();
 
       await page.getByTestId("slo-group-select").click();
-      await page.getByPlaceholder(/search groups/i).fill(group.name);
+      await page.getByTestId("check-group-picker-search").fill(group.name);
       await page.getByTestId(`check-group-picker-option-${group.slug}`).click();
 
       const scopeTrigger = page.getByTestId("slo-group-select");
@@ -362,7 +362,7 @@ test.describe("SLOs", () => {
     await page.waitForLoadState("networkidle");
     let header = page.locator("header").first();
     // Section root on its own index page renders as plain (non-link) text.
-    await expect(header.getByText("SLOs", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("breadcrumbs")).toContainText("SLOs");
     await expect(
       header.getByRole("link", { name: "SLOs" }),
     ).toHaveCount(0);
@@ -371,13 +371,13 @@ test.describe("SLOs", () => {
     await page.waitForLoadState("networkidle");
     header = page.locator("header").first();
     await expect(header.getByRole("link", { name: "SLOs" })).toBeVisible();
-    await expect(header.getByText("New", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("breadcrumbs")).toContainText("New");
 
     await page.goto(`orgs/test/slos/${FIXTURE_UID}`);
     await page.waitForLoadState("networkidle");
     header = page.locator("header").first();
     await expect(header.getByRole("link", { name: "SLOs" })).toBeVisible();
-    await expect(header.getByText(FIXTURE_NAME, { exact: true })).toBeVisible();
+    await expect(page.getByTestId("breadcrumbs")).toContainText(FIXTURE_NAME);
   });
 
   // Coverage for spec 2026-08-21-08: burn-rate alert policies on SLO detail.

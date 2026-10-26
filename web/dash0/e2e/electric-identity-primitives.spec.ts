@@ -306,7 +306,7 @@ test.describe("tonal primitives", () => {
     }
 
     // The solid example paints the token with its white label.
-    const example = page.getByTestId("primary-fill-example").getByText("bg-primary-fill", { exact: true });
+    const example = page.getByTestId("primary-fill-solid-example");
     const solid = await paint(example);
     expect(solid.color).toBe(await probe(page, "bg-primary-fill"));
     expect(solid.image).toBe("none");
@@ -319,11 +319,12 @@ test.describe("tonal primitives", () => {
     expect(graded.text).toMatch(WHITE);
 
     const tokens = page.locator("section#color-tokens");
-    const swatchBox = (text: string) =>
-      tokens.getByText(text, { exact: true }).locator("xpath=../preceding-sibling::div[1]");
+    const swatch = (varName: string) =>
+      tokens.locator(`[data-testid="color-swatch"][data-var-name="${varName}"]`);
+    const swatchBox = (varName: string) => swatch(varName).getByTestId("color-swatch-box");
     // The retired gradient tokens have no swatch any more.
     for (const token of ["--accent-gradient", "--hero-gradient"]) {
-      await expect(tokens.getByText(token, { exact: true }), token).toHaveCount(0);
+      await expect(swatch(token), token).toHaveCount(0);
     }
     // The primary gradient swatch paints the token; the glow swatch survives
     // (auth screens only) and is a real gradient.

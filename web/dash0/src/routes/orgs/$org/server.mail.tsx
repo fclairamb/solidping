@@ -163,7 +163,7 @@ function MailSettingsPage() {
             </Alert>
           )}
           {saved && (
-            <Alert>
+            <Alert data-testid="settings-saved">
               <Check className="h-4 w-4" />
               <AlertDescription>{t("server:saved")}</AlertDescription>
             </Alert>
@@ -185,6 +185,7 @@ function MailSettingsPage() {
               <Label htmlFor="host">{t("server:mail.host")}</Label>
               <Input
                 id="host"
+                data-testid="server-mail-host-input"
                 placeholder={t("server:mail.hostPlaceholder")}
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
@@ -196,6 +197,7 @@ function MailSettingsPage() {
               <Label htmlFor="port">{t("server:mail.port")}</Label>
               <Input
                 id="port"
+                data-testid="server-mail-port-input"
                 type="number"
                 placeholder="587"
                 value={port}
@@ -211,6 +213,7 @@ function MailSettingsPage() {
               <Label htmlFor="username">{t("server:mail.username")}</Label>
               <Input
                 id="username"
+                data-testid="server-mail-username-input"
                 placeholder={t("server:mail.usernamePlaceholder")}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -222,7 +225,7 @@ function MailSettingsPage() {
               <Label htmlFor="password">{t("server:mail.password")}</Label>
               {isEnv("email.password") || !secretInputVisible(editingPassword, isPasswordSecret) ? (
                 <div className="flex items-center gap-2">
-                  <Input id="password" type="password" value="******" disabled />
+                  <Input id="password" data-testid="server-mail-password-input" type="password" value="******" disabled />
                   {!isEnv("email.password") && (
                   <Button
                     type="button"
@@ -242,6 +245,7 @@ function MailSettingsPage() {
                   <div className="relative flex-1">
                     <Input
                       id="password"
+                      data-testid="server-mail-password-input"
                       type={showPassword ? "text" : "password"}
                       placeholder={t("server:mail.passwordPlaceholder")}
                       value={password}
@@ -326,6 +330,7 @@ function MailSettingsPage() {
               <Label htmlFor="from">{t("server:mail.from")}</Label>
               <Input
                 id="from"
+                data-testid="server-mail-from-input"
                 type="email"
                 placeholder={t("server:mail.fromPlaceholder")}
                 value={from}
@@ -338,6 +343,7 @@ function MailSettingsPage() {
               <Label htmlFor="fromName">{t("server:mail.fromName")}</Label>
               <Input
                 id="fromName"
+                data-testid="server-mail-from-name-input"
                 placeholder={t("server:mail.fromNamePlaceholder")}
                 value={fromName}
                 onChange={(e) => setFromName(e.target.value)}
@@ -389,6 +395,7 @@ function MailSettingsPage() {
               <Label htmlFor="testRecipient">{t("server:mail.test.recipient")}</Label>
               <Input
                 id="testRecipient"
+                data-testid="server-mail-test-recipient-input"
                 type="email"
                 placeholder={t("server:mail.test.recipientPlaceholder")}
                 value={testRecipient}

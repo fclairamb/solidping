@@ -39,7 +39,7 @@ test.describe("Incident detail on a phone", () => {
 
     // --- First-failure panel, timeline timestamps and comment composer.
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${FAILURE_INCIDENT}`);
-    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("incident-details-title")).toBeVisible();
 
     await expect(page.getByTestId("failure-details-card")).toBeVisible();
     await expect(page.getByTestId("incident-timeline-time").first()).toBeVisible();
@@ -52,7 +52,7 @@ test.describe("Incident detail on a phone", () => {
 
     // --- Probe-response capture, then the acknowledgment attribution.
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${CAPTURE_INCIDENT}`);
-    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("incident-details-title")).toBeVisible();
 
     await expect(page.getByTestId("probe-response-card")).toBeVisible();
     await expect(page.getByTestId("probe-response-headers-table")).toBeVisible();

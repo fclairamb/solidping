@@ -145,3 +145,39 @@ func TestRepairGrantNormalization(t *testing.T) {
 	r.True(held)
 	r.Empty(hosts)
 }
+
+// A grant that does not match the stored script and env (a write path that
+// skipped NormalizeConfig) fails closed: held, to no host (spec 2026-10-25-01).
+// No grant is not held.
+func TestRepairAllowlistFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	stale := &jsconfig.JSConfig{Script: okScript + "\n// edited", AI: &jsconfig.AIConfig{
+		RepairHosts: []string{"acme.test"}, RepairGrant: jsconfig.RepairDigest(okScript, nil),
+	}}
+	hosts, held := stale.RepairAllowlist()
+	r.True(held)
+	r.Empty(hosts)
+
+	stored := stale.GetConfig()
+	hosts, held = jsconfig.StoredRepairAllowlist(stored)
+	r.True(held)
+	r.Empty(hosts)
+
+	stored["script"] = okScript
+	hosts, held = jsconfig.StoredRepairAllowlist(stored)
+	r.True(held, "positive control: the matching grant holds")
+	r.Equal([]string{"acme.test"}, hosts)
+
+	// A map that does not parse but carries a grant still fails closed.
+	unparsable := map[string]any{"script": 42, "ai": map[string]any{"repair_grant": "abc"}}
+	hosts, held = jsconfig.StoredRepairAllowlist(unparsable)
+	r.True(held)
+	r.Empty(hosts)
+
+	_, held = jsconfig.StoredRepairAllowlist(map[string]any{"script": okScript})
+	r.False(held)
+	_, held = (&jsconfig.JSConfig{Script: okScript}).RepairAllowlist()
+	r.False(held)
+}

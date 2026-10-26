@@ -88,10 +88,11 @@ test.describe("Check dependencies", () => {
     description: string,
   ) {
     await page.getByRole("button", { name: "Pick a check…" }).click();
-    await page.getByPlaceholder("Search checks…").fill(parentName);
+    await page.getByTestId("check-picker-search").fill(parentName);
     await page
-      .locator('[data-testid^="check-picker-option-"]')
-      .filter({ hasText: parentName })
+      .locator(
+        `[data-testid^="check-picker-option-"][data-check-name="${parentName}"]`,
+      )
       .first()
       .click();
     await page.getByTestId("dependency-add-kind-select").click();
@@ -133,7 +134,9 @@ test.describe("Check dependencies", () => {
       dependsOn.getByRole("link", { name: parentName }),
     ).toBeVisible();
     await expect(dependsOn.getByTestId("dependency-kind-hard")).toBeVisible();
-    await expect(dependsOn.getByText("shares the database")).toBeVisible();
+    await expect(dependsOn.getByTestId("dependency-description")).toContainText(
+      "shares the database",
+    );
     // No inline editor, no per-row delete, no picker: the pencil, the trash
     // and the "Add dependency" button all moved to the edit page.
     await expect(
@@ -199,7 +202,9 @@ test.describe("Check dependencies", () => {
     const dependsOn = page.getByTestId("depends-on-list");
     await expect(dependsOn.getByTestId("dependency-kind-soft")).toBeVisible();
     await expect(dependsOn.getByTestId("dependency-kind-hard")).toHaveCount(0);
-    await expect(dependsOn.getByText("informational only")).toBeVisible();
+    await expect(dependsOn.getByTestId("dependency-description")).toContainText(
+      "informational only",
+    );
   });
 
   test("a dependency added as soft is created soft, not hard", async ({
@@ -225,7 +230,9 @@ test.describe("Check dependencies", () => {
     ).toBeVisible();
     await expect(dependsOn.getByTestId("dependency-kind-soft")).toBeVisible();
     await expect(dependsOn.getByTestId("dependency-kind-hard")).toHaveCount(0);
-    await expect(dependsOn.getByText("best effort upstream")).toBeVisible();
+    await expect(dependsOn.getByTestId("dependency-description")).toContainText(
+      "best effort upstream",
+    );
   });
 
   // Regression coverage for issue #129: a dependency row used to render as a
@@ -274,12 +281,12 @@ test.describe("Check dependencies", () => {
     // bare kind badge with no name, just the normal empty state.
     await page.goto(childUrl);
     await page.waitForLoadState("networkidle");
-    await expect(page.getByText(parentName)).toHaveCount(0);
+    await expect(page.getByTestId("depends-on-list")).not.toContainText(
+      parentName,
+    );
     await expect(
-      page.getByText(
-        "No dependencies configured. Use Edit to add a parent and start cascading-incident rollup.",
-      ),
-    ).toBeVisible();
+      page.getByTestId("depends-on-list").getByTestId("dependency-empty"),
+    ).toContainText("No dependencies configured.");
   });
 
   // Coverage for spec 2026-09-10-02: the confirmation-margin warning used to
@@ -348,6 +355,8 @@ test.describe("Check dependencies", () => {
     // Tapping the hint reveals the explanation (Popover, not a hover-only
     // Tooltip, so this must work via a plain click too).
     await warnedRow.getByTestId("dependency-warning-hint").click();
-    await expect(page.getByText(/Confirms faster than/)).toBeVisible();
+    await expect(page.getByTestId("dependency-warning-content")).toContainText(
+      "Confirms faster than",
+    );
   });
 });

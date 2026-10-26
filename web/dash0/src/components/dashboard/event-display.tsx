@@ -333,6 +333,7 @@ export function EventTypeBadge({
       variant="outline"
       className={cn("gap-1.5 text-xs font-medium", getEventTone(eventType), className)}
       title={eventType}
+      data-testid="event-type-badge"
     >
       {/* Same substitution as getEventIcon: the circle emojis become drawn
           dots so they read as one set with the badge's own tint. */}
@@ -475,6 +476,7 @@ export function EventTypeLabel({
         className,
       )}
       title={eventType}
+      data-testid="event-type-label"
     >
       <Icon className={cn("size-4 shrink-0", tone)} aria-hidden="true" />
       <span

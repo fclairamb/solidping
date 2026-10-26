@@ -71,7 +71,7 @@ test.describe("Heartbeat push transports", () => {
     await createHeartbeatCheck(page, `E2E HB Push Off ${Date.now()}`);
 
     // The HTTPS endpoint is still there — only the push block is absent.
-    await expect(page.getByText("Heartbeat Endpoint")).toBeVisible();
+    await expect(page.getByTestId("heartbeat-endpoint-title")).toHaveText("Heartbeat Endpoint");
     await expect(page.getByTestId("heartbeat-push")).toHaveCount(0);
   });
 

@@ -32,6 +32,11 @@ import {
   type OrgResult,
 } from "@/api/hooks";
 import {
+  effectiveStatus,
+  isAttentionStatus,
+  orderChecksForGlance,
+} from "@/components/dashboard/glance-order";
+import {
   AVAILABILITY_TIER_STYLE,
   availabilityTier,
 } from "@/lib/availability-tier";
@@ -75,9 +80,6 @@ const INCIDENT_POLL_MS = 30_000;
 const RESULT_POLL_MS = 60_000;
 const EVENT_POLL_MS = 60_000;
 
-// Max rows in the "Checks at a glance" card. The footer always links to the
-// full /checks list so a capped card is never mistaken for the whole fleet.
-const GLANCE_LIMIT = 10;
 // Page size requested for the glance card's source list. The checks endpoint
 // clamps `limit` to 100 server-side, so asking for more is a lie; the card is
 // explicitly a sample and the counters come from the stats endpoint.
@@ -118,46 +120,6 @@ function useTick(intervalMs: number) {
     return () => clearInterval(id);
   }, [intervalMs]);
   return now;
-}
-
-function effectiveStatus(check: Check): string | undefined {
-  return check.status ?? check.lastResult?.status;
-}
-
-// The down / hard-down predicates that used to live here moved server-side to
-// server/internal/handlers/checks/stats.go (isDownWireStatus /
-// isHardDownWireStatus), where they are applied to the whole fleet instead of
-// one page. Keeping a second copy here would let the two drift apart, which is
-// exactly the failure mode the stats endpoint exists to prevent.
-
-function isAttentionStatus(status?: string): boolean {
-  return !!status && status !== "up" && status !== "created";
-}
-
-// Ordering for the glance card: checks needing attention first (status not
-// up/created, most recent lastStatusChange first), then healthy enabled checks
-// by name, then disabled checks last. Capped to GLANCE_LIMIT rows.
-function orderChecksForGlance(checks: Check[]): Check[] {
-  const byName = (a: Check, b: Check) =>
-    (a.name || a.slug || a.uid).localeCompare(b.name || b.slug || b.uid);
-
-  const attention = checks
-    .filter((c) => isAttentionStatus(effectiveStatus(c)))
-    .sort((a, b) => {
-      const aTime = a.lastStatusChange?.time
-        ? new Date(a.lastStatusChange.time).getTime()
-        : 0;
-      const bTime = b.lastStatusChange?.time
-        ? new Date(b.lastStatusChange.time).getTime()
-        : 0;
-      return bTime - aTime;
-    });
-
-  const rest = checks.filter((c) => !isAttentionStatus(effectiveStatus(c)));
-  const healthyEnabled = rest.filter((c) => c.enabled !== false).sort(byName);
-  const disabled = rest.filter((c) => c.enabled === false).sort(byName);
-
-  return [...attention, ...healthyEnabled, ...disabled].slice(0, GLANCE_LIMIT);
 }
 
 interface CheckUptime {
@@ -770,7 +732,7 @@ function ChecksGlanceList({
     <Card data-testid="checks-glance">
       <CardHeader className="flex flex-row items-center justify-between py-4">
         <div>
-          <CardTitle className="text-base font-semibold">
+          <CardTitle className="text-base font-semibold" data-testid="checks-glance-title">
             {t("glance.title")}
           </CardTitle>
           <CardDescription className="text-xs text-muted-foreground mt-0.5">
@@ -805,7 +767,12 @@ function ChecksGlanceList({
               const checkType = check.type || "http";
 
               return (
-                <div key={check.uid} data-testid="glance-row" className="group">
+                <div
+                  key={check.uid}
+                  data-testid="glance-row"
+                  data-check-name={check.name || check.slug || check.uid}
+                  className="group"
+                >
                   <Link
                     to="/orgs/$org/checks/$checkUid"
                     params={{ org, checkUid: check.uid }}
@@ -987,11 +954,19 @@ function ActiveIncidentsList({
                       <div className="flex min-w-0 items-center gap-3">
                         <AlertTriangle className="h-4 w-4 shrink-0 text-status-error" />
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">
+                          <div
+                            className="truncate text-sm font-medium"
+                            data-testid="active-incident-title"
+                            data-incident-title={incident.title}
+                          >
                             {incident.title || t("activeIncidents.untitled")}
                           </div>
                           {incident.checkName ? (
-                            <div className="truncate text-xs text-muted-foreground">
+                            <div
+                              className="truncate text-xs text-muted-foreground"
+                              data-testid="active-incident-check-name"
+                              data-check-name={incident.checkName}
+                            >
                               {incident.checkName}
                             </div>
                           ) : null}

@@ -1262,7 +1262,7 @@ function ButtonPlacementSection() {
     <>
       <Button variant="outline" onClick={() => refetch()} aria-label={t("common:refresh")}>
         <RefreshCw className="h-4 w-4 sm:mr-2" />
-        <span className="hidden sm:inline">{t("common:refresh")}</span>
+        <span className="hidden sm:inline" data-testid="refresh-label">{t("common:refresh")}</span>
       </Button>
       <Button asChild>
         <Link to="/orgs/$org/on-call/new" params={{ org }}>Create schedule</Link>
@@ -1357,7 +1357,7 @@ function ButtonPlacementSection() {
           </div>
           <Button variant="outline" size="sm" aria-label="Refresh">
             <RefreshCw className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Refresh</span>
+            <span className="hidden sm:inline" data-testid="refresh-label">Refresh</span>
           </Button>
         </div>
       </div>
@@ -1625,10 +1625,15 @@ function Swatch({
   description?: string;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-md border bg-card p-3">
+    <div
+      className="flex items-center gap-3 rounded-md border bg-card p-3"
+      data-testid="color-swatch"
+      data-var-name={varName}
+    >
       <div
         className="h-10 w-10 shrink-0 rounded-md border"
         style={{ backgroundColor: `var(${varName})` }}
+        data-testid="color-swatch-box"
       />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium leading-tight">{label}</p>
@@ -1817,7 +1822,10 @@ function ButtonsBadgesSection() {
               className="flex flex-wrap items-center gap-3"
               data-testid="primary-fill-example"
             >
-              <span className="inline-flex h-9 items-center rounded-md bg-primary-fill px-3 text-sm font-medium text-primary-fill-foreground">
+              <span
+                className="inline-flex h-9 items-center rounded-md bg-primary-fill px-3 text-sm font-medium text-primary-fill-foreground"
+                data-testid="primary-fill-solid-example"
+              >
                 bg-primary-fill
               </span>
               <span

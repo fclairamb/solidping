@@ -73,7 +73,7 @@ test("SMS opt-in flow", async ({ page }) => {
     //    disclosure is bound to that choice, not to the page.
     await page.getByTestId("add-contact-button").click();
     await beat(page, 600);
-    await page.getByRole("button", { name: "Phone" }).click();
+    await page.getByTestId("add-contact-type-phone").click();
 
     const notice = page.getByTestId("sms-consent-notice");
     await expect(notice).toBeVisible();
@@ -105,8 +105,8 @@ test("SMS opt-in flow", async ({ page }) => {
     await page.getByTestId("add-contact-submit").click();
     await page.waitForLoadState("networkidle");
     const list = page.getByTestId("notification-routes-list");
-    await expect(list.getByText("Phone (SMS)")).toBeVisible();
-    await expect(list.getByText(/Unverified/)).toBeVisible();
+    await expect(list.locator('[data-testid^="route-type-"]')).toHaveText("Phone (SMS)");
+    await expect(list.locator('[data-testid^="route-unverified-"]')).toBeVisible();
     await beat(page, 800);
     await still(page, "sms-opt-in-4-unverified");
 

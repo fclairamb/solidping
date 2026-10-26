@@ -159,6 +159,14 @@ const (
 	// arbitrary stored addresses, so a public creation endpoint for it would
 	// be a spam primitive with extra steps.
 	JobTypeUptimeReport JobType = "uptime_report"
+	// JobTypeReportTestSend builds one report schedule's report and mails it
+	// to a single address ("send a test" button). Created by the report
+	// schedules endpoint after it validated the request; the build is the slow
+	// part, so it runs here rather than inside the HTTP request.
+	//
+	// Deliberately absent from publiclyCreatableJobTypes: it sends mail to an
+	// arbitrary address.
+	JobTypeReportTestSend JobType = "report_test_send"
 	// JobTypeSLOBurnEval evaluates every enabled SLO burn-rate alert policy
 	// (spec 2026-08-21-08). Global and self-rescheduling every minute: a burn
 	// alert whose whole point is "you are spending the month in an afternoon"

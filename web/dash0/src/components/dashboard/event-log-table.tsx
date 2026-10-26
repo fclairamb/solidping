@@ -137,11 +137,12 @@ export function EventLogTable({
     <Table>
       <TableHeader className="bg-muted/30">
         <TableRow>
-          {/* w-px shrinks the column to its content ("2h ago"). */}
-          <TableHead className="w-px whitespace-nowrap">
+          {/* w-px shrinks the column to its content ("2h ago"). Below md the
+              time folds into the Event cell to leave room for Related. */}
+          <TableHead className="hidden w-px whitespace-nowrap md:table-cell">
             {t("table.time")}
           </TableHead>
-          <TableHead className="w-[220px]">{t("table.event")}</TableHead>
+          <TableHead className="md:w-[220px]">{t("table.event")}</TableHead>
           <TableHead className={cn("w-[120px]", embedded && "hidden md:table-cell")}>
             {t("table.actor")}
           </TableHead>
@@ -159,6 +160,17 @@ export function EventLogTable({
             : undefined;
           const AgentIcon = getEventLucideIcon(event.eventType);
 
+          const stripe = getEventRowStripe(event.eventType);
+          // Relative reads faster when scanning a log; the exact timestamp
+          // stays one hover away.
+          const time = event.createdAt ? (
+            <span title={new Date(event.createdAt).toLocaleString()}>
+              <DurationAgo since={event.createdAt} />
+            </span>
+          ) : (
+            "—"
+          );
+
           return (
             <TableRow
               key={event.uid}
@@ -166,26 +178,27 @@ export function EventLogTable({
             >
               <TableCell
                 className={cn(
-                  "whitespace-nowrap text-xs tabular-nums text-muted-foreground",
-                  getEventRowStripe(event.eventType),
+                  "hidden whitespace-nowrap text-xs tabular-nums text-muted-foreground md:table-cell",
+                  stripe,
                 )}
+                data-testid="event-time"
               >
-                {event.createdAt ? (
-                  // Relative reads faster when scanning a log; the exact
-                  // timestamp stays one hover away.
-                  <span title={new Date(event.createdAt).toLocaleString()}>
-                    <DurationAgo since={event.createdAt} />
-                  </span>
-                ) : (
-                  "—"
-                )}
+                {time}
               </TableCell>
-              <TableCell>
+              {/* Below md the Time column is hidden: the Event cell carries
+                  the row stripe and the time, under the label. */}
+              <TableCell className={cn(stripe, stripe && "md:shadow-none")}>
                 <EventTypeLabel eventType={event.eventType} t={t} />
+                <div
+                  className="pl-6 text-xs tabular-nums text-muted-foreground md:hidden"
+                  data-testid="event-time-inline"
+                >
+                  {time}
+                </div>
                 {eventDetail ? (
                   // Indented to align under the label text rather than the
                   // icon: size-4 (16px) + gap-2 (8px) = 24px = pl-6.
-                  <div className="pl-6 text-xs text-muted-foreground truncate">
+                  <div className="pl-6 text-xs text-muted-foreground truncate" data-testid="event-detail">
                     {eventDetail}
                   </div>
                 ) : null}

@@ -259,7 +259,7 @@ function IntegrationsListPage() {
               <RefreshCw
                 className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
               />
-              <span className="hidden sm:inline">{t("common:refresh")}</span>
+              <span className="hidden sm:inline" data-testid="refresh-label">{t("common:refresh")}</span>
             </Button>
           </div>
 
@@ -323,7 +323,9 @@ function EmptyState({ org }: { org: string }) {
   return (
     <Card className="shadow-card">
       <CardHeader>
-        <CardTitle className="text-base font-semibold">{t("empty.title", "No integrations yet")}</CardTitle>
+        <CardTitle className="text-base font-semibold" data-testid="integrations-empty-title">
+          {t("empty.title", "No integrations yet")}
+        </CardTitle>
         <CardDescription>
           {t(
             "empty.body",
@@ -359,7 +361,7 @@ function Row({ org, integration, onDelete }: RowProps) {
   const { t } = useTranslation("integrations");
 
   return (
-    <TableRow className="hover:bg-muted/40 transition-colors">
+    <TableRow className="hover:bg-muted/40 transition-colors" data-testid={`integration-row-${integration.uid}`}>
       <TableCell className="w-full max-w-0">
         <Link
           to="/orgs/$org/integrations/$integrationUid"
@@ -369,7 +371,7 @@ function Row({ org, integration, onDelete }: RowProps) {
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted/60">
             <IntegrationIcon type={integration.type} className="h-4 w-4" />
           </div>
-          <span className="min-w-0 truncate">{integration.name}</span>
+          <span className="min-w-0 truncate" data-testid="integration-name">{integration.name}</span>
         </Link>
         {/* Below sm the Status column is hidden, so the status sits under
             the name (aligned with it, past the icon) and the name keeps the
@@ -377,7 +379,7 @@ function Row({ org, integration, onDelete }: RowProps) {
         <IntegrationStatus integration={integration} className="mt-1 pl-[2.375rem] sm:hidden" />
       </TableCell>
       <TableCell className="hidden whitespace-nowrap sm:table-cell">
-        <Badge variant="outline" className="font-mono text-xs font-normal">
+        <Badge variant="outline" className="font-mono text-xs font-normal" data-testid="integration-type-label">
           {integrationLabel(integration.type)}
         </Badge>
       </TableCell>
@@ -427,6 +429,7 @@ function IntegrationStatus({
   return (
     <div className={cn("flex items-center gap-2", className)}>
       <Badge
+        data-testid="integration-status-badge"
         variant={integration.enabled ? "default" : "secondary"}
         className={
           integration.enabled
