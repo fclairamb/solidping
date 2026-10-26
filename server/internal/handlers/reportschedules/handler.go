@@ -100,7 +100,8 @@ type TestSendRequest struct {
 	Recipient string `json:"recipient"`
 }
 
-// TestSend renders the report and mails it to the caller.
+// TestSend queues a background job that renders the report and mails it to the
+// caller, and answers 202 with the job uid.
 //
 // The default destination is the AUTHENTICATED CALLER's own address, never the
 // schedule's recipient list — "preview this" must not be a button that mails
@@ -128,16 +129,14 @@ func (h *Handler) TestSend(writer http.ResponseWriter, req *http.Request) error 
 		}
 	}
 
-	err := h.svc.TestSend(
+	jobUID, err := h.svc.TestSend(
 		req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"), address, hint, time.Now(),
 	)
 	if err != nil {
 		return h.handleError(writer, req, err)
 	}
 
-	writer.WriteHeader(http.StatusAccepted)
-
-	return nil
+	return h.WriteJSON(writer, http.StatusAccepted, map[string]string{"jobUid": jobUID})
 }
 
 func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {

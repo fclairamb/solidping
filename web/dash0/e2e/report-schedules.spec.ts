@@ -104,7 +104,7 @@ test.describe("Uptime report schedules", () => {
       await page.getByTestId("report-test").click();
 
       await expect(page.locator("[data-sonner-toaster]")).toContainText(
-        "Test report queued to your address",
+        "Test report queued, it will arrive in your inbox shortly",
       );
       await expect(page.locator("[data-sonner-toaster]")).not.toContainText(
         "Failed to send the test report",
