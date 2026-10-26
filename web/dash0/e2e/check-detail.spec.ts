@@ -780,10 +780,18 @@ test.describe("Check Detail Page", () => {
     // Selecting the US chip narrows the list to one row, cross-filters the
     // chart to that region's single point too, and writes a single
     // ?region=us-1 param (no separate graphRegion/resultsRegion keys).
+    //
+    // It is an in-page refinement, so it keeps the scroll position: the router
+    // used to scroll back to the top on each click.
+    await resultsFilter.scrollIntoViewIfNeeded();
+    const scrollBefore = await page.evaluate(() => window.scrollY);
+    expect(scrollBefore).toBeGreaterThan(100);
     await resultsFilter.getByRole("button", { name: /US East/ }).click();
     await page.waitForURL(/[?&]region=us-1(&|$)/);
     await expect(page.locator('[data-testid^="result-row-"]')).toHaveCount(1);
     await expect(chartDataDots).toHaveCount(1);
+    // One result row less may clamp the scroll a little, never back to the top.
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(scrollBefore - 100);
     expect(page.url()).not.toContain("graphRegion");
     expect(page.url()).not.toContain("resultsRegion");
 

@@ -258,7 +258,7 @@
     "cssLabel": "CSS",
     "placeholder": ":root {\n  --brand: #ff5500;\n}",
     "limitsHint": "64 Ko maximum. @import est interdit, et url() ne charge les images et polices que depuis ce site ou des URI data: : les hôtes externes sont bloqués par la politique de sécurité de la page. Téléversez plutôt votre logo dans Personnalisation.",
-    "importRejected": "@import est interdit — intégrez les règles directement.",
+    "importRejected": "@import est interdit, même dans un commentaire. Supprimez-le et collez directement les règles de la feuille importée.",
     "tooLarge": "Trop volumineux : la feuille de style doit faire 64 Ko au maximum.",
     "save": "Enregistrer",
     "insertTemplate": "Insérer un modèle de départ",
@@ -269,7 +269,7 @@
     "previewDescription": "La vraie page de statut, restylée au fil de la frappe. Rien n'est publié tant que vous n'enregistrez pas.",
     "savedToast": "Apparence enregistrée",
     "saveFailed": "Échec de l'enregistrement de l'apparence",
-    "rejected": "Feuille de style refusée — vérifiez la taille et les règles @import."
+    "rejected": "Feuille de style refusée : 64 Ko maximum, et le texte @import est interdit, même dans un commentaire."
   },
   "badge": {
     "title": "Badge",

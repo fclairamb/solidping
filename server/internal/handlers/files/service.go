@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -189,7 +190,32 @@ func (s *Service) GetPublicFile(ctx context.Context, fileUID string) (*models.Fi
 		return nil, ErrFileNotFound
 	}
 
+	if pageUID, scoped := StatusPageScope(ctx); scoped &&
+		!strings.HasPrefix(*file.Topic, StatusPageTopicPrefix(pageUID)) {
+		// A custom domain only serves the assets of the page it resolves to:
+		// another page's logo, or an org logo, is "no such file" there.
+		return nil, ErrFileNotFound
+	}
+
 	return file, nil
+}
+
+// statusPageScopeKey carries the status page a public asset read is limited to.
+type statusPageScopeKey struct{}
+
+// WithStatusPageScope limits GetPublicFile to the assets of one status page.
+// The custom-domain router sets it, so `status.acme.com` cannot be used to
+// fetch the assets of any other page or organization. An empty pageUID matches
+// nothing (fail closed).
+func WithStatusPageScope(ctx context.Context, pageUID string) context.Context {
+	return context.WithValue(ctx, statusPageScopeKey{}, pageUID)
+}
+
+// StatusPageScope returns the page set by WithStatusPageScope, if any.
+func StatusPageScope(ctx context.Context) (string, bool) {
+	pageUID, ok := ctx.Value(statusPageScopeKey{}).(string)
+
+	return pageUID, ok
 }
 
 // OpenContent opens the bytes for a file (used by the public handler too).

@@ -875,6 +875,10 @@ function CheckDetailPage() {
   // filter excludes, so drop the pin rather than leave a stale/unanchored box
   // (see response-time-chart.tsx's own effectiveRegion guard, which behaves
   // the same way for the chart's dot-selection state).
+  //
+  // Every in-page refinement here (region, period, zoom, view, selection)
+  // passes `resetScroll: false`: the router otherwise scrolls the window back
+  // to the top on each click, losing the reader's place in the page.
   const setRegion = (nextRegion: string | undefined) => {
     navigate({
       to: ".",
@@ -884,6 +888,7 @@ function CheckDetailPage() {
         graphSelected: undefined,
       }),
       replace: true,
+      resetScroll: false,
     });
   };
 
@@ -1744,6 +1749,7 @@ function CheckDetailPage() {
                   graphView: view === "timing" ? "timing" : undefined,
                 }),
                 replace: true,
+                resetScroll: false,
               })
             }
           />
@@ -1778,6 +1784,7 @@ function CheckDetailPage() {
                 };
               },
               replace: true,
+              resetScroll: false,
             })
           }
           onZoomChange={(from, to) =>
@@ -1792,6 +1799,7 @@ function CheckDetailPage() {
                   : {}),
               }),
               replace: true,
+              resetScroll: false,
             })
           }
         />
@@ -1838,6 +1846,7 @@ function CheckDetailPage() {
                 };
               },
               replace: true,
+              resetScroll: false,
             })
           }
           onZoomChange={(from, to) =>
@@ -1853,6 +1862,7 @@ function CheckDetailPage() {
                   : {}),
               }),
               replace: true,
+              resetScroll: false,
             })
           }
           onSelectChange={(uid) =>
@@ -1860,6 +1870,7 @@ function CheckDetailPage() {
               to: ".",
               search: (prev) => ({ ...prev, graphSelected: uid }),
               replace: true,
+              resetScroll: false,
             })
           }
         />

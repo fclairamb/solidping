@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
+	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
 	"github.com/fclairamb/solidping/server/internal/statuspagecache"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
@@ -62,6 +64,9 @@ const (
 // status page (org slug + page slug for the SPA bootstrap, plus name/description
 // for OG-meta injection).
 type resolvedCustomDomain struct {
+	// UID is the page's UID. It scopes /pub/status-page-assets/ on the custom
+	// host to this page's own logo and favicon.
+	UID         string
 	OrgSlug     string
 	Slug        string
 	Name        string
@@ -283,6 +288,7 @@ func (s *Server) lookupCustomDomain(ctx context.Context, host string) customDoma
 	}
 
 	return customDomainResolution{page: &resolvedCustomDomain{
+		UID:          statusPage.UID,
 		OrgSlug:      org.Slug,
 		Slug:         statusPage.Slug,
 		Name:         statusPage.Name,
@@ -407,6 +413,12 @@ func (s *Server) serveCustomHost(writer http.ResponseWriter, req *http.Request, 
 		// request to the status SPA, and the customer's <script> tag receives
 		// text/html — which fails to parse, silently, on their site.
 		s.router.ServeHTTP(writer, req)
+	case strings.HasPrefix(reqPath, statuspageassets.PublicPathPrefix):
+		// The page's logo and favicon (`logoUrl` / `faviconUrl` are same-origin
+		// paths). Without this the default branch answers with the SPA shell and
+		// the browser gets text/html for an image. Scoped to the resolved page:
+		// another page's or org's asset is a 404 on this host.
+		s.router.ServeHTTP(writer, req.WithContext(files.WithStatusPageScope(req.Context(), page.UID)))
 	case strings.HasPrefix(reqPath, "/api/"):
 		if isCustomHostAPIAllowed(reqPath) {
 			s.router.ServeHTTP(writer, req)

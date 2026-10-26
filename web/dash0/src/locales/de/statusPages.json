@@ -258,7 +258,7 @@
     "cssLabel": "CSS",
     "placeholder": ":root {\n  --brand: #ff5500;\n}",
     "limitsHint": "Bis zu 64 KB. @import ist nicht erlaubt, und url() lädt Bilder und Schriften nur von dieser Website oder aus data:-URIs: externe Hosts blockiert die Sicherheitsrichtlinie der Seite. Laden Sie Ihr Logo stattdessen unter Branding hoch.",
-    "importRejected": "@import ist nicht erlaubt — binden Sie die Regeln direkt ein.",
+    "importRejected": "@import ist nicht erlaubt, auch nicht in einem Kommentar. Entfernen Sie es und fügen Sie die Regeln des importierten Stylesheets direkt ein.",
     "tooLarge": "Zu groß: das Stylesheet darf höchstens 64 KB umfassen.",
     "save": "Speichern",
     "insertTemplate": "Startvorlage einfügen",
@@ -269,7 +269,7 @@
     "previewDescription": "Die echte Statusseite, live umgestaltet während des Tippens. Nichts wird veröffentlicht, bis Sie speichern.",
     "savedToast": "Erscheinungsbild gespeichert",
     "saveFailed": "Erscheinungsbild konnte nicht gespeichert werden",
-    "rejected": "Das Stylesheet wurde abgelehnt — prüfen Sie Größe und @import-Regeln."
+    "rejected": "Das Stylesheet wurde abgelehnt: höchstens 64 KB, und der Text @import ist nicht erlaubt, auch nicht in einem Kommentar."
   },
   "badge": {
     "title": "Badge",

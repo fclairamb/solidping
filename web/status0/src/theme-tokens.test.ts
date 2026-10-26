@@ -168,10 +168,8 @@ describe("customer theming keeps precedence", () => {
       "web",
       "dash0",
       "src",
-      "routes",
-      "orgs",
-      "$org",
-      "status-pages.$statusPageUid.appearance.tsx",
+      "lib",
+      "custom-css.ts",
     );
     for (const token of [
       "--primary",

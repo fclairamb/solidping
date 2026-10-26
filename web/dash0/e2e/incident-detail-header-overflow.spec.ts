@@ -5,6 +5,9 @@ import { test, expect, DASH_BASE } from "./fixtures";
  * escalated, flapping incident has a long title, four badges and five
  * actions, which used to push Resolve past the right edge at 1280x800.
  *
+ * On a phone the actions go on top and the title gets the full width below
+ * them: at 361px it used to be squeezed into a one-word column beside them.
+ *
  * The detail endpoint is mocked so the incident is deterministic.
  */
 
@@ -17,7 +20,7 @@ const INCIDENT = {
   checkSlug: "checkout",
   checkName: "checkout",
   state: "active",
-  title: "checkout is down",
+  title: "ssh-sftp-acme-io is down",
   startedAt: "2026-10-14T10:00:00Z",
   escalatedAt: "2026-10-14T10:30:00Z",
   failureCount: 5,
@@ -27,6 +30,7 @@ const INCIDENT = {
 for (const viewport of [
   { width: 1280, height: 800 },
   { width: 375, height: 812 },
+  { width: 361, height: 654 },
 ]) {
   test(`incident detail header fits at ${viewport.width}x${viewport.height}`, async ({
     authenticatedPage,
@@ -66,6 +70,17 @@ for (const viewport of [
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(1);
+
+    const title = await page.getByTestId("incident-detail-title").boundingBox();
+    expect(title).not.toBeNull();
+    if (viewport.width < 640) {
+      // Below the actions, not squeezed beside them.
+      expect(title!.y).toBeGreaterThanOrEqual(box!.y + box!.height);
+      expect(title!.width).toBeGreaterThan(viewport.width / 2);
+    } else {
+      // Enough room: title and actions share the top line.
+      expect(title!.y).toBeLessThan(box!.y + box!.height);
+    }
 
     await resolve.click({ trial: true });
     for (const id of ["refresh", "snooze"]) {

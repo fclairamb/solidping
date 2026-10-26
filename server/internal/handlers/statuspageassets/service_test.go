@@ -425,3 +425,61 @@ func TestUnknownOrgOrPageIsNotFound(t *testing.T) {
 	_, err = s.svc.Upload(t.Context(), "acme", "no-such-page", statuspageassets.KindLogo, upload(pngBytes), nil)
 	r.ErrorIs(err, statuspageassets.ErrStatusPageNotFound)
 }
+
+// TestStatusPageScopeLimitsPublicAssetsToOnePage pins the custom-domain rule:
+// a host resolved to one page serves that page's assets and nothing else, not
+// another page of the same org, not a page of another org.
+func TestStatusPageScopeLimitsPublicAssetsToOnePage(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	s := newAssetSetup(t)
+	ctx := t.Context()
+
+	sibling := models.NewStatusPage(s.org.UID, "Acme Internal", "acme-internal")
+	r.NoError(s.dbSvc.CreateStatusPage(ctx, sibling))
+
+	otherOrg := models.NewOrganization("acmetech", "Acme Tech")
+	r.NoError(s.dbSvc.CreateOrganization(ctx, otherOrg))
+	foreign := models.NewStatusPage(otherOrg.UID, "Acme Tech Status", "acmetech-status")
+	r.NoError(s.dbSvc.CreateStatusPage(ctx, foreign))
+
+	own, err := s.svc.Upload(ctx, "acme", "acme-status", statuspageassets.KindFavicon, upload(pngBytes), nil)
+	r.NoError(err)
+	sib, err := s.svc.Upload(ctx, "acme", "acme-internal", statuspageassets.KindLogo, upload(pngBytes), nil)
+	r.NoError(err)
+	other, err := s.svc.Upload(ctx, "acmetech", "acmetech-status", statuspageassets.KindLogo, upload(pngBytes), nil)
+	r.NoError(err)
+
+	ownUID := *own.Settings.FaviconFileUID()
+
+	cases := []struct {
+		name    string
+		scope   *string
+		fileUID string
+		wantOK  bool
+	}{
+		{"own asset in scope", &s.page.UID, ownUID, true},
+		{"sibling page asset refused", &s.page.UID, logoUID(t, sib), false},
+		{"other org asset refused", &s.page.UID, logoUID(t, other), false},
+		{"empty scope matches nothing", new(string), ownUID, false},
+		{"unscoped read serves any public asset", nil, logoUID(t, other), true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			readCtx := t.Context()
+			if tc.scope != nil {
+				readCtx = files.WithStatusPageScope(readCtx, *tc.scope)
+			}
+
+			_, err := s.files.GetPublicFile(readCtx, tc.fileUID)
+			if tc.wantOK {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, files.ErrFileNotFound)
+			}
+		})
+	}
+}

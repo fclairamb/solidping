@@ -889,18 +889,28 @@ function IncidentDetailPage() {
   return (
     <div className="space-y-6">
       <CausedByBanner org={org} incident={incident} />
+      {/*
+        wrap-reverse: when the title and the actions do not fit on one line,
+        the actions line goes on top and the title gets the full width below
+        (instead of being squeezed into a one-word column). The cross axis is
+        flipped too, so items-end aligns both to the top. basis-64 is the
+        width under which the title stops sharing the line.
+      */}
       <div
-        className="flex flex-wrap items-start justify-between gap-3"
+        className="flex flex-wrap-reverse items-end justify-between gap-3"
         data-testid="incident-detail-header"
       >
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 grow basis-64">
           <div className="flex flex-wrap items-center gap-3">
             {isActive ? (
               <AlertTriangle className="h-6 w-6 text-yellow-500" />
             ) : (
               <CheckCircle className="h-6 w-6 text-green-500" />
             )}
-            <h1 className="min-w-0 break-words text-xl font-semibold tracking-tight sm:text-2xl">
+            <h1
+              className="min-w-0 break-words text-xl font-semibold tracking-tight sm:text-2xl"
+              data-testid="incident-detail-title"
+            >
 
               {incident.number ? (
                 <span className="text-muted-foreground tabular-nums mr-2">
@@ -953,7 +963,7 @@ function IncidentDetailPage() {
             )}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
