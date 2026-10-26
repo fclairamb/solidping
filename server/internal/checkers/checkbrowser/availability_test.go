@@ -57,6 +57,43 @@ func TestProbeCacheHonorsTheFifteenMinuteTTL(t *testing.T) {
 	r.Equal(2, calls)
 }
 
+// TestProbedNegativeIsRetriedOnTheNextHeartbeat: a pod restart can probe
+// before the browser sidecar listens. That "no" must not stick for the full
+// TTL (fclairamb/solidping-business#20), while a "yes" still does.
+func TestProbedNegativeIsRetriedOnTheNextHeartbeat(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	clock := &fakeClock{at: time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)}
+	calls := 0
+	answer := false // the sidecar's Chrome is not listening yet
+
+	cache := newAvailabilityCache(AvailabilityTTL, clock.now, func(context.Context, Settings) bool {
+		calls++
+
+		return answer
+	})
+
+	ctx := t.Context()
+	r.False(cache.Get(ctx, Settings{}))
+	r.Equal(1, calls)
+
+	clock.advance(NegativeProbeTTL / 2)
+	r.False(cache.Get(ctx, Settings{}), "a probed no is still reused inside NegativeProbeTTL")
+	r.Equal(1, calls)
+
+	answer = true // Chrome is up now
+
+	clock.advance(50 * time.Second) // the next heartbeat
+	r.True(cache.Get(ctx, Settings{}), "the next heartbeat must re-probe a probed no")
+	r.Equal(2, calls)
+
+	clock.advance(10 * time.Minute)
+	r.True(cache.Get(ctx, Settings{}), "a probed yes keeps the full TTL")
+	r.Equal(2, calls)
+}
+
 // TestInfraErrorInvalidatesImmediately is the first event-driven correction: a
 // browser execution failing on infrastructure drops the capability on the next
 // heartbeat, not up to fifteen minutes later.

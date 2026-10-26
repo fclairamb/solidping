@@ -7209,13 +7209,14 @@ paths:
   /api/v1/orgs/{org}/report-schedules/{uid}/test:
     post:
       tags: [SLOs]
-      summary: Send the report immediately to the caller
+      summary: Queue a test report for the caller
       description: >-
-        Renders the report for the period that most recently closed and mails it
-        to the authenticated caller (or to `recipient`). It never fans out to the
-        schedule's recipient list. Returns 409 instead of 202 when the resolved
-        recipient is on the organization's suppression list, since nothing is
-        actually queued in that case.
+        Validates the request, then queues a background job that renders the
+        report for the period that most recently closed and mails it to the
+        authenticated caller (or to `recipient`). It answers at once with the job
+        uid. It never fans out to the schedule's recipient list. Returns 409
+        instead of 202 when the resolved recipient is on the organization's
+        suppression list, since nothing is queued in that case.
       operationId: testReportSchedule
       security:
         - bearerAuth: []
@@ -7234,7 +7235,15 @@ paths:
                   format: email
       responses:
         "202":
-          description: Report queued
+          description: Test report job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [jobUid]
+                properties:
+                  jobUid:
+                    type: string
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -12051,15 +12060,16 @@ components:
         down:
           type: integer
           description: >-
-            Checks the dashboard renders as failing (status down, error or
-            timeout). `error` and `timeout` are result-level statuses a check
-            status never holds, so in practice this equals byStatus.down.
+            Enabled checks the dashboard renders as failing (status down,
+            error or timeout). Disabled checks keep their last status and are
+            not counted. `error` and `timeout` are result-level statuses a
+            check status never holds.
           example: 6
         hardDown:
           type: integer
           description: >-
-            Checks failing hard (status down or error), i.e. down excluding
-            timeouts.
+            Enabled checks failing hard (status down or error), i.e. down
+            excluding timeouts.
           example: 6
         availability24h:
           type: number

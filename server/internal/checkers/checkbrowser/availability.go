@@ -23,6 +23,17 @@ import (
 // handled event-driven instead — see MarkAvailable / MarkUnavailable.
 const AvailabilityTTL = 15 * time.Minute
 
+// NegativeProbeTTL is how long a "no" from the PROBE is trusted, far shorter
+// than AvailabilityTTL. On a pod restart the backend can probe before the
+// browser sidecar's Chrome listens; caching that "no" for the full TTL kept the
+// region without the `browser` capability for up to fifteen minutes
+// (fclairamb/solidping-business#20). Shorter than one heartbeat (~50s), so the
+// next heartbeat re-probes. A "no" recorded by MarkUnavailable (a real
+// execution failing on infrastructure) is stronger evidence and keeps the full
+// TTL. A refused connection fails instantly; a blackholed endpoint costs at
+// most probeTimeout per heartbeat.
+const NegativeProbeTTL = 30 * time.Second
+
 // probeTimeout bounds the CDP reachability probe. It runs on the heartbeat
 // path, so it must never be the reason a heartbeat is late; a healthy sidecar
 // answers /json/version in single-digit milliseconds.
@@ -40,6 +51,10 @@ type availabilityCache struct {
 	valid  bool
 	at     time.Time
 	answer bool
+	// probed is true when the verdict came from the probe rather than from
+	// MarkAvailable / MarkUnavailable; a probed "no" expires after
+	// NegativeProbeTTL.
+	probed bool
 }
 
 //nolint:unparam // ttl is a parameter so tests can pin a short/zero TTL explicitly
@@ -55,13 +70,20 @@ func (c *availabilityCache) Get(ctx context.Context, current Settings) bool {
 	defer c.mu.Unlock()
 
 	now := c.now()
-	if c.valid && c.ttl > 0 && now.Sub(c.at) < c.ttl {
+
+	ttl := c.ttl
+	if c.probed && !c.answer {
+		ttl = min(ttl, NegativeProbeTTL)
+	}
+
+	if c.valid && ttl > 0 && now.Sub(c.at) < ttl {
 		return c.answer
 	}
 
 	c.answer = c.probe(ctx, current)
 	c.at = now
 	c.valid = true
+	c.probed = true
 
 	return c.answer
 }
@@ -77,6 +99,7 @@ func (c *availabilityCache) MarkAvailable() {
 	c.answer = true
 	c.at = c.now()
 	c.valid = true
+	c.probed = false
 }
 
 // MarkUnavailable records an execution that failed on an INFRASTRUCTURE fault
@@ -91,6 +114,7 @@ func (c *availabilityCache) MarkUnavailable() {
 	c.answer = false
 	c.at = c.now()
 	c.valid = true
+	c.probed = false
 }
 
 // Reset forgets the verdict entirely, so the next Get probes. Used when the

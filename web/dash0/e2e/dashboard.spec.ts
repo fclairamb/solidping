@@ -724,6 +724,51 @@ test.describe("Dashboard", () => {
     expect(hasPageOverflow).toBe(false);
   });
 
+  test("Recent activity folds the time into the event cell below md, leaving room for Related", async ({
+    authenticatedPage,
+  }) => {
+    // solidping-business#19: at 361px the Time and Event columns ate the row
+    // and pushed the Related links off screen.
+    const page = authenticatedPage;
+    const checkUid = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+
+    await mockDashboard(page, {
+      checks: [{ uid: checkUid, name: "Fold Check", status: "up" }],
+      incidents: [],
+      events: [
+        {
+          uid: "event-fold-check-updated",
+          eventType: "check.updated",
+          actorType: "system",
+          checkUid,
+          payload: { check_name: "Fold Check" },
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    await page.setViewportSize({ width: 361, height: 700 });
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const feed = page.getByTestId("recent-activity-footer");
+    await expect(feed).toBeVisible({ timeout: 10000 });
+
+    await feed.scrollIntoViewIfNeeded();
+    await expect(page.getByTestId("event-time")).toBeHidden();
+    await expect(page.getByTestId("event-time-inline")).toBeVisible();
+    // The Related check link fits on screen without scrolling the table.
+    const related = page.getByRole("link", { name: "Fold Check", exact: true });
+    await expect(related).toBeVisible();
+    const box = await related.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x + box!.width).toBeLessThanOrEqual(361);
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(page.getByTestId("event-time")).toBeVisible();
+    await expect(page.getByTestId("event-time-inline")).toBeHidden();
+  });
+
   test("Recent activity row for a historical incident event (no check_name) falls back to check_slug", async ({
     authenticatedPage,
   }) => {

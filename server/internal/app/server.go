@@ -153,7 +153,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/tlsedge"
-	"github.com/fclairamb/solidping/server/internal/uptimereport"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 	"github.com/fclairamb/solidping/server/internal/version"
@@ -2211,9 +2210,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgSLOs.PATCH("/:uid/alert-policies/:policyUid", sloAlertsHandler.Update)
 
 	// Scheduled uptime reports (spec 2026-08-20-01, authentication required)
-	reportBuilder := uptimereport.NewBuilder(s.dbService, s.config, sloService)
 	reportSchedulesService := reportschedules.NewService(
-		s.dbService, s.config, reportBuilder, &uptimeReportMailer{services: s.services},
+		s.dbService, s.config, &reportTestSendEnqueuer{services: s.services},
 	)
 	reportSchedulesHandler := reportschedules.NewHandler(reportSchedulesService, s.config)
 	orgReports := orgGroup("/orgs/:org/report-schedules")

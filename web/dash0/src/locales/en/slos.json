@@ -163,7 +163,7 @@
     "recipientCount": "{{count}} recipient",
     "recipientCount_other": "{{count}} recipients",
     "test": "Send me a test",
-    "testSent": "Test report queued to your address",
+    "testSent": "Test report queued, it will arrive in your inbox shortly",
     "testFailed": "Failed to send the test report",
     "testSuppressed": "You have unsubscribed this address and cannot receive a test send",
     "form": {

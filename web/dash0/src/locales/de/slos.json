@@ -163,7 +163,7 @@
     "recipientCount": "{{count}} Empfänger",
     "recipientCount_other": "{{count}} Empfänger",
     "test": "Test an mich senden",
-    "testSent": "Testbericht an Ihre Adresse eingereiht",
+    "testSent": "Testbericht eingereiht, er landet in Kürze in Ihrem Posteingang",
     "testFailed": "Testbericht konnte nicht gesendet werden",
     "testSuppressed": "Sie haben sich von dieser Adresse abgemeldet und können keinen Testversand empfangen",
     "form": {

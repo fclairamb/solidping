@@ -163,7 +163,7 @@
     "recipientCount": "{{count}} destinatario",
     "recipientCount_other": "{{count}} destinatarios",
     "test": "Enviarme una prueba",
-    "testSent": "Informe de prueba en cola hacia tu dirección",
+    "testSent": "Informe de prueba en cola, llegará pronto a tu bandeja de entrada",
     "testFailed": "No se pudo enviar el informe de prueba",
     "testSuppressed": "Te has dado de baja de esta dirección y no puedes recibir un envío de prueba",
     "form": {
