@@ -5139,7 +5139,7 @@ type CheckStats struct {
 	// Example: 12
 	Disabled int `json:"disabled"`
 
-	// Down Checks the dashboard renders as failing (status down, error or timeout). `error` and `timeout` are result-level statuses a check status never holds, so in practice this equals byStatus.down.
+	// Down Enabled checks the dashboard renders as failing (status down, error or timeout). Disabled checks keep their last status and are not counted. `error` and `timeout` are result-level statuses a check status never holds.
 	//
 	// Example: 6
 	Down int `json:"down"`
@@ -5149,7 +5149,7 @@ type CheckStats struct {
 	// Example: 250
 	Enabled int `json:"enabled"`
 
-	// HardDown Checks failing hard (status down or error), i.e. down excluding timeouts.
+	// HardDown Enabled checks failing hard (status down or error), i.e. down excluding timeouts.
 	//
 	// Example: 6
 	HardDown int `json:"hardDown"`

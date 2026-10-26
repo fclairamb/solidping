@@ -41,9 +41,10 @@ const availability24hWindow = 24 * time.Hour
 // list endpoint's 100-row page clamp.
 //
 // Scope: non-deleted, non-internal checks — the exact set the checks list
-// shows by default. Total/ByStatus/Down/HardDown span enabled AND disabled
-// checks (the dashboard's down tiles filter on status alone); Enabled and
-// Disabled partition the same set by the enabled flag.
+// shows by default. Total/ByStatus span enabled AND disabled checks; Enabled
+// and Disabled partition the same set by the enabled flag. Down/HardDown count
+// enabled checks only: a disabled check keeps the last status it had, and a
+// paused check is not an outage (fclairamb/solidping-business#17).
 type CheckStatsResponse struct {
 	// Total is Enabled + Disabled, i.e. every in-scope check.
 	Total int `json:"total"`
@@ -182,6 +183,10 @@ func foldCheckStatusCounts(rows []models.CheckStatusCount) CheckStatsResponse {
 			stats.Enabled += row.Count
 		} else {
 			stats.Disabled += row.Count
+		}
+
+		if !row.Enabled {
+			continue
 		}
 
 		if isDownWireStatus(name) {

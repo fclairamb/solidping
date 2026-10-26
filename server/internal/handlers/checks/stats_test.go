@@ -130,9 +130,9 @@ func statsAggregationCases() []struct {
 				{status: models.CheckStatusDown, enabled: true},
 			},
 			expected: checks.CheckStatsResponse{
-				// down/hardDown span disabled checks too — the dashboard's
-				// downCount filters on status alone, never on `enabled`.
-				Total: 4, Enabled: 2, Disabled: 2, Down: 2, HardDown: 2,
+				// A disabled check keeps its last status: byStatus still
+				// counts it, down/hardDown do not (solidping-business#17).
+				Total: 4, Enabled: 2, Disabled: 2, Down: 1, HardDown: 1,
 				ByStatus: map[string]int{
 					models.WireStatusUp:   2,
 					models.WireStatusDown: 2,
