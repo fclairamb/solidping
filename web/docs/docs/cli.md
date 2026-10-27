@@ -74,6 +74,14 @@ belong to more than one); approving mints a named Personal Access Token scoped
 to that organization, valid for 90 days, which you can review and revoke from
 **Account → Tokens**.
 
+The consent page shows when the request was opened, from which IP address and
+with which client software. Only approve a code you just got from `sp auth
+login` yourself. Never approve a code someone sent you: anyone can open a
+request and name it after the CLI. When the code arrives pre-filled in the
+link, the page asks you to tick "I started this sign-in myself" first. Each
+approval also sends you an email naming the client, the organization and the
+requester IP, with a link to revoke the token.
+
 ## Common Commands
 
 | Command | Description |
