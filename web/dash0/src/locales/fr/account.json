@@ -302,7 +302,7 @@
     "alreadyHandledTitle": "Cette demande a déjà été traitée",
     "alreadyHandledDescription": "Il n'y a plus rien à faire ici — lancez une nouvelle connexion depuis votre terminal si vous avez encore besoin d'accès.",
     "authorizeTitle": "Autoriser cet appareil",
-    "authorizeDescription": "<strong>{{clientName}}</strong> demande à se connecter en votre nom. Approuver crée un jeton d'accès personnel valable 90 jours, que vous pouvez révoquer à tout moment depuis Compte → Jetons.",
+    "authorizeDescription": "Une application qui se présente comme <strong>{{clientName}}</strong> demande à se connecter en votre nom. Approuver crée un jeton d'accès personnel valable 90 jours, que vous pouvez révoquer à tout moment depuis Compte → Jetons.",
     "organization": "Organisation",
     "organizationHint": "Le jeton ne pourra accéder qu'à cette organisation.",
     "expires": "Expire {{time}}",
@@ -313,7 +313,17 @@
     "deniedTitle": "Connexion de l'appareil refusée",
     "deniedDescription": "Aucun jeton n'a été créé. La ligne de commande signalera que la demande a été refusée.",
     "approvedToast": "Appareil approuvé — retournez à votre terminal",
-    "decisionFailed": "Impossible d'enregistrer votre décision"
+    "decisionFailed": "Impossible d'enregistrer votre décision",
+    "phishingTitle": "N'approuvez qu'une connexion lancée par vous",
+    "phishingWarning": "N'approuvez que si vous venez de lancer vous-même une connexion SolidPing, sur un appareil devant vous. N'approuvez jamais un code que quelqu'un vous a envoyé.",
+    "requestDetails": "Détails de la demande",
+    "requestedAt": "Demandée",
+    "requesterIp": "Depuis l'adresse IP",
+    "requesterClient": "Logiciel client",
+    "approverIp": "Votre adresse IP",
+    "unknownValue": "Inconnu",
+    "differentNetwork": "Cette demande vient d'un autre réseau que celui que vous utilisez actuellement.",
+    "confirmStarted": "J'ai lancé cette connexion moi-même"
   },
   "email": {
     "title": "Adresse e-mail",

@@ -3031,6 +3031,14 @@ export interface DeviceConsentInfo {
   userCode: string;
   status: "pending" | "approved" | "denied";
   expiresAt: string;
+  /** When the request was opened (spec 2026-10-27-01). */
+  requestedAt: string;
+  /** IP that opened the request; absent for older requests. */
+  requesterIp?: string;
+  /** Short summary of the requesting client's User-Agent. */
+  requesterUserAgent?: string;
+  /** IP of the approving browser, for the "different network" hint. */
+  approverIp?: string;
 }
 
 export interface DeviceConsentRequest {

@@ -96,6 +96,18 @@ test.describe("Device authorization consent", () => {
     await expect(page.getByTestId("device-consent-card")).toBeVisible();
     await expect(page.getByTestId("device-client-name")).toHaveText(clientName);
 
+    // Phishing guard (spec 2026-10-27-01): the card warns, shows who opened
+    // the request, and a code that arrived pre-filled needs an explicit tick.
+    await expect(page.getByTestId("device-phishing-warning")).toBeVisible();
+    await expect(page.getByTestId("device-request-details")).toBeVisible();
+    await expect(page.getByTestId("device-requester-ip")).toHaveText(
+      /^[0-9a-fA-F.:]+$/,
+    );
+    await expect(page.getByTestId("device-requested-at")).not.toBeEmpty();
+    await expect(page.getByTestId("device-approve")).toBeDisabled();
+    await page.getByTestId("device-confirm-started").click();
+    await expect(page.getByTestId("device-approve")).toBeEnabled();
+
     await page.getByTestId("device-approve").click();
     await expect(page.getByTestId("device-approved")).toBeVisible();
 
@@ -159,6 +171,44 @@ test.describe("Device authorization consent", () => {
       (entry: { name?: string }) => entry.name,
     );
     expect(names).not.toContain(clientName);
+  });
+
+  test("a code typed on the page approves without the pre-filled tick", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const clientName = `sp CLI typed ${Date.now()}`;
+    const authz = await startDeviceAuthorization(page, clientName);
+
+    await page.goto("orgs/test/account/device");
+    await page.getByTestId("device-user-code").fill(authz.user_code);
+    await page.getByTestId("device-lookup").click();
+
+    await expect(page.getByTestId("device-consent-card")).toBeVisible();
+    await expect(page.getByTestId("device-phishing-warning")).toBeVisible();
+    await expect(page.getByTestId("device-confirm-started")).toHaveCount(0);
+    await expect(page.getByTestId("device-approve")).toBeEnabled();
+
+    await page.getByTestId("device-approve").click();
+    await expect(page.getByTestId("device-approved")).toBeVisible();
+
+    const granted = await collectDeviceToken(page, authz.device_code);
+    expect(granted.status).toBe(200);
+
+    // Clean up the minted PAT.
+    const token = await getAuthToken(page);
+    const list = await page.request.get(
+      `${API_BASE}/api/v1/orgs/test/tokens?type=pat`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    const minted = ((await list.json()).data ?? []).find(
+      (entry: { name?: string; uid: string }) => entry.name === clientName,
+    );
+    expect(minted, "the approved PAT must be listed").toBeTruthy();
+    await page.request.delete(
+      `${API_BASE}/api/v1/auth/tokens/${minted.uid}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
   });
 
   test("an unknown code is reported, not silently swallowed", async ({

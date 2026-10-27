@@ -302,7 +302,7 @@
     "alreadyHandledTitle": "Diese Anfrage wurde bereits bearbeitet",
     "alreadyHandledDescription": "Hier gibt es nichts mehr zu tun — starten Sie eine neue Anmeldung über Ihr Terminal, falls Sie weiterhin Zugriff benötigen.",
     "authorizeTitle": "Dieses Gerät autorisieren",
-    "authorizeDescription": "<strong>{{clientName}}</strong> möchte sich als Sie anmelden. Durch die Genehmigung wird ein persönliches Zugriffstoken erstellt, das 90 Tage gültig ist und jederzeit unter Konto → Tokens widerrufen werden kann.",
+    "authorizeDescription": "Eine Anwendung, die sich <strong>{{clientName}}</strong> nennt, möchte sich als Sie anmelden. Durch die Genehmigung wird ein persönliches Zugriffstoken erstellt, das 90 Tage gültig ist und jederzeit unter Konto → Tokens widerrufen werden kann.",
     "organization": "Organisation",
     "organizationHint": "Das Token kann nur auf diese Organisation zugreifen.",
     "expires": "Läuft ab {{time}}",
@@ -313,7 +313,17 @@
     "deniedTitle": "Geräteanmeldung abgelehnt",
     "deniedDescription": "Es wurde kein Token erstellt. Die Kommandozeile meldet, dass die Anfrage abgelehnt wurde.",
     "approvedToast": "Gerät genehmigt — kehren Sie zu Ihrem Terminal zurück",
-    "decisionFailed": "Ihre Entscheidung konnte nicht gespeichert werden"
+    "decisionFailed": "Ihre Entscheidung konnte nicht gespeichert werden",
+    "phishingTitle": "Genehmigen Sie nur eine selbst gestartete Anmeldung",
+    "phishingWarning": "Genehmigen Sie nur, wenn Sie gerade selbst eine SolidPing-Anmeldung gestartet haben, auf einem Gerät vor Ihnen. Genehmigen Sie niemals einen Code, den Ihnen jemand geschickt hat.",
+    "requestDetails": "Details der Anfrage",
+    "requestedAt": "Angefragt",
+    "requesterIp": "Von IP-Adresse",
+    "requesterClient": "Client-Software",
+    "approverIp": "Ihre IP-Adresse",
+    "unknownValue": "Unbekannt",
+    "differentNetwork": "Diese Anfrage kam aus einem anderen Netzwerk als dem, das Sie gerade nutzen.",
+    "confirmStarted": "Ich habe diese Anmeldung selbst gestartet"
   },
   "email": {
     "title": "E-Mail",

@@ -5,6 +5,7 @@ import {
   AlertCircle,
   CheckCircle2,
   MonitorSmartphone,
+  ShieldAlert,
   Terminal,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -17,6 +18,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/components/shared/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -48,6 +50,13 @@ import { Skeleton } from "@/components/ui/skeleton";
  * Approving mints a Personal Access Token scoped to the organization SELECTED
  * here — not implicitly to the current session's org — so a member of several
  * orgs picks which one the CLI ends up talking to.
+ *
+ * Device-code phishing guard (RFC 8628 §5.4, spec 2026-10-27-01): anyone can
+ * open a request and send a member the pre-filled link. The authorize card
+ * therefore shows who opened the request (when, from which IP, with which
+ * client), warns against approving a code someone sent, labels the client name
+ * as self-reported, and asks for an "I started this myself" tick when the code
+ * arrived pre-filled in the URL rather than typed here.
  *
  * The whole page is single-column and touch-sized: approving from a phone,
  * while the CLI runs on a headless box, is the entire point of the flow.
@@ -102,6 +111,13 @@ function DeviceConsentPage() {
   // burn the consent endpoint's (deliberately tight) rate limit.
   const submitted = isCompleteUserCode(urlCode) ? urlCode : "";
 
+  // The code the user typed and submitted on this page. A code that is in the
+  // URL but was not typed here arrived pre-filled from a link, which is exactly
+  // how a phishing code arrives, so approving it needs an explicit tick.
+  const [typedCode, setTypedCode] = useState<string | null>(null);
+  const [confirmedStarted, setConfirmedStarted] = useState(false);
+  const needsConfirmation = submitted !== "" && submitted !== typedCode;
+
   const [selectedOrg, setSelectedOrg] = useState(org);
   const [decision, setDecision] = useState<"approved" | "denied" | null>(null);
 
@@ -114,6 +130,7 @@ function DeviceConsentPage() {
   const isSingleOrg = orgOptions.length === 1;
 
   function lookUp() {
+    setTypedCode(formatUserCode(code));
     void navigate({
       to: ".",
       search: { user_code: formatUserCode(code) },
@@ -275,6 +292,61 @@ function DeviceConsentPage() {
               })}
             </p>
 
+            <dl
+              className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-md border p-3 text-sm"
+              data-testid="device-request-details"
+              aria-label={t("device.requestDetails")}
+            >
+              <dt className="text-muted-foreground">{t("device.requestedAt")}</dt>
+              <dd data-testid="device-requested-at">
+                {new Date(consent.data.requestedAt).toLocaleString()}
+              </dd>
+              <dt className="text-muted-foreground">{t("device.requesterIp")}</dt>
+              <dd className="break-all font-mono" data-testid="device-requester-ip">
+                {consent.data.requesterIp || t("device.unknownValue")}
+              </dd>
+              <dt className="text-muted-foreground">{t("device.requesterClient")}</dt>
+              <dd className="break-all" data-testid="device-requester-agent">
+                {consent.data.requesterUserAgent || t("device.unknownValue")}
+              </dd>
+              {consent.data.approverIp && (
+                <>
+                  <dt className="text-muted-foreground">{t("device.approverIp")}</dt>
+                  <dd className="break-all font-mono" data-testid="device-approver-ip">
+                    {consent.data.approverIp}
+                  </dd>
+                </>
+              )}
+            </dl>
+
+            {consent.data.requesterIp &&
+              consent.data.approverIp &&
+              consent.data.requesterIp !== consent.data.approverIp && (
+                <p
+                  className="text-sm text-destructive"
+                  data-testid="device-different-network"
+                >
+                  {t("device.differentNetwork")}
+                </p>
+              )}
+
+            <Alert variant="destructive" data-testid="device-phishing-warning">
+              <ShieldAlert className="h-4 w-4" />
+              <AlertTitle>{t("device.phishingTitle")}</AlertTitle>
+              <AlertDescription>{t("device.phishingWarning")}</AlertDescription>
+            </Alert>
+
+            {needsConfirmation && (
+              <label className="flex min-h-11 items-center gap-3 text-sm">
+                <Checkbox
+                  data-testid="device-confirm-started"
+                  checked={confirmedStarted}
+                  onCheckedChange={(value) => setConfirmedStarted(value === true)}
+                />
+                {t("device.confirmStarted")}
+              </label>
+            )}
+
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <Button
                 type="button"
@@ -290,7 +362,9 @@ function DeviceConsentPage() {
                 type="button"
                 className="w-full sm:w-auto"
                 data-testid="device-approve"
-                disabled={respond.isPending}
+                disabled={
+                  respond.isPending || (needsConfirmation && !confirmedStarted)
+                }
                 onClick={() => decide(true)}
               >
                 {t("device.approve")}
