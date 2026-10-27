@@ -11,26 +11,26 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 
 | Channel | Status | Configuration |
 |---------|--------|---------------|
-| Slack | Available | OAuth integration |
-| Slack (webhook) | Available | Incoming webhook URL (one-way, no app install) |
-| Teams (bot) | Available | Azure Bot / Bot Framework (two-way) |
-| Teams (webhook) | Available | Teams Workflow webhook (one-way) |
-| Discord | Available | Bot (OAuth install, two-way) or webhook (one-way) |
-| Email | Available | SMTP |
-| Webhooks | Available | HTTP POST |
-| Google Chat | Available | Webhook |
-| Mattermost | Available | Webhook |
-| ntfy | Available | HTTP push |
-| Gotify | Available | HTTP push |
-| Matrix | Available | Client-Server API |
-| Zulip | Available | Bot API |
-| PagerDuty | Available | Events API v2 |
-| AI agent (A2A) | Available | [Agent2Agent protocol](../features/ai-agent-a2a.md) |
-| Pushover | Available | API integration |
-| Web Push | Available | Browser push (VAPID) |
-| SMS / Voice | Available | [SMS & Voice](./sms.md) (server-provided by default, per-organization Twilio as an override) |
-| WhatsApp | Available | [Meta WhatsApp Business Cloud API](./whatsapp.md) (instance-level) |
-| Telegram | Available | [Telegram Bot API](./telegram.md) (instance-level bot, free per message) |
+| [Slack](#slack) | Available | OAuth integration |
+| [Slack (webhook)](#slack-webhook) | Available | Incoming webhook URL (one-way, no app install) |
+| [Teams (bot)](#teams-bot--the-slack-grade-option) | Available | Azure Bot / Bot Framework (two-way) |
+| [Teams (webhook)](#teams-webhook--the-zero-infra-option) | Available | Teams Workflow webhook (one-way) |
+| [Discord](#discord) | Available | Bot (OAuth install, two-way) or webhook (one-way) |
+| [Email](#email-smtp) | Available | SMTP |
+| [Webhooks](#webhooks) | Available | HTTP POST |
+| [Google Chat](#google-chat) | Available | Webhook |
+| [Mattermost](#mattermost) | Available | Webhook |
+| [ntfy](#ntfy) | Available | HTTP push |
+| [Gotify](#gotify) | Available | HTTP push |
+| [Matrix](#matrix) | Available | Client-Server API |
+| [Zulip](#zulip) | Available | Bot API |
+| [PagerDuty](#pagerduty) | Available | Events API v2 |
+| [AI agent (A2A)](../features/ai-agent-a2a.md) | Available | [Agent2Agent protocol](../features/ai-agent-a2a.md) |
+| [Pushover](#pushover) | Available | API integration |
+| [Web Push](#web-push) | Available | Browser push (VAPID) |
+| [SMS / Voice](./sms.md) | Available | [SMS & Voice](./sms.md) (server-provided by default, per-organization Twilio as an override) |
+| [WhatsApp](./whatsapp.md) | Available | [Meta WhatsApp Business Cloud API](./whatsapp.md) (instance-level) |
+| [Telegram](./telegram.md) | Available | [Telegram Bot API](./telegram.md) (instance-level bot, free per message) |
 
 ## Email (SMTP)
 
