@@ -57,3 +57,7 @@ The legitimate flow (the CLI opens `verification_uri_complete` in the user's own
 ## Open questions
 
 - Should a code that arrives pre-filled from the URL need a second confirmation, such as ticking "I started this sign-in myself" or retyping the code? Recommended: a checkbox only. Retyping defeats the point of `verification_uri_complete` for the legitimate CLI flow.
+
+## Resolved open questions
+
+- A code pre-filled from the URL needs a "I started this sign-in myself" checkbox only, no retyping. (autopilot: recommended answer)
