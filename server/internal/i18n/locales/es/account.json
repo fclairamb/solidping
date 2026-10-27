@@ -66,6 +66,15 @@
     "body": "La dirección de correo de tu cuenta de SolidPing se cambió de {oldEmail} a {newEmail} el {date}.",
     "newAddress": "Ahora inicias sesión con {newEmail}. Esta dirección ya no recibirá los correos de tu cuenta."
   },
+  "deviceTokenCreated": {
+    "subject": "Se ha conectado un dispositivo a tu cuenta de SolidPing",
+    "preheader": "{client} tiene ahora un token de API para {org}.",
+    "title": "Se ha creado un nuevo token de dispositivo",
+    "body": "Aprobaste el inicio de sesión de un dispositivo el {date}. La aplicación que se presenta como «{client}» recibió un token de API para la organización {org}, válido durante 90 días.",
+    "requester": "La solicitud se abrió desde la dirección IP {ip}.",
+    "revoke": "Si no iniciaste tú este inicio de sesión, revoca el token ahora desde la página de tokens de tu cuenta:",
+    "cta": "Ver mis tokens"
+  },
   "invitation": {
     "subject": "Te han invitado a unirte a {org} en SolidPing",
     "preheader": {

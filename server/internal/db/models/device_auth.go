@@ -32,19 +32,24 @@ const (
 type DeviceAuthRequest struct {
 	bun.BaseModel `bun:"table:device_auth_requests,alias:device_auth_request"`
 
-	UID             string     `bun:"uid,pk,type:varchar(36)"`
-	DeviceCode      string     `bun:"device_code,notnull"`
-	UserCode        string     `bun:"user_code,notnull"`
-	ClientName      string     `bun:"client_name,notnull"`
-	Status          string     `bun:"status,notnull"`
-	OrganizationUID *string    `bun:"organization_uid"`
-	UserUID         *string    `bun:"user_uid"`
-	TokenUID        *string    `bun:"token_uid"`
-	TokenValue      *string    `bun:"token_value"`
-	LastPolledAt    *time.Time `bun:"last_polled_at"`
-	ExpiresAt       time.Time  `bun:"expires_at,notnull"`
-	CreatedAt       time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt       time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	UID        string `bun:"uid,pk,type:varchar(36)"`
+	DeviceCode string `bun:"device_code,notnull"`
+	UserCode   string `bun:"user_code,notnull"`
+	ClientName string `bun:"client_name,notnull"`
+	// RequesterIP and RequesterUserAgent describe the client that opened the
+	// request, shown on the consent page (spec 2026-10-27-01). Nil on rows
+	// opened before they were recorded.
+	RequesterIP        *string    `bun:"requester_ip"`
+	RequesterUserAgent *string    `bun:"requester_user_agent"`
+	Status             string     `bun:"status,notnull"`
+	OrganizationUID    *string    `bun:"organization_uid"`
+	UserUID            *string    `bun:"user_uid"`
+	TokenUID           *string    `bun:"token_uid"`
+	TokenValue         *string    `bun:"token_value"`
+	LastPolledAt       *time.Time `bun:"last_polled_at"`
+	ExpiresAt          time.Time  `bun:"expires_at,notnull"`
+	CreatedAt          time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt          time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
 }
 
 // NewDeviceAuthRequest builds a pending request with a generated UID.

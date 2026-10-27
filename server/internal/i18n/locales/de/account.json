@@ -66,6 +66,15 @@
     "body": "Die E-Mail-Adresse Ihres SolidPing-Kontos wurde am {date} von {oldEmail} in {newEmail} geändert.",
     "newAddress": "Sie melden sich jetzt mit {newEmail} an. Diese Adresse erhält keine E-Mails mehr zu Ihrem Konto."
   },
+  "deviceTokenCreated": {
+    "subject": "Ein Gerät wurde bei Ihrem SolidPing-Konto angemeldet",
+    "preheader": "{client} hat jetzt ein API-Token für {org}.",
+    "title": "Ein neues Geräte-Token wurde erstellt",
+    "body": "Sie haben am {date} die Anmeldung eines Geräts bestätigt. Die Anwendung, die sich „{client}“ nennt, hat ein API-Token für die Organisation {org} erhalten, gültig für 90 Tage.",
+    "requester": "Die Anfrage wurde von der IP-Adresse {ip} gestellt.",
+    "revoke": "Wenn Sie diese Anmeldung nicht selbst gestartet haben, widerrufen Sie das Token jetzt auf der Token-Seite Ihres Kontos:",
+    "cta": "Meine Tokens ansehen"
+  },
   "invitation": {
     "subject": "Einladung zu {org} bei SolidPing",
     "preheader": {

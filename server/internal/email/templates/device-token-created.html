@@ -1,0 +1,21 @@
+{{define "subject"}}{{t "account.deviceTokenCreated.subject"}}{{end}}
+{{define "preheader"}}{{t "account.deviceTokenCreated.preheader" "client" .ClientName "org" .OrgName}}{{end}}
+{{template "base.html" .}}
+{{define "content"}}
+    <h1>{{t "account.deviceTokenCreated.title"}}</h1>
+    <p>{{t "account.deviceTokenCreated.body" "client" .ClientName "org" .OrgName "date" (date .CreatedAt)}}</p>
+    {{if .RequesterIP}}<p>{{t "account.deviceTokenCreated.requester" "ip" .RequesterIP}}</p>{{end}}
+    <p>{{t "account.deviceTokenCreated.revoke"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .TokensURL "Label" (t "account.deviceTokenCreated.cta") "Variant" "primary"}}</div>
+    <p class="meta">{{t "account.securityNotice.warning"}}</p>
+{{end}}
+{{define "text"}}{{t "account.deviceTokenCreated.title"}}
+
+{{t "account.deviceTokenCreated.body" "client" .ClientName "org" .OrgName "date" (date .CreatedAt)}}
+{{if .RequesterIP}}
+{{t "account.deviceTokenCreated.requester" "ip" .RequesterIP}}
+{{end}}
+{{t "account.deviceTokenCreated.revoke"}} {{.TokensURL}}
+
+{{t "account.securityNotice.warning"}}
+{{end}}

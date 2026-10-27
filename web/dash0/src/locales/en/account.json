@@ -302,7 +302,7 @@
     "alreadyHandledTitle": "This request was already handled",
     "alreadyHandledDescription": "Nothing left to do here — start a new login from your terminal if you still need access.",
     "authorizeTitle": "Authorize this device",
-    "authorizeDescription": "<strong>{{clientName}}</strong> is asking to sign in as you. Approving creates a personal access token for it, valid for 90 days, which you can revoke any time from Account → Tokens.",
+    "authorizeDescription": "An application that calls itself <strong>{{clientName}}</strong> is asking to sign in as you. Approving creates a personal access token for it, valid for 90 days, which you can revoke any time from Account → Tokens.",
     "organization": "Organization",
     "organizationHint": "The token will only be able to reach this organization.",
     "expires": "Expires {{time}}",
@@ -313,7 +313,17 @@
     "deniedTitle": "Device login denied",
     "deniedDescription": "No token was created. The command line will report that the request was denied.",
     "approvedToast": "Device approved — return to your terminal",
-    "decisionFailed": "Could not record your decision"
+    "decisionFailed": "Could not record your decision",
+    "phishingTitle": "Only approve a sign-in you started",
+    "phishingWarning": "Only approve if you just ran a SolidPing sign-in yourself, on a device in front of you. Never approve a code someone sent you.",
+    "requestDetails": "Request details",
+    "requestedAt": "Requested",
+    "requesterIp": "From IP address",
+    "requesterClient": "Client software",
+    "approverIp": "Your IP address",
+    "unknownValue": "Unknown",
+    "differentNetwork": "This request came from a different network than the one you are using now.",
+    "confirmStarted": "I started this sign-in myself"
   },
   "email": {
     "title": "Email",

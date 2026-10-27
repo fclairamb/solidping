@@ -40,7 +40,10 @@ func (h *Handler) StartDeviceAuthorization(writer http.ResponseWriter, req *http
 		body = DeviceAuthorizationRequestBody{}
 	}
 
-	resp, err := h.svc.StartDeviceAuthorization(req.Context(), body.ClientName)
+	resp, err := h.svc.StartDeviceAuthorization(req.Context(), body.ClientName, DeviceRequester{
+		IP:        h.trustedClientIP(req),
+		UserAgent: req.UserAgent(),
+	})
 	if err != nil {
 		if errors.Is(err, ErrDeviceClientNameTooLong) {
 			return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
@@ -153,7 +156,17 @@ func (h *Handler) GetDeviceConsent(writer http.ResponseWriter, req *http.Request
 			"Device authorization request not found or expired")
 	}
 
+	info.ApproverIP = h.trustedClientIP(req)
+
 	return h.WriteJSON(writer, http.StatusOK, info)
+}
+
+// trustedClientIP resolves the caller's IP with the rate limiter's
+// trusted-proxy rules (read live from the config), so a forwarding header
+// sent by an untrusted peer cannot dress up the requester shown on the
+// consent page.
+func (h *Handler) trustedClientIP(req *http.Request) string {
+	return base.ExtractTrustedClientIP(req, h.svc.fullCfg.Server.RateLimiting.TrustedProxies)
 }
 
 // DeviceConsentRequest is the body of POST /auth/device/consent. Org is the

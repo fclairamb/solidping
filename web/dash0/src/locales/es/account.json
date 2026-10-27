@@ -302,7 +302,7 @@
     "alreadyHandledTitle": "Esta solicitud ya se ha gestionado",
     "alreadyHandledDescription": "Aquí no queda nada por hacer — inicia un nuevo inicio de sesión desde tu terminal si todavía necesitas acceso.",
     "authorizeTitle": "Autorizar este dispositivo",
-    "authorizeDescription": "<strong>{{clientName}}</strong> solicita iniciar sesión como tú. Aprobarlo crea un token de acceso personal válido durante 90 días, que puedes revocar en cualquier momento desde Cuenta → Tokens.",
+    "authorizeDescription": "Una aplicación que se presenta como <strong>{{clientName}}</strong> solicita iniciar sesión como tú. Aprobarlo crea un token de acceso personal válido durante 90 días, que puedes revocar en cualquier momento desde Cuenta → Tokens.",
     "organization": "Organización",
     "organizationHint": "El token solo podrá acceder a esta organización.",
     "expires": "Caduca {{time}}",
@@ -313,7 +313,17 @@
     "deniedTitle": "Inicio de sesión del dispositivo denegado",
     "deniedDescription": "No se creó ningún token. La línea de comandos informará que la solicitud fue denegada.",
     "approvedToast": "Dispositivo aprobado — vuelve a tu terminal",
-    "decisionFailed": "No se pudo registrar tu decisión"
+    "decisionFailed": "No se pudo registrar tu decisión",
+    "phishingTitle": "Aprueba solo un inicio de sesión que hayas iniciado tú",
+    "phishingWarning": "Aprueba solo si acabas de iniciar tú mismo un inicio de sesión de SolidPing, en un dispositivo que tienes delante. Nunca apruebes un código que alguien te haya enviado.",
+    "requestDetails": "Detalles de la solicitud",
+    "requestedAt": "Solicitada",
+    "requesterIp": "Desde la dirección IP",
+    "requesterClient": "Software cliente",
+    "approverIp": "Tu dirección IP",
+    "unknownValue": "Desconocido",
+    "differentNetwork": "Esta solicitud llegó desde una red distinta de la que estás usando ahora.",
+    "confirmStarted": "He iniciado yo mismo este inicio de sesión"
   },
   "email": {
     "title": "Correo electrónico",

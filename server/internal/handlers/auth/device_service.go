@@ -12,6 +12,8 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 )
 
 // OAuth 2.0 Device Authorization Grant (RFC 8628) parameters.
@@ -42,6 +44,10 @@ const (
 	deviceCodeBytes = 32
 	// deviceClientNameMaxLength caps the consent-page label.
 	deviceClientNameMaxLength = 200
+	// deviceUserAgentMaxLength caps the stored requester User-Agent.
+	deviceUserAgentMaxLength = 512
+	// deviceUserAgentSummaryLength caps the User-Agent shown on the consent page.
+	deviceUserAgentSummaryLength = 120
 	// deviceDefaultClientName labels a request that sent no client name.
 	deviceDefaultClientName = "Unknown application"
 	// deviceVerificationPath is the dashboard route serving the consent page.
@@ -100,11 +106,29 @@ type DeviceAuthorizationResponse struct {
 // DeviceConsentInfo is the public detail of a device-authorization request,
 // safe to render on the (authenticated) consent page. It never carries the
 // device code or the minted token.
+//
+// RequestedAt, RequesterIP and RequesterUserAgent describe who opened the
+// request, so a member can tell a sign-in they started from a code someone
+// sent them (RFC 8628 §5.4, spec 2026-10-27-01). ApproverIP is the IP of the
+// consent page's own caller, for a "different network" hint; the handler sets
+// it.
 type DeviceConsentInfo struct {
-	ClientName string    `json:"clientName"`
-	UserCode   string    `json:"userCode"`
-	Status     string    `json:"status"`
-	ExpiresAt  time.Time `json:"expiresAt"`
+	ClientName         string    `json:"clientName"`
+	UserCode           string    `json:"userCode"`
+	Status             string    `json:"status"`
+	ExpiresAt          time.Time `json:"expiresAt"`
+	RequestedAt        time.Time `json:"requestedAt"`
+	RequesterIP        string    `json:"requesterIp,omitempty"`
+	RequesterUserAgent string    `json:"requesterUserAgent,omitempty"`
+	ApproverIP         string    `json:"approverIp,omitempty"`
+}
+
+// DeviceRequester describes the client opening a device-authorization
+// request. IP must come from the trusted-proxy resolution
+// (base.ExtractTrustedClientIP), never from a raw forwarding header.
+type DeviceRequester struct {
+	IP        string
+	UserAgent string
 }
 
 // StartDeviceAuthorization opens a new device-authorization request. It is
@@ -112,7 +136,7 @@ type DeviceConsentInfo struct {
 // nothing until a logged-in user approves it and it is bound to the org that
 // user selects.
 func (s *Service) StartDeviceAuthorization(
-	ctx context.Context, clientName string,
+	ctx context.Context, clientName string, requester DeviceRequester,
 ) (*DeviceAuthorizationResponse, error) {
 	clientName = strings.TrimSpace(clientName)
 	if clientName == "" {
@@ -146,6 +170,9 @@ func (s *Service) StartDeviceAuthorization(
 		}
 
 		req := models.NewDeviceAuthRequest(clientName, deviceCode, userCode, expiresAt)
+		req.RequesterIP = optionalString(strings.TrimSpace(requester.IP))
+		req.RequesterUserAgent = optionalString(truncateRunes(strings.TrimSpace(requester.UserAgent),
+			deviceUserAgentMaxLength, ""))
 		if createErr := s.db.CreateDeviceAuthRequest(ctx, req); createErr != nil {
 			// Assume a user-code collision and retry with a fresh pair; a
 			// genuine storage failure loses on the last attempt below.
@@ -190,12 +217,23 @@ func (s *Service) GetDeviceConsent(ctx context.Context, rawUserCode string) (*De
 		return nil, ErrDeviceAuthNotFound
 	}
 
-	return &DeviceConsentInfo{
-		ClientName: req.ClientName,
-		UserCode:   FormatDeviceUserCode(req.UserCode),
-		Status:     req.Status,
-		ExpiresAt:  req.ExpiresAt,
-	}, nil
+	info := &DeviceConsentInfo{
+		ClientName:  req.ClientName,
+		UserCode:    FormatDeviceUserCode(req.UserCode),
+		Status:      req.Status,
+		ExpiresAt:   req.ExpiresAt,
+		RequestedAt: req.CreatedAt,
+	}
+
+	if req.RequesterIP != nil {
+		info.RequesterIP = *req.RequesterIP
+	}
+
+	if req.RequesterUserAgent != nil {
+		info.RequesterUserAgent = summarizeUserAgent(*req.RequesterUserAgent)
+	}
+
+	return info, nil
 }
 
 // RespondToDeviceConsent approves or denies a pending request on behalf of the
@@ -253,13 +291,57 @@ func (s *Service) RespondToDeviceConsent(
 		return err
 	}
 
-	return s.publishDeviceDecision(ctx, req.UID, &models.DeviceAuthResolution{
+	if err := s.publishDeviceDecision(ctx, req.UID, &models.DeviceAuthResolution{
 		Status:          models.DeviceAuthStatusApproved,
 		UserUID:         claims.UserUID,
 		OrganizationUID: org.UID,
 		TokenUID:        pat.UID,
 		TokenValue:      pat.Token,
-	}, pat)
+	}, pat); err != nil {
+		return err
+	}
+
+	s.notifyDeviceTokenCreated(ctx, claims.UserUID, org, req)
+
+	return nil
+}
+
+// notifyDeviceTokenCreated emails the approving user a record of the token
+// the device flow just minted, so an approval obtained by phishing does not
+// go unnoticed for 90 days. Best effort: a failure is logged, never returned,
+// because the decision is already published.
+func (s *Service) notifyDeviceTokenCreated(
+	ctx context.Context, userUID string, org *models.Organization, req *models.DeviceAuthRequest,
+) {
+	user, err := s.db.GetUser(ctx, userUID)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to load user for device token notice", "error", err)
+
+		return
+	}
+
+	requesterIP := ""
+	if req.RequesterIP != nil {
+		requesterIP = *req.RequesterIP
+	}
+
+	orgName := org.Name
+	if orgName == "" {
+		orgName = org.Slug
+	}
+
+	tokensURL := fmt.Sprintf("%s%s/orgs/%s/account/tokens",
+		strings.TrimRight(s.fullCfg.Server.BaseURL, "/"), config.DashboardBasePath, org.Slug)
+
+	s.enqueueEmail(ctx, "", user.Email, email.TemplateDeviceTokenCreated, recipient.ForUser(user),
+		map[string]any{
+			"ClientName":  req.ClientName,
+			"OrgName":     orgName,
+			"RequesterIP": requesterIP,
+			"CreatedAt":   time.Now().UTC(),
+			"TokensURL":   tokensURL,
+		},
+	)
 }
 
 // publishDeviceDecision runs the compare-and-set and, when it loses after a PAT
@@ -341,6 +423,33 @@ func (s *Service) PollDeviceToken(ctx context.Context, deviceCode string) (strin
 
 		return *req.TokenValue, nil
 	}
+}
+
+// optionalString maps "" to nil for a nullable column.
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+
+	return &value
+}
+
+// truncateRunes cuts value to at most maxRunes runes, appending suffix when it
+// had to cut.
+func truncateRunes(value string, maxRunes int, suffix string) string {
+	runes := []rune(value)
+	if len(runes) <= maxRunes {
+		return value
+	}
+
+	return string(runes[:maxRunes]) + suffix
+}
+
+// summarizeUserAgent turns a stored User-Agent into the short, single-line
+// label the consent page shows. It is requester-supplied text, rendered as
+// plain text by the dashboard.
+func summarizeUserAgent(userAgent string) string {
+	return truncateRunes(strings.Join(strings.Fields(userAgent), " "), deviceUserAgentSummaryLength, "…")
 }
 
 // generateDeviceCode returns the client's secret device code as hex.

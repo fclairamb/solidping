@@ -232,3 +232,61 @@ func postDeviceAuthed(
 
 	return rec
 }
+
+// TestDeviceRequesterIPIsTrusted pins spec 2026-10-27-01: the requester IP
+// shown on the consent page comes from the rate limiter's trusted-proxy
+// resolution. An untrusted peer cannot dress it up with X-Forwarded-For.
+func TestDeviceRequesterIPIsTrusted(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		trustedProxies int
+		wantRequester  string
+	}{
+		{name: "no trusted proxy ignores a spoofed header", trustedProxies: 0, wantRequester: "192.0.2.10"},
+		{name: "one trusted proxy reads its hop", trustedProxies: 1, wantRequester: "203.0.113.7"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://ping.example.com")
+			svc.fullCfg.Server.RateLimiting.TrustedProxies = tc.trustedProxies
+			handler := NewHandler(svc, &config.Config{})
+
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/auth/device",
+				strings.NewReader(`{"clientName":"sp CLI"}`))
+			req.RemoteAddr = "192.0.2.10:5555"
+			req.Header.Set("X-Forwarded-For", "203.0.113.7")
+			req.Header.Set("User-Agent", "sp-cli/1.4.0 (linux; amd64)")
+			rec := httptest.NewRecorder()
+			r.NoError(handler.StartDeviceAuthorization(rec, req))
+			r.Equal(http.StatusOK, rec.Code)
+
+			started := map[string]any{}
+			r.NoError(json.Unmarshal(rec.Body.Bytes(), &started))
+			userCode, ok := started["user_code"].(string)
+			r.True(ok)
+
+			_, _, claims := deviceTestUser(ctx, t, dbSvc, "device-ip", "device-ip@example.com")
+			authCtx := context.WithValue(ctx, base.ContextKeyClaims, claims)
+
+			req = httptest.NewRequestWithContext(authCtx, http.MethodGet,
+				"/api/v1/auth/device/consent?userCode="+userCode, http.NoBody)
+			req.RemoteAddr = "198.51.100.20:4444"
+			rec = httptest.NewRecorder()
+			r.NoError(handler.GetDeviceConsent(rec, req))
+			r.Equal(http.StatusOK, rec.Code)
+
+			info := map[string]any{}
+			r.NoError(json.Unmarshal(rec.Body.Bytes(), &info))
+			r.Equal(tc.wantRequester, info["requesterIp"])
+			r.Equal("sp-cli/1.4.0 (linux; amd64)", info["requesterUserAgent"])
+			r.Equal("198.51.100.20", info["approverIp"], "the approver's own IP, for the different-network hint")
+			r.NotEmpty(info["requestedAt"])
+		})
+	}
+}

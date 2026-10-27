@@ -4863,7 +4863,20 @@ func (s *Service) Recovery2FA(
 }
 
 // Disable2FA disables 2FA for the user after validating the current TOTP code.
+//
+// It spends the same per-user attempt budget as Verify2FA and Recovery2FA
+// before the code is looked at: a stolen session or PAT must not get an
+// unthrottled oracle that ends with the second factor removed.
 func (s *Service) Disable2FA(ctx context.Context, userUID, code string) error {
+	limited, err := s.bumpTwoFAAttemptCounter(ctx, userUID)
+	if err != nil {
+		return fmt.Errorf("failed to bump 2FA attempt counter: %w", err)
+	}
+
+	if limited {
+		return ErrRateLimited
+	}
+
 	user, err := s.db.GetUser(ctx, userUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -4885,11 +4898,17 @@ func (s *Service) Disable2FA(ctx context.Context, userUID, code string) error {
 	disabled := false
 	emptyCodes := []string{}
 
-	return s.db.UpdateUser(ctx, userUID, &models.UserUpdate{
+	if err := s.db.UpdateUser(ctx, userUID, &models.UserUpdate{
 		TOTPSecret:        &emptySecret,
 		TOTPEnabled:       &disabled,
 		TOTPRecoveryCodes: &emptyCodes,
-	})
+	}); err != nil {
+		return err
+	}
+
+	s.resetTwoFAAttemptCounter(ctx, userUID)
+
+	return nil
 }
 
 // completeLoginAfter2FA generates full login tokens after successful 2FA verification.

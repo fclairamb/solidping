@@ -60,6 +60,16 @@ func emailChangedFixture(_ i18n.Locale) map[string]any {
 	}
 }
 
+func deviceTokenCreatedFixture(_ i18n.Locale) map[string]any {
+	return map[string]any{
+		"ClientName":  "sp CLI on laptop",
+		keyOrgName:    fixtureOrgName,
+		"RequesterIP": "203.0.113.7",
+		"CreatedAt":   fixtureChangedAt(),
+		"TokensURL":   fixtureDashboardURL + "/orgs/acme/account/tokens",
+	}
+}
+
 func invitationFixture(loc i18n.Locale) map[string]any {
 	return map[string]any{
 		keyOrgName:    fixtureOrgName,

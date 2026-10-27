@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -208,51 +207,15 @@ func isExcluded(path string) bool {
 	return false
 }
 
-// extractIPFromXFF parses X-Forwarded-For and returns the real client IP.
-// Each proxy hop appends the peer address it accepted the connection from,
-// so with N trusted hops the client is the Nth entry from the right —
-// parts[len(parts)-trustedProxies] (0-indexed). When the header carries
-// fewer entries than trusted hops (e.g. a single-entry header behind one
-// proxy that overwrote a client-supplied value), the left-most entry is the
-// best available answer, so the index is clamped to 0.
+// extractIPFromXFF and extractIP delegate to the shared trusted-proxy
+// resolution in handlers/base, so the rate limiter and the handlers that
+// record a client IP (device-flow requester, spec 2026-10-27-01) agree.
 func extractIPFromXFF(xff string, trustedProxies int) string {
-	if trustedProxies <= 0 {
-		return ""
-	}
-	parts := strings.Split(xff, ",")
-	idx := len(parts) - trustedProxies
-	if idx < 0 {
-		idx = 0
-	}
-	return strings.TrimSpace(parts[idx])
+	return base.ExtractIPFromXFF(xff, trustedProxies)
 }
 
-// extractIP returns the client IP, respecting the configured TrustedProxies
-// count.
-//
-// Trust model: setting TrustedProxies > 0 asserts that the deployment sits
-// behind that many proxy hops which *strip or overwrite* client-supplied
-// X-Forwarded-For / X-Real-IP headers (traefik and most managed ingresses
-// do; verify before enabling behind a bare ALB or default nginx). X-Real-IP
-// is only consulted when X-Forwarded-For is absent entirely — a present but
-// unparsable XFF falls through to RemoteAddr, never to the equally
-// client-controllable X-Real-IP.
 func extractIP(req *http.Request, trustedProxies int) string {
-	if trustedProxies > 0 {
-		if xff := req.Header.Get("X-Forwarded-For"); xff != "" {
-			if ip := extractIPFromXFF(xff, trustedProxies); ip != "" {
-				return ip
-			}
-		} else if xri := req.Header.Get("X-Real-IP"); xri != "" {
-			return strings.TrimSpace(xri)
-		}
-	}
-
-	host, _, err := net.SplitHostPort(req.RemoteAddr)
-	if err != nil {
-		return req.RemoteAddr
-	}
-	return host
+	return base.ExtractTrustedClientIP(req, trustedProxies)
 }
 
 // Bucket-kind labels for the caller's rate/concurrency bucket, reported by

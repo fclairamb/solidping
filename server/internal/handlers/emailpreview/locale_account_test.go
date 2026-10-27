@@ -20,7 +20,7 @@ import (
 //nolint:gochecknoglobals // read-only test table.
 var accountTemplates = []string{
 	"registration.html", "welcome.html", "password-reset.html", "password-reset-sso.html",
-	"password-changed.html", "email-changed.html", "invitation.html",
+	"password-changed.html", "email-changed.html", "device-token-created.html", "invitation.html",
 	"membership-request-new.html", "membership-request-decision.html",
 }
 
@@ -129,6 +129,24 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 			i18n.LangFrench:  {"Votre mot de passe SolidPing a été modifié", "a été modifié le 5 juil., 10:00 UTC."},
 			i18n.LangGerman:  {"Ihr SolidPing-Passwort wurde geändert", "am 5. Juli, 10:00 UTC geändert wurde."},
 			i18n.LangSpanish: {"Se ha cambiado tu contraseña de SolidPing", "se cambió el 5 jul, 10:00 UTC."},
+		},
+		"device-token-created.html": {
+			i18n.LangEnglish: {
+				"A device was signed in to your SolidPing account",
+				"The request was opened from IP address 203.0.113.7.",
+			},
+			i18n.LangFrench: {
+				"Un appareil s'est connecté à votre compte SolidPing", //nolint:misspell // French
+				"La demande a été ouverte depuis l'adresse IP 203.0.113.7.",
+			},
+			i18n.LangGerman: {
+				"Ein Gerät wurde bei Ihrem SolidPing-Konto angemeldet",
+				"Die Anfrage wurde von der IP-Adresse 203.0.113.7 gestellt.",
+			},
+			i18n.LangSpanish: {
+				"Se ha conectado un dispositivo a tu cuenta de SolidPing",
+				"La solicitud se abrió desde la dirección IP 203.0.113.7.",
+			},
 		},
 		"email-changed.html": {
 			i18n.LangEnglish: {

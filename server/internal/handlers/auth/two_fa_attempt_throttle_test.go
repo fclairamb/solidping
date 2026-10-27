@@ -112,6 +112,15 @@ func runTwoFAAttemptThrottleSuite(t *testing.T, dbSvc db.Service) {
 	t.Run("a burst below the budget leaves room for the correct code", func(t *testing.T) {
 		testTwoFABurstBelowBudgetThenCorrectCode(t, dbSvc)
 	})
+	t.Run("disabling 2FA is throttled, even with a correct code", func(t *testing.T) {
+		testDisable2FAFiveWrongThenThrottled(t, dbSvc)
+	})
+	t.Run("disabling 2FA shares the login budget", func(t *testing.T) {
+		testDisable2FASharesLoginBudget(t, dbSvc)
+	})
+	t.Run("disabling 2FA with a valid first code succeeds and clears the counter", func(t *testing.T) {
+		testDisable2FASuccessClearsCounter(t, dbSvc)
+	})
 }
 
 // newTwoFAThrottleFixture creates an organization plus a TOTP-enabled admin
@@ -474,4 +483,84 @@ func testTwoFABurstBelowBudgetThenCorrectCode(t *testing.T, dbSvc db.Service) {
 
 	_, err = svc.Verify2FA(ctx, tempToken, validCode, Context{})
 	r.NoError(err)
+}
+
+// testDisable2FAFiveWrongThenThrottled is the regression for spec
+// 2026-10-27-02: DELETE /auth/2fa used to check the code with no attempt
+// budget, so a stolen session could guess its way to removing the second
+// factor. After 5 wrong codes, even the valid one is refused and 2FA stays on.
+func testDisable2FAFiveWrongThenThrottled(t *testing.T, dbSvc db.Service) {
+	t.Helper()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, _, user, secret := newTwoFAThrottleFixture(t, dbSvc, ctx, "dis-wrong")
+	wrong := wrongTOTPCode(t, secret)
+
+	for i := 0; i < twoFAAttemptMaxPerUser; i++ {
+		r.ErrorIsf(svc.Disable2FA(ctx, user.UID, wrong), ErrInvalid2FACode,
+			"attempt %d must still be a plain wrong-code answer", i+1)
+	}
+
+	validCode, err := totp.GenerateCode(secret, time.Now())
+	r.NoError(err)
+	r.ErrorIs(svc.Disable2FA(ctx, user.UID, validCode), ErrRateLimited)
+
+	after, err := dbSvc.GetUser(ctx, user.UID)
+	r.NoError(err)
+	r.True(after.TOTPEnabled, "a throttled disable must leave 2FA on")
+	r.NotNil(after.TOTPSecret)
+	r.Equal(secret, *after.TOTPSecret)
+}
+
+// testDisable2FASharesLoginBudget proves disabling does not open a second
+// allowance next to the login one: a budget spent on Verify2FA also blocks
+// Disable2FA.
+func testDisable2FASharesLoginBudget(t *testing.T, dbSvc db.Service) {
+	t.Helper()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, org, user, secret := newTwoFAThrottleFixture(t, dbSvc, ctx, "dis-shared")
+	tempToken := mintTwoFATempToken(t, svc, org, user)
+	wrong := wrongTOTPCode(t, secret)
+
+	for i := 0; i < twoFAAttemptMaxPerUser; i++ {
+		_, verifyErr := svc.Verify2FA(ctx, tempToken, wrong, Context{})
+		r.ErrorIs(verifyErr, ErrInvalid2FACode)
+	}
+
+	validCode, err := totp.GenerateCode(secret, time.Now())
+	r.NoError(err)
+	r.ErrorIs(svc.Disable2FA(ctx, user.UID, validCode), ErrRateLimited)
+
+	after, err := dbSvc.GetUser(ctx, user.UID)
+	r.NoError(err)
+	r.True(after.TOTPEnabled)
+}
+
+// testDisable2FASuccessClearsCounter is the positive control: the throttle
+// does not get in the way of a legitimate disable, and a success wipes the
+// counter like Verify2FA does.
+func testDisable2FASuccessClearsCounter(t *testing.T, dbSvc db.Service) {
+	t.Helper()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, _, user, secret := newTwoFAThrottleFixture(t, dbSvc, ctx, "dis-ok")
+
+	validCode, err := totp.GenerateCode(secret, time.Now())
+	r.NoError(err)
+	r.NoError(svc.Disable2FA(ctx, user.UID, validCode))
+
+	after, err := dbSvc.GetUser(ctx, user.UID)
+	r.NoError(err)
+	r.False(after.TOTPEnabled)
+
+	entry, err := dbSvc.GetStateEntry(ctx, nil, twoFAAttemptCountKeyPrefix+user.UID)
+	r.NoError(err)
+	r.Nil(entry, "a successful disable must clear the attempt counter")
 }
