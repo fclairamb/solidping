@@ -63,9 +63,14 @@ export async function recovery2FA(
   });
 }
 
+// A wrong code answers 401 INVALID_2FA_CODE: that is about the code in the
+// body, not the session. Without suppress401Handling the client would
+// refresh-and-retry (spending two attempts of the per-user 2FA budget per
+// click) and then sign the user out.
 export async function disable2FA(code: string): Promise<void> {
   await apiFetch("/api/v1/auth/2fa", {
     method: "DELETE",
     body: JSON.stringify({ code }),
+    suppress401Handling: true,
   });
 }

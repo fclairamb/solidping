@@ -175,4 +175,51 @@ test.describe("Account > Security > 2FA setup", () => {
     await page.getByTestId("2fa-recovery-done").click();
     await expect(page.getByTestId("2fa-status")).toHaveText(/Enabled/i);
   });
+
+  // Spec 2026-10-27-02: DELETE /auth/2fa spends the same per-user attempt
+  // budget as the login challenge. Once it is spent, the dialog says to wait
+  // (translated) instead of showing a raw failure, and 2FA stays enabled.
+  test("disabling 2FA is throttled after 5 wrong codes", async ({ page }) => {
+    const { org } = await seedUserWithOrg(page);
+    const auth = { Authorization: `Bearer ${org.accessToken}` };
+
+    const setupResp = await page.request.post(`${API_BASE}/api/v1/auth/2fa/setup`, {
+      headers: auth,
+    });
+    expect(setupResp.status()).toBe(200);
+    const { secret } = (await setupResp.json()) as { secret: string };
+    const confirmResp = await page.request.post(`${API_BASE}/api/v1/auth/2fa/confirm`, {
+      headers: auth,
+      data: { code: generateTotp(secret) },
+    });
+    expect(confirmResp.status()).toBe(200);
+
+    await seedBrowserSession(page, { ...org, slug: org.slug });
+    await page.goto(`orgs/${org.slug}/account/security`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("2fa-status")).toHaveText(/Enabled/i);
+
+    await page.getByTestId("2fa-disable-button").click();
+    const codeInput = page.getByTestId("2fa-disable-code");
+    const confirm = page.getByTestId("2fa-disable-confirm");
+    const error = page.getByTestId("2fa-disable-error");
+    const wrongCode = generateTotp(secret) === "000000" ? "000001" : "000000";
+
+    // Positive control: the first wrong codes get the ordinary answer.
+    for (let i = 0; i < 5; i++) {
+      await codeInput.fill(wrongCode);
+      await confirm.click();
+      await expect(error).toBeVisible();
+      await expect(error).not.toContainText(/too many attempts/i);
+    }
+
+    // Even the valid code is refused once the budget is spent.
+    await codeInput.fill(generateTotp(secret));
+    await confirm.click();
+    await expect(error).toContainText(/too many attempts/i);
+
+    await page.keyboard.press("Escape");
+    await page.reload();
+    await expect(page.getByTestId("2fa-status")).toHaveText(/Enabled/i);
+  });
 });

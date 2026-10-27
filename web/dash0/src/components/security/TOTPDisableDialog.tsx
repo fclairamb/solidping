@@ -25,7 +25,7 @@ interface TOTPDisableDialogProps {
 // don't accept recovery codes here — disable should require live access
 // to the authenticator to defend against a stolen-session attacker.
 export function TOTPDisableDialog({ open, onClose, onConfirm }: TOTPDisableDialogProps) {
-  const { t } = useTranslation(["account", "common"]);
+  const { t } = useTranslation(["account", "common", "auth"]);
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +36,11 @@ export function TOTPDisableDialog({ open, onClose, onConfirm }: TOTPDisableDialo
     try {
       await onConfirm(code);
     } catch (err) {
-      if (err instanceof ApiError) {
+      // Disabling spends the same per-user attempt budget as the login
+      // challenge (spec 2026-10-27-02): give the translated reason to wait.
+      if (err instanceof ApiError && err.status === 429) {
+        setError(t("auth:twoFactor.tooManyAttempts"));
+      } else if (err instanceof ApiError) {
         setError(err.message);
       } else {
         setError(err instanceof Error ? err.message : t("account:security.totp.disableFailed"));
@@ -56,7 +60,7 @@ export function TOTPDisableDialog({ open, onClose, onConfirm }: TOTPDisableDialo
           </DialogDescription>
         </DialogHeader>
         {error && (
-          <Alert variant="destructive">
+          <Alert variant="destructive" data-testid="2fa-disable-error">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error}</AlertDescription>
           </Alert>
