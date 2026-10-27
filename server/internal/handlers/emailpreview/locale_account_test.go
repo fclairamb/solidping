@@ -136,7 +136,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"The request was opened from IP address 203.0.113.7.",
 			},
 			i18n.LangFrench: {
-				"Un appareil s'est connecté à votre compte SolidPing",
+				"Un appareil s'est connecté à votre compte SolidPing", //nolint:misspell // French
 				"La demande a été ouverte depuis l'adresse IP 203.0.113.7.",
 			},
 			i18n.LangGerman: {
