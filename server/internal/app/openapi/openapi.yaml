@@ -10862,7 +10862,7 @@ components:
 
     DeviceConsentInfo:
       type: object
-      required: [clientName, userCode, status, expiresAt]
+      required: [clientName, userCode, status, expiresAt, requestedAt]
       properties:
         clientName:
           type: string
@@ -10874,6 +10874,21 @@ components:
         expiresAt:
           type: string
           format: date-time
+        requestedAt:
+          type: string
+          format: date-time
+          description: When the device-authorization request was opened.
+        requesterIp:
+          type: string
+          description: >-
+            IP that opened the request (trusted-proxy resolution). Absent for
+            requests opened before it was recorded.
+        requesterUserAgent:
+          type: string
+          description: Short summary of the requesting client's User-Agent. Absent when none was sent.
+        approverIp:
+          type: string
+          description: IP of the caller of this endpoint, for a "different network" hint.
 
     DeviceConsentRequest:
       type: object

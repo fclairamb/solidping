@@ -2,13 +2,16 @@ package auth
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/email"
 )
 
 // deviceTestUser wires an org + user + membership and returns claims for that
@@ -86,7 +89,7 @@ func TestDeviceAuthorizationStart(t *testing.T) {
 
 			r := require.New(t)
 
-			resp, err := svc.StartDeviceAuthorization(ctx, tc.clientName)
+			resp, err := svc.StartDeviceAuthorization(ctx, tc.clientName, DeviceRequester{})
 			if tc.wantErr != nil {
 				r.ErrorIs(err, tc.wantErr)
 
@@ -121,7 +124,7 @@ func TestDeviceAuthLifecycle(t *testing.T) {
 
 	org, user, claims := deviceTestUser(ctx, t, dbSvc, "device-life", "device-life@example.com")
 
-	start, err := svc.StartDeviceAuthorization(ctx, "sp CLI on laptop")
+	start, err := svc.StartDeviceAuthorization(ctx, "sp CLI on laptop", DeviceRequester{})
 	r.NoError(err)
 
 	// Poll before approval → authorization_pending, and no token leaks.
@@ -165,7 +168,7 @@ func TestDeviceAuthDeny(t *testing.T) {
 
 	org, user, claims := deviceTestUser(ctx, t, dbSvc, "device-deny", "device-deny@example.com")
 
-	start, err := svc.StartDeviceAuthorization(ctx, "sp CLI")
+	start, err := svc.StartDeviceAuthorization(ctx, "sp CLI", DeviceRequester{})
 	r.NoError(err)
 
 	r.NoError(svc.RespondToDeviceConsent(ctx, claims, start.UserCode, org.Slug, false))
@@ -252,7 +255,7 @@ func TestDeviceAuthSlowDown(t *testing.T) {
 
 	org, _, claims := deviceTestUser(ctx, t, dbSvc, "device-slow", "device-slow@example.com")
 
-	start, err := svc.StartDeviceAuthorization(ctx, "sp CLI")
+	start, err := svc.StartDeviceAuthorization(ctx, "sp CLI", DeviceRequester{})
 	r.NoError(err)
 
 	_, err = svc.PollDeviceToken(ctx, start.DeviceCode)
@@ -309,7 +312,7 @@ func TestDeviceAuthOrgBinding(t *testing.T) {
 
 			r := require.New(t)
 
-			start, err := svc.StartDeviceAuthorization(ctx, "sp CLI")
+			start, err := svc.StartDeviceAuthorization(ctx, "sp CLI", DeviceRequester{})
 			r.NoError(err)
 
 			err = svc.RespondToDeviceConsent(ctx, claims, start.UserCode, tc.orgInput, true)
@@ -388,4 +391,129 @@ func TestDeviceUserCodeFormatting(t *testing.T) {
 			outer.Contains(deviceUserCodeAlphabet, string(char))
 		}
 	}
+}
+
+// TestDeviceConsentShowsRequester pins spec 2026-10-27-01: the consent page
+// learns who opened the request (where and when, and with which client), so a
+// member can tell a sign-in they started from a code someone sent them.
+func TestDeviceConsentShowsRequester(t *testing.T) {
+	t.Parallel()
+
+	svc, _, ctx := setupAuthTestServiceWithConfig(t, "https://ping.example.com")
+	r := require.New(t)
+
+	before := time.Now().Add(-time.Second)
+
+	start, err := svc.StartDeviceAuthorization(ctx, "sp CLI", DeviceRequester{
+		IP:        "203.0.113.7",
+		UserAgent: "sp-cli/1.4.0   (darwin; arm64)\n" + strings.Repeat("x", 300),
+	})
+	r.NoError(err)
+
+	info, err := svc.GetDeviceConsent(ctx, start.UserCode)
+	r.NoError(err)
+	r.Equal("203.0.113.7", info.RequesterIP)
+	r.True(strings.HasPrefix(info.RequesterUserAgent, "sp-cli/1.4.0 (darwin; arm64) xxx"),
+		"the summary collapses whitespace: %q", info.RequesterUserAgent)
+	r.LessOrEqual(len([]rune(info.RequesterUserAgent)), deviceUserAgentSummaryLength+1, "the summary is short")
+	r.WithinDuration(time.Now(), info.RequestedAt, time.Minute)
+	r.True(info.RequestedAt.After(before))
+
+	// A request opened without any requester detail still renders.
+	bare, err := svc.StartDeviceAuthorization(ctx, "sp CLI", DeviceRequester{})
+	r.NoError(err)
+
+	info, err = svc.GetDeviceConsent(ctx, bare.UserCode)
+	r.NoError(err)
+	r.Empty(info.RequesterIP)
+	r.Empty(info.RequesterUserAgent)
+}
+
+// TestDeviceApprovalNotifiesUser: approval emails the approving user exactly
+// once, naming the client, the org, the requester IP and where to revoke.
+// Denial and a lost race send nothing. The PAT is still delivered (positive
+// control: the notice must not break the flow).
+func TestDeviceApprovalNotifiesUser(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fullCfg := &config.Config{
+		Server: config.ServerConfig{BaseURL: "https://ping.example.com"},
+		Auth: config.AuthConfig{
+			JWTSecret:          "test-jwt-secret",
+			AccessTokenExpiry:  time.Hour,
+			RefreshTokenExpiry: 7 * 24 * time.Hour,
+		},
+	}
+	svc, dbSvc, ctx := setupAuthTestServiceWithJobs(t, fullCfg)
+
+	org, user, claims := deviceTestUser(ctx, t, dbSvc, "device-notice", "device-notice@example.com")
+
+	// Denial: no notice.
+	denied, err := svc.StartDeviceAuthorization(ctx, "sp CLI", DeviceRequester{IP: "198.51.100.1"})
+	r.NoError(err)
+	r.NoError(svc.RespondToDeviceConsent(ctx, claims, denied.UserCode, org.Slug, false))
+	r.Empty(emailJobRecipients(t, ctx, dbSvc, email.TemplateDeviceTokenCreated), "a denial sends no notice")
+
+	// Approval: exactly one notice, to the approver.
+	start, err := svc.StartDeviceAuthorization(ctx, "sp CLI on laptop", DeviceRequester{IP: "203.0.113.7"})
+	r.NoError(err)
+	r.NoError(svc.RespondToDeviceConsent(ctx, claims, start.UserCode, org.Slug, true))
+	r.Equal([]string{user.Email}, emailJobRecipients(t, ctx, dbSvc, email.TemplateDeviceTokenCreated))
+
+	tmpl, data := latestEmailJobTemplateData(t, ctx, dbSvc)
+	r.Equal(email.TemplateDeviceTokenCreated, tmpl)
+	r.Equal("sp CLI on laptop", data["ClientName"])
+	r.Equal(org.Name, data["OrgName"])
+	r.Equal("203.0.113.7", data["RequesterIP"])
+	r.Equal("https://ping.example.com/d/orgs/"+org.Slug+"/account/tokens", data["TokensURL"])
+
+	// A second decision on the same code loses: no extra notice.
+	r.Error(svc.RespondToDeviceConsent(ctx, claims, start.UserCode, org.Slug, true))
+	r.Len(emailJobRecipients(t, ctx, dbSvc, email.TemplateDeviceTokenCreated), 1)
+
+	// Positive control: one poll still receives the PAT.
+	clearDevicePollStamp(ctx, t, dbSvc, start.DeviceCode)
+	token, err := svc.PollDeviceToken(ctx, start.DeviceCode)
+	r.NoError(err)
+	r.NotEmpty(token)
+}
+
+// TestDeviceLostRaceSendsNoNotice: when the compare-and-set loses after the
+// PAT was minted, the PAT is revoked and no notice goes out.
+func TestDeviceLostRaceSendsNoNotice(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fullCfg := &config.Config{
+		Server: config.ServerConfig{BaseURL: "https://ping.example.com"},
+		Auth:   config.AuthConfig{JWTSecret: "test-jwt-secret", AccessTokenExpiry: time.Hour},
+	}
+	svc, dbSvc, ctx := setupAuthTestServiceWithJobs(t, fullCfg)
+
+	org, user, claims := deviceTestUser(ctx, t, dbSvc, "device-race", "device-race@example.com")
+
+	start, err := svc.StartDeviceAuthorization(ctx, "sp CLI", DeviceRequester{})
+	r.NoError(err)
+
+	stored, err := dbSvc.GetDeviceAuthRequestByDeviceCode(ctx, start.DeviceCode)
+	r.NoError(err)
+
+	// Another decision lands between the lookup and the compare-and-set.
+	won, err := dbSvc.ResolveDeviceAuthRequest(ctx, stored.UID, &models.DeviceAuthResolution{
+		Status: models.DeviceAuthStatusDenied, UserUID: user.UID,
+	})
+	r.NoError(err)
+	r.True(won)
+
+	pat, err := svc.CreatePAT(ctx, org.Slug, claims.UserUID, CreateTokenRequest{Name: "race"})
+	r.NoError(err)
+	r.ErrorIs(svc.publishDeviceDecision(ctx, stored.UID, &models.DeviceAuthResolution{
+		Status: models.DeviceAuthStatusApproved, UserUID: user.UID, OrganizationUID: org.UID,
+		TokenUID: pat.UID, TokenValue: pat.Token,
+	}, pat), ErrDeviceAuthAlreadyResolved)
+
+	r.Empty(emailJobRecipients(t, ctx, dbSvc, email.TemplateDeviceTokenCreated), "a lost race sends no notice")
 }

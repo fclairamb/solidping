@@ -4,6 +4,7 @@ package base
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"runtime"
 	"strings"
@@ -304,8 +305,8 @@ func (h *HandlerBase) WriteInternalError(w http.ResponseWriter, r *http.Request,
 //
 // This is NOT suitable for security-sensitive decisions (e.g. rate limiting)
 // since any client can spoof these headers unless a trusted proxy strips or
-// overwrites them first. See middleware/ratelimit.go's extractIP for the
-// proxy-trust-gated variant used there.
+// overwrites them first. See the
+// proxy-trust-gated variant, ExtractTrustedClientIP.
 func ExtractRemoteAddr(req *http.Request) string {
 	// Try X-Forwarded-For header first (common in reverse proxy setups)
 	if xff := req.Header.Get("X-Forwarded-For"); xff != "" {
@@ -325,4 +326,53 @@ func ExtractRemoteAddr(req *http.Request) string {
 	}
 
 	return "unknown"
+}
+
+// ExtractIPFromXFF parses X-Forwarded-For and returns the real client IP.
+// Each proxy hop appends the peer address it accepted the connection from,
+// so with N trusted hops the client is the Nth entry from the right —
+// parts[len(parts)-trustedProxies] (0-indexed). When the header carries
+// fewer entries than trusted hops (e.g. a single-entry header behind one
+// proxy that overwrote a client-supplied value), the left-most entry is the
+// best available answer, so the index is clamped to 0.
+func ExtractIPFromXFF(xff string, trustedProxies int) string {
+	if trustedProxies <= 0 {
+		return ""
+	}
+	parts := strings.Split(xff, ",")
+	idx := len(parts) - trustedProxies
+	if idx < 0 {
+		idx = 0
+	}
+	return strings.TrimSpace(parts[idx])
+}
+
+// ExtractTrustedClientIP returns the client IP, respecting the configured
+// TrustedProxies count (config.RateLimitConfig). Unlike ExtractRemoteAddr it
+// never trusts a forwarding header sent by an untrusted peer, so it is the one
+// to use for anything shown to a user as a security signal.
+//
+// Trust model: setting TrustedProxies > 0 asserts that the deployment sits
+// behind that many proxy hops which *strip or overwrite* client-supplied
+// X-Forwarded-For / X-Real-IP headers (traefik and most managed ingresses
+// do; verify before enabling behind a bare ALB or default nginx). X-Real-IP
+// is only consulted when X-Forwarded-For is absent entirely — a present but
+// unparsable XFF falls through to RemoteAddr, never to the equally
+// client-controllable X-Real-IP.
+func ExtractTrustedClientIP(req *http.Request, trustedProxies int) string {
+	if trustedProxies > 0 {
+		if xff := req.Header.Get("X-Forwarded-For"); xff != "" {
+			if ip := ExtractIPFromXFF(xff, trustedProxies); ip != "" {
+				return ip
+			}
+		} else if xri := req.Header.Get("X-Real-IP"); xri != "" {
+			return strings.TrimSpace(xri)
+		}
+	}
+
+	host, _, err := net.SplitHostPort(req.RemoteAddr)
+	if err != nil {
+		return req.RemoteAddr
+	}
+	return host
 }

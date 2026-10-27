@@ -51,6 +51,7 @@ const (
 	TemplateIncidentDegradedCreated = "incident-degraded-created.html"
 	TemplateIncidentDegradedResolv  = "incident-degraded-resolved.html"
 	TemplateEmailChanged            = "email-changed.html"
+	TemplateDeviceTokenCreated      = "device-token-created.html"
 	TemplateIncidentAcknowledged    = "incident-acknowledged.html"
 	TemplateIncidentUnacknowledged  = "incident-unacknowledged.html"
 	TemplateIncidentComment         = "incident-comment.html"
@@ -141,6 +142,7 @@ var supportReplyableTemplates = map[string]bool{
 	TemplateInvitation:              false,
 	TemplatePasswordChanged:         false,
 	TemplateEmailChanged:            false,
+	TemplateDeviceTokenCreated:      false,
 	TemplatePasswordReset:           false,
 	TemplatePasswordResetSSO:        false,
 	TemplateRegistration:            false,

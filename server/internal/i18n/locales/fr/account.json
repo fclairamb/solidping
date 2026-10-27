@@ -66,6 +66,15 @@
     "body": "L'adresse e-mail de votre compte SolidPing a été remplacée par {newEmail} le {date}. L'ancienne adresse était {oldEmail}.",
     "newAddress": "Vous vous connectez désormais avec {newEmail}. Cette adresse ne recevra plus les e-mails liés à votre compte."
   },
+  "deviceTokenCreated": {
+    "subject": "Un appareil s'est connecté à votre compte SolidPing",
+    "preheader": "{client} dispose désormais d'un jeton d'API pour {org}.",
+    "title": "Un nouveau jeton d'appareil a été créé",
+    "body": "Vous avez approuvé la connexion d'un appareil le {date}. L'application qui se présente comme « {client} » a reçu un jeton d'API pour l'organisation {org}, valable 90 jours.",
+    "requester": "La demande a été ouverte depuis l'adresse IP {ip}.",
+    "revoke": "Si vous n'avez pas lancé cette connexion vous-même, révoquez ce jeton dès maintenant depuis la page des jetons de votre compte :",
+    "cta": "Voir mes jetons"
+  },
   "invitation": {
     "subject": "Invitation à rejoindre {org} sur SolidPing",
     "preheader": {

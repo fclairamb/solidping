@@ -66,6 +66,15 @@
     "body": "The email address of your SolidPing account was changed from {oldEmail} to {newEmail} on {date}.",
     "newAddress": "You now sign in with {newEmail}. This address will no longer receive account emails."
   },
+  "deviceTokenCreated": {
+    "subject": "A device was signed in to your SolidPing account",
+    "preheader": "{client} now has an API token for {org}.",
+    "title": "A new device token was created",
+    "body": "You approved a device sign-in on {date}. The application calling itself \"{client}\" received an API token for the organization {org}, valid for 90 days.",
+    "requester": "The request was opened from IP address {ip}.",
+    "revoke": "If you did not start this sign-in yourself, revoke the token now from your account tokens page:",
+    "cta": "Review my tokens"
+  },
   "invitation": {
     "subject": "You're invited to join {org} on SolidPing",
     "preheader": {

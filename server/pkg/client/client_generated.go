@@ -5853,10 +5853,21 @@ type DeviceAuthorizationResponse struct {
 
 // DeviceConsentInfo defines model for DeviceConsentInfo.
 type DeviceConsentInfo struct {
-	ClientName string                  `json:"clientName"`
-	ExpiresAt  time.Time               `json:"expiresAt"`
-	Status     DeviceConsentInfoStatus `json:"status"`
-	UserCode   string                  `json:"userCode"`
+	// ApproverIp IP of the caller of this endpoint, for a "different network" hint.
+	ApproverIp *string   `json:"approverIp,omitempty"`
+	ClientName string    `json:"clientName"`
+	ExpiresAt  time.Time `json:"expiresAt"`
+
+	// RequestedAt When the device-authorization request was opened.
+	RequestedAt time.Time `json:"requestedAt"`
+
+	// RequesterIp IP that opened the request (trusted-proxy resolution). Absent for requests opened before it was recorded.
+	RequesterIp *string `json:"requesterIp,omitempty"`
+
+	// RequesterUserAgent Short summary of the requesting client's User-Agent. Absent when none was sent.
+	RequesterUserAgent *string                 `json:"requesterUserAgent,omitempty"`
+	Status             DeviceConsentInfoStatus `json:"status"`
+	UserCode           string                  `json:"userCode"`
 }
 
 // DeviceConsentInfoStatus defines model for DeviceConsentInfo.Status.

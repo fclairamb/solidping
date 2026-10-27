@@ -81,6 +81,7 @@ var fixtureBuilders = map[string]func(i18n.Locale) map[string]any{
 	"welcome.html":                     welcomeFixture,
 	"password-changed.html":            passwordChangedFixture,
 	"email-changed.html":               emailChangedFixture,
+	"device-token-created.html":        deviceTokenCreatedFixture,
 	"membership-request-new.html":      membershipRequestNewFixture,
 	"membership-request-decision.html": membershipRequestDecisionFixture,
 	"uptime-report.html":               uptimeReportFixture,
