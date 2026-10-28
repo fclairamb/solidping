@@ -349,13 +349,16 @@ jobs:
             git push --quiet origin badges
           fi
 
+      # Each profile is ~150 MB and nothing downloads it (Codecov gets its own
+      # copy): at 14 days these filled the account's Actions storage (100 GB on
+      # 2026-10-29) and every repo's artifact uploads failed on quota.
       - name: Upload coverage profile
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: server/coverage.out
-          retention-days: 14
+          retention-days: 2
 
       # Codecov gives the coverage a public page and PR comments (awesome-go
       # asks for a coverage service link). Non-blocking: the gate above is what
@@ -647,7 +650,7 @@ jobs:
         with:
           name: solidping-linux-amd64
           path: solidping
-          retention-days: 7
+          retention-days: 1
 
   # Guards for the tag-only release jobs (server-release, cli-release, docker):
   # they prove a release would still package, build its images and
@@ -1098,7 +1101,7 @@ jobs:
             solidping-server.log
             solidping-server-w1.log
             solidping-sidecar.log
-          retention-days: 7
+          retention-days: 3
 
   # Merges the shards' blob reports into the single HTML report and a
   # results.json with every test's duration (the input for tracking suite time).
@@ -1153,7 +1156,7 @@ jobs:
         with:
           name: playwright-report
           path: web/dash0/playwright-report/
-          retention-days: 7
+          retention-days: 3
 
   # Spec 2026-10-17-01: nothing else boots a released version and then HEAD on the
   # database it left behind (v0.38.4 broke every upgrade from v0.38.1..v0.38.3
