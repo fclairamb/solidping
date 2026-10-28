@@ -4,7 +4,7 @@
 # assets (no native code), so it must run natively on the build host rather
 # than under QEMU emulation for the target platform (see backend-builder
 # below for the stage that actually varies per target).
-FROM --platform=$BUILDPLATFORM node:24-alpine AS dash0-builder
+FROM --platform=$BUILDPLATFORM node:26-alpine AS dash0-builder
 
 # Install bun
 RUN apk add --no-cache curl unzip bash && \
@@ -26,7 +26,7 @@ COPY web/dash0/ ./
 RUN bun run build
 
 # Stage 1b: Status0 Build (static assets — see dash0-builder above)
-FROM --platform=$BUILDPLATFORM node:24-alpine AS status0-builder
+FROM --platform=$BUILDPLATFORM node:26-alpine AS status0-builder
 
 # Install bun
 RUN apk add --no-cache curl unzip bash && \
@@ -48,7 +48,7 @@ COPY web/status0/ ./
 RUN bun run build
 
 # Stage 1c: Docs Build (Docusaurus, incl. generated API reference — static assets, see dash0-builder above)
-FROM --platform=$BUILDPLATFORM node:24-alpine AS docs-builder
+FROM --platform=$BUILDPLATFORM node:26-alpine AS docs-builder
 
 # Install bun
 RUN apk add --no-cache curl unzip bash && \

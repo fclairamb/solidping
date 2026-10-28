@@ -429,7 +429,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26"
 
       - name: Install dependencies
         run: bun install
@@ -495,7 +495,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26"
 
       - name: Install dependencies
         run: bun install
@@ -555,7 +555,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26"
 
       - name: Install dependencies
         run: bun install
@@ -796,7 +796,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26"
 
       - name: Install dependencies
         run: bun install
@@ -1555,7 +1555,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26"
 
       # dash0/status0/docs are skipped entirely on tag pushes (see their
       # `if:` above: !startsWith(github.ref, 'refs/tags/')), so their dists
