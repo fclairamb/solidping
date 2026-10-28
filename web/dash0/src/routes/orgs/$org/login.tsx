@@ -61,6 +61,7 @@ import {
 } from "@/lib/login-destination";
 import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";
 import { ProviderIcon } from "@/components/auth/provider-icon";
+import { PromotedMethodButton } from "@/components/auth/promoted-method-button";
 import { refreshAccessToken } from "@/lib/token-refresh";
 import { CHANGELOG_URL, marketingSiteUrl } from "@/lib/marketing-url";
 
@@ -713,9 +714,15 @@ function LoginPage() {
               {(promotedProvider || promotePasskey) && (
                 <div className="mb-3" data-testid="login-last-used">
                   {promotedProvider ? (
-                    <Button
-                      variant="outline"
-                      className="w-full"
+                    <PromotedMethodButton
+                      icon={
+                        <ProviderIcon
+                          type={promotedProvider.type}
+                          className="h-4 w-4"
+                        />
+                      }
+                      label={t("continueWith", { name: promotedProvider.name })}
+                      badge={t("lastUsed")}
                       disabled={isLoading}
                       onClick={() =>
                         // Same helper the grid below uses, so exactly one
@@ -727,39 +734,16 @@ function LoginPage() {
                         })
                       }
                       data-testid={`login-oauth-${promotedProvider.type}-promoted`}
-                    >
-                      <ProviderIcon
-                        type={promotedProvider.type}
-                        className="mr-2 h-4 w-4"
-                      />
-                      {t("continueWith", { name: promotedProvider.name })}
-                      <Badge
-                        variant="secondary"
-                        className="ml-2"
-                        data-testid="login-last-used-badge"
-                      >
-                        {t("lastUsed")}
-                      </Badge>
-                    </Button>
+                    />
                   ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={handlePasskeyLogin}
+                    <PromotedMethodButton
+                      icon={<KeyRound className="h-4 w-4" />}
+                      label={t("twoFactor.signInWithPasskey")}
+                      badge={t("lastUsed")}
                       disabled={isLoading}
+                      onClick={handlePasskeyLogin}
                       data-testid="passkey-login-button-promoted"
-                    >
-                      <KeyRound className="mr-2 h-4 w-4" />
-                      {t("twoFactor.signInWithPasskey")}
-                      <Badge
-                        variant="secondary"
-                        className="ml-2"
-                        data-testid="login-last-used-badge"
-                      >
-                        {t("lastUsed")}
-                      </Badge>
-                    </Button>
+                    />
                   )}
                   <div className="relative my-3">
                     <div className="absolute inset-0 flex items-center">
