@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
@@ -216,4 +217,49 @@ func TestDegradedSweepSkipsDisabledChecks_Postgres(t *testing.T) {
 
 	r.Contains(uids, on.UID, "an enabled check is swept")
 	r.NotContains(uids, off.UID, "a disabled check is not evaluated at all")
+}
+
+// TestFindLastResolvedDegradedIncident_Postgres pins the query the degraded
+// evaluator starts its probe window from (fclairamb/solidping-business#26): the
+// latest resolved degraded incident of the check, never a check incident, never
+// one resolved before `since`.
+//
+//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
+func TestFindLastResolvedDegradedIncident_Postgres(t *testing.T) {
+	s := newDegradedNullablePG(t)
+	r := require.New(t)
+	ctx := t.Context()
+
+	org := models.NewOrganization("degraded-resolve-pg", "Degraded Resolve PG")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "dr-check", "http")
+	r.NoError(s.CreateCheck(ctx, check))
+
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	resolved := models.IncidentStateResolved
+
+	insert := func(kind string, resolvedAt time.Time) *models.Incident {
+		incident := models.NewIncident(org.UID, check.UID, resolvedAt.Add(-10*time.Minute), "x")
+		incident.Kind = kind
+		incident.State = resolved
+		incident.ResolvedAt = &resolvedAt
+		r.NoError(s.CreateIncident(ctx, incident))
+
+		return incident
+	}
+
+	_, err := s.FindLastResolvedDegradedIncident(ctx, check.UID, base)
+	r.ErrorIs(err, sql.ErrNoRows, "nothing resolved yet")
+
+	insert(models.IncidentKindDegraded, base.Add(10*time.Minute))
+	latest := insert(models.IncidentKindDegraded, base.Add(30*time.Minute))
+	insert(models.IncidentKindCheck, base.Add(50*time.Minute))
+
+	found, err := s.FindLastResolvedDegradedIncident(ctx, check.UID, base)
+	r.NoError(err)
+	r.Equal(latest.UID, found.UID, "the latest degraded resolve, not the later check one")
+
+	_, err = s.FindLastResolvedDegradedIncident(ctx, check.UID, base.Add(40*time.Minute))
+	r.ErrorIs(err, sql.ErrNoRows, "a resolve before since is ignored")
 }

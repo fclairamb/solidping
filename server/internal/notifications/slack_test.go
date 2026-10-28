@@ -1592,6 +1592,12 @@ func (m *mockDBService) FindActiveDegradedIncident(
 	panic("not implemented")
 }
 
+func (m *mockDBService) FindLastResolvedDegradedIncident(
+	_ context.Context, _ string, _ time.Time,
+) (*models.Incident, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListActiveBurnIncidentsForSLOs(
 	_ context.Context, _ string, _ []string,
 ) ([]*models.Incident, error) {
