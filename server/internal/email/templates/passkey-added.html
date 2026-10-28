@@ -1,0 +1,18 @@
+{{define "subject"}}{{t "account.passkeyAdded.subject"}}{{end}}
+{{define "preheader"}}{{t "account.passkeyAdded.preheader" "name" .PasskeyName}}{{end}}
+{{template "base.html" .}}
+{{define "content"}}
+    <h1>{{t "account.passkeyAdded.title"}}</h1>
+    <p>{{t "account.passkeyAdded.body" "name" .PasskeyName "date" (date .CreatedAt)}}</p>
+    <p>{{t "account.passkeyAdded.revoke"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .SecurityURL "Label" (t "account.passkeyAdded.cta") "Variant" "primary"}}</div>
+    <p class="meta">{{t "account.securityNotice.warning"}}</p>
+{{end}}
+{{define "text"}}{{t "account.passkeyAdded.title"}}
+
+{{t "account.passkeyAdded.body" "name" .PasskeyName "date" (date .CreatedAt)}}
+
+{{t "account.passkeyAdded.revoke"}} {{.SecurityURL}}
+
+{{t "account.securityNotice.warning"}}
+{{end}}

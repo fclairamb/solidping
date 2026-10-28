@@ -235,7 +235,7 @@ func (s *Service) JoinOrgViaLogin(
 		}
 
 		// Consume the invitation — it is single-use, like AcceptInvite's.
-		_, _ = s.db.DeleteStateEntry(ctx, &org.UID, invite.key)
+		_ = s.deleteInvite(ctx, org.UID, invite.key)
 
 		return created, false, nil
 	}

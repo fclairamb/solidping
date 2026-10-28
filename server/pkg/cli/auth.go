@@ -358,6 +358,20 @@ func authSwitchOrgAction(ctx context.Context, cmd *cli.Command) error {
 		return cliCtx.HandleAuthError(err)
 	}
 
+	// A personal access token is bound to its org: the server refuses
+	// switch-org with PAT_FORBIDDEN (spec 2026-10-28-01). Say why and what to
+	// do instead of printing a bare 403.
+	if cliCtx.APIHelper.AuthMethod(ctx) == authMethodPAT {
+		bound := cliCtx.GetOrg()
+		if me, meErr := apiClient.Me(ctx); meErr == nil {
+			if slug := orgSlugFromMe(me); slug != "" {
+				bound = slug
+			}
+		}
+
+		return cliCtx.HandleError("Cannot switch organization", &patBoundError{boundOrg: bound, targetOrg: org})
+	}
+
 	// Switch org
 	resp, err := apiClient.SwitchOrgWithResponse(ctx, client.SwitchOrgJSONRequestBody{
 		Org: org,
@@ -387,6 +401,17 @@ func authSwitchOrgAction(ctx context.Context, cmd *cli.Command) error {
 
 	output.PrintSuccess(os.Stdout, "Switched to organization: "+org)
 	return nil
+}
+
+// patBoundError is returned by `sp auth switch-org` on a PAT login: it
+// explains why the switch is refused and what to do instead.
+type patBoundError struct {
+	boundOrg, targetOrg string
+}
+
+func (e *patBoundError) Error() string {
+	return fmt.Sprintf("this token is bound to org %s; create a token in org %s "+
+		"or log in with `sp auth login`", e.boundOrg, e.targetOrg)
 }
 
 // promptForInput prompts the user for input.

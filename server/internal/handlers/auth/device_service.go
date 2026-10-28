@@ -248,6 +248,14 @@ func (s *Service) GetDeviceConsent(ctx context.Context, rawUserCode string) (*De
 func (s *Service) RespondToDeviceConsent(
 	ctx context.Context, claims *Claims, rawUserCode, orgSlug string, approve bool,
 ) error {
+	// A PAT must not approve a device grant (spec 2026-10-28-01): the org is
+	// taken from the body, so it would mint a PAT for any org of its owner.
+	// RequireAuth refuses the route already; this holds if it is ever reached
+	// another way.
+	if claims.IsPAT() || IsPATCredential(ctx) {
+		return ErrPATForbidden
+	}
+
 	userCode := NormalizeDeviceUserCode(rawUserCode)
 	if userCode == "" {
 		return ErrDeviceAuthNotFound

@@ -134,6 +134,12 @@ const (
 	// impersonate again. Distinct from ErrorCodeForbidden so the dashboard can
 	// explain it rather than render a dead "Permission denied".
 	ErrorCodeImpersonationForbidden ErrorCode = "IMPERSONATION_FORBIDDEN"
+	// ErrorCodePATForbidden accompanies the 403 a personal access token gets
+	// for anything outside its org binding (spec 2026-10-28-01): opening a
+	// session, approving a device grant, or changing a sign-in factor. The
+	// CLI reads it to tell the user to create a token in the target org or
+	// to log in interactively.
+	ErrorCodePATForbidden ErrorCode = "PAT_FORBIDDEN"
 )
 
 // ContextKey is the type used for context keys in middleware and handlers.

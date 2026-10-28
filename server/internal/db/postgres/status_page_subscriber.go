@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -146,7 +147,8 @@ func (s *Service) ConfirmSubscriber(ctx context.Context, uid string, confirmedAt
 }
 
 // ResubscribeSubscriber soft-undeletes an existing row and refreshes its tokens
-// and confirmation state so a returning visitor must confirm again.
+// and confirmation state so a returning visitor must confirm again. The new
+// confirm token's issue time (confirm_sent_at) restarts its expiry.
 func (s *Service) ResubscribeSubscriber(
 	ctx context.Context, uid, confirmToken, unsubscribeToken string,
 ) error {
@@ -156,10 +158,37 @@ func (s *Service) ResubscribeSubscriber(
 		Set("confirmed_at = NULL").
 		Set("confirm_token = ?", confirmToken).
 		Set("unsubscribe_token = ?", unsubscribeToken).
+		Set("confirm_sent_at = ?", time.Now().UTC()).
 		Where("uid = ?", uid).
 		Exec(ctx)
 
 	return err
+}
+
+// DeleteExpiredUnconfirmedSubscribers hard-deletes subscriptions that were
+// never confirmed and whose confirm token was issued before `before` (rows
+// older than confirm_sent_at fall back to created_at). Confirmed rows are
+// never touched, whatever their age.
+func (s *Service) DeleteExpiredUnconfirmedSubscribers(ctx context.Context, before time.Time) (int64, error) {
+	result, err := s.db.NewDelete().
+		Model((*models.StatusPageSubscriber)(nil)).
+		Where("confirmed_at IS NULL").
+		WhereGroup(" AND ", func(q *bun.DeleteQuery) *bun.DeleteQuery {
+			return q.
+				Where("confirm_sent_at IS NOT NULL AND confirm_sent_at < ?", before).
+				WhereOr("confirm_sent_at IS NULL AND created_at < ?", before)
+		}).
+		Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("delete expired unconfirmed subscribers: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("delete expired unconfirmed subscribers rows: %w", err)
+	}
+
+	return rows, nil
 }
 
 // UpdateSubscriberDelivery records the outcome of a webhook/Slack delivery:

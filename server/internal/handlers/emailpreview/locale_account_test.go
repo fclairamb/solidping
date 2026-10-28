@@ -20,7 +20,7 @@ import (
 //nolint:gochecknoglobals // read-only test table.
 var accountTemplates = []string{
 	"registration.html", "welcome.html", "password-reset.html", "password-reset-sso.html",
-	"password-changed.html", "email-changed.html", "device-token-created.html", "invitation.html",
+	"password-changed.html", "email-changed.html", "device-token-created.html", "passkey-added.html", "invitation.html",
 	"membership-request-new.html", "membership-request-decision.html",
 }
 
@@ -129,6 +129,24 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 			i18n.LangFrench:  {"Votre mot de passe SolidPing a été modifié", "a été modifié le 5 juil., 10:00 UTC."},
 			i18n.LangGerman:  {"Ihr SolidPing-Passwort wurde geändert", "am 5. Juli, 10:00 UTC geändert wurde."},
 			i18n.LangSpanish: {"Se ha cambiado tu contraseña de SolidPing", "se cambió el 5 jul, 10:00 UTC."},
+		},
+		"passkey-added.html": {
+			i18n.LangEnglish: {
+				"A passkey was added to your SolidPing account",
+				"It signs in to every organization of the account.",
+			},
+			i18n.LangFrench: {
+				"Une clé d'accès a été ajoutée à votre compte SolidPing",
+				"Une clé d'accès nommée « iCloud Keychain » a été ajoutée",
+			},
+			i18n.LangGerman: {
+				"Ihrem SolidPing-Konto wurde ein Passkey hinzugefügt",
+				"ein Passkey mit dem Namen „iCloud Keychain“ hinzugefügt",
+			},
+			i18n.LangSpanish: {
+				"Se ha añadido una llave de acceso a tu cuenta de SolidPing",
+				"una llave de acceso llamada «iCloud Keychain»",
+			},
 		},
 		"device-token-created.html": {
 			i18n.LangEnglish: {

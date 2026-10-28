@@ -68,8 +68,21 @@ func (h *Handler) baseURL() string {
 	return "http://localhost:4000"
 }
 
+// clientIP resolves the caller's IP with the rate limiter's trusted-proxy
+// rules, never the spoofable raw X-Forwarded-For.
+func (h *Handler) clientIP(req *http.Request) string {
+	trusted := 0
+	if h.cfg != nil {
+		trusted = h.cfg.Server.RateLimiting.TrustedProxies
+	}
+
+	return base.ExtractTrustedClientIP(req, trusted)
+}
+
 // Subscribe handles POST /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers.
-// Public, no auth. Always returns 202 on success and sends a confirm mail.
+// Public, no auth. Always returns 202 on success. The confirm mail goes out
+// only when the service says one is due: never for an already-confirmed
+// address, never once a budget is spent (spec 2026-10-28-02).
 func (h *Handler) Subscribe(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")
 	statusPageUID := httpx.Param(req, "statusPageUid")
@@ -81,12 +94,14 @@ func (h *Handler) Subscribe(writer http.ResponseWriter, req *http.Request) error
 		})
 	}
 
-	result, err := h.svc.Subscribe(req.Context(), orgSlug, statusPageUID, &body)
+	result, err := h.svc.Subscribe(req.Context(), orgSlug, statusPageUID, h.clientIP(req), &body)
 	if err != nil {
 		return h.handleError(writer, req, err)
 	}
 
-	h.sendConfirmMail(req.Context(), result)
+	if result.NeedsConfirmMail() {
+		h.sendConfirmMail(req.Context(), result)
+	}
 
 	return h.WriteJSON(writer, http.StatusAccepted, map[string]any{
 		respKeyData: map[string]any{

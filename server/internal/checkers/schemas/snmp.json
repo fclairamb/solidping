@@ -12,7 +12,9 @@
       "type": "string"
     },
     "community": {
-      "type": "string"
+      "type": "string",
+      "format": "solidping-secret-ref",
+      "description": "Stored encrypted. Prefer a `${env:VAR}` or `${param:key}` reference over an inlined credential in a config-as-code manifest."
     },
     "oid": {
       "type": "string"
@@ -58,6 +60,7 @@
   "x-solidping-notes": [],
   "x-solidping-secret-fields": [
     "authPassword",
+    "community",
     "privPassword"
   ],
   "x-solidping-validation": {

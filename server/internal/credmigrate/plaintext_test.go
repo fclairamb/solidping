@@ -136,3 +136,35 @@ func privateKeysOf(t *testing.T, raw *string) []string {
 
 	return keys
 }
+
+// TestRunPlaintextMovesSNMPCommunity: an SNMP row written before "community"
+// became a declared secret ends up with it in the private envelope.
+func TestRunPlaintextMovesSNMPCommunity(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("snmp-mig", "SNMP Migration Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "old-snmp", "snmp")
+	check.Config = models.JSONMap{"host": "10.0.0.1", "oid": "1.3.6", "community": "s3cr3t-acme"}
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	stats, err := credmigrate.RunPlaintext(ctx, dbSvc, credmigrate.Options{})
+	r.NoError(err)
+	r.Equal(1, stats.ChecksMigrated)
+
+	row, err := dbSvc.GetCheck(ctx, org.UID, check.UID)
+	r.NoError(err)
+	r.NotContains(row.Config, "community")
+	r.NotNil(row.ConfigPrivate)
+	r.NotNil(row.ConfigPrivateKeys)
+	r.Contains(*row.ConfigPrivateKeys, "community")
+}

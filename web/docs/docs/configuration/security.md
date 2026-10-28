@@ -90,6 +90,37 @@ If no master key is configured, encryption is disabled and credentials are store
 
 Token hashing has no such fallback and no configuration: it is not keyed off the master key, and it never stores a token in plaintext.
 
+## API Tokens Are Bound to One Organization
+
+An API token (`pat_…`) belongs to the organization it was created in, with your role there. It reads and writes that organization only: a request for another organization answers `403`, even when you are a member of it.
+
+A token is meant for a script, a CI job or the CLI, so it cannot change how your account signs in or open a session. These requests answer `403 PAT_FORBIDDEN`:
+
+- switching organization, creating an organization or accepting an invitation (each would open a session);
+- approving a device sign-in (it would mint a token for another organization);
+- changing your password or your sign-in email, setting up or removing 2FA, adding or removing a passkey;
+- linking a Discord account, or a Discord or Telegram chat for paging.
+
+To do any of that, sign in to the dashboard, or with `sp auth login`. A token can still create another token in its own organization.
+
+Adding a passkey sends you an email, with a link to your account security page: a passkey signs in to every organization of the account and survives a password reset, so one you did not add must not go unnoticed.
+
+## Status-Page Subscriptions Are Budgeted
+
+Anyone can subscribe an email address to a public status page, with no account. The address then receives a confirm link (double opt-in). To keep that form from flooding a third party's mailbox from your mail domain, the confirm email has three hourly budgets:
+
+| Variable | Default | Counts |
+|---|---|---|
+| `SP_STATUS_SUBSCRIBERS_CONFIRM_PER_RECIPIENT_PER_HOUR` | `3` | emails to one address, across every status page |
+| `SP_STATUS_SUBSCRIBERS_CONFIRM_PER_PAGE_PER_HOUR` | `100` | emails sent by one status page |
+| `SP_STATUS_SUBSCRIBERS_CONFIRM_PER_IP_PER_HOUR` | `20` | emails one client IP can trigger |
+
+`0` turns a budget off. The client IP follows `SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES`, like the rate limiter.
+
+Over budget, the form still answers `202` but sends nothing. Subscribing an address that is already confirmed changes nothing and sends nothing either, with the same `202`. So the form tells nobody whether an address is subscribed, and nobody can cancel someone else's subscription through it.
+
+A confirm link expires after 7 days. The cleanup job then deletes the unconfirmed subscription.
+
 ## Super-Admin Impersonation
 
 A super admin can sign in as another user to see exactly what they see: **Server → Users**, then the eye icon on the user's row. It is meant for support and debugging, and it is built so it cannot become an account takeover:

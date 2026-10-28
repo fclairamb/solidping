@@ -67,6 +67,7 @@ function SnmpFields({
   errors,
 }: CheckTypeFieldsProps<SnmpState>) {
   const { t } = useTranslation("checks");
+  const { configPrivateKeys } = useCheckFormFields();
   return (
     <>
       <div className="space-y-2">
@@ -129,8 +130,9 @@ function SnmpFields({
         <Label htmlFor="community">{t("snmp.communityOptional")}</Label>
         <Input
           id="community"
-          type="text"
-          placeholder="public"
+          type="password"
+          autoComplete="off"
+          placeholder={configPrivateKeys?.includes("community") ? "••••••••" : "public"}
           value={state.community}
           onChange={(e) => onChange({ ...state, community: e.target.value })}
           data-testid="check-community-input"

@@ -75,6 +75,14 @@
     "revoke": "Si vous n'avez pas lancé cette connexion vous-même, révoquez ce jeton dès maintenant depuis la page des jetons de votre compte :",
     "cta": "Voir mes jetons"
   },
+  "passkeyAdded": {
+    "subject": "Une clé d'accès a été ajoutée à votre compte SolidPing",
+    "preheader": "« {name} » peut désormais se connecter à votre compte.",
+    "title": "Une nouvelle clé d'accès a été ajoutée",
+    "body": "Une clé d'accès nommée « {name} » a été ajoutée à votre compte SolidPing le {date}. Elle permet de se connecter à toutes les organisations du compte.",
+    "revoke": "Si vous ne l'avez pas ajoutée vous-même, supprimez-la dès maintenant depuis la page de sécurité de votre compte et changez votre mot de passe :",
+    "cta": "Voir mes clés d'accès"
+  },
   "invitation": {
     "subject": "Invitation à rejoindre {org} sur SolidPing",
     "preheader": {

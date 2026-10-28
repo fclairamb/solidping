@@ -75,6 +75,14 @@
     "revoke": "Wenn Sie diese Anmeldung nicht selbst gestartet haben, widerrufen Sie das Token jetzt auf der Token-Seite Ihres Kontos:",
     "cta": "Meine Tokens ansehen"
   },
+  "passkeyAdded": {
+    "subject": "Ihrem SolidPing-Konto wurde ein Passkey hinzugefügt",
+    "preheader": "„{name}“ kann sich jetzt bei Ihrem Konto anmelden.",
+    "title": "Ein neuer Passkey wurde hinzugefügt",
+    "body": "Ihrem SolidPing-Konto wurde am {date} ein Passkey mit dem Namen „{name}“ hinzugefügt. Er meldet sich bei allen Organisationen des Kontos an.",
+    "revoke": "Wenn Sie ihn nicht selbst hinzugefügt haben, entfernen Sie ihn jetzt auf der Sicherheitsseite Ihres Kontos und ändern Sie Ihr Passwort:",
+    "cta": "Meine Passkeys ansehen"
+  },
   "invitation": {
     "subject": "Einladung zu {org} bei SolidPing",
     "preheader": {

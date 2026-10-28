@@ -178,6 +178,10 @@ func manualReaderServerEnvVars() []string {
 		// env provider, so Load reads these by hand (see envInt calls).
 		"SP_ENTITLEMENTS_SMS_RUNAWAY_PER_HOUR",
 		"SP_ENTITLEMENTS_CALL_RUNAWAY_PER_HOUR",
+		// applyStatusSubscribersEnv — snake_case segments (spec 2026-10-28-02).
+		EnvStatusSubscriberConfirmPerRecipient,
+		EnvStatusSubscriberConfirmPerPage,
+		EnvStatusSubscriberConfirmPerIP,
 		"SP_SHUTDOWN_TIMEOUT",
 		"SP_SERVER_MAX_REQUEST_DURATION",
 		"SP_DB_RESET",

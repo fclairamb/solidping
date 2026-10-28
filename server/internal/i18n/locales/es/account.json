@@ -75,6 +75,14 @@
     "revoke": "Si no iniciaste tú este inicio de sesión, revoca el token ahora desde la página de tokens de tu cuenta:",
     "cta": "Ver mis tokens"
   },
+  "passkeyAdded": {
+    "subject": "Se ha añadido una llave de acceso a tu cuenta de SolidPing",
+    "preheader": "«{name}» ya puede iniciar sesión en tu cuenta.",
+    "title": "Se ha añadido una nueva llave de acceso",
+    "body": "El {date} se añadió a tu cuenta de SolidPing una llave de acceso llamada «{name}». Permite iniciar sesión en todas las organizaciones de la cuenta.",
+    "revoke": "Si no la añadiste tú, elimínala ahora desde la página de seguridad de tu cuenta y cambia tu contraseña:",
+    "cta": "Ver mis llaves de acceso"
+  },
   "invitation": {
     "subject": "Te han invitado a unirte a {org} en SolidPing",
     "preheader": {

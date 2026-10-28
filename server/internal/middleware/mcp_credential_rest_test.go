@@ -182,11 +182,19 @@ func TestMCPCredentialRefusedOnREST(t *testing.T) {
 		mcpCredCase{"legacy loopback CLI resolves its org", "cli-full", http.MethodGet, me, http.StatusOK},
 	)
 
-	// Positive controls: a dashboard session and an unscoped PAT pass everywhere.
+	// Positive controls: a dashboard session and an unscoped PAT pass
+	// everywhere, except switch-org for the PAT: it is bound to its org
+	// (spec 2026-10-28-01).
 	for _, tok := range []string{"session", "pat"} {
 		for _, call := range controls {
 			name := tok + " " + call.method + " " + call.path
-			tests = append(tests, mcpCredCase{name, tok, call.method, call.path, http.StatusOK})
+			want := http.StatusOK
+
+			if tok == "pat" && call.path == switchOrg {
+				want = http.StatusForbidden
+			}
+
+			tests = append(tests, mcpCredCase{name, tok, call.method, call.path, want})
 		}
 	}
 
@@ -199,6 +207,10 @@ func TestMCPCredentialRefusedOnREST(t *testing.T) {
 
 			if tt.want == http.StatusUnauthorized {
 				require.Equal(t, string(base.ErrorCodeInvalidToken), errCode)
+			}
+
+			if tt.want == http.StatusForbidden {
+				require.Equal(t, string(base.ErrorCodePATForbidden), errCode)
 			}
 		})
 	}

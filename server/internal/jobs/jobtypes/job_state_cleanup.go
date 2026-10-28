@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
@@ -61,6 +62,7 @@ func (r *StateCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	}
 
 	sweepExpiredAuthHandoffCodes(ctx, jctx)
+	sweepExpiredUnconfirmedSubscribers(ctx, jctx)
 	sweepOrphanIncidentAttachments(ctx, jctx)
 	sweepOrphanCheckAttachments(ctx, jctx)
 
@@ -94,6 +96,26 @@ func sweepExpiredAuthHandoffCodes(ctx context.Context, jctx *jobdef.JobContext) 
 
 	if count > 0 {
 		jctx.Logger.InfoContext(ctx, "Deleted expired auth handoff codes", "count", count)
+	}
+}
+
+// sweepExpiredUnconfirmedSubscribers hard-deletes status-page subscriptions
+// whose confirm link expired unclicked (models.SubscriberConfirmTTL). Anyone
+// can create such a row through the public subscribe endpoint, so without this
+// the table grows without bound from anonymous traffic (spec 2026-10-28-02).
+// Confirmed rows are never touched. Best-effort, like the other sweeps.
+func sweepExpiredUnconfirmedSubscribers(ctx context.Context, jctx *jobdef.JobContext) {
+	before := time.Now().UTC().Add(-models.SubscriberConfirmTTL)
+
+	count, err := jctx.DBService.DeleteExpiredUnconfirmedSubscribers(ctx, before)
+	if err != nil {
+		jctx.Logger.WarnContext(ctx, "Failed to delete expired unconfirmed status subscribers", "error", err)
+
+		return
+	}
+
+	if count > 0 {
+		jctx.Logger.InfoContext(ctx, "Deleted expired unconfirmed status subscribers", "count", count)
 	}
 }
 

@@ -122,8 +122,13 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 		// reasoning as the demo guard, reusing its route-pattern mechanism:
 		// the token acts as the target everywhere except the
 		// credential-changing surface.
-		if denied := impersonationDenial(claims, user, httpx.RoutePattern(req), req.Method); denied != "" {
-			return m.WriteError(writer, http.StatusForbidden, base.ErrorCodeImpersonationForbidden, denied)
+		//
+		// A personal access token is bound to the org it was created in
+		// (spec 2026-10-28-01). Same choke point and same route-pattern
+		// mechanism: it may do anything in its org but open a session,
+		// approve a device grant or change how the account signs in.
+		if code, denied := credentialDenial(claims, user, httpx.RoutePattern(req), req.Method); denied != "" {
+			return m.WriteError(writer, http.StatusForbidden, code, denied)
 		}
 
 		// Add claims and user to context
@@ -136,17 +141,46 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 		// not read the same in a security trail — so the token form is
 		// recorded as such while ActorUID still names the owning user.
 		ctx = audit.WithUser(ctx, user.UID, actorTypeForToken(token))
-		// Under an impersonation token the audit actor is the TARGET (every
-		// permission check runs as them), and every row written must still
-		// name the admin behind it.
-		if claims.IsImpersonation() {
-			ctx = audit.WithImpersonator(ctx, claims.ImpersonatedBy)
-		}
+		ctx = withCredentialMarkers(ctx, claims)
 
 		setSentryIdentity(ctx, claims)
 
 		return next(writer, req.WithContext(ctx))
 	}
+}
+
+// credentialDenial returns the error code and refusal message for a request the
+// credential's kind forbids (an impersonation token, a personal access token),
+// or an empty message when it may proceed.
+func credentialDenial(claims *auth.Claims, user *models.User, routePattern, method string) (base.ErrorCode, string) {
+	if denied := impersonationDenial(claims, user, routePattern, method); denied != "" {
+		return base.ErrorCodeImpersonationForbidden, denied
+	}
+
+	if claims.IsPAT() && !auth.IsPATAllowed(method, routePattern) {
+		return base.ErrorCodePATForbidden, auth.PATForbiddenMessage
+	}
+
+	return "", ""
+}
+
+// withCredentialMarkers records on the context what the services must know
+// about the credential beyond the user.
+func withCredentialMarkers(ctx context.Context, claims *auth.Claims) context.Context {
+	// Under an impersonation token the audit actor is the TARGET (every
+	// permission check runs as them), and every row written must still
+	// name the admin behind it.
+	if claims.IsImpersonation() {
+		ctx = audit.WithImpersonator(ctx, claims.ImpersonatedBy)
+	}
+
+	// Lets Service.startSession refuse to mint a session from a PAT request,
+	// whatever the route (spec 2026-10-28-01).
+	if claims.IsPAT() {
+		ctx = auth.WithPATCredential(ctx)
+	}
+
+	return ctx
 }
 
 // impersonationDenial returns the refusal message for a request an
