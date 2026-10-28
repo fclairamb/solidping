@@ -77,13 +77,17 @@ type StatusPageSubscriber struct {
 	OrganizationUID string `bun:"organization_uid,notnull"`
 	StatusPageUID   string `bun:"status_page_uid,notnull"`
 	// Email is nil for a webhook/slack subscriber.
-	Email            *string           `bun:"email"`
-	Channel          SubscriberChannel `bun:"channel,notnull"`
-	ConfirmedAt      *time.Time        `bun:"confirmed_at"`
-	ConfirmToken     string            `bun:"confirm_token,notnull"`
-	UnsubscribeToken string            `bun:"unsubscribe_token,notnull"`
-	Scope            SubscriberScope   `bun:"scope,notnull"`
-	IncidentUID      *string           `bun:"incident_uid"`
+	Email        *string           `bun:"email"`
+	Channel      SubscriberChannel `bun:"channel,notnull"`
+	ConfirmedAt  *time.Time        `bun:"confirmed_at"`
+	ConfirmToken string            `bun:"confirm_token,notnull"`
+	// ConfirmSentAt is when the current confirm token was issued. The token
+	// expires SubscriberConfirmTTL later (see ConfirmIssuedAt). nil on rows
+	// older than the column and on operator-created (born confirmed) rows.
+	ConfirmSentAt    *time.Time      `bun:"confirm_sent_at"`
+	UnsubscribeToken string          `bun:"unsubscribe_token,notnull"`
+	Scope            SubscriberScope `bun:"scope,notnull"`
+	IncidentUID      *string         `bun:"incident_uid"`
 	// EndpointPrivate is the AES-GCM envelope holding {url, signingSecret} for
 	// an endpoint channel. NEVER serialized.
 	EndpointPrivate *string `bun:"endpoint_private"`
@@ -104,6 +108,27 @@ type StatusPageSubscriber struct {
 	DeletedAt  *time.Time `bun:"deleted_at"`
 }
 
+// SubscriberConfirmTTL is how long a confirm link stays valid. Past it the
+// link is refused and the state-cleanup job hard-deletes the unconfirmed row,
+// so anonymous subscribe traffic cannot grow the table without bound.
+const SubscriberConfirmTTL = 7 * 24 * time.Hour
+
+// ConfirmIssuedAt is when the current confirm token was issued: ConfirmSentAt,
+// or CreatedAt for rows written before that column existed.
+func (s *StatusPageSubscriber) ConfirmIssuedAt() time.Time {
+	if s.ConfirmSentAt != nil {
+		return *s.ConfirmSentAt
+	}
+
+	return s.CreatedAt
+}
+
+// ConfirmExpired reports whether the subscription is still unconfirmed and its
+// confirm token is older than SubscriberConfirmTTL at now.
+func (s *StatusPageSubscriber) ConfirmExpired(now time.Time) bool {
+	return s.ConfirmedAt == nil && now.Sub(s.ConfirmIssuedAt()) > SubscriberConfirmTTL
+}
+
 // EmailAddress returns the subscriber's email, or "" for an endpoint channel.
 func (s *StatusPageSubscriber) EmailAddress() string {
 	if s == nil || s.Email == nil {
@@ -116,7 +141,10 @@ func (s *StatusPageSubscriber) EmailAddress() string {
 // NewStatusPageSubscriber creates an unconfirmed subscriber with a generated
 // UID and CreatedAt. Tokens are set by the service.
 func NewStatusPageSubscriber(orgUID, statusPageUID, email string, scope SubscriberScope) *StatusPageSubscriber {
+	sentAt := time.Now().UTC()
+
 	return &StatusPageSubscriber{
+		ConfirmSentAt:   &sentAt,
 		UID:             uuid.New().String(),
 		OrganizationUID: orgUID,
 		StatusPageUID:   statusPageUID,

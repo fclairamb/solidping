@@ -1207,6 +1207,9 @@ type Service interface {
 	) (*models.StatusPageSubscriber, error)
 	ConfirmSubscriber(ctx context.Context, uid string, confirmedAt time.Time) error
 	ResubscribeSubscriber(ctx context.Context, uid, confirmToken, unsubscribeToken string) error
+	// DeleteExpiredUnconfirmedSubscribers hard-deletes never-confirmed rows
+	// whose confirm token was issued before `before`; returns the count.
+	DeleteExpiredUnconfirmedSubscribers(ctx context.Context, before time.Time) (int64, error)
 	SoftDeleteSubscriber(ctx context.Context, uid string) error
 	// UpdateSubscriberDelivery records a webhook/Slack delivery outcome: the
 	// consecutive-failure counter and the circuit-breaker timestamp (nil
