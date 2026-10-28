@@ -851,6 +851,13 @@ jobs:
             -c "ALTER SYSTEM SET full_page_writes = off" \
             -c "SELECT pg_reload_conf()"
 
+      # The runner user has no CAP_NET_RAW and its ping_group_range is empty, so
+      # the worker's ICMP probe fails, its region reports no `icmp` capability
+      # and placement rejects every icmp check with 400 (spec 2026-10-28-06).
+      # Let any group open unprivileged ICMP sockets, like a real deployment.
+      - name: Allow unprivileged ICMP sockets
+        run: sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"
+
       - name: Start solidping server
         working-directory: .
         run: |
