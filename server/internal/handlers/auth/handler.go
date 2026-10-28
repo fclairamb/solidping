@@ -371,6 +371,9 @@ func (h *Handler) handleEmailChangeError(
 	case errors.Is(err, ErrImpersonationForbidden):
 		return true, h.WriteErrorErr(writer, req, http.StatusForbidden, base.ErrorCodeImpersonationForbidden,
 			ImpersonationForbiddenMessage, err)
+	case errors.Is(err, ErrPATForbidden):
+		return true, h.WriteErrorErr(writer, req, http.StatusForbidden, base.ErrorCodePATForbidden,
+			PATForbiddenMessage, err)
 	case errors.Is(err, ErrEmailChangeNotSuperAdmin):
 		return true, h.WriteErrorErr(writer, req, http.StatusForbidden, base.ErrorCodeForbidden, err.Error(), err)
 	case errors.Is(err, ErrRateLimited):
@@ -551,6 +554,8 @@ func (h *Handler) handleAuthError(writer http.ResponseWriter, request *http.Requ
 	case errors.Is(err, ErrInvalidCredentials), errors.Is(err, ErrOrganizationNotFound), errors.Is(err, ErrUserNotFound):
 		return h.WriteErrorErr(
 			writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidCredentials, "Invalid credentials", err)
+	case errors.Is(err, ErrPATForbidden):
+		return h.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodePATForbidden, PATForbiddenMessage, err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}

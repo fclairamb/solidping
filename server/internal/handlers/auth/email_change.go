@@ -268,6 +268,12 @@ func (s *Service) changeOwnEmail(ctx context.Context, claims *Claims, req Update
 		return false, ErrImpersonationForbidden
 	}
 
+	// The sign-in email is a sign-in factor: a PAT bound to one org must not
+	// change it (spec 2026-10-28-01). The rest of PATCH /auth/me stays open.
+	if claims.IsPAT() {
+		return false, ErrPATForbidden
+	}
+
 	user, err := s.db.GetUser(ctx, claims.UserUID)
 	if err != nil || user == nil {
 		return false, ErrUserNotFound

@@ -126,6 +126,14 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 			return m.WriteError(writer, http.StatusForbidden, base.ErrorCodeImpersonationForbidden, denied)
 		}
 
+		// A personal access token is bound to the org it was created in
+		// (spec 2026-10-28-01). Same choke point and same route-pattern
+		// mechanism: it may do anything in its org but open a session,
+		// approve a device grant or change how the account signs in.
+		if claims.IsPAT() && !auth.IsPATAllowed(req.Method, httpx.RoutePattern(req)) {
+			return m.WriteError(writer, http.StatusForbidden, base.ErrorCodePATForbidden, auth.PATForbiddenMessage)
+		}
+
 		// Add claims and user to context
 		ctx := req.Context()
 		ctx = context.WithValue(ctx, base.ContextKeyClaims, claims)
@@ -141,6 +149,11 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 		// name the admin behind it.
 		if claims.IsImpersonation() {
 			ctx = audit.WithImpersonator(ctx, claims.ImpersonatedBy)
+		}
+		// Lets Service.startSession refuse to mint a session from a PAT
+		// request, whatever the route.
+		if claims.IsPAT() {
+			ctx = auth.WithPATCredential(ctx)
 		}
 
 		setSentryIdentity(ctx, claims)

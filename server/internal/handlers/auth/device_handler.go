@@ -212,6 +212,9 @@ func (h *Handler) RespondToDeviceConsent(writer http.ResponseWriter, req *http.R
 // writeDeviceConsentError maps consent failures onto the house error shape.
 func (h *Handler) writeDeviceConsentError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
+	case errors.Is(err, ErrPATForbidden):
+		return h.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodePATForbidden,
+			PATForbiddenMessage, err)
 	case errors.Is(err, ErrDeviceAuthNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound,
 			"Device authorization request not found or expired")

@@ -278,6 +278,8 @@ func (s *PasskeyService) FinishRegistration(
 		return nil, fmt.Errorf("store passkey: %w", err)
 	}
 
+	s.authSvc.notifyPasskeyAdded(ctx, user, row)
+
 	info := passkeyInfoFromModel(row)
 
 	return &info, nil

@@ -265,6 +265,10 @@ type Claims struct {
 	// 2026-10-16-12). Empty on every other token. It lets RequireAuth tell the
 	// first-party CLI client from a third-party one; see IsMCPCredential.
 	ClientID string `json:"clientId,omitempty"`
+	// pat marks claims produced by ValidatePATToken (spec 2026-10-28-01).
+	// Unexported, so it never appears in a signed JWT: no token can claim to
+	// be, or not to be, a PAT. See IsPAT and patForbiddenRoutes.
+	pat bool
 	jwt.RegisteredClaims
 }
 
@@ -931,6 +935,13 @@ func (s *Service) startSession(
 	// choke point every session path shares, rather than per route.
 	if audit.ImpersonatorFromContext(ctx) != "" {
 		return ErrImpersonationForbidden
+	}
+
+	// Same rule for a personal access token (spec 2026-10-28-01): it is bound
+	// to one org, and a session would carry its holder into every org of the
+	// owner, with a refresh token that outlives the PAT's revocation.
+	if IsPATCredential(ctx) {
+		return ErrPATForbidden
 	}
 
 	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
@@ -1665,6 +1676,7 @@ func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claim
 		// published demo API key safe (spec 2026-09-06-02).
 		Demo:   user.Demo,
 		Scopes: scopesFromProperties(token.Properties),
+		pat:    true,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: expiresAt,
 			IssuedAt:  jwt.NewNumericDate(token.CreatedAt),
