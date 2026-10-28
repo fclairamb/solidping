@@ -996,7 +996,9 @@ export function CheckForm({
     () =>
       (availableRegions ?? []).filter(
         (region) =>
-          !region.private && !(type === "browser" && browserCapability(region.capabilities) === "no"),
+          !region.private &&
+          !(type === "browser" && browserCapability(region.capabilities) === "no") &&
+          !(type === "icmp" && region.capabilities?.icmp === "no"),
       ),
     [availableRegions, type],
   );
@@ -1886,6 +1888,7 @@ export function CheckForm({
                         {orderedRegions.map((region) => {
                           const ipv6 = ipv6Capability(region.capabilities);
                           const browser = browserCapability(region.capabilities);
+                          const icmp = region.capabilities?.icmp ?? "unknown";
                           // De-emphasise only when the check is pinned to ipv6 and
                           // the region does not advertise it. Never disabled, never
                           // hidden — the advertised value is a hint, not a gate.
@@ -1910,6 +1913,7 @@ export function CheckForm({
                               data-testid={`region-option-${region.slug}`}
                               data-ipv6={ipv6}
                               data-browser={browser}
+                              data-icmp={icmp}
                               data-crawl={region.capabilities?.crawl ?? "unknown"}
                             >
                               <Checkbox
@@ -1932,6 +1936,18 @@ export function CheckForm({
                                     data-testid={`region-offline-${region.slug}`}
                                   >
                                     {t("regionOutage.offlineBadge")}
+                                  </Badge>
+                                )}
+                                {/* Spec 2026-10-28-06: only a definite "no" speaks up,
+                                    and only for an ICMP check. Never disables. */}
+                                {type === "icmp" && icmp === "no" && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px]"
+                                    title={t("form.icmpNoPingTitle")}
+                                    data-testid={`region-icmp-no-${region.slug}`}
+                                  >
+                                    {t("form.icmpNoPingBadge")}
                                   </Badge>
                                 )}
                                 {/* Icon-only so it stays quiet next to the IPv6

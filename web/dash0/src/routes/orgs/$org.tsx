@@ -1034,7 +1034,9 @@ function OrgLayout() {
   const routerSnapshotIsTorn = pendingOrg !== null && pendingOrg !== org;
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const bugReportEnabled = useBugReportEnabled();
-  const feedback = useFeedback({ enabled: bugReportEnabled, org });
+  // Off on the public pages: they render no dialog here, and /login runs its
+  // own reporter (solidping-business#33) that must not share the shortcut.
+  const feedback = useFeedback({ enabled: bugReportEnabled && !isLoginPage, org });
 
   // Auto switch-org on cross-org navigation. Org access is enforced by
   // token-scope equality on every surface (REST + live WS): a token minted for

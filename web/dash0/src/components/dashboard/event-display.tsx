@@ -612,6 +612,109 @@ export function getEventChannelUid(event: {
   return typeof uid === "string" && uid.length > 0 ? uid : undefined;
 }
 
+// EventIntegrationRef names the integration an integration.* audit event is
+// about. `uid` is set only while the integration can still exist (never on
+// integration.deleted), so callers link only what can be opened.
+export interface EventIntegrationRef {
+  name: string;
+  uid?: string;
+}
+
+// getEventIntegration returns the integration an integration.created /
+// .updated / .deleted event targets, read from the audit target the backend
+// records (audit.PayloadKeyTargetName / PayloadKeyTargetUID). Undefined for
+// every other event type and for rows without a target name.
+export function getEventIntegration(event: {
+  eventType?: string;
+  payload?: Record<string, unknown>;
+}): EventIntegrationRef | undefined {
+  if (!event.eventType?.startsWith("integration.")) return undefined;
+  const name = event.payload?.target_name;
+  if (typeof name !== "string" || name.length === 0) return undefined;
+  const uid = event.payload?.target_uid;
+  return {
+    name,
+    uid:
+      event.eventType !== "integration.deleted" && typeof uid === "string" && uid.length > 0
+        ? uid
+        : undefined,
+  };
+}
+
+export interface EscalatedTarget {
+  type: string;
+  uid?: string;
+  name?: string;
+  onCallUserName?: string;
+}
+
+export interface EscalatedDetail {
+  stepPosition?: number;
+  policyName?: string;
+  targets: EscalatedTarget[];
+}
+
+// getEscalatedDetail reads what an escalation-policy step paged from an
+// incident.escalated payload (names captured at fire time). Rows recorded
+// before targets existed yield an empty list; callers fall back to the
+// policy name, then to nothing.
+export function getEscalatedDetail(event: {
+  eventType?: string;
+  payload?: Record<string, unknown>;
+}): EscalatedDetail | undefined {
+  if (event.eventType !== "incident.escalated") return undefined;
+  const p = event.payload;
+  const str = (v: unknown) => (typeof v === "string" && v.length > 0 ? v : undefined);
+  const raw = Array.isArray(p?.targets) ? (p?.targets as unknown[]) : [];
+  const targets: EscalatedTarget[] = [];
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) continue;
+    const t = item as Record<string, unknown>;
+    const type = str(t.type);
+    if (!type) continue;
+    targets.push({
+      type,
+      uid: str(t.uid),
+      name: str(t.name),
+      onCallUserName: str(t.on_call_user_name),
+    });
+  }
+  return {
+    stepPosition: typeof p?.step_position === "number" ? p.step_position : undefined,
+    policyName: str(p?.policy_name),
+    targets,
+  };
+}
+
+// EventPublicationRef is what a statuspage.incident.* event put on a status
+// page: the public title readers saw, and the incident behind it.
+export interface EventPublicationRef {
+  title: string;
+  incidentUid?: string;
+}
+
+// getEventPublication returns the public title a statuspage.incident.*
+// event (published / updated / resolved) carries (`public_title`), with the
+// incident it publishes. The backend records the incident in the payload
+// (`incident_uid`), not on the event's incidentUid column, so both are read.
+// Undefined for other event types and rows without a title.
+export function getEventPublication(event: {
+  eventType?: string;
+  incidentUid?: string;
+  payload?: Record<string, unknown>;
+}): EventPublicationRef | undefined {
+  if (!event.eventType?.startsWith("statuspage.incident.")) return undefined;
+  const title = event.payload?.public_title;
+  if (typeof title !== "string" || title.length === 0) return undefined;
+  const payloadIncident = event.payload?.incident_uid;
+  const incidentUid =
+    event.incidentUid ||
+    (typeof payloadIncident === "string" && payloadIncident.length > 0
+      ? payloadIncident
+      : undefined);
+  return { title, incidentUid };
+}
+
 // COMMENT_EVENT_TYPE is the event type for user-authored incident comments.
 export const COMMENT_EVENT_TYPE = "incident.comment";
 

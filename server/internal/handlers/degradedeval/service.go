@@ -217,27 +217,40 @@ func (s *Service) checkIncidentOpen(ctx context.Context, checkUID string) (bool,
 	return incident != nil, nil
 }
 
-// probesSince is where the probe window starts: lookBack ago, or when the last
-// check incident resolved if that is later. The failures of an outage that was
-// already reported as down must not open a degraded incident the moment it
-// recovers: every probe of the outage is still inside the window.
+// probesSince is where the probe window starts: lookBack ago, or the last
+// resolve of a check incident or of a degraded incident, whichever is latest.
+//
+// The failures of an outage that was already reported as down must not open a
+// degraded incident the moment it recovers: every probe of the outage is still
+// inside the window. Likewise a resolved degraded incident, manual or automatic,
+// restarts the count: without it, a manual resolve was followed by a fresh
+// incident on the next sweep, because the same failures were still inside the
+// 60-probe window (fclairamb/solidping-business#26).
 func (s *Service) probesSince(ctx context.Context, checkUID string, now time.Time) (time.Time, error) {
 	since := now.Add(-lookBack)
 
-	incident, err := s.db.FindRecentlyResolvedIncidentByCheckUID(ctx, checkUID, since)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return since, nil
-		}
-
+	checkIncident, err := s.db.FindRecentlyResolvedIncidentByCheckUID(ctx, checkUID, since)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return since, fmt.Errorf("find resolved check incident: %w", err)
 	}
 
-	if incident != nil && incident.ResolvedAt != nil && incident.ResolvedAt.After(since) {
-		since = *incident.ResolvedAt
+	since = laterResolve(since, checkIncident)
+
+	degradedIncident, err := s.db.FindLastResolvedDegradedIncident(ctx, checkUID, since)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return since, fmt.Errorf("find resolved degraded incident: %w", err)
 	}
 
-	return since, nil
+	return laterResolve(since, degradedIncident), nil
+}
+
+// laterResolve returns the incident's resolved_at when it is after since.
+func laterResolve(since time.Time, incident *models.Incident) time.Time {
+	if incident != nil && incident.ResolvedAt != nil && incident.ResolvedAt.After(since) {
+		return *incident.ResolvedAt
+	}
+
+	return since
 }
 
 // probes reads the check's recent raw results, newest first, as the rule

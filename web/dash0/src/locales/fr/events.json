@@ -100,6 +100,8 @@
     "org.activation.first_result_received": "Votre premier résultat de contrôle est arrivé.",
     "org.activation.first_notification_configured": "Vous avez configuré votre premier canal de notification.",
     "first_notification_configured_prefix": "Vous avez configuré votre premier canal de notification :",
+    "escalated_step": "Étape {{position}}",
+    "escalated_all_admins": "tous les admins",
     "org.activation.first_incident_paged": "Votre première notification d'incident a été délivrée."
   },
   "links": {

@@ -26,6 +26,9 @@ const (
 	// CodeRegionNoBrowser marks a browser check in a region whose live workers
 	// advertise no headless Chrome.
 	CodeRegionNoBrowser = "REGION_NO_BROWSER"
+	// CodeRegionNoICMP marks an icmp check in a region whose live workers
+	// cannot open an ICMP socket.
+	CodeRegionNoICMP = "REGION_NO_ICMP"
 	// CodeRegionNoPlugin marks a plugin-type check in a region whose live
 	// workers do not advertise the plugin.
 	CodeRegionNoPlugin = "REGION_NO_PLUGIN"
@@ -42,6 +45,8 @@ func (s *Service) regionCapabilityWarnings(
 	warnings := s.ipVersionRegionWarnings(ctx, orgUID, checkType, config, checkRegions)
 
 	warnings = append(warnings, s.browserRegionWarnings(ctx, orgUID, checkType, checkRegions)...)
+
+	warnings = append(warnings, s.icmpRegionWarnings(ctx, orgUID, checkType, checkRegions)...)
 
 	return append(warnings, s.pluginRegionWarnings(ctx, orgUID, checkType, checkRegions)...)
 }
@@ -198,4 +203,47 @@ func browserRegionWarningMessage(lacking, capable []string) string {
 	)
 
 	return builder.String()
+}
+
+// icmpRegionWarnings reports, as a warning, that an icmp check targets a region
+// whose live workers all report they cannot open an ICMP socket (spec
+// 2026-10-28-06): such a region fails every ping and pages. Only an explicit
+// "no" warns; the check is still saved.
+func (s *Service) icmpRegionWarnings(
+	ctx context.Context, orgUID, checkType string, checkRegions []string,
+) []base.ValidationErrorField {
+	if checkerdef.CheckType(checkType) != checkerdef.CheckTypeICMP {
+		return nil
+	}
+
+	effective, err := s.regions.ResolveRegionsForCheck(ctx, checkRegions, orgUID)
+	if err != nil || len(effective) == 0 {
+		return nil
+	}
+
+	index, err := s.regions.CapabilityIndex(ctx, orgUID)
+	if err != nil {
+		return nil
+	}
+
+	var lacking []string
+
+	for _, slug := range effective {
+		if def, known := index[slug]; known && def.ICMPCapability() == regions.CapabilityNo {
+			lacking = append(lacking, regionLabel(def))
+		}
+	}
+
+	if len(lacking) == 0 {
+		return nil
+	}
+
+	return []base.ValidationErrorField{{
+		Name: browserWarningField,
+		Message: "this is an ICMP check, but " + strings.Join(lacking, ", ") +
+			" report no ICMP socket (missing CAP_NET_RAW or ping group) on their live workers, " +
+			"so pings there will not run. The check is still saved - this is only what the region last reported.",
+		Severity: base.SeverityWarning,
+		Code:     CodeRegionNoICMP,
+	}}
 }

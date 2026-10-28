@@ -467,6 +467,7 @@ func TestCapabilityMapPublishesExactlyTheRegistry(t *testing.T) {
 		regions.CapabilityCrawl: regions.CapabilityNo,
 		// Discovery (spec 2026-10-22-04) likewise.
 		regions.CapabilityDiscovery: regions.CapabilityNo,
+		regions.CapabilityICMP:      regions.CapabilityNo,
 	}, caps, "an unpublished capability a worker reports must not leak into the API")
 }
 

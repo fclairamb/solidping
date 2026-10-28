@@ -13,7 +13,10 @@ import {
   getEventCheckName,
   getEventDescription,
   getEventDisconnectReason,
+  getEventIntegration,
   getEventLucideIcon,
+  getEscalatedDetail,
+  getEventPublication,
   getEventRowStripe,
 } from "@/components/dashboard/event-display";
 import { DurationAgo } from "@/components/shared/relative-time";
@@ -87,6 +90,70 @@ function getEventDetail(
     return parts.length > 0 ? parts.join(" · ") : null;
   }
 
+  const escalated = getEscalatedDetail(event);
+  if (escalated) {
+    const parts: ReactNode[] = [];
+    if (escalated.stepPosition !== undefined) {
+      parts.push(
+        <span key="step">{t("descriptions.escalated_step", { position: escalated.stepPosition })}</span>,
+      );
+    }
+    if (escalated.targets.length > 0) {
+      escalated.targets.forEach((target, i) => {
+        const label =
+          target.type === "all_admins"
+            ? t("descriptions.escalated_all_admins")
+            : target.name ?? target.type;
+        let node: ReactNode = <span>{label}</span>;
+        if (target.type === "integration" && target.uid) {
+          node = (
+            <Link
+              to="/orgs/$org/integrations/$integrationUid"
+              params={{ org, integrationUid: target.uid }}
+              className="text-primary hover:underline"
+              data-testid="event-detail-escalated-integration-link"
+            >
+              {label}
+            </Link>
+          );
+        } else if (target.type === "schedule" && target.uid) {
+          node = (
+            <Link
+              to="/orgs/$org/on-call/$uid"
+              params={{ org, uid: target.uid }}
+              className="text-primary hover:underline"
+              data-testid="event-detail-escalated-schedule-link"
+            >
+              {label}
+            </Link>
+          );
+        }
+        parts.push(
+          <span key={`t${i}`}>
+            {node}
+            {target.type === "schedule" && target.onCallUserName
+              ? ` (${target.onCallUserName})`
+              : null}
+          </span>,
+        );
+      });
+    } else if (escalated.policyName) {
+      parts.push(<span key="policy">{escalated.policyName}</span>);
+    }
+    if (parts.length > 0) {
+      return (
+        <>
+          {parts.map((part, i) => (
+            <span key={i}>
+              {i > 0 ? (i === 1 && escalated.stepPosition !== undefined ? " · " : ", ") : null}
+              {part}
+            </span>
+          ))}
+        </>
+      );
+    }
+  }
+
   const regionName = getEventRegionName(event);
   if (regionName) return regionName;
 
@@ -112,6 +179,42 @@ function getEventDetail(
           <span>{channelName}</span>
         )}
       </>
+    );
+  }
+
+  // integration.*: which integration was created / updated / deleted, linked
+  // to its page while it still exists (solidping-business#28).
+  const integration = getEventIntegration(event);
+  if (integration) {
+    return integration.uid ? (
+      <Link
+        to="/orgs/$org/integrations/$integrationUid"
+        params={{ org, integrationUid: integration.uid }}
+        className="text-primary hover:underline"
+        data-testid="event-detail-integration-link"
+      >
+        {integration.name}
+      </Link>
+    ) : (
+      <span>{integration.name}</span>
+    );
+  }
+
+  // statuspage.incident.*: what was published or resolved on the status page,
+  // linked to the incident behind it (solidping-business#30, #31).
+  const publication = getEventPublication(event);
+  if (publication) {
+    return publication.incidentUid ? (
+      <Link
+        to="/orgs/$org/incidents/$incidentUid"
+        params={{ org, incidentUid: publication.incidentUid }}
+        className="text-primary hover:underline"
+        data-testid="event-detail-publication-link"
+      >
+        {publication.title}
+      </Link>
+    ) : (
+      <span>{publication.title}</span>
     );
   }
 

@@ -27,6 +27,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
+	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/checkworker/tasks"
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -767,7 +768,7 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 	// Advertise the plugin types this process loaded: a plugin-type job is
 	// only claimed by a worker that can run it (spec 2026-10-17-05 §17).
 	jobs, nextIn, err := r.backend.ClaimJobs(
-		checkjobsvc.WithPluginTypes(ctx, r.advertisedPluginTypes()),
+		r.claimContext(ctx),
 		worker.UID,
 		worker.Region,
 		limits.Fast,
@@ -881,7 +882,7 @@ func (r *CheckWorker) handleExpressEvent(ctx context.Context, logger *slog.Logge
 
 	worker := r.getWorker()
 	jobs, err := r.backend.ClaimJobsForCheck(
-		checkjobsvc.WithPluginTypes(ctx, r.advertisedPluginTypes()), worker.UID, worker.Region, msg.CheckUID)
+		r.claimContext(ctx), worker.UID, worker.Region, msg.CheckUID)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
 			logger.WarnContext(ctx, "express claim failed",
@@ -2379,4 +2380,12 @@ func (r *CheckWorker) reportStats(reported stats.ReportedStats) {
 	if err := r.dbService.CreateResult(ctx, result); err != nil {
 		r.logger.Error("Failed to save self-stats result", "error", err)
 	}
+}
+
+// claimContext advertises this worker's claim limits: the plugin types it
+// loaded, and whether its ICMP probe said it cannot ping.
+func (r *CheckWorker) claimContext(ctx context.Context) context.Context {
+	ctx = checkjobsvc.WithNoICMP(ctx, checkjobsvc.NoICMPFromCapabilities(egressreport.Current(ctx)))
+
+	return checkjobsvc.WithPluginTypes(ctx, r.advertisedPluginTypes())
 }

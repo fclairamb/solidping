@@ -376,6 +376,65 @@ func TestResolutionAfterCleanProbes(t *testing.T) {
 	r.Equal(models.ResolutionTypeAuto, *closed[0].ResolutionType)
 }
 
+// TestManualResolveRestartsDegradedWindow replays fclairamb/solidping-business#26:
+// five failures open a degraded incident, the user resolves it by hand, and the
+// next sweeps must not reopen it from the same failures, which are still inside
+// the 60-probe window. Only fresh failures after the resolve count.
+func TestManualResolveRestartsDegradedWindow(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newEvalSetup(t, nil)
+
+	s.up(t, 10, 100)
+
+	for range 5 {
+		s.down(t)
+		s.up(t, 2, 100)
+	}
+
+	s.evaluate(t)
+
+	open := s.activeDegraded(t)
+	r.NotNil(open, "5 failures in the window open a degraded incident")
+
+	_, err := s.incidents.ResolveIncident(t.Context(), s.org.Slug, &incidents.ResolveIncidentRequest{
+		IncidentUID: open.UID,
+		Via:         "web",
+	})
+	r.NoError(err)
+	r.Nil(s.activeDegraded(t))
+
+	// Passing probes and several sweeps: the old failures no longer count.
+	for range 3 {
+		s.up(t, 3, 100)
+		s.evaluate(t)
+	}
+
+	r.Len(s.incidentsOfKind(t, models.IncidentKindDegraded), 1, "no reopen after a manual resolve")
+
+	// Four fresh failures: still one short of the rule.
+	for range 4 {
+		s.down(t)
+		s.up(t, 2, 100)
+	}
+
+	s.evaluate(t)
+	r.Nil(s.activeDegraded(t), "only failures after the resolve count, and 4 is not 5")
+
+	// The fifth fresh failure opens a new incident.
+	s.down(t)
+	s.up(t, 1, 100)
+	s.evaluate(t)
+
+	reopened := s.activeDegraded(t)
+	r.NotNil(reopened, "5 fresh failures open a new incident")
+	r.NotEqual(open.UID, reopened.UID)
+	r.EqualValues(5, reopened.Details["degraded_failure_count"])
+	r.Len(s.incidentsOfKind(t, models.IncidentKindDegraded), 2)
+	r.Empty(s.incidentsOfKind(t, models.IncidentKindCheck))
+}
+
 // --- Maintenance is not a slot ---------------------------------------------
 
 // TestMaintenanceProbesAreNotSlots pins the rule at the evaluator level, over

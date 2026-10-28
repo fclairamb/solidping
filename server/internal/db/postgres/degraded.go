@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -60,6 +61,32 @@ func (s *Service) FindActiveDegradedIncident(ctx context.Context, checkUID strin
 		Where("check_uid = ?", checkUID).
 		Where("state = ?", models.IncidentStateActive).
 		Where("deleted_at IS NULL").
+		Limit(1).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return incident, nil
+}
+
+// FindLastResolvedDegradedIncident returns the most recently resolved degraded
+// incident of a check whose resolved_at is at or after since, or sql.ErrNoRows.
+// The degraded evaluator starts its probe window there: a resolve, manual or
+// automatic, means the failures before it are no longer counted.
+func (s *Service) FindLastResolvedDegradedIncident(
+	ctx context.Context, checkUID string, since time.Time,
+) (*models.Incident, error) {
+	incident := new(models.Incident)
+
+	err := s.db.NewSelect().
+		Model(incident).
+		Where("kind = ?", models.IncidentKindDegraded).
+		Where("check_uid = ?", checkUID).
+		Where("state = ?", models.IncidentStateResolved).
+		Where("resolved_at >= ?", since).
+		Where("deleted_at IS NULL").
+		Order("resolved_at DESC").
 		Limit(1).
 		Scan(ctx)
 	if err != nil {

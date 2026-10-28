@@ -153,6 +153,33 @@ no `/bin/sh`.
 
 The name is cosmetic in any case: identity is the keypair, not the name.
 
+## ICMP checks
+
+A fly machine is a Firecracker VM with the kernel default
+`net.ipv4.ping_group_range = "1 0"` (nobody may open a datagram ICMP socket),
+and the published image runs as the distroless `nonroot` user (65532), which has
+no `CAP_NET_RAW` either. Without a fix every ICMP check placed in that region
+fails with:
+
+    listen ip4:icmp 0.0.0.0: socket: operation not permitted
+
+and, since the agent now probes this at start, the region reports `icmp: no`:
+automatic placement skips it and the check form warns. Docker and Kubernetes do
+not hit this (Docker opens the ping group; the Helm chart adds `NET_RAW`).
+
+Fix: build the agent from `deploy/fly/Dockerfile` (`USER 0:0` on top of the
+published image; root in the VM has `CAP_NET_RAW`). In your `fly.<region>.toml`
+replace the `image = ...` line of `[build]` with:
+
+```toml
+[build]
+  dockerfile = "Dockerfile"
+```
+
+Pin the tag with `fly deploy --build-arg SOLIDPING_TAG=<tag>`. The VM is
+single-tenant and has no inbound port, so running as root holds nothing but the
+agent key.
+
 ## The multi-machine story
 
 ```bash

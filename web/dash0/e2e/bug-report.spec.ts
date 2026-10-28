@@ -120,6 +120,37 @@ test.describe("Bug report", () => {
   });
 });
 
+// solidping-business#33: a visitor who cannot sign in could not report it.
+test.describe("Bug report on the login page", () => {
+  test("a signed-out visitor reports a bug from the login page", async ({ page }) => {
+    await stubBugReport(page, true);
+    let submitted = "";
+    await page.route("**/api/mgmt/report", async (route) => {
+      submitted = route.request().postData() || "";
+      await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    });
+
+    await page.goto("orgs/test/login");
+    await expect(page.getByTestId("login-submit")).toBeVisible();
+
+    await page.getByTestId("login-report-bug").click();
+    const comment = page.getByTestId("feedback-comment");
+    await comment.waitFor({ state: "visible", timeout: CAPTURE_TIMEOUT });
+    await comment.fill("Cannot sign in");
+    await page.getByTestId("feedback-submit").click();
+
+    await expect.poll(() => submitted).toContain("Cannot sign in");
+    expect(submitted).toContain('name="org"');
+  });
+
+  test("feature off: no report link on the login page", async ({ page }) => {
+    await stubBugReport(page, false);
+    await page.goto("orgs/test/login");
+    await expect(page.getByTestId("login-submit")).toBeVisible();
+    await expect(page.getByTestId("login-report-bug")).toHaveCount(0);
+  });
+});
+
 // Annotation tools (spec 2026-10-09-01).
 async function openDialog(page: Page) {
   await stubBugReport(page, true);

@@ -1381,6 +1381,9 @@ type Service interface {
 	// FindActiveDegradedIncident returns the open degraded incident for a check,
 	// if any. sql.ErrNoRows when there is none.
 	FindActiveDegradedIncident(ctx context.Context, checkUID string) (*models.Incident, error)
+	// FindLastResolvedDegradedIncident returns the latest degraded incident of a
+	// check resolved at or after since. sql.ErrNoRows when there is none.
+	FindLastResolvedDegradedIncident(ctx context.Context, checkUID string, since time.Time) (*models.Incident, error)
 	// FindActiveBurnIncident returns the open burn incident for one
 	// (SLO, policy) pair, if any. sql.ErrNoRows when there is none.
 	FindActiveBurnIncident(ctx context.Context, sloUID, policyUID string) (*models.Incident, error)

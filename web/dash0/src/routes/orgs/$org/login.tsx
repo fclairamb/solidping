@@ -22,17 +22,21 @@ import {
   KeyRound,
   Loader2,
   Building2,
+  Bug,
   Mail,
   PlayCircle,
 } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useVersion, useProviders } from "@/api/hooks";
 import {
+  useBugReportEnabled,
   useDemoConfig,
   useDeploymentMode,
   usePublicConfigLoading,
   useRunMode,
 } from "@/api/public-config";
+import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
+import { useFeedback } from "@/components/feedback/useFeedback";
 import {
   demoAutoLoginOwnsRedirect,
   demoEntryDecision,
@@ -61,6 +65,7 @@ import {
 } from "@/lib/login-destination";
 import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";
 import { ProviderIcon } from "@/components/auth/provider-icon";
+import { PromotedMethodButton } from "@/components/auth/promoted-method-button";
 import { refreshAccessToken } from "@/lib/token-refresh";
 import { CHANGELOG_URL, marketingSiteUrl } from "@/lib/marketing-url";
 
@@ -133,6 +138,12 @@ function LoginPage() {
     applyLoginResponse,
   } = auth;
   const { data: versionData } = useVersion();
+  // A sign-in problem is exactly what a visitor cannot report from inside the
+  // app: offer the in-app bug report here too (solidping-business#33). The
+  // report endpoint is anonymous; the org slug still tells where it came from.
+  const bugReportEnabled = useBugReportEnabled();
+  const feedback = useFeedback({ enabled: bugReportEnabled, org });
+  const { t: tFeedback } = useTranslation("feedback");
   const deploymentMode = useDeploymentMode();
   const runMode = useRunMode();
   const { data: providersData } = useProviders();
@@ -713,9 +724,15 @@ function LoginPage() {
               {(promotedProvider || promotePasskey) && (
                 <div className="mb-3" data-testid="login-last-used">
                   {promotedProvider ? (
-                    <Button
-                      variant="outline"
-                      className="w-full"
+                    <PromotedMethodButton
+                      icon={
+                        <ProviderIcon
+                          type={promotedProvider.type}
+                          className="h-4 w-4"
+                        />
+                      }
+                      label={t("continueWith", { name: promotedProvider.name })}
+                      badge={t("lastUsed")}
                       disabled={isLoading}
                       onClick={() =>
                         // Same helper the grid below uses, so exactly one
@@ -727,39 +744,16 @@ function LoginPage() {
                         })
                       }
                       data-testid={`login-oauth-${promotedProvider.type}-promoted`}
-                    >
-                      <ProviderIcon
-                        type={promotedProvider.type}
-                        className="mr-2 h-4 w-4"
-                      />
-                      {t("continueWith", { name: promotedProvider.name })}
-                      <Badge
-                        variant="secondary"
-                        className="ml-2"
-                        data-testid="login-last-used-badge"
-                      >
-                        {t("lastUsed")}
-                      </Badge>
-                    </Button>
+                    />
                   ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={handlePasskeyLogin}
+                    <PromotedMethodButton
+                      icon={<KeyRound className="h-4 w-4" />}
+                      label={t("twoFactor.signInWithPasskey")}
+                      badge={t("lastUsed")}
                       disabled={isLoading}
+                      onClick={handlePasskeyLogin}
                       data-testid="passkey-login-button-promoted"
-                    >
-                      <KeyRound className="mr-2 h-4 w-4" />
-                      {t("twoFactor.signInWithPasskey")}
-                      <Badge
-                        variant="secondary"
-                        className="ml-2"
-                        data-testid="login-last-used-badge"
-                      >
-                        {t("lastUsed")}
-                      </Badge>
-                    </Button>
+                    />
                   )}
                   <div className="relative my-3">
                     <div className="absolute inset-0 flex items-center">
@@ -936,6 +930,29 @@ function LoginPage() {
               {runMode}
             </span>
           )}
+        </div>
+      )}
+
+      {/* Discreet, under the card: it must not compete with signing in. */}
+      {bugReportEnabled && (
+        <div className="mt-2 text-center text-xs text-muted-foreground">
+          <button
+            type="button"
+            onClick={() => void feedback.open()}
+            disabled={feedback.isCapturing}
+            className="inline-flex items-center gap-1 underline-offset-4 hover:underline disabled:opacity-50"
+            data-testid="login-report-bug"
+          >
+            <Bug className="h-3 w-3" />
+            {tFeedback("trigger_title")}
+          </button>
+          <FeedbackDialog
+            open={feedback.isOpen}
+            onOpenChange={(next) => (next ? null : feedback.close())}
+            screenshot={feedback.screenshot}
+            isCapturing={feedback.isCapturing}
+            onSubmit={feedback.submit}
+          />
         </div>
       )}
     </AuthSplitLayout>

@@ -100,6 +100,8 @@
     "org.activation.first_result_received": "Your first check result has come in.",
     "org.activation.first_notification_configured": "You have set up your first notification channel.",
     "first_notification_configured_prefix": "You have set up your first notification channel:",
+    "escalated_step": "Step {{position}}",
+    "escalated_all_admins": "all admins",
     "org.activation.first_incident_paged": "Your first incident notification was delivered."
   },
   "links": {

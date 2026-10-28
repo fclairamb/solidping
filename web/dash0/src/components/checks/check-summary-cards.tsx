@@ -25,6 +25,7 @@ export function CheckSummaryCards({
   // the shared util so only hard failures show the red "currently down" card.
   const isDown = statusStyle(summaryStatus).isDown;
   const isStale = summaryStatus === "stale";
+  const isValidating = summaryStatus === "validating";
   // The "status for X" timer counts from when the check entered its CURRENT
   // status (checks.status_changed_at), not from the last raw result.
   const statusSince = check.statusChangedAt ?? check.lastStatusChange?.time;
@@ -48,7 +49,7 @@ export function CheckSummaryCards({
               <ArrowUp className="h-4 w-4 shrink-0 text-status-ok" />
             ) : isDown ? (
               <ArrowDown className="h-4 w-4 shrink-0 text-status-error" />
-            ) : isStale ? (
+            ) : isStale || isValidating ? (
               <Clock className="h-4 w-4 shrink-0" />
             ) : (
               <ArrowUp className="h-4 w-4" />
@@ -59,7 +60,9 @@ export function CheckSummaryCards({
                 ? t("detail.summary.currentlyDown")
                 : isStale
                   ? t("detail.summary.noDataFor")
-                  : t("detail.summary.statusFallback")}
+                  : isValidating
+                    ? t("detail.summary.validatingFor")
+                    : t("detail.summary.statusFallback")}
           </div>
           <div className="text-base font-semibold tabular-nums tracking-tight sm:text-2xl" data-testid="summary-status-duration">
             {statusSince ? (

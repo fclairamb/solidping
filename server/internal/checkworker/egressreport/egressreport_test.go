@@ -146,3 +146,13 @@ func TestWithBrowserEmitsAStorableName(t *testing.T) {
 		egressreport.WithBrowser([]string{"ipv4", "ipv6"}, true),
 	))
 }
+
+func TestWithICMPNeverTurnsUnknownIntoNo(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Nil(egressreport.WithICMP(nil, true))
+	r.Equal([]string{"ipv4", "icmp"}, egressreport.WithICMP([]string{"ipv4"}, true))
+	r.Equal([]string{"ipv4"}, egressreport.WithICMP([]string{"ipv4"}, false))
+}

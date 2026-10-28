@@ -81,6 +81,10 @@ const (
 	// CapabilityDiscovery means the worker runs LAN discovery chunks (spec
 	// 2026-10-22-04): only an agent whose operator enabled discovery reports it.
 	CapabilityDiscovery = "discovery"
+	// CapabilityICMP means the worker can open an ICMP socket (unprivileged
+	// datagram or raw), self-probed at start (spec 2026-10-28-06). Without it
+	// every ICMP check fails on that worker.
+	CapabilityICMP = "icmp"
 )
 
 // CapabilityState is the THREE-state answer to "does this worker have X?".

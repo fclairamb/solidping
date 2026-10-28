@@ -49,6 +49,14 @@ describe("docs links per page", () => {
     });
   }
 
+  it("the check page's Dependencies card links to the dependencies docs page", () => {
+    const source = readFileSync(
+      join(SRC, "components", "checks", "dependencies-card.tsx"),
+      "utf8",
+    );
+    expect(source).toContain('<DocsLink href="/docs/features/check-dependencies" />');
+  });
+
   it("the checks list puts its check-types docs entry in the more-actions menu, not the header", () => {
     const source = read("orgs/$org/checks.index.tsx");
     expect(source).toContain(

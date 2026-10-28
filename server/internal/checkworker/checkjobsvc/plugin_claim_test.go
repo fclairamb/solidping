@@ -116,3 +116,49 @@ func TestPluginJobsOnlyReachCapableWorkers(t *testing.T) {
 		r.True(jobUIDs(claimed)[privatePlugin.UID], "an agent advertising the plugin claims its job")
 	})
 }
+
+func TestNoICMPFromCapabilities(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.False(checkjobsvc.NoICMPFromCapabilities(nil), "unknown keeps claiming")
+	r.True(checkjobsvc.NoICMPFromCapabilities([]string{"ipv4"}))
+	r.False(checkjobsvc.NoICMPFromCapabilities([]string{"ipv4", "icmp"}))
+}
+
+// A worker whose ICMP probe said no must not claim icmp jobs.
+//
+//nolint:paralleltest // shares database state, like its siblings in this package
+func TestICMPJobsSkipIncapableWorkers(t *testing.T) {
+	r := require.New(t)
+
+	dbSvc, ctx := setupTestDB(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	svc := checkjobsvc.NewService(dbSvc.DB())
+	org := createTestOrg(t, ctx, dbSvc)
+	due := time.Now().Add(-time.Minute)
+	cloud := "eu-west-1"
+
+	check := models.NewCheck(org.UID, "icmp-"+uuid.New().String()[:8], "icmp")
+	check.Config = models.JSONMap{"host": "1.1.1.1"}
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	job := new(models.CheckJob)
+	r.NoError(dbSvc.DB().NewSelect().Model(job).Where("check_uid = ?", check.UID).Scan(ctx))
+	_, err := dbSvc.DB().NewUpdate().Model((*models.CheckJob)(nil)).
+		Set("scheduled_at = ?", due).Set("effective_scheduled_at = ?", due).Set("region = ?", cloud).
+		Where("uid = ?", job.UID).Exec(ctx)
+	r.NoError(err)
+
+	worker := createTestWorker(t, ctx, dbSvc, &cloud)
+
+	claimed, _, err := svc.ClaimJobs(checkjobsvc.WithNoICMP(ctx, true), worker.UID, &cloud, 20, 20, 5*time.Minute)
+	r.NoError(err)
+	r.False(jobUIDs(claimed)[job.UID], "a worker that cannot ping claimed an icmp job")
+
+	claimed, _, err = svc.ClaimJobs(ctx, worker.UID, &cloud, 20, 20, 5*time.Minute)
+	r.NoError(err)
+	r.True(jobUIDs(claimed)[job.UID], "positive control: a capable worker claims it")
+}

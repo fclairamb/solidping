@@ -587,10 +587,10 @@ func drainReplies(conn net.PacketConn, buf []byte, state *burstState, matcher *r
 // UDP (unprivileged) kind, the ICMP protocol number for reply parsing, and any
 // setup error.
 func listenICMP(isIPv6 bool, ttl int) (net.PacketConn, bool, int, error) {
-	network, rawNetwork, listenAddr, proto := "udp4", "ip4:icmp", "0.0.0.0", protocolICMP
+	network, rawNetwork, listenAddr, proto := "udp4", "ip4:icmp", anyIPv4, protocolICMP
 
 	if isIPv6 {
-		network, rawNetwork, listenAddr, proto = "udp6", "ip6:ipv6-icmp", "::", protocolICMPv6
+		network, rawNetwork, listenAddr, proto = "udp6", "ip6:ipv6-icmp", anyIPv6, protocolICMPv6
 	}
 
 	useUDP := true
@@ -601,7 +601,7 @@ func listenICMP(isIPv6 bool, ttl int) (net.PacketConn, bool, int, error) {
 
 		conn, err = icmp.ListenPacket(rawNetwork, listenAddr)
 		if err != nil {
-			return nil, false, 0, err
+			return nil, false, 0, noSocketError(err)
 		}
 	}
 
