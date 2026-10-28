@@ -2137,7 +2137,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// shared by the authed admin routes (below) and the public routes (further
 	// down, outside RequireAuth).
 	statusSubscribersService := statussubscribers.NewService(s.dbService, s.services.Credentials,
-		statussubscribers.WithEgressGuard(s.services.EgressGuard))
+		statussubscribers.WithEgressGuard(s.services.EgressGuard),
+		statussubscribers.WithConfirmBudget(s.config.StatusSubscribers))
 	statusSubscribersHandler := statussubscribers.NewHandler(
 		statusSubscribersService, s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config)
 	// Authed admin: list (count + redactable addresses) and remove.
@@ -2250,9 +2251,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.GET("/public/custom-domains/allowed", statusPagesHandler.CustomDomainAllowed)
 
 	// Public status-page subscription endpoints (no authentication). The
-	// subscribe endpoint inherits the global per-IP rate limit on /api/v1/;
-	// double opt-in is the primary anti-abuse control. Confirm/unsubscribe are
-	// single-purpose token links that render an HTML landing page.
+	// subscribe endpoint inherits the global per-IP rate limit on /api/v1/,
+	// which is far too loose to protect a third-party mailbox on its own, so
+	// the confirm mail is budgeted per recipient address (across all pages),
+	// per page and per trusted client IP (status_subscribers.* config); over
+	// budget it still answers 202 and sends nothing. A live confirmed
+	// subscription is never touched by a repeat subscribe (no mail, same 202),
+	// so the endpoint cannot cancel a subscriber nor reveal one. Confirm links
+	// expire after 7 days and the state-cleanup job reaps the unconfirmed rows
+	// (spec 2026-10-28-02). Confirm/unsubscribe are single-purpose token links
+	// that render an HTML landing page.
 	// Email-only, public. Its operator-side sibling deliberately lives at
 	// `.../subscribers/endpoints` — see the comment there for why they cannot
 	// share this pattern.

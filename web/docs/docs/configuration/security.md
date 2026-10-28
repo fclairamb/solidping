@@ -105,6 +105,22 @@ To do any of that, sign in to the dashboard, or with `sp auth login`. A token ca
 
 Adding a passkey sends you an email, with a link to your account security page: a passkey signs in to every organization of the account and survives a password reset, so one you did not add must not go unnoticed.
 
+## Status-Page Subscriptions Are Budgeted
+
+Anyone can subscribe an email address to a public status page, with no account. The address then receives a confirm link (double opt-in). To keep that form from flooding a third party's mailbox from your mail domain, the confirm email has three hourly budgets:
+
+| Variable | Default | Counts |
+|---|---|---|
+| `SP_STATUS_SUBSCRIBERS_CONFIRM_PER_RECIPIENT_PER_HOUR` | `3` | emails to one address, across every status page |
+| `SP_STATUS_SUBSCRIBERS_CONFIRM_PER_PAGE_PER_HOUR` | `100` | emails sent by one status page |
+| `SP_STATUS_SUBSCRIBERS_CONFIRM_PER_IP_PER_HOUR` | `20` | emails one client IP can trigger |
+
+`0` turns a budget off. The client IP follows `SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES`, like the rate limiter.
+
+Over budget, the form still answers `202` but sends nothing. Subscribing an address that is already confirmed changes nothing and sends nothing either, with the same `202`. So the form tells nobody whether an address is subscribed, and nobody can cancel someone else's subscription through it.
+
+A confirm link expires after 7 days. The cleanup job then deletes the unconfirmed subscription.
+
 ## Super-Admin Impersonation
 
 A super admin can sign in as another user to see exactly what they see: **Server → Users**, then the eye icon on the user's row. It is meant for support and debugging, and it is built so it cannot become an account takeover:

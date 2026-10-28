@@ -49,7 +49,7 @@ func newSubSetup(t *testing.T) *subSetup {
 func (s *subSetup) subscribe(t *testing.T, email string) *statussubscribers.SubscribeResult {
 	t.Helper()
 
-	res, err := s.svc.Subscribe(t.Context(), s.org.Slug, s.page.UID,
+	res, err := s.svc.Subscribe(t.Context(), s.org.Slug, s.page.UID, "",
 		&statussubscribers.SubscribeRequest{Email: email})
 	require.NoError(t, err)
 
@@ -87,7 +87,7 @@ func TestSubscribeInvalidEmail(t *testing.T) {
 	r := require.New(t)
 	s := newSubSetup(t)
 
-	_, err := s.svc.Subscribe(t.Context(), s.org.Slug, s.page.UID,
+	_, err := s.svc.Subscribe(t.Context(), s.org.Slug, s.page.UID, "",
 		&statussubscribers.SubscribeRequest{Email: "not-an-email"})
 	r.ErrorIs(err, statussubscribers.ErrInvalidEmail)
 }
@@ -247,7 +247,7 @@ func TestSubscribeUnknownPage(t *testing.T) {
 	r := require.New(t)
 	s := newSubSetup(t)
 
-	_, err := s.svc.Subscribe(t.Context(), s.org.Slug, "no-such-page",
+	_, err := s.svc.Subscribe(t.Context(), s.org.Slug, "no-such-page", "",
 		&statussubscribers.SubscribeRequest{Email: "x@example.com"})
 	r.ErrorIs(err, statussubscribers.ErrStatusPageNotFound)
 }

@@ -242,14 +242,14 @@ func TestSubscribingToALockedPageRequiresTheUnlock(t *testing.T) {
 	r.NoError(s.dbSvc.UpdateStatusPage(ctx, s.page.UID,
 		&models.StatusPageUpdate{Visibility: &visibility, PasswordHash: &hash}))
 
-	_, err := s.svc.Subscribe(ctx, s.org.Slug, s.page.UID,
+	_, err := s.svc.Subscribe(ctx, s.org.Slug, s.page.UID, "",
 		&statussubscribers.SubscribeRequest{Email: "stranger@example.com"})
 	r.ErrorIs(err, statuspagelock.ErrLocked)
 
 	// Positive control: with a grant on the context (what the router installs
 	// from a valid unlock cookie) the very same call succeeds.
 	granted := statuspagelock.WithGrant(ctx, func(*models.StatusPage) bool { return true })
-	_, err = s.svc.Subscribe(granted, s.org.Slug, s.page.UID,
+	_, err = s.svc.Subscribe(granted, s.org.Slug, s.page.UID, "",
 		&statussubscribers.SubscribeRequest{Email: "stranger@example.com"})
 	r.NoError(err)
 }

@@ -7,13 +7,16 @@ package statussubscribers
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"net/mail"
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -64,6 +67,9 @@ type Service struct {
 	// than failing at every delivery. nil means "no policy": every https URL
 	// is accepted (tests that do not exercise the policy).
 	guard *egress.Guard
+	// budget caps the double opt-in mails of the public subscribe endpoint
+	// (spec 2026-10-28-02). Defaults to config.DefaultStatusSubscribersConfig.
+	budget config.StatusSubscribersConfig
 }
 
 // Option configures the subscribers service.
@@ -78,9 +84,23 @@ func WithEgressGuard(guard *egress.Guard) Option {
 	return func(s *Service) { s.guard = guard }
 }
 
+// WithConfirmBudget sets the per-recipient, per-page and per-IP hourly budgets
+// of the confirm mail. A budget of 0 is not enforced.
+func WithConfirmBudget(budget config.StatusSubscribersConfig) Option {
+	return func(s *Service) { s.budget = budget }
+}
+
+// confirmBudgetWindow is the sliding window every confirm-mail budget counts on.
+const confirmBudgetWindow = time.Hour
+
+// confirmCounterPrefix namespaces the confirm-mail counters in the global
+// state entries. The recipient key carries a hash of the address, never the
+// address itself (PII).
+const confirmCounterPrefix = "status_subscriber_confirm:"
+
 // NewService creates a new status subscribers service.
 func NewService(dbService db.Service, creds credentials.Service, opts ...Option) *Service {
-	svc := &Service{db: dbService, creds: creds}
+	svc := &Service{db: dbService, creds: creds, budget: config.DefaultStatusSubscribersConfig()}
 	for _, opt := range opts {
 		opt(svc)
 	}
@@ -164,7 +184,19 @@ type SubscribeResult struct {
 	// update fan-out: the recipient is subscribing to a page.
 	PageLogoURL      *string
 	PageHideBranding bool
+	// AlreadyConfirmed: the address already holds a live, confirmed
+	// subscription. Nothing changed and no mail is due.
 	AlreadyConfirmed bool
+	// Throttled: a confirm-mail budget is spent. Nothing changed and no mail
+	// is due. Subscriber is nil when no row existed.
+	Throttled bool
+}
+
+// NeedsConfirmMail reports whether the caller must send the confirm mail.
+// The public endpoint answers the same 202 either way, so it reveals neither
+// whether an address is subscribed nor whether a budget is spent.
+func (r *SubscribeResult) NeedsConfirmMail() bool {
+	return r != nil && r.Subscriber != nil && !r.AlreadyConfirmed && !r.Throttled
 }
 
 // generateToken returns a URL-safe, unguessable opaque token.
@@ -191,14 +223,15 @@ func normalizeEmail(raw string) (string, error) {
 	return email, nil
 }
 
-// Subscribe starts a (re)subscription. The returned subscriber is always
-// unconfirmed with a fresh confirm token — a confirm mail must be sent. If a
-// live unconfirmed/confirmed row already exists it is reused/soft-undeleted
-// rather than duplicated.
+// Subscribe starts a (re)subscription on behalf of clientIP (trusted-proxy
+// resolution; "" skips the per-IP budget). A new, unconfirmed or soft-deleted
+// row gets a fresh confirm token and NeedsConfirmMail reports true. A live
+// confirmed subscription is left untouched (AlreadyConfirmed), and so is
+// everything once a confirm-mail budget is spent (Throttled).
 //
 //nolint:cyclop // validation of optional scope/incident fields requires several branches
 func (s *Service) Subscribe(
-	ctx context.Context, orgSlug, statusPageUID string, req *SubscribeRequest,
+	ctx context.Context, orgSlug, statusPageUID, clientIP string, req *SubscribeRequest,
 ) (*SubscribeResult, error) {
 	// Public self-serve is email-only, explicitly. The channel field is
 	// accepted so a mistaken client gets a clear error rather than silently
@@ -259,6 +292,50 @@ func (s *Service) Subscribe(
 		}
 	}
 
+	result := &SubscribeResult{
+		PageName:         page.Name,
+		PageSlug:         page.Slug,
+		OrgSlug:          org.Slug,
+		PageLogoURL:      statuspageassets.PublicURL(page.Settings.LogoFileUID()),
+		PageHideBranding: page.Settings.HideBranding(),
+	}
+
+	// Match any prior row for this tuple (including soft-deleted) so a returning
+	// visitor revives their existing subscription rather than creating a
+	// duplicate that would collide with the live unique index once confirmed.
+	existing, err := s.db.FindAnySubscriber(ctx, page.UID, email, scope, incidentUID)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+
+		existing = nil
+	}
+
+	// A live, confirmed subscription stays exactly as it is: re-subscribing it
+	// would null confirmed_at and rotate the unsubscribe token, letting anyone
+	// who knows an address silently stop its notifications.
+	if existing != nil && existing.DeletedAt == nil && existing.ConfirmedAt != nil {
+		result.Subscriber = existing
+		result.AlreadyConfirmed = true
+
+		return result, nil
+	}
+
+	// Over budget the row is left untouched too: rotating its confirm token
+	// without mailing the new one would void the links already sent.
+	allowed, err := s.spendConfirmBudget(ctx, page.UID, email, clientIP)
+	if err != nil {
+		return nil, err
+	}
+
+	if !allowed {
+		result.Subscriber = existing
+		result.Throttled = true
+
+		return result, nil
+	}
+
 	confirmToken, err := generateToken()
 	if err != nil {
 		return nil, err
@@ -270,50 +347,75 @@ func (s *Service) Subscribe(
 	}
 
 	sub, err := s.upsertSubscriber(
-		ctx, org.UID, page.UID, email, scope, incidentUID, confirmToken, unsubToken)
+		ctx, existing, org.UID, page.UID, email, scope, incidentUID, confirmToken, unsubToken)
 	if err != nil {
 		return nil, err
 	}
 
-	return &SubscribeResult{
-		Subscriber:       sub,
-		PageName:         page.Name,
-		PageSlug:         page.Slug,
-		OrgSlug:          org.Slug,
-		PageLogoURL:      statuspageassets.PublicURL(page.Settings.LogoFileUID()),
-		PageHideBranding: page.Settings.HideBranding(),
-	}, nil
+	result.Subscriber = sub
+
+	return result, nil
 }
 
-// upsertSubscriber reuses an existing live row (refreshing tokens + resetting
-// confirmation) or inserts a new unconfirmed row.
+// spendConfirmBudget counts one confirm mail against the per-client-IP,
+// per-recipient and per-page budgets, in that order, and reports whether all
+// of them still had room. The first spent budget stops the count, so a
+// refused attempt does not eat into the later budgets. clientIP "" skips the
+// IP budget.
+func (s *Service) spendConfirmBudget(ctx context.Context, pageUID, email, clientIP string) (bool, error) {
+	recipientHash := sha256.Sum256([]byte(email))
+
+	budgets := []struct {
+		key   string
+		limit int
+	}{
+		{confirmCounterPrefix + "ip:" + clientIP, s.budget.ConfirmPerIPPerHour},
+		{confirmCounterPrefix + "rcpt:" + hex.EncodeToString(recipientHash[:]), s.budget.ConfirmPerRecipientPerHour},
+		{confirmCounterPrefix + "page:" + pageUID, s.budget.ConfirmPerPagePerHour},
+	}
+
+	for i, budget := range budgets {
+		if budget.limit <= 0 || (i == 0 && clientIP == "") {
+			continue
+		}
+
+		limited, err := s.db.BumpGlobalCounter(ctx, budget.key, budget.limit, confirmBudgetWindow)
+		if err != nil {
+			return false, err
+		}
+
+		if limited {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+// upsertSubscriber revives existing (soft-deleted or unconfirmed: refreshed
+// tokens, confirmation reset) or, when it is nil, inserts a new unconfirmed row.
 func (s *Service) upsertSubscriber(
 	ctx context.Context,
+	existing *models.StatusPageSubscriber,
 	orgUID, pageUID, email string,
 	scope models.SubscriberScope,
 	incidentUID *string,
 	confirmToken, unsubToken string,
 ) (*models.StatusPageSubscriber, error) {
-	// Match any prior row for this tuple (including soft-deleted) so a returning
-	// visitor revives their existing subscription rather than creating a
-	// duplicate that would collide with the live unique index once confirmed.
-	existing, err := s.db.FindAnySubscriber(ctx, pageUID, email, scope, incidentUID)
-	if err == nil && existing != nil {
+	if existing != nil {
 		// Reuse the row: soft-undelete, refresh tokens, require re-confirmation.
 		if reErr := s.db.ResubscribeSubscriber(ctx, existing.UID, confirmToken, unsubToken); reErr != nil {
 			return nil, reErr
 		}
 
+		sentAt := nowUTC()
 		existing.ConfirmToken = confirmToken
 		existing.UnsubscribeToken = unsubToken
+		existing.ConfirmSentAt = &sentAt
 		existing.ConfirmedAt = nil
 		existing.DeletedAt = nil
 
 		return existing, nil
-	}
-
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
 	}
 
 	sub := models.NewStatusPageSubscriber(orgUID, pageUID, email, scope)
@@ -349,6 +451,12 @@ func (s *Service) Confirm(ctx context.Context, token string) (*ConfirmResult, er
 		}
 
 		return nil, err
+	}
+
+	// An unconfirmed row past its confirm TTL is refused like an unknown
+	// token; the state-cleanup job reaps it.
+	if sub.ConfirmExpired(nowUTC()) {
+		return nil, ErrInvalidToken
 	}
 
 	if err := s.db.ConfirmSubscriber(ctx, sub.UID, nowUTC()); err != nil {

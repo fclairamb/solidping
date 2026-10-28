@@ -350,14 +350,14 @@ func TestPublicSubscribeStaysEmailOnly(t *testing.T) {
 	s := newSubSetup(t)
 
 	channel := "webhook"
-	_, err := s.svc.Subscribe(t.Context(), s.org.Slug, s.page.UID, &statussubscribers.SubscribeRequest{
+	_, err := s.svc.Subscribe(t.Context(), s.org.Slug, s.page.UID, "", &statussubscribers.SubscribeRequest{
 		Email: "someone@example.com", Channel: &channel,
 	})
 	r.ErrorIs(err, statussubscribers.ErrPublicChannelNotAllowed)
 
 	// Positive control: the email channel still works from the public path.
 	email := "email"
-	_, err = s.svc.Subscribe(t.Context(), s.org.Slug, s.page.UID, &statussubscribers.SubscribeRequest{
+	_, err = s.svc.Subscribe(t.Context(), s.org.Slug, s.page.UID, "", &statussubscribers.SubscribeRequest{
 		Email: "someone@example.com", Channel: &email,
 	})
 	r.NoError(err)
