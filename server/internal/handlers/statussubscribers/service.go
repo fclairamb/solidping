@@ -223,33 +223,28 @@ func normalizeEmail(raw string) (string, error) {
 	return email, nil
 }
 
-// Subscribe starts a (re)subscription on behalf of clientIP (trusted-proxy
-// resolution; "" skips the per-IP budget). A new, unconfirmed or soft-deleted
-// row gets a fresh confirm token and NeedsConfirmMail reports true. A live
-// confirmed subscription is left untouched (AlreadyConfirmed), and so is
-// everything once a confirm-mail budget is spent (Throttled).
-//
-//nolint:cyclop // validation of optional scope/incident fields requires several branches
-func (s *Service) Subscribe(
-	ctx context.Context, orgSlug, statusPageUID, clientIP string, req *SubscribeRequest,
-) (*SubscribeResult, error) {
+// parseSubscribeRequest validates a public subscribe body: email channel only,
+// a well-formed address, and a known scope with its incident when required.
+func parseSubscribeRequest(
+	req *SubscribeRequest,
+) (string, models.SubscriberScope, *string, error) {
 	// Public self-serve is email-only, explicitly. The channel field is
 	// accepted so a mistaken client gets a clear error rather than silently
 	// creating an email subscription it did not ask for.
 	if req.Channel != nil && *req.Channel != "" && *req.Channel != string(models.SubscriberChannelEmail) {
-		return nil, ErrPublicChannelNotAllowed
+		return "", "", nil, ErrPublicChannelNotAllowed
 	}
 
 	email, err := normalizeEmail(req.Email)
 	if err != nil {
-		return nil, err
+		return "", "", nil, err
 	}
 
 	scope := models.SubscriberScopePage
 	if req.Scope != nil && *req.Scope != "" {
 		scope = models.SubscriberScope(*req.Scope)
 		if !scope.IsValid() {
-			return nil, ErrInvalidScope
+			return "", "", nil, ErrInvalidScope
 		}
 	}
 
@@ -257,24 +252,32 @@ func (s *Service) Subscribe(
 
 	if scope == models.SubscriberScopeIncident {
 		if req.IncidentUID == nil || *req.IncidentUID == "" {
-			return nil, ErrIncidentRequired
+			return "", "", nil, ErrIncidentRequired
 		}
 
 		incidentUID = req.IncidentUID
 	}
 
+	return email, scope, incidentUID, nil
+}
+
+// resolveSubscribePage finds the org and the public, unlocked status page a
+// visitor subscribes to, and checks the incident of an incident-scoped one.
+func (s *Service) resolveSubscribePage(
+	ctx context.Context, orgSlug, statusPageUID string, incidentUID *string,
+) (*models.Organization, *models.StatusPage, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
-		return nil, ErrOrganizationNotFound
+		return nil, nil, ErrOrganizationNotFound
 	}
 
 	page, err := s.db.GetStatusPage(ctx, org.UID, statusPageUID)
 	if err != nil || page == nil {
-		return nil, ErrStatusPageNotFound
+		return nil, nil, ErrStatusPageNotFound
 	}
 
 	if !statuspagelock.Visible(page) {
-		return nil, ErrStatusPageNotFound
+		return nil, nil, ErrStatusPageNotFound
 	}
 
 	// The subscribe FORM sits behind the unlock — a page shared with a
@@ -283,13 +286,34 @@ func (s *Service) Subscribe(
 	// notifier.go never consults visibility, so locking a page down does not
 	// silently stop the notifications people already opted into.
 	if !statuspagelock.Allows(ctx, page) {
-		return nil, statuspagelock.ErrLocked
+		return nil, nil, statuspagelock.ErrLocked
 	}
 
 	if incidentUID != nil {
 		if _, incErr := s.db.GetIncident(ctx, org.UID, *incidentUID); incErr != nil {
-			return nil, ErrIncidentNotFound
+			return nil, nil, ErrIncidentNotFound
 		}
+	}
+
+	return org, page, nil
+}
+
+// Subscribe starts a (re)subscription on behalf of clientIP (trusted-proxy
+// resolution; "" skips the per-IP budget). A new, unconfirmed or soft-deleted
+// row gets a fresh confirm token and NeedsConfirmMail reports true. A live
+// confirmed subscription is left untouched (AlreadyConfirmed), and so is
+// everything once a confirm-mail budget is spent (Throttled).
+func (s *Service) Subscribe(
+	ctx context.Context, orgSlug, statusPageUID, clientIP string, req *SubscribeRequest,
+) (*SubscribeResult, error) {
+	email, scope, incidentUID, err := parseSubscribeRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	org, page, err := s.resolveSubscribePage(ctx, orgSlug, statusPageUID, incidentUID)
+	if err != nil {
+		return nil, err
 	}
 
 	result := &SubscribeResult{

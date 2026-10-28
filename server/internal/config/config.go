@@ -632,15 +632,16 @@ type Config struct {
 	Audit        AuditConfig        `koanf:"audit"`
 	ACME         ACMEConfig         `koanf:"acme"`
 	Heartbeat    HeartbeatConfig    `koanf:"heartbeat"`
+	Demo         DemoConfig         `koanf:"demo"`
+	Headers      HeadersConfig      `koanf:"headers"`
+	AI           AIConfig           `koanf:"ai"`
+	RunMode      string             `koanf:"runmode"`   // "test" for test mode, empty for normal mode
+	UserAgent    string             `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
+	LogLevel     slog.Level         `koanf:"-"`         // Logging level (SP_LOG_LEVEL, LOG_LEVEL as fallback)
+	LogFormat    LogFormat          `koanf:"-"`         // Logging output format (parsed from SP_LOG_FORMAT env var)
+
 	// StatusSubscribers budgets the public status-page subscribe confirm mail.
 	StatusSubscribers StatusSubscribersConfig `koanf:"status_subscribers"`
-	Demo              DemoConfig              `koanf:"demo"`
-	Headers           HeadersConfig           `koanf:"headers"`
-	AI                AIConfig                `koanf:"ai"`
-	RunMode           string                  `koanf:"runmode"`   // "test" for test mode, empty for normal mode
-	UserAgent         string                  `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
-	LogLevel          slog.Level              `koanf:"-"`         // Logging level (SP_LOG_LEVEL, LOG_LEVEL as fallback)
-	LogFormat         LogFormat               `koanf:"-"`         // Logging output format (parsed from SP_LOG_FORMAT env var)
 }
 
 // ACMEConfig turns on in-server TLS: certmagic obtains and renews Let's Encrypt

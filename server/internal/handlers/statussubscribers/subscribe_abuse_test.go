@@ -152,7 +152,6 @@ func defaultBudget() config.StatusSubscribersConfig {
 	return config.DefaultStatusSubscribersConfig()
 }
 
-//nolint:funlen,maintidx // one contract, run against both engines
 func runSubscribeAbuseContract(t *testing.T, engine *abuseEngine) {
 	t.Helper()
 

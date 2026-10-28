@@ -9,6 +9,8 @@ import (
 // TestStatusSubscribersBudgetDefaults pins the documented confirm-mail budgets
 // (spec 2026-10-28-02): 3 per recipient, 100 per page, 20 per IP, per hour.
 func TestStatusSubscribersBudgetDefaults(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	cfg, err := Load()
 	r.NoError(err)
