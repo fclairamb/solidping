@@ -358,7 +358,7 @@
     "password": "Protegida con contraseña",
     "publicHint": "Cualquiera con el enlace puede ver esta página.",
     "privateHint": "La página queda totalmente oculta: las URL públicas responden como si no existiera.",
-    "passwordHint": "Los visitantes deben introducir una contraseña para ver la página.",
+    "passwordHint": "Los visitantes deben introducir una contraseña para ver la página. Defínela abajo.",
     "passwordLabel": "Contraseña de la página",
     "passwordPlaceholder": "Al menos 6 caracteres",
     "passwordKeepPlaceholder": "Déjalo vacío para conservar la contraseña actual",

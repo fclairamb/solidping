@@ -672,6 +672,8 @@
     "chart": {
       "title": "Response Times",
       "fullRange": "Full range",
+      "fullRangeHint": "Stretch the chart over the whole selected period, even where there is no data.",
+      "fullRangeNoEffect": "The data already covers the whole period.",
       "rangeHour": "Hour",
       "rangeDay": "Day",
       "rangeWeek": "Week",

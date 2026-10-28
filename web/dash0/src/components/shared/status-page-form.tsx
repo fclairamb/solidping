@@ -342,7 +342,7 @@ export function StatusPageForm({
           <div className="space-y-2">
             <Label htmlFor="visibility">{t("visibilityField.label")}</Label>
             <Select value={visibility} onValueChange={(v) => setVisibility(v as StatusPageVisibility)}>
-              <SelectTrigger>
+              <SelectTrigger id="visibility" aria-describedby="status-page-visibility-hint">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -351,7 +351,11 @@ export function StatusPageForm({
                 <SelectItem value="password">{t("visibilityField.password")}</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
+            <p
+              id="status-page-visibility-hint"
+              className="text-xs text-muted-foreground"
+              data-testid="status-page-visibility-hint"
+            >
               {visibility === "private"
                 ? t("visibilityField.privateHint")
                 : visibility === "password"

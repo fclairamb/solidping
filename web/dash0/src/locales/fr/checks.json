@@ -672,6 +672,8 @@
     "chart": {
       "title": "Temps de réponse",
       "fullRange": "Plage complète",
+      "fullRangeHint": "Étire le graphique sur toute la période sélectionnée, même là où il n'y a pas de données.",
+      "fullRangeNoEffect": "Les données couvrent déjà toute la période.",
       "rangeHour": "Heure",
       "rangeDay": "Jour",
       "rangeWeek": "Semaine",

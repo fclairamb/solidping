@@ -358,7 +358,7 @@
     "password": "Password protected",
     "publicHint": "Anyone with the link can see this page.",
     "privateHint": "The page is hidden entirely — public URLs answer as if it did not exist.",
-    "passwordHint": "Visitors must enter a password before they can see the page.",
+    "passwordHint": "Visitors must enter a password before they can see the page. Set it below.",
     "passwordLabel": "Page password",
     "passwordPlaceholder": "At least 6 characters",
     "passwordKeepPlaceholder": "Leave empty to keep the current password",

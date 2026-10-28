@@ -358,7 +358,7 @@
     "password": "Passwortgeschützt",
     "publicHint": "Jede Person mit dem Link kann diese Seite sehen.",
     "privateHint": "Die Seite ist vollständig verborgen — öffentliche URLs antworten, als gäbe es sie nicht.",
-    "passwordHint": "Besucher müssen ein Passwort eingeben, um die Seite zu sehen.",
+    "passwordHint": "Besucher müssen ein Passwort eingeben, um die Seite zu sehen. Legen Sie es unten fest.",
     "passwordLabel": "Seitenpasswort",
     "passwordPlaceholder": "Mindestens 6 Zeichen",
     "passwordKeepPlaceholder": "Leer lassen, um das aktuelle Passwort zu behalten",

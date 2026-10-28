@@ -7,8 +7,15 @@
  * would silently drop them.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render as rtlRender, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "@/i18n";
+
+// The chart header's Full range tooltip needs the app-level TooltipProvider.
+function render(ui: ReactElement) {
+  return rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
+}
 
 // jsdom ships neither ResizeObserver (the chart measures its wrapper to place
 // the pinned box) nor layout, so recharts' ResponsiveContainer renders at 0×0.
@@ -150,6 +157,7 @@ describe("progressive chart render", () => {
       state([rawRow("r-1", ONE_MINUTE), ...ROLLUPS]),
     );
     view.rerender(
+<TooltipProvider>
       <ResponseTimeChart
         org="acme"
         checkUid="check-1"
@@ -158,7 +166,8 @@ describe("progressive chart render", () => {
         zoomFrom={from}
         zoomTo={to}
         selectedUid={PINNED_UID}
-      />,
+      />
+</TooltipProvider>,
     );
 
     // The very same DOM node: no unmount, no remount, so nothing that lives in
@@ -253,12 +262,14 @@ describe("progressive chart render", () => {
       state([], { rawPending: true, isEmptyPending: true }),
     );
     view.rerender(
+<TooltipProvider>
       <ResponseTimeChart
         org="acme"
         checkUid="check-1"
         periodMs={ONE_MINUTE}
         initialPeriod="week"
-      />,
+      />
+</TooltipProvider>,
     );
 
     expect(view.container.querySelector(".animate-pulse")).toBeTruthy();
