@@ -38,3 +38,7 @@ Found by the security scan of 2026-10-28 (finding X3).
 ## Open questions
 
 - Invites created before the upgrade (no index entry): keep the old loop as a fallback for 7 days, or ask admins to re-send? **Recommended: no fallback.** Invites are cheap to re-send, and the fallback is the DoS. Note it in the changelog.
+
+## Resolved open questions
+
+- No fallback for invites created before the upgrade; admins re-send them. Note it in the changelog. (autopilot: recommended answer)

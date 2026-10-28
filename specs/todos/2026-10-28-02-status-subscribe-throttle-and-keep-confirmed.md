@@ -55,3 +55,7 @@ Found by the security scan of 2026-10-28 (finding X2).
 ## Open questions
 
 - Budgets: **recommended** 3 per recipient per hour, 100 per page per hour, 20 per IP per hour. Make them config values with those defaults.
+
+## Resolved open questions
+
+- Budgets: 3 per recipient per hour, 100 per page per hour, 20 per IP per hour, as config values with those defaults. (autopilot: recommended answer)

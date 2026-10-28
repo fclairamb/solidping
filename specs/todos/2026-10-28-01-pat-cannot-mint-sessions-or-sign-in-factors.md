@@ -72,3 +72,8 @@ Not in scope: a PAT minting another PAT in **its own** org (`POST /orgs/:org/tok
 
 - Should a PAT be allowed to call `switch-org` at all, for the CLI convenience? **Recommended: no.** A token is bound to one org on purpose: the device consent page asks the user which org it is for. The CLI asks for a new token instead.
 - Should a session's `DELETE /auth/2fa` keep sharing the login budget (spec 2026-10-27-02)? **Recommended: yes.** Once PATs are refused there, only a session can spend it, and a session holder can already do worse. A separate counter key would reopen the parallel-budget question.
+
+## Resolved open questions
+
+- A PAT must not call `switch-org` at all; the CLI asks for a new token. (autopilot: recommended answer)
+- A session's `DELETE /auth/2fa` keeps sharing the login budget. (autopilot: recommended answer)
