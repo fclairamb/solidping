@@ -58,9 +58,18 @@ sp auth login                  # device flow: approve a one-time code in any bro
 sp auth login --with-password  # classic email + password
 sp auth login --token pat_...  # save a Personal Access Token created in the dashboard
 sp auth me                     # show the current user
-sp auth switch-org             # change active organization
+sp auth switch-org             # change active organization (session logins only)
 sp auth logout
 ```
+
+A Personal Access Token, including the one the device flow mints, is bound to
+the organization it was created in. It cannot switch organization or change how
+your account signs in (password, email, 2FA, passkeys): `sp auth switch-org` on
+a token login says so. Run `sp auth login` again and pick the other
+organization on the consent page, use a token created in that organization, or
+log in with `sp auth login --with-password` to get a session that can switch.
+See
+[API tokens are bound to one organization](configuration/security.md#api-tokens-are-bound-to-one-organization).
 
 `sp auth login` uses the OAuth 2.0 Device Authorization Grant (RFC 8628): it
 prints a short one-time code and a verification URL, tries to open your browser

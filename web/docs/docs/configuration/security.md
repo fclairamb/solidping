@@ -90,6 +90,21 @@ If no master key is configured, encryption is disabled and credentials are store
 
 Token hashing has no such fallback and no configuration: it is not keyed off the master key, and it never stores a token in plaintext.
 
+## API Tokens Are Bound to One Organization
+
+An API token (`pat_…`) belongs to the organization it was created in, with your role there. It reads and writes that organization only: a request for another organization answers `403`, even when you are a member of it.
+
+A token is meant for a script, a CI job or the CLI, so it cannot change how your account signs in or open a session. These requests answer `403 PAT_FORBIDDEN`:
+
+- switching organization, creating an organization or accepting an invitation (each would open a session);
+- approving a device sign-in (it would mint a token for another organization);
+- changing your password or your sign-in email, setting up or removing 2FA, adding or removing a passkey;
+- linking a Discord account, or a Discord or Telegram chat for paging.
+
+To do any of that, sign in to the dashboard, or with `sp auth login`. A token can still create another token in its own organization.
+
+Adding a passkey sends you an email, with a link to your account security page: a passkey signs in to every organization of the account and survives a password reset, so one you did not add must not go unnoticed.
+
 ## Super-Admin Impersonation
 
 A super admin can sign in as another user to see exactly what they see: **Server → Users**, then the eye icon on the user's row. It is meant for support and debugging, and it is built so it cannot become an account takeover:
