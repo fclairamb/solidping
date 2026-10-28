@@ -628,6 +628,8 @@
     "chart": {
       "title": "Antwortzeiten",
       "fullRange": "Vollständiger Bereich",
+      "fullRangeHint": "Dehnt das Diagramm über den gesamten gewählten Zeitraum, auch wo keine Daten vorliegen.",
+      "fullRangeNoEffect": "Die Daten decken bereits den gesamten Zeitraum ab.",
       "rangeHour": "Stunde",
       "rangeDay": "Tag",
       "rangeWeek": "Woche",

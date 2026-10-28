@@ -40,6 +40,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip as UiTooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ChartRangeControl } from "@/components/checks/chart-range-control";
 import { PinnedResultBox } from "@/components/checks/pinned-result-box";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -285,6 +290,30 @@ function buildSeriesForRange(
   points.push({ ts: rangeEndMs, durationMs: null, status: "up" });
 
   return { series: points, gaps: detectedGaps };
+}
+
+/** True when pinning the x-domain to [startMs, endMs] would visibly change the
+ * chart: the data's first/last point sits more than one expected interval
+ * (median spacing, at least one minute) away from a window bound. */
+export function fullRangeHasEffect(
+  timestamps: number[],
+  startMs: number,
+  endMs: number,
+): boolean {
+  if (timestamps.length === 0) return true;
+  const sorted = [...timestamps].sort((a, b) => a - b);
+  const deltas: number[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const d = sorted[i] - sorted[i - 1];
+    if (d > 0) deltas.push(d);
+  }
+  deltas.sort((a, b) => a - b);
+  const median = deltas.length ? deltas[Math.floor(deltas.length / 2)] : 0;
+  const interval = Math.max(median, 60_000);
+  return (
+    sorted[0] - startMs > interval ||
+    endMs - sorted[sorted.length - 1] > interval
+  );
 }
 
 /** Compute smart x-axis ticks based on data density */
@@ -694,6 +723,16 @@ export function ResponseTimeChart({
     regionsData,
   ]);
 
+  const hasFullRangeEffect = useMemo(() => {
+    const startMs = zoom ? zoom.from : new Date(periodStartAfter).getTime();
+    const endMs = zoom ? zoom.to : startOfMinute(new Date()).getTime();
+    const ts = (results?.data ?? [])
+      .filter((r) => r.periodStart)
+      .map((r) => new Date(r.periodStart!).getTime());
+    return fullRangeHasEffect(ts, startMs, endMs);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- zoom is derived from zoomFrom/zoomTo
+  }, [results, periodStartAfter, zoomFrom, zoomTo]);
+
   const ticks = useMemo(
     () => computeTicks(domainMin, domainMax, chartData),
     [domainMin, domainMax, chartData],
@@ -985,17 +1024,28 @@ export function ResponseTimeChart({
               </span>
             </Button>
           )}
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-            <Switch
-              checked={fullRange}
-              onCheckedChange={updateFullRange}
-              className="scale-75"
-              data-testid="response-time-chart-full-range-toggle"
-            />
-            <span className="hidden sm:inline">
-              {t("detail.chart.fullRange")}
-            </span>
-          </label>
+          <UiTooltip>
+            <TooltipTrigger asChild>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                <Switch
+                  checked={fullRange}
+                  onCheckedChange={updateFullRange}
+                  className="scale-75"
+                  aria-label={t("detail.chart.fullRange")}
+                  data-testid="response-time-chart-full-range-toggle"
+                />
+                <span className="hidden sm:inline">
+                  {t("detail.chart.fullRange")}
+                </span>
+              </label>
+            </TooltipTrigger>
+            <TooltipContent data-testid="response-time-chart-full-range-tooltip">
+              <p>{t("detail.chart.fullRangeHint")}</p>
+              {!hasFullRangeEffect && (
+                <p>{t("detail.chart.fullRangeNoEffect")}</p>
+              )}
+            </TooltipContent>
+          </UiTooltip>
           <ChartRangeControl
             value={timeRange}
             onChange={updateTimeRange}
