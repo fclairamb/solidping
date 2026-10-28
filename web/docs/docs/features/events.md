@@ -25,6 +25,15 @@ The type filter narrows the timeline to the most common operational events:
 | `incident.escalated` | An incident escalated to the next step |
 | `incident.resolved` | An incident resolved |
 
+The `incident.escalated` event raised by an escalation policy step records what
+was paged, with names captured when the step fired (a later rename does not
+change old rows): `step_uid`, `step_position`, `repeat_index`, `policy_uid`,
+`policy_name`, `check_name`, `check_slug`, and `targets`, a list (at most 20) of
+`{type, uid, name}` entries where `type` is `integration`, `user`, `schedule`
+(plus `on_call_user_uid` / `on_call_user_name` when resolved) or `all_admins`.
+Targets skipped by the step's severity are not listed. The Events page shows
+them as "Step 2 · Ops Slack, alice", integrations and schedules linked.
+
 Leaving the filter on **All Events** shows the complete stream — every event
 type the organization records, including status page publications,
 membership and integration changes, and more — each with its own label and

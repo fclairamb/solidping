@@ -15,6 +15,7 @@ import {
   getEventDisconnectReason,
   getEventIntegration,
   getEventLucideIcon,
+  getEscalatedDetail,
   getEventPublication,
   getEventRowStripe,
 } from "@/components/dashboard/event-display";
@@ -87,6 +88,70 @@ function getEventDetail(
       reason ? t(`disconnectReasons.${reason}`) : undefined,
     ].filter(Boolean);
     return parts.length > 0 ? parts.join(" · ") : null;
+  }
+
+  const escalated = getEscalatedDetail(event);
+  if (escalated) {
+    const parts: ReactNode[] = [];
+    if (escalated.stepPosition !== undefined) {
+      parts.push(
+        <span key="step">{t("descriptions.escalated_step", { position: escalated.stepPosition })}</span>,
+      );
+    }
+    if (escalated.targets.length > 0) {
+      escalated.targets.forEach((target, i) => {
+        const label =
+          target.type === "all_admins"
+            ? t("descriptions.escalated_all_admins")
+            : target.name ?? target.type;
+        let node: ReactNode = <span>{label}</span>;
+        if (target.type === "integration" && target.uid) {
+          node = (
+            <Link
+              to="/orgs/$org/integrations/$integrationUid"
+              params={{ org, integrationUid: target.uid }}
+              className="text-primary hover:underline"
+              data-testid="event-detail-escalated-integration-link"
+            >
+              {label}
+            </Link>
+          );
+        } else if (target.type === "schedule" && target.uid) {
+          node = (
+            <Link
+              to="/orgs/$org/on-call/$uid"
+              params={{ org, uid: target.uid }}
+              className="text-primary hover:underline"
+              data-testid="event-detail-escalated-schedule-link"
+            >
+              {label}
+            </Link>
+          );
+        }
+        parts.push(
+          <span key={`t${i}`}>
+            {node}
+            {target.type === "schedule" && target.onCallUserName
+              ? ` (${target.onCallUserName})`
+              : null}
+          </span>,
+        );
+      });
+    } else if (escalated.policyName) {
+      parts.push(<span key="policy">{escalated.policyName}</span>);
+    }
+    if (parts.length > 0) {
+      return (
+        <>
+          {parts.map((part, i) => (
+            <span key={i}>
+              {i > 0 ? (i === 1 && escalated.stepPosition !== undefined ? " · " : ", ") : null}
+              {part}
+            </span>
+          ))}
+        </>
+      );
+    }
   }
 
   const regionName = getEventRegionName(event);

@@ -100,6 +100,8 @@
     "org.activation.first_result_received": "Ihr erstes Prüfergebnis ist eingetroffen.",
     "org.activation.first_notification_configured": "Sie haben Ihren ersten Benachrichtigungskanal eingerichtet.",
     "first_notification_configured_prefix": "Sie haben Ihren ersten Benachrichtigungskanal eingerichtet:",
+    "escalated_step": "Schritt {{position}}",
+    "escalated_all_admins": "alle Admins",
     "org.activation.first_incident_paged": "Ihre erste Vorfallbenachrichtigung wurde zugestellt."
   },
   "links": {

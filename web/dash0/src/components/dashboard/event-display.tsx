@@ -641,6 +641,51 @@ export function getEventIntegration(event: {
   };
 }
 
+export interface EscalatedTarget {
+  type: string;
+  uid?: string;
+  name?: string;
+  onCallUserName?: string;
+}
+
+export interface EscalatedDetail {
+  stepPosition?: number;
+  policyName?: string;
+  targets: EscalatedTarget[];
+}
+
+// getEscalatedDetail reads what an escalation-policy step paged from an
+// incident.escalated payload (names captured at fire time). Rows recorded
+// before targets existed yield an empty list; callers fall back to the
+// policy name, then to nothing.
+export function getEscalatedDetail(event: {
+  eventType?: string;
+  payload?: Record<string, unknown>;
+}): EscalatedDetail | undefined {
+  if (event.eventType !== "incident.escalated") return undefined;
+  const p = event.payload;
+  const str = (v: unknown) => (typeof v === "string" && v.length > 0 ? v : undefined);
+  const raw = Array.isArray(p?.targets) ? (p?.targets as unknown[]) : [];
+  const targets: EscalatedTarget[] = [];
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) continue;
+    const t = item as Record<string, unknown>;
+    const type = str(t.type);
+    if (!type) continue;
+    targets.push({
+      type,
+      uid: str(t.uid),
+      name: str(t.name),
+      onCallUserName: str(t.on_call_user_name),
+    });
+  }
+  return {
+    stepPosition: typeof p?.step_position === "number" ? p.step_position : undefined,
+    policyName: str(p?.policy_name),
+    targets,
+  };
+}
+
 // EventPublicationRef is what a statuspage.incident.* event put on a status
 // page: the public title readers saw, and the incident behind it.
 export interface EventPublicationRef {

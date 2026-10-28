@@ -7,6 +7,7 @@ import { Plug, Unplug } from "lucide-react";
 import {
   EVENT_TYPE_MARKS,
   EVENT_TYPE_REGISTRY,
+  getEscalatedDetail,
   getEventAgentName,
   getEventAgentRegion,
   getEventDisconnectReason,
@@ -516,5 +517,39 @@ describe("getEventPublication", () => {
     expect(
       getEventPublication({ eventType: "statuspage.incident.published", payload: {} }),
     ).toBeUndefined();
+  });
+});
+
+describe("getEscalatedDetail", () => {
+  it("reads step, policy and targets", () => {
+    const d = getEscalatedDetail({
+      eventType: "incident.escalated",
+      payload: {
+        step_position: 2,
+        policy_name: "Night Ops",
+        targets: [
+          { type: "integration", uid: "i1", name: "Ops Slack" },
+          { type: "user", uid: "u1", name: "alice" },
+          { type: "all_admins" },
+        ],
+      },
+    });
+    expect(d?.stepPosition).toBe(2);
+    expect(d?.policyName).toBe("Night Ops");
+    expect(d?.targets.map((t) => t.name)).toEqual(["Ops Slack", "alice", undefined]);
+    expect(d?.targets[0].uid).toBe("i1");
+  });
+
+  it("handles an old row without targets", () => {
+    const d = getEscalatedDetail({
+      eventType: "incident.escalated",
+      payload: { step_position: 1, target_count: 3 },
+    });
+    expect(d?.targets).toEqual([]);
+    expect(d?.policyName).toBeUndefined();
+  });
+
+  it("ignores other event types", () => {
+    expect(getEscalatedDetail({ eventType: "check.created", payload: {} })).toBeUndefined();
   });
 });
