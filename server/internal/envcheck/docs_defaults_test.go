@@ -143,6 +143,16 @@ var docsDefaultAccessors = map[string]func(*config.Config) string{
 	"SP_LDAP_USER_FILTER":     fixed(config.LDAPDefaultUserFilter),
 	"SP_LDAP_EMAIL_ATTRIBUTE": fixed(config.LDAPDefaultEmailAttribute),
 	"SP_LDAP_NAME_ATTRIBUTE":  fixed(config.LDAPDefaultNameAttribute),
+
+	"SP_STATUS_SUBSCRIBERS_CONFIRM_PER_RECIPIENT_PER_HOUR": intOf(func(c *config.Config) int {
+		return c.StatusSubscribers.ConfirmPerRecipientPerHour
+	}),
+	"SP_STATUS_SUBSCRIBERS_CONFIRM_PER_PAGE_PER_HOUR": intOf(func(c *config.Config) int {
+		return c.StatusSubscribers.ConfirmPerPagePerHour
+	}),
+	"SP_STATUS_SUBSCRIBERS_CONFIRM_PER_IP_PER_HOUR": intOf(func(c *config.Config) int {
+		return c.StatusSubscribers.ConfirmPerIPPerHour
+	}),
 }
 
 func fixed(v string) func(*config.Config) string { return func(*config.Config) string { return v } }
