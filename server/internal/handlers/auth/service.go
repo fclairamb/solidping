@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -2496,6 +2495,7 @@ const (
 	registrationKeyPrefix       = "email_registration:"
 	registrationTTL             = 3 * 24 * time.Hour
 	inviteKeyPrefix             = "invite:"
+	keyInviteOrgUID             = "orgUID"
 	passwordResetKeyPrefix      = "password_reset:"
 	passwordResetCountKeyPrefix = "password_reset_count:"
 	passwordResetIPKeyPrefix    = "pwd_reset_rl:"
@@ -3806,6 +3806,14 @@ func (s *Service) CreateInvitation(
 		return nil, fmt.Errorf("failed to store invitation: %w", storeErr)
 	}
 
+	// Global index entry, same key, no organization: the public invite
+	// routes resolve the token to its org through it in one lookup instead
+	// of probing every organization (spec 2026-10-28-03). Same TTL.
+	indexValue := &models.JSONMap{keyInviteOrgUID: org.UID}
+	if storeErr := s.db.SetStateEntry(ctx, nil, stateKey, indexValue, &ttl); storeErr != nil {
+		return nil, fmt.Errorf("failed to index invitation: %w", storeErr)
+	}
+
 	// Get the state entry to return its UID
 	entry, err := s.db.GetStateEntry(ctx, &org.UID, stateKey)
 	if err != nil || entry == nil {
@@ -3890,18 +3898,25 @@ func (s *Service) RevokeInvitation(ctx context.Context, orgSlug, invitationUID s
 
 	for _, entry := range entries {
 		if entry.UID == invitationUID {
-			_, err := s.db.DeleteStateEntry(ctx, &org.UID, entry.Key)
-
-			return err
+			return s.deleteInvite(ctx, org.UID, entry.Key)
 		}
 	}
 
 	return ErrInvitationNotFound
 }
 
-// findInvite locates the live invitation a plaintext token refers to,
-// across every organization. It returns the matching entry (whose Key is
-// the one to delete on acceptance) and its org, or ErrInvitationNotFound.
+// findInvite locates the live invitation a plaintext token refers to. It
+// returns the matching org-scoped entry (whose Key is the one to delete on
+// acceptance) and its org, or ErrInvitationNotFound.
+//
+// The lookup goes through the global index entry CreateInvitation writes
+// (invite:<hash>, no organization, value {orgUID}), so it costs a fixed
+// number of queries whatever the organization count: the route is public,
+// and scanning every organization per request was a DoS (spec 2026-10-28-03).
+// Invites created before that spec have no index entry and are not found:
+// admins re-send them.
+//
+// A stored hash presented as the token hashes to another key and misses.
 func (s *Service) findInvite(
 	ctx context.Context, token string,
 ) (*models.StateEntry, *models.Organization, error) {
@@ -3909,51 +3924,53 @@ func (s *Service) findInvite(
 		return nil, nil, ErrInvitationNotFound
 	}
 
-	orgs, err := s.db.ListOrganizations(ctx)
+	key := inviteKeyPrefix + hashPendingToken(token)
+
+	index, err := s.db.GetStateEntry(ctx, nil, key)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to list organizations: %w", err)
+		return nil, nil, fmt.Errorf("failed to look up invitation: %w", err)
 	}
 
-	hashedKey := inviteKeyPrefix + hashPendingToken(token)
-	legacyKey := inviteKeyPrefix + token
-
-	for _, org := range orgs {
-		entry, getErr := s.db.GetStateEntry(ctx, &org.UID, hashedKey)
-		if getErr == nil && entry != nil && entry.Value != nil {
-			return entry, org, nil
-		}
-
-		// Legacy fallback: invites created before spec 2026-09-26-02 are
-		// keyed by the plaintext token and carry it in their value. They are
-		// never rewritten, they just expire (max TTL 1 week).
-		//
-		// The value check is what keeps a hashed row from answering here:
-		// presenting a stored hash as the token would otherwise hit
-		// invite:<hash> — the new-style key — through this branch. Hashed
-		// rows hold no token field, so they never match.
-		//
-		// TODO(remove after 2026-10-10): drop this branch once every
-		// pre-hash invite has expired.
-		entry, getErr = s.db.GetStateEntry(ctx, &org.UID, legacyKey)
-		if getErr == nil && entry != nil && entry.Value != nil && legacyInviteTokenMatches(entry, token) {
-			return entry, org, nil
-		}
+	if index == nil || index.Value == nil {
+		return nil, nil, ErrInvitationNotFound
 	}
 
-	return nil, nil, ErrInvitationNotFound
+	orgUID := stringFromMap(*index.Value, keyInviteOrgUID)
+	if orgUID == "" {
+		return nil, nil, ErrInvitationNotFound
+	}
+
+	entry, err := s.db.GetStateEntry(ctx, &orgUID, key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get invitation: %w", err)
+	}
+
+	if entry == nil || entry.Value == nil {
+		return nil, nil, ErrInvitationNotFound
+	}
+
+	org, err := s.db.GetOrganization(ctx, orgUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, ErrInvitationNotFound
+		}
+
+		return nil, nil, fmt.Errorf("failed to get organization: %w", err)
+	}
+
+	return entry, org, nil
 }
 
-// legacyInviteTokenMatches reports whether a legacy (plaintext-keyed) invite
-// row stores exactly the presented token in its value.
-//
-// TODO(remove after 2026-10-10): goes with the legacy branch of findInvite.
-func legacyInviteTokenMatches(entry *models.StateEntry, token string) bool {
-	stored, ok := (*entry.Value)[keyToken].(string)
-	if !ok || stored == "" {
-		return false
+// deleteInvite consumes or revokes an invitation: its org-scoped entry and
+// the global index entry findInvite resolves it through share the key.
+func (s *Service) deleteInvite(ctx context.Context, orgUID, key string) error {
+	if _, err := s.db.DeleteStateEntry(ctx, &orgUID, key); err != nil {
+		return err
 	}
 
-	return subtle.ConstantTimeCompare([]byte(stored), []byte(token)) == 1
+	_, err := s.db.DeleteStateEntry(ctx, nil, key)
+
+	return err
 }
 
 // GetInviteInfo returns public information about an invitation.
@@ -3983,9 +4000,8 @@ func (s *Service) GetInviteInfo(ctx context.Context, token string) (*InviteInfoR
 //
 //nolint:cyclop,funlen,gocritic // multiple steps; req is the decoded wire shape, passed by value
 func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, callerUID string) (*LoginResponse, error) {
-	// Find the invitation across orgs. matchedEntry.Key is the key that
-	// actually matched (hashed, or legacy plaintext), so the deletes below
-	// must use it rather than recompute one.
+	// Find the invitation through its global index entry. matchedEntry.Key
+	// is the key the deletes below must use.
 	matchedEntry, matchedOrg, err := s.findInvite(ctx, req.Token)
 	if err != nil {
 		return nil, err
@@ -4034,7 +4050,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, cal
 	_, err = s.db.GetMemberByUserAndOrg(ctx, user.UID, matchedOrg.UID)
 	if err == nil {
 		// Already a member, just clean up and login
-		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, matchedEntry.Key)
+		_ = s.deleteInvite(ctx, matchedOrg.UID, matchedEntry.Key)
 	} else {
 		// Enforce the MaxUsers cap before adding this member. Invitation
 		// acceptance is a membership-creation path, so it must honor the
@@ -4066,7 +4082,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, cal
 			})
 
 		// Delete the invitation
-		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, matchedEntry.Key)
+		_ = s.deleteInvite(ctx, matchedOrg.UID, matchedEntry.Key)
 	}
 
 	// Auto-join matching orgs for new users

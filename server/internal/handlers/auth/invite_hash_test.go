@@ -110,19 +110,18 @@ func createHashTestInvite(
 	return resp
 }
 
-// writeLegacyInvite stores an invite the way CreateInvitation did before
-// spec 2026-09-26-02: keyed by the plaintext token, token in the value.
-func writeLegacyInvite(
+// writePreIndexInvite stores an org-scoped invite the way CreateInvitation
+// did before spec 2026-10-28-03: hashed key, no global index entry.
+func writePreIndexInvite(
 	t *testing.T, dbSvc db.Service, org *models.Organization,
 	inviterUID, email, token string,
 ) string {
 	t.Helper()
 
 	ctx := t.Context()
-	key := inviteKeyPrefix + token
+	key := inviteKeyPrefix + hashPendingToken(token)
 	ttl := 24 * time.Hour
 	require.NoError(t, dbSvc.SetStateEntry(ctx, &org.UID, key, &models.JSONMap{
-		keyToken:     token,
 		keyEmail:     email,
 		"role":       string(models.MemberRoleViewer),
 		"inviterUID": inviterUID,
@@ -252,38 +251,94 @@ func runInviteHashContract(t *testing.T, svc *Service, dbSvc db.Service) {
 		r.ErrorIs(err, ErrInvitationNotFound)
 	})
 
-	t.Run("a legacy plaintext-keyed invite is still accepted and deleted", func(t *testing.T) {
+	t.Run("a legacy plaintext-keyed invite is not accepted", func(t *testing.T) {
 		r := require.New(t)
 		ctx := t.Context()
 		org, inviter := inviteHashFixture(t, dbSvc, "ih-legacy")
 
+		// Shape of an invite written before spec 2026-09-26-02: keyed by the
+		// plaintext token, token in the value. Its fallback branch is gone
+		// (spec 2026-10-28-03).
 		const legacyToken = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
 
-		key := writeLegacyInvite(t, dbSvc, org, inviter.UID, "legacy@acme.com", legacyToken)
+		ttl := 24 * time.Hour
+		r.NoError(dbSvc.SetStateEntry(ctx, &org.UID, inviteKeyPrefix+legacyToken, &models.JSONMap{
+			keyToken:     legacyToken,
+			keyEmail:     "legacy@acme.com",
+			"role":       string(models.MemberRoleViewer),
+			"inviterUID": inviter.UID,
+		}, &ttl))
 
-		info, err := svc.GetInviteInfo(ctx, legacyToken)
-		r.NoError(err)
-		r.Equal(org.Slug, info.OrgSlug)
-		r.Equal(string(models.MemberRoleViewer), info.Role)
+		_, err := svc.GetInviteInfo(ctx, legacyToken)
+		r.ErrorIs(err, ErrInvitationNotFound)
 
-		login, err := svc.AcceptInvite(ctx, AcceptInviteRequest{
+		_, err = svc.AcceptInvite(ctx, AcceptInviteRequest{
 			Token: legacyToken, Name: "Bob", Password: inviteHashTestPassword,
 		}, "")
-		r.NoError(err)
-		r.Equal(org.Slug, login.Organization.Slug)
-
-		entry, err := dbSvc.GetStateEntry(ctx, &org.UID, key)
-		r.NoError(err)
-		r.Nil(entry, "the legacy entry must be deleted on acceptance")
-
-		user, err := dbSvc.GetUserByEmail(ctx, "legacy@acme.com")
-		r.NoError(err)
-		member, err := dbSvc.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
-		r.NoError(err)
-		r.Equal(models.MemberRoleViewer, member.Role)
+		r.ErrorIs(err, ErrInvitationNotFound)
 	})
 
-	t.Run("already-member acceptance deletes the matched key, legacy and hashed", func(t *testing.T) {
+	t.Run("an invite without its index entry is not found", func(t *testing.T) {
+		r := require.New(t)
+		ctx := t.Context()
+		org, inviter := inviteHashFixture(t, dbSvc, "ih-noindex")
+
+		const token = "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+
+		writePreIndexInvite(t, dbSvc, org, inviter.UID, "noindex@acme.com", token)
+
+		_, err := svc.GetInviteInfo(ctx, token)
+		r.ErrorIs(err, ErrInvitationNotFound, "pre-upgrade invites must be re-sent, no org scan")
+	})
+
+	t.Run("creation writes a global index entry pointing at the org", func(t *testing.T) {
+		r := require.New(t)
+		ctx := t.Context()
+		org, inviter := inviteHashFixture(t, dbSvc, "ih-index")
+
+		resp := createHashTestInvite(t, svc, org.Slug, inviter.UID, "index@acme.com")
+		key := inviteKeyPrefix + hashPendingToken(resp.Token)
+
+		index, err := dbSvc.GetStateEntry(ctx, nil, key)
+		r.NoError(err)
+		r.NotNil(index)
+		r.Nil(index.OrganizationUID)
+		r.NotNil(index.Value)
+		r.Equal(org.UID, (*index.Value)[keyInviteOrgUID])
+		r.NotNil(index.ExpiresAt, "the index entry expires with the invite")
+
+		for field, v := range *index.Value {
+			if s, ok := v.(string); ok {
+				r.NotContains(s, resp.Token, "index field %q leaks the plaintext token", field)
+			}
+		}
+
+		_, err = svc.AcceptInvite(ctx, AcceptInviteRequest{
+			Token: resp.Token, Name: "Ida", Password: inviteHashTestPassword,
+		}, "")
+		r.NoError(err)
+
+		index, err = dbSvc.GetStateEntry(ctx, nil, key)
+		r.NoError(err)
+		r.Nil(index, "acceptance deletes the index entry")
+	})
+
+	t.Run("an index entry whose org entry is gone is not found", func(t *testing.T) {
+		r := require.New(t)
+		ctx := t.Context()
+		org, inviter := inviteHashFixture(t, dbSvc, "ih-dangling")
+
+		resp := createHashTestInvite(t, svc, org.Slug, inviter.UID, "dangling@acme.com")
+		key := inviteKeyPrefix + hashPendingToken(resp.Token)
+
+		_, err := dbSvc.DeleteStateEntry(ctx, &org.UID, key)
+		r.NoError(err)
+
+		_, err = svc.GetInviteInfo(ctx, resp.Token)
+		r.ErrorIs(err, ErrInvitationNotFound)
+	})
+
+	t.Run("already-member acceptance deletes the invite and its index", func(t *testing.T) {
 		r := require.New(t)
 		ctx := t.Context()
 		org, inviter := inviteHashFixture(t, dbSvc, "ih-member")
@@ -293,25 +348,18 @@ func runInviteHashContract(t *testing.T, svc *Service, dbSvc db.Service) {
 		r.NoError(dbSvc.CreateOrganizationMember(ctx,
 			models.NewOrganizationMember(org.UID, existing.UID, models.MemberRoleUser)))
 
-		const legacyToken = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
-
-		legacyKey := writeLegacyInvite(t, dbSvc, org, inviter.UID, existing.Email, legacyToken)
-
-		_, err := svc.AcceptInvite(ctx, AcceptInviteRequest{Token: legacyToken}, existing.UID)
-		r.NoError(err)
-
-		entry, err := dbSvc.GetStateEntry(ctx, &org.UID, legacyKey)
-		r.NoError(err)
-		r.Nil(entry, "the legacy entry must be deleted for an existing member")
-
 		resp := createHashTestInvite(t, svc, org.Slug, inviter.UID, existing.Email)
 
-		_, err = svc.AcceptInvite(ctx, AcceptInviteRequest{Token: resp.Token}, existing.UID)
+		_, err := svc.AcceptInvite(ctx, AcceptInviteRequest{Token: resp.Token}, existing.UID)
 		r.NoError(err)
 
 		entries, err := dbSvc.ListStateEntries(ctx, &org.UID, inviteKeyPrefix)
 		r.NoError(err)
 		r.Empty(entries, "the hashed entry must be deleted for an existing member")
+
+		index, err := dbSvc.GetStateEntry(ctx, nil, inviteKeyPrefix+hashPendingToken(resp.Token))
+		r.NoError(err)
+		r.Nil(index, "the index entry must be deleted for an existing member")
 	})
 
 	t.Run("list and revoke work on a hashed-key invite", func(t *testing.T) {
@@ -336,5 +384,33 @@ func runInviteHashContract(t *testing.T, svc *Service, dbSvc db.Service) {
 
 		_, err = svc.GetInviteInfo(ctx, resp.Token)
 		r.ErrorIs(err, ErrInvitationNotFound)
+
+		index, err := dbSvc.GetStateEntry(ctx, nil, inviteKeyPrefix+hashPendingToken(resp.Token))
+		r.NoError(err)
+		r.Nil(index, "revocation deletes the index entry")
+	})
+
+	t.Run("a federated join through the invite deletes its index", func(t *testing.T) {
+		r := require.New(t)
+		ctx := t.Context()
+		org, inviter := inviteHashFixture(t, dbSvc, "ih-fedjoin")
+
+		resp := createHashTestInvite(t, svc, org.Slug, inviter.UID, "fedjoin@acme.com")
+
+		user := models.NewUser("fedjoin@acme.com")
+		r.NoError(dbSvc.CreateUser(ctx, user))
+
+		member, pending, err := svc.JoinOrgViaLogin(ctx, org, user)
+		r.NoError(err)
+		r.False(pending)
+		r.NotNil(member)
+
+		index, err := dbSvc.GetStateEntry(ctx, nil, inviteKeyPrefix+hashPendingToken(resp.Token))
+		r.NoError(err)
+		r.Nil(index, "a consumed invite leaves no index entry")
+	})
+
+	t.Run("lookup cost does not depend on the organization count", func(t *testing.T) {
+		runInviteLookupQueryCount(t, svc, dbSvc)
 	})
 }
