@@ -540,7 +540,9 @@ func TestDocExampleCreateReadDelete(t *testing.T) {
 	// GET for id "1" (the first id this test's server ever issues) and expect
 	// 404, since the example's own delete is the only thing that could clear
 	// it.
-	resp, err := http.Get(server.URL + "/items/1") //nolint:noctx // test-only, fixed local httptest URL
+	// server.Client() rather than http.Get: a parallel test closing its httptest server calls
+	// CloseIdleConnections on http.DefaultTransport, which broke this request mid-flight.
+	resp, err := server.Client().Get(server.URL + "/items/1") //nolint:noctx // test-only, fixed local httptest URL
 	r.NoError(err)
 	defer func() { _ = resp.Body.Close() }()
 	r.Equal(http.StatusNotFound, resp.StatusCode, "the example's delete step did not run")
