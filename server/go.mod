@@ -239,7 +239,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/crewjam/saml v0.5.1
 	github.com/docker/go-units v0.5.0
-	github.com/dop251/goja v0.0.0-20261027234916-5f913d1693d9
+	github.com/dop251/goja v0.0.0-20261028213108-85be1416108e
 	github.com/dreamscached/minequery/v2 v2.5.0
 	github.com/dustin/go-humanize v1.1.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
