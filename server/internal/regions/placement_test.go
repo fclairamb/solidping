@@ -30,6 +30,7 @@ func capabilityIndex() map[string]regions.RegionDefinition {
 		"lauterbourg": {Slug: "lauterbourg", Capabilities: yes},
 		"nuremberg": {Slug: "nuremberg", Capabilities: map[string]string{
 			regions.CapabilityBrowser: regions.CapabilityYes, regions.CapabilityIPv6: regions.CapabilityNo,
+			regions.CapabilityICMP: regions.CapabilityNo,
 		}},
 		"paris": {Slug: "paris", Capabilities: yes},
 		"tokyo": {Slug: "tokyo", Capabilities: map[string]string{
@@ -89,6 +90,14 @@ func TestPlace(t *testing.T) {
 				Required: []string{regions.CapabilityBrowser}, Capabilities: capabilityIndex(), Healthy: allHealthy(),
 			},
 			want: []string{"paris", "gravelines"},
+		},
+		{
+			name: "an icmp check skips a region reporting icmp: no",
+			input: regions.PlacementInput{
+				Candidates: []string{"nuremberg", "paris"}, Count: 1,
+				Required: []string{regions.CapabilityICMP}, Capabilities: capabilityIndex(), Healthy: allHealthy(),
+			},
+			want: []string{"paris"},
 		},
 		{
 			name: "an IPv6-only target skips a region without IPv6",

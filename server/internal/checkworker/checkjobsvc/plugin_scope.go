@@ -2,6 +2,7 @@ package checkjobsvc
 
 import (
 	"context"
+	"slices"
 
 	"github.com/uptrace/bun"
 
@@ -51,5 +52,40 @@ func pluginTypeScope(query *bun.SelectQuery, types []string) *bun.SelectQuery {
 		}
 
 		return group
+	})
+}
+
+// noICMPKey marks a claim made by a worker that reported it cannot open an
+// ICMP socket.
+type noICMPKey struct{}
+
+// WithNoICMP returns a context for a claim by a worker whose ICMP probe said
+// no: it must not claim icmp jobs (spec 2026-10-28-06).
+func WithNoICMP(ctx context.Context, noICMP bool) context.Context {
+	return context.WithValue(ctx, noICMPKey{}, noICMP)
+}
+
+// noICMPFromContext reads WithNoICMP.
+func noICMPFromContext(ctx context.Context) bool {
+	noICMP, _ := ctx.Value(noICMPKey{}).(bool)
+
+	return noICMP
+}
+
+// NoICMPFromCapabilities reports whether a capability report is a real "no
+// ICMP": a non-nil (closed) set without the icmp name. A nil set is "unknown"
+// and keeps claiming everything.
+func NoICMPFromCapabilities(capabilities []string) bool {
+	return capabilities != nil && !slices.Contains(capabilities, "icmp")
+}
+
+// icmpScope keeps icmp jobs away from a worker that cannot ping.
+func icmpScope(query *bun.SelectQuery, noICMP bool) *bun.SelectQuery {
+	if !noICMP {
+		return query
+	}
+
+	return query.WhereGroup(" AND ", func(group *bun.SelectQuery) *bun.SelectQuery {
+		return group.WhereOr("type IS NULL").WhereOr("type <> ?", string(checkerdef.CheckTypeICMP))
 	})
 }

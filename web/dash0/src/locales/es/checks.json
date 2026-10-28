@@ -301,6 +301,8 @@
     "emailIntervalHint": "La comprobación se marcará como caída si no se recibe ningún correo dentro de este intervalo",
     "privateRegionTitle": "Se ejecuta en tus propios agentes remotos",
     "crawlAgentUpgradeHint": "Los agentes de esta ubicación aún no pueden rastrear sitios web. Actualiza el agente para seleccionarla.",
+    "icmpNoPingBadge": "Sin ping",
+    "icmpNoPingTitle": "Ningún worker activo de esta región puede abrir un socket ICMP (falta CAP_NET_RAW o el grupo ping).",
     "privateRegionBadge": "Privado",
     "selectRegionsHint": "Selecciona las regiones donde debe ejecutarse esta comprobación",
     "authenticationAndSecrets": "Autenticación y secretos",

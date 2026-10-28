@@ -355,6 +355,9 @@ type AgentScope struct {
 	// capability report). A plugin-type job is only handed to an agent that
 	// advertises its type (spec 2026-10-17-05 §17).
 	PluginTypes []string
+	// NoICMP is set when the agent reported it cannot open an ICMP socket: it
+	// is not handed icmp jobs (spec 2026-10-28-06).
+	NoICMP bool
 }
 
 // ErrInvalidAgentScope is returned when a claim scope is not a scope any agent
@@ -396,7 +399,7 @@ func (s AgentScope) apply(query *bun.SelectQuery) *bun.SelectQuery {
 		query = query.Where("organization_uid = ?", s.OrgUID)
 	}
 
-	return pluginTypeScope(excludePassiveTypes(query.Where("region = ?", s.Region)), s.PluginTypes)
+	return icmpScope(pluginTypeScope(excludePassiveTypes(query.Where("region = ?", s.Region)), s.PluginTypes), s.NoICMP)
 }
 
 // excludePassiveTypes keeps passive (heartbeat, email) jobs out of every check
@@ -447,7 +450,7 @@ const privateRegionPrefix = "@"
 //   - within what remains, a NULL region means "any region" and a non-NULL one
 //     prefix-matches the worker (SP_REGION=eu-fr-paris claims region=eu-fr).
 func applyCloudRegionScope(ctx context.Context, query *bun.SelectQuery, region *string) *bun.SelectQuery {
-	query = pluginTypeScope(query, PluginTypesFromContext(ctx))
+	query = icmpScope(pluginTypeScope(query, PluginTypesFromContext(ctx)), noICMPFromContext(ctx))
 
 	// Passive jobs belong to the jobs node, never to a region's workers.
 	query = excludePassiveTypes(query)
