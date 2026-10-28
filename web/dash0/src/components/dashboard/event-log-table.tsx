@@ -13,7 +13,9 @@ import {
   getEventCheckName,
   getEventDescription,
   getEventDisconnectReason,
+  getEventIntegration,
   getEventLucideIcon,
+  getEventPublication,
   getEventRowStripe,
 } from "@/components/dashboard/event-display";
 import { DurationAgo } from "@/components/shared/relative-time";
@@ -112,6 +114,42 @@ function getEventDetail(
           <span>{channelName}</span>
         )}
       </>
+    );
+  }
+
+  // integration.*: which integration was created / updated / deleted, linked
+  // to its page while it still exists (solidping-business#28).
+  const integration = getEventIntegration(event);
+  if (integration) {
+    return integration.uid ? (
+      <Link
+        to="/orgs/$org/integrations/$integrationUid"
+        params={{ org, integrationUid: integration.uid }}
+        className="text-primary hover:underline"
+        data-testid="event-detail-integration-link"
+      >
+        {integration.name}
+      </Link>
+    ) : (
+      <span>{integration.name}</span>
+    );
+  }
+
+  // statuspage.incident.*: what was published or resolved on the status page,
+  // linked to the incident behind it (solidping-business#30, #31).
+  const publication = getEventPublication(event);
+  if (publication) {
+    return publication.incidentUid ? (
+      <Link
+        to="/orgs/$org/incidents/$incidentUid"
+        params={{ org, incidentUid: publication.incidentUid }}
+        className="text-primary hover:underline"
+        data-testid="event-detail-publication-link"
+      >
+        {publication.title}
+      </Link>
+    ) : (
+      <span>{publication.title}</span>
     );
   }
 

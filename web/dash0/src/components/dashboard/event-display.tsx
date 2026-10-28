@@ -612,6 +612,64 @@ export function getEventChannelUid(event: {
   return typeof uid === "string" && uid.length > 0 ? uid : undefined;
 }
 
+// EventIntegrationRef names the integration an integration.* audit event is
+// about. `uid` is set only while the integration can still exist (never on
+// integration.deleted), so callers link only what can be opened.
+export interface EventIntegrationRef {
+  name: string;
+  uid?: string;
+}
+
+// getEventIntegration returns the integration an integration.created /
+// .updated / .deleted event targets, read from the audit target the backend
+// records (audit.PayloadKeyTargetName / PayloadKeyTargetUID). Undefined for
+// every other event type and for rows without a target name.
+export function getEventIntegration(event: {
+  eventType?: string;
+  payload?: Record<string, unknown>;
+}): EventIntegrationRef | undefined {
+  if (!event.eventType?.startsWith("integration.")) return undefined;
+  const name = event.payload?.target_name;
+  if (typeof name !== "string" || name.length === 0) return undefined;
+  const uid = event.payload?.target_uid;
+  return {
+    name,
+    uid:
+      event.eventType !== "integration.deleted" && typeof uid === "string" && uid.length > 0
+        ? uid
+        : undefined,
+  };
+}
+
+// EventPublicationRef is what a statuspage.incident.* event put on a status
+// page: the public title readers saw, and the incident behind it.
+export interface EventPublicationRef {
+  title: string;
+  incidentUid?: string;
+}
+
+// getEventPublication returns the public title a statuspage.incident.*
+// event (published / updated / resolved) carries (`public_title`), with the
+// incident it publishes. The backend records the incident in the payload
+// (`incident_uid`), not on the event's incidentUid column, so both are read.
+// Undefined for other event types and rows without a title.
+export function getEventPublication(event: {
+  eventType?: string;
+  incidentUid?: string;
+  payload?: Record<string, unknown>;
+}): EventPublicationRef | undefined {
+  if (!event.eventType?.startsWith("statuspage.incident.")) return undefined;
+  const title = event.payload?.public_title;
+  if (typeof title !== "string" || title.length === 0) return undefined;
+  const payloadIncident = event.payload?.incident_uid;
+  const incidentUid =
+    event.incidentUid ||
+    (typeof payloadIncident === "string" && payloadIncident.length > 0
+      ? payloadIncident
+      : undefined);
+  return { title, incidentUid };
+}
+
 // COMMENT_EVENT_TYPE is the event type for user-authored incident comments.
 export const COMMENT_EVENT_TYPE = "incident.comment";
 
