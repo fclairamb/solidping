@@ -269,7 +269,6 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   "checks:detail.resultBox.minMax": ["fr", "de"], // "Min / Max"
   "checks:detail.resultBox.region": ["de"], // "Region"
   "checks:detail.resultBox.status": ["de"], // "Status"
-  "checks:detail.availability.incidents": ["fr"], // "Incidents"
   "checks:detail.configuration": ["fr"], // "Configuration"
   "checks:detail.results.status": ["de"], // "Status"
   "checks:detail.results.region": ["de"], // "Region"

@@ -29,7 +29,7 @@ function makePeriod(token: string, overrides: Partial<Period> = {}): Period {
     period: token,
     windowStart: "2026-06-01T00:00:00Z",
     windowEnd: "2026-06-30T00:00:00Z",
-    monitoredSeconds: 46_828, // ~0.54 day → "1d monitored"
+    monitoredSeconds: 46_828, // ~0.54 day → "13h monitored"
     partial: true,
     hasData: true,
     totalChecks: 100,
@@ -114,9 +114,12 @@ test.describe("Availability Table", () => {
     await expect(table.getByTestId("availability-row-label")).toHaveText([
       "Since creation",
     ]);
+    // Under a day, the history is told in hours, never rounded up to "1d".
     await expect(table.getByTestId("availability-monitored")).toHaveText(
-      "1d monitored",
+      "13h monitored",
     );
+    // The count column holds outages only: availability is computed from them.
+    await expect(table.getByTestId("availability-head-outages")).toHaveText("Outages");
 
     // The values appear exactly once instead of four times.
     await expect(table.getByTestId("availability-value")).toHaveText(["99.43%"]);

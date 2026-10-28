@@ -87,9 +87,13 @@ export function AvailabilityTable({
               <TableHead data-testid="availability-head-downtime">
                 {t("detail.availability.downtime")}
               </TableHead>
-              <TableHead>{t("detail.availability.incidents")}</TableHead>
-              <TableHead>{t("detail.availability.longestIncident")}</TableHead>
-              <TableHead>{t("detail.availability.avgIncident")}</TableHead>
+              {/* Outages only: availability is computed from outages, so the
+                  count next to it must not mix in degraded incidents. */}
+              <TableHead data-testid="availability-head-outages">
+                {t("detail.availability.outages")}
+              </TableHead>
+              <TableHead>{t("detail.availability.longestOutage")}</TableHead>
+              <TableHead>{t("detail.availability.avgOutage")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -105,7 +109,9 @@ export function AvailabilityTable({
                 ? t("detail.availability.sinceCreation")
                 : t(`detail.availability.${row.labelKey}`);
               const shortLabel = collapsed
-                ? `${view.monitoredDays ?? 1}d`
+                ? view.monitoredHours != null
+                  ? `${view.monitoredHours}h`
+                  : `${view.monitoredDays ?? 1}d`
                 : row.shortLabel;
 
               return (
@@ -118,14 +124,21 @@ export function AvailabilityTable({
                     >
                       {label}
                     </span>
-                    {collapsed && view.monitoredDays != null && (
-                      <span
-                        className="block text-xs text-muted-foreground"
-                        data-testid="availability-monitored"
-                      >
-                        {t("detail.availability.monitored", { days: view.monitoredDays })}
-                      </span>
-                    )}
+                    {collapsed &&
+                      (view.monitoredDays != null || view.monitoredHours != null) && (
+                        <span
+                          className="block text-xs text-muted-foreground"
+                          data-testid="availability-monitored"
+                        >
+                          {view.monitoredHours != null
+                            ? t("detail.availability.monitoredHours", {
+                                hours: view.monitoredHours,
+                              })
+                            : t("detail.availability.monitored", {
+                                days: view.monitoredDays,
+                              })}
+                        </span>
+                      )}
                   </TableCell>
                   <TableCell data-testid="availability-value">
                     {view.availabilityText}
