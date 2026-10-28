@@ -99,3 +99,8 @@ to `specs/done/`, verify the issue is closed and, if the merge did not close it,
 close it by hand:
 
     gh issue close 26 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+1. Probes before a manual resolve no longer count (proposal 1). (autopilot: recommended answer)
+2. Count outages only in the Incidents column and rename the header "Outages". (autopilot: recommended answer)

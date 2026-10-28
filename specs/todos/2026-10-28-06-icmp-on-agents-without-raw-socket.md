@@ -88,3 +88,8 @@ to `specs/done/`, verify the issue is closed and, if the merge did not close it,
 close it by hand:
 
     gh issue close 27 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+1. Run the agent as root through a fly-only image (1a). (autopilot: recommended answer)
+2. Warn and save when no region of a check can ping. (autopilot: recommended answer)
