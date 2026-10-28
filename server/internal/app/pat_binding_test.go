@@ -128,7 +128,10 @@ func TestPATCannotLeaveItsOrg(t *testing.T) {
 		{"passkey add (begin)", http.MethodPost, "/api/v1/auth/passkeys/register/begin", `{}`},
 		{"passkey add (finish)", http.MethodPost, "/api/v1/auth/passkeys/register/finish", `{}`},
 		{"passkey removal", http.MethodDelete, "/api/v1/auth/passkeys/abc", ``},
-		{"device consent", http.MethodPost, "/api/v1/auth/device/consent", `{"userCode":"ABCD-EFGH","org":"patb","approve":true}`},
+		{
+			"device consent", http.MethodPost, "/api/v1/auth/device/consent",
+			`{"userCode":"ABCD-EFGH","org":"patb","approve":true}`,
+		},
 		{"discord link", http.MethodPost, "/api/v1/orgs/pata/users/me/discord/link-start", `{}`},
 		{"discord connect", http.MethodPost, "/api/v1/orgs/pata/users/me/discord/connect", `{}`},
 		{"telegram link", http.MethodPost, "/api/v1/orgs/pata/users/me/telegram/link", `{}`},

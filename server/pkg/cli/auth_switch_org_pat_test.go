@@ -18,8 +18,6 @@ import (
 // TestAuthSwitchOrgWithPATPrintsGuidance: on a PAT login, `sp auth switch-org`
 // does not call the server's switch-org (which answers 403 PAT_FORBIDDEN, spec
 // 2026-10-28-01) and tells the user what to do instead.
-//
-//nolint:paralleltest // process-global stdio and HOME
 func TestAuthSwitchOrgWithPATPrintsGuidance(t *testing.T) {
 	var switchCalls atomic.Int32
 
@@ -58,7 +56,7 @@ func TestAuthSwitchOrgWithPATPrintsGuidance(t *testing.T) {
 
 	outPath := filepath.Join(t.TempDir(), "stdout")
 
-	out, err := os.Create(outPath) //nolint:gosec // test-owned temp path
+	out, err := os.Create(outPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +80,7 @@ func TestAuthSwitchOrgWithPATPrintsGuidance(t *testing.T) {
 		t.Fatal("switch-org with a PAT must fail")
 	}
 
-	printed, err := os.ReadFile(outPath) //nolint:gosec // test-owned temp path
+	printed, err := os.ReadFile(outPath)
 	if err != nil {
 		t.Fatal(err)
 	}

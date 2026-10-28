@@ -30,7 +30,11 @@ type patBindingFixture struct {
 	orgB   *models.Organization
 	user   *models.User
 	claims *Claims
-	patCtx context.Context
+}
+
+// patCtx is the request context RequireAuth builds for a PAT.
+func patCtx(ctx context.Context) context.Context {
+	return WithPATCredential(ctx)
 }
 
 func newPATBindingFixture(
@@ -64,7 +68,6 @@ func newPATBindingFixture(
 
 	return &patBindingFixture{
 		svc: svc, db: dbSvc, orgA: orgA, orgB: orgB, user: user, claims: claims,
-		patCtx: WithPATCredential(ctx),
 	}
 }
 
@@ -90,7 +93,7 @@ func runPATBindingContract(t *testing.T, newFixture func(t *testing.T) (*patBind
 
 		before := f.tokenCount(ctx, t, models.TokenTypeRefresh)
 
-		_, err := f.svc.SwitchOrg(f.patCtx, f.user.UID, f.orgB.Slug, Context{})
+		_, err := f.svc.SwitchOrg(patCtx(ctx), f.user.UID, f.orgB.Slug, Context{})
 		r.ErrorIs(err, ErrPATForbidden)
 		r.Equal(before, f.tokenCount(ctx, t, models.TokenTypeRefresh), "no refresh token was minted")
 
@@ -111,7 +114,7 @@ func runPATBindingContract(t *testing.T, newFixture func(t *testing.T) (*patBind
 		start, err := f.svc.StartDeviceAuthorization(ctx, "sp CLI", DeviceRequester{IP: "203.0.113.7"})
 		r.NoError(err)
 
-		err = f.svc.RespondToDeviceConsent(f.patCtx, f.claims, start.UserCode, f.orgB.Slug, true)
+		err = f.svc.RespondToDeviceConsent(patCtx(ctx), f.claims, start.UserCode, f.orgB.Slug, true)
 		r.ErrorIs(err, ErrPATForbidden)
 		r.Equal(before, f.tokenCount(ctx, t, models.TokenTypePAT), "no PAT was minted")
 
@@ -127,7 +130,7 @@ func runPATBindingContract(t *testing.T, newFixture func(t *testing.T) (*patBind
 		f, ctx := newFixture(t)
 
 		newEmail := "mallory-" + f.orgA.Slug + "@acme.com"
-		_, err := f.svc.UpdateProfile(f.patCtx, f.claims, UpdateProfileRequest{Email: &newEmail})
+		_, err := f.svc.UpdateProfile(patCtx(ctx), f.claims, UpdateProfileRequest{Email: &newEmail})
 		r.ErrorIs(err, ErrPATForbidden)
 
 		user, err := f.db.GetUser(ctx, f.user.UID)
@@ -136,19 +139,19 @@ func runPATBindingContract(t *testing.T, newFixture func(t *testing.T) (*patBind
 
 		// The rest of the profile stays editable with a PAT.
 		name := "Alice"
-		_, err = f.svc.UpdateProfile(f.patCtx, f.claims, UpdateProfileRequest{Name: &name})
+		_, err = f.svc.UpdateProfile(patCtx(ctx), f.claims, UpdateProfileRequest{Name: &name})
 		r.NoError(err)
 	})
 
 	t.Run("a PAT still creates a PAT in its own org", func(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
-		f, _ := newFixture(t)
+		f, ctx := newFixture(t)
 
-		created, err := f.svc.CreatePAT(f.patCtx, f.orgA.Slug, f.user.UID, CreateTokenRequest{Name: "another"})
+		created, err := f.svc.CreatePAT(patCtx(ctx), f.orgA.Slug, f.user.UID, CreateTokenRequest{Name: "another"})
 		r.NoError(err)
 
-		claims, err := f.svc.ValidateToken(f.patCtx, created.Token)
+		claims, err := f.svc.ValidateToken(patCtx(ctx), created.Token)
 		r.NoError(err)
 		r.Equal(f.orgA.Slug, claims.OrgSlug)
 	})
@@ -161,7 +164,7 @@ func runPATBindingContract(t *testing.T, newFixture func(t *testing.T) (*patBind
 		before := f.tokenCount(ctx, t, models.TokenTypeRefresh)
 		row := &models.UserToken{UID: "pat-session-" + f.orgA.Slug, UserUID: f.user.UID, Type: models.TokenTypeRefresh}
 
-		err := f.svc.startSession(f.patCtx, sessionActor{UID: f.user.UID, Email: f.user.Email},
+		err := f.svc.startSession(patCtx(ctx), sessionActor{UID: f.user.UID, Email: f.user.Email},
 			f.orgA, row, string(models.MemberRoleAdmin), "password", Context{})
 		r.ErrorIs(err, ErrPATForbidden)
 		r.Equal(before, f.tokenCount(ctx, t, models.TokenTypeRefresh))
