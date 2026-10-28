@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { resolveCheckRefLabel } from "@/lib/dependency-graph";
 import { DependencyWarningHint } from "@/components/checks/dependency-warnings";
+import { DocsLink } from "@/components/shared/docs-link";
 import {
   DependencyEmptyRow,
   DependencyKindBadge,
@@ -54,7 +55,12 @@ export function DependenciesCard({ org, checkUid }: DependenciesCardProps) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
-        <CardTitle>{t("dependencies:title")}</CardTitle>
+        {/* The docs link sits next to the title: hard vs soft and what rollup
+            suppresses are not self-explanatory (solidping-business#25). */}
+        <div className="flex items-center gap-1">
+          <CardTitle>{t("dependencies:title")}</CardTitle>
+          <DocsLink href="/docs/features/check-dependencies" />
+        </div>
         <Button
           asChild
           size="sm"
