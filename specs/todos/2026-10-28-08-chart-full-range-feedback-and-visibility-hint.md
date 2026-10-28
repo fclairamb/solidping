@@ -95,3 +95,8 @@ This spec closes fclairamb/solidping-business#34. The implementing PR body **mus
 verify the issue is closed and, if the merge did not close it, close it by hand:
 
     gh issue close 34 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+1. Keep the switch enabled with an explanatory tooltip (autopilot: recommended answer).
+2. Do not make the hint open the select on click (autopilot: recommended answer).
