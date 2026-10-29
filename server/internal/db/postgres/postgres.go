@@ -8027,6 +8027,37 @@ func (s *Service) SumFileSizeByGroup(ctx context.Context, orgUID, group string) 
 	return total.Int64, nil
 }
 
+// ListFilesByGroup returns live files of every organization under the given
+// storage group, created before `before`, oldest first, capped at limit. The
+// group is matched on its "/<group>/" URI path segment, as in
+// SumFileSizeByGroup.
+func (s *Service) ListFilesByGroup(
+	ctx context.Context, group string, before time.Time, limit int,
+) ([]*models.File, error) {
+	if group == "" {
+		return nil, nil
+	}
+
+	var files []*models.File
+
+	query := s.db.NewSelect().
+		Model(&files).
+		Where("deleted_at IS NULL").
+		Where("file_uri LIKE ? ESCAPE '\\'", "%/"+escapeLikePrefix(group)+"/%").
+		Where("created_at < ?", before).
+		Order("created_at ASC")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return files, nil
+}
+
 // ListAttachmentsByTopicPrefix returns live attachment rows across all orgs
 // under a topic prefix, older than `before`, capped at limit. Cross-org because
 // its only caller is the GC sweep.
