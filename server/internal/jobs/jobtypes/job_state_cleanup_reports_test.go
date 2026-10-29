@@ -90,3 +90,34 @@ func TestSweepExpiredReportFiles(t *testing.T) {
 	_, err = dbSvc.GetFile(ctx, org.UID, ancient.UID)
 	r.NoError(err, "a retention of 0 must keep report files")
 }
+
+// TestSweepExpiredReportFiles_NoConfig: without an app config the sweep is a
+// no-op rather than a nil dereference.
+func TestSweepExpiredReportFiles_NoConfig(t *testing.T) {
+	t.Parallel()
+
+	require.NotPanics(t, func() {
+		sweepExpiredReportFiles(t.Context(), &jobdef.JobContext{Logger: slog.Default()})
+	})
+}
+
+// TestSweepExpiredReportFiles_ListError: a failing listing is logged and the
+// sweep returns without purging anything.
+func TestSweepExpiredReportFiles_ListError(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	dbSvc, err := sqlite.New(t.Context(), sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(t.Context()))
+	r.NoError(dbSvc.Close())
+
+	cfg := &config.Config{}
+	cfg.App.FeedbackRetentionDays = 90
+
+	require.NotPanics(t, func() {
+		sweepExpiredReportFiles(t.Context(), &jobdef.JobContext{
+			DBService: dbSvc, AppConfig: cfg, Logger: slog.Default(),
+		})
+	})
+}
