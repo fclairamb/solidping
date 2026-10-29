@@ -96,3 +96,23 @@ func TestSubmitReport_StorageQuota_Postgres(t *testing.T) {
 	dbSvc, org := newFeedbackPostgresOrg(t, "fb-quota-pg")
 	assertStorageQuotaEnforced(t.Context(), t, dbSvc, org.UID, org.Slug)
 }
+
+// TestSubmitReport_AnonBudgetIsInstanceWide_Postgres runs the instance-wide
+// anonymous budget regression (spec 2026-10-29-01) on Postgres, whose global
+// counter is a different implementation.
+func TestSubmitReport_AnonBudgetIsInstanceWide_Postgres(t *testing.T) {
+	t.Parallel()
+
+	dbSvc, orgA := newFeedbackPostgresOrg(t, "fb-anon-pg-a")
+	_, orgB := newFeedbackPostgresOrg(t, "fb-anon-pg-b")
+	assertAnonBudgetIsInstanceWide(t, dbSvc, orgA, orgB)
+}
+
+// TestSubmitReport_ParallelQuota_Postgres is the Postgres half of the
+// parallel per-org quota regression.
+func TestSubmitReport_ParallelQuota_Postgres(t *testing.T) {
+	t.Parallel()
+
+	dbSvc, org := newFeedbackPostgresOrg(t, "fb-par-pg")
+	assertParallelQuotaHoldsOneFile(t, dbSvc, org)
+}

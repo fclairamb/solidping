@@ -17,6 +17,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/files/signedurl"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage"
@@ -38,7 +39,20 @@ var (
 	// auth and no other cost signal, so this is what bounds how much
 	// local/S3 storage a single org's inbox can be made to fill.
 	ErrStorageQuotaExceeded = errors.New("feedback storage quota exceeded")
+	// ErrReportRateLimited is returned when an anonymous report carries a
+	// screenshot and either the instance-wide anonymous screenshot budget
+	// (config.AppConfig.FeedbackAnonScreenshotsPerHour) is spent, or no GitHub
+	// issue dispatch slot is left this hour, so the screenshot would never be
+	// filed (spec 2026-10-29-01). Nothing is stored.
+	ErrReportRateLimited = errors.New("bug report rate limited")
 )
+
+// anonScreenshotCounterKey is the db.BumpGlobalCounter key of the
+// instance-wide anonymous screenshot budget.
+const anonScreenshotCounterKey = "feedback_report_anon"
+
+// anonScreenshotWindow is the window of the anonymous screenshot budget.
+const anonScreenshotWindow = time.Hour
 
 // maxIssueDispatchesPerHour caps GitHub issue creation across ALL orgs on this
 // process (spec 2026-09-25-26). The route-level rate limit and the per-org
@@ -97,6 +111,16 @@ type Service struct {
 	dispatchMu          sync.Mutex
 	dispatchWindowStart time.Time
 	dispatchCount       int
+
+	// quotaMu serializes the per-org quota check with the file insert, so
+	// parallel reports in this process cannot all pass the check and then all
+	// write (spec 2026-10-29-01). Across processes, storeScreenshot re-checks
+	// the quota after the insert and purges the file it just wrote.
+	quotaMu sync.Mutex
+
+	// anonCounterKey is the global-counter key of the anonymous screenshot
+	// budget; tests sharing one database override it.
+	anonCounterKey string
 }
 
 // NewService constructs a feedback service. github may be nil — when so, a
@@ -115,6 +139,8 @@ func NewService(
 		github: github,
 		logger: slog.Default(),
 		clock:  time.Now,
+
+		anonCounterKey: anonScreenshotCounterKey,
 	}
 }
 
@@ -132,52 +158,25 @@ func (s *Service) SubmitReport(
 		return nil, ErrURLRequired
 	}
 
-	orgSlug := req.OrgSlug
-	if orgSlug == "" {
-		// Fallback to the first non-deleted org. Used by status0 (subscriber-side)
-		// where the user has no org context.
-		orgs, err := s.db.ListOrganizations(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("list organizations: %w", err)
-		}
-
-		if len(orgs) == 0 {
-			return nil, ErrOrganizationNotFound
-		}
-
-		orgSlug = orgs[0].Slug
-	}
-
-	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	org, orgUUID, err := s.resolveOrg(ctx, req.OrgSlug)
 	if err != nil {
-		return nil, ErrOrganizationNotFound
+		return nil, err
 	}
 
-	orgUUID, err := uuid.Parse(org.UID)
-	if err != nil {
-		return nil, fmt.Errorf("parse org uid: %w", err)
-	}
+	// Reserve the GitHub issue slot before anything is written: a screenshot
+	// stored past the dispatch cap is never referenced (spec 2026-10-29-01).
+	dispatch := s.reserveIssueDispatch(ctx)
 
 	var fileUID, fileURI, fileMIME string
 
 	if req.Screenshot != nil && req.ScreenshotSize > 0 {
-		if err := s.checkStorageQuota(ctx, org.UID, req.ScreenshotSize); err != nil {
+		file, err := s.admitAndStoreScreenshot(ctx, org.UID, orgUUID, req, dispatch)
+		if err != nil {
+			if dispatch {
+				s.releaseIssueDispatch()
+			}
+
 			return nil, err
-		}
-
-		var createdBy *string
-		if req.UserUID != "" {
-			uid := req.UserUID
-			createdBy = &uid
-		}
-
-		file, ferr := s.files.CreateFile(
-			ctx, orgUUID, filestorage.GroupTypeReports,
-			req.ScreenshotName, req.ScreenshotMIME, createdBy,
-			req.Screenshot, req.ScreenshotSize,
-		)
-		if ferr != nil {
-			return nil, fmt.Errorf("create file: %w", ferr)
 		}
 
 		fileUID = file.UID
@@ -191,11 +190,135 @@ func (s *Service) SubmitReport(
 		fileUID = uuid.NewString()
 	}
 
-	// Detached context: the HTTP request is already done. We log the
-	// goroutine err separately rather than propagating to the caller.
-	go s.dispatchGitHubIssue(context.WithoutCancel(ctx), req, org.Slug, fileUID, fileURI, fileMIME)
+	if dispatch {
+		// Detached context: the HTTP request is already done. We log the
+		// goroutine err separately rather than propagating to the caller.
+		go s.dispatchGitHubIssue(context.WithoutCancel(ctx), req, org.Slug, fileUID, fileURI, fileMIME)
+	}
 
 	return &SubmitReportResponse{UID: fileUID}, nil
+}
+
+// resolveOrg finds the report's organization: the named one, or the first
+// one when none is named.
+func (s *Service) resolveOrg(ctx context.Context, orgSlug string) (*models.Organization, uuid.UUID, error) {
+	if orgSlug == "" {
+		// Fallback to the first non-deleted org. Used by status0 (subscriber-side)
+		// where the user has no org context.
+		orgs, err := s.db.ListOrganizations(ctx)
+		if err != nil {
+			return nil, uuid.Nil, fmt.Errorf("list organizations: %w", err)
+		}
+
+		if len(orgs) == 0 {
+			return nil, uuid.Nil, ErrOrganizationNotFound
+		}
+
+		orgSlug = orgs[0].Slug
+	}
+
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, uuid.Nil, ErrOrganizationNotFound
+	}
+
+	orgUUID, err := uuid.Parse(org.UID)
+	if err != nil {
+		return nil, uuid.Nil, fmt.Errorf("parse org uid: %w", err)
+	}
+
+	return org, orgUUID, nil
+}
+
+// admitAndStoreScreenshot stores the report's screenshot. An anonymous one
+// must first be admitted by admitAnonymousScreenshot.
+func (s *Service) admitAndStoreScreenshot(
+	ctx context.Context, orgUID string, orgUUID uuid.UUID, req *SubmitReportRequest, dispatch bool,
+) (*models.File, error) {
+	if req.UserUID == "" {
+		if err := s.admitAnonymousScreenshot(ctx, dispatch); err != nil {
+			return nil, err
+		}
+	}
+
+	return s.storeScreenshot(ctx, orgUID, orgUUID, req)
+}
+
+// admitAnonymousScreenshot decides whether an anonymous report may store its
+// screenshot (spec 2026-10-29-01). The caller of the anonymous endpoint picks
+// the org, so the per-org quota alone does not bound what it writes: the
+// screenshot must also fit the instance-wide hourly budget, and have an issue
+// dispatch slot, or it would be stored and never filed.
+func (s *Service) admitAnonymousScreenshot(ctx context.Context, dispatch bool) error {
+	if !dispatch {
+		return ErrReportRateLimited
+	}
+
+	limit := s.cfg.App.FeedbackAnonScreenshotsPerHour
+	if limit <= 0 {
+		return nil
+	}
+
+	key := s.anonCounterKey
+	if key == "" {
+		key = anonScreenshotCounterKey
+	}
+
+	limited, err := s.db.BumpGlobalCounter(ctx, key, limit, anonScreenshotWindow)
+	if err != nil {
+		return fmt.Errorf("spend anonymous screenshot budget: %w", err)
+	}
+
+	if limited {
+		s.logger.WarnContext(ctx, "bug_report: anonymous screenshot budget spent",
+			"limit_per_hour", limit,
+		)
+
+		return ErrReportRateLimited
+	}
+
+	return nil
+}
+
+// storeScreenshot writes the report's screenshot under the org's per-org
+// quota. The check and the insert run under quotaMu, so parallel reports in
+// this process cannot overshoot the quota; a re-check after the insert catches
+// a race with another process, and purges the file just written.
+func (s *Service) storeScreenshot(
+	ctx context.Context, orgUID string, orgUUID uuid.UUID, req *SubmitReportRequest,
+) (*models.File, error) {
+	s.quotaMu.Lock()
+	defer s.quotaMu.Unlock()
+
+	if err := s.checkStorageQuota(ctx, orgUID, req.ScreenshotSize); err != nil {
+		return nil, err
+	}
+
+	var createdBy *string
+	if req.UserUID != "" {
+		uid := req.UserUID
+		createdBy = &uid
+	}
+
+	file, err := s.files.CreateFile(
+		ctx, orgUUID, filestorage.GroupTypeReports,
+		req.ScreenshotName, req.ScreenshotMIME, createdBy,
+		req.Screenshot, req.ScreenshotSize,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create file: %w", err)
+	}
+
+	if err := s.checkStorageQuota(ctx, orgUID, 0); err != nil {
+		if purgeErr := s.files.PurgeFile(ctx, file); purgeErr != nil {
+			s.logger.WarnContext(ctx, "bug_report: purge of over-quota screenshot failed",
+				"file_uid", file.UID, "err", purgeErr.Error())
+		}
+
+		return nil, err
+	}
+
+	return file, nil
 }
 
 // checkStorageQuota returns ErrStorageQuotaExceeded when persisting `incoming`
@@ -230,6 +353,39 @@ func (s *Service) checkStorageQuota(ctx context.Context, orgUID string, incoming
 	return nil
 }
 
+// reserveIssueDispatch takes one GitHub issue dispatch slot for a report, and
+// reports whether it got one. It is false when GitHub is not configured or the
+// hourly cap is spent; the report is then accepted without an issue.
+func (s *Service) reserveIssueDispatch(ctx context.Context) bool {
+	github := s.cfg.App.GitHub
+	if github.IssuesToken == "" || github.Repo == "" {
+		s.logger.WarnContext(ctx, "bug_report: github not configured")
+
+		return false
+	}
+
+	if !s.allowIssueDispatch() {
+		s.logger.WarnContext(ctx, "bug_report: github issue dispatch capped",
+			"limit_per_hour", maxIssueDispatchesPerHour,
+		)
+
+		return false
+	}
+
+	return true
+}
+
+// releaseIssueDispatch gives back a slot taken by reserveIssueDispatch for a
+// report that was refused before its issue was dispatched.
+func (s *Service) releaseIssueDispatch() {
+	s.dispatchMu.Lock()
+	defer s.dispatchMu.Unlock()
+
+	if s.dispatchCount > 0 {
+		s.dispatchCount--
+	}
+}
+
 // allowIssueDispatch enforces maxIssueDispatchesPerHour across all orgs on
 // this process, using a fixed hourly window measured from the first dispatch
 // in it (not a rolling one) — simple and sufficient for smoothing a burst,
@@ -254,7 +410,8 @@ func (s *Service) allowIssueDispatch() bool {
 }
 
 // dispatchGitHubIssue is the async side. Logs failures but never propagates
-// to the caller — the report is already saved.
+// to the caller — the report is already saved. The caller has already taken
+// the dispatch slot (reserveIssueDispatch).
 func (s *Service) dispatchGitHubIssue(
 	parent context.Context, req *SubmitReportRequest, orgSlug, fileUID, fileURI, fileMIME string,
 ) {
@@ -262,21 +419,6 @@ func (s *Service) dispatchGitHubIssue(
 	defer cancel()
 
 	github := s.cfg.App.GitHub
-	if github.IssuesToken == "" || github.Repo == "" {
-		s.logger.WarnContext(ctx, "bug_report: github not configured")
-
-		return
-	}
-
-	if !s.allowIssueDispatch() {
-		s.logger.WarnContext(ctx, "bug_report: github issue dispatch capped",
-			"file_uid", fileUID,
-			"limit_per_hour", maxIssueDispatchesPerHour,
-		)
-
-		return
-	}
-
 	signedURL, exp := s.signedScreenshotURL(req.URL, fileUID, fileURI)
 
 	input := &IssueInput{

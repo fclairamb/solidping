@@ -7,6 +7,8 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
+	"github.com/fclairamb/solidping/server/internal/handlers/filestorage"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 )
@@ -65,6 +67,7 @@ func (r *StateCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	sweepExpiredUnconfirmedSubscribers(ctx, jctx)
 	sweepOrphanIncidentAttachments(ctx, jctx)
 	sweepOrphanCheckAttachments(ctx, jctx)
+	sweepExpiredReportFiles(ctx, jctx)
 
 	// Schedule next run in 2 hours
 	// Skip if services are not available (e.g., in tests without full service setup)
@@ -198,4 +201,48 @@ func sweepOrphanAttachments(ctx context.Context, jctx *jobdef.JobContext, entity
 // deletes). Same grace, same batch, same anti-join as the incident sweep.
 func sweepOrphanCheckAttachments(ctx context.Context, jctx *jobdef.JobContext) {
 	sweepOrphanAttachments(ctx, jctx, attachments.EntityChecks)
+}
+
+// reportSweepBatch bounds one pass of the report-retention sweep.
+const reportSweepBatch = 500
+
+// sweepExpiredReportFiles purges bug-report screenshots
+// (filestorage.GroupTypeReports) older than app.feedback_retention_days, row
+// and blob (spec 2026-10-29-01). Anyone can upload one through the anonymous
+// report endpoint, and the GitHub issue only links it for a while, so without
+// this the store only grows. A retention of 0 or less keeps them forever.
+// Best-effort, like the other sweeps.
+func sweepExpiredReportFiles(ctx context.Context, jctx *jobdef.JobContext) {
+	if jctx.AppConfig == nil || jctx.AppConfig.App.FeedbackRetentionDays <= 0 {
+		return
+	}
+
+	log := jctx.Logger
+	retention := time.Duration(jctx.AppConfig.App.FeedbackRetentionDays) * 24 * time.Hour
+
+	rows, err := jctx.DBService.ListFilesByGroup(
+		ctx, string(filestorage.GroupTypeReports), time.Now().Add(-retention), reportSweepBatch,
+	)
+	if err != nil {
+		log.WarnContext(ctx, "Failed to list expired report files", "error", err)
+
+		return
+	}
+
+	filesSvc := files.NewService(jctx.DBService, jctx.AppConfig)
+	purged := 0
+
+	for _, row := range rows {
+		if purgeErr := filesSvc.PurgeFile(ctx, row); purgeErr != nil {
+			log.WarnContext(ctx, "Failed to purge expired report file", "fileUid", row.UID, "error", purgeErr)
+
+			continue
+		}
+
+		purged++
+	}
+
+	if purged > 0 {
+		log.InfoContext(ctx, "Purged expired report files", "count", purged)
+	}
 }

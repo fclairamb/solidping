@@ -106,7 +106,7 @@ func TestSubmitReport_DisabledStoresNothing(t *testing.T) {
 		ScreenshotSize: 1,
 	})
 	require.ErrorIs(t, err, ErrReportDisabled)
-	require.Zero(t, poster.calls)
+	require.Zero(t, poster.count())
 }
 
 // TestHandlerSubmitReport_DisabledIs404 pins the endpoint contract: 404, not

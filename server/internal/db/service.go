@@ -1458,6 +1458,11 @@ type Service interface {
 	// the scheme/bucket portion varies by storage backend (local vs S3). Used
 	// by the feedback-report per-org storage quota (spec 2026-09-25-26).
 	SumFileSizeByGroup(ctx context.Context, orgUID, group string) (int64, error)
+	// ListFilesByGroup returns live files across ALL organizations whose
+	// storage URI belongs to the given filestorage.GroupType and which were
+	// created before `before`, oldest first, capped at limit. Cross-org by
+	// design: its only caller is the report-retention sweep (spec 2026-10-29-01).
+	ListFilesByGroup(ctx context.Context, group string, before time.Time, limit int) ([]*models.File, error)
 
 	// CheckDependency operations
 	CreateCheckDependency(ctx context.Context, dep *models.CheckDependency) error

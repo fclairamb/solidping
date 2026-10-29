@@ -1682,6 +1682,12 @@ func (m *mockDBService) ListAttachmentsByTopicPrefix(
 	return nil, nil
 }
 
+func (m *mockDBService) ListFilesByGroup(
+	_ context.Context, _ string, _ time.Time, _ int,
+) ([]*models.File, error) {
+	return nil, nil
+}
+
 func (m *mockDBService) SumFileSizeByGroup(_ context.Context, _, _ string) (int64, error) {
 	return 0, nil
 }

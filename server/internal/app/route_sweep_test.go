@@ -92,8 +92,12 @@ func TestEveryRouteAnswersWithoutAServerError(t *testing.T) {
 	for _, rt := range routes {
 		for _, at := range attempts {
 			status := env.sweep(rt.method, sweepURL(rt.pattern, env.org.Slug, at.uid), at.token, at.body)
-			// 503 is how an unconfigured integration (WebAuthn, bots) says so.
-			if status >= http.StatusInternalServerError && status != http.StatusServiceUnavailable {
+			// 503 is how an unconfigured integration (WebAuthn, bots) says so;
+			// 502 is how Freebox pairing says the box is unreachable (the
+			// default base URL is a public host, so the answer depends on
+			// the network the test runs on: 502 when refused, none on timeout).
+			if status >= http.StatusInternalServerError &&
+				status != http.StatusServiceUnavailable && status != http.StatusBadGateway {
 				serverErrors = append(serverErrors, rt.method+" "+rt.pattern)
 			}
 		}

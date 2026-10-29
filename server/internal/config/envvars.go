@@ -192,6 +192,8 @@ func manualReaderServerEnvVars() []string {
 		// applyFeedbackEnv — feedback_max_storage_bytes is snake_case, so
 		// koanf's env loader cannot reach it.
 		EnvAppFeedbackMaxStorageBytes,
+		EnvAppFeedbackAnonScreenshotsPerHour,
+		EnvAppFeedbackRetentionDays,
 		// applyCheckersEnv — both keys have a snake_case segment, so koanf's
 		// env loader cannot reach them (see BrowserCheckerConfig).
 		"SP_CHECKERS_BROWSER_CDP_URL",
