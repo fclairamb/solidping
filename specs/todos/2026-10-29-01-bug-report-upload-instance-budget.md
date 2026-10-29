@@ -57,3 +57,8 @@ Spec 2026-09-25-26 added the per-org quota and the limiter as the storage protec
 
 - Anonymous screenshot budget: **recommended** 20 per hour for the instance, the same as the issue dispatch cap, as a config value with that default.
 - Report file retention: **recommended** 90 days, as a config value.
+
+## Resolved open questions
+
+- Anonymous screenshot budget: 20 per hour for the instance, same as the issue dispatch cap, as a config value with that default. (autopilot: recommended answer)
+- Report file retention: 90 days, as a config value. (autopilot: recommended answer)
