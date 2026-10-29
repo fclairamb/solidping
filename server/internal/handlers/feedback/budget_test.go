@@ -203,7 +203,7 @@ func TestSubmitReport_DispatchCapStoresNoAnonScreenshot(t *testing.T) {
 	r.Zero(reportBytes(ctx, t, dbSvc, orgs[0]), "no file is stored for a report that cannot be filed")
 
 	_, err = svc.SubmitReport(ctx, screenshotReport(orgs[0].Slug, member))
-	r.NoError(err, "a member's report keeps today's behaviour")
+	r.NoError(err, "a member's report keeps today's behavior")
 	r.Equal(int64(1), reportBytes(ctx, t, dbSvc, orgs[0]))
 
 	_, err = svc.SubmitReport(ctx, &SubmitReportRequest{URL: "https://example.com/page", OrgSlug: orgs[0].Slug})

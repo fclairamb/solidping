@@ -158,52 +158,19 @@ func (s *Service) SubmitReport(
 		return nil, ErrURLRequired
 	}
 
-	orgSlug := req.OrgSlug
-	if orgSlug == "" {
-		// Fallback to the first non-deleted org. Used by status0 (subscriber-side)
-		// where the user has no org context.
-		orgs, err := s.db.ListOrganizations(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("list organizations: %w", err)
-		}
-
-		if len(orgs) == 0 {
-			return nil, ErrOrganizationNotFound
-		}
-
-		orgSlug = orgs[0].Slug
-	}
-
-	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	org, orgUUID, err := s.resolveOrg(ctx, req.OrgSlug)
 	if err != nil {
-		return nil, ErrOrganizationNotFound
+		return nil, err
 	}
-
-	orgUUID, err := uuid.Parse(org.UID)
-	if err != nil {
-		return nil, fmt.Errorf("parse org uid: %w", err)
-	}
-
-	hasScreenshot := req.Screenshot != nil && req.ScreenshotSize > 0
 
 	// Reserve the GitHub issue slot before anything is written: a screenshot
 	// stored past the dispatch cap is never referenced (spec 2026-10-29-01).
 	dispatch := s.reserveIssueDispatch(ctx)
 
-	if hasScreenshot && req.UserUID == "" {
-		if err := s.admitAnonymousScreenshot(ctx, dispatch); err != nil {
-			if dispatch {
-				s.releaseIssueDispatch()
-			}
-
-			return nil, err
-		}
-	}
-
 	var fileUID, fileURI, fileMIME string
 
-	if hasScreenshot {
-		file, err := s.storeScreenshot(ctx, org.UID, orgUUID, req)
+	if req.Screenshot != nil && req.ScreenshotSize > 0 {
+		file, err := s.admitAndStoreScreenshot(ctx, org.UID, orgUUID, req, dispatch)
 		if err != nil {
 			if dispatch {
 				s.releaseIssueDispatch()
@@ -230,6 +197,51 @@ func (s *Service) SubmitReport(
 	}
 
 	return &SubmitReportResponse{UID: fileUID}, nil
+}
+
+// resolveOrg finds the report's organization: the named one, or the first
+// one when none is named.
+func (s *Service) resolveOrg(ctx context.Context, orgSlug string) (*models.Organization, uuid.UUID, error) {
+	if orgSlug == "" {
+		// Fallback to the first non-deleted org. Used by status0 (subscriber-side)
+		// where the user has no org context.
+		orgs, err := s.db.ListOrganizations(ctx)
+		if err != nil {
+			return nil, uuid.Nil, fmt.Errorf("list organizations: %w", err)
+		}
+
+		if len(orgs) == 0 {
+			return nil, uuid.Nil, ErrOrganizationNotFound
+		}
+
+		orgSlug = orgs[0].Slug
+	}
+
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, uuid.Nil, ErrOrganizationNotFound
+	}
+
+	orgUUID, err := uuid.Parse(org.UID)
+	if err != nil {
+		return nil, uuid.Nil, fmt.Errorf("parse org uid: %w", err)
+	}
+
+	return org, orgUUID, nil
+}
+
+// admitAndStoreScreenshot stores the report's screenshot. An anonymous one
+// must first be admitted by admitAnonymousScreenshot.
+func (s *Service) admitAndStoreScreenshot(
+	ctx context.Context, orgUID string, orgUUID uuid.UUID, req *SubmitReportRequest, dispatch bool,
+) (*models.File, error) {
+	if req.UserUID == "" {
+		if err := s.admitAnonymousScreenshot(ctx, dispatch); err != nil {
+			return nil, err
+		}
+	}
+
+	return s.storeScreenshot(ctx, orgUID, orgUUID, req)
 }
 
 // admitAnonymousScreenshot decides whether an anonymous report may store its
