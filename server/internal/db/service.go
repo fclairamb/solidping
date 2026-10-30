@@ -1451,14 +1451,15 @@ type Service interface {
 	ListOrphanAttachments(
 		ctx context.Context, entity string, before time.Time, limit int,
 	) ([]*models.File, error)
-	// SumFileSizeByGroup returns the total bytes of live (non-deleted) files
+	// SumFileSizeByGroup returns the total bytes of live (non-deleted), topic-less
+	// files (attachments such as crawl reports carry a topic and are excluded)
 	// for orgUID whose storage URI belongs to the given filestorage.GroupType
 	// (passed as a plain string — this package does not import filestorage).
 	// Matches on the "/<group>/" path segment rather than a URI prefix, since
 	// the scheme/bucket portion varies by storage backend (local vs S3). Used
 	// by the feedback-report per-org storage quota (spec 2026-09-25-26).
 	SumFileSizeByGroup(ctx context.Context, orgUID, group string) (int64, error)
-	// ListFilesByGroup returns live files across ALL organizations whose
+	// ListFilesByGroup returns live, topic-less files (never attachments) across ALL organizations whose
 	// storage URI belongs to the given filestorage.GroupType and which were
 	// created before `before`, oldest first, capped at limit. Cross-org by
 	// design: its only caller is the report-retention sweep (spec 2026-10-29-01).
