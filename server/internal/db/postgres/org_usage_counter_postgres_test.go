@@ -11,22 +11,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// These are distinct from every other _postgres_test.go embedded port in the
-// repo (see the port-numbering note in postgres_headroom_postgres_test.go;
-// 15438-15448, 15451-15458 and 15461+ are claimed elsewhere).
-const (
-	portOrgUsageCounter          = 15459
-	portOrgUsageCounterIncrement = 15460
-)
-
 // TestReserveMonthlyUsage_ConcurrentNeverOverruns_Postgres fires many
 // concurrent reservations at a small monthly limit on a REAL Postgres backend
 // and asserts the conditional upsert never grants more than the limit — the
 // property SQLite's single-threaded tests can't prove. Self-skips under -short
 // and on any embedded-startup error.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestReserveMonthlyUsage_ConcurrentNeverOverruns_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -34,7 +26,7 @@ func TestReserveMonthlyUsage_ConcurrentNeverOverruns_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portOrgUsageCounter, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -105,9 +97,9 @@ func TestReserveMonthlyUsage_ConcurrentNeverOverruns_Postgres(t *testing.T) {
 // caller must land. It is the counter behind the over-limit banner's
 // `skippedToday` (spec 2026-08-26-03) — under-counting there means telling an
 // org it lost fewer executions than it did.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestIncrementUsageCounter_Concurrent_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -115,7 +107,7 @@ func TestIncrementUsageCounter_Concurrent_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portOrgUsageCounterIncrement, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

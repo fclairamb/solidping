@@ -10,11 +10,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portOwnerBackfill is distinct from every other _postgres_test.go embedded
-// port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portOwnerBackfill = 15467
-
 // ownerBackfillSQL is the backfill block of 011_owner_role.up.sql. Only this
 // block is re-run here — the ALTER … DROP/ADD CONSTRAINT that precedes it in
 // the migration has already been applied by Initialize(). The block is safe to
@@ -45,9 +40,9 @@ where m.uid = oldest.uid;
 // SQLite backfill test. The two dialects express the "oldest admin per org"
 // selection completely differently (DISTINCT ON + UPDATE…FROM here, a
 // correlated scalar subquery there), so each needs its own proof.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestOwnerBackfillPromotesOldestAdmin_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -55,7 +50,7 @@ func TestOwnerBackfillPromotesOldestAdmin_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portOwnerBackfill, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

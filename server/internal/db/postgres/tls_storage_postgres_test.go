@@ -13,20 +13,15 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portTLSStorage is distinct from every other _postgres_test.go embedded port
-// in this package (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portTLSStorage = 15463
-
 // TestTLSStorage_Postgres proves the certmagic-backing key-value store behaves
 // identically on a REAL Postgres backend: byte-exact binary round-trips through
 // bytea, collation-proof prefix listing and subtree delete, and the conditional
 // lock upsert under genuine concurrency (the property SQLite's single-writer
 // tests cannot prove). Self-skips under -short and on any embedded-startup
 // error.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestTLSStorage_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -34,7 +29,7 @@ func TestTLSStorage_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portTLSStorage, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

@@ -8,11 +8,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portDanglingNotificationRoutes is distinct from every other _postgres_test.go
-// embedded port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portDanglingNotificationRoutes = 15483
-
 // TestDanglingNotificationRoutesMigration_Postgres is the Postgres twin of the
 // SQLite migration test: spec 2026-08-20-02's data migration removes the
 // notification routes left behind by historical SOFT contact deletions, and
@@ -22,9 +17,9 @@ const portDanglingNotificationRoutes = 15483
 // files are not the same SQL. Postgres aliases the DELETE target (`... r`) and
 // SQLite cannot, so each dialect's correlated subquery is written differently
 // and each one has to be proven separately.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestDanglingNotificationRoutesMigration_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -32,7 +27,7 @@ func TestDanglingNotificationRoutesMigration_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portDanglingNotificationRoutes, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

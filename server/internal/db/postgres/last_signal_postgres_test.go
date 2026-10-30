@@ -11,11 +11,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portLastSignal is distinct from every other _postgres_test.go file's
-// embedded-Postgres port in this repo (see the port-numbering note in
-// last_result_test.go).
-const portLastSignal = 15510
-
 // GetLastSignalForChecks (spec 2026-09-02-03) is GetLastResultForChecks
 // narrowed to INBOUND SIGNAL rows — the ones handlers/heartbeat and
 // handlers/emailcheck write, which never carry a worker_uid — so the passive
@@ -83,13 +78,15 @@ func newSignalWorkerPG(
 // subtest per rule, against a single embedded instance (booting one per rule
 // would multiply the slowest part of the test by five).
 //
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
+//nolint:paralleltest,tparallel // the subtests share that instance and run in order
 func TestGetLastSignalForChecks_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
 
-	s, ctx := newSignalPG(t, portLastSignal)
+	s, ctx := newSignalPG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("signal-pg-org", "Signal PG Org")
 	require.NoError(t, s.CreateOrganization(ctx, org))

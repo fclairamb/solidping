@@ -10,9 +10,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portStatusPageBrandingSettings is this test's own embedded-postgres port.
-const portStatusPageBrandingSettings = 15488
-
 // brandingSettingsPG boots an embedded cluster with one org and returns it.
 func brandingSettingsPG(t *testing.T) (context.Context, *Service, string) {
 	t.Helper()
@@ -20,7 +17,7 @@ func brandingSettingsPG(t *testing.T) (context.Context, *Service, string) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portStatusPageBrandingSettings, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -71,9 +68,9 @@ func reloadPG(ctx context.Context, t *testing.T, svc *Service, orgUID, pageUID s
 // is shallow — so "the SQLite one passes" says nothing about this one. A
 // one-level `settings || '{"branding":…}'` here would replace the whole branding
 // object and this test would catch it.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestBrandingSettingsMerge_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -138,9 +135,9 @@ func TestBrandingSettingsMerge_Postgres(t *testing.T) {
 // TestHideBrandingPatch_Postgres covers the generic PATCH path and the fold:
 // a whole-column Settings write and a HideBranding flip in the SAME update
 // would be two assignments to one column, which Postgres refuses outright.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestHideBrandingPatch_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}

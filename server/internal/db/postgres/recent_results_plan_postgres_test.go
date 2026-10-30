@@ -12,14 +12,7 @@ import (
 	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
-)
-
-// Port distinct from every other _postgres_test.go file's embedded-Postgres
-// port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const (
-	portRecentResultsPlan      = 15494
-	portRecentResultsSemantics = 15495
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // seedRecentResultsChecks creates `count` checks, each with a day of raw at a
@@ -76,13 +69,13 @@ func recentResultsPageFilter(orgUID string, checkUIDs []string) *models.RecentRe
 // rewrite, it IS the rewrite: the same LATERAL with the tier left open measures
 // 12 274 ms — a sequential scan PER CHECK, 18x WORSE than the query it
 // replaces, and invisible to every functional test. Hence the controls below.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestRecentResultsPerCheckUsesIndexes_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portRecentResultsPlan)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("recent-plan-org", "Recent Plan Org")
 	r.NoError(s.CreateOrganization(ctx, org))
@@ -244,13 +237,13 @@ func planActualRows(plan string) int {
 // It pins WHAT comes back — per-check budgets honored independently, each tier
 // bounded by its own `since`, blobs never projected — where the test above pins
 // only HOW the rows are reached.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestRecentResultsPerCheck_Semantics_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portRecentResultsSemantics)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("recent-semantics-org", "Recent Semantics Org")
 	r.NoError(s.CreateOrganization(ctx, org))

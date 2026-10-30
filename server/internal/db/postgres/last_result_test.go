@@ -10,11 +10,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portLastResult is distinct from every other _postgres_test.go file's
-// embedded-Postgres port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portLastResult = 15446
-
 // seedRawResults inserts n raw results for checkUID under orgUID, spaced one
 // minute apart, starting one hour in the future relative to check creation
 // (CreateCheck itself inserts an initial "created" raw result at time.Now(),
@@ -46,9 +41,9 @@ func seedRawResults(t *testing.T, s *Service, orgUID, checkUID string, n int) *m
 // otherwise, and fetched every raw row (O(retention)) before discarding
 // extras in a Go loop. Self-skips under -short / on embedded-startup error,
 // like every other embedded-postgres test in this package.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its sibling below
 func TestGetLastResultForChecks_ReturnsOneRowPerCheck_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -58,7 +53,7 @@ func TestGetLastResultForChecks_ReturnsOneRowPerCheck_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{
 		Embedded: true,
-		Port:     portLastResult,
+		Port:     testsupport.FreePort(t),
 		RunMode:  runModeTest,
 	})
 	if err != nil {
@@ -101,9 +96,9 @@ func TestGetLastResultForChecks_ReturnsOneRowPerCheck_Postgres(t *testing.T) {
 // Aggregated rollup rows are never returned even when newer than every raw
 // row, checks with no raw history are absent from the map, a repeated uid
 // yields one entry, and an unknown uid is simply absent.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
 func TestGetLastResultForChecks_Parity_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -113,7 +108,7 @@ func TestGetLastResultForChecks_Parity_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{
 		Embedded: true,
-		Port:     portLastResult + 2,
+		Port:     testsupport.FreePort(t),
 		RunMode:  runModeTest,
 	})
 	if err != nil {
@@ -173,9 +168,9 @@ func TestGetLastResultForChecks_Parity_Postgres(t *testing.T) {
 // IS such a marker must read as having no last result at all.
 // ResultStatusRunning is a different story — heartbeat checks use it as a
 // legitimate long-lived status the API must still surface.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
 func TestGetLastResultForChecks_ExcludesCreatedMarkerOnly_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -185,7 +180,7 @@ func TestGetLastResultForChecks_ExcludesCreatedMarkerOnly_Postgres(t *testing.T)
 
 	s, err := New(ctx, &Config{
 		Embedded: true,
-		Port:     portLastResult + 3,
+		Port:     testsupport.FreePort(t),
 		RunMode:  runModeTest,
 	})
 	if err != nil {
@@ -257,9 +252,9 @@ func TestGetLastResultForChecks_ExcludesCreatedMarkerOnly_Postgres(t *testing.T)
 // org UID must return nothing, and the covering index
 // (organization_uid, check_uid, period_start desc) requires the predicate
 // to be present to be ridden at all.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its sibling above
 func TestGetLastResultForChecks_FiltersByOrganization_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -269,7 +264,7 @@ func TestGetLastResultForChecks_FiltersByOrganization_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{
 		Embedded: true,
-		Port:     portLastResult + 1,
+		Port:     testsupport.FreePort(t),
 		RunMode:  runModeTest,
 	})
 	if err != nil {

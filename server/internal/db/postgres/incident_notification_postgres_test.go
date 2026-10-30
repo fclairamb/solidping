@@ -10,11 +10,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portOrgNotification is distinct from every other _postgres_test.go file's
-// embedded-Postgres port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portOrgNotification = 15447
-
 // TestGetOrgNotification_MalformedUID_Postgres is the Postgres counterpart to
 // TestGetByOrgNotFound (handler_test.go, which runs against SQLite): uid is a
 // uuid-typed column, so a non-UUID identifier like "does-not-exist" used to
@@ -24,9 +19,9 @@ const portOrgNotification = 15447
 // Postgres backend in CI, not reproducible against the SQLite-backed
 // handler unit test). Self-skips under -short / on embedded-startup error,
 // like every other embedded-postgres test in this package.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
 func TestGetOrgNotification_MalformedUID_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -36,7 +31,7 @@ func TestGetOrgNotification_MalformedUID_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{
 		Embedded: true,
-		Port:     portOrgNotification,
+		Port:     testsupport.FreePort(t),
 		RunMode:  runModeTest,
 	})
 	if err != nil {

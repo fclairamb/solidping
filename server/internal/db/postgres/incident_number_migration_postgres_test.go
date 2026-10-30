@@ -11,11 +11,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portIncidentNumberMigration is distinct from every other _postgres_test.go
-// embedded port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portIncidentNumberMigration = 15471
-
 // TestIncidentNumberBackfillOrdersByStartedAt_Postgres is the Postgres twin of
 // the SQLite backfill test. The two dialects express the same rewrite
 // completely differently — a window function plus UPDATE…FROM here, a
@@ -36,7 +31,7 @@ func TestIncidentNumberBackfillOrdersByStartedAt_Postgres(t *testing.T) {
 
 	svc, err := New(ctx, &Config{
 		Embedded: true,
-		Port:     portIncidentNumberMigration,
+		Port:     testsupport.FreePort(t),
 		RunMode:  "test",
 	})
 	if err != nil {

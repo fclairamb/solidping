@@ -10,11 +10,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portTargetHostSort is distinct from every other _postgres_test.go file's
-// embedded-Postgres port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portTargetHostSort = 15466
-
 // targetHostSortFixturePG mirrors the SQLite fixture: checks across the
 // host/url/target/none config shapes, plus a same-host pair to prove the
 // tiebreaker (name ascending). Returns the org UID and the slugs in the exact
@@ -111,7 +106,7 @@ func newTargetHostSortPG(t *testing.T) *Service {
 
 	ctx := t.Context()
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portTargetHostSort, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -127,9 +122,9 @@ func newTargetHostSortPG(t *testing.T) *Service {
 // TestListChecksSortByTargetHostOrdering_Postgres is the Postgres counterpart
 // to the SQLite ordering test: the COALESCE sentinel and composite cursor must
 // behave identically on real Postgres (the store's production backend).
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
 func TestListChecksSortByTargetHostOrdering_Postgres(t *testing.T) {
+	t.Parallel()
+
 	s := newTargetHostSortPG(t)
 	r := require.New(t)
 	ctx := t.Context()
@@ -153,9 +148,9 @@ func TestListChecksSortByTargetHostOrdering_Postgres(t *testing.T) {
 // TestListChecksSortByTargetHostCursorWalk_Postgres walks the composite cursor
 // at several page sizes and asserts each reconstructs the full order — the
 // same boundary coverage as the SQLite twin, on real Postgres.
-//
-//nolint:paralleltest // shares dev-machine resources with its siblings
 func TestListChecksSortByTargetHostCursorWalk_Postgres(t *testing.T) {
+	t.Parallel()
+
 	s := newTargetHostSortPG(t)
 	r := require.New(t)
 

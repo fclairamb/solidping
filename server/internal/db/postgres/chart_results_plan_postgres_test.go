@@ -12,14 +12,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
-)
-
-// Port distinct from every other _postgres_test.go file's embedded-Postgres
-// port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const (
-	portChartResultsPlan = 15492
-	portChartCursorPlan  = 15493
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // chartWithFields mirrors CHART_WITH_FIELDS in
@@ -83,13 +76,13 @@ func captureChartFilter(
 // mixed predicate on the SAME fixture and requires that it DOES seq-scan;
 // without those controls a fixture too small to bother the planner would make
 // the whole test pass vacuously.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestChartQueriesUseIndexes_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portChartResultsPlan)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("chart-plan-org", "Chart Plan Org")
 	r.NoError(s.CreateOrganization(ctx, org))
@@ -207,13 +200,13 @@ func TestChartQueriesUseIndexes_Postgres(t *testing.T) {
 //
 // The control below runs the OR form on the same data and requires that it does
 // NOT seek on both cursor columns, which is the structural difference.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestResultsCursorSeeksByRowValue_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portChartCursorPlan)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("cursor-plan-org", "Cursor Plan Org")
 	r.NoError(s.CreateOrganization(ctx, org))

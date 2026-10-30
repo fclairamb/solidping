@@ -9,11 +9,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portResultsStatusDomainMigration is distinct from every other
-// _postgres_test.go embedded port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portResultsStatusDomainMigration = 15478
-
 // TestResultsStatusDomainMigration_Postgres is the Postgres twin of the SQLite
 // migration test. The two dialects do the job completely differently — a DO
 // block that drops 001's auto-named CHECK and re-adds a named one here, a whole
@@ -30,9 +25,9 @@ const portResultsStatusDomainMigration = 15478
 //     flag across two migrations that undid each other; the consolidated
 //     migration never creates it, and there is consequently no data
 //     conversion to assert.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestResultsStatusDomainMigration_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -40,7 +35,7 @@ func TestResultsStatusDomainMigration_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portResultsStatusDomainMigration, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

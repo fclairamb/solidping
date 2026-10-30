@@ -11,10 +11,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portPassiveRegions is distinct from every other _postgres_test.go embedded
-// port in the repo.
-const portPassiveRegions = 15518
-
 // passiveRegionsSection returns the statements of the
 // passive-checks-no-regions section of 024_v0_33_0.up.sql, read from the file
 // itself so the test can never drift from what ships.
@@ -64,9 +60,9 @@ func passiveRegionsSection(t *testing.T) []string {
 // uuid uids (min() over uuid needs the ::text cast) are exactly where the two
 // dialects differ. Initialize() already ran the section once against an empty
 // database; it is re-run here on seeded legacy rows.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestMigration024PassiveChecksLoseTheirRegions_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -74,7 +70,7 @@ func TestMigration024PassiveChecksLoseTheirRegions_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portPassiveRegions, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
