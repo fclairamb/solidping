@@ -83,6 +83,13 @@ func (s *Service) CreateMembershipRequest(
 		message = &m
 	}
 
+	// The /no-org funnel counts requests sent by users who belong to nothing
+	// (spec 2026-10-30-04).
+	fromZero := false
+	if members, listErr := s.db.ListMembersByUser(ctx, userUID); listErr == nil && len(members) == 0 {
+		fromZero = true
+	}
+
 	if existing == nil {
 		request := models.NewMembershipRequest(org.UID, userUID, message)
 		if err := s.db.CreateMembershipRequest(ctx, request); err != nil {
@@ -90,6 +97,10 @@ func (s *Service) CreateMembershipRequest(
 		}
 
 		s.notifyAdminsOfMembershipRequest(ctx, org, userUID, message)
+
+		if fromZero {
+			recordNoOrgOutcome(noOrgOutcomeJoinRequested)
+		}
 
 		summary := buildMembershipSummary(request, org)
 
@@ -120,6 +131,10 @@ func (s *Service) CreateMembershipRequest(
 	}
 
 	s.notifyAdminsOfMembershipRequest(ctx, org, userUID, message)
+
+	if fromZero {
+		recordNoOrgOutcome(noOrgOutcomeJoinRequested)
+	}
 
 	summary := buildMembershipSummary(existing, org)
 

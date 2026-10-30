@@ -403,6 +403,12 @@ func (s *Service) completePendingLogin(
 	}
 
 	fallback := s.fallbackMemberOrg(ctx, user.UID)
+	if fallback == nil {
+		// Org-less: an invitation or a personal org may settle the user
+		// (spec 2026-10-30-04). Never when this login just filed a request:
+		// ensurePersonalOrg sees it and leaves the user waiting for it.
+		fallback = s.ensurePersonalOrg(ctx, user)
+	}
 
 	var (
 		result *ProviderLoginResult
@@ -543,6 +549,8 @@ func (s *Service) pendingSession(ctx context.Context, user *models.User) (*Provi
 	if updateErr := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{LastActiveAt: &now}); updateErr != nil {
 		slog.ErrorContext(ctx, "Failed to update user last_active_at", "error", updateErr, "userUID", user.UID)
 	}
+
+	recordNoOrgOutcome(noOrgOutcomeLanded)
 
 	return &ProviderLoginResult{
 		AccessToken: accessToken,

@@ -8874,6 +8874,27 @@ paths:
           $ref: "#/components/responses/NotFound"
 
   # Membership request APIs (requester side)
+  /api/v1/auth/colleague-hint:
+    get:
+      tags: [Membership Requests]
+      summary: Organization the caller's colleagues use
+      description: |
+        For the banner of an auto-created personal organization: the one
+        organization whose members share the caller's (non-webmail) email
+        domain, when it accepts join requests. `org` is null when there is
+        none, or more than one.
+      operationId: getColleagueHint
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The suggested organization, or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ColleagueHintResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /api/v1/auth/membership-requests:
     get:
       tags: [Membership Requests]
@@ -18386,6 +18407,20 @@ components:
         decidedAt:
           type: string
           format: date-time
+
+    ColleagueHintResponse:
+      type: object
+      required: [org]
+      properties:
+        org:
+          type: object
+          nullable: true
+          required: [slug, name]
+          properties:
+            slug:
+              type: string
+            name:
+              type: string
 
     MembershipRequestListResponse:
       type: object

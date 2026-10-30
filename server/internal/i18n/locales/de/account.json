@@ -155,5 +155,17 @@
       "reasonIntro": "Begründung des Admins:",
       "retry": "Nach Ablauf der Wartezeit können Sie eine neue Anfrage stellen."
     }
+  },
+  "personalOrg": {
+    "name": "Organisation von {firstName}",
+    "cleanup": {
+      "subject": "Ihre SolidPing-Organisation {org} wird bald gelöscht",
+      "preheader": "Fügen Sie vor dem {date} eine Prüfung hinzu, um sie zu behalten.",
+      "title": "Ihre Organisation ist noch leer",
+      "body": "Wir haben die Organisation {org} bei Ihrer Registrierung erstellt. Sie hat noch keine Prüfung, daher löschen wir sie am {date}.",
+      "keep": "Um sie zu behalten, fügen Sie bis dahin eine Prüfung hinzu oder laden Sie eine Kollegin oder einen Kollegen ein. Mehr ist nicht nötig.",
+      "cta": "Prüfung hinzufügen",
+      "ignore": "Wenn Sie sie nicht brauchen, tun Sie nichts: Sie enthält keine Daten."
+    }
   }
 }

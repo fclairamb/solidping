@@ -177,6 +177,23 @@ func (s *Service) mintPostDeletionSession(
 		return nil, fmt.Errorf("failed to resolve remaining organizations: %w", err)
 	}
 
+	if len(remaining) == 0 {
+		// The user's last org is gone: like any org-less sign-in, an
+		// invitation or a personal org may settle them (spec 2026-10-30-04).
+		// A deleted personal org is never re-created, so deleting it lands
+		// on /no-org.
+		if caller, userErr := s.db.GetUser(ctx, callerUserUID); userErr == nil {
+			if member := s.ensurePersonalOrg(ctx, caller); member != nil {
+				remaining = []OrganizationSummary{{
+					Slug:    member.Organization.Slug,
+					Name:    member.Organization.Name,
+					LogoURL: member.Organization.LogoURL,
+					Role:    string(member.Role),
+				}}
+			}
+		}
+	}
+
 	if len(remaining) > 0 {
 		session, switchErr := s.SwitchOrg(ctx, callerUserUID, remaining[0].Slug, authContext)
 		if switchErr != nil {

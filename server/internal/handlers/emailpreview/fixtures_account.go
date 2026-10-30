@@ -110,3 +110,14 @@ func membershipRequestDecisionFixture(_ i18n.Locale) map[string]any {
 		keyDashboardURL: fixtureDashboardURL + "/orgs/acme",
 	}
 }
+
+// personalOrgCleanupWarningFixture is the day-23 notice of an empty
+// auto-created personal org (spec 2026-10-30-04).
+func personalOrgCleanupWarningFixture(_ i18n.Locale) map[string]any {
+	return map[string]any{
+		"OrgName":      "Alice's organization",
+		"OrgSlug":      "alice",
+		"DeleteAt":     fixtureChangedAt().Add(7 * 24 * time.Hour),
+		"DashboardURL": fixtureDashboardURL + "/orgs/alice/checks/new",
+	}
+}

@@ -65,6 +65,7 @@ const (
 	TemplateMembershipReqDecision   = "membership-request-decision.html"
 	TemplateMembershipReqNew        = "membership-request-new.html"
 	TemplatePagingNudge             = "paging-nudge.html"
+	TemplatePersonalOrgCleanup      = "personal-org-cleanup-warning.html"
 	TemplatePasswordChanged         = "password-changed.html"
 	TemplatePasswordReset           = "password-reset.html"
 	TemplatePasswordResetSSO        = "password-reset-sso.html"
@@ -138,6 +139,8 @@ var supportReplyableTemplates = map[string]bool{
 	TemplateTestEmail:              true,
 	TemplateUptimeReport:           true,
 	TemplateWelcome:                true,
+	// "Your empty org will be deleted": someone may well answer "keep it".
+	TemplatePersonalOrgCleanup: true,
 
 	// Security-critical / identity mail — never carries a reply path.
 	TemplateInvitation:              false,

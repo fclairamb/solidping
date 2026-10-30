@@ -241,3 +241,23 @@ func (h *Handler) writeMembershipRequestError(
 		return h.WriteInternalError(writer, request, err)
 	}
 }
+
+// ColleagueHintHandler — GET /api/v1/auth/colleague-hint. The organization
+// the caller's colleagues use, for the personal-org banner (spec
+// 2026-10-30-04); {"org": null} when there is none to suggest.
+func (h *Handler) ColleagueHintHandler(writer http.ResponseWriter, req *http.Request) error {
+	claims, ok := getClaimsFromContext(req)
+	if !ok {
+		return h.WriteError(
+			writer, http.StatusUnauthorized,
+			base.ErrorCodeUnauthorized, "Authentication required",
+		)
+	}
+
+	org, err := h.svc.ColleagueHint(req.Context(), claims.UserUID)
+	if err != nil {
+		return h.WriteInternalError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, ColleagueHintResponse{Org: org})
+}

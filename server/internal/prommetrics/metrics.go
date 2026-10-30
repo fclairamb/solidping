@@ -529,6 +529,18 @@ var (
 		[]string{labelEvent, labelContactType, labelOutcome},
 	)
 
+	// NoOrgOutcomes counts what happens to users who sign in belonging to no
+	// organization (spec 2026-10-30-04): "landed" on /no-org, an org
+	// "auto_created" for them, an org "created" by hand from zero, a
+	// "join_requested" from zero, or "left" (signed out while org-less).
+	NoOrgOutcomes = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_no_org_outcomes_total",
+			Help: "Outcomes of sign-ins by users who belong to no organization",
+		},
+		[]string{labelOutcome},
+	)
+
 	// SupportDMUnavailable reports how many connected integrations cannot
 	// deliver direct messages because they were installed before the DM scope
 	// existed and have not been re-authorized.
@@ -724,7 +736,7 @@ var (
 
 	allCollectors = []prometheus.Collector{
 		SupportCapture, SupportMirror, SupportDMUnavailable, OrgProviderLinksDangling,
-		OperatorNotice,
+		OperatorNotice, NoOrgOutcomes,
 		WatchdogAnomalies, WatchdogStrandedJobs, WatchdogStaleIncidents,
 		WatchdogDetectorFailures, WatchdogLastRun,
 		CheckExecutions, CheckDuration, SchedulingDelay,
