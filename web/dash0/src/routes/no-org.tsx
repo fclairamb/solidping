@@ -2,25 +2,20 @@ import { useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import { AuroraPanel } from "@/components/ui/aurora-panel";
-import { AlertCircle, Loader2, X } from "lucide-react";
-import { ApiError } from "@/api/client";
+import { AlertCircle, X } from "lucide-react";
 import {
-  useCreateMembershipRequest,
   useCancelMembershipRequest,
   useMyMembershipRequests,
 } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreateOrgCard } from "@/components/shared/create-org-card";
+import { JoinOrgCard } from "@/components/shared/join-org-card";
 import { DASH_BASE } from "@/lib/base-path";
 import { orgCreationReturnTo } from "@/lib/login-destination";
-import { SecondaryDisclosureCard } from "@/components/ui/secondary-disclosure-card";
 import {
   randomOrgNameSeed,
   suggestOrgName,
@@ -35,12 +30,18 @@ export const Route = createFileRoute("/no-org")({
   // session handed over is org-less. It names that org so we can explain why
   // the user landed here instead of on its dashboard.
   //
+  // `join` names an org the user wants to join (an explicit join path, e.g. an
+  // invitation that could not be used). Without it, a pending membership
+  // request or `membershipPending`, the join card is hidden: a new account is
+  // asked to create its org, not shown a way to leave (spec 2026-10-30-04).
+  //
   // `returnTo` is a pending MCP authorization or device approval the sign-in
   // started from. Only those survive (orgCreationReturnTo): the org-creation
   // form resumes them once the new org exists.
   validateSearch: (
     search: Record<string, unknown>,
-  ): { membershipPending?: string; returnTo?: string } => ({
+  ): { membershipPending?: string; returnTo?: string; join?: string } => ({
+    join: typeof search.join === "string" && search.join ? search.join : undefined,
     membershipPending:
       typeof search.membershipPending === "string" && search.membershipPending
         ? search.membershipPending
@@ -54,7 +55,7 @@ function NoOrgPage() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const { logout, user, isLoading } = useAuth();
-  const { membershipPending, returnTo } = Route.useSearch();
+  const { membershipPending, returnTo, join } = Route.useSearch();
 
   // "Here is an organization for you — click Create" is the whole point of this
   // screen for a brand-new account (spec 2026-09-05-01): the possessive form
@@ -113,14 +114,14 @@ function NoOrgPage() {
         )}
 
         {/* Create first and full width: it is the action we expect. Joining an
-            existing org stays available below, visibly secondary — invited
-            colleagues still need it. */}
+            existing org is offered below, visibly secondary, only when the
+            user came through a join path. */}
         <CreateOrgCard
           suggestedName={suggestedName}
           suggestedSlug={suggestedSlug}
           returnTo={returnTo}
         />
-        <JoinOrgCard />
+        <JoinOrgCard joinSlug={join} membershipPending={membershipPending} />
 
         <PendingRequestsList />
 
@@ -141,98 +142,6 @@ function NoOrgPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-function JoinOrgCard() {
-  const { t } = useTranslation("auth");
-  const createRequest = useCreateMembershipRequest();
-
-  const [orgSlug, setOrgSlug] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    try {
-      await createRequest.mutateAsync({
-        orgSlug,
-        message: message || undefined,
-      });
-      setSuccess(true);
-      setOrgSlug("");
-      setMessage("");
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("unexpectedError"));
-    }
-  };
-
-  return (
-    <SecondaryDisclosureCard
-      title={t("noOrg.joinTitle")}
-      description={t("noOrg.joinDescription")}
-      expandLabel={t("noOrg.joinExpand")}
-      collapseLabel={t("noOrg.joinCollapse")}
-      data-testid="no-org-join-toggle"
-    >
-      {success ? (
-        <Alert>
-          <AlertDescription>{t("noOrg.joinSent")}</AlertDescription>
-        </Alert>
-      ) : (
-        <>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="joinOrgSlug">{t("noOrg.joinSlugLabel")}</Label>
-              <Input
-                id="joinOrgSlug"
-                value={orgSlug}
-                onChange={(e) => setOrgSlug(e.target.value)}
-                required
-                pattern="[a-z0-9][a-z0-9-]{1,18}[a-z0-9]"
-                disabled={createRequest.isPending}
-                placeholder={t("noOrg.joinSlugPlaceholder")}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="joinMessage">{t("noOrg.joinMessageLabel")}</Label>
-              <Textarea
-                id="joinMessage"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                disabled={createRequest.isPending}
-                placeholder={t("noOrg.joinMessagePlaceholder")}
-                rows={3}
-              />
-            </div>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={createRequest.isPending}
-              variant="outline"
-            >
-              {createRequest.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {t("noOrg.joining")}
-                </>
-              ) : (
-                t("noOrg.requestJoin")
-              )}
-            </Button>
-          </form>
-        </>
-      )}
-    </SecondaryDisclosureCard>
   );
 }
 

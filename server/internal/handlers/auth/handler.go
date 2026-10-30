@@ -169,10 +169,6 @@ func (h *Handler) Logout(writer http.ResponseWriter, req *http.Request) error {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	// An org-less session signing out is the "left" end of the /no-org
-	// funnel (spec 2026-10-30-04).
-	recordOrgLessLogout(claims)
-
 	// Parse optional logout request
 	var logoutReq LogoutRequest
 	if req.Body != nil {

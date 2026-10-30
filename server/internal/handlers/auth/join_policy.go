@@ -550,8 +550,6 @@ func (s *Service) pendingSession(ctx context.Context, user *models.User) (*Provi
 		slog.ErrorContext(ctx, "Failed to update user last_active_at", "error", updateErr, "userUID", user.UID)
 	}
 
-	recordNoOrgOutcome(noOrgOutcomeLanded)
-
 	return &ProviderLoginResult{
 		AccessToken: accessToken,
 		ExpiresIn:   int(s.cfg.AccessTokenExpiry.Seconds()),

@@ -62,12 +62,6 @@ const (
 	// sliding RefreshTokenExpiry idle window applies).
 	KeySessionMaxDuration ParameterKey = "auth.session_max_duration"
 
-	// KeyAutoPersonalOrg creates a personal organization for a user who signs
-	// in belonging to none (spec 2026-10-30-04). Unset means the deployment
-	// mode default: on for saas, off for self-hosted (see
-	// config.Config.AutoPersonalOrgEnabled). Applied at startup.
-	KeyAutoPersonalOrg ParameterKey = "auth.auto_personal_org"
-
 	// KeyOAuthEnforceClientSecret gates RFC 6749 client authentication at the
 	// embedded MCP OAuth authorization server's token endpoint (spec
 	// 2026-09-25-27-oauth-client-secret-verification.md). Default true — see
@@ -813,16 +807,6 @@ func getKnownParameters() []ParameterDefinition {
 			},
 		},
 		{
-			Key:    KeyAutoPersonalOrg,
-			EnvVar: config.EnvAuthAutoPersonalOrg,
-			Secret: false,
-			ApplyFunc: func(cfg *config.Config, value any) {
-				if allow, ok := parseTriStateBool(value); ok {
-					cfg.Auth.AutoPersonalOrg = &allow
-				}
-			},
-		},
-		{
 			Key:    KeyEgressAllowPrivateTargets,
 			EnvVar: config.EnvEgressAllowPrivate,
 			Secret: false,
@@ -1494,28 +1478,24 @@ func parseBool(value any, defaultValue bool) bool {
 // derived default in place: an unparseable value must never flip a SaaS
 // worker open, nor a private agent shut.
 func applyEgressAllowPrivate(cfg *config.Config, value any) {
-	if allow, ok := parseTriStateBool(value); ok {
-		cfg.Egress.AllowPrivateTargets = &allow
-	}
-}
+	var allow bool
 
-// parseTriStateBool reads a boolean for a tri-state setting: ok is false when
-// the value is not a recognizable boolean, which leaves the setting unset.
-func parseTriStateBool(value any) (bool, bool) {
 	switch v := value.(type) {
 	case bool:
-		return v, true
+		allow = v
 	case string:
 		// parseBool's two defaults agree only on a recognizable boolean.
 		asTrue, asFalse := parseBool(v, true), parseBool(v, false)
 		if asTrue != asFalse {
-			return false, false
+			return
 		}
 
-		return asTrue, true
+		allow = asTrue
 	default:
-		return false, false
+		return
 	}
+
+	cfg.Egress.AllowPrivateTargets = &allow
 }
 
 // Service manages system configuration.

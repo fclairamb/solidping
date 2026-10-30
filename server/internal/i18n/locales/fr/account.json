@@ -157,15 +157,6 @@
     }
   },
   "personalOrg": {
-    "name": "L'organisation de {firstName}",
-    "cleanup": {
-      "subject": "Votre organisation SolidPing {org} sera bientôt supprimée",
-      "preheader": "Ajoutez un contrôle avant le {date} pour la garder.",
-      "title": "Votre organisation est toujours vide",
-      "body": "Nous avons créé l'organisation {org} à votre inscription. Elle n'a toujours aucun contrôle : nous la supprimerons le {date}.",
-      "keep": "Pour la garder, ajoutez un contrôle ou invitez un collègue d'ici là. Rien d'autre n'est nécessaire.",
-      "cta": "Ajouter un contrôle",
-      "ignore": "Si vous n'en avez pas besoin, ne faites rien : elle ne contient aucune donnée."
-    }
+    "name": "L'organisation de {firstName}"
   }
 }

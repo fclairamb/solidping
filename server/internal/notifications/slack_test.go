@@ -170,18 +170,6 @@ func (m *mockDBService) GetAutoPersonalOrgByOwner(
 	panic("not implemented")
 }
 
-func (m *mockDBService) ListAbandonedAutoPersonalOrgs(
-	_ context.Context, _ time.Time,
-) ([]*models.Organization, error) {
-	panic("not implemented")
-}
-
-func (m *mockDBService) ListOrgsWithMemberEmailDomain(
-	_ context.Context, _, _ string, _ int,
-) ([]*models.Organization, error) {
-	panic("not implemented")
-}
-
 func (m *mockDBService) CreateOrganizationProvider(_ context.Context, _ *models.OrganizationProvider) error {
 	panic("not implemented")
 }

@@ -112,11 +112,6 @@ const (
 	// no retention at all, which stopped being survivable once every login and
 	// config change started landing in it.
 	JobTypeEventsCleanup JobType = "events_cleanup"
-	// JobTypePersonalOrgCleanup warns, then deletes, the auto-created
-	// personal organizations that stayed empty (spec 2026-10-30-04): no
-	// check and a single member, warning at day 23, deletion at day 30.
-	// Global, self-rescheduling daily.
-	JobTypePersonalOrgCleanup JobType = "personal_org_cleanup"
 	// JobTypeDemoCleanup sweeps the public live demo (spec 2026-09-06-02):
 	// expired visitor-created checks are deleted through the checks service,
 	// and the demo identity (password, flags, memberships, entitlements,

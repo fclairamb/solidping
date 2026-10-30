@@ -43,29 +43,29 @@ func TestConfirmRegistrationNoOrgMintsSession(t *testing.T) {
 	resp, err := f.svc.ConfirmRegistration(ctx, token)
 	r.NoError(err)
 
-	// Precondition: this test is only meaningful for the zero-org branch.
+	// The user got no org from a pattern, so a personal org was created.
 	user, err := f.db.GetUserByEmail(ctx, email)
 	r.NoError(err)
 
 	members, err := f.db.ListMembersByUser(ctx, user.UID)
 	r.NoError(err)
-	r.Empty(members, "precondition: the new user must have joined no org")
+	r.Len(members, 1, "the new user is settled into a personal org (spec 2026-10-30-04)")
 
 	// The actual assertion: a usable, org-less session was minted.
 	r.NotEmpty(resp.AccessToken, "confirming registration with no matching org must still mint an access token")
-	r.Empty(resp.RefreshToken,
-		"the no-org branch issues no refresh token, consistent with Login's resolvedOrg==nil branch")
+	r.NotEmpty(resp.RefreshToken, "the personal org gets a regular org-scoped session")
 	r.Positive(resp.ExpiresIn)
-	r.Equal(LoginActionNoOrg, resp.LoginAction)
+	r.Equal(LoginActionDefault, resp.LoginAction)
 	r.Equal(email, resp.User.Email)
 
 	// And it must actually authenticate, exactly as /no-org's first
 	// authenticated call would exercise it.
 	claims, err := f.svc.ValidateToken(ctx, resp.AccessToken)
 	r.NoError(err, "the minted access token must validate")
-	r.Empty(claims.OrgSlug, "the token must carry no org")
+	r.NotEmpty(claims.OrgSlug, "the token must carry the personal org")
 
 	meResp, err := f.svc.GetUserInfo(ctx, claims)
 	r.NoError(err, "/auth/me must succeed with the confirm-registration access token")
 	r.Equal(email, meResp.User.Email)
+	r.NotNil(meResp.Organization)
 }

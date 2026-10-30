@@ -548,9 +548,6 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	authService := auth.NewService(dbService, cfg.Auth, cfg, jobService, entitlementsService)
 	// PAT revocations are broadcast so every replica evicts its cache.
 	authService.SetEventNotifier(ctx, eventNotifier)
-	// The personal_org_cleanup job deletes abandoned personal orgs the way
-	// an owner does, through the auth service (spec 2026-10-30-04).
-	svcList.PersonalOrgs = authService
 
 	// Register file storage backends. Idempotent — safe to call once at startup.
 	localfs.Register()
@@ -870,7 +867,6 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuthProtected.POST("/membership-requests", authHandler.CreateMembershipRequestHandler)
 	rootAuthProtected.GET("/membership-requests", authHandler.ListOwnMembershipRequestsHandler)
 	rootAuthProtected.DELETE("/membership-requests/:uid", authHandler.CancelMembershipRequestHandler)
-	rootAuthProtected.GET("/colleague-hint", authHandler.ColleagueHintHandler)
 
 	// Per-user UI preferences (spec 2026-08-28-17). Deliberately NOT under
 	// /orgs/:org: the entry belongs to the authenticated user, and the

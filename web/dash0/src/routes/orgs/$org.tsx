@@ -39,7 +39,6 @@ import {
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { DemoBanner } from "@/components/shared/demo-banner";
 import { ImpersonationBanner } from "@/components/shared/impersonation-banner";
-import { ColleagueHintBanner } from "@/components/shared/colleague-hint-banner";
 import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth, isSwitchOrgInFlight } from "@/contexts/AuthContext";
@@ -1258,9 +1257,6 @@ function OrgLayout() {
             {/* Super-admin impersonation (spec 2026-09-29-03): on every org
                 page, never dismissible. */}
             <ImpersonationBanner />
-            {/* An auto-created personal org whose owner's colleagues already
-                use another org (spec 2026-10-30-04). Dismissable. */}
-            <ColleagueHintBanner org={org} />
             <Outlet />
           </div>
         </div>

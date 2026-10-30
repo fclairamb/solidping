@@ -5288,19 +5288,6 @@ type CloneCheckRequest struct {
 	Slug          *string `json:"slug,omitempty"`
 }
 
-// ColleagueHintResponse defines model for ColleagueHintResponse.
-type ColleagueHintResponse struct {
-	// Domain The email domain the caller shares with the org's members.
-	Domain *string `json:"domain,omitempty"`
-	Org    *struct {
-		Name string `json:"name"`
-		Slug string `json:"slug"`
-	} `json:"org"`
-
-	// PersonalOrgSlug The caller's personal organization, whose dashboard shows the banner.
-	PersonalOrgSlug *string `json:"personalOrgSlug,omitempty"`
-}
-
 // ConfirmRegistrationRequest defines model for ConfirmRegistrationRequest.
 type ConfirmRegistrationRequest struct {
 	// Token Registration confirmation token from the emailed link
@@ -11059,16 +11046,6 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/auth/change-password (the `ChangePassword` operationId).
 	ChangePassword(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetColleagueHint Organization the caller's colleagues use
-	//
-	// For the banner of an auto-created personal organization: the one
-	// organization whose members share the caller's (non-webmail) email
-	// domain, when it accepts join requests. `org` is null when there is
-	// none, or more than one.
-	//
-	// Corresponds with GET /api/v1/auth/colleague-hint (the `GetColleagueHint` operationId).
-	GetColleagueHint(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// ConfirmRegistrationWithBody Confirm a pending registration with an emailed token
 	//
 	// Takes any type of body and a specified content type.
@@ -14277,26 +14254,6 @@ func (c *Client) ChangePasswordWithBody(ctx context.Context, contentType string,
 // Corresponds with POST /api/v1/auth/change-password (the `ChangePassword` operationId).
 func (c *Client) ChangePassword(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewChangePasswordRequest(c.Server, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// GetColleagueHint Organization the caller's colleagues use
-//
-// For the banner of an auto-created personal organization: the one
-// organization whose members share the caller's (non-webmail) email
-// domain, when it accepts join requests. `org` is null when there is
-// none, or more than one.
-//
-// Corresponds with GET /api/v1/auth/colleague-hint (the `GetColleagueHint` operationId).
-func (c *Client) GetColleagueHint(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetColleagueHintRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -21570,33 +21527,6 @@ func NewChangePasswordRequestWithBody(server string, contentType string, body io
 	}
 
 	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewGetColleagueHintRequest constructs an http.Request for the GetColleagueHint method
-func NewGetColleagueHintRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/v1/auth/colleague-hint")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
 
 	return req, nil
 }
@@ -36779,18 +36709,6 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/auth/change-password (the `ChangePassword` operationId).
 	ChangePasswordWithResponse(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangePasswordResult, error)
 
-	// GetColleagueHintWithResponse Organization the caller's colleagues use
-	//
-	// For the banner of an auto-created personal organization: the one
-	// organization whose members share the caller's (non-webmail) email
-	// domain, when it accepts join requests. `org` is null when there is
-	// none, or more than one.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with GET /api/v1/auth/colleague-hint (the `GetColleagueHint` operationId).
-	GetColleagueHintWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetColleagueHintResult, error)
-
 	// ConfirmRegistrationWithBodyWithResponse Confirm a pending registration with an emailed token
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -40611,54 +40529,6 @@ func (r ChangePasswordResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ChangePasswordResult) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type GetColleagueHintResult struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *ColleagueHintResponse
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *Unauthorized
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r GetColleagueHintResult) GetJSON200() *ColleagueHintResponse {
-	return r.JSON200
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r GetColleagueHintResult) GetJSON401() *Unauthorized {
-	return r.JSON401
-}
-
-// GetBody returns the raw response body bytes
-func (r GetColleagueHintResult) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r GetColleagueHintResult) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetColleagueHintResult) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r GetColleagueHintResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -57762,24 +57632,6 @@ func (c *ClientWithResponses) ChangePasswordWithResponse(ctx context.Context, bo
 	return ParseChangePasswordResult(rsp)
 }
 
-// GetColleagueHintWithResponse Organization the caller's colleagues use
-//
-// For the banner of an auto-created personal organization: the one
-// organization whose members share the caller's (non-webmail) email
-// domain, when it accepts join requests. `org` is null when there is
-// none, or more than one.
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with GET /api/v1/auth/colleague-hint (the `GetColleagueHint` operationId).
-func (c *ClientWithResponses) GetColleagueHintWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetColleagueHintResult, error) {
-	rsp, err := c.GetColleagueHint(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetColleagueHintResult(rsp)
-}
-
 // ConfirmRegistrationWithBodyWithResponse Confirm a pending registration with an emailed token
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -63864,39 +63716,6 @@ func ParseChangePasswordResult(rsp *http.Response) (*ChangePasswordResult, error
 			return nil, err
 		}
 		response.JSON429 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetColleagueHintResult parses an HTTP response from a GetColleagueHintWithResponse call
-func ParseGetColleagueHintResult(rsp *http.Response) (*GetColleagueHintResult, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetColleagueHintResult{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ColleagueHintResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
 
 	}
 

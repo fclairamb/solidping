@@ -835,10 +835,6 @@ func (s *Service) completeLogin(
 			return nil, tokenErr
 		}
 
-		if loginAction == LoginActionNoOrg {
-			recordNoOrgOutcome(noOrgOutcomeLanded)
-		}
-
 		return &LoginResponse{
 			AccessToken:   accessToken,
 			ExpiresIn:     int(s.cfg.AccessTokenExpiry.Seconds()),
@@ -3513,17 +3509,9 @@ type OrgResponse struct {
 func (s *Service) CreateOrg(
 	ctx context.Context, userUID string, req CreateOrgRequest, authContext Context,
 ) (*OrgResponse, error) {
-	// Counted for the /no-org funnel (spec 2026-10-30-04): only the creation
-	// that takes a user out of having no org at all.
-	fromZero := s.hasNoMembership(ctx, userUID)
-
 	org, err := s.createOrgForUser(ctx, userUID, req, nil)
 	if err != nil {
 		return nil, err
-	}
-
-	if fromZero {
-		recordNoOrgOutcome(noOrgOutcomeCreated)
 	}
 
 	// Mint a session scoped to the new org, exactly like SwitchOrg: a fresh

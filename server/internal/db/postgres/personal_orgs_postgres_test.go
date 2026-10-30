@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -12,8 +11,7 @@ import (
 
 // TestAutoPersonalOrgs_Postgres runs the personal-org queries of spec
 // 2026-10-30-04 on Postgres: the one-live-personal-org-per-user index, the
-// owner lookup with and without deleted rows, the abandoned-org listing and
-// the colleague domain lookup.
+// owner lookup with and without deleted rows.
 func TestAutoPersonalOrgs_Postgres(t *testing.T) {
 	t.Parallel()
 
@@ -59,42 +57,6 @@ func TestAutoPersonalOrgs_Postgres(t *testing.T) {
 	r.NoError(err)
 	r.NotNil(got)
 	r.Equal(personal.UID, got.UID)
-
-	// Abandoned: old, empty, single member.
-	old := time.Now().Add(-40 * 24 * time.Hour)
-	_, err = s.DB().NewUpdate().Table("organizations").
-		Set("created_at = ?", old).Where("uid = ?", personal.UID).Exec(ctx)
-	r.NoError(err)
-
-	abandoned, err := s.ListAbandonedAutoPersonalOrgs(ctx, time.Now().Add(-23*24*time.Hour))
-	r.NoError(err)
-	r.Len(abandoned, 1)
-
-	check := models.NewCheck(personal.UID, "site", "http")
-	r.NoError(s.CreateCheck(ctx, check))
-	r.NoError(s.DeleteCheck(ctx, check.UID))
-
-	abandoned, err = s.ListAbandonedAutoPersonalOrgs(ctx, time.Now().Add(-23*24*time.Hour))
-	r.NoError(err)
-	r.Empty(abandoned, "an org that ever had a check is not abandoned")
-
-	// Colleague lookup: the personal org never counts, a regular org does.
-	acme := models.NewOrganization("acme", "Acme")
-	r.NoError(s.CreateOrganization(ctx, acme))
-
-	bob := models.NewUser("Bob@ACME.com")
-	r.NoError(s.CreateUser(ctx, bob))
-	r.NoError(s.CreateOrganizationMember(ctx,
-		models.NewOrganizationMember(acme.UID, bob.UID, models.MemberRoleAdmin)))
-
-	orgs, err := s.ListOrgsWithMemberEmailDomain(ctx, "acme.com", alice.UID, 2)
-	r.NoError(err)
-	r.Len(orgs, 1)
-	r.Equal(acme.UID, orgs[0].UID)
-
-	orgs, err = s.ListOrgsWithMemberEmailDomain(ctx, "acme.com", bob.UID, 2)
-	r.NoError(err)
-	r.Empty(orgs, "orgs the caller belongs to are excluded")
 
 	// Deleted: still found with includeDeleted, and the index frees the slot.
 	r.NoError(s.DeleteOrganization(ctx, personal.UID))

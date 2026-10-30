@@ -19,16 +19,12 @@ import { test, expect, API_BASE } from "./fixtures";
 // overlay onto the live config is applied once, at process boot, so only
 // an env var set before the server starts actually enables registration
 // for this flow.
+// Spec 2026-10-30-04: such a user used to land on /no-org; they now get a
+// personal org and land on its dashboard (no join request, no invitation).
 test.describe("Confirm registration with no matching org", () => {
-  test("register -> confirm lands the user on /no-org still authenticated, no bounce to login", async ({
+  test("register -> confirm lands the user on their personal org, authenticated, no bounce to login", async ({
     page,
   }) => {
-    // On SaaS the account gets a personal org instead (spec 2026-10-30-04,
-    // auth.auto_personal_org): auto-personal-org.spec.ts covers that landing.
-    const configResp = await page.request.get(`${API_BASE}/api/v1/config`);
-    const { deploymentMode } = (await configResp.json()) as { deploymentMode?: string };
-    test.skip(deploymentMode === "saas", "SaaS creates a personal org: see auto-personal-org.spec.ts");
-
     const stamp = Date.now();
     const email = `confirm-no-org-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";
@@ -88,7 +84,9 @@ test.describe("Confirm registration with no matching org", () => {
 
     // The "confirmed" screen flashes, then the route auto-navigates after
     // 1.5s — wait for the real destination, not the flash.
-    await page.waitForURL(/\/no-org(\?|$)/, { timeout: 10000 });
+    // "<first name>'s organization": the slug derives from the first name.
+    await page.waitForURL(/\/orgs\/confirm[^/]*(\/|\?|$)/, { timeout: 15000 });
+    expect(page.url()).not.toContain("/no-org");
 
     // Must NOT have bounced to login — the bug this spec fixes.
     expect(page.url()).not.toContain("/login");
@@ -104,11 +102,8 @@ test.describe("Confirm registration with no matching org", () => {
     expect(storedToken).toBeTruthy();
     expect(storedToken).not.toBe("undefined");
 
-    // And the page must actually be authenticated and working — /no-org's
-    // create-org card only renders its form for a signed-in user with real
-    // API access, not a stub/error state.
-    await expect(page.getByTestId("no-org-advanced-toggle")).toBeVisible({
-      timeout: 10000,
-    });
+    // And the page must actually be authenticated and working: the org
+    // dashboard shell renders for a signed-in user with real API access.
+    await expect(page.getByTestId("app-sidebar")).toBeVisible({ timeout: 10000 });
   });
 });

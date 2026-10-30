@@ -114,11 +114,6 @@ type Registry struct {
 	// service; every consumer nil-guards.
 	Checks CheckDeleter
 
-	// PersonalOrgs warns and deletes abandoned auto-created personal orgs
-	// (spec 2026-10-30-04). Nil in tests that build a bare Registry; the job
-	// nil-guards.
-	PersonalOrgs PersonalOrgSweeper
-
 	// PrivateLocationMonitors backfills the liveness monitor of every private
 	// location at startup (spec 2026-09-25-05). Same *checks.Service as Checks,
 	// behind its own narrow interface. Nil-guarded by the startup job.
@@ -165,13 +160,6 @@ type AIRepairer interface {
 // unless its org opted out.
 type PrivateLocationMonitorBackfiller interface {
 	BackfillPrivateLocationMonitors(ctx context.Context) (int, error)
-}
-
-// PersonalOrgSweeper is the abandoned personal-org cleanup the
-// personal_org_cleanup job runs (spec 2026-10-30-04), implemented by the auth
-// service. Warned and deleted are the counts of this pass.
-type PersonalOrgSweeper interface {
-	SweepPersonalOrgs(ctx context.Context, now time.Time) (warned, deleted int, err error)
 }
 
 // CheckDeleter is the narrow slice of the checks service a background sweep

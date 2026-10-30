@@ -157,15 +157,6 @@
     }
   },
   "personalOrg": {
-    "name": "{firstName}'s organization",
-    "cleanup": {
-      "subject": "Your SolidPing organization {org} will be deleted soon",
-      "preheader": "Add a check before {date} to keep it.",
-      "title": "Your organization is still empty",
-      "body": "We created the organization {org} when you signed up. It still has no check, so we will delete it on {date}.",
-      "keep": "To keep it, add a check or invite a teammate before then. Nothing else is needed.",
-      "cta": "Add a check",
-      "ignore": "If you don't need it, do nothing: it holds no data."
-    }
+    "name": "{firstName}'s organization"
   }
 }

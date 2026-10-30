@@ -111,27 +111,6 @@ The `bcrypt` algorithm pre-hashes passwords as `base64(sha256(password))` before
 The server validates the hashing policy at startup and **fails fast** on a misconfiguration (unknown algorithm; bcrypt cost outside `10–31`; argon2id memory below the `8192` KiB floor). Values below the OWASP-recommended floors are allowed but warn-logged. There is never a silent fallback.
 :::
 
-## Sign-up and organizations
-
-Every check, status page and alert lives in an organization. A user who signs in and belongs to none is placed this way, in order:
-
-1. a pending invitation for their email: they join that organization;
-2. an organization whose registration email pattern matches their email: they join it;
-3. a membership request they already sent: they wait for its answer on the "no organization" page;
-4. otherwise, when `auth.auto_personal_org` is on, SolidPing creates a personal organization for them ("Alice's organization", in their language) and makes them its owner. They land on its dashboard, with no form to fill.
-
-With the setting off, step 4 is the "no organization" page, where the user creates an organization or asks to join one. A user gets one personal organization: if they delete it, or it is cleaned up, the next sign-in shows that page.
-
-When people from the same company domain (not a webmail domain) already use exactly one organization that accepts join requests, a dismissable banner on the personal organization's dashboard offers to request access to it. Nothing is shown when several organizations match, so the banner never lists organizations.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SP_AUTH_AUTO_PERSONAL_ORG` | `true` when `SP_DEPLOYMENT_MODE=saas`, `false` otherwise | Create a personal organization for a user who signs in belonging to none. Also the `auth.auto_personal_org` system parameter, applied at startup |
-
-### Abandoned personal organizations
-
-A personal organization that still has no check and a single member 23 days after its creation gets a warning email to its owner. Seven days later (day 30) it is deleted, the same way an owner deletes an organization. An organization that ever had a check, a second member or a plan set by billing or an administrator is never touched, and neither is an organization created by hand.
-
 ## Changing an email address
 
 A user changes their sign-in email from **Account > Profile**: enter the new address and the current password. A super admin changes anyone's email from **Server > Users**, with the pencil icon on the user's row, without the user's password.

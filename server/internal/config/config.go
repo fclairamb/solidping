@@ -1535,28 +1535,6 @@ type AuthConfig struct {
 	// the seeded password stays the public default with must_change_password.
 	// Env: SP_ADMIN_EMAIL (or SP_AUTH_ADMIN_EMAIL), bound in applyAuthEnv.
 	AdminEmail string `koanf:"admin_email"`
-	// AutoPersonalOrg creates a personal organization for a user who signs in
-	// belonging to none, instead of sending them to /no-org (spec
-	// 2026-10-30-04). TRI-STATE: nil means the deployment-mode default (on
-	// for saas, off for self-hosted). Resolve through
-	// Config.AutoPersonalOrgEnabled, never this field. snake_case, so
-	// SP_AUTH_AUTO_PERSONAL_ORG is bound by hand in applyAuthEnv.
-	AutoPersonalOrg *bool `koanf:"auto_personal_org"`
-}
-
-// EnvAuthAutoPersonalOrg is the env override of auth.auto_personal_org.
-const EnvAuthAutoPersonalOrg = "SP_AUTH_AUTO_PERSONAL_ORG"
-
-// AutoPersonalOrgEnabled reports whether a user who signs in with no
-// organization gets a personal one created for them: the explicit
-// auth.auto_personal_org setting when set, else true on SaaS and false on
-// self-hosted.
-func (c *Config) AutoPersonalOrgEnabled() bool {
-	if c.Auth.AutoPersonalOrg != nil {
-		return *c.Auth.AutoPersonalOrg
-	}
-
-	return c.Deployment.Mode == DeploymentModeSaaS
 }
 
 // PasswordConfig selects the password-hashing algorithm and its cost
@@ -2938,14 +2916,6 @@ func applyAuthEnv(cfg *AuthConfig) {
 	// auth.impersonation.enabled and bind nothing.
 	if v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv("SP_AUTH_IMPERSONATION_ENABLED"))); err == nil {
 		cfg.ImpersonationEnabled = v
-	}
-	// auth.auto_personal_org: tri-state, unset keeps the mode default.
-	if raw := strings.TrimSpace(os.Getenv(EnvAuthAutoPersonalOrg)); raw != "" {
-		if v, err := strconv.ParseBool(raw); err == nil {
-			cfg.AutoPersonalOrg = &v
-		} else {
-			slog.Warn("Ignoring unparseable "+EnvAuthAutoPersonalOrg, "value", raw, "error", err)
-		}
 	}
 	// auth.admin_email: SP_ADMIN_EMAIL is the documented short name.
 	if v := strings.TrimSpace(os.Getenv("SP_AUTH_ADMIN_EMAIL")); v != "" {

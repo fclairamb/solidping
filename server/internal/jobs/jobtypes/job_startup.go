@@ -96,10 +96,6 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 		return err
 	}
 
-	if err := r.ensurePersonalOrgCleanupJob(ctx, jctx); err != nil {
-		return err
-	}
-
 	if err := r.ensureStuckJobReaperJob(ctx, jctx); err != nil {
 		return err
 	}
@@ -700,23 +696,6 @@ func (r *StartupJobRun) ensureEventsCleanupJob(ctx context.Context, jctx *jobdef
 		log.WarnContext(ctx, "Failed to create events cleanup job (non-fatal)", "error", err)
 	} else {
 		log.DebugContext(ctx, "Ensured events cleanup job exists")
-	}
-
-	return nil
-}
-
-// ensurePersonalOrgCleanupJob provisions the global abandoned personal-org
-// sweeper (spec 2026-10-30-04). It reschedules itself daily; CreateJob dedupes
-// on type+config+org+pending, so a restart won't stack a duplicate. Always
-// provisioned: orgs created while auth.auto_personal_org was on are still
-// cleaned up after it is turned off, and with none the run is one query.
-func (r *StartupJobRun) ensurePersonalOrgCleanupJob(ctx context.Context, jctx *jobdef.JobContext) error {
-	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		return nil
-	}
-
-	if _, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypePersonalOrgCleanup), nil, nil); err != nil {
-		jctx.Logger.WarnContext(ctx, "Failed to create personal org cleanup job (non-fatal)", "error", err)
 	}
 
 	return nil
