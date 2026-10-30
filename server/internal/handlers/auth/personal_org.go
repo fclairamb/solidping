@@ -14,7 +14,7 @@ import (
 // membership and nothing else that could give them one, so a sign-in does not
 // end on /no-org (spec 2026-10-30-04).
 //
-// It keeps today's behaviour (returns nil, creates nothing) when the user
+// It keeps today's behavior (returns nil, creates nothing) when the user
 // could still be admitted somewhere:
 //  1. an outstanding invitation addressed to their email;
 //  2. a registration email pattern that matches their email;

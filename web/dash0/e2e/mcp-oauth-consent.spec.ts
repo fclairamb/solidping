@@ -373,8 +373,10 @@ test.describe("MCP OAuth consent flow for a user without an org", () => {
       await mail.goto(`${API_BASE}${DASH_BASE}/confirm-registration/${token}`);
       await mail.getByTestId("confirm-registration-button").click();
 
-      await mail.waitForURL(/\/no-org\?.*returnTo=/, { timeout: 15000 });
-      await createFirstOrg(mail);
+      // The newcomer gets a personal org at confirmation (spec
+      // 2026-10-30-04), so the pending authorization resumes straight to
+      // consent: no detour through /no-org.
+      await mail.waitForURL(/\/oauth\/consent/, { timeout: 15000 });
 
       const { code, state } = await approveConsent(mail);
       expect(code).toBeTruthy();

@@ -20,7 +20,7 @@ import { test, expect, API_BASE } from "./fixtures";
 // an env var set before the server starts actually enables registration
 // for this flow.
 test.describe("Confirm registration with no matching org", () => {
-  test("register -> confirm lands the user on /no-org still authenticated, no bounce to login", async ({
+  test("register -> confirm lands a fresh account on its own personal org dashboard (spec 2026-10-30-04)", async ({
     page,
   }) => {
     const stamp = Date.now();
@@ -94,7 +94,8 @@ test.describe("Confirm registration with no matching org", () => {
 
     // The "confirmed" screen flashes, then the route auto-navigates after
     // 1.5s — wait for the real destination, not the flash.
-    await page.waitForURL(/\/no-org(\?|$)/, { timeout: 10000 });
+    await page.waitForURL(/\/orgs\/confirm\d*(\/|\?|$)/, { timeout: 10000 });
+    expect(page.url()).not.toContain("/no-org");
 
     // Must NOT have bounced to login — the bug this spec fixes.
     expect(page.url()).not.toContain("/login");
@@ -110,11 +111,36 @@ test.describe("Confirm registration with no matching org", () => {
     expect(storedToken).toBeTruthy();
     expect(storedToken).not.toBe("undefined");
 
-    // And the page must actually be authenticated and working — /no-org's
-    // create-org card only renders its form for a signed-in user with real
-    // API access, not a stub/error state.
-    await expect(page.getByTestId("no-org-advanced-toggle")).toBeVisible({
-      timeout: 10000,
+    // And the page must actually be authenticated and working: the user is
+    // the owner of the org that was created for them.
+    const me = await page.request.get(`${API_BASE}/api/v1/auth/me`, {
+      headers: { Authorization: `Bearer ${storedToken}` },
     });
+    expect(me.status()).toBe(200);
+    const body = (await me.json()) as {
+      organization?: { slug: string };
+      user?: { role?: string };
+    };
+    expect(body.organization?.slug).toMatch(/^confirm\d*$/);
+    expect(body.user?.role).toBe("owner");
+  });
+
+  test("a sign-in by an account without any org lands on its personal org", async ({ page }) => {
+    const stamp = Date.now();
+    const email = `personal-org-${stamp}@unknown.example`;
+    const password = "Strong-Pass-123!";
+
+    const created = await page.request.post(`${API_BASE}/api/v1/test/users`, {
+      data: { email, password, name: "Pia Personal", personalOrg: true },
+    });
+    expect(created.status()).toBe(201);
+
+    await page.goto("orgs/test/login");
+    await page.getByTestId("login-email").fill(email);
+    await page.getByTestId("login-password").fill(password);
+    await page.getByTestId("login-submit").click();
+
+    await page.waitForURL(/\/orgs\/pia\d*(\/|\?|$)/, { timeout: 15000 });
+    expect(page.url()).not.toContain("/no-org");
   });
 });

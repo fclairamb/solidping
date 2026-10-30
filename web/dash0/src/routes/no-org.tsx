@@ -20,6 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { CreateOrgCard } from "@/components/shared/create-org-card";
 import { DASH_BASE } from "@/lib/base-path";
 import { orgCreationReturnTo } from "@/lib/login-destination";
+import { shouldShowJoinCard } from "@/lib/no-org-join";
 import { SecondaryDisclosureCard } from "@/components/ui/secondary-disclosure-card";
 import {
   randomOrgNameSeed,
@@ -40,7 +41,9 @@ export const Route = createFileRoute("/no-org")({
   // form resumes them once the new org exists.
   validateSearch: (
     search: Record<string, unknown>,
-  ): { membershipPending?: string; returnTo?: string } => ({
+  ): { membershipPending?: string; returnTo?: string; join?: string } => ({
+    join:
+      typeof search.join === "string" && search.join ? search.join : undefined,
     membershipPending:
       typeof search.membershipPending === "string" && search.membershipPending
         ? search.membershipPending
@@ -54,7 +57,13 @@ function NoOrgPage() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const { logout, user, isLoading } = useAuth();
-  const { membershipPending, returnTo } = Route.useSearch();
+  const { membershipPending, returnTo, join } = Route.useSearch();
+  const { data: myRequests } = useMyMembershipRequests();
+  const showJoin = shouldShowJoinCard({
+    join,
+    membershipPending,
+    requests: myRequests?.data,
+  });
 
   // "Here is an organization for you — click Create" is the whole point of this
   // screen for a brand-new account (spec 2026-09-05-01): the possessive form
@@ -120,7 +129,7 @@ function NoOrgPage() {
           suggestedSlug={suggestedSlug}
           returnTo={returnTo}
         />
-        <JoinOrgCard />
+        {showJoin && <JoinOrgCard initialSlug={join} />}
 
         <PendingRequestsList />
 
@@ -144,11 +153,11 @@ function NoOrgPage() {
   );
 }
 
-function JoinOrgCard() {
+function JoinOrgCard({ initialSlug }: { initialSlug?: string }) {
   const { t } = useTranslation("auth");
   const createRequest = useCreateMembershipRequest();
 
-  const [orgSlug, setOrgSlug] = useState("");
+  const [orgSlug, setOrgSlug] = useState(initialSlug ?? "");
   const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
