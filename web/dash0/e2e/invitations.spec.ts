@@ -155,7 +155,7 @@ test.describe("Invitations", () => {
         };
         const ownOrg = await anon.post(`${API_BASE}/api/v1/orgs`, {
           headers: { Authorization: `Bearer ${accessToken}` },
-          data: { name: `Existing Co ${stamp}`, slug: `existing-${stamp}` },
+          data: { name: `Existing Co ${stamp}`, slug: `ex-${stamp}` },
         });
         expect(ownOrg.status()).toBe(201);
       } finally {
