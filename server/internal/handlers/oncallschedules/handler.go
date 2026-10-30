@@ -90,13 +90,16 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 	switch {
 	case errors.Is(err, ErrScheduleNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "On-call schedule not found")
+	case errors.Is(err, ErrOverrideNotFound):
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "On-call override not found")
 	case errors.Is(err, ErrInvalidTimezone),
 		errors.Is(err, ErrInvalidHandoffTime),
 		errors.Is(err, ErrWeekdayRequired),
 		errors.Is(err, ErrWeekdayUnused),
 		errors.Is(err, ErrInvalidWeekday),
 		errors.Is(err, ErrInvalidRotationType),
-		errors.Is(err, ErrOverrideEndBeforeStart):
+		errors.Is(err, ErrOverrideEndBeforeStart),
+		errors.Is(err, ErrUserNotInOrganization):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	case errors.Is(err, ErrScheduleHasNoUsers),
 		errors.Is(err, ErrScheduleNotYetActive):
@@ -441,12 +444,13 @@ func (h *Handler) CreateOverride(writer http.ResponseWriter, req *http.Request) 
 	}
 
 	override, createErr := h.svc.CreateOverride(req.Context(), &CreateOverrideInput{
-		ScheduleUID:  schedule.UID,
-		UserUID:      body.UserUID,
-		StartAt:      body.StartAt,
-		EndAt:        body.EndAt,
-		Reason:       body.Reason,
-		CreatedByUID: h.currentUserUID(req),
+		OrganizationUID: orgUID,
+		ScheduleUID:     schedule.UID,
+		UserUID:         body.UserUID,
+		StartAt:         body.StartAt,
+		EndAt:           body.EndAt,
+		Reason:          body.Reason,
+		CreatedByUID:    h.currentUserUID(req),
 	})
 	if createErr != nil {
 		return h.handleError(writer, req, createErr)
@@ -457,9 +461,15 @@ func (h *Handler) CreateOverride(writer http.ResponseWriter, req *http.Request) 
 
 // DeleteOverride handles DELETE /api/v1/orgs/:org/on-call-schedules/:uid/overrides/:overrideUid.
 func (h *Handler) DeleteOverride(writer http.ResponseWriter, req *http.Request) error {
+	orgUID, orgErr := h.resolveOrgUID(req)
+	if orgErr != nil {
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
+	}
+
+	uid := httpx.Param(req, "uid")
 	overrideUID := httpx.Param(req, "overrideUid")
 
-	if err := h.svc.DeleteOverride(req.Context(), overrideUID); err != nil {
+	if err := h.svc.DeleteOverride(req.Context(), orgUID, uid, overrideUID); err != nil {
 		return h.handleError(writer, req, err)
 	}
 
