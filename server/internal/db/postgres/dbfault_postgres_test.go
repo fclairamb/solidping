@@ -9,11 +9,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portDBFault is distinct from every other _postgres_test.go file's embedded-
-// Postgres port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portDBFault = 15468
-
 // newDBFaultServicePG starts embedded Postgres and returns a ready Service,
 // self-skipping (like every embedded-postgres test in this package) when
 // embedded Postgres is unavailable or under -short.
@@ -22,7 +17,7 @@ func newDBFaultServicePG(t *testing.T) *Service {
 
 	ctx := t.Context()
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portDBFault, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

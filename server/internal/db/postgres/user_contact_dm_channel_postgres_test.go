@@ -9,11 +9,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portUserContactDMChannel is distinct from every other _postgres_test.go
-// embedded port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portUserContactDMChannel = 15531
-
 // TestUserContactDMChannel_Postgres exercises the user-contact-dm-channel-id
 // migration section, the setter and the upsert preservation clause on the engine
 // `make test` never reaches.
@@ -24,9 +19,9 @@ const portUserContactDMChannel = 15531
 // and the upsert's coalesce clause reference bun's row alias — SQL that parses on
 // one engine and not the other would be invisible in -short mode and would break
 // every Discord DM write in production.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestUserContactDMChannel_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -34,7 +29,7 @@ func TestUserContactDMChannel_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portUserContactDMChannel, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

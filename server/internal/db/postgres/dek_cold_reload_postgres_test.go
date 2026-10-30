@@ -19,19 +19,15 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// Distinct from every other embedded port claimed in this directory (the
-// highest in use is 15510).
-const portDEKColdReload = 15520
-
 // TestDEKColdReloadPostgres encrypts with one credentials service and decrypts
 // with a SECOND one on the same database — the checks worker / restarted API
 // that used to fail with "unwrap org DEK: unknown envelope version" while the
 // writing process kept working off its in-memory cache.
 //
 // Self-skips under -short and on any embedded-startup error, like its siblings.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestDEKColdReloadPostgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -39,7 +35,7 @@ func TestDEKColdReloadPostgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portDEKColdReload, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

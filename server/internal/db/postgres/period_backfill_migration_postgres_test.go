@@ -9,11 +9,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portPeriodBackfill is distinct from every other _postgres_test.go embedded
-// port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portPeriodBackfill = 15523
-
 // periodBackfillSQL is the period-below-floor-backfill block of
 // 021_v0_28_0.up.sql (spec 2026-09-11-07). Only this block is re-run here —
 // Initialize() already applied the full migration once, harmlessly, against a
@@ -43,9 +38,9 @@ update checks
 // the SQLite backfill test. The two dialects express the predicate over
 // completely different storage (native interval arithmetic here, zero-padded
 // HH:MM:SS text comparison there), so each needs its own proof.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestMigration021BackfillsPeriodBelowFloor_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -53,7 +48,7 @@ func TestMigration021BackfillsPeriodBelowFloor_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portPeriodBackfill, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

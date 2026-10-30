@@ -12,15 +12,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// Distinct from every other _postgres_test.go embedded port in the repo.
-const portClaimIncidentReminder = 15741
-
 // TestClaimIncidentReminder_Postgres pins the reminder compare-and-set on a
 // real PostgreSQL backend: concurrent claims of one seq produce exactly one
 // winner, and a handled incident is never claimed (spec 2026-10-12-16).
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestClaimIncidentReminder_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -28,7 +25,7 @@ func TestClaimIncidentReminder_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portClaimIncidentReminder, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

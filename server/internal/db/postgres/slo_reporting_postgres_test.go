@@ -12,11 +12,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portSLOReporting is distinct from every other _postgres_test.go embedded
-// port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portSLOReporting = 15482
-
 func newSLOPG(t *testing.T) *Service {
 	t.Helper()
 
@@ -26,7 +21,7 @@ func newSLOPG(t *testing.T) *Service {
 
 	ctx := t.Context()
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portSLOReporting, RunMode: "test"})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: "test"})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -72,9 +67,9 @@ func seedSLOPGCheck(ctx context.Context, t *testing.T, svc *Service, orgUID, slu
 // out of the budget arithmetic. Both are stated separately in each dialect's
 // migration, so proving them on SQLite alone proves nothing about the dialect
 // production actually runs on.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestSLOSchemaConstraintsPostgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 	svc := newSLOPG(t)
@@ -135,9 +130,9 @@ func TestSLOSchemaConstraintsPostgres(t *testing.T) {
 // TestReportScheduleRoundTripPostgres proves the JSONB columns round-trip on
 // the Postgres dialect (they are TEXT on SQLite, so the encoding differs), and
 // that the conditional period claim behaves identically there.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestReportScheduleRoundTripPostgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 	svc := newSLOPG(t)

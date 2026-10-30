@@ -12,15 +12,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portGenericAttachments is distinct from every other _postgres_test.go
-// embedded port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portGenericAttachments = 15484
-
-// portGenericAttachmentsRollback is its sibling for the teardown test, which
-// destroys schema and therefore must not share a database with the test above.
-const portGenericAttachmentsRollback = 15485
-
 // detailRegionKey is the details-bag key these fixtures write. Named rather
 // than repeated so goconst stays quiet about a three-times literal.
 const detailRegionKey = "region"
@@ -35,9 +26,9 @@ const detailRegionKey = "region"
 // (`jsonb` vs `text`, `ADD COLUMN IF NOT EXISTS` vs plain `ADD COLUMN`) and the
 // prefix reap goes through `LIKE ... ESCAPE '\'`, whose escaping rules are
 // exactly the sort of thing that works on one engine and not the other.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestGenericAttachmentsMigration_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -45,7 +36,7 @@ func TestGenericAttachmentsMigration_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portGenericAttachments, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -192,9 +183,9 @@ func hasSQL(stmt string) bool {
 // The load-bearing assertion is the last one: `files` itself must survive with
 // every original column and its rows intact. A teardown that took the table
 // with it would satisfy "the columns are gone" just as well.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestGenericAttachmentsRollback_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -202,7 +193,7 @@ func TestGenericAttachmentsRollback_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portGenericAttachmentsRollback, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

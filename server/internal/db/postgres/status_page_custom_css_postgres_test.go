@@ -10,18 +10,13 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portStatusPageCustomCSS is distinct from every other _postgres_test.go
-// embedded port in this package (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portStatusPageCustomCSS = 15465
-
 // TestStatusPageCustomCSS_Postgres is the Postgres twin of the SQLite
 // custom_css round-trip (spec 2026-07-27-02). It doubles as the consolidation
 // regression check: the column now ships inside the consolidated 008_v0_7_0
 // migration, so a fresh database must have it.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres pwfile extraction) with its siblings
 func TestStatusPageCustomCSS_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -31,7 +26,7 @@ func TestStatusPageCustomCSS_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{
 		Embedded: true,
-		Port:     portStatusPageCustomCSS,
+		Port:     testsupport.FreePort(t),
 		RunMode:  runModeTest,
 	})
 	if err != nil {

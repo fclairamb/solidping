@@ -10,11 +10,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portWorkerSlugLeadingDigit is distinct from every other _postgres_test.go
-// embedded port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portWorkerSlugLeadingDigit = 15522
-
 // TestWorkerSlugLeadingDigit_Postgres pins the database half of spec
 // 2026-09-05-04: after 018_v0_24_0 the workers.slug CHECK admits a leading
 // digit, so Docker's default hex container-ID hostname registers. The
@@ -30,7 +25,7 @@ func TestWorkerSlugLeadingDigit_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portWorkerSlugLeadingDigit, RunMode: "test"})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: "test"})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

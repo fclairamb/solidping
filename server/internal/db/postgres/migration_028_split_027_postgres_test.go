@@ -12,10 +12,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portSplitMigration027 is distinct from every other embedded-Postgres port in
-// this repo (see the port-numbering note in postgres_headroom_postgres_test.go).
-const portSplitMigration027 = 15742
-
 // TestSupersededChecksumMatchesTheV0384Release pins the guard entry to the
 // file v0.38.4 really shipped (027 with what is now 028 appended).
 func TestSupersededChecksumMatchesTheV0384Release(t *testing.T) {
@@ -37,7 +33,7 @@ func TestUpgradeFromEitherCopyOfMigration027PG(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portSplitMigration027, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

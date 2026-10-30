@@ -16,9 +16,9 @@ import (
 // fresh created row is left alone, a stale RUNNING row is never touched at
 // all (heartbeat checks use "running" as a legitimate long-lived status), and
 // a re-run does not double-reap.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
 func TestReapAbandonedResults_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -28,7 +28,7 @@ func TestReapAbandonedResults_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{
 		Embedded: true,
-		Port:     portLastResult + 4,
+		Port:     testsupport.FreePort(t),
 		RunMode:  runModeTest,
 	})
 	if err != nil {

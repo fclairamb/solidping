@@ -18,11 +18,6 @@ import (
 // on the dialect's insert path and on driver feature flags, so one dialect
 // passing proves nothing about the other.
 
-// portZeroValueCreate is this test's own embedded-postgres port, distinct from
-// every other one in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portZeroValueCreate = 15504
-
 // zeroValuePG boots an embedded cluster with one organization.
 func zeroValuePG(t *testing.T) (context.Context, *Service, string) {
 	t.Helper()
@@ -30,7 +25,7 @@ func zeroValuePG(t *testing.T) (context.Context, *Service, string) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portZeroValueCreate, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -50,9 +45,9 @@ func zeroValuePG(t *testing.T) (context.Context, *Service, string) {
 // TestZeroValuesSurviveCreate_Postgres mirrors the three SQLite cases in one
 // test: the embedded cluster is expensive to boot, and the sibling tests in
 // this package share one instance per file for the same reason.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres) with its siblings
 func TestZeroValuesSurviveCreate_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}

@@ -11,19 +11,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portMessageIDDedup is distinct from every other _postgres_test.go file's
-// embedded-Postgres port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portMessageIDDedup = 15490
-
 // TestHasRawResultWithMessageID_Postgres is the Postgres half of the
 // inbound-email dedup backstop (spec 2026-08-22-01, layer 3). The two dialects
 // answer the same question through different JSON operators — `output->>'…'`
 // here, `json_extract` on SQLite — and nothing but a paired test keeps them
 // agreeing, since no schema constraint backs either one.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
 func TestHasRawResultWithMessageID_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -33,7 +28,7 @@ func TestHasRawResultWithMessageID_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{
 		Embedded: true,
-		Port:     portMessageIDDedup,
+		Port:     testsupport.FreePort(t),
 		RunMode:  runModeTest,
 	})
 	if err != nil {
@@ -103,9 +98,9 @@ func TestHasRawResultWithMessageID_Postgres(t *testing.T) {
 // logically need is what lets the planner seek results_raw_idx. Without it PG
 // can only walk the whole partial index (or lean on version-dependent
 // skip-scan) on every single inbound email.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
 func TestHasRawResultWithMessageIDUsesTheRawIndex_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -115,7 +110,7 @@ func TestHasRawResultWithMessageIDUsesTheRawIndex_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{
 		Embedded: true,
-		Port:     portMessageIDDedup + 1,
+		Port:     testsupport.FreePort(t),
 		RunMode:  runModeTest,
 	})
 	if err != nil {

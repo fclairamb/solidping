@@ -11,15 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
-)
-
-// Ports distinct from every other _postgres_test.go file's embedded-Postgres
-// port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const (
-	portResultBucketParity = 15532
-	portResultBucketOrigin = 15533
 )
 
 // TestResultBucketExprMatchesGoTruncate_Postgres is the bucket-origin regression,
@@ -31,13 +24,13 @@ const (
 // binning against the epoch instead (or leaving the origin at date_bin's own
 // default) agrees for every width that divides 24 h and silently disagrees for
 // every width that does not — and the availability API accepts such widths.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestResultBucketExprMatchesGoTruncate_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portResultBucketOrigin)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	// Deterministic pseudo-random timestamps spread over ~10 years, with
 	// sub-second components: the bin must land on the same multiple of the width
@@ -253,13 +246,13 @@ func referenceResultBucketMatches(row *models.Result, filter *models.ResultBucke
 // must equal what uptimebar's accumulators produce for the same rows, at every
 // width the callers use, with and without a region filter. The sqlite package
 // asserts the same thing against the same fixture.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestAggregateResultBuckets_ParityWithGoAccumulators_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portResultBucketParity)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("bucket-parity-org", "Bucket Parity Org")
 	r.NoError(s.CreateOrganization(ctx, org))
