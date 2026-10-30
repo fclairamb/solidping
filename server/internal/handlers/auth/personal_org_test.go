@@ -2,6 +2,9 @@ package auth
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/defaults"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
@@ -507,7 +511,9 @@ func TestColleagueHint(t *testing.T) {
 			}
 
 			r.NotNil(hint)
-			r.Equal(tt.want, hint.Slug)
+			r.Equal(tt.want, hint.Org.Slug)
+			r.Equal("acme.com", hint.Domain)
+			r.Equal("alice", hint.PersonalOrgSlug)
 
 			// Once asked, the banner has nothing more to offer.
 			_, err = f.svc.CreateMembershipRequest(ctx, user.UID, MembershipRequestCreateRequest{OrgSlug: tt.want})
@@ -710,4 +716,34 @@ func TestNoOrgOutcomesAreCounted(t *testing.T) {
 	_, err = saas.svc.Login(ctx, "", dave.Email, personalOrgTestPassword, Context{})
 	r.NoError(err)
 	r.Greater(count(noOrgOutcomeAutoCreated), autoCreated, "an auto-created personal org is counted")
+}
+
+// TestColleagueHintHandler: GET /api/v1/auth/colleague-hint answers the hint,
+// or {"org": null} with nothing else when there is none.
+func TestColleagueHintHandler(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f, ctx := newPersonalOrgFixture(t, config.DeploymentModeSaaS)
+	f.seededOrg(ctx, t, "acme", "bob@acme.com")
+
+	alice := f.passwordUser(ctx, t, "alice@acme.com", "Alice")
+	r.NotNil(f.svc.ensurePersonalOrg(ctx, alice))
+
+	loner := f.passwordUser(ctx, t, "loner@solo.example", "Loner")
+
+	handler := NewHandler(f.svc, f.svc.fullCfg)
+
+	call := func(userUID string) string {
+		reqCtx := context.WithValue(ctx, base.ContextKeyClaims, &Claims{UserUID: userUID})
+		req := httptest.NewRequestWithContext(reqCtx, http.MethodGet, "/api/v1/auth/colleague-hint", nil)
+		rec := httptest.NewRecorder()
+		r.NoError(handler.ColleagueHintHandler(rec, req))
+		r.Equal(http.StatusOK, rec.Code)
+
+		return strings.TrimSpace(rec.Body.String())
+	}
+
+	r.JSONEq(`{"org":{"slug":"acme","name":"Org acme"},"domain":"acme.com","personalOrgSlug":"alice"}`, call(alice.UID))
+	r.JSONEq(`{"org":null}`, call(loner.UID))
 }

@@ -18421,6 +18421,12 @@ components:
               type: string
             name:
               type: string
+        domain:
+          type: string
+          description: The email domain the caller shares with the org's members.
+        personalOrgSlug:
+          type: string
+          description: The caller's personal organization, whose dashboard shows the banner.
 
     MembershipRequestListResponse:
       type: object

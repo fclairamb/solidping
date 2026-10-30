@@ -344,9 +344,14 @@ type ColleagueHintOrg struct {
 }
 
 // ColleagueHintResponse is the body of GET /api/v1/auth/colleague-hint. Org is
-// null when there is nothing to suggest.
+// null when there is nothing to suggest; then the other fields are empty too.
 type ColleagueHintResponse struct {
 	Org *ColleagueHintOrg `json:"org"`
+	// Domain is the email domain the caller shares with the org's members.
+	Domain string `json:"domain,omitempty"`
+	// PersonalOrgSlug is the caller's personal org, the one whose dashboard
+	// shows the banner.
+	PersonalOrgSlug string `json:"personalOrgSlug,omitempty"`
 }
 
 // colleagueHintLookupLimit: two rows are enough to tell "exactly one" apart.
@@ -363,7 +368,7 @@ const colleagueHintLookupLimit = 2
 //   - existing members of exactly one other organization (personal orgs
 //     excluded) share that domain;
 //   - that org accepts join requests, and the user has no pending one there.
-func (s *Service) ColleagueHint(ctx context.Context, userUID string) (*ColleagueHintOrg, error) {
+func (s *Service) ColleagueHint(ctx context.Context, userUID string) (*ColleagueHintResponse, error) {
 	if !s.autoPersonalOrgEnabled() {
 		return nil, nil //nolint:nilnil // no hint is a legitimate answer
 	}
@@ -419,7 +424,11 @@ func (s *Service) ColleagueHint(ctx context.Context, userUID string) (*Colleague
 		return nil, nil //nolint:nilnil // already asked
 	}
 
-	return &ColleagueHintOrg{Slug: org.Slug, Name: org.Name}, nil
+	return &ColleagueHintResponse{
+		Org:             &ColleagueHintOrg{Slug: org.Slug, Name: org.Name},
+		Domain:          domain,
+		PersonalOrgSlug: personal.Slug,
+	}, nil
 }
 
 // PersonalOrgSweepResult counts what one cleanup pass did.

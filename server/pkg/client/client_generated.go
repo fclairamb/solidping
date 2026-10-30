@@ -5290,10 +5290,15 @@ type CloneCheckRequest struct {
 
 // ColleagueHintResponse defines model for ColleagueHintResponse.
 type ColleagueHintResponse struct {
-	Org *struct {
+	// Domain The email domain the caller shares with the org's members.
+	Domain *string `json:"domain,omitempty"`
+	Org    *struct {
 		Name string `json:"name"`
 		Slug string `json:"slug"`
 	} `json:"org"`
+
+	// PersonalOrgSlug The caller's personal organization, whose dashboard shows the banner.
+	PersonalOrgSlug *string `json:"personalOrgSlug,omitempty"`
 }
 
 // ConfirmRegistrationRequest defines model for ConfirmRegistrationRequest.

@@ -254,10 +254,14 @@ func (h *Handler) ColleagueHintHandler(writer http.ResponseWriter, req *http.Req
 		)
 	}
 
-	org, err := h.svc.ColleagueHint(req.Context(), claims.UserUID)
+	hint, err := h.svc.ColleagueHint(req.Context(), claims.UserUID)
 	if err != nil {
 		return h.WriteInternalError(writer, req, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, ColleagueHintResponse{Org: org})
+	if hint == nil {
+		hint = &ColleagueHintResponse{}
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, hint)
 }
