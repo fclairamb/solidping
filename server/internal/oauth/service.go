@@ -3,6 +3,7 @@ package oauth
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -69,6 +70,9 @@ var (
 	// be used to enumerate registered client IDs (spec
 	// 2026-09-25-27-oauth-client-secret-verification.md).
 	errClientAuthFailed = errors.New("oauth: client authentication failed")
+	// errConsentNoOrg means the consenting session is not scoped to an org the
+	// user belongs to, so there is no org to bind the grant to.
+	errConsentNoOrg = errors.New("oauth: session has no organization")
 )
 
 // Service holds the business logic for the embedded OAuth 2.1 authorization
@@ -658,6 +662,61 @@ const (
 	paramResource  = "resource"
 	paramTokenKind = "token_kind"
 )
+
+// ConsentOrg resolves the organization a dashboard session consents for: the
+// org its claims name, provided the user is still a member of it (super admins
+// bypass membership, as everywhere else). The claim alone is not trusted: an
+// org-less session (a brand-new account, spec fclairamb/solidping-business#35)
+// carries an empty slug, and a session minted before the user left an org
+// still names it until it expires.
+//
+// errConsentNoOrg means the session names no usable org; HasMembership tells
+// the caller whether the user has another org to sign in to instead.
+func (s *Service) ConsentOrg(ctx context.Context, claims *auth.Claims) (*models.Organization, error) {
+	if claims.OrgSlug == "" {
+		return nil, errConsentNoOrg
+	}
+
+	org, err := s.db.GetOrganizationBySlug(ctx, claims.OrgSlug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errConsentNoOrg
+		}
+
+		return nil, fmt.Errorf("resolve consent org: %w", err)
+	}
+
+	if _, err = s.db.GetMemberByUserAndOrg(ctx, claims.UserUID, org.UID); err == nil {
+		return org, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("resolve consent membership: %w", err)
+	}
+
+	user, err := s.db.GetUser(ctx, claims.UserUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errConsentNoOrg
+		}
+
+		return nil, fmt.Errorf("resolve consent user: %w", err)
+	}
+
+	if user.SuperAdmin {
+		return org, nil
+	}
+
+	return nil, errConsentNoOrg
+}
+
+// HasMembership reports whether the user belongs to at least one organization.
+func (s *Service) HasMembership(ctx context.Context, userUID string) (bool, error) {
+	members, err := s.db.ListMembersByUser(ctx, userUID)
+	if err != nil {
+		return false, fmt.Errorf("list memberships: %w", err)
+	}
+
+	return len(members) > 0, nil
+}
 
 // orgSlug resolves an organization UID to its slug for the access-token claims.
 func (s *Service) orgSlug(ctx context.Context, orgUID string) (string, error) {

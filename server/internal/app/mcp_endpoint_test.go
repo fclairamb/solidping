@@ -61,6 +61,8 @@ type httpResult struct {
 type mcpTestEnv struct {
 	ts     *httptest.Server
 	client *http.Client
+	server *Server
+	cfg    *config.Config
 }
 
 func newMCPTestEnv(t *testing.T) *mcpTestEnv {
@@ -114,7 +116,7 @@ func newMCPTestEnv(t *testing.T) *mcpTestEnv {
 		},
 	}
 
-	return &mcpTestEnv{ts: ts, client: client}
+	return &mcpTestEnv{ts: ts, client: client, server: server, cfg: cfg}
 }
 
 // do sends a request and returns the fully-consumed response.

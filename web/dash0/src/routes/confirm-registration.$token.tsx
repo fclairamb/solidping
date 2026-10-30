@@ -51,7 +51,10 @@ function ConfirmRegistrationPage() {
         const target = applyConfirmRegistrationHandoff(data);
         setConfirmed(true);
         setTimeout(() => {
-          navigate(target);
+          // A resumed MCP authorization is a server endpoint, not a route:
+          // it needs a full navigation (the response set its cookie).
+          if ("href" in target) window.location.assign(target.href);
+          else navigate(target);
         }, 1500);
       })
       .catch((err) => {

@@ -6910,6 +6910,14 @@ type LoginResponse struct {
 	// this flag and `tempToken`.
 	Requires2Fa *bool `json:"requires2Fa,omitempty"`
 
+	// ReturnTo Only on `/api/v1/auth/confirm-registration`: the flow the sign-up
+	// started from (the `returnTo` sent to `/api/v1/auth/register`), to
+	// resume once the account has an organization.
+	//
+	//
+	// Example: /api/v1/oauth/authorize?client_id=acme-client&state=s1
+	ReturnTo *string `json:"returnTo,omitempty"`
+
 	// TempToken Short-lived 2FA token, only with `requires2Fa`. It is not a bearer token.
 	TempToken *string      `json:"tempToken,omitempty"`
 	User      *UserSummary `json:"user,omitempty"`
@@ -7992,6 +8000,16 @@ type RegisterRequest struct {
 	Locale   *string `json:"locale,omitempty"`
 	Name     *string `json:"name,omitempty"`
 	Password string  `json:"password"`
+
+	// ReturnTo The flow to resume after the email confirmation: a pending
+	// `/api/v1/oauth/authorize?…` request (MCP client) or the
+	// `/d/device?…` approval page (CLI). Any other value, an absolute
+	// or protocol-relative URL included, is ignored. The confirmation
+	// response returns it as `returnTo`.
+	//
+	//
+	// Example: /api/v1/oauth/authorize?client_id=acme-client&state=s1
+	ReturnTo *string `json:"returnTo,omitempty"`
 
 	// Timezone The browser's IANA zone. Optional; an unknown zone is ignored.
 	//

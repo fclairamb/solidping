@@ -459,6 +459,10 @@ type LoginResponse struct {
 	LoginAction   LoginAction           `json:"loginAction,omitempty"`
 	Requires2FA   bool                  `json:"requires2Fa,omitempty"`
 	TempToken     string                `json:"tempToken,omitempty"`
+	// ReturnTo is the pending flow (MCP OAuth authorize request or device
+	// approval) a registration confirmation resumes; see pendingFlowReturnTo.
+	// Set only by ConfirmRegistration.
+	ReturnTo string `json:"returnTo,omitempty"`
 }
 
 // TwoFAClaims represents JWT claims for the temporary 2FA token.
@@ -1012,6 +1016,15 @@ func (s *Service) resolveOrgPreference(
 	members, err := s.db.ListMembersByUser(ctx, user.UID)
 	if err != nil {
 		return nil, "", "", nil, err
+	}
+
+	// Nothing to join and nothing pending: sign the user into an org of their
+	// own instead of /no-org (spec 2026-10-30-04).
+	if len(members) == 0 {
+		if personal := s.ensurePersonalOrg(ctx, user); personal != nil {
+			return personal.Organization, string(personal.Role), LoginActionDefault,
+				buildOrgSummaries([]*models.OrganizationMember{personal}), nil
+		}
 	}
 
 	orgSummaries := buildOrgSummaries(members)
@@ -2484,6 +2497,12 @@ type RegisterRequest struct {
 	// lenient: an unsupported value is dropped, never refused.
 	Locale   string `json:"locale,omitempty"`
 	Timezone string `json:"timezone,omitempty"`
+	// ReturnTo is the flow the sign-up started from, resumed after the email
+	// confirmation: an MCP client's pending OAuth authorize request or the
+	// CLI's device approval. The confirmation link opens in a new tab, so it
+	// travels in the pending entry. Optional; anything pendingFlowReturnTo
+	// refuses is dropped silently.
+	ReturnTo string `json:"returnTo,omitempty"`
 	// FormGuardFields carries the form ticket and the honeypot (form_guard.go).
 	FormGuardFields
 	// ClientIP is the caller's address (trusted-proxy resolution), set by the
@@ -2667,6 +2686,10 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		(*stateValue)[keyPreferences] = prefs
 	}
 
+	if returnTo := pendingFlowReturnTo(req.ReturnTo); returnTo != "" {
+		(*stateValue)[keyReturnTo] = returnTo
+	}
+
 	ttl := registrationTTL
 
 	if err := s.db.SetStateEntry(ctx, nil, registrationKeyPrefix+req.Email, stateValue, &ttl); err != nil {
@@ -2730,6 +2753,10 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	regEmail, _ := val["email"].(string)
 	regName, _ := val[keyName].(string)
 	regHash, _ := val["passwordHash"].(string)
+	// Re-checked on the way out: an entry written by an older deploy, or by
+	// anything but Register, must not turn the confirmation into a redirect.
+	regReturnTo, _ := val[keyReturnTo].(string)
+	regReturnTo = pendingFlowReturnTo(regReturnTo)
 
 	if regEmail == "" || regHash == "" {
 		return nil, ErrRegistrationExpired
@@ -2770,6 +2797,12 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	// Auto-join matching orgs
 	s.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
 
+	// Nothing to join: give the newcomer an org of their own rather than
+	// stranding them on /no-org (spec 2026-10-30-04).
+	if joined, _ := s.db.ListMembersByUser(ctx, user.UID); len(joined) == 0 {
+		s.ensurePersonalOrg(ctx, user)
+	}
+
 	// Try to resolve an org for login response
 	members, _ := s.db.ListMembersByUser(ctx, user.UID)
 	if len(members) == 0 {
@@ -2782,7 +2815,14 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		// to create an org.
 		authContext := contextFromRequestMeta(ctx, Context{})
 
-		return s.completeLogin(ctx, user, nil, "", LoginActionNoOrg, nil, AuthMethodRegistration, authContext)
+		resp, loginErr := s.completeLogin(ctx, user, nil, "", LoginActionNoOrg, nil, AuthMethodRegistration, authContext)
+		if loginErr != nil {
+			return nil, loginErr
+		}
+
+		resp.ReturnTo = regReturnTo
+
+		return resp, nil
 	}
 
 	// Get the first org
@@ -2827,76 +2867,40 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		TokenType:    tokenTypeBearer,
 		User:         newUserInfo(user, role),
 		Organization: newOrganizationInfo(org),
+		ReturnTo:     regReturnTo,
 	}, nil
 }
 
 // autoJoinMatchingOrgs checks org-scoped registration email patterns and auto-joins matching orgs.
 func (s *Service) autoJoinMatchingOrgs(ctx context.Context, userUID, userEmail string) {
-	params, err := s.db.ListOrgParametersByKey(ctx, "registration.email_pattern")
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to list org email patterns", "error", err)
-
-		return
-	}
-
-	for _, param := range params {
-		if param.OrganizationUID == nil {
-			continue
-		}
-
-		patternVal, ok := param.Value["value"].(string)
-		if !ok || patternVal == "" {
-			continue
-		}
-
-		// Defensive: leftover unsafe patterns (set before validation existed)
-		// must be skipped so they cannot adopt every signup. Log and move on
-		// rather than blowing up the registration confirmation path.
-		if err := validateAutoJoinRegex(patternVal); err != nil {
-			slog.WarnContext(
-				ctx, "skipping unsafe auto-join regex",
-				"orgUID", *param.OrganizationUID, "error", err,
-			)
-
-			continue
-		}
-
-		re, err := regexp.Compile(patternVal)
-		if err != nil {
-			continue
-		}
-
-		if !re.MatchString(userEmail) {
-			continue
-		}
-
+	for _, orgUID := range s.autoJoinOrgUIDs(ctx, userEmail) {
 		// Check if already a member
-		_, err = s.db.GetMemberByUserAndOrg(ctx, userUID, *param.OrganizationUID)
+		_, err := s.db.GetMemberByUserAndOrg(ctx, userUID, orgUID)
 		if err == nil {
 			continue // Already a member
 		}
 
 		// Skip orgs that are at their MaxUsers cap. Logged at INFO so
 		// operators can see why an auto-join didn't happen.
-		if err := s.CheckMembershipSlot(ctx, *param.OrganizationUID); err != nil {
+		if err := s.CheckMembershipSlot(ctx, orgUID); err != nil {
 			slog.InfoContext(ctx, "Skipping SSO auto-join, org at cap",
-				"orgUID", *param.OrganizationUID, "userUID", userUID, "error", err)
+				"orgUID", orgUID, "userUID", userUID, "error", err)
 
 			continue
 		}
 
 		// Create membership
-		member := models.NewOrganizationMember(*param.OrganizationUID, userUID, models.MemberRoleUser)
+		member := models.NewOrganizationMember(orgUID, userUID, models.MemberRoleUser)
 		now := time.Now()
 		member.JoinedAt = &now
 
 		if createErr := s.db.CreateOrganizationMember(ctx, member); createErr != nil {
-			slog.ErrorContext(ctx, "Failed to auto-join org", "error", createErr, "orgUID", *param.OrganizationUID)
+			slog.ErrorContext(ctx, "Failed to auto-join org", "error", createErr, "orgUID", orgUID)
 
 			continue
 		}
 
-		s.recordMemberJoined(ctx, *param.OrganizationUID, userUID, userEmail,
+		s.recordMemberJoined(ctx, orgUID, userUID, userEmail,
 			models.MemberRoleUser, joinSourceAutoJoin)
 	}
 }

@@ -23,7 +23,16 @@ type CreateUserRequest struct {
 	// here instead. Test-only route; the flag itself is ordinary production
 	// behavior.
 	MustChangePassword bool `json:"mustChangePassword"`
+	// PersonalOrg lets the user's first sign-in create their personal org, as
+	// in production (spec 2026-10-30-04). By default the seeded user stays
+	// org-less: a pending membership request to a decoy org is filed for them,
+	// which is what keeps the sign-in from creating a personal org, so the
+	// many specs that need a zero-org identity keep working unchanged.
+	PersonalOrg bool `json:"personalOrg"`
 }
+
+// decoyOrgSlug is the org the default zero-org test user "asked to join".
+const decoyOrgSlug = "e2e-decoy"
 
 // CreateUser creates a pre-confirmed, org-less user directly in the
 // database, bypassing the public self-registration flow entirely. That flow
@@ -78,9 +87,35 @@ func (h *Handler) CreateUser(writer http.ResponseWriter, req *http.Request) erro
 		return h.writeInternalError(writer, err)
 	}
 
+	if !body.PersonalOrg {
+		if err := h.fileDecoyRequest(req, user.UID); err != nil {
+			return h.writeInternalError(writer, err)
+		}
+	}
+
 	return h.writeJSON(writer, http.StatusCreated, map[string]any{
 		"uid":                user.UID,
 		"email":              user.Email,
 		"mustChangePassword": user.MustChangePassword,
 	})
+}
+
+// fileDecoyRequest files a pending membership request for the user to the
+// decoy org, creating that org on first use.
+func (h *Handler) fileDecoyRequest(req *http.Request, userUID string) error {
+	ctx := req.Context()
+
+	org, err := h.dbService.GetOrganizationBySlug(ctx, decoyOrgSlug)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+
+	if org == nil {
+		org = models.NewOrganization(decoyOrgSlug, "E2E decoy")
+		if err := h.dbService.CreateOrganization(ctx, org); err != nil {
+			return err
+		}
+	}
+
+	return h.dbService.CreateMembershipRequest(ctx, models.NewMembershipRequest(org.UID, userUID, nil))
 }

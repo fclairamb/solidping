@@ -1,4 +1,6 @@
 import { setSession } from "@/api/client";
+import { DASH_BASE } from "./base-path";
+import { orgCreationReturnTo } from "./login-destination";
 import { landingForOrg, type OrgLanding } from "./pending-check";
 
 export interface ConfirmRegistrationResult {
@@ -10,11 +12,15 @@ export interface ConfirmRegistrationResult {
   refreshToken?: string;
   expiresIn?: number;
   organization?: { uid: string; slug: string; name?: string };
+  // The flow the sign-up started from (a pending MCP authorization or device
+  // approval), kept server-side across the email round trip.
+  returnTo?: string;
 }
 
 export type ConfirmRegistrationNavTarget =
   | OrgLanding
-  | { to: "/no-org" };
+  | { href: string }
+  | { to: "/no-org"; search?: { returnTo?: string } };
 
 /**
  * Thrown by {@link applyConfirmRegistrationHandoff} when the confirmation
@@ -51,7 +57,8 @@ export class ConfirmRegistrationSessionError extends Error {
  * treated as an error instead, via {@link ConfirmRegistrationSessionError}.
  */
 export function applyConfirmRegistrationHandoff(
-  data: ConfirmRegistrationResult
+  data: ConfirmRegistrationResult,
+  basepath: string = DASH_BASE,
 ): ConfirmRegistrationNavTarget {
   if (!data.accessToken) {
     throw new ConfirmRegistrationSessionError();
@@ -59,9 +66,14 @@ export function applyConfirmRegistrationHandoff(
 
   setSession(data.accessToken, data.refreshToken, data.expiresIn);
 
+  // A sign-up started by an MCP client (or the CLI's device flow) resumes it
+  // (fclairamb/solidping-business#35): straight away when the account
+  // already has an org, through org creation on /no-org otherwise. The
+  // server only returns those flows; the guard re-checks it all the same.
+  const returnTo = orgCreationReturnTo(data.returnTo, basepath);
   const orgSlug = data.organization?.slug;
   if (orgSlug) {
-    return landingForOrg(orgSlug);
+    return returnTo ? { href: returnTo } : landingForOrg(orgSlug);
   }
-  return { to: "/no-org" };
+  return returnTo ? { to: "/no-org", search: { returnTo } } : { to: "/no-org" };
 }

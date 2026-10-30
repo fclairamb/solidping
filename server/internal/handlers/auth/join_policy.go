@@ -403,6 +403,11 @@ func (s *Service) completePendingLogin(
 	}
 
 	fallback := s.fallbackMemberOrg(ctx, user.UID)
+	if fallback == nil {
+		// No org to land on and no request an admin can act on: create the
+		// user's own org instead of the org-less session (spec 2026-10-30-04).
+		fallback = s.ensurePersonalOrg(ctx, user)
+	}
 
 	var (
 		result *ProviderLoginResult

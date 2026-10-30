@@ -116,3 +116,35 @@ func redirectLoginError(writer http.ResponseWriter, req *http.Request, code, des
 
 	return nil
 }
+
+// oauthAuthorizePath is the embedded OAuth authorization endpoint
+// (internal/oauth PathAuthorize; that package imports this one, so the value
+// is repeated here).
+const oauthAuthorizePath = "/api/v1/oauth/authorize"
+
+// keyReturnTo is the pending-registration field holding the flow the sign-up
+// started from.
+const keyReturnTo = "returnTo"
+
+// pendingFlowReturnTo keeps raw only when it is a flow a brand-new account
+// resumes after confirming its email: the MCP OAuth authorize request or the
+// CLI's device approval page, as a same-origin relative path. Anything else
+// returns "". Same allowlist as the dashboard's orgCreationReturnTo
+// (web/dash0 lib/login-destination.ts): the value travels through an email
+// confirmation, so it is never an open redirect nor an arbitrary deep link.
+func pendingFlowReturnTo(raw string) string {
+	if !isSafePostLoginRedirect(raw) {
+		return ""
+	}
+
+	path, _, _ := strings.Cut(raw, "?")
+	if strings.Contains(path, "#") {
+		return ""
+	}
+
+	if path != oauthAuthorizePath && path != deviceVerificationPath {
+		return ""
+	}
+
+	return raw
+}

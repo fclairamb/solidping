@@ -143,7 +143,7 @@ test.describe("Membership requests", () => {
       window.localStorage.setItem("solidping_token", "stub");
     });
 
-    await page.goto("no-org");
+    await page.goto("no-org?join=acme");
 
     await expect(
       page.getByRole("heading", { name: /start a new organization/i }),

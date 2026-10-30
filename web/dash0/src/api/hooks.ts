@@ -4152,6 +4152,9 @@ export function useRegister() {
       // included, are written in them.
       locale?: string;
       timezone?: string;
+      // The pending MCP authorization or device approval to resume after
+      // the email confirmation; the server keeps only those.
+      returnTo?: string;
     }) =>
       apiFetch<{ message: string }>("/api/v1/auth/register", {
         method: "POST",
@@ -4182,6 +4185,8 @@ export function useConfirmRegistration() {
           role: string;
         };
         organization?: { uid: string; slug: string; name?: string };
+        // The returnTo sent with the sign-up, when it was a resumable flow.
+        returnTo?: string;
       }>("/api/v1/auth/confirm-registration", {
         method: "POST",
         body: JSON.stringify(data),

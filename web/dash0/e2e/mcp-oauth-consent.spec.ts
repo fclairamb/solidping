@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
-import { test, API_BASE, freshLogin } from "./fixtures";
+import { test, API_BASE, DASH_BASE, freshLogin, uniqueStamp } from "./fixtures";
 
 /**
  * MCP OAuth 2.1 consent flow (spec 2026-06-20-03) — the browser legs an MCP
@@ -241,5 +241,185 @@ test.describe("MCP OAuth consent flow", () => {
     expect(url.searchParams.get("error")).toBe("access_denied");
     expect(url.searchParams.get("code")).toBeNull();
     expect(url.searchParams.get("state")).toBe("state-deny");
+  });
+});
+
+/**
+ * Reads the one-shot confirmation token out of the queued registration email
+ * (only its hash is stored), as confirm-registration-no-org.spec.ts does.
+ */
+async function registrationConfirmToken(page: Page, email: string): Promise<string> {
+  const res = await page.request.get(`${API_BASE}/api/v1/test/jobs?type=email`);
+  expect(res.status()).toBe(200);
+  const { data: jobs } = (await res.json()) as {
+    data: Array<{
+      config: { template?: string; to?: string[]; templateData?: { ConfirmURL?: string } };
+    }>;
+  };
+  const job = jobs.find(
+    (j) => j.config.template === "registration.html" && j.config.to?.includes(email),
+  );
+  const confirmURL = job?.config.templateData?.ConfirmURL ?? "";
+  expect(confirmURL, "the registration email must have been queued").toBeTruthy();
+  return confirmURL.split("/").pop() ?? "";
+}
+
+/** Exchanges the code, then creates a check through MCP with the token. */
+async function exchangeAndCreateCheck(
+  page: Page,
+  clientId: string,
+  code: string,
+  verifier: string,
+  checkSlug: string,
+): Promise<void> {
+  const tokenRes = await page.request.post(`${API_BASE}/api/v1/oauth/token`, {
+    form: {
+      grant_type: "authorization_code",
+      code,
+      client_id: clientId,
+      redirect_uri: CALLBACK_URI,
+      code_verifier: verifier,
+    },
+  });
+  expect(tokenRes.status()).toBe(200);
+  const tok = await tokenRes.json();
+  expect(tok.scope).toBe("mcp");
+
+  const call = (sessionId: string, body: object) =>
+    page.request.post(`${API_BASE}/api/v1/mcp`, {
+      headers: {
+        Authorization: `Bearer ${tok.access_token}`,
+        "Content-Type": "application/json",
+        ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}),
+      },
+      data: body,
+    });
+
+  const init = await call("", {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-03-26",
+      clientInfo: { name: "e2e-consent", version: "1.0" },
+    },
+  });
+  expect(init.status()).toBe(200);
+  const sessionId = init.headers()["mcp-session-id"] ?? "";
+  expect(sessionId).toBeTruthy();
+
+  const created = await call(sessionId, {
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: {
+      name: "create_check",
+      arguments: {
+        name: "E2E new user check",
+        slug: checkSlug,
+        type: "http",
+        config: { url: "https://example.com" },
+      },
+    },
+  });
+  expect(created.status()).toBe(200);
+  const rpc = await created.json();
+  expect(rpc.result, JSON.stringify(rpc)).toBeTruthy();
+  expect(rpc.result.isError ?? false, JSON.stringify(rpc.result)).toBe(false);
+}
+
+/** Creates the first org from /no-org with the suggested name. */
+async function createFirstOrg(page: Page): Promise<void> {
+  await expect(page.getByTestId("create-org-submit")).toBeVisible({ timeout: 15000 });
+  await page.getByTestId("create-org-submit").click();
+}
+
+// fclairamb/solidping-business#35: a person with no SolidPing account (or an
+// account with no org) must end up back in the MCP client with a working
+// token by only using the UI.
+test.describe("MCP OAuth consent flow for a user without an org", () => {
+  test("brand-new password user signs up, confirms, creates an org and approves", async ({
+    page,
+    browser,
+  }) => {
+    const stamp = uniqueStamp();
+    const email = `mcp-new-${stamp}@acme.com`;
+    const clientId = await registerClient(page);
+    const pkce = newPkcePair();
+
+    await page.goto(authorizeUrl(clientId, pkce, "state-new-user"));
+
+    // Logged out: the login page, then "Create an account" keeps returnTo.
+    await expect(page.getByTestId("login-title")).toBeVisible({ timeout: 15000 });
+    await page.getByTestId("login-create-account-link").click();
+    await expect(page.getByTestId("register-form")).toBeVisible();
+    expect(new URL(page.url()).searchParams.get("returnTo")).toContain(
+      "/api/v1/oauth/authorize?",
+    );
+
+    await page.getByTestId("register-email").fill(email);
+    await page.getByTestId("register-password").fill("Strong-Pass-123!");
+    await page.getByTestId("register-submit").click();
+    await expect(page.getByTestId("register-confirmation-message")).toContainText(email, {
+      timeout: 10000,
+    });
+
+    // The emailed link opens elsewhere: a fresh browser context, so nothing
+    // but the server can carry the pending authorization.
+    const token = await registrationConfirmToken(page, email);
+    const mailContext = await browser.newContext();
+    try {
+      const mail = await mailContext.newPage();
+      await mail.goto(`${API_BASE}${DASH_BASE}/confirm-registration/${token}`);
+      await mail.getByTestId("confirm-registration-button").click();
+
+      // The newcomer gets a personal org at confirmation (spec
+      // 2026-10-30-04), so the pending authorization resumes straight to
+      // consent: no detour through /no-org.
+      await mail.waitForURL(/\/oauth\/consent/, { timeout: 15000 });
+
+      const { code, state } = await approveConsent(mail);
+      expect(code).toBeTruthy();
+      expect(state).toBe("state-new-user");
+
+      await exchangeAndCreateCheck(mail, clientId, code, pkce.verifier, `mcp-new-${stamp}`);
+    } finally {
+      await mailContext.close();
+    }
+  });
+
+  test("signed-in user without an org is sent to create one, then to consent", async ({
+    page,
+  }) => {
+    const stamp = uniqueStamp();
+    const email = `mcp-orgless-${stamp}@acme.com`;
+    const password = "Strong-Pass-123!";
+    const created = await page.request.post(`${API_BASE}/api/v1/test/users`, {
+      data: { email, password, name: "Org-less user" },
+    });
+    expect(created.status()).toBe(201);
+
+    // A plain sign-in first: the account has no org, so it lands on /no-org.
+    await page.goto("orgs/test/login");
+    await page.getByTestId("login-email").fill(email);
+    await page.getByTestId("login-password").fill(password);
+    await page.getByTestId("login-submit").click();
+    await page.waitForURL(/\/no-org/, { timeout: 15000 });
+
+    // Then the MCP client opens authorize with that org-less session: the
+    // server sends it to org creation, never to "/orgs//oauth/consent".
+    const clientId = await registerClient(page);
+    const pkce = newPkcePair();
+    await page.goto(authorizeUrl(clientId, pkce, "state-orgless"));
+    await page.waitForURL(/\/no-org\?.*returnTo=/, { timeout: 15000 });
+    expect(page.url()).not.toContain("/orgs//");
+
+    await createFirstOrg(page);
+
+    const { code, state } = await approveConsent(page);
+    expect(code).toBeTruthy();
+    expect(state).toBe("state-orgless");
+
+    await exchangeAndCreateCheck(page, clientId, code, pkce.verifier, `mcp-orgless-${stamp}`);
   });
 });

@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -159,9 +160,47 @@ func (h *Handler) Authorize(writer http.ResponseWriter, req *http.Request) error
 		return nil
 	}
 
+	org, err := h.svc.ConsentOrg(req.Context(), claims)
+	if err != nil {
+		if !errors.Is(err, errConsentNoOrg) {
+			return h.WriteInternalError(writer, req, err)
+		}
+
+		return h.redirectWithoutOrg(writer, req, claims)
+	}
+
 	// Valid session → hand off to the consent SPA route, which will POST back to
 	// approve. Pass the already-validated parameters through.
-	h.redirectToConsent(writer, claims.OrgSlug, authReq)
+	h.redirectToConsent(writer, org.Slug, authReq)
+
+	return nil
+}
+
+// redirectWithoutOrg handles a signed-in session that is not scoped to an org
+// the user belongs to: there is no org to bind the grant to yet.
+//
+//   - A user with no org at all (a brand-new account) goes to the dashboard's
+//     org-creation page, carrying this authorize request as returnTo: the
+//     org-creation form resumes it once the org exists (web/dash0
+//     lib/login-destination.ts orgCreationReturnTo). Sending it to the consent
+//     route instead built "/orgs//oauth/consent", a dead end.
+//   - A user who has an org, but whose session names none of them (an org-less
+//     pending-join session, or one minted before they left the org), signs in
+//     again through the login bounce, which scopes the session to an org.
+func (h *Handler) redirectWithoutOrg(writer http.ResponseWriter, req *http.Request, claims *auth.Claims) error {
+	hasOrg, err := h.svc.HasMembership(req.Context(), claims.UserUID)
+	if err != nil {
+		return h.WriteInternalError(writer, req, err)
+	}
+
+	if hasOrg {
+		h.redirectToLogin(writer, req)
+
+		return nil
+	}
+
+	noOrgURL := config.DashboardBasePath + "/no-org?returnTo=" + url.QueryEscape(req.URL.RequestURI())
+	http.Redirect(writer, req, noOrgURL, http.StatusFound)
 
 	return nil
 }
@@ -189,8 +228,15 @@ func (h *Handler) ApproveAuthorize(writer http.ResponseWriter, req *http.Request
 			"the user denied the authorization request", authReq.RedirectURI, authReq.State))
 	}
 
-	org, err := h.svc.db.GetOrganizationBySlug(req.Context(), claims.OrgSlug)
+	// The grant is bound to an org the user belongs to; an org-less session
+	// (or one naming an org the user has left) has none to give.
+	org, err := h.svc.ConsentOrg(req.Context(), claims)
 	if err != nil {
+		if errors.Is(err, errConsentNoOrg) {
+			return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden,
+				"Create or join an organization before authorizing an application")
+		}
+
 		return h.WriteInternalError(writer, req, err)
 	}
 
@@ -198,7 +244,7 @@ func (h *Handler) ApproveAuthorize(writer http.ResponseWriter, req *http.Request
 		ClientID:            authReq.ClientID,
 		UserUID:             claims.UserUID,
 		OrgUID:              org.UID,
-		OrgSlug:             claims.OrgSlug,
+		OrgSlug:             org.Slug,
 		RedirectURI:         authReq.RedirectURI,
 		Scope:               authReq.Scope,
 		Resource:            authReq.Resource,

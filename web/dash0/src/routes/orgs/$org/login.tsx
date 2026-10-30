@@ -58,6 +58,7 @@ import {
   isOAuthAuthorizeReturnTo,
   resolveDestination,
   isInviteReturnTo,
+  orgCreationReturnTo,
   parseLoginNotice,
   startOAuthLogin,
   type LoginDestination,
@@ -289,7 +290,11 @@ function LoginPage() {
           goToDestination({ href: returnTo }, true);
           return;
         }
-        navigate({ to: "/no-org", replace: true });
+        navigate({
+          to: "/no-org",
+          search: { returnTo: orgCreationReturnTo(returnTo, BASE_PATH) },
+          replace: true,
+        });
         return;
       }
       // resolveDestination needs no change: it already drops a `returnTo`
@@ -330,7 +335,10 @@ function LoginPage() {
           if (isInviteReturnTo(returnTo, BASE_PATH)) {
             goToDestination({ href: returnTo });
           } else {
-            navigate({ to: "/no-org" });
+            navigate({
+              to: "/no-org",
+              search: { returnTo: orgCreationReturnTo(returnTo, BASE_PATH) },
+            });
           }
           break;
         case "orgChoice":
@@ -891,7 +899,14 @@ function LoginPage() {
               <Link
                 to="/orgs/$org/register"
                 params={{ org }}
+                // A pending MCP authorization survives the detour through
+                // sign-up (fclairamb/solidping-business#35).
+                search={() => {
+                  const pending = orgCreationReturnTo(returnTo, BASE_PATH);
+                  return pending ? { returnTo: pending } : {};
+                }}
                 className="text-primary underline-offset-4 hover:underline"
+                data-testid="login-create-account-link"
               >
                 {t("createOne")}
               </Link>
