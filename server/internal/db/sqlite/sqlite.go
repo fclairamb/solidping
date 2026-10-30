@@ -7964,7 +7964,8 @@ func (s *Service) DeleteFilesByTopicPrefix(ctx context.Context, orgUID, prefix s
 	return int(rows), nil
 }
 
-// SumFileSizeByGroup returns the total bytes of live files for orgUID whose
+// SumFileSizeByGroup returns the total bytes of live, topic-less files (feedback
+// screenshots; attachments such as crawl reports always carry a topic) for orgUID whose
 // file_uri contains a "/<group>/" path segment — see filestorage.BuildPath
 // ("<orgUID>/<group>/<fileID>"), which every storage backend's URI embeds
 // verbatim after its own scheme/bucket prefix. organization_uid already
@@ -7982,6 +7983,7 @@ func (s *Service) SumFileSizeByGroup(ctx context.Context, orgUID, group string) 
 		ColumnExpr("COALESCE(SUM(size), 0)").
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
+		Where("topic IS NULL").
 		Where("file_uri LIKE ? ESCAPE '\\'", "%/"+escapeLikePrefix(group)+"/%").
 		Scan(ctx, &total)
 	if err != nil {
@@ -7991,7 +7993,8 @@ func (s *Service) SumFileSizeByGroup(ctx context.Context, orgUID, group string) 
 	return total.Int64, nil
 }
 
-// ListFilesByGroup returns live files of every organization under the given
+// ListFilesByGroup returns live, topic-less files (feedback screenshots, never
+// attachments such as crawl reports) of every organization under the given
 // storage group, created before `before`, oldest first, capped at limit. The
 // group is matched on its "/<group>/" URI path segment, as in
 // SumFileSizeByGroup.
@@ -8007,6 +8010,7 @@ func (s *Service) ListFilesByGroup(
 	query := s.db.NewSelect().
 		Model(&files).
 		Where("deleted_at IS NULL").
+		Where("topic IS NULL").
 		Where("file_uri LIKE ? ESCAPE '\\'", "%/"+escapeLikePrefix(group)+"/%").
 		Where("created_at < ?", before).
 		Order("created_at ASC")

@@ -148,6 +148,7 @@ func (h *Handler) attachUserIfAuthenticated(ctx context.Context, authHeader stri
 	user, err := h.svc.db.GetUser(ctx, claims.UserUID)
 	if err == nil && user != nil {
 		sub.UserEmail = user.Email
+		sub.UserSuperAdmin = user.SuperAdmin
 	}
 
 	// Filed under an impersonation token: the report shows the target's
