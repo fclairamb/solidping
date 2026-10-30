@@ -127,7 +127,7 @@ The sign-up and forgot-password forms make the server email an address an anonym
 
 - **Form ticket.** When the form renders, the dashboard fetches a signed, single-use ticket stamped with the time (`GET /api/v1/auth/form-ticket`) and sends it back with the form. A submission without a valid ticket, with a ticket used before, or less than 3 seconds after the form was shown, is dropped. A person needs longer than that to type a name, an email and a password.
 - **Honeypot.** The forms carry an extra field nobody can see or reach with the keyboard, which screen readers and password managers skip. A submission that fills it is dropped.
-- **Budgets.** Each form accepts a limited number of submissions per client IP and sends a limited number of emails to one address, per hour.
+- **Budgets.** Per hour, each form sends a limited number of emails to one address, and one client IP gets a limited number of password-reset requests and of sign-ups still waiting for confirmation. A confirmed sign-up frees its slot, so a team signing up from one office is only held back while people have not clicked their link.
 
 A dropped submission, and one over the per-address budget, answers exactly like a success and sends no email, so a bot learns nothing. Only the per-IP budget answers `429`. Every drop is logged at `INFO` (`Form submission dropped by the form guard`, with the form, the reason and the client IP) and counted in the `solidping_auth_form_dropped_total{form,reason}` metric.
 
@@ -136,7 +136,7 @@ A dropped submission, and one over the per-address budget, answers exactly like 
 | `SP_AUTH_FORM_GUARD_ENABLED` | `true` | Require the form ticket and an empty honeypot |
 | `SP_AUTH_FORM_GUARD_MIN_FILL_TIME` | `3s` | Minimum age of the ticket when the form is submitted (`0s` in test run mode unless set) |
 | `SP_AUTH_FORM_GUARD_TICKET_TTL` | `24h` | How long a ticket stays usable |
-| `SP_AUTH_FORM_GUARD_PER_IP_PER_HOUR` | `12` | Submissions of each form one client IP can make |
+| `SP_AUTH_FORM_GUARD_PER_IP_PER_HOUR` | `12` | Unconfirmed sign-ups, and password-reset requests, one client IP can make |
 | `SP_AUTH_FORM_GUARD_PER_EMAIL_PER_HOUR` | `3` | Emails each form can send to one address |
 
 `0` turns a budget off. The client IP follows `SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES`, like the rate limiter. The per-IP budget and the per-address budget apply even when the ticket check is off.

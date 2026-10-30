@@ -411,9 +411,11 @@ func TestFormGuardPerEmailBudgetIsSilent(t *testing.T) {
 	}
 }
 
-// TestFormGuardPerIPBudget: past the per-IP budget the endpoint answers 429,
-// a forged X-Forwarded-For does not mint a fresh budget when no proxy is
-// trusted, and another client is unaffected (positive control).
+// TestFormGuardPerIPBudget: past the per-IP budget of unconfirmed sign-ups the
+// endpoint answers 429, a forged X-Forwarded-For does not mint a fresh budget
+// when no proxy is trusted, and another client is unaffected (positive
+// control). Confirming a sign-up frees its slot, and signing the same address
+// up again does not take a second one.
 func TestFormGuardPerIPBudget(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -436,6 +438,17 @@ func TestFormGuardPerIPBudget(t *testing.T) {
 
 	r.Equal(http.StatusOK, register("ip-4@acme.com", "203.0.113.8:1000", "").Code)
 	r.Equal(1, emailsTo(t, ctx, dbSvc, "ip-4@acme.com", "registration.html"), "another client is still sent")
+
+	r.Equal(http.StatusOK, register("ip-2@acme.com", "203.0.113.7:1003", "").Code,
+		"the same address again replaces its pending entry")
+
+	_, err := svc.ConfirmRegistration(ctx, extractRegistrationConfirmToken(t, ctx, dbSvc, "ip-1@acme.com"))
+	r.NoError(err)
+
+	r.Equal(http.StatusOK, register("ip-3@acme.com", "203.0.113.7:1004", "").Code, "a confirmation frees a slot")
+	r.Equal(1, emailsTo(t, ctx, dbSvc, "ip-3@acme.com", "registration.html"))
+	r.Equal(http.StatusTooManyRequests, register("ip-5@acme.com", "203.0.113.7:1005", "").Code,
+		"and only one")
 }
 
 // TestPasswordResetIPLimitIgnoresForgedXFF: the reset form's per-minute IP

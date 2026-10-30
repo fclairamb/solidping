@@ -81,6 +81,10 @@ const (
 	// invite rows written before that spec.
 	keyTokenHash = "tokenHash"
 
+	// keyClientIP is the pending-registration field holding the client IP of
+	// the sign-up, counted by the per-IP sign-up budget until confirmation.
+	keyClientIP = "clientIP"
+
 	tokenTypeBearer = "Bearer"
 	jwtIssuer       = "solidping"
 	durationLabel24 = "24h"
@@ -2675,20 +2679,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		"passwordHash": hash,
 	}
 
-	// The account does not exist yet, so the attribution rides along in the
-	// pending entry and is applied at confirmation. It goes in only when there
-	// is something to keep: the common untagged signup stores nothing extra.
-	if attribution := normalizeSignupAttribution(req.Attribution); attribution != nil {
-		(*stateValue)[keyAttribution] = attribution
-	}
-
-	if prefs := signupPreferences(req.Locale, req.Timezone); prefs != nil {
-		(*stateValue)[keyPreferences] = prefs
-	}
-
-	if returnTo := pendingFlowReturnTo(req.ReturnTo); returnTo != "" {
-		(*stateValue)[keyReturnTo] = returnTo
-	}
+	addPendingRegistrationExtras(*stateValue, &req)
 
 	ttl := registrationTTL
 
@@ -2706,6 +2697,30 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 	)
 
 	return registerSuccessResponse, nil
+}
+
+// addPendingRegistrationExtras puts the optional fields of a sign-up in its
+// pending entry, each only when there is something to keep.
+func addPendingRegistrationExtras(value models.JSONMap, req *RegisterRequest) {
+	// The account does not exist yet, so the attribution rides along in the
+	// pending entry and is applied at confirmation. It goes in only when there
+	// is something to keep: the common untagged signup stores nothing extra.
+	if attribution := normalizeSignupAttribution(req.Attribution); attribution != nil {
+		value[keyAttribution] = attribution
+	}
+
+	if prefs := signupPreferences(req.Locale, req.Timezone); prefs != nil {
+		value[keyPreferences] = prefs
+	}
+
+	if returnTo := pendingFlowReturnTo(req.ReturnTo); returnTo != "" {
+		value[keyReturnTo] = returnTo
+	}
+
+	// Kept so the per-IP sign-up budget counts only unconfirmed registrations.
+	if req.ClientIP != "" {
+		value[keyClientIP] = req.ClientIP
+	}
 }
 
 // ConfirmRegistrationRequest contains the confirmation request data.

@@ -131,7 +131,9 @@ func (s *Service) issueFormTicketAt(form string, issuedAt time.Time) (*FormTicke
 // order:
 //
 //  1. the per-IP budget: over it, ErrRateLimited (a 429 a human behind a busy
-//     NAT can read; it says nothing about the address typed);
+//     NAT can read; it says nothing about the address typed). For sign-up it
+//     counts only the registrations still waiting for confirmation, so a
+//     team signing up from one office is not blocked once people confirm;
 //  2. when the guard is enabled, the honeypot and the form ticket (present,
 //     genuine, for this form, unexpired, old enough, never used before);
 //  3. the per-email budget.
@@ -147,7 +149,7 @@ func (s *Service) screenFormSubmission(
 	guard := s.fullCfg.Auth.FormGuard
 
 	if clientIP != "" && guard.PerIPPerHour > 0 {
-		limited, err := s.bumpCounter(ctx, formIPKeyPrefix+form+":"+clientIP, guard.PerIPPerHour, formBudgetWindow)
+		limited, err := s.overFormIPBudget(ctx, form, clientIP, email, guard.PerIPPerHour)
 		if err != nil {
 			slog.WarnContext(ctx, "Failed to track form IP budget", "form", form, "error", err)
 		} else if limited {
@@ -180,6 +182,38 @@ func (s *Service) screenFormSubmission(
 	}
 
 	return "", nil
+}
+
+// overFormIPBudget reports whether clientIP has used up its hourly budget for
+// form. A password reset only ever emails an existing account, so every
+// request counts. A sign-up counts only while it is unconfirmed: the pending
+// registrations created from clientIP in the last hour, which confirmation
+// deletes. A bot's victims never confirm, a real team does. The address being
+// signed up is left out: signing it up again replaces its own entry.
+func (s *Service) overFormIPBudget(ctx context.Context, form, clientIP, email string, limit int) (bool, error) {
+	if form != FormRegister {
+		return s.bumpCounter(ctx, formIPKeyPrefix+form+":"+clientIP, limit, formBudgetWindow)
+	}
+
+	entries, err := s.db.ListStateEntries(ctx, nil, registrationKeyPrefix)
+	if err != nil {
+		return false, err
+	}
+
+	since := time.Now().Add(-formBudgetWindow)
+	pending := 0
+
+	for _, entry := range entries {
+		if entry.Value == nil || entry.CreatedAt.Before(since) || entry.Key == registrationKeyPrefix+email {
+			continue
+		}
+
+		if ip, _ := (*entry.Value)[keyClientIP].(string); ip == clientIP {
+			pending++
+		}
+	}
+
+	return pending >= limit, nil
 }
 
 // checkFormTicket returns the reason to drop the submission, or "" when the

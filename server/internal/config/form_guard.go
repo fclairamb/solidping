@@ -17,8 +17,9 @@ const (
 	// DefaultFormGuardTicketTTL bounds how long a form ticket stays usable, so
 	// a tab left open for a working day still submits.
 	DefaultFormGuardTicketTTL = 24 * time.Hour
-	// DefaultFormGuardPerIPPerHour bounds the submissions of each form one
-	// client IP can make per hour. Over it the endpoint answers 429.
+	// DefaultFormGuardPerIPPerHour bounds what one client IP can do per hour:
+	// sign-ups still waiting for confirmation (a confirmed one frees its slot),
+	// and password-reset requests. Over it the endpoint answers 429.
 	DefaultFormGuardPerIPPerHour = 12
 	// DefaultFormGuardPerEmailPerHour bounds the emails each form can send to
 	// one address per hour. Over it the endpoint answers as on success and
@@ -56,8 +57,8 @@ type FormGuardConfig struct {
 }
 
 // DefaultFormGuardConfig returns the shipped guard: ticket and honeypot
-// required, 3 s minimum fill time, 24 h tickets, 12 submissions per IP and 3
-// emails per address, each per hour and per form.
+// required, 3 s minimum fill time, 24 h tickets, 12 unconfirmed sign-ups or
+// reset requests per IP and 3 emails per address, each per hour and per form.
 func DefaultFormGuardConfig() FormGuardConfig {
 	return FormGuardConfig{
 		Enabled:         true,
