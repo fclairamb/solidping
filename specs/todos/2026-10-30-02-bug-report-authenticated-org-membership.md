@@ -58,3 +58,7 @@ The requests are attributed to the account, which makes them traceable but does 
 ## Open questions
 
 - Should a non-member's report be refused outright (403) instead of being treated as anonymous? **Recommended:** treat it as anonymous. The status0 report dialog can be used by a signed-in user on another org's status page, and that report should still go through.
+
+## Resolved open questions
+
+- Treat a non-member's report as anonymous (no 403). (autopilot: recommended answer)
