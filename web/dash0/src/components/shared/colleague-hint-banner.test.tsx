@@ -7,7 +7,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@/i18n";
-import { ColleagueHintBanner, colleagueHintDismissKey } from "./colleague-hint-banner";
+import { ColleagueHintBanner } from "./colleague-hint-banner";
+import { colleagueHintDismissKey } from "@/lib/colleague-hint";
 
 const state = vi.hoisted(() => ({
   hint: null as null | {

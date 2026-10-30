@@ -3515,10 +3515,7 @@ func (s *Service) CreateOrg(
 ) (*OrgResponse, error) {
 	// Counted for the /no-org funnel (spec 2026-10-30-04): only the creation
 	// that takes a user out of having no org at all.
-	fromZero := false
-	if members, listErr := s.db.ListMembersByUser(ctx, userUID); listErr == nil && len(members) == 0 {
-		fromZero = true
-	}
+	fromZero := s.hasNoMembership(ctx, userUID)
 
 	org, err := s.createOrgForUser(ctx, userUID, req, nil)
 	if err != nil {

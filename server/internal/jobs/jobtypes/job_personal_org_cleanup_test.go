@@ -17,6 +17,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
+var errSweepFailed = errors.New("sweep failed")
+
 // fakePersonalOrgSweeper records the sweeps the job asks for.
 type fakePersonalOrgSweeper struct {
 	calls int
@@ -68,7 +70,7 @@ func TestPersonalOrgCleanupRunsTheSweepAndReschedules(t *testing.T) {
 	r.NoError(err)
 	r.Positive(count, "the sweeper enqueues its next run")
 
-	sweeper.err = errors.New("boom")
+	sweeper.err = errSweepFailed
 	runErr := run.Run(ctx, jctx)
 	r.Error(runErr)
 

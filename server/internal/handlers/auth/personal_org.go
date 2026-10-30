@@ -55,13 +55,35 @@ const (
 	// warning (value: warnedAt, RFC 3339).
 	personalOrgWarnedKey = "personal_org.cleanup_warned"
 	keyWarnedAt          = "warnedAt"
-	// personalOrgSlugFallback seeds a slug when the name gives nothing usable.
-	personalOrgSlugFallback = "my-org"
 )
 
 // recordNoOrgOutcome counts one outcome of the no-org funnel.
 func recordNoOrgOutcome(outcome string) {
 	prommetrics.NoOrgOutcomes.WithLabelValues(outcome).Inc()
+}
+
+// recordOrgLessLogout counts an org-less session signing out, the "left" end
+// of the funnel. An impersonation ending is not the user leaving.
+func recordOrgLessLogout(claims *Claims) {
+	if claims.OrgSlug == "" && !claims.IsImpersonation() {
+		recordNoOrgOutcome(noOrgOutcomeLeft)
+	}
+}
+
+// recordJoinRequested counts a membership request sent by a user who belongs
+// to no org.
+func recordJoinRequested(fromZero bool) {
+	if fromZero {
+		recordNoOrgOutcome(noOrgOutcomeJoinRequested)
+	}
+}
+
+// hasNoMembership reports whether the user belongs to no org. A lookup error
+// answers false: it only feeds the funnel metric.
+func (s *Service) hasNoMembership(ctx context.Context, userUID string) bool {
+	members, err := s.db.ListMembersByUser(ctx, userUID)
+
+	return err == nil && len(members) == 0
 }
 
 // autoPersonalOrgEnabled reports whether auth.auto_personal_org is on.
@@ -382,14 +404,9 @@ func (s *Service) ColleagueHint(ctx context.Context, userUID string) (*Colleague
 		return nil, err
 	}
 
-	at := strings.LastIndex(user.Email, "@")
-	if at < 0 || at == len(user.Email)-1 {
-		return nil, nil //nolint:nilnil // no domain, no hint
-	}
-
-	domain := strings.ToLower(user.Email[at+1:])
-	if isFreeMailDomain(domain) {
-		return nil, nil //nolint:nilnil // webmail says nothing about colleagues
+	domain := companyDomain(user.Email)
+	if domain == "" {
+		return nil, nil //nolint:nilnil // no company domain, no colleagues to find
 	}
 
 	personal, err := s.db.GetAutoPersonalOrgByOwner(ctx, userUID, false)
@@ -550,4 +567,20 @@ func (s *Service) SweepPersonalOrgs(ctx context.Context, now time.Time) (int, in
 	result, err := s.SweepAbandonedPersonalOrgs(ctx, now)
 
 	return result.Warned, result.Deleted, err
+}
+
+// companyDomain is the lowercased domain of email, or "" when there is none or
+// it is a webmail one (which says nothing about colleagues).
+func companyDomain(email string) string {
+	at := strings.LastIndex(email, "@")
+	if at < 0 || at == len(email)-1 {
+		return ""
+	}
+
+	domain := strings.ToLower(email[at+1:])
+	if isFreeMailDomain(domain) {
+		return ""
+	}
+
+	return domain
 }

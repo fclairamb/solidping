@@ -5,15 +5,11 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColleagueHint, useCreateMembershipRequest } from "@/api/hooks";
+import { colleagueHintDismissKey } from "@/lib/colleague-hint";
 
 interface ColleagueHintBannerProps {
   /** Slug of the org being viewed: the banner only shows on the personal org. */
   org: string;
-}
-
-/** localStorage key remembering a dismissed hint, per user and suggested org. */
-export function colleagueHintDismissKey(userUid: string, orgSlug: string) {
-  return `solidping:colleague-hint-dismissed:${userUid}:${orgSlug}`;
 }
 
 function isDismissed(key: string): boolean {

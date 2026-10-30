@@ -171,9 +171,7 @@ func (h *Handler) Logout(writer http.ResponseWriter, req *http.Request) error {
 
 	// An org-less session signing out is the "left" end of the /no-org
 	// funnel (spec 2026-10-30-04).
-	if claims.OrgSlug == "" && !claims.IsImpersonation() {
-		recordNoOrgOutcome(noOrgOutcomeLeft)
-	}
+	recordOrgLessLogout(claims)
 
 	// Parse optional logout request
 	var logoutReq LogoutRequest

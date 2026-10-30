@@ -59,6 +59,22 @@ type MembershipRequestAdminListResponse struct {
 func (s *Service) CreateMembershipRequest(
 	ctx context.Context, userUID string, req MembershipRequestCreateRequest,
 ) (*MembershipRequestSummary, error) {
+	// The /no-org funnel counts requests sent by users who belong to nothing
+	// (spec 2026-10-30-04).
+	fromZero := s.hasNoMembership(ctx, userUID)
+
+	summary, err := s.openMembershipRequest(ctx, userUID, req)
+	if err == nil {
+		recordJoinRequested(fromZero)
+	}
+
+	return summary, err
+}
+
+// openMembershipRequest is CreateMembershipRequest's body.
+func (s *Service) openMembershipRequest(
+	ctx context.Context, userUID string, req MembershipRequestCreateRequest,
+) (*MembershipRequestSummary, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, req.OrgSlug)
 	if err != nil {
 		return nil, ErrOrganizationNotFound
@@ -83,13 +99,6 @@ func (s *Service) CreateMembershipRequest(
 		message = &m
 	}
 
-	// The /no-org funnel counts requests sent by users who belong to nothing
-	// (spec 2026-10-30-04).
-	fromZero := false
-	if members, listErr := s.db.ListMembersByUser(ctx, userUID); listErr == nil && len(members) == 0 {
-		fromZero = true
-	}
-
 	if existing == nil {
 		request := models.NewMembershipRequest(org.UID, userUID, message)
 		if err := s.db.CreateMembershipRequest(ctx, request); err != nil {
@@ -97,10 +106,6 @@ func (s *Service) CreateMembershipRequest(
 		}
 
 		s.notifyAdminsOfMembershipRequest(ctx, org, userUID, message)
-
-		if fromZero {
-			recordNoOrgOutcome(noOrgOutcomeJoinRequested)
-		}
 
 		summary := buildMembershipSummary(request, org)
 
@@ -131,10 +136,6 @@ func (s *Service) CreateMembershipRequest(
 	}
 
 	s.notifyAdminsOfMembershipRequest(ctx, org, userUID, message)
-
-	if fromZero {
-		recordNoOrgOutcome(noOrgOutcomeJoinRequested)
-	}
 
 	summary := buildMembershipSummary(existing, org)
 
