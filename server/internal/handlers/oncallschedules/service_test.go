@@ -39,12 +39,14 @@ func newTestService(t *testing.T) (*oncallschedules.Service, db.Service, *models
 	return onCall, svc, org
 }
 
-func newTestUser(t *testing.T, dbSvc db.Service, _, name string) *models.User {
+func newTestUser(t *testing.T, dbSvc db.Service, orgUID, name string) *models.User {
 	t.Helper()
 
 	user := models.NewUser(name + "@test.com")
 	user.Name = name
 	require.NoError(t, dbSvc.CreateUser(t.Context(), user))
+	require.NoError(t, dbSvc.CreateOrganizationMember(t.Context(),
+		models.NewOrganizationMember(orgUID, user.UID, models.MemberRoleUser)))
 
 	return user
 }
@@ -299,10 +301,11 @@ func TestServiceResolveOverrideWins(t *testing.T) {
 	overrideStart := startAt.Add(30 * time.Minute)
 	overrideEnd := startAt.Add(2 * time.Hour)
 	_, err = svc.CreateOverride(t.Context(), &oncallschedules.CreateOverrideInput{
-		ScheduleUID: schedule.UID,
-		UserUID:     carol.UID,
-		StartAt:     overrideStart,
-		EndAt:       overrideEnd,
+		OrganizationUID: org.UID,
+		ScheduleUID:     schedule.UID,
+		UserUID:         carol.UID,
+		StartAt:         overrideStart,
+		EndAt:           overrideEnd,
 	})
 	r.NoError(err)
 
@@ -346,10 +349,11 @@ func TestServiceResolveOverlappingOverridesMostRecentWins(t *testing.T) {
 
 	// First override: bob.
 	_, err = svc.CreateOverride(t.Context(), &oncallschedules.CreateOverrideInput{
-		ScheduleUID: schedule.UID,
-		UserUID:     bob.UID,
-		StartAt:     overrideStart,
-		EndAt:       overrideEnd,
+		OrganizationUID: org.UID,
+		ScheduleUID:     schedule.UID,
+		UserUID:         bob.UID,
+		StartAt:         overrideStart,
+		EndAt:           overrideEnd,
 	})
 	r.NoError(err)
 
@@ -358,10 +362,11 @@ func TestServiceResolveOverlappingOverridesMostRecentWins(t *testing.T) {
 	time.Sleep(time.Second)
 
 	_, err = svc.CreateOverride(t.Context(), &oncallschedules.CreateOverrideInput{
-		ScheduleUID: schedule.UID,
-		UserUID:     carol.UID,
-		StartAt:     overrideStart,
-		EndAt:       overrideEnd,
+		OrganizationUID: org.UID,
+		ScheduleUID:     schedule.UID,
+		UserUID:         carol.UID,
+		StartAt:         overrideStart,
+		EndAt:           overrideEnd,
 	})
 	r.NoError(err)
 
@@ -424,10 +429,11 @@ func TestServiceCreateOverrideEndBeforeStart(t *testing.T) {
 
 	now := time.Now()
 	_, err = svc.CreateOverride(t.Context(), &oncallschedules.CreateOverrideInput{
-		ScheduleUID: schedule.UID,
-		UserUID:     alice.UID,
-		StartAt:     now,
-		EndAt:       now.Add(-time.Hour),
+		OrganizationUID: org.UID,
+		ScheduleUID:     schedule.UID,
+		UserUID:         alice.UID,
+		StartAt:         now,
+		EndAt:           now.Add(-time.Hour),
 	})
 	r.ErrorIs(err, oncallschedules.ErrOverrideEndBeforeStart)
 }

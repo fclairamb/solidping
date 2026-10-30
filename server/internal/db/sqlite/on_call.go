@@ -269,15 +269,17 @@ func (s *Service) ListOnCallScheduleOverrides(
 	return overrides, nil
 }
 
-// GetOnCallScheduleOverride fetches by override UID.
+// GetOnCallScheduleOverride fetches an override by UID, scoped to the
+// schedule it belongs to. An override of another schedule is not found.
 func (s *Service) GetOnCallScheduleOverride(
-	ctx context.Context, overrideUID string,
+	ctx context.Context, scheduleUID, overrideUID string,
 ) (*models.OnCallScheduleOverride, error) {
 	var override models.OnCallScheduleOverride
 
 	err := s.db.NewSelect().
 		Model(&override).
 		Where("uid = ?", overrideUID).
+		Where("schedule_uid = ?", scheduleUID).
 		Scan(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -290,15 +292,26 @@ func (s *Service) GetOnCallScheduleOverride(
 	return &override, nil
 }
 
-// DeleteOnCallScheduleOverride hard-deletes the row. Overrides are
-// short-lived; soft-delete adds no value.
-func (s *Service) DeleteOnCallScheduleOverride(ctx context.Context, overrideUID string) error {
-	_, err := s.db.NewDelete().
+// DeleteOnCallScheduleOverride hard-deletes an override of the given
+// schedule. Overrides are short-lived; soft-delete adds no value. Returns
+// sql.ErrNoRows when no override with that UID belongs to the schedule.
+func (s *Service) DeleteOnCallScheduleOverride(ctx context.Context, scheduleUID, overrideUID string) error {
+	res, err := s.db.NewDelete().
 		Model((*models.OnCallScheduleOverride)(nil)).
 		Where("uid = ?", overrideUID).
+		Where("schedule_uid = ?", scheduleUID).
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("delete on-call override: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete on-call override: %w", err)
+	}
+
+	if affected == 0 {
+		return sql.ErrNoRows
 	}
 
 	return nil
