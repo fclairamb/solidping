@@ -133,6 +133,20 @@ type Service interface {
 	UpdateOrganization(ctx context.Context, uid string, update models.OrganizationUpdate) error
 	DeleteOrganization(ctx context.Context, uid string) error
 
+	// Auto-created personal organizations (spec 2026-10-30-04).
+	//
+	// GetAutoPersonalOrgByOwner returns the user's personal org, nil when none;
+	// includeDeleted also returns a soft-deleted one.
+	GetAutoPersonalOrgByOwner(ctx context.Context, userUID string, includeDeleted bool) (*models.Organization, error)
+	// ListAbandonedAutoPersonalOrgs lists live personal orgs created before
+	// createdBefore that never had a check, a second member or entitlements.
+	ListAbandonedAutoPersonalOrgs(ctx context.Context, createdBefore time.Time) ([]*models.Organization, error)
+	// ListOrgsWithMemberEmailDomain lists up to limit live, non-personal orgs
+	// excludeUserUID is not in, with a live member whose email is at domain.
+	ListOrgsWithMemberEmailDomain(
+		ctx context.Context, domain, excludeUserUID string, limit int,
+	) ([]*models.Organization, error)
+
 	// Organization previous-slug (rename alias) operations. See
 	// models.OrganizationPreviousSlug for the semantics; the invariant is that
 	// a live organizations.slug always wins over an alias, and that an alias

@@ -26,10 +26,16 @@ type Organization struct {
 	// through it. It is NO LONGER an authorization input: since spec
 	// 2026-08-22-03 the unsigned public route reads the FILE's own attachment
 	// topic (`organizations/<uid>/logo`) and serves live rows only.
-	LogoFileUID *string    `bun:"logo_file_uid"`
-	CreatedAt   time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt   time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt   *time.Time `bun:"deleted_at"`
+	LogoFileUID *string `bun:"logo_file_uid"`
+	// AutoPersonalOwnerUID is the user this org was created for automatically
+	// at their first sign-in (spec 2026-10-30-04, auth.auto_personal_org). NULL
+	// for every org created by hand. A partial unique index keeps one live
+	// personal org per user; the abandoned-org cleanup only ever touches orgs
+	// that carry it.
+	AutoPersonalOwnerUID *string    `bun:"auto_personal_owner_uid"`
+	CreatedAt            time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt            time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt            *time.Time `bun:"deleted_at"`
 }
 
 // NewOrganization creates a new organization with generated UID.
