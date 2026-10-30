@@ -18,6 +18,8 @@ import {
 } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreateOrgCard } from "@/components/shared/create-org-card";
+import { DASH_BASE } from "@/lib/base-path";
+import { orgCreationReturnTo } from "@/lib/login-destination";
 import { SecondaryDisclosureCard } from "@/components/ui/secondary-disclosure-card";
 import {
   randomOrgNameSeed,
@@ -32,13 +34,18 @@ export const Route = createFileRoute("/no-org")({
   // no membership was created, a join request is awaiting an admin, and the
   // session handed over is org-less. It names that org so we can explain why
   // the user landed here instead of on its dashboard.
+  //
+  // `returnTo` is a pending MCP authorization or device approval the sign-in
+  // started from. Only those survive (orgCreationReturnTo): the org-creation
+  // form resumes them once the new org exists.
   validateSearch: (
     search: Record<string, unknown>,
-  ): { membershipPending?: string } => ({
+  ): { membershipPending?: string; returnTo?: string } => ({
     membershipPending:
       typeof search.membershipPending === "string" && search.membershipPending
         ? search.membershipPending
         : undefined,
+    returnTo: orgCreationReturnTo(search.returnTo, DASH_BASE),
   }),
   component: NoOrgPage,
 });
@@ -47,7 +54,7 @@ function NoOrgPage() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const { logout, user, isLoading } = useAuth();
-  const { membershipPending } = Route.useSearch();
+  const { membershipPending, returnTo } = Route.useSearch();
 
   // "Here is an organization for you — click Create" is the whole point of this
   // screen for a brand-new account (spec 2026-09-05-01): the possessive form
@@ -111,6 +118,7 @@ function NoOrgPage() {
         <CreateOrgCard
           suggestedName={suggestedName}
           suggestedSlug={suggestedSlug}
+          returnTo={returnTo}
         />
         <JoinOrgCard />
 
