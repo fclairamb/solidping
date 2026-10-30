@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 var errDenied = errors.New("socket: operation not permitted")
@@ -59,4 +61,25 @@ func TestNoSocketErrorIsActionable(t *testing.T) {
 	require.ErrorIs(t, err, errDenied)
 	require.Contains(t, err.Error(), "CAP_NET_RAW")
 	require.Contains(t, err.Error(), DocsURL)
+}
+
+// A worker that cannot open any ICMP socket reports an infrastructure error,
+// not a DOWN target.
+func TestExecuteNoSocketIsInfrastructureError(t *testing.T) {
+	t.Parallel()
+
+	burstHookMu.Lock()
+	defer burstHookMu.Unlock()
+
+	previous := openBurstSocket
+	openBurstSocket = func(bool, int) (net.PacketConn, bool, int, error) {
+		return nil, false, 0, noSocketError(errDenied)
+	}
+
+	defer func() { openBurstSocket = previous }()
+
+	result, err := (&ICMPChecker{}).Execute(t.Context(), &ICMPConfig{Host: "127.0.0.1", Count: 1})
+	require.NoError(t, err)
+	require.Equal(t, checkerdef.StatusError, result.Status)
+	require.Contains(t, result.Output[checkerdef.OutputKeyError], "ping_group_range")
 }
