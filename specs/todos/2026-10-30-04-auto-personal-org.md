@@ -127,3 +127,10 @@ so the codebase already does this for some entry points.
 2. Self-hosted default? **Recommended:** off, opt-in via the setting.
 3. Should the colleague banner appear when several orgs share the domain?
    **Recommended:** no, only for exactly one, to avoid listing orgs.
+
+## Resolved open questions
+
+(autopilot: recommended answer)
+1. Soft-delete abandoned personal orgs 30 days after a warning email at day 23.
+2. Self-hosted default is off, opt-in via the setting.
+3. Show the colleague banner only when exactly one org shares the domain.
