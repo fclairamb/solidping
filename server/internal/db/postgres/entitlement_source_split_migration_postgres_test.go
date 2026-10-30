@@ -10,10 +10,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portEntitlementSourceSplitMigration is distinct from every other
-// _postgres_test.go file's port so the embedded servers never collide.
-const portEntitlementSourceSplitMigration = 15492
-
 // TestEntitlementSourceSplitMigrationParity_Postgres is the dialect-parity
 // half of the entitlement source split (spec 2026-08-26-06). The behavioral
 // twin runs against SQLite in
@@ -65,9 +61,9 @@ func TestEntitlementSourceSplitMigrationParity_Postgres(t *testing.T) {
 // against a real Postgres, so the parity test above is not the only thing
 // standing between a typo and every legacy admin row silently becoming
 // unlimited on SaaS.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestEntitlementSourceSplitMigrationRelabels_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -76,7 +72,7 @@ func TestEntitlementSourceSplitMigrationRelabels_Postgres(t *testing.T) {
 	r := require.New(t)
 
 	svc, err := New(ctx, &Config{
-		Embedded: true, Port: portEntitlementSourceSplitMigration, RunMode: runModeTest,
+		Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest,
 	})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)

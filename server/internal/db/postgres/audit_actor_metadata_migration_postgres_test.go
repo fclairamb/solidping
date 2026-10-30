@@ -8,15 +8,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portAuditActorMetadata / portAuditActorMetadataRollback are distinct from
-// every other _postgres_test.go embedded port in the repo (see the
-// port-numbering note in postgres_headroom_postgres_test.go). The rollback test
-// destroys schema, so it must not share a database with the apply test.
-const (
-	portAuditActorMetadata         = 15490
-	portAuditActorMetadataRollback = 15491
-)
-
 // TestAuditActorMetadataMigration_Postgres proves the audit-actor-metadata
 // section (spec 2026-08-21-09) lands on Postgres.
 //
@@ -25,9 +16,9 @@ const (
 // DROP CONSTRAINT / ADD CONSTRAINT; SQLite cannot alter a CHECK at all and has
 // to rebuild the table. Two different mechanisms for one contract is exactly
 // the shape of change that works on one engine and silently not the other.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestAuditActorMetadataMigration_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -35,7 +26,7 @@ func TestAuditActorMetadataMigration_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portAuditActorMetadata, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -121,9 +112,9 @@ func TestAuditActorMetadataMigration_Postgres(t *testing.T) {
 // ordinary rows and columns, and the NARROWED constraint is genuinely back in
 // force. A teardown that dropped the constraint instead of restoring the old
 // one would satisfy "the columns are gone" just as well.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestAuditActorMetadataRollback_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -131,7 +122,7 @@ func TestAuditActorMetadataRollback_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portAuditActorMetadataRollback, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

@@ -80,11 +80,6 @@ func migrationSection(t *testing.T, name string) string {
 	return findMigrationSection(t, "up", name)
 }
 
-// portRemoveOpsgenieMigration is distinct from every other _postgres_test.go
-// embedded port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portRemoveOpsgenieMigration = 15479
-
 // TestRemoveOpsgenieMigrationDeletesIntegrationAndDependents_Postgres is the
 // Postgres twin of the SQLite migration test: spec 2026-08-19-02's data
 // migration removes an org's pre-existing opsgenie integration cleanly,
@@ -94,9 +89,9 @@ const portRemoveOpsgenieMigration = 15479
 // column shared by every target_type). A bystander Slack integration and its
 // own links must survive untouched, and the incident_notifications audit
 // row survives with connection_uid nulled.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestRemoveOpsgenieMigrationDeletesIntegrationAndDependents_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -104,7 +99,7 @@ func TestRemoveOpsgenieMigrationDeletesIntegrationAndDependents_Postgres(t *test
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portRemoveOpsgenieMigration, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

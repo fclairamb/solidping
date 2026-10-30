@@ -10,15 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
-)
-
-// Ports distinct from every other _postgres_test.go file's embedded-Postgres
-// port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const (
-	portResponseTimeBinParity = 15534
-	portResponseTimeBinP95    = 15535
-	portResponseTimeBinPlan   = 15536
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // responseTimeBinKey identifies one seam bin in the Go reference fold. The region
@@ -269,13 +261,13 @@ func seedResponseTimeBinFixture(
 // width seamBinWidth can pick, with the p95 at the aggregation job's own
 // nearest-rank index. The sqlite package asserts the same thing against the same
 // fixture.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestAggregateResponseTimeBins_ParityWithGoFold_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portResponseTimeBinParity)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("seam-parity-org", "Seam Parity Org")
 	r.NoError(s.CreateOrganization(ctx, org))
@@ -351,13 +343,13 @@ func TestAggregateResponseTimeBins_ParityWithGoFold_Postgres(t *testing.T) {
 // set. A test that only compared the aggregate against itself would pass either
 // way, and the chart would visibly step every time the aggregation job replaced a
 // seam bin with an hour rollup.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestAggregateResponseTimeBinsNearestRankP95_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portResponseTimeBinP95)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("seam-p95-org", "Seam P95 Org")
 	r.NoError(s.CreateOrganization(ctx, org))
@@ -431,13 +423,13 @@ func explainResponseTimeBins(
 // The positive control at the end runs the ROW-shaped read of the same seam over
 // the same data and requires that it does ship a row per probe, so the bound above
 // is a property of the aggregate and not of a thin fixture.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestResponseTimeBinsUseIndexes_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portResponseTimeBinPlan)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("seam-plan-org", "Seam Plan Org")
 	r.NoError(s.CreateOrganization(ctx, org))

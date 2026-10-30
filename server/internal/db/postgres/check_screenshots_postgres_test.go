@@ -9,14 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
-)
-
-// Ports distinct from every other embedded-Postgres test in the repo.
-const (
-	portCheckScreenshotsPlan      = 15611
-	portCheckScreenshotsSemantics = 15612
-	portOrphanAttachments         = 15614
-	portAdmitFixedWindows         = 15615
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // TestCheckScreenshotListingUsesIndex_Postgres is the Postgres plan regression
@@ -25,13 +18,13 @@ const (
 // (`details->'checkUid' #>> '{}'`), which no expression index matches, and must
 // not use it — so the main assertion cannot pass on a fixture the planner
 // would have indexed anyway.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestCheckScreenshotListingUsesIndex_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portCheckScreenshotsPlan)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("shot-plan-org", "Shot Plan Org")
 	r.NoError(s.CreateOrganization(ctx, org))
@@ -74,13 +67,13 @@ func TestCheckScreenshotListingUsesIndex_Postgres(t *testing.T) {
 // incident and check-scoped captures of the check, newest first, `limit`
 // honored, and nothing from another check, another org, another kind, or a
 // soft-deleted row.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestListCheckScreenshotFiles_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portCheckScreenshotsSemantics)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("shot-sem-org", "Shot Semantics Org")
 	r.NoError(s.CreateOrganization(ctx, org))
@@ -131,13 +124,13 @@ func TestListCheckScreenshotFiles_Postgres(t *testing.T) {
 // Postgres (the SQLite twin runs through internal/jobs/jobtypes): only
 // attachments whose entity is missing, soft-deleted or in another org come
 // back — never a live entity's, never a malformed topic, never a fresh row.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestListOrphanAttachments_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portOrphanAttachments)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("orphan-org", "Orphan Org")
 	r.NoError(s.CreateOrganization(ctx, org))
@@ -200,13 +193,13 @@ func TestListOrphanAttachments_Postgres(t *testing.T) {
 // concurrency guarantee lives in internal/handlers/checkscreenshots): all
 // windows count or none does, the first refusing window is reported with the
 // time until it reopens, and an elapsed window starts over.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestAdmitFixedWindows_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portAdmitFixedWindows)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("admit-org", "Admit Org")
 	r.NoError(s.CreateOrganization(ctx, org))

@@ -12,10 +12,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// Distinct from every other _postgres_test.go embedded port in the repo (see
-// the port-numbering note in postgres_headroom_postgres_test.go).
-const portHeartbeatCounter = 15505
-
 // TestTryAdvanceHeartbeatCounter_ConcurrentReplay_Postgres fires many
 // concurrent beats carrying the SAME counter at a real PostgreSQL backend and
 // asserts exactly one is accepted.
@@ -24,9 +20,9 @@ const portHeartbeatCounter = 15505
 // the whole security value of SP2: if two concurrent copies of one captured
 // datagram could both be accepted, an attacker replaying a beat in a tight loop
 // would keep a dead device looking alive.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestTryAdvanceHeartbeatCounter_ConcurrentReplay_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -34,7 +30,7 @@ func TestTryAdvanceHeartbeatCounter_ConcurrentReplay_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portHeartbeatCounter, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -104,9 +100,9 @@ func TestTryAdvanceHeartbeatCounter_ConcurrentReplay_Postgres(t *testing.T) {
 // and a soft-deleted row must keep gating the advance (the unique constraint
 // has no deleted_at predicate, so the row still owns the slot — reading it as
 // "absent" would let anyone who can delete the entry rewind the check).
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestHeartbeatCounterStateEntryContract_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -114,7 +110,7 @@ func TestHeartbeatCounterStateEntryContract_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portHeartbeatCounter, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

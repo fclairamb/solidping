@@ -16,10 +16,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portHashUserTokensMigration is distinct from every other _postgres_test.go
-// embedded port in the repo.
-const portHashUserTokensMigration = 15560
-
 // hashUserTokensSection returns the statements of the hash-user-tokens section
 // of a 024 file, read from the file itself so the test can never drift from
 // what ships. banner is the section's banner line prefix.
@@ -62,9 +58,9 @@ func hashUserTokensSection(t *testing.T, file, banner string) []string {
 // section's down half then brings the v0.32 shape back (and deletes every
 // row, which a downgrade has to), plaintext rows are seeded, and the up half
 // plus the Go step run again on them.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestMigration024HashesUserTokens_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -72,7 +68,7 @@ func TestMigration024HashesUserTokens_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portHashUserTokensMigration, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

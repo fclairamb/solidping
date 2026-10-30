@@ -10,15 +10,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// Ports below are distinct from every other _postgres_test.go file's
-// embedded-Postgres port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const (
-	portResultsProjection = 15462
-	portResultsMigration  = 15463
-	portResultsSavePath   = 15464
-)
-
 // newTier1ServicePG starts embedded Postgres and returns a ready Service,
 // self-skipping (like every embedded-postgres test in this package) under
 // -short or when embedded Postgres is unavailable.
@@ -49,13 +40,13 @@ func newTier1ServicePG(t *testing.T, port uint32) *Service {
 // the SQLite projection test: SkipBlobs must drop metrics/output from the
 // SELECT while every other column survives (spec 2026-07-24-02 §5). The
 // default-projection run is the positive control.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestListResults_SkipBlobsProjection_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portResultsProjection)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("projection-org-pg", "Projection Org PG")
 	r.NoError(s.CreateOrganization(ctx, org))
@@ -128,14 +119,14 @@ alter table results drop column availability_pct;
 // migration 008_v0_7_0 drops results.last_for_status (+ its partial index)
 // and results.availability_pct on Postgres, that its down migration restores
 // all three, and that re-applying up drops them again (spec 2026-07-24-02).
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestMigrationResultsTrimUpDown_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
 	// Initialize (inside the helper) runs every embedded migration, 008 included.
-	s := newTier1ServicePG(t, portResultsMigration)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	resultsColumns := func() []string {
 		var names []string
@@ -193,13 +184,13 @@ func TestMigrationResultsTrimUpDown_Postgres(t *testing.T) {
 // it fires on any UPDATE statement against the table, even one matching zero
 // rows, so re-introducing the old flag-clearing UPDATE turns the save into an
 // error instead of a silently-passing test.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestSaveResultWithStatusTracking_SingleInsert_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portResultsSavePath)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("save-path-org-pg", "Save Path Org PG")
 	r.NoError(s.CreateOrganization(ctx, org))

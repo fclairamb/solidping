@@ -11,20 +11,15 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portCheckInfo is distinct from every other _postgres_test.go file's
-// embedded-Postgres port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portCheckInfo = 15474
-
 // TestListResults_IncludeCheckInfo_Postgres is the Postgres counterpart to
 // the SQLite check-info test for spec 2026-08-18-07: ListResultsFilter.
 // IncludeCheckInfo joins `checks` and populates the scan-only
 // CheckSlug/CheckName columns on models.Result. This test must fail against
 // the pre-fix code (applyResultsFilter never read IncludeCheckInfo, so both
 // fields stayed nil regardless of the flag).
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction)
 func TestListResults_IncludeCheckInfo_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -32,7 +27,7 @@ func TestListResults_IncludeCheckInfo_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portCheckInfo, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

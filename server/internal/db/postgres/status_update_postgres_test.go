@@ -10,13 +10,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portPublicStatusUpdates is distinct from every other _postgres_test.go
-// file's embedded-Postgres port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go): 15434/15437 are costdist/checkjobsvc,
-// 15438-15444 are headroom/idle-time, 15446/15447 are last_result, 15447 is
-// incident_notification. This one gets its own instance with no collision.
-const portPublicStatusUpdates = 15448
-
 // TestListPublicStatusUpdates_WindowAndSoftDelete_Postgres is the Postgres
 // regression guard for spec 2026-07-10-16: ListPublicStatusUpdates built its
 // query with a Postgres `$1` placeholder and ran it through bun.DB.QueryContext,
@@ -25,9 +18,9 @@ const portPublicStatusUpdates = 15448
 // Nothing previously exercised this query against a real Postgres, which is why
 // the mismatch shipped. This proves the placeholder now binds and the window /
 // soft-delete predicates work end to end.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres pwfile extraction) with its siblings
 func TestListPublicStatusUpdates_WindowAndSoftDelete_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -37,7 +30,7 @@ func TestListPublicStatusUpdates_WindowAndSoftDelete_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{
 		Embedded: true,
-		Port:     portPublicStatusUpdates,
+		Port:     testsupport.FreePort(t),
 		RunMode:  runModeTest,
 	})
 	if err != nil {

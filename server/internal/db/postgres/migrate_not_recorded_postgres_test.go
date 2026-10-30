@@ -10,16 +10,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portMigrateNotRecorded is distinct from every other _postgres_test.go
-// embedded port in the repo.
-const portMigrateNotRecorded = 15591
-
 // TestFailedMigrationIsNotRecordedAndIsRetried_Postgres is the Postgres twin of
 // the SQLite test (spec 2026-10-13-01): a migration that fails half way must not
 // be recorded as applied, and runs again once fixed.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestFailedMigrationIsNotRecordedAndIsRetried_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -27,7 +23,7 @@ func TestFailedMigrationIsNotRecordedAndIsRetried_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portMigrateNotRecorded, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

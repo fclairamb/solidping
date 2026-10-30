@@ -11,11 +11,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portWorkerVersion is distinct from every other _postgres_test.go embedded
-// port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portWorkerVersion = 15480
-
 func newVerPG(t *testing.T) *Service {
 	t.Helper()
 
@@ -25,7 +20,7 @@ func newVerPG(t *testing.T) *Service {
 
 	ctx := t.Context()
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portWorkerVersion, RunMode: "test"})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: "test"})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

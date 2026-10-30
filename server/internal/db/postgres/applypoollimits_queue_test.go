@@ -96,11 +96,6 @@ func TestApplyPoolLimits_QueuesRatherThanErrors(t *testing.T) {
 	require.Equal(t, int64(goroutines), succeeded.Load())
 }
 
-// portEmbeddedPoolBounded is distinct from every other embedded-Postgres port
-// in this package (see the numbering notes in org_usage_counter_postgres_test.go
-// and postgres_headroom_postgres_test.go).
-const portEmbeddedPoolBounded = 15521
-
 // TestNewEmbedded_PoolBoundedBelowNonSuperuserConnectionLimit is a permanent,
 // cheap guard against the regression spec 2026-09-04-04 fixed: NewEmbedded
 // pins the embedded server at max_connections=10, 3 of which Postgres
@@ -109,9 +104,9 @@ const portEmbeddedPoolBounded = 15521
 // &Config{MaxOpenConns: 5, ...}) call in NewEmbedded, this test fails fast —
 // without needing to run a full 50-goroutine concurrency test and wait for a
 // 53300 to surface.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestNewEmbedded_PoolBoundedBelowNonSuperuserConnectionLimit(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -120,7 +115,7 @@ func TestNewEmbedded_PoolBoundedBelowNonSuperuserConnectionLimit(t *testing.T) {
 
 	ctx := t.Context()
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portEmbeddedPoolBounded, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

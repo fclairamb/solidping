@@ -13,16 +13,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
-// The degraded-detection configuration is nullable-with-a-code-default: NULL
-// means "not configured" and the documented default (5 / 60, 3 / 6, 0) is
-// resolved at read time. Postgres is the dialect the production migration
-// applies to, so the shape has to be pinned there and not only on SQLite.
-//
-// portDegradedNullable is distinct from every other _postgres_test.go file's
-// embedded-Postgres port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portDegradedNullable = 15534
-
 func newDegradedNullablePG(t *testing.T) *Service {
 	t.Helper()
 
@@ -32,7 +22,7 @@ func newDegradedNullablePG(t *testing.T) *Service {
 
 	ctx := t.Context()
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portDegradedNullable, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -51,9 +41,9 @@ func newDegradedNullablePG(t *testing.T) *Service {
 // still pass every behavioral test (bun always sends the column, so the SQL
 // default never fires), while quietly giving "unset" a second spelling and
 // making a NULL insert fail.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
 func TestDegradedColumnsAreNullableWithoutDefault_Postgres(t *testing.T) {
+	t.Parallel()
+
 	s := newDegradedNullablePG(t)
 	r := require.New(t)
 	ctx := t.Context()
@@ -106,9 +96,9 @@ func TestDegradedColumnsAreNullableWithoutDefault_Postgres(t *testing.T) {
 // check inserted without any degraded configuration reads back with five NULL
 // columns that resolve to the documented defaults, while an explicit 0 survives
 // as 0 and keeps meaning "this rule is off".
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
 func TestDegradedNullRoundTrip_Postgres(t *testing.T) {
+	t.Parallel()
+
 	s := newDegradedNullablePG(t)
 	r := require.New(t)
 	ctx := t.Context()
@@ -183,9 +173,9 @@ func TestDegradedNullRoundTrip_Postgres(t *testing.T) {
 // TestDegradedSweepSkipsDisabledChecks_Postgres pins the sweep's work queue
 // (spec 2026-09-24-08): a check with degraded detection off is not listed at
 // all, an enabled one still is, and the dry-run stamp column is gone.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
 func TestDegradedSweepSkipsDisabledChecks_Postgres(t *testing.T) {
+	t.Parallel()
+
 	s := newDegradedNullablePG(t)
 	r := require.New(t)
 	ctx := t.Context()
@@ -223,9 +213,9 @@ func TestDegradedSweepSkipsDisabledChecks_Postgres(t *testing.T) {
 // evaluator starts its probe window from (fclairamb/solidping-business#26): the
 // latest resolved degraded incident of the check, never a check incident, never
 // one resolved before `since`.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
 func TestFindLastResolvedDegradedIncident_Postgres(t *testing.T) {
+	t.Parallel()
+
 	s := newDegradedNullablePG(t)
 	r := require.New(t)
 	ctx := t.Context()

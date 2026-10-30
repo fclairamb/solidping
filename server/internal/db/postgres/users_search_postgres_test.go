@@ -9,11 +9,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portUsersSearch is distinct from every other _postgres_test.go file's
-// embedded-Postgres port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portUsersSearch = 15530
-
 func newUsersSearchPostgresDB(t *testing.T) *Service {
 	t.Helper()
 
@@ -25,7 +20,7 @@ func newUsersSearchPostgresDB(t *testing.T) *Service {
 
 	s, err := New(ctx, &Config{
 		Embedded: true,
-		Port:     portUsersSearch,
+		Port:     testsupport.FreePort(t),
 		RunMode:  runModeTest,
 	})
 	if err != nil {
@@ -44,9 +39,9 @@ func newUsersSearchPostgresDB(t *testing.T) *Service {
 // SearchUsers tests: substring match on email/name (case-insensitive), a
 // literal '%' matched literally, paging + total, and soft-delete exclusion —
 // the same contract, on the dialect that actually ships to most deployments.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go pwfile extraction) with siblings
 func TestSearchUsers_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 	s := newUsersSearchPostgresDB(t)
@@ -97,9 +92,9 @@ func TestSearchUsers_Postgres(t *testing.T) {
 
 // TestListMembersByUsers_Postgres is the Postgres counterpart of the SQLite
 // ListMembersByUsers exclusion tests.
-//
-//nolint:paralleltest // shares dev-machine resources with siblings in this package
 func TestListMembersByUsers_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 	s := newUsersSearchPostgresDB(t)

@@ -9,11 +9,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portUserContactTeamID is distinct from every other _postgres_test.go
-// embedded port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portUserContactTeamID = 15498
-
 // TestUserContactTeamID_Postgres exercises the user-contact-team-id migration
 // section and the upsert that must preserve it, on the engine `make test`
 // never reaches.
@@ -23,9 +18,9 @@ const portUserContactTeamID = 15498
 // upsert's preservation clause references the row bun aliases — a clause that
 // parses on one engine and not the other would be invisible in -short mode and
 // would break every Slack DM contact write in production.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestUserContactTeamID_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -33,7 +28,7 @@ func TestUserContactTeamID_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portUserContactTeamID, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

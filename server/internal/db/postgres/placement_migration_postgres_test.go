@@ -13,10 +13,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portPlacementMigration is distinct from every other _postgres_test.go
-// embedded port in the repo.
-const portPlacementMigration = 15541
-
 // placementMigrationSection returns the data statement of the
 // auto-region-placement section of 024_v0_33_0.up.sql (the last statement of
 // the section, the defaulted-checks conversion), read from the file itself.
@@ -66,9 +62,9 @@ func placementMigrationSection(t *testing.T) string {
 // default_regions, as a set, becomes auto — region_count = its region count,
 // empty pool, regions untouched. Initialize() already ran the section on an
 // empty database; the conversion is re-run here on seeded rows.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestMigration024DefaultedChecksBecomeAuto_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -76,7 +72,7 @@ func TestMigration024DefaultedChecksBecomeAuto_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portPlacementMigration, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

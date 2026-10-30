@@ -11,13 +11,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// Embedded-postgres ports for this spec's migration tests. Each test owns one,
-// so siblings can run without fighting over a cluster.
-const (
-	portStatusPageBranding = 15486
-	portStatusPageRollback = 15487
-)
-
 // subscriberEndpointColumns are the columns the status-subscriber-channels
 // section adds. Named once so the apply and rollback tests cannot drift apart
 // on what "the new columns" means.
@@ -58,9 +51,9 @@ func execPGMigrationStatements(ctx context.Context, t *testing.T, svc *Service, 
 // other direction: Postgres does not rebuild the tables, so the risk here is
 // not data loss but a section that cannot be re-run at all — which is how an
 // interrupted migration turns into a cluster nobody can move forward.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestStatusPageBrandingMigration_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -68,7 +61,7 @@ func TestStatusPageBrandingMigration_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portStatusPageBranding, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -252,9 +245,9 @@ func TestStatusPageBrandingMigration_Postgres(t *testing.T) {
 // The load-bearing assertions are the last ones: the tables themselves must
 // survive with their original rows. A teardown that took `status_pages` with it
 // would satisfy "the columns are gone" just as well.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestStatusPageBrandingRollback_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -262,7 +255,7 @@ func TestStatusPageBrandingRollback_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portStatusPageRollback, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -358,9 +351,6 @@ func TestStatusPageBrandingRollback_Postgres(t *testing.T) {
 		"the NOT NULL on email must be restored")
 }
 
-// portOrgLogoBackfill is this test's own embedded-postgres port.
-const portOrgLogoBackfill = 15489
-
 // TestOrgLogoBackfillSkipsDeletedOrganizations_Postgres is the negative control
 // that keeps the backfill from WIDENING authorization.
 //
@@ -374,9 +364,9 @@ const portOrgLogoBackfill = 15489
 // FROM rather than a correlated subquery), so the SQLite twin passing says
 // nothing about this one. The live org is the positive control: without it the
 // test would pass against a backfill that stopped working entirely.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestOrgLogoBackfillSkipsDeletedOrganizations_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -384,7 +374,7 @@ func TestOrgLogoBackfillSkipsDeletedOrganizations_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portOrgLogoBackfill, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

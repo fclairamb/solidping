@@ -8,20 +8,15 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portPrivateRegionMigration is distinct from every other _postgres_test.go
-// embedded port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portPrivateRegionMigration = 15469
-
 // TestPrivateRegionMigrationCollapsesBothSpellings_Postgres is the Postgres twin
 // of the SQLite migration test. The two dialects express the rewrite completely
 // differently (split_part + unnest WITH ORDINALITY + DELETE…USING here,
 // substr/instr + json_each + DELETE…WHERE uid IN there), so each needs its own
 // proof — and Postgres additionally enforces the unique indexes the
 // de-duplication exists to protect, so a missing dedupe fails LOUDLY here.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestPrivateRegionMigrationCollapsesBothSpellings_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -29,7 +24,7 @@ func TestPrivateRegionMigrationCollapsesBothSpellings_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portPrivateRegionMigration, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
