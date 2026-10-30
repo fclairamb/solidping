@@ -8,6 +8,7 @@ import {
   isInviteReturnTo,
   isOAuthAuthorizeReturnTo,
   isSafeReturnTo,
+  orgCreationReturnTo,
   resolveDestination,
   returnToOrg,
   stripOAuthErrorParams,
@@ -15,6 +16,38 @@ import {
 import { DASH_BASE } from "@/lib/base-path";
 
 const BASE = DASH_BASE;
+
+describe("orgCreationReturnTo", () => {
+  const authorize = "/api/v1/oauth/authorize?client_id=acme-client&state=s1";
+
+  it("keeps a pending MCP authorization or device approval", () => {
+    expect(orgCreationReturnTo(authorize, BASE)).toBe(authorize);
+    const device = `${BASE}/device?user_code=ABCD-EFGH`;
+    expect(orgCreationReturnTo(device, BASE)).toBe(device);
+  });
+
+  it("unwraps the login page a federated sign-in hands back", () => {
+    const wrapped = `${BASE}/orgs/acme/login?returnTo=${encodeURIComponent(authorize)}`;
+    expect(orgCreationReturnTo(wrapped, BASE)).toBe(authorize);
+  });
+
+  it("drops everything else", () => {
+    for (const returnTo of [
+      undefined,
+      "",
+      42,
+      `${BASE}/orgs/acme/checks`,
+      `${BASE}/orgs/acme/login?returnTo=${encodeURIComponent(`${BASE}/orgs/acme`)}`,
+      `${BASE}/orgs/acme/login?returnTo=${encodeURIComponent("https://evil.example/api/v1/oauth/authorize")}`,
+      `${BASE}/orgs/acme/settings?returnTo=${encodeURIComponent(authorize)}`,
+      "https://evil.example/api/v1/oauth/authorize",
+      "//evil.example/api/v1/oauth/authorize",
+      "/api/v1/oauth/authorize/extra",
+    ]) {
+      expect(orgCreationReturnTo(returnTo, BASE)).toBeUndefined();
+    }
+  });
+});
 
 describe("isOAuthAuthorizeReturnTo", () => {
   it("accepts the bare authorize path and the path with a query string", () => {
