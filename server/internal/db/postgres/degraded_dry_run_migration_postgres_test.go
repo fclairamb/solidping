@@ -12,10 +12,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portDegradedDryRunMigration is distinct from every other _postgres_test.go
-// embedded port in the repo.
-const portDegradedDryRunMigration = 15543
-
 // degradedDryRunSection returns the statements of the drop-degraded-dry-run
 // section of 024_v0_33_0.up.sql, read from the file itself so the test can
 // never drift from what ships.
@@ -63,9 +59,9 @@ func degradedDryRunSection(t *testing.T) []string {
 //	off check, open degraded incident → closed as 'disabled'
 //	on check, open degraded incident  → untouched (positive control)
 //	off check, open outage            → untouched
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestMigration024DropsTheDegradedDryRun_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -73,7 +69,7 @@ func TestMigration024DropsTheDegradedDryRun_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portDegradedDryRunMigration, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

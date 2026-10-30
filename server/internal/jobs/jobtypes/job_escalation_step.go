@@ -155,7 +155,7 @@ func (r *EscalationStepJobRun) Run(ctx context.Context, jctx *jobdef.JobContext)
 
 	stats := r.fanOutWithSeverity(ctx, jctx, log, incident, targets, channelFilter)
 
-	r.emitEscalatedEvent(ctx, jctx, log, incident, step, len(targets), stats)
+	r.emitEscalatedEvent(ctx, jctx, log, incident, policy, step, len(targets), stats)
 
 	if r.config.IsLastStep {
 		if err := r.scheduleNextCycle(ctx, jctx, log, incident, policy); err != nil {
@@ -194,6 +194,9 @@ type fanOutStats struct {
 	NotificationJobs int
 	DirectEmails     int
 	Skipped          int
+	// Paged lists the targets that were actually paged (skipped ones are
+	// excluded), with names captured at fire time.
+	Paged []models.JSONMap
 }
 
 // fanOut dispatches each target. `connection` targets enqueue a
@@ -226,6 +229,7 @@ func (r *EscalationStepJobRun) fanOutWithSeverity(
 			}
 			if target.TargetUID != nil && r.enqueueNotificationFor(ctx, jctx, log, incident, *target.TargetUID) {
 				stats.NotificationJobs++
+				stats.Paged = append(stats.Paged, r.integrationTarget(ctx, jctx, *target.TargetUID))
 			} else {
 				stats.Skipped++
 			}
@@ -238,6 +242,7 @@ func (r *EscalationStepJobRun) fanOutWithSeverity(
 				continue
 			}
 			stats.DirectEmails += r.pageUser(ctx, jctx, log, incident, target.TargetUID, filter)
+			stats.Paged = append(stats.Paged, r.userTarget(ctx, jctx, target.TargetUID))
 		case models.EscalationTargetSchedule:
 			if !severityAllowsPersonTargets(filter) {
 				log.InfoContext(ctx, "severity skipped schedule target — no person channel in set",
@@ -247,6 +252,7 @@ func (r *EscalationStepJobRun) fanOutWithSeverity(
 				continue
 			}
 			stats.DirectEmails += r.pageSchedule(ctx, jctx, log, incident, target.TargetUID, filter)
+			stats.Paged = append(stats.Paged, r.scheduleTarget(ctx, jctx, incident.OrganizationUID, target.TargetUID))
 		case models.EscalationTargetAllAdmins:
 			if !severityAllowsPersonTargets(filter) {
 				log.InfoContext(ctx, "severity skipped all-admins target — no person channel in set")
@@ -255,10 +261,68 @@ func (r *EscalationStepJobRun) fanOutWithSeverity(
 				continue
 			}
 			stats.DirectEmails += r.pageAllAdmins(ctx, jctx, log, incident, filter)
+			stats.Paged = append(stats.Paged, models.JSONMap{keyTargetType: "all_admins"})
 		}
 	}
 
 	return stats
+}
+
+// maxEscalatedTargets caps the targets listed in an incident.escalated payload.
+const (
+	maxEscalatedTargets = 20
+	keyTargetType       = "type"
+)
+
+func (r *EscalationStepJobRun) integrationTarget(
+	ctx context.Context, jctx *jobdef.JobContext, uid string,
+) models.JSONMap {
+	tgt := models.JSONMap{keyTargetType: "integration", "uid": uid}
+	if conn, err := jctx.DBService.GetChannel(ctx, uid); err == nil && conn != nil {
+		tgt["name"] = conn.Name
+	}
+
+	return tgt
+}
+
+func (r *EscalationStepJobRun) userTarget(
+	ctx context.Context, jctx *jobdef.JobContext, uid *string,
+) models.JSONMap {
+	tgt := models.JSONMap{keyTargetType: "user"}
+	if uid == nil {
+		return tgt
+	}
+	tgt["uid"] = *uid
+	if user, err := jctx.DBService.GetUser(ctx, *uid); err == nil && user != nil {
+		tgt["name"] = user.Name
+	}
+
+	return tgt
+}
+
+func (r *EscalationStepJobRun) scheduleTarget(
+	ctx context.Context, jctx *jobdef.JobContext, orgUID string, uid *string,
+) models.JSONMap {
+	tgt := models.JSONMap{keyTargetType: "schedule"}
+	if uid == nil {
+		return tgt
+	}
+	tgt["uid"] = *uid
+	if sched, err := jctx.DBService.GetOnCallSchedule(ctx, orgUID, *uid); err == nil && sched != nil {
+		tgt["name"] = sched.Name
+	}
+	if jctx.Services != nil {
+		now := time.Now()
+		if jctx.Services.Clock != nil {
+			now = jctx.Services.Clock.Now()
+		}
+		if user, err := resolveOnCallUser(ctx, jctx, *uid, now); err == nil && user != nil {
+			tgt["on_call_user_uid"] = user.UID
+			tgt["on_call_user_name"] = user.Name
+		}
+	}
+
+	return tgt
 }
 
 // resolveSeverityChannels returns the channel-set the step's severity
@@ -1676,7 +1740,8 @@ func (r *EscalationStepJobRun) scheduleNextCycle(
 // emitEscalatedEvent records what fired for the incident timeline.
 func (r *EscalationStepJobRun) emitEscalatedEvent(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
-	incident *models.Incident, step *models.EscalationPolicyStep, targetCount int, stats fanOutStats,
+	incident *models.Incident, policy *models.EscalationPolicy, step *models.EscalationPolicyStep,
+	targetCount int, stats fanOutStats,
 ) {
 	event := models.NewEvent(incident.OrganizationUID, models.EventTypeIncidentEscalated, models.ActorTypeSystem)
 	event.IncidentUID = &incident.UID
@@ -1690,6 +1755,20 @@ func (r *EscalationStepJobRun) emitEscalatedEvent(
 		"direct_emails":     stats.DirectEmails,
 		"skipped":           stats.Skipped,
 		"source":            "escalation_policy",
+		"policy_uid":        policy.UID,
+		"policy_name":       policy.Name,
+	}
+
+	paged := stats.Paged
+	if len(paged) > maxEscalatedTargets {
+		paged = paged[:maxEscalatedTargets]
+	}
+	event.Payload["targets"] = paged
+
+	check, err := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID)
+	if err == nil && check != nil {
+		event.Payload["check_slug"] = check.Slug
+		event.Payload["check_name"] = check.Name
 	}
 
 	if err := jctx.DBService.CreateEvent(ctx, event); err != nil {

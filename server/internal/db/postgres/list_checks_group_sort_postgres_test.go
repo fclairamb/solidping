@@ -10,11 +10,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portGroupSort is distinct from every other _postgres_test.go file's
-// embedded-Postgres port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portGroupSort = 15455
-
 // ungroupedSortKeySentinel mirrors the COALESCE sentinel baked into
 // groupSortKeyExpr — ungrouped checks sort strictly last.
 const ungroupedSortKeySentinel = int64(2147483647)
@@ -117,7 +112,7 @@ func newGroupSortPG(t *testing.T) *Service {
 
 	ctx := t.Context()
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portGroupSort, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -133,9 +128,9 @@ func newGroupSortPG(t *testing.T) *Service {
 // TestListChecksSortByGroupOrdering_Postgres is the Postgres counterpart to the
 // SQLite ordering test: the correlated COALESCE sentinel and composite cursor
 // must behave identically on real Postgres (the store's production backend).
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
 func TestListChecksSortByGroupOrdering_Postgres(t *testing.T) {
+	t.Parallel()
+
 	s := newGroupSortPG(t)
 	r := require.New(t)
 	ctx := t.Context()
@@ -163,9 +158,9 @@ func TestListChecksSortByGroupOrdering_Postgres(t *testing.T) {
 // TestListChecksSortByGroupCursorWalk_Postgres walks the composite cursor at
 // several page sizes and asserts each reconstructs the full order — the same
 // boundary coverage as the SQLite twin, on real Postgres.
-//
-//nolint:paralleltest // shares dev-machine resources with its siblings
 func TestListChecksSortByGroupCursorWalk_Postgres(t *testing.T) {
+	t.Parallel()
+
 	s := newGroupSortPG(t)
 	r := require.New(t)
 
@@ -179,9 +174,9 @@ func TestListChecksSortByGroupCursorWalk_Postgres(t *testing.T) {
 
 // TestListChecksDefaultOrderingUnchanged_Postgres is the control on Postgres:
 // without sort=group the ordering stays created_at DESC / uid DESC.
-//
-//nolint:paralleltest // shares dev-machine resources with its siblings
 func TestListChecksDefaultOrderingUnchanged_Postgres(t *testing.T) {
+	t.Parallel()
+
 	s := newGroupSortPG(t)
 	r := require.New(t)
 	ctx := t.Context()
@@ -204,9 +199,9 @@ func TestListChecksDefaultOrderingUnchanged_Postgres(t *testing.T) {
 // between pages (here the change even triggers the store's sort_order
 // normalization), individual rows may be skipped or repeated, but the walk must
 // still terminate cleanly and never error.
-//
-//nolint:paralleltest // shares dev-machine resources with its siblings
 func TestListChecksSortByGroupReorderMidWalk_Postgres(t *testing.T) {
+	t.Parallel()
+
 	s := newGroupSortPG(t)
 	r := require.New(t)
 	ctx := t.Context()

@@ -165,8 +165,15 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		// The burst could not run at all (socket setup failure, or every write
 		// failed): nothing was sent, so the burst reports zero packets and a
 		// clean failure rather than fabricated loss figures.
+		status := checkerdef.StatusDown
+		if IsNoSocket(burstErr) {
+			// Our worker cannot send ICMP at all: an infrastructure fault,
+			// not evidence that the target is down.
+			status = checkerdef.StatusError
+		}
+
 		result := &checkerdef.Result{
-			Status:   checkerdef.StatusDown,
+			Status:   status,
 			Duration: duration,
 			Output: map[string]any{
 				checkerdef.OutputKeyHost:   cfg.Host,

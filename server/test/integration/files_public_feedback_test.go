@@ -128,7 +128,13 @@ func TestSubmitReport_Endpoint(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, postReport(t, ts, map[string]string{"comment": "x"}, nil))
 	require.Equal(t, http.StatusNotFound,
 		postReport(t, ts, map[string]string{"url": "https://acme.com", "org": "nope"}, nil))
-	require.Equal(t, http.StatusCreated, postReport(t, ts, map[string]string{
+	// Anonymous screenshots need an issue dispatch slot (spec 2026-10-29-01):
+	// with no GitHub configured, the screenshot is refused with 429.
+	require.Equal(t, http.StatusTooManyRequests, postReport(t, ts, map[string]string{
 		"url": "https://acme.com", "org": TestOrgSlug, "comment": "broken", "context": `{"a":1}`,
 	}, []byte("png-bytes")))
+	// Without a screenshot the report is still accepted.
+	require.Equal(t, http.StatusCreated, postReport(t, ts, map[string]string{
+		"url": "https://acme.com", "org": TestOrgSlug, "comment": "broken", "context": `{"a":1}`,
+	}, nil))
 }

@@ -11,10 +11,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portPerCheckIncidentsMigration is distinct from every other
-// _postgres_test.go file's port so the embedded servers never collide.
-const portPerCheckIncidentsMigration = 15491
-
 // TestPerCheckIncidentsMigrationParity_Postgres is the dialect-parity half of
 // the group-incident retirement (spec 2026-08-24-14). The behavioral twin runs
 // against SQLite in internal/db/sqlite/per_check_incidents_migration_test.go.
@@ -68,9 +64,9 @@ func TestPerCheckIncidentsMigrationParity_Postgres(t *testing.T) {
 // the section against a real Postgres, so the parity test above is not the
 // only thing standing between a typo and a group incident stuck active
 // forever.
-//
-//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
 func TestPerCheckIncidentsMigrationClosesActiveGroupIncidents_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -78,7 +74,7 @@ func TestPerCheckIncidentsMigrationClosesActiveGroupIncidents_Postgres(t *testin
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portPerCheckIncidentsMigration, RunMode: runModeTest})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

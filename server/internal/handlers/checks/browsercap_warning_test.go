@@ -162,3 +162,35 @@ func TestValidateBrowserCheckWarnsBeforeSave(t *testing.T) {
 	r.Len(resp.Warnings, 1)
 	r.Contains(resp.Warnings[0].Message, "headless Chrome")
 }
+
+// An icmp check in a region whose workers report no ICMP socket warns, and is
+// still saved; "unknown" never warns.
+func TestCreateICMPCheckInSocketlessRegionWarns(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newWarnEnv(t)
+	ctx := t.Context()
+
+	env.setRegions([]regions.RegionDefinition{{Slug: "ap", Emoji: "🇯🇵", Name: "Tokyo"}})
+	env.browserWorker("wrk-ap", "ap-northeast-1", nil)
+
+	req := checks.CreateCheckRequest{
+		Name: "ping", Slug: "ping-unknown", Type: "icmp",
+		Config: map[string]any{"host": "1.1.1.1"}, Regions: []string{"ap"},
+	}
+
+	resp, err := env.svc.CreateCheck(ctx, env.org.Slug, req)
+	r.NoError(err)
+	r.Empty(resp.Warnings)
+
+	env.browserWorker("wrk-ap", "ap-northeast-1", []string{models.CapabilityIPv4})
+
+	req.Slug = "ping-no"
+	resp, err = env.svc.CreateCheck(ctx, env.org.Slug, req)
+	r.NoError(err)
+	r.NotEmpty(resp.UID)
+	r.Len(resp.Warnings, 1)
+	r.Equal(checks.CodeRegionNoICMP, resp.Warnings[0].Code)
+	r.Contains(resp.Warnings[0].Message, "Tokyo")
+}

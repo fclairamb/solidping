@@ -281,10 +281,10 @@ func TestRegionListResponseCapabilityShape(t *testing.T) {
 	// The worker-task capabilities (`crawl`, spec 2026-10-22-03; `discovery`,
 	// spec 2026-10-22-04) are published too, and neither worker runs them.
 	r.Equal(map[string]string{
-		"ipv6": "yes", "ipv4": "yes", "browser": "no", "crawl": "no", "discovery": "no",
+		"ipv6": "yes", "ipv4": "yes", "browser": "no", "crawl": "no", "discovery": "no", "icmp": "no",
 	}, byslug["eu"])
 	r.Equal(map[string]string{
-		"ipv6": "no", "ipv4": "yes", "browser": "no", "crawl": "no", "discovery": "no",
+		"ipv6": "no", "ipv4": "yes", "browser": "no", "crawl": "no", "discovery": "no", "icmp": "no",
 	}, byslug["us"])
 }
 

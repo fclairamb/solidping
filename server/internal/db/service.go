@@ -777,8 +777,12 @@ type Service interface {
 	ListOnCallScheduleOverrides(
 		ctx context.Context, scheduleUID string, from, until *time.Time,
 	) ([]*models.OnCallScheduleOverride, error)
-	GetOnCallScheduleOverride(ctx context.Context, overrideUID string) (*models.OnCallScheduleOverride, error)
-	DeleteOnCallScheduleOverride(ctx context.Context, overrideUID string) error
+	GetOnCallScheduleOverride(
+		ctx context.Context, scheduleUID, overrideUID string,
+	) (*models.OnCallScheduleOverride, error)
+	// DeleteOnCallScheduleOverride deletes an override of the given schedule and
+	// returns sql.ErrNoRows when the override does not belong to it.
+	DeleteOnCallScheduleOverride(ctx context.Context, scheduleUID, overrideUID string) error
 
 	// Escalation policies (header)
 	CreateEscalationPolicy(ctx context.Context, policy *models.EscalationPolicy) error
@@ -1381,6 +1385,9 @@ type Service interface {
 	// FindActiveDegradedIncident returns the open degraded incident for a check,
 	// if any. sql.ErrNoRows when there is none.
 	FindActiveDegradedIncident(ctx context.Context, checkUID string) (*models.Incident, error)
+	// FindLastResolvedDegradedIncident returns the latest degraded incident of a
+	// check resolved at or after since. sql.ErrNoRows when there is none.
+	FindLastResolvedDegradedIncident(ctx context.Context, checkUID string, since time.Time) (*models.Incident, error)
 	// FindActiveBurnIncident returns the open burn incident for one
 	// (SLO, policy) pair, if any. sql.ErrNoRows when there is none.
 	FindActiveBurnIncident(ctx context.Context, sloUID, policyUID string) (*models.Incident, error)
@@ -1455,6 +1462,11 @@ type Service interface {
 	// the scheme/bucket portion varies by storage backend (local vs S3). Used
 	// by the feedback-report per-org storage quota (spec 2026-09-25-26).
 	SumFileSizeByGroup(ctx context.Context, orgUID, group string) (int64, error)
+	// ListFilesByGroup returns live files across ALL organizations whose
+	// storage URI belongs to the given filestorage.GroupType and which were
+	// created before `before`, oldest first, capped at limit. Cross-org by
+	// design: its only caller is the report-retention sweep (spec 2026-10-29-01).
+	ListFilesByGroup(ctx context.Context, group string, before time.Time, limit int) ([]*models.File, error)
 
 	// CheckDependency operations
 	CreateCheckDependency(ctx context.Context, dep *models.CheckDependency) error

@@ -9,8 +9,10 @@ import { formatAvailabilityNumber } from "@/lib/availability-status";
  *
  * - `availabilityText` is "-" when the window has no data (no data ≠ 100%).
  * - `downtimeText` is "-" when there is no data; otherwise probe-time downtime.
- * - `monitoredDays` is non-null only on partial rows (check younger than the
- *   window), so the caller can caveat it (e.g. "7d monitored").
+ * - `monitoredDays` / `monitoredHours` are non-null only on partial rows (check
+ *   younger than the window), so the caller can caveat it ("7d monitored").
+ *   Below one day the history is told in hours ("1h monitored"), never rounded
+ *   up to "1d": exactly one of the two is set on a partial row.
  */
 export interface AvailabilityRowView {
   availabilityText: string;
@@ -19,6 +21,7 @@ export interface AvailabilityRowView {
   longestText: string | null;
   averageText: string | null;
   monitoredDays: number | null;
+  monitoredHours: number | null;
   /**
    * "8h 0m" of the window nobody measured, when coverage is low enough to be
    * worth saying (spec 2026-09-25-02) — null otherwise. A 100% over a day with
@@ -28,6 +31,7 @@ export interface AvailabilityRowView {
 }
 
 const SECONDS_PER_DAY = 86_400;
+const SECONDS_PER_HOUR = 3_600;
 
 /** Below this coverage the unmeasured time is shown beside the percentage:
  * probes are never perfectly regular, so a few percent short is jitter. */
@@ -116,9 +120,14 @@ export function mapAvailabilityRow(
       incidentCount > 0
         ? formatDurationSeconds(period?.incidents.averageSeconds ?? 0)
         : null,
-    monitoredDays: period?.partial
-      ? Math.max(1, Math.round(period.monitoredSeconds / SECONDS_PER_DAY))
-      : null,
+    monitoredDays:
+      period?.partial && period.monitoredSeconds >= SECONDS_PER_DAY
+        ? Math.round(period.monitoredSeconds / SECONDS_PER_DAY)
+        : null,
+    monitoredHours:
+      period?.partial && period.monitoredSeconds < SECONDS_PER_DAY
+        ? Math.max(1, Math.round(period.monitoredSeconds / SECONDS_PER_HOUR))
+        : null,
     unmeasuredText:
       period?.coverage != null &&
       period.coverage < LOW_AVAILABILITY_COVERAGE &&

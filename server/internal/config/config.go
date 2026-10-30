@@ -1237,6 +1237,17 @@ type AppConfig struct {
 	// (systemconfig.KeyFeedbackMaxStorageBytes), read at request time by
 	// feedback.Service so a DB-set value takes effect without a restart.
 	FeedbackMaxStorageBytes int64 `koanf:"feedback_max_storage_bytes"`
+	// FeedbackAnonScreenshotsPerHour caps how many screenshots ANONYMOUS bug
+	// reports may store per hour across the WHOLE instance (spec 2026-10-29-01).
+	// The per-org quota above is spent once per org, and the anonymous caller
+	// picks the org, so only an instance-wide budget bounds what they write.
+	// Counted through db.BumpGlobalCounter, so it holds across processes.
+	// Authenticated members are not counted. 0 or negative disables it.
+	FeedbackAnonScreenshotsPerHour int `koanf:"feedback_anon_screenshots_per_hour"`
+	// FeedbackRetentionDays is how long feedback-report screenshots are kept:
+	// the state-cleanup job purges (row and blob) every reports file older
+	// than this (spec 2026-10-29-01). 0 or negative keeps them forever.
+	FeedbackRetentionDays int `koanf:"feedback_retention_days"`
 }
 
 // AppGitHubConfig holds the GitHub credentials used for in-app feature integrations
@@ -1254,13 +1265,33 @@ const DefaultFeedbackMaxStorageBytes int64 = 100 * 1024 * 1024
 // AppConfig.FeedbackMaxStorageBytes.
 const EnvAppFeedbackMaxStorageBytes = "SP_APP_FEEDBACK_MAX_STORAGE_BYTES"
 
-// applyFeedbackEnv binds SP_APP_FEEDBACK_MAX_STORAGE_BYTES.
+// DefaultFeedbackAnonScreenshotsPerHour is the built-in instance-wide budget of
+// anonymous bug-report screenshots per hour: the same as the GitHub issue
+// dispatch cap, since a screenshot past that cap would never be filed.
+const DefaultFeedbackAnonScreenshotsPerHour = 20
+
+// EnvAppFeedbackAnonScreenshotsPerHour overrides
+// AppConfig.FeedbackAnonScreenshotsPerHour.
+const EnvAppFeedbackAnonScreenshotsPerHour = "SP_APP_FEEDBACK_ANON_SCREENSHOTS_PER_HOUR"
+
+// DefaultFeedbackRetentionDays is the built-in retention of bug-report
+// screenshots.
+const DefaultFeedbackRetentionDays = 90
+
+// EnvAppFeedbackRetentionDays overrides AppConfig.FeedbackRetentionDays.
+const EnvAppFeedbackRetentionDays = "SP_APP_FEEDBACK_RETENTION_DAYS"
+
+// applyFeedbackEnv binds SP_APP_FEEDBACK_MAX_STORAGE_BYTES,
+// SP_APP_FEEDBACK_ANON_SCREENSHOTS_PER_HOUR and SP_APP_FEEDBACK_RETENTION_DAYS.
 // feedback_max_storage_bytes is snake_case, so koanf's env loader can never
 // reach it (SP_APP_FEEDBACK_MAX_STORAGE_BYTES would land on
 // app.feedback.max.storage.bytes, not app.feedback_max_storage_bytes). An
 // absent or unparseable variable leaves whatever config.yml /
 // config.local.yml (or the built-in default) already set alone.
 func applyFeedbackEnv(cfg *AppConfig) {
+	applyFeedbackIntEnv(EnvAppFeedbackAnonScreenshotsPerHour, &cfg.FeedbackAnonScreenshotsPerHour)
+	applyFeedbackIntEnv(EnvAppFeedbackRetentionDays, &cfg.FeedbackRetentionDays)
+
 	v := os.Getenv(EnvAppFeedbackMaxStorageBytes)
 	if v == "" {
 		return
@@ -1268,6 +1299,19 @@ func applyFeedbackEnv(cfg *AppConfig) {
 
 	if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 		cfg.FeedbackMaxStorageBytes = n
+	}
+}
+
+// applyFeedbackIntEnv sets *dst from the integer environment variable name. An
+// absent or unparseable variable leaves *dst alone.
+func applyFeedbackIntEnv(name string, dst *int) {
+	v := os.Getenv(name)
+	if v == "" {
+		return
+	}
+
+	if n, err := strconv.Atoi(v); err == nil {
+		*dst = n
 	}
 }
 
@@ -2267,8 +2311,10 @@ func Load() (*Config, error) {
 		App: AppConfig{
 			// No token and no repo: the in-app bug report is off unless the
 			// operator sets both SP_APP_GITHUB_ISSUES_TOKEN and SP_APP_GITHUB_REPO.
-			GitHub:                  AppGitHubConfig{},
-			FeedbackMaxStorageBytes: DefaultFeedbackMaxStorageBytes,
+			GitHub:                         AppGitHubConfig{},
+			FeedbackMaxStorageBytes:        DefaultFeedbackMaxStorageBytes,
+			FeedbackAnonScreenshotsPerHour: DefaultFeedbackAnonScreenshotsPerHour,
+			FeedbackRetentionDays:          DefaultFeedbackRetentionDays,
 		},
 		Google:    GoogleOAuthConfig{Enabled: false},
 		GitHub:    GitHubOAuthConfig{Enabled: false},

@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.42.1](https://github.com/fclairamb/solidping/compare/v0.42.0...v0.42.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* **checkicmp:** socket-open failure is an infrastructure error ([#712](https://github.com/fclairamb/solidping/issues/712)) ([208ff0a](https://github.com/fclairamb/solidping/commit/208ff0a5bb399a72e7d9a47fafe6f0bae15d2cbd))
+* **dash0:** explain chart Full range switch and status page visibility hint ([#702](https://github.com/fclairamb/solidping/issues/702)) ([9c6141b](https://github.com/fclairamb/solidping/commit/9c6141bcf812d8a899f363585d7558fc29f4e73f))
+* **deps:** update github.com/dop251/goja digest to 5f913d1 ([#697](https://github.com/fclairamb/solidping/issues/697)) ([146cb22](https://github.com/fclairamb/solidping/commit/146cb229df4be46881a29196729fabb00f5aa3f2))
+* **deps:** update github.com/dop251/goja digest to 85be141 ([#706](https://github.com/fclairamb/solidping/issues/706)) ([c6abd8e](https://github.com/fclairamb/solidping/commit/c6abd8eda4e79cea9b5a20ea8edda0fa5d2c1c88))
+* **deps:** update github.com/dop251/goja digest to d535508 ([#696](https://github.com/fclairamb/solidping/issues/696)) ([7529c15](https://github.com/fclairamb/solidping/commit/7529c157373b2c520d3e8198fe2363a99b524cdc))
+* **deps:** update github.com/dop251/goja digest to f818168 ([#709](https://github.com/fclairamb/solidping/issues/709)) ([7d03f42](https://github.com/fclairamb/solidping/commit/7d03f4278b10ed8b50ef31421860580f749a3b27))
+* **deps:** update go dependencies (non-major) ([#690](https://github.com/fclairamb/solidping/issues/690)) ([6de8ac7](https://github.com/fclairamb/solidping/commit/6de8ac704fbb1fe9f50dd164fa3efde691f8e725))
+* **deps:** update go dependencies (non-major) ([#694](https://github.com/fclairamb/solidping/issues/694)) ([0838916](https://github.com/fclairamb/solidping/commit/0838916cf145732c1c5259a3721c51b146fd2296))
+* **deps:** update go dependencies (non-major) ([#698](https://github.com/fclairamb/solidping/issues/698)) ([ea540e8](https://github.com/fclairamb/solidping/commit/ea540e891f8046d1246a9fb3f70083560431e629))
+* **deps:** update go dependencies (non-major) to v0.37.2 ([#704](https://github.com/fclairamb/solidping/issues/704)) ([67da7f7](https://github.com/fclairamb/solidping/commit/67da7f7f05769cfcf38d271b1bc1fe12a5b881cf))
+* **deps:** update module github.com/posthog/posthog-go to v1.39.0 ([#711](https://github.com/fclairamb/solidping/issues/711)) ([b2a7f2c](https://github.com/fclairamb/solidping/commit/b2a7f2c53864a57c751e0d78339e604fe0162c01))
+* **deps:** update module github.com/prometheus/common to v0.73.0 ([#703](https://github.com/fclairamb/solidping/issues/703)) ([1ac4dc8](https://github.com/fclairamb/solidping/commit/1ac4dc89c45d34377cd4a22571f83cbcd88d5737))
+* **deps:** update module github.com/slack-go/slack to v0.32.0 ([#707](https://github.com/fclairamb/solidping/issues/707)) ([74db3d2](https://github.com/fclairamb/solidping/commit/74db3d2cddaa7c3cf306aebea2b53df44fbfdddf))
+* ICMP capability for workers, escalation targets on events, login bug report and degraded incident fixes ([#701](https://github.com/fclairamb/solidping/issues/701)) ([9613f98](https://github.com/fclairamb/solidping/commit/9613f98d88fad781e18ddd5712d7636723d0bdc4))
+* **security:** device consent phishing guard and 2FA disable throttle ([#693](https://github.com/fclairamb/solidping/issues/693)) ([822186f](https://github.com/fclairamb/solidping/commit/822186ffea7f857d8e48854e58838f2237435735))
+* **security:** instance-wide budget and retention for anonymous bug-report screenshots ([#708](https://github.com/fclairamb/solidping/issues/708)) ([2be7787](https://github.com/fclairamb/solidping/commit/2be778727ec8cac86b626445077c9e1b833b5164))
+* **security:** PAT org binding, subscribe throttle, invite lookup, SNMP secret ([#699](https://github.com/fclairamb/solidping/issues/699)) ([cdf59bb](https://github.com/fclairamb/solidping/commit/cdf59bb6e934e1dbe185dc76d0e84834ca903341))
+* **security:** scope on-call override deletion to its schedule and org ([#714](https://github.com/fclairamb/solidping/issues/714)) ([6708f03](https://github.com/fclairamb/solidping/commit/6708f03a864b0b754b2acc408f10841005ab0044))
+
 ## [0.42.0](https://github.com/fclairamb/solidping/compare/v0.41.0...v0.42.0) (2026-10-26)
 
 

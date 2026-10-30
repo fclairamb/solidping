@@ -35,6 +35,10 @@ func newFeedbackQuotaConfig(t *testing.T, quotaBytes int64) *config.Config {
 	cfg := &config.Config{}
 	cfg.App.EnableBugReport = true
 	cfg.App.FeedbackMaxStorageBytes = quotaBytes
+	// GitHub is wired (to a fake poster, see newTestService): an anonymous
+	// screenshot without an issue dispatch slot is refused (spec 2026-10-29-01).
+	cfg.App.GitHub = config.AppGitHubConfig{IssuesToken: "test-token", Repo: "acme/acme-repo"}
+	cfg.Auth.JWTSecret = "test-secret"
 	cfg.FileStorage.Type = "local"
 	cfg.FileStorage.LocalRoot = t.TempDir()
 
@@ -64,7 +68,7 @@ func assertStorageQuotaEnforced(ctx context.Context, t *testing.T, dbSvc db.Serv
 	r.NoError(dbSvc.CreateFile(ctx, seeded))
 
 	filesSvc := files.NewService(dbSvc, cfg)
-	svc := NewService(dbSvc, filesSvc, cfg, nil)
+	svc := NewService(dbSvc, filesSvc, cfg, &countingGitHubPoster{})
 
 	_, err := svc.SubmitReport(ctx, &SubmitReportRequest{
 		URL:            "https://example.com/page",
@@ -85,7 +89,7 @@ func assertStorageQuotaEnforced(ctx context.Context, t *testing.T, dbSvc db.Serv
 	// broken store.
 	roomy := *cfg
 	roomy.App.FeedbackMaxStorageBytes = quota + 1024
-	svcRoomy := NewService(dbSvc, filesSvc, &roomy, nil)
+	svcRoomy := NewService(dbSvc, filesSvc, &roomy, &countingGitHubPoster{})
 
 	resp, err := svcRoomy.SubmitReport(ctx, &SubmitReportRequest{
 		URL:            "https://example.com/page",
@@ -147,7 +151,7 @@ func TestSubmitReport_DisabledQuota_DoesNotBlock(t *testing.T) {
 	r.NoError(dbSvc.CreateFile(ctx, seeded))
 
 	filesSvc := files.NewService(dbSvc, cfg)
-	svc := NewService(dbSvc, filesSvc, cfg, nil)
+	svc := NewService(dbSvc, filesSvc, cfg, &countingGitHubPoster{})
 
 	resp, err := svc.SubmitReport(ctx, &SubmitReportRequest{
 		URL:            "https://example.com/page",

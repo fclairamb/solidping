@@ -9,11 +9,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portIncidentPublications is distinct from every other _postgres_test.go
-// embedded port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portIncidentPublications = 15481
-
 func newPubPG(t *testing.T) *Service {
 	t.Helper()
 
@@ -23,7 +18,7 @@ func newPubPG(t *testing.T) *Service {
 
 	ctx := t.Context()
 
-	svc, err := New(ctx, &Config{Embedded: true, Port: portIncidentPublications, RunMode: "test"})
+	svc, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: "test"})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

@@ -7,11 +7,14 @@ import { Plug, Unplug } from "lucide-react";
 import {
   EVENT_TYPE_MARKS,
   EVENT_TYPE_REGISTRY,
+  getEscalatedDetail,
   getEventAgentName,
   getEventAgentRegion,
   getEventDisconnectReason,
   getEventEmoji,
+  getEventIntegration,
   getEventLabel,
+  getEventPublication,
   getEventLucideIcon,
   getEventRegionName,
   getEventTone,
@@ -454,5 +457,99 @@ describe("getEventRegionName names the region of a region.* event", () => {
     expect(
       getEventRegionName({ eventType: "agent.connected", payload: { region: "@acme-paris" } }),
     ).toBeUndefined();
+  });
+});
+
+// solidping-business#28, #30, #31: the Events page named neither the
+// integration an integration.* row was about nor what a statuspage.incident.*
+// row published or resolved, although the payload carries both.
+describe("getEventIntegration", () => {
+  it("names the integration and keeps its uid for a link", () => {
+    expect(
+      getEventIntegration({
+        eventType: "integration.updated",
+        payload: { target_type: "integration", target_uid: "int-1", target_name: "Ops Slack" },
+      }),
+    ).toEqual({ name: "Ops Slack", uid: "int-1" });
+  });
+
+  it("drops the uid of a deleted integration: there is nothing to open", () => {
+    expect(
+      getEventIntegration({
+        eventType: "integration.deleted",
+        payload: { target_uid: "int-1", target_name: "Ops Slack" },
+      }),
+    ).toEqual({ name: "Ops Slack", uid: undefined });
+  });
+
+  it("ignores other event types and rows without a name", () => {
+    expect(
+      getEventIntegration({ eventType: "member.invited", payload: { target_name: "bob" } }),
+    ).toBeUndefined();
+    expect(getEventIntegration({ eventType: "integration.created", payload: {} })).toBeUndefined();
+  });
+});
+
+describe("getEventPublication", () => {
+  it("returns the public title and the incident from the payload", () => {
+    expect(
+      getEventPublication({
+        eventType: "statuspage.incident.resolved",
+        payload: { public_title: "API is degraded", incident_uid: "inc-1" },
+      }),
+    ).toEqual({ title: "API is degraded", incidentUid: "inc-1" });
+  });
+
+  it("prefers the event's own incidentUid when set", () => {
+    expect(
+      getEventPublication({
+        eventType: "statuspage.incident.published",
+        incidentUid: "inc-2",
+        payload: { public_title: "API is degraded", incident_uid: "inc-1" },
+      }),
+    ).toEqual({ title: "API is degraded", incidentUid: "inc-2" });
+  });
+
+  it("ignores other event types and rows without a title", () => {
+    expect(
+      getEventPublication({ eventType: "incident.resolved", payload: { public_title: "x" } }),
+    ).toBeUndefined();
+    expect(
+      getEventPublication({ eventType: "statuspage.incident.published", payload: {} }),
+    ).toBeUndefined();
+  });
+});
+
+describe("getEscalatedDetail", () => {
+  it("reads step, policy and targets", () => {
+    const d = getEscalatedDetail({
+      eventType: "incident.escalated",
+      payload: {
+        step_position: 2,
+        policy_name: "Night Ops",
+        targets: [
+          { type: "integration", uid: "i1", name: "Ops Slack" },
+          { type: "user", uid: "u1", name: "alice" },
+          { type: "all_admins" },
+        ],
+      },
+    });
+    expect(d?.stepPosition).toBe(2);
+    expect(d?.policyName).toBe("Night Ops");
+    expect(d?.targets.map((t) => t.name)).toEqual(["Ops Slack", "alice", undefined]);
+    expect(d?.targets[0].uid).toBe("i1");
+  });
+
+  it("handles an old row without targets", () => {
+    const d = getEscalatedDetail({
+      eventType: "incident.escalated",
+      payload: { step_position: 1, target_count: 3 },
+    });
+    expect(d?.targets).toEqual([]);
+    expect(d?.policyName).toBeUndefined();
+  });
+
+  it("ignores other event types", () => {
+    expect(getEscalatedDetail({ eventType: "check.created", payload: {} })).toBeUndefined();
   });
 });

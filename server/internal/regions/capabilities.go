@@ -32,6 +32,10 @@ const (
 	// CapabilityDiscovery reports whether an agent of this private region runs
 	// LAN discovery chunks (spec 2026-10-22-04).
 	CapabilityDiscovery = models.CapabilityDiscovery
+	// CapabilityICMP reports whether `icmp` checks can actually run in this
+	// region, i.e. whether its live workers can open an ICMP socket (spec
+	// 2026-10-28-06).
+	CapabilityICMP = models.CapabilityICMP
 )
 
 // Capability values. THREE states, deliberately — not a boolean.
@@ -96,6 +100,7 @@ var aggregatedCapabilities = []string{ //nolint:gochecknoglobals // the publishe
 	CapabilityIPv4,
 	CapabilityIPv6,
 	CapabilityBrowser,
+	CapabilityICMP,
 }
 
 // CapabilityCrawl is reported by a worker running the website crawl executor
@@ -349,6 +354,11 @@ func (d RegionDefinition) IPv6Capability() string {
 // BrowserCapability reads the headless-Chrome verdict off a definition.
 func (d RegionDefinition) BrowserCapability() string {
 	return d.CapabilityFor(CapabilityBrowser)
+}
+
+// ICMPCapability reads the ICMP-socket verdict off a definition.
+func (d RegionDefinition) ICMPCapability() string {
+	return d.CapabilityFor(CapabilityICMP)
 }
 
 // HasLiveAgentWith reports whether the org's private region has a live,

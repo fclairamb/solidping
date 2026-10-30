@@ -572,12 +572,12 @@ func (m *mockDBService) ListOnCallScheduleOverrides(
 }
 
 func (m *mockDBService) GetOnCallScheduleOverride(
-	_ context.Context, _ string,
+	_ context.Context, _, _ string,
 ) (*models.OnCallScheduleOverride, error) {
 	return nil, errMockNotImplemented
 }
 
-func (m *mockDBService) DeleteOnCallScheduleOverride(_ context.Context, _ string) error {
+func (m *mockDBService) DeleteOnCallScheduleOverride(_ context.Context, _, _ string) error {
 	return nil
 }
 
@@ -1592,6 +1592,12 @@ func (m *mockDBService) FindActiveDegradedIncident(
 	panic("not implemented")
 }
 
+func (m *mockDBService) FindLastResolvedDegradedIncident(
+	_ context.Context, _ string, _ time.Time,
+) (*models.Incident, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListActiveBurnIncidentsForSLOs(
 	_ context.Context, _ string, _ []string,
 ) ([]*models.Incident, error) {
@@ -1671,6 +1677,12 @@ func (m *mockDBService) DeleteFilesByTopicPrefix(_ context.Context, _, _ string)
 }
 
 func (m *mockDBService) ListAttachmentsByTopicPrefix(
+	_ context.Context, _ string, _ time.Time, _ int,
+) ([]*models.File, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) ListFilesByGroup(
 	_ context.Context, _ string, _ time.Time, _ int,
 ) ([]*models.File, error) {
 	return nil, nil

@@ -33,6 +33,8 @@ var (
 	ErrInvalidRotationType    = errors.New("rotationType must be 'daily' or 'weekly'")
 	ErrInvalidWeekday         = errors.New("handoffWeekday must be between 0 (Mon) and 6 (Sun)")
 	ErrOverrideEndBeforeStart = errors.New("override end must be after start")
+	ErrOverrideNotFound       = errors.New("on-call override not found")
+	ErrUserNotInOrganization  = errors.New("user is not a member of this organization")
 	ErrRotationOutOfBounds    = errors.New("rotation index exceeded safety bound")
 )
 
@@ -77,6 +79,10 @@ func (s *Service) CreateSchedule(ctx context.Context, input *CreateScheduleInput
 		return nil, err
 	}
 
+	if err := s.requireMembers(ctx, input.OrganizationUID, input.UserUIDs); err != nil {
+		return nil, err
+	}
+
 	schedule := models.NewOnCallSchedule(
 		input.OrganizationUID, input.Name, input.Timezone, input.RotationType,
 	)
@@ -106,6 +112,24 @@ func (s *Service) CreateSchedule(ctx context.Context, input *CreateScheduleInput
 		})
 
 	return schedule, nil
+}
+
+// requireMembers checks that every user UID is an active member of the
+// organization, so a roster or an override never references, and never
+// discloses through the resolver, a user of another organization.
+func (s *Service) requireMembers(ctx context.Context, orgUID string, userUIDs []string) error {
+	for _, userUID := range userUIDs {
+		_, err := s.db.GetMemberByUserAndOrg(ctx, userUID, orgUID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrUserNotInOrganization
+		}
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // auditTarget names an on-call schedule for the audit trail.
@@ -166,13 +190,6 @@ func (s *Service) ListUsers(
 	return s.db.ListOnCallScheduleUsers(ctx, scheduleUID)
 }
 
-// ReplaceUsers replaces the entire roster.
-func (s *Service) ReplaceUsers(
-	ctx context.Context, scheduleUID string, userUIDs []string,
-) error {
-	return s.db.ReplaceOnCallScheduleUsers(ctx, scheduleUID, userUIDs)
-}
-
 // UpdateScheduleInput holds optional updates. Use pointers so an explicit
 // "set to value" is distinguishable from "leave unchanged".
 type UpdateScheduleInput struct {
@@ -189,16 +206,11 @@ type UpdateScheduleInput struct {
 	ClearHandoffWeekday bool
 }
 
-// UpdateSchedule applies a partial update. If UserUIDs is non-nil the
-// roster is rewritten; positions reset to the new order.
-func (s *Service) UpdateSchedule(
-	ctx context.Context, orgUID, scheduleUID string, input *UpdateScheduleInput,
-) (*models.OnCallSchedule, error) {
-	schedule, err := s.GetScheduleByUID(ctx, orgUID, scheduleUID)
-	if err != nil {
-		return nil, err
-	}
-
+// validateUpdate checks the schedule as it would be once the update is
+// applied, and that a new roster only lists members of the organization.
+func (s *Service) validateUpdate(
+	ctx context.Context, orgUID string, schedule *models.OnCallSchedule, input *UpdateScheduleInput,
+) error {
 	timezone := schedule.Timezone
 	if input.Timezone != nil {
 		timezone = *input.Timezone
@@ -224,6 +236,29 @@ func (s *Service) UpdateSchedule(
 	}
 
 	if validateErr := validateScheduleParams(timezone, rotation, handoffTime, weekday); validateErr != nil {
+		return validateErr
+	}
+
+	if input.UserUIDs != nil {
+		if memberErr := s.requireMembers(ctx, orgUID, *input.UserUIDs); memberErr != nil {
+			return memberErr
+		}
+	}
+
+	return nil
+}
+
+// UpdateSchedule applies a partial update. If UserUIDs is non-nil the
+// roster is rewritten; positions reset to the new order.
+func (s *Service) UpdateSchedule(
+	ctx context.Context, orgUID, scheduleUID string, input *UpdateScheduleInput,
+) (*models.OnCallSchedule, error) {
+	schedule, err := s.GetScheduleByUID(ctx, orgUID, scheduleUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if validateErr := s.validateUpdate(ctx, orgUID, schedule, input); validateErr != nil {
 		return nil, validateErr
 	}
 
@@ -287,15 +322,18 @@ func (s *Service) DeleteSchedule(ctx context.Context, orgUID, scheduleUID string
 
 // CreateOverrideInput captures the fields for an override.
 type CreateOverrideInput struct {
-	ScheduleUID  string
-	UserUID      string
-	StartAt      time.Time
-	EndAt        time.Time
-	Reason       string
-	CreatedByUID string
+	OrganizationUID string
+	ScheduleUID     string
+	UserUID         string
+	StartAt         time.Time
+	EndAt           time.Time
+	Reason          string
+	CreatedByUID    string
 }
 
-// CreateOverride inserts an override.
+// CreateOverride inserts an override on a schedule of the organization. The
+// schedule is looked up within the organization and the overriding user must
+// be one of its members.
 func (s *Service) CreateOverride(
 	ctx context.Context, input *CreateOverrideInput,
 ) (*models.OnCallScheduleOverride, error) {
@@ -303,7 +341,16 @@ func (s *Service) CreateOverride(
 		return nil, ErrOverrideEndBeforeStart
 	}
 
-	override := models.NewOnCallScheduleOverride(input.ScheduleUID, input.UserUID, input.StartAt, input.EndAt)
+	schedule, err := s.GetScheduleByUID(ctx, input.OrganizationUID, input.ScheduleUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.requireMembers(ctx, input.OrganizationUID, []string{input.UserUID}); err != nil {
+		return nil, err
+	}
+
+	override := models.NewOnCallScheduleOverride(schedule.UID, input.UserUID, input.StartAt, input.EndAt)
 
 	if input.Reason != "" {
 		override.Reason = &input.Reason
@@ -327,9 +374,25 @@ func (s *Service) ListOverrides(
 	return s.db.ListOnCallScheduleOverrides(ctx, scheduleUID, from, until)
 }
 
-// DeleteOverride hard-deletes an override.
-func (s *Service) DeleteOverride(ctx context.Context, overrideUID string) error {
-	return s.db.DeleteOnCallScheduleOverride(ctx, overrideUID)
+// DeleteOverride hard-deletes an override of a schedule of the organization.
+// The schedule is looked up within the organization and the override within
+// the schedule, so an override of another schedule or organization answers
+// ErrScheduleNotFound or ErrOverrideNotFound and is left untouched.
+func (s *Service) DeleteOverride(ctx context.Context, orgUID, scheduleUID, overrideUID string) error {
+	schedule, err := s.GetScheduleByUID(ctx, orgUID, scheduleUID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.db.DeleteOnCallScheduleOverride(ctx, schedule.UID, overrideUID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrOverrideNotFound
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 // EnableICalFeed creates a fresh secret and stores it. Returns the secret

@@ -284,6 +284,24 @@ cooldown multiplier × the check period, kept between 2 and 30 minutes.
 | Max Recovery Multiplier | `maxRecoveryMultiplier` | `maxRecoveryMultiplier` | `8` |
 | Reopen Cooldown Multiplier | `reopenCooldownMultiplier` | `reopenCooldownMultiplier` | `5`. `0` always opens a new incident |
 
+## Degraded incidents {#degraded}
+
+A check that is up but fails now and then, or answers slowly, opens a
+**degraded** incident (amber) instead of an outage. By default it opens after
+5 failures in the last 60 probes, or 3 slow probes in the last 6 when a slow
+threshold is set. Both rules are set per check. No degraded incident opens while
+the check has an open outage, and the probes of an outage that already resolved
+are not counted.
+
+A degraded incident resolves on its own once the rule has been false for as many
+consecutive probes as its window. Any resolve, manual or automatic, restarts the
+count: the probes before it no longer count, so a new degraded incident needs
+fresh failures after the resolve. Resolving one by hand does not reopen it on
+the next evaluation.
+
+Degraded incidents do not count in the check's availability: the **Outages**
+column of the availability table counts outages only.
+
 ## Notification Events
 
 | Event | When | Description |

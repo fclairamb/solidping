@@ -10,16 +10,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portCustomDomain is distinct from every other _postgres_test.go embedded port
-// in this package (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portCustomDomain = 15457
-
 // TestGetStatusPageByCustomDomain_Postgres proves custom-domain lookup, the
 // soft-delete filter, and the global partial unique index behave on Postgres.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres pwfile extraction) with its siblings
 func TestGetStatusPageByCustomDomain_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -29,7 +24,7 @@ func TestGetStatusPageByCustomDomain_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{
 		Embedded: true,
-		Port:     portCustomDomain,
+		Port:     testsupport.FreePort(t),
 		RunMode:  runModeTest,
 	})
 	if err != nil {

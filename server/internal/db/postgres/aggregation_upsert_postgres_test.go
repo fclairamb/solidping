@@ -11,19 +11,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portAggUpsert is distinct from every other _postgres_test.go file's
-// embedded-Postgres port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portAggUpsert = 15451
-
 // TestUpsertAggregatedResult_Idempotent_Postgres is the Postgres counterpart to
 // the SQLite idempotency test for spec 2026-07-11-16 §3: two writes of the same
 // aggregated bucket yield one row, for NULL region (the former unique-index
 // hole) and for a set region alike. Self-skips under -short / on
 // embedded-startup error, like every embedded-postgres test in this package.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction)
 func TestUpsertAggregatedResult_Idempotent_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -31,7 +26,7 @@ func TestUpsertAggregatedResult_Idempotent_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portAggUpsert, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -97,9 +92,9 @@ func TestUpsertAggregatedResult_Idempotent_Postgres(t *testing.T) {
 // TestListResults_ExcludeStatuses_Postgres pins the Postgres side of spec
 // 2026-07-11-16 §1: ExcludeStatuses drops the listed statuses (lifecycle
 // markers) while keeping everything else.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction)
 func TestListResults_ExcludeStatuses_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -107,7 +102,7 @@ func TestListResults_ExcludeStatuses_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portAggUpsert, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -153,9 +148,9 @@ func TestListResults_ExcludeStatuses_Postgres(t *testing.T) {
 // PRAGMA foreign_keys = OFF used by the migration-007 orphan seed). With
 // RequireCheckExists:false the orphan is visible; with true it is excluded while a
 // live check's row survives — defense in depth, kept in lockstep with SQLite.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction)
 func TestListResults_RequireCheckExists_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -163,7 +158,7 @@ func TestListResults_RequireCheckExists_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portAggUpsert, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}

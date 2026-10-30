@@ -31,6 +31,10 @@ type agentGrantServer struct {
 	mu     sync.Mutex
 	result *agents.ClientFrame
 	done   chan struct{}
+	// stop ends every connection the fake still holds (the agent may redial after
+	// the first one closed); handlers tracks them so the test can wait them out.
+	stop     chan struct{}
+	handlers sync.WaitGroup
 }
 
 func (s *agentGrantServer) serve(writer http.ResponseWriter, req *http.Request) {
@@ -39,7 +43,22 @@ func (s *agentGrantServer) serve(writer http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	ctx := req.Context()
+	s.handlers.Add(1)
+	defer s.handlers.Done()
+
+	ctx, cancel := context.WithCancel(req.Context())
+	defer cancel()
+
+	go func() {
+		select {
+		case <-s.stop:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	defer func() { _ = conn.CloseNow() }()
+
 	hello := agents.ServerFrame{Type: agents.MsgTypeHello, AgentUID: "agent-1", WorkerUID: "worker-1", Region: "r"}
 
 	if req.Header.Get("Authorization") != "" {
@@ -141,6 +160,7 @@ func runAgentGrantJob(
 	region := "r"
 	fake := &agentGrantServer{
 		done: make(chan struct{}),
+		stop: make(chan struct{}),
 		job: agents.AgentJob{
 			UID: "job-1", CheckUID: "check-1", Type: string(checkerdef.CheckTypeJS),
 			Config: stored, ConfigSealed: &sealed, Period: "1m", ScheduledAt: &due, Region: &region,
@@ -148,7 +168,11 @@ func runAgentGrantJob(
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(fake.serve))
-	t.Cleanup(srv.Close)
+	t.Cleanup(func() {
+		close(fake.stop)
+		srv.Close()
+		fake.handlers.Wait()
+	})
 
 	wsb := backend.NewWSBackend(srv.URL, "spe_token", "agent", &backend.Identity{AgentKeys: *keys}, nil,
 		backend.WithPingInterval(400*time.Millisecond))

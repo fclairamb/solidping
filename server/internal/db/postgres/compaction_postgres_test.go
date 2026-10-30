@@ -13,11 +13,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portCompaction is distinct from every other _postgres_test.go file's
-// embedded-Postgres port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portCompaction = 15461
-
 // errInjectedCompactionPG is returned by the CompactResults failpoint to prove
 // the transaction rolls the rollup upsert back when a step after it fails.
 var errInjectedCompactionPG = errors.New("injected compaction failure")
@@ -33,7 +28,7 @@ func newCompactionServicePG(t *testing.T) *Service {
 
 	ctx := t.Context()
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portCompaction, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: testsupport.FreePort(t), RunMode: runModeTest})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
@@ -132,9 +127,9 @@ func compactionHourRowsPG(t *testing.T, s *Service, orgUID, checkUID string) []*
 // TestCompactResults_HappyPath_Postgres is the Postgres counterpart of the
 // SQLite happy-path test: a normal compaction commits atomically — the rollup
 // exists and every measurable source row is deleted.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction)
 func TestCompactResults_HappyPath_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -172,9 +167,9 @@ func TestCompactResults_HappyPath_Postgres(t *testing.T) {
 // rollback test: a failure injected after the rollup upsert and before the
 // source delete unwinds the whole transaction — no rollup is committed and every
 // raw source row survives.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction)
 func TestCompactResults_RollsBack_Postgres(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}

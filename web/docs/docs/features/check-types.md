@@ -418,6 +418,10 @@ Both limits are strict (a value equal to the limit is up) and only apply when at
 ICMP checks may require elevated permissions on some systems. Docker containers typically need `NET_RAW` capability.
 :::
 
+#### Workers that cannot open an ICMP socket {#icmp}
+
+A worker opens an unprivileged datagram ICMP socket (needs its group inside `net.ipv4.ping_group_range`) or a raw one (needs `CAP_NET_RAW`). At start it probes both and reports an `icmp` capability. A region whose workers all report no `icmp` is skipped by automatic placement, the check form warns when you pin such a region, and a worker that cannot ping does not claim ICMP jobs. If a check still fails with `this worker cannot open an ICMP socket`, grant `NET_RAW` (Kubernetes/Docker), or on fly.io run the agent as root (see `deploy/fly/README.md`).
+
 ### DNS {#dns}
 
 Verify DNS resolution and record values.

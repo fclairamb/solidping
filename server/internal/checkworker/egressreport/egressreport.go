@@ -16,6 +16,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkicmp"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -39,7 +40,7 @@ var shared = checkerdef.NewEgressCache(cacheTTL) //nolint:gochecknoglobals // de
 // ErrWorkerNoEgress instead of a false DOWN. Same for `browser`: the capability
 // is advertised, never enforced.
 func Current(ctx context.Context) []string {
-	return WithBrowser(From(shared.Get()), checkbrowser.Available(ctx))
+	return WithICMP(WithBrowser(From(shared.Get()), checkbrowser.Available(ctx)), checkicmp.Available())
 }
 
 // From renders a probe result as the stored capability set: the names of the
@@ -82,4 +83,14 @@ func WithBrowser(base []string, hasBrowser bool) []string {
 	}
 
 	return append(base, models.CapabilityBrowser)
+}
+
+// WithICMP folds the ICMP-socket verdict into an egress set. Like WithBrowser a
+// nil base stays nil: the tri-state lives on the set.
+func WithICMP(base []string, hasICMP bool) []string {
+	if base == nil || !hasICMP {
+		return base
+	}
+
+	return append(base, models.CapabilityICMP)
 }

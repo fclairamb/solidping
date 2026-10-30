@@ -10,13 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
-
-// Port distinct from every other _postgres_test.go file's embedded-Postgres
-// port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portUptimebarPlan = 15473
 
 // planFilterRecorder is a uptimebar.ResultBucketAggregator that runs no query and
 // only records the filters the availability engine builds. Capturing the filters
@@ -132,13 +128,13 @@ func seedPlanRollups(ctx context.Context, t *testing.T, s *Service, orgUID, chec
 // The last two subtests are the positive controls: they run the row-shaped reads
 // against the SAME dataset and require that they DO seq-scan and DO sort, proving
 // the fixture is dense enough for the assertions above to have teeth.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestUptimebarQueriesUseIndexes_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portUptimebarPlan)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("uptimebar-plan-org", "Uptimebar Plan Org")
 	r.NoError(s.CreateOrganization(ctx, org))

@@ -13,19 +13,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// portWorkerCapabilities is distinct from every other _postgres_test.go
-// embedded port in the repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const portWorkerCapabilities = 15472
-
 // newCapPG boots the embedded Postgres shared by the capability subtests.
 // Self-skips under `-short` (the default `make test` / CI mode), mirroring the
 // other embedded-Postgres tests.
 //
-// ONE instance for all of them, deliberately: concurrent embedded-postgres
-// starts race on the shared extraction directory's pwfile, and the loser
-// SKIPS. A skipped constraint-parity test proves nothing, so the whole file
-// shares a single boot and runs its cases as subtests.
+// ONE instance for all of them: booting a cluster is the slowest part of the
+// test, so the whole file shares a single boot and runs its cases as subtests.
 func newCapPG(t *testing.T, port uint32) *Service {
 	t.Helper()
 
@@ -79,7 +72,7 @@ func reloadCapsPG(ctx context.Context, t *testing.T, svc *Service, uid string) *
 func TestWorkerCapabilities_Postgres(t *testing.T) {
 	t.Parallel()
 
-	svc := newCapPG(t, portWorkerCapabilities)
+	svc := newCapPG(t, testsupport.FreePort(t))
 
 	t.Run("three-states-round-trip", func(t *testing.T) {
 		t.Parallel()

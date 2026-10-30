@@ -108,6 +108,9 @@ func (h *Handler) SubmitReport(writer http.ResponseWriter, req *http.Request) er
 		case errors.Is(err, ErrStorageQuotaExceeded):
 			return h.WriteErrorErr(writer, req, http.StatusRequestEntityTooLarge,
 				base.ErrorCodeQuotaExceeded, "Feedback storage quota exceeded for this organization", err)
+		case errors.Is(err, ErrReportRateLimited):
+			return h.WriteErrorErr(writer, req, http.StatusTooManyRequests,
+				base.ErrorCodeRateLimited, "Too many bug reports with a screenshot, try again later", err)
 		default:
 			return h.WriteInternalError(writer, req, err)
 		}

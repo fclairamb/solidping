@@ -17,24 +17,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
-// Ports 15438-15444 below are distinct from every other _postgres_test.go
-// file in this repo (5433 is the app default; 15434/15437 are already used
-// by costdist/checkjobsvc's embedded-Postgres tests) and from each other, so
-// every test in this file gets its own embedded instance with no port
-// collision. Tests still don't call t.Parallel() (see the //nolint on each):
-// running 7 real embedded-Postgres subprocesses concurrently starved this
-// dev machine and made most of them self-skip via the "unavailable" path —
-// resource contention, not a correctness issue — so they run sequentially.
-const (
-	portHeadroomWarns           = 15438
-	portHeadroomUnlimited       = 15439
-	portHeadroomComfortable     = 15440
-	portHeadroomUnbounded       = 15441
-	portHeadroomPermissionError = 15442
-	portIdleTimeReaps           = 15443
-	portIdleTimeZeroMeansNoReap = 15444
-)
-
 // startEmbeddedForHeadroomTest boots one embedded PostgreSQL instance for the
 // calling test (each CREATE ROLE runs against it) and returns the superuser
 // Service plus a DSN builder for connecting as another role. Self-skips
@@ -117,9 +99,9 @@ func createRoleWithConnLimit(t *testing.T, dbSvc *Service, role string, connLimi
 // rolconnlimit is at or below the configured MaxOpenConns triggers the
 // startup WARN, naming both numbers plus current usage.
 //
-//nolint:paralleltest // shares dev-machine resources with sibling embedded-postgres tests in this file
+//nolint:paralleltest // swaps the process-wide slog default (captureWarnLogs)
 func TestCheckRoleConnLimitHeadroom_WarnsWhenMaxOpenConnsExceedsLimit(t *testing.T) {
-	dbSvc, dsnFor := startEmbeddedForHeadroomTest(t, portHeadroomWarns)
+	dbSvc, dsnFor := startEmbeddedForHeadroomTest(t, testsupport.FreePort(t))
 	createRoleWithConnLimit(t, dbSvc, "sp_headroom_low", 2)
 
 	buf := captureWarnLogs(t)
@@ -139,9 +121,9 @@ func TestCheckRoleConnLimitHeadroom_WarnsWhenMaxOpenConnsExceedsLimit(t *testing
 // acceptance criterion 3: rolconnlimit = -1 (unlimited) must never emit the
 // warning, however large MaxOpenConns is.
 //
-//nolint:paralleltest // shares dev-machine resources with sibling embedded-postgres tests in this file
+//nolint:paralleltest // swaps the process-wide slog default (captureWarnLogs)
 func TestCheckRoleConnLimitHeadroom_UnlimitedRoleSilent(t *testing.T) {
-	dbSvc, dsnFor := startEmbeddedForHeadroomTest(t, portHeadroomUnlimited)
+	dbSvc, dsnFor := startEmbeddedForHeadroomTest(t, testsupport.FreePort(t))
 	createRoleWithConnLimit(t, dbSvc, "sp_headroom_unlimited", -1)
 
 	buf := captureWarnLogs(t)
@@ -156,9 +138,9 @@ func TestCheckRoleConnLimitHeadroom_UnlimitedRoleSilent(t *testing.T) {
 // branch of acceptance criterion 3: rolconnlimit strictly greater than
 // MaxOpenConns must stay silent — the warning is only for the >= case.
 //
-//nolint:paralleltest // shares dev-machine resources with sibling embedded-postgres tests in this file
+//nolint:paralleltest // swaps the process-wide slog default (captureWarnLogs)
 func TestCheckRoleConnLimitHeadroom_FitsComfortablySilent(t *testing.T) {
-	dbSvc, dsnFor := startEmbeddedForHeadroomTest(t, portHeadroomComfortable)
+	dbSvc, dsnFor := startEmbeddedForHeadroomTest(t, testsupport.FreePort(t))
 	createRoleWithConnLimit(t, dbSvc, "sp_headroom_comfortable", 50)
 
 	buf := captureWarnLogs(t)
@@ -173,9 +155,9 @@ func TestCheckRoleConnLimitHeadroom_FitsComfortablySilent(t *testing.T) {
 // <= 0 early return: an unbounded local pool has nothing meaningful to
 // compare against rolconnlimit, so it must never warn either.
 //
-//nolint:paralleltest // shares dev-machine resources with sibling embedded-postgres tests in this file
+//nolint:paralleltest // swaps the process-wide slog default (captureWarnLogs)
 func TestCheckRoleConnLimitHeadroom_UnboundedPoolSilent(t *testing.T) {
-	dbSvc, dsnFor := startEmbeddedForHeadroomTest(t, portHeadroomUnbounded)
+	dbSvc, dsnFor := startEmbeddedForHeadroomTest(t, testsupport.FreePort(t))
 	createRoleWithConnLimit(t, dbSvc, "sp_headroom_unbounded", 1)
 
 	buf := captureWarnLogs(t)
@@ -192,9 +174,9 @@ func TestCheckRoleConnLimitHeadroom_UnboundedPoolSilent(t *testing.T) {
 // property that matters most — must never propagate an error to the caller,
 // since New() calls this without checking a return value.
 //
-//nolint:paralleltest // shares dev-machine resources with sibling embedded-postgres tests in this file
+//nolint:paralleltest // swaps the process-wide slog default (captureWarnLogs)
 func TestCheckRoleConnLimitHeadroom_PermissionErrorSilent(t *testing.T) {
-	_, dsnFor := startEmbeddedForHeadroomTest(t, portHeadroomPermissionError)
+	_, dsnFor := startEmbeddedForHeadroomTest(t, testsupport.FreePort(t))
 
 	buf := captureWarnLogs(t)
 
@@ -215,10 +197,10 @@ func TestCheckRoleConnLimitHeadroom_PermissionErrorSilent(t *testing.T) {
 // closed by database/sql, observable via sql.DB.Stats().MaxIdleTimeClosed.
 // That is a behavioral assertion (a connection was really reaped), not just
 // a check that the setter was called.
-//
-//nolint:paralleltest // shares dev-machine resources with sibling embedded-postgres tests in this file
 func TestApplyPoolLimits_ConnMaxIdleTime_Reaps(t *testing.T) {
-	_, dsnFor := startEmbeddedForHeadroomTest(t, portIdleTimeReaps)
+	t.Parallel()
+
+	_, dsnFor := startEmbeddedForHeadroomTest(t, testsupport.FreePort(t))
 	ctx := context.Background()
 	r := require.New(t)
 
@@ -253,10 +235,10 @@ func TestApplyPoolLimits_ConnMaxIdleTime_Reaps(t *testing.T) {
 // guard: ConnMaxIdleTime left at 0 must not reap idle connections (matches
 // the existing MaxOpenConns/MaxIdleConns/ConnMaxLifetime "0 = leave
 // database/sql's default" convention).
-//
-//nolint:paralleltest // shares dev-machine resources with sibling embedded-postgres tests in this file
 func TestApplyPoolLimits_ConnMaxIdleTime_ZeroMeansNoReap(t *testing.T) {
-	_, dsnFor := startEmbeddedForHeadroomTest(t, portIdleTimeZeroMeansNoReap)
+	t.Parallel()
+
+	_, dsnFor := startEmbeddedForHeadroomTest(t, testsupport.FreePort(t))
 	ctx := context.Background()
 	r := require.New(t)
 

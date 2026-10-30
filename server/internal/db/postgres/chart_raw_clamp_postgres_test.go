@@ -11,14 +11,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
-)
-
-// Port distinct from every other _postgres_test.go file's embedded-Postgres
-// port in this repo (see the port-numbering note in
-// postgres_headroom_postgres_test.go).
-const (
-	portRawClampPlan  = 15496
-	portRawClampParam = 15497
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // rawClampMarginHours mirrors uptimebar's unexported rawClampMargin — the lag
@@ -77,13 +70,13 @@ func resultUIDs(resp *results.ListResultsResponse) []string {
 // year is otherwise planned and executed against the largest table in the
 // system with nothing to bound it. The endpoint must hold that floor itself,
 // report what it bounded, and leave every non-raw request alone.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestRawTierRequestIsClampedToRetention_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portRawClampPlan)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("raw-clamp-org", "Raw Clamp Org")
 	r.NoError(s.CreateOrganization(ctx, org))
@@ -204,13 +197,13 @@ func TestRawTierRequestIsClampedToRetention_Postgres(t *testing.T) {
 // Aggregation settings tab writes), never cfg.Aggregation.RetentionRaw. A
 // reader clamping to 24 h while the job keeps 168 h silently drops six days of
 // raw that no rollup covers — data loss that looks like an empty chart.
-//
-//nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestRawClampFollowsRetentionParameter_Postgres(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	r := require.New(t)
 
-	s := newTier1ServicePG(t, portRawClampParam)
+	s := newTier1ServicePG(t, testsupport.FreePort(t))
 
 	org := models.NewOrganization("raw-param-org", "Raw Param Org")
 	r.NoError(s.CreateOrganization(ctx, org))

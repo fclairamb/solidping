@@ -37,6 +37,10 @@ primary_region = "cdg"
   # The published multi-arch server image; agent mode is a runtime role, not a
   # separate artifact. Pin a released tag in production.
   image = "ghcr.io/fclairamb/solidping:latest"
+  # ICMP checks need CAP_NET_RAW or a ping group, which the nonroot image has
+  # neither of on a fly VM. To run them, replace the image line above with:
+  #   dockerfile = "Dockerfile"
+  # (deploy/fly/Dockerfile runs the agent as root, see README.md "ICMP checks").
 
 [env]
   # The role switch. Everything else about the process follows from it.

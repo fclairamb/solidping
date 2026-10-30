@@ -55,6 +55,7 @@ describe("mapAvailabilityRow", () => {
     expect(v.longestText).toBeNull();
     expect(v.averageText).toBeNull();
     expect(v.monitoredDays).toBeNull();
+    expect(v.monitoredHours).toBeNull();
   });
 
   it("renders '-' when the period has hasData=false", () => {
@@ -105,12 +106,27 @@ describe("mapAvailabilityRow", () => {
       period({ partial: true, monitoredSeconds: 40 * 86_400 }),
     );
     expect(v.monitoredDays).toBe(40);
+    expect(v.monitoredHours).toBeNull();
 
-    // Never reports 0 days for a partial row with a sub-day window.
+    // A check created an hour ago reads "1h monitored", not "1d".
     const young = mapAvailabilityRow(
       period({ partial: true, monitoredSeconds: 3_600 }),
     );
-    expect(young.monitoredDays).toBe(1);
+    expect(young.monitoredDays).toBeNull();
+    expect(young.monitoredHours).toBe(1);
+
+    // Never reports 0 hours for a partial row with a sub-hour window.
+    const fresh = mapAvailabilityRow(
+      period({ partial: true, monitoredSeconds: 600 }),
+    );
+    expect(fresh.monitoredHours).toBe(1);
+
+    // From one day on, the history is told in days.
+    const day = mapAvailabilityRow(
+      period({ partial: true, monitoredSeconds: 86_400 }),
+    );
+    expect(day.monitoredDays).toBe(1);
+    expect(day.monitoredHours).toBeNull();
   });
 });
 

@@ -209,7 +209,7 @@ func firstPlacementError(req *placementRequest) error {
 }
 
 // requiredCapabilities is what a region must be able to do to run the check:
-// headless Chrome for a browser check, the pinned address family for an
+// headless Chrome for a browser check, an ICMP socket for an icmp check, the pinned address family for an
 // `ipVersion: ipv4|ipv6` target.
 //
 // The family only counts when the pin itself is one this check would accept:
@@ -222,6 +222,10 @@ func requiredCapabilities(checkType string, config map[string]any) []string {
 
 	if checkerdef.CheckType(checkType) == checkerdef.CheckTypeBrowser {
 		required = append(required, regions.CapabilityBrowser)
+	}
+
+	if checkerdef.CheckType(checkType) == checkerdef.CheckTypeICMP {
+		required = append(required, regions.CapabilityICMP)
 	}
 
 	if err := validateIPVersionConfig(checkType, config); err != nil {
