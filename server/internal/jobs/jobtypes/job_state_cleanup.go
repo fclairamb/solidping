@@ -210,7 +210,8 @@ const reportSweepBatch = 500
 // (filestorage.GroupTypeReports) older than app.feedback_retention_days, row
 // and blob (spec 2026-10-29-01). Anyone can upload one through the anonymous
 // report endpoint, and the GitHub issue only links it for a while, so without
-// this the store only grows. A retention of 0 or less keeps them forever.
+// this the store only grows. It covers screenshots only: topic-bearing files in
+// the same group (website crawl reports) are never listed. A retention of 0 or less keeps them forever.
 // Best-effort, like the other sweeps.
 func sweepExpiredReportFiles(ctx context.Context, jctx *jobdef.JobContext) {
 	if jctx.AppConfig == nil || jctx.AppConfig.App.FeedbackRetentionDays <= 0 {
