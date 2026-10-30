@@ -64,6 +64,37 @@ describe("applyConfirmRegistrationHandoff", () => {
     expect(target).toEqual({ to: "/no-org" });
   });
 
+  // fclairamb/solidping-business#35: a sign-up started by an MCP client
+  // resumes the pending authorization after the email confirmation.
+  describe("pending MCP authorization", () => {
+    const BASE = "/d";
+    const authorize = "/api/v1/oauth/authorize?client_id=acme-client&state=s1";
+
+    it("goes through org creation for an org-less account", () => {
+      const target = applyConfirmRegistrationHandoff(
+        { accessToken: "at-1", returnTo: authorize },
+        BASE,
+      );
+      expect(target).toEqual({ to: "/no-org", search: { returnTo: authorize } });
+    });
+
+    it("resumes it straight away when the account already has an org", () => {
+      const target = applyConfirmRegistrationHandoff(
+        { accessToken: "at-1", organization: { uid: "org-1", slug: "acme" }, returnTo: authorize },
+        BASE,
+      );
+      expect(target).toEqual({ href: authorize });
+    });
+
+    it("ignores anything that is not a resumable flow", () => {
+      for (const returnTo of ["https://evil.example/api/v1/oauth/authorize", "//evil.example", `${BASE}/orgs/acme`]) {
+        expect(applyConfirmRegistrationHandoff({ accessToken: "at-1", returnTo }, BASE)).toEqual({
+          to: "/no-org",
+        });
+      }
+    });
+  });
+
   // The regression this spec (2026-08-29-06) exists for: the backend's
   // zero-org confirm-registration branch used to omit accessToken
   // entirely, and this function forwarded `undefined` straight to

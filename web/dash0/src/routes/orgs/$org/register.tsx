@@ -17,14 +17,28 @@ import { FormHoneypot } from "@/components/auth/form-honeypot";
 import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";
 import { clearSignupAttribution, readSignupAttribution } from "@/lib/attribution";
 import { browserTimezone } from "@/lib/languages";
+import { DASH_BASE } from "@/lib/base-path";
+import { orgCreationReturnTo } from "@/lib/login-destination";
 
 export const Route = createFileRoute("/orgs/$org/register")({
+  // `returnTo` is the flow the visitor was on before choosing to create an
+  // account: an MCP client's pending OAuth authorize request or the CLI's
+  // device approval (fclairamb/solidping-business#35), forwarded by the login
+  // page's "Create an account" link. Only those survive (orgCreationReturnTo).
+  // It is sent with the sign-up, because the confirmation link opens in a new
+  // tab from an email, and handed to the provider buttons. Absent keys are
+  // omitted so a plain <Link> to this route needs no `search`.
+  validateSearch: (search: Record<string, unknown>): { returnTo?: string } => {
+    const returnTo = orgCreationReturnTo(search.returnTo, DASH_BASE);
+    return returnTo ? { returnTo } : {};
+  },
   component: RegisterPage,
 });
 
 function RegisterPage() {
   const { t, i18n } = useTranslation(["auth", "common"]);
   const { org } = Route.useParams();
+  const { returnTo } = Route.useSearch();
   const register = useRegister();
   const { data: providersData } = useProviders();
   // Fetched when the form renders and sent back with it (auth.form_guard).
@@ -67,6 +81,8 @@ function RegisterPage() {
         timezone: browserTimezone(),
         formTicket: ticket?.ticket,
         website: honeypot || undefined,
+        // Resumed after the email confirmation (see validateSearch).
+        returnTo,
       });
       // Handed over; a second account from this tab must not inherit it.
       clearSignupAttribution();
@@ -101,7 +117,7 @@ function RegisterPage() {
             <Link
               to="/orgs/$org/login"
               params={{ org }}
-              search={{ session_expired: false, returnTo: undefined }}
+              search={{ session_expired: false, returnTo }}
               className="text-primary underline-offset-4 hover:underline text-sm"
               data-testid="register-success-back-to-login"
             >
@@ -158,6 +174,7 @@ function RegisterPage() {
             org={org}
             providers={providersData?.providers}
             disabled={register.isPending}
+            returnTo={returnTo}
             testIdPrefix="register"
           />
 
@@ -226,7 +243,7 @@ function RegisterPage() {
             <Link
               to="/orgs/$org/login"
               params={{ org }}
-              search={{ session_expired: false, returnTo: undefined }}
+              search={{ session_expired: false, returnTo }}
               className="text-primary underline-offset-4 hover:underline"
               data-testid="register-sign-in-link"
             >

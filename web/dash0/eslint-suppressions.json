@@ -486,7 +486,7 @@
   },
   "src/routes/orgs/$org/login.tsx": {
     "testid-local/require-testid-on-interactive": {
-      "count": 3
+      "count": 2
     }
   },
   "src/routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.index.tsx": {

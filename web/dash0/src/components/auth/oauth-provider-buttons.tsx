@@ -16,8 +16,9 @@ export interface OAuthProviderButtonsProps {
   disabled?: boolean;
   /**
    * The deep link captured on the way into /login, forwarded so the provider
-   * round-trip lands back on it. /register omits it: a visitor creating an
-   * account was not bounced off a protected page.
+   * round-trip lands back on it. /register passes only a pending MCP
+   * authorization or device approval (orgCreationReturnTo): a first-time
+   * provider sign-in creates the account, then resumes it.
    */
   returnTo?: string;
   /** Namespaces the `data-testid`s so the two pages stay distinguishable. */

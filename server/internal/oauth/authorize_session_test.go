@@ -78,14 +78,40 @@ func setupConsentFixture(t *testing.T) *consentFixture {
 	imper, err := authSvc.Impersonate(ctx, admin.UID, user.UID, "acme", auth.Context{})
 	r.NoError(err)
 
+	// No org at all: a brand-new account.
+	newcomer := models.NewUser("bob@acme.com")
+	r.NoError(dbService.CreateUser(ctx, newcomer))
+
+	orgless, err := authSvc.GenerateMCPAccessToken(ctx, newcomer.UID, "", nil, "", time.Hour, "", "")
+	r.NoError(err)
+
+	// A session naming an org its holder has left: one still belongs to
+	// another org, the other to none.
+	other := models.NewOrganization("acme-other", "Acme other")
+	r.NoError(dbService.CreateOrganization(ctx, other))
+
+	leaver := models.NewUser("carol@acme.com")
+	r.NoError(dbService.CreateUser(ctx, leaver))
+	r.NoError(dbService.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(other.UID, leaver.UID, models.MemberRoleUser)))
+
+	staleWithOrg, err := authSvc.GenerateMCPAccessToken(ctx, leaver.UID, "acme", nil, "", time.Hour, "", "")
+	r.NoError(err)
+
+	staleNoOrg, err := authSvc.GenerateMCPAccessToken(ctx, newcomer.UID, "acme", nil, "", time.Hour, "", "")
+	r.NoError(err)
+
 	return &consentFixture{
 		handler: NewHandler(svc, cfg),
 		client:  client,
 		tokens: map[string]string{
-			"session":       session,
-			"mcp-read":      mcpRead,
-			"pat":           pat.Token,
-			"impersonation": imper.AccessToken,
+			"orgless":        orgless,
+			"stale-with-org": staleWithOrg,
+			"stale-no-org":   staleNoOrg,
+			"session":        session,
+			"mcp-read":       mcpRead,
+			"pat":            pat.Token,
+			"impersonation":  imper.AccessToken,
 		},
 	}
 }
@@ -170,4 +196,76 @@ func TestAuthorizeBouncesNonSessionCredentialsToLogin(t *testing.T) {
 	require.NoError(t, f.handler.Authorize(rec, req))
 	require.Equal(t, http.StatusFound, rec.Code)
 	require.NotContains(t, rec.Header().Get("Location"), "/login")
+}
+
+// A session with no usable org (fclairamb/solidping-business#35) has no org
+// to bind a grant to. A user with no org at all is sent to the org-creation
+// page carrying the authorize request (which resumes it), never to the
+// "/orgs//oauth/consent" dead end; one whose session names an org they left
+// but who belongs to another signs in again.
+func TestAuthorizeWithoutUsableOrg(t *testing.T) {
+	t.Parallel()
+
+	f := setupConsentFixture(t)
+	authorizeURI := PathAuthorize + "?" + f.params().Encode()
+
+	for _, tc := range []struct {
+		token    string
+		wantPath string
+	}{
+		{"orgless", config.DashboardBasePath + "/no-org"},
+		{"stale-no-org", config.DashboardBasePath + "/no-org"},
+		{"stale-with-org", config.DashboardBasePath + "/login"},
+		// Positive control.
+		{"session", config.DashboardBasePath + "/orgs/acme/oauth/consent"},
+	} {
+		t.Run(tc.token, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, authorizeURI, http.NoBody)
+			req.Header.Set("Authorization", "Bearer "+f.tokens[tc.token])
+
+			rec := httptest.NewRecorder()
+			r.NoError(f.handler.Authorize(rec, req))
+			r.Equal(http.StatusFound, rec.Code, rec.Body.String())
+
+			location := rec.Header().Get("Location")
+			r.NotContains(location, "/orgs//")
+
+			dest, err := url.Parse(location)
+			r.NoError(err)
+			r.Equal(tc.wantPath, dest.Path, location)
+
+			if tc.token != "session" {
+				r.Equal(authorizeURI, dest.Query().Get("returnTo"))
+			}
+		})
+	}
+}
+
+// Approving without a usable org is refused with a clean 403, never a 500,
+// and mints no code.
+func TestApproveAuthorizeWithoutUsableOrg(t *testing.T) {
+	t.Parallel()
+
+	f := setupConsentFixture(t)
+
+	for _, tok := range []string{"orgless", "stale-no-org", "stale-with-org"} {
+		t.Run(tok, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, PathAuthorize,
+				strings.NewReader(f.params().Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("Authorization", "Bearer "+f.tokens[tok])
+
+			rec := httptest.NewRecorder()
+			r.NoError(f.handler.ApproveAuthorize(rec, req))
+			r.Equal(http.StatusForbidden, rec.Code, rec.Body.String())
+			r.Contains(rec.Body.String(), "FORBIDDEN")
+			r.Empty(rec.Header().Get("Location"), "no code may be minted")
+		})
+	}
 }

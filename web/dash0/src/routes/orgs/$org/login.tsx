@@ -899,7 +899,14 @@ function LoginPage() {
               <Link
                 to="/orgs/$org/register"
                 params={{ org }}
+                // A pending MCP authorization survives the detour through
+                // sign-up (fclairamb/solidping-business#35).
+                search={() => {
+                  const pending = orgCreationReturnTo(returnTo, BASE_PATH);
+                  return pending ? { returnTo: pending } : {};
+                }}
                 className="text-primary underline-offset-4 hover:underline"
+                data-testid="login-create-account-link"
               >
                 {t("createOne")}
               </Link>

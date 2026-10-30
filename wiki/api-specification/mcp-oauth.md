@@ -68,9 +68,16 @@ absent, redirects to `/d/login?returnTo=…` and back. Validates `client_id`, `r
 `scope ⊆ {mcp, mcp:read}`, and `resource` (must equal the MCP resource). On success redirects to the
 dashboard consent screen (`/d/orgs/:org/oauth/consent`).
 
+The consent org is the session's org, checked against a live membership (super admins bypass). A
+session with no usable org (a brand-new account, or one naming an org the user left) is redirected:
+to `/d/no-org?returnTo=<this request>` when the user has no org at all (the org-creation form
+resumes the request, `orgCreationReturnTo`), otherwise back through `/d/login?returnTo=…`. A
+password sign-up started from that login page carries the request through `POST /auth/register`
+`returnTo` and the email confirmation (fclairamb/solidping-business#35).
+
 ### POST /api/v1/oauth/authorize
-Consent decision. Re-validates the request, requires a session, and reads `decision` (`approve` /
-`deny`). On approve, mints a single-use, short-TTL authorization code bound to
+Consent decision. Re-validates the request, requires a session scoped to an org the user belongs
+to (`403 FORBIDDEN` otherwise), and reads `decision` (`approve` / `deny`). On approve, mints a single-use, short-TTL authorization code bound to
 client→redirect→PKCE-challenge→resource→scope→user/org and redirects to the client's `redirect_uri`
 with `code` + `state`. On deny, redirects with `error=access_denied`.
 

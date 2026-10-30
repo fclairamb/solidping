@@ -26,6 +26,13 @@ language and IANA zone. They become the account's starting `preferences` at
 confirmation. Lenient: `fr-FR` is stored as `fr`, an unsupported language or an
 unknown zone is dropped, never a `400`.
 
+`returnTo` (optional) is the flow the sign-up started from, resumed after the
+confirmation: a pending `/api/v1/oauth/authorize?…` request (MCP client) or the
+`/d/device?…` approval (CLI). It is stored in the pending registration, since
+the confirmation link opens in a new tab, and returned by
+`confirm-registration`. Any other value (absolute or protocol-relative URL,
+other path) is dropped silently (`pendingFlowReturnTo`).
+
 **Anti-enumeration (spec 2026-09-25-30):** always answers `200` with the same
 `{ message }` body whether or not the email is already registered. An
 already-registered email creates no pending registration and sends no email —
@@ -35,7 +42,9 @@ to test whether an email has an account. Callers must not key on a distinct
 `request-password-reset` below, which was already uniform-success).
 
 ### POST /api/v1/auth/confirm-registration
-Confirm a registration via email token. Returns access token.
+Confirm a registration via email token. Returns access token, and the
+registration's `returnTo` when it had one (the dashboard resumes it, through
+`/no-org` when the new account has no org).
 
 ### POST /api/v1/auth/request-password-reset
 Request a password reset email.

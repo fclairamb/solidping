@@ -459,6 +459,10 @@ type LoginResponse struct {
 	LoginAction   LoginAction           `json:"loginAction,omitempty"`
 	Requires2FA   bool                  `json:"requires2Fa,omitempty"`
 	TempToken     string                `json:"tempToken,omitempty"`
+	// ReturnTo is the pending flow (MCP OAuth authorize request or device
+	// approval) a registration confirmation resumes; see pendingFlowReturnTo.
+	// Set only by ConfirmRegistration.
+	ReturnTo string `json:"returnTo,omitempty"`
 }
 
 // TwoFAClaims represents JWT claims for the temporary 2FA token.
@@ -2484,6 +2488,12 @@ type RegisterRequest struct {
 	// lenient: an unsupported value is dropped, never refused.
 	Locale   string `json:"locale,omitempty"`
 	Timezone string `json:"timezone,omitempty"`
+	// ReturnTo is the flow the sign-up started from, resumed after the email
+	// confirmation: an MCP client's pending OAuth authorize request or the
+	// CLI's device approval. The confirmation link opens in a new tab, so it
+	// travels in the pending entry. Optional; anything pendingFlowReturnTo
+	// refuses is dropped silently.
+	ReturnTo string `json:"returnTo,omitempty"`
 	// FormGuardFields carries the form ticket and the honeypot (form_guard.go).
 	FormGuardFields
 	// ClientIP is the caller's address (trusted-proxy resolution), set by the
@@ -2667,6 +2677,10 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		(*stateValue)[keyPreferences] = prefs
 	}
 
+	if returnTo := pendingFlowReturnTo(req.ReturnTo); returnTo != "" {
+		(*stateValue)[keyReturnTo] = returnTo
+	}
+
 	ttl := registrationTTL
 
 	if err := s.db.SetStateEntry(ctx, nil, registrationKeyPrefix+req.Email, stateValue, &ttl); err != nil {
@@ -2730,6 +2744,10 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	regEmail, _ := val["email"].(string)
 	regName, _ := val[keyName].(string)
 	regHash, _ := val["passwordHash"].(string)
+	// Re-checked on the way out: an entry written by an older deploy, or by
+	// anything but Register, must not turn the confirmation into a redirect.
+	regReturnTo, _ := val[keyReturnTo].(string)
+	regReturnTo = pendingFlowReturnTo(regReturnTo)
 
 	if regEmail == "" || regHash == "" {
 		return nil, ErrRegistrationExpired
@@ -2782,7 +2800,14 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		// to create an org.
 		authContext := contextFromRequestMeta(ctx, Context{})
 
-		return s.completeLogin(ctx, user, nil, "", LoginActionNoOrg, nil, AuthMethodRegistration, authContext)
+		resp, loginErr := s.completeLogin(ctx, user, nil, "", LoginActionNoOrg, nil, AuthMethodRegistration, authContext)
+		if loginErr != nil {
+			return nil, loginErr
+		}
+
+		resp.ReturnTo = regReturnTo
+
+		return resp, nil
 	}
 
 	// Get the first org
@@ -2827,6 +2852,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		TokenType:    tokenTypeBearer,
 		User:         newUserInfo(user, role),
 		Organization: newOrganizationInfo(org),
+		ReturnTo:     regReturnTo,
 	}, nil
 }
 
