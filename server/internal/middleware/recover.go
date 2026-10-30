@@ -7,8 +7,7 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"github.com/getsentry/sentry-go"
-
+	"github.com/fclairamb/solidping/server/internal/errorreport"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
@@ -62,12 +61,7 @@ func Recoverer(next httpx.HandlerFunc) httpx.HandlerFunc {
 
 			stack := debug.Stack()
 
-			hub := sentry.GetHubFromContext(req.Context())
-			if hub == nil {
-				hub = sentry.CurrentHub()
-			}
-
-			hub.RecoverWithContext(req.Context(), panicValue)
+			errorreport.RecoverOnRequest(req, panicValue, stack)
 
 			slog.ErrorContext(req.Context(), "panic serving HTTP request",
 				"method", req.Method,

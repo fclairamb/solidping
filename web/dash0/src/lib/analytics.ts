@@ -192,6 +192,8 @@ interface PostHogLike {
   reset: () => void;
   capture: (event: string, properties?: Record<string, unknown>) => void;
   captureException: (error: unknown, properties?: Record<string, unknown>) => void;
+  get_session_id?: () => string;
+  get_distinct_id?: () => string;
 }
 
 let client: PostHogLike | null = null;
@@ -435,6 +437,22 @@ export function captureException(error: unknown, properties?: Record<string, unk
   if (!client) return;
   rememberExplicitException(error);
   client.captureException(error, properties ?? {});
+}
+
+/**
+ * Headers that let the server link one of its own errors (5xx, panic) to this
+ * PostHog session replay. Empty when analytics is off, so the API client works
+ * unchanged without posthog-js. Callers must only attach them to same-origin
+ * requests.
+ */
+export function getAnalyticsRequestHeaders(): Record<string, string> {
+  if (!client) return {};
+  const headers: Record<string, string> = {};
+  const sessionId = client.get_session_id?.();
+  const distinct = client.get_distinct_id?.();
+  if (sessionId) headers["X-POSTHOG-SESSION-ID"] = sessionId;
+  if (distinct) headers["X-POSTHOG-DISTINCT-ID"] = distinct;
+  return headers;
 }
 
 /** Test seam: forgets any loaded client. Used by unit tests only. */
