@@ -1083,10 +1083,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicConfigResponse"
 
+  /api/v1/auth/form-ticket:
+    get:
+      tags: [Authentication]
+      summary: Get a form ticket for the sign-up or password-reset form
+      description: |
+        Returns a signed, time-stamped, single-use ticket to send back as
+        `formTicket` with `POST /auth/register` or
+        `POST /auth/request-password-reset`. When the form guard is enabled
+        (`SP_AUTH_FORM_GUARD_ENABLED`, default `true`), a submission without a
+        valid ticket, with a ticket younger than `minAgeMs`, with a reused
+        ticket or with a non-empty `website` honeypot answers exactly like a
+        success and sends no email. A client that is not a browser fetches the
+        ticket first and waits `minAgeMs` before submitting (the `sp` CLI does).
+      operationId: getFormTicket
+      parameters:
+        - name: form
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [register, password-reset]
+      responses:
+        "200":
+          description: A fresh form ticket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FormTicketResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
   /api/v1/auth/register:
     post:
       tags: [Authentication]
       summary: Self-service account registration
+      description: |
+        Answers the same `200` whether a confirmation email is sent or not:
+        an already-registered email, a submission dropped by the form guard
+        (see `GET /auth/form-ticket`) and an address over its hourly email
+        budget (`SP_AUTH_FORM_GUARD_PER_EMAIL_PER_HOUR`) all look like a
+        success. Only the per-IP budget (`SP_AUTH_FORM_GUARD_PER_IP_PER_HOUR`)
+        answers `429`.
       operationId: register
       requestBody:
         required: true
@@ -1103,6 +1141,8 @@ paths:
                 $ref: "#/components/schemas/MessageResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
   /api/v1/auth/confirm-registration:
     post:
@@ -11247,6 +11287,28 @@ components:
           type: string
           description: The browser's IANA zone. Optional; an unknown zone is ignored.
           example: Europe/Paris
+        formTicket:
+          type: string
+          description: Ticket from `GET /auth/form-ticket?form=register`.
+        website:
+          type: string
+          description: Honeypot. Must be absent or empty.
+
+    FormTicketResponse:
+      type: object
+      required: [ticket, minAgeMs, expiresAt]
+      properties:
+        ticket:
+          type: string
+          description: Signed, single-use ticket to send back as `formTicket`.
+        minAgeMs:
+          type: integer
+          format: int64
+          description: How old the ticket must be, in milliseconds, when the form is submitted.
+          example: 3000
+        expiresAt:
+          type: string
+          format: date-time
 
     ConfirmRegistrationRequest:
       type: object
@@ -11263,6 +11325,12 @@ components:
         email:
           type: string
           format: email
+        formTicket:
+          type: string
+          description: Ticket from `GET /auth/form-ticket?form=password-reset`.
+        website:
+          type: string
+          description: Honeypot. Must be absent or empty.
 
     ResetPasswordRequest:
       type: object

@@ -679,6 +679,8 @@ func (h *Handler) Register(writer http.ResponseWriter, req *http.Request) error 
 		})
 	}
 
+	regReq.ClientIP = h.trustedClientIP(req)
+
 	resp, err := h.svc.Register(req.Context(), regReq)
 	if err != nil {
 		return h.handleRegistrationError(writer, req, err)
@@ -729,7 +731,9 @@ func (h *Handler) RequestPasswordReset(writer http.ResponseWriter, req *http.Req
 		})
 	}
 
-	resp, err := h.svc.RequestPasswordReset(req.Context(), resetReq, base.ExtractRemoteAddr(req))
+	// The trusted-proxy resolution, never a raw X-Forwarded-For: a client
+	// could otherwise mint a fresh IP budget per request.
+	resp, err := h.svc.RequestPasswordReset(req.Context(), resetReq, h.trustedClientIP(req))
 	if err != nil {
 		if errors.Is(err, ErrRateLimited) {
 			return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
@@ -1296,9 +1300,37 @@ func (h *Handler) handleRegistrationError(writer http.ResponseWriter, request *h
 	case errors.Is(err, ErrInvalidCredentials):
 		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			err.Error(), err)
+	case errors.Is(err, ErrRateLimited):
+		return h.WriteErrorErr(writer, request, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+			"Too many registration attempts, please try again later", err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
+}
+
+// FormTicket handles GET /api/v1/auth/form-ticket?form=register|password-reset:
+// the signed, time-stamped ticket the sign-up and password-reset forms send
+// back (form_guard.go). Public: it grants nothing, it only proves the form was
+// rendered a few seconds before it was submitted.
+func (h *Handler) FormTicket(writer http.ResponseWriter, req *http.Request) error {
+	form := req.URL.Query().Get("form")
+
+	resp, err := h.svc.IssueFormTicket(form)
+	if err != nil {
+		if errors.Is(err, ErrUnknownForm) {
+			return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+				{Name: "form", Message: "Must be one of: " + FormRegister + ", " + FormPasswordReset},
+			})
+		}
+
+		return h.WriteInternalError(writer, req, err)
+	}
+
+	// A ticket is single-use and time-stamped: no cache may hand it to
+	// another visitor or replay an old one.
+	writer.Header().Set("Cache-Control", "no-store")
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
 // handleInvitationError handles errors from invitation endpoints.

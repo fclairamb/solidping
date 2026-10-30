@@ -11,7 +11,9 @@ import { cn } from "@/lib/utils";
 import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { ApiError } from "@/api/client";
-import { useRequestPasswordReset } from "@/api/hooks";
+import { useFormTicket, useRequestPasswordReset } from "@/api/hooks";
+import { FormHoneypot } from "@/components/auth/form-honeypot";
+import { waitForFormTicket } from "@/lib/form-ticket";
 
 export const Route = createFileRoute("/forgot-password")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -24,9 +26,13 @@ function ForgotPasswordPage() {
   const { t } = useTranslation("auth");
   const { email: emailParam } = Route.useSearch();
   const [email, setEmail] = useState(emailParam ?? "");
+  const [honeypot, setHoneypot] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestReset = useRequestPasswordReset();
+  const formTicket = useFormTicket("password-reset");
+  const [waitingForTicket, setWaitingForTicket] = useState(false);
+  const pending = requestReset.isPending || waitingForTicket;
 
   // Anti-enumeration is the *server's* job — it returns 200 for both valid
   // and invalid emails. Real network / 429 / 500 failures must surface so
@@ -35,7 +41,31 @@ function ForgotPasswordPage() {
     e.preventDefault();
     setError(null);
     try {
-      await requestReset.mutateAsync({ email });
+      // The email often arrives pre-filled from the login page, so a real
+      // visitor can submit within the ticket's minimum age: wait it out
+      // rather than be dropped (see lib/form-ticket.ts). Without a ticket
+      // (its fetch failed) the request goes as is; the server decides.
+      let ticket = formTicket.data;
+      let fetchedAt = formTicket.dataUpdatedAt;
+      setWaitingForTicket(true);
+      try {
+        // A submit that beats the ticket fetch waits for it.
+        if (!ticket && formTicket.isPending) {
+          const refetched = await formTicket.refetch();
+          ticket = refetched.data;
+          fetchedAt = refetched.dataUpdatedAt;
+        }
+        if (ticket) {
+          await waitForFormTicket(ticket.minAgeMs, fetchedAt);
+        }
+      } finally {
+        setWaitingForTicket(false);
+      }
+      await requestReset.mutateAsync({
+        email,
+        formTicket: ticket?.ticket,
+        website: honeypot || undefined,
+      });
       setSubmitted(true);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -66,17 +96,24 @@ function ForgotPasswordPage() {
         <CardContent>
           {submitted ? (
             <div className="text-center space-y-4">
-              <p className="text-muted-foreground">{t("resetLinkSent")}</p>
+              <p className="text-muted-foreground" data-testid="forgot-password-sent">
+                {t("resetLinkSent")}
+              </p>
               <Link
                 to="/login"
                 search={{ returnTo: undefined }}
                 className="text-primary underline-offset-4 hover:underline text-sm"
+                data-testid="forgot-password-sent-back-to-login"
               >
                 {t("backToLogin")}
               </Link>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form
+              onSubmit={handleSubmit}
+              className="relative space-y-4"
+              data-testid="forgot-password-form"
+            >
               {error && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
@@ -91,15 +128,18 @@ function ForgotPasswordPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  disabled={requestReset.isPending}
+                  disabled={pending}
+                  data-testid="forgot-password-email"
                 />
               </div>
+              <FormHoneypot value={honeypot} onChange={setHoneypot} />
               <Button
                 type="submit"
                 className="w-full"
-                disabled={requestReset.isPending}
+                disabled={pending}
+                data-testid="forgot-password-submit"
               >
-                {requestReset.isPending ? (
+                {pending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     {t("sendingResetLink")}
@@ -113,6 +153,7 @@ function ForgotPasswordPage() {
                   to="/login"
                   search={{ returnTo: undefined }}
                   className="text-sm text-muted-foreground hover:underline"
+                  data-testid="forgot-password-back-to-login"
                 >
                   {t("backToLogin")}
                 </Link>

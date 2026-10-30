@@ -1535,6 +1535,10 @@ type AuthConfig struct {
 	// the seeded password stays the public default with must_change_password.
 	// Env: SP_ADMIN_EMAIL (or SP_AUTH_ADMIN_EMAIL), bound in applyAuthEnv.
 	AdminEmail string `koanf:"admin_email"`
+	// FormGuard protects the public sign-up and password-reset forms from
+	// bots that use them to email third parties (form ticket, honeypot,
+	// per-IP and per-email budgets). See FormGuardConfig.
+	FormGuard FormGuardConfig `koanf:"form_guard"`
 }
 
 // PasswordConfig selects the password-hashing algorithm and its cost
@@ -2255,6 +2259,7 @@ func Load() (*Config, error) {
 			// Super-admin impersonation is on by default (spec 2026-09-29-03);
 			// auth.impersonation_enabled=false is the kill switch.
 			ImpersonationEnabled: true,
+			FormGuard:            DefaultFormGuardConfig(),
 			WebAuthn: WebAuthnConfig{
 				Enabled:       true,
 				RPDisplayName: "SolidPing",
@@ -2506,6 +2511,7 @@ func Load() (*Config, error) {
 	applyCheckersEnv(&cfg.Checkers)
 	applyAgentEnv(&cfg.Agent)
 	applyAuthEnv(&cfg.Auth)
+	applyFormGuardEnv(&cfg.Auth.FormGuard, cfg.RunMode)
 	applyPasswordHashingEnv(&cfg.Auth.Password)
 	applyFileStorageEnv(&cfg.FileStorage)
 	applyWebPushEnv(&cfg.WebPush)

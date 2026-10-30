@@ -93,6 +93,7 @@ func manualReaderEnvVars() []string {
 	out := append(manualReaderServerEnvVars(), manualReaderPlatformEnvVars()...)
 	out = append(out, manualReaderHeartbeatEnvVars()...)
 	out = append(out, manualReaderAgentEnvVars()...)
+	out = append(out, manualReaderFormGuardEnvVars()...)
 
 	return append(out,
 		// applyEgressEnv: egress.allow_private_targets is snake_case, so
@@ -111,6 +112,18 @@ func manualReaderEnvVars() []string {
 		// metrics.scrape.token, not prometheus.scrape_token).
 		EnvMetricsScrapeToken,
 	)
+}
+
+// manualReaderFormGuardEnvVars covers applyFormGuardEnv: every auth.form_guard
+// key is snake_case, so koanf's env loader can never reach any of them.
+func manualReaderFormGuardEnvVars() []string {
+	return []string{
+		EnvFormGuardEnabled,
+		EnvFormGuardMinFillTime,
+		EnvFormGuardTicketTTL,
+		EnvFormGuardPerIPPerHour,
+		EnvFormGuardPerEmailPerHour,
+	}
 }
 
 // manualReaderACMEEnvVars covers applyACMEEnv (acme.enabled / acme.email are

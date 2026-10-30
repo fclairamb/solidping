@@ -12,7 +12,8 @@ import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
 import { ApiError } from "@/api/client";
-import { useProviders, useRegister } from "@/api/hooks";
+import { useFormTicket, useProviders, useRegister } from "@/api/hooks";
+import { FormHoneypot } from "@/components/auth/form-honeypot";
 import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";
 import { clearSignupAttribution, readSignupAttribution } from "@/lib/attribution";
 import { browserTimezone } from "@/lib/languages";
@@ -26,7 +27,12 @@ function RegisterPage() {
   const { org } = Route.useParams();
   const register = useRegister();
   const { data: providersData } = useProviders();
+  // Fetched when the form renders and sent back with it (auth.form_guard).
+  // Unlike the password-reset form, sign-up never waits for the ticket to
+  // age: no human fills the three fields in 3 s (see lib/form-ticket.ts).
+  const formTicket = useFormTicket("register");
 
+  const [honeypot, setHoneypot] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -43,6 +49,10 @@ function RegisterPage() {
     }
 
     try {
+      // A submit that beats the ticket fetch waits for it rather than go
+      // without one (the server would drop it silently).
+      const ticket =
+        formTicket.data ?? (formTicket.isPending ? (await formTicket.refetch()).data : undefined);
       await register.mutateAsync({
         name: name || undefined,
         email,
@@ -55,6 +65,8 @@ function RegisterPage() {
         // timezone, so the confirmation email is already in them.
         locale: i18n.resolvedLanguage,
         timezone: browserTimezone(),
+        formTicket: ticket?.ticket,
+        website: honeypot || undefined,
       });
       // Handed over; a second account from this tab must not inherit it.
       clearSignupAttribution();
@@ -91,6 +103,7 @@ function RegisterPage() {
               params={{ org }}
               search={{ session_expired: false, returnTo: undefined }}
               className="text-primary underline-offset-4 hover:underline text-sm"
+              data-testid="register-success-back-to-login"
             >
               {t("auth:backToLogin")}
             </Link>
@@ -148,7 +161,7 @@ function RegisterPage() {
             testIdPrefix="register"
           />
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="relative space-y-4" data-testid="register-form">
             <div className="space-y-2">
               <Label htmlFor="name">{t("auth:nameOptional")}</Label>
               <Input
@@ -158,6 +171,7 @@ function RegisterPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 disabled={register.isPending}
+                data-testid="register-name"
               />
             </div>
 
@@ -171,6 +185,7 @@ function RegisterPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={register.isPending}
+                data-testid="register-email"
               />
             </div>
 
@@ -183,13 +198,17 @@ function RegisterPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={register.isPending}
+                data-testid="register-password"
               />
             </div>
+
+            <FormHoneypot value={honeypot} onChange={setHoneypot} />
 
             <Button
               type="submit"
               className="w-full"
               disabled={register.isPending}
+              data-testid="register-submit"
             >
               {register.isPending ? (
                 <>
@@ -209,6 +228,7 @@ function RegisterPage() {
               params={{ org }}
               search={{ session_expired: false, returnTo: undefined }}
               className="text-primary underline-offset-4 hover:underline"
+              data-testid="register-sign-in-link"
             >
               {t("auth:signIn")}
             </Link>

@@ -2484,6 +2484,11 @@ type RegisterRequest struct {
 	// lenient: an unsupported value is dropped, never refused.
 	Locale   string `json:"locale,omitempty"`
 	Timezone string `json:"timezone,omitempty"`
+	// FormGuardFields carries the form ticket and the honeypot (form_guard.go).
+	FormGuardFields
+	// ClientIP is the caller's address (trusted-proxy resolution), set by the
+	// handler for the per-IP budget. Never read from the body.
+	ClientIP string `json:"-"`
 }
 
 // RegisterResponse contains the response after registration.
@@ -2542,6 +2547,38 @@ var registerSuccessResponse = &RegisterResponse{Message: "Check your email to co
 // response latency doesn't itself leak which one ran (spec 2026-09-25-30).
 const registerAntiEnumFiller = "solidping-registration-timing-filler-0000"
 
+// validateRegistration holds Register's hard rejections, the ones a real
+// visitor needs to read: registration disabled, email outside the allowed
+// pattern, password too short.
+func (s *Service) validateRegistration(email, password string) error {
+	// Check if registration is enabled. Read the LIVE value: the
+	// registration_email_pattern is applied by the systemconfig overlay AFTER
+	// this Service was constructed, so the frozen s.cfg copy is stale (it would
+	// report "disabled" even when an operator enabled registration via env or
+	// the system-parameter API). This mirrors how auth.Handler reads it live.
+	pattern := s.fullCfg.Auth.RegistrationEmailPattern
+	if pattern == "" {
+		return ErrRegistrationDisabled
+	}
+
+	// Validate email against pattern
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return fmt.Errorf("invalid registration email pattern: %w", err)
+	}
+
+	if !re.MatchString(email) {
+		return ErrEmailNotAllowed
+	}
+
+	// Validate password
+	if len(password) < minPasswordLength {
+		return fmt.Errorf("%w: password must be at least %d characters", ErrInvalidCredentials, minPasswordLength)
+	}
+
+	return nil
+}
+
 // Register creates a pending registration entry and sends a confirmation
 // email — unless the email is already registered, in which case it silently
 // no-ops (no pending entry, no email) but still returns registerSuccessResponse,
@@ -2553,29 +2590,25 @@ const registerAntiEnumFiller = "solidping-registration-timing-filler-0000"
 //
 //nolint:gocritic // req is the decoded wire shape, passed by value like every request of this service
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
-	// Check if registration is enabled. Read the LIVE value: the
-	// registration_email_pattern is applied by the systemconfig overlay AFTER
-	// this Service was constructed, so the frozen s.cfg copy is stale (it would
-	// report "disabled" even when an operator enabled registration via env or
-	// the system-parameter API). This mirrors how auth.Handler reads it live.
-	pattern := s.fullCfg.Auth.RegistrationEmailPattern
-	if pattern == "" {
-		return nil, ErrRegistrationDisabled
+	if err := s.validateRegistration(req.Email, req.Password); err != nil {
+		return nil, err
 	}
 
-	// Validate email against pattern
-	re, err := regexp.Compile(pattern)
+	// Form guard: past the hard rejections above (which a real visitor needs
+	// to read), a submission the guard drops gets the exact success answer
+	// and no email, with the same filler hash as the taken-email branch so
+	// the response time does not tell the bot either.
+	reason, err := s.screenFormSubmission(ctx, FormRegister, req.FormGuardFields, req.ClientIP, req.Email)
 	if err != nil {
-		return nil, fmt.Errorf("invalid registration email pattern: %w", err)
+		return nil, err
 	}
 
-	if !re.MatchString(req.Email) {
-		return nil, ErrEmailNotAllowed
-	}
+	if reason != "" {
+		if _, hashErr := passwords.Hash(registerAntiEnumFiller); hashErr != nil {
+			return nil, fmt.Errorf("failed to hash password: %w", hashErr)
+		}
 
-	// Validate password
-	if len(req.Password) < minPasswordLength {
-		return nil, fmt.Errorf("%w: password must be at least %d characters", ErrInvalidCredentials, minPasswordLength)
+		return registerSuccessResponse, nil
 	}
 
 	// Check if email is already taken
@@ -2871,6 +2904,8 @@ func (s *Service) autoJoinMatchingOrgs(ctx context.Context, userUID, userEmail s
 // RequestPasswordResetRequest contains the password reset request data.
 type RequestPasswordResetRequest struct {
 	Email string `json:"email"`
+	// FormGuardFields carries the form ticket and the honeypot (form_guard.go).
+	FormGuardFields
 }
 
 // RequestPasswordResetResponse contains the password reset request response.
@@ -2889,6 +2924,33 @@ type ResetPasswordResponse struct {
 	Message string `json:"message"`
 }
 
+// screenPasswordReset runs the checks a reset request passes before any user
+// lookup: the per-minute IP limit, then the form guard (hourly per-IP budget,
+// ticket and honeypot, per-email budget). drop means "answer like a success
+// and send nothing"; only the IP limits surface, as ErrRateLimited.
+func (s *Service) screenPasswordReset(
+	ctx context.Context, req RequestPasswordResetRequest, remoteAddr string,
+) (bool, error) {
+	// Per-IP rate limit. We always check this first so abusers paying no
+	// attention to the success-shaped response also can't drive load on
+	// the user lookup or state-entry write.
+	if remoteAddr != "" {
+		exceeded, err := s.bumpResetIPCounter(ctx, remoteAddr)
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to track password-reset IP counter", "error", err)
+		} else if exceeded {
+			return false, ErrRateLimited
+		}
+	}
+
+	reason, err := s.screenFormSubmission(ctx, FormPasswordReset, req.FormGuardFields, remoteAddr, req.Email)
+	if err != nil {
+		return false, err
+	}
+
+	return reason != "", nil
+}
+
 // RequestPasswordReset creates a password reset token and sends a reset email.
 // Always returns success to the caller (anti-enumeration); the only error
 // path the handler must surface is ErrRateLimited so it can map to 429.
@@ -2903,16 +2965,11 @@ func (s *Service) RequestPasswordReset(
 		Message: "If an account exists with that email, a reset link has been sent.",
 	}
 
-	// Per-IP rate limit. We always check this first so abusers paying no
-	// attention to the success-shaped response also can't drive load on
-	// the user lookup or state-entry write.
-	if remoteAddr != "" {
-		exceeded, err := s.bumpResetIPCounter(ctx, remoteAddr)
-		if err != nil {
-			slog.WarnContext(ctx, "Failed to track password-reset IP counter", "error", err)
-		} else if exceeded {
-			return nil, ErrRateLimited
-		}
+	switch drop, err := s.screenPasswordReset(ctx, req, remoteAddr); {
+	case err != nil:
+		return nil, err
+	case drop:
+		return successMsg, nil
 	}
 
 	// Look up user by email — return success even if not found (anti-enumeration)

@@ -801,6 +801,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuth := api.NewGroup("/auth")
 	rootAuth.POST("/login", authHandler.Login)
 	rootAuth.POST("/refresh", authHandler.Refresh)
+	// Signed, time-stamped ticket the sign-up and password-reset forms send
+	// back, so a bot that posts a second after the page loads is dropped
+	// without being told (auth.form_guard).
+	rootAuth.GET("/form-ticket", authHandler.FormTicket)
 	rootAuth.POST("/register", authHandler.Register)
 	rootAuth.POST("/confirm-registration", authHandler.ConfirmRegistration)
 	rootAuth.POST("/request-password-reset", authHandler.RequestPasswordReset)
@@ -2813,22 +2817,7 @@ func (s *Server) corsMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 }
 
 func (s *Server) loggingMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
-	return func(w http.ResponseWriter, req *http.Request) error {
-		start := time.Now()
-		err := next(w, req)
-		duration := time.Since(start)
-
-		attrs := []any{"method", req.Method, "path", req.URL.Path, "duration", duration}
-		// Only a failed request carries an error: "error=<nil>" on every
-		// healthcheck reads as a failure in a colored terminal.
-		if err != nil {
-			attrs = append(attrs, "error", err)
-		}
-
-		slog.InfoContext(req.Context(), "HTTP request", attrs...)
-
-		return err
-	}
+	return logRequests(next, func() int { return s.config.Server.RateLimiting.TrustedProxies }, slog.Default)
 }
 
 // HealthResponse represents the health check response.

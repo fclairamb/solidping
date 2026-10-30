@@ -3624,6 +3624,24 @@ func (e GetMemoryParamsGc) Valid() bool {
 	}
 }
 
+// Defines values for GetFormTicketParamsForm.
+const (
+	GetFormTicketParamsFormPasswordReset GetFormTicketParamsForm = "password-reset"
+	GetFormTicketParamsFormRegister      GetFormTicketParamsForm = "register"
+)
+
+// Valid indicates whether the value is a known member of the GetFormTicketParamsForm enum.
+func (e GetFormTicketParamsForm) Valid() bool {
+	switch e {
+	case GetFormTicketParamsFormPasswordReset:
+		return true
+	case GetFormTicketParamsFormRegister:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListChecksParamsInternal.
 const (
 	ListChecksParamsInternalAll   ListChecksParamsInternal = "all"
@@ -6342,6 +6360,19 @@ type FileResponse struct {
 	Uid             openapi_types.UUID `json:"uid"`
 }
 
+// FormTicketResponse defines model for FormTicketResponse.
+type FormTicketResponse struct {
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// MinAgeMs How old the ticket must be, in milliseconds, when the form is submitted.
+	//
+	// Example: 3000
+	MinAgeMs int64 `json:"minAgeMs"`
+
+	// Ticket Signed, single-use ticket to send back as `formTicket`.
+	Ticket string `json:"ticket"`
+}
+
 // GetOrgResultResponse Single-result detail response. Extends OrgResult with all optional `with` fields always populated, plus fallback and neighbor UIDs.
 type GetOrgResultResponse struct {
 	// AvailabilityPct Availability percentage for aggregated periods, derived from successfulChecks / totalChecks × 100 (with=availabilityPct).
@@ -7951,6 +7982,9 @@ type RegionalIssue struct {
 type RegisterRequest struct {
 	Email openapi_types.Email `json:"email"`
 
+	// FormTicket Ticket from `GET /auth/form-ticket?form=register`.
+	FormTicket *string `json:"formTicket,omitempty"`
+
 	// Locale The browser's language, the account's starting email language. Optional and lenient: a full tag is reduced to its language, an unsupported one is ignored.
 	//
 	//
@@ -7963,6 +7997,9 @@ type RegisterRequest struct {
 	//
 	// Example: Europe/Paris
 	Timezone *string `json:"timezone,omitempty"`
+
+	// Website Honeypot. Must be absent or empty.
+	Website *string `json:"website,omitempty"`
 }
 
 // RejectMembershipRequestRequest defines model for RejectMembershipRequestRequest.
@@ -8006,6 +8043,12 @@ type ReportScheduleListResponse struct {
 // RequestPasswordResetRequest defines model for RequestPasswordResetRequest.
 type RequestPasswordResetRequest struct {
 	Email openapi_types.Email `json:"email"`
+
+	// FormTicket Ticket from `GET /auth/form-ticket?form=password-reset`.
+	FormTicket *string `json:"formTicket,omitempty"`
+
+	// Website Honeypot. Must be absent or empty.
+	Website *string `json:"website,omitempty"`
 }
 
 // ResetPasswordRequest defines model for ResetPasswordRequest.
@@ -9659,6 +9702,14 @@ type GetDeviceConsentParams struct {
 	UserCode string `form:"userCode" json:"userCode"`
 }
 
+// GetFormTicketParams defines parameters for GetFormTicket.
+type GetFormTicketParams struct {
+	Form GetFormTicketParamsForm `form:"form" json:"form"`
+}
+
+// GetFormTicketParamsForm defines parameters for GetFormTicket.
+type GetFormTicketParamsForm string
+
 // ListAllTokensParams defines parameters for ListAllTokens.
 type ListAllTokensParams struct {
 	// Type Filter by token type
@@ -11107,6 +11158,20 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/auth/device/token (the `PollDeviceToken` operationId).
 	PollDeviceToken(ctx context.Context, body PollDeviceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetFormTicket Get a form ticket for the sign-up or password-reset form
+	//
+	// Returns a signed, time-stamped, single-use ticket to send back as
+	// `formTicket` with `POST /auth/register` or
+	// `POST /auth/request-password-reset`. When the form guard is enabled
+	// (`SP_AUTH_FORM_GUARD_ENABLED`, default `true`), a submission without a
+	// valid ticket, with a ticket younger than `minAgeMs`, with a reused
+	// ticket or with a non-empty `website` honeypot answers exactly like a
+	// success and sends no email. A client that is not a browser fetches the
+	// ticket first and waits `minAgeMs` before submitting (the `sp` CLI does).
+	//
+	// Corresponds with GET /api/v1/auth/form-ticket (the `GetFormTicket` operationId).
+	GetFormTicket(ctx context.Context, params *GetFormTicketParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ExchangeHandoffCodeWithBody Redeem a federated-login handoff code
 	//
 	// A federated login (Google, GitHub, GitLab, Microsoft, Discord, Slack,
@@ -11286,12 +11351,26 @@ type ClientInterface interface {
 
 	// RegisterWithBody Self-service account registration
 	//
+	// Answers the same `200` whether a confirmation email is sent or not:
+	// an already-registered email, a submission dropped by the form guard
+	// (see `GET /auth/form-ticket`) and an address over its hourly email
+	// budget (`SP_AUTH_FORM_GUARD_PER_EMAIL_PER_HOUR`) all look like a
+	// success. Only the per-IP budget (`SP_AUTH_FORM_GUARD_PER_IP_PER_HOUR`)
+	// answers `429`.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/auth/register (the `Register` operationId).
 	RegisterWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// Register Self-service account registration
+	//
+	// Answers the same `200` whether a confirmation email is sent or not:
+	// an already-registered email, a submission dropped by the form guard
+	// (see `GET /auth/form-ticket`) and an address over its hourly email
+	// budget (`SP_AUTH_FORM_GUARD_PER_EMAIL_PER_HOUR`) all look like a
+	// success. Only the per-IP budget (`SP_AUTH_FORM_GUARD_PER_IP_PER_HOUR`)
+	// answers `429`.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -14415,6 +14494,30 @@ func (c *Client) PollDeviceToken(ctx context.Context, body PollDeviceTokenJSONRe
 	return c.Client.Do(req)
 }
 
+// GetFormTicket Get a form ticket for the sign-up or password-reset form
+//
+// Returns a signed, time-stamped, single-use ticket to send back as
+// `formTicket` with `POST /auth/register` or
+// `POST /auth/request-password-reset`. When the form guard is enabled
+// (`SP_AUTH_FORM_GUARD_ENABLED`, default `true`), a submission without a
+// valid ticket, with a ticket younger than `minAgeMs`, with a reused
+// ticket or with a non-empty `website` honeypot answers exactly like a
+// success and sends no email. A client that is not a browser fetches the
+// ticket first and waits `minAgeMs` before submitting (the `sp` CLI does).
+//
+// Corresponds with GET /api/v1/auth/form-ticket (the `GetFormTicket` operationId).
+func (c *Client) GetFormTicket(ctx context.Context, params *GetFormTicketParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetFormTicketRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ExchangeHandoffCodeWithBody Redeem a federated-login handoff code
 //
 // A federated login (Google, GitHub, GitLab, Microsoft, Discord, Slack,
@@ -14764,6 +14867,13 @@ func (c *Client) RefreshToken(ctx context.Context, body RefreshTokenJSONRequestB
 
 // RegisterWithBody Self-service account registration
 //
+// Answers the same `200` whether a confirmation email is sent or not:
+// an already-registered email, a submission dropped by the form guard
+// (see `GET /auth/form-ticket`) and an address over its hourly email
+// budget (`SP_AUTH_FORM_GUARD_PER_EMAIL_PER_HOUR`) all look like a
+// success. Only the per-IP budget (`SP_AUTH_FORM_GUARD_PER_IP_PER_HOUR`)
+// answers `429`.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/auth/register (the `Register` operationId).
@@ -14780,6 +14890,13 @@ func (c *Client) RegisterWithBody(ctx context.Context, contentType string, body 
 }
 
 // Register Self-service account registration
+//
+// Answers the same `200` whether a confirmation email is sent or not:
+// an already-registered email, a submission dropped by the form guard
+// (see `GET /auth/form-ticket`) and an address over its hourly email
+// budget (`SP_AUTH_FORM_GUARD_PER_EMAIL_PER_HOUR`) all look like a
+// success. Only the per-IP budget (`SP_AUTH_FORM_GUARD_PER_IP_PER_HOUR`)
+// answers `429`.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -21737,6 +21854,56 @@ func NewPollDeviceTokenRequestWithBody(server string, contentType string, body i
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetFormTicketRequest constructs an http.Request for the GetFormTicket method
+func NewGetFormTicketRequest(server string, params *GetFormTicketParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/form-ticket")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "form", params.Form, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -36772,6 +36939,22 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/auth/device/token (the `PollDeviceToken` operationId).
 	PollDeviceTokenWithResponse(ctx context.Context, body PollDeviceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*PollDeviceTokenResult, error)
 
+	// GetFormTicketWithResponse Get a form ticket for the sign-up or password-reset form
+	//
+	// Returns a signed, time-stamped, single-use ticket to send back as
+	// `formTicket` with `POST /auth/register` or
+	// `POST /auth/request-password-reset`. When the form guard is enabled
+	// (`SP_AUTH_FORM_GUARD_ENABLED`, default `true`), a submission without a
+	// valid ticket, with a ticket younger than `minAgeMs`, with a reused
+	// ticket or with a non-empty `website` honeypot answers exactly like a
+	// success and sends no email. A client that is not a browser fetches the
+	// ticket first and waits `minAgeMs` before submitting (the `sp` CLI does).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/auth/form-ticket (the `GetFormTicket` operationId).
+	GetFormTicketWithResponse(ctx context.Context, params *GetFormTicketParams, reqEditors ...RequestEditorFn) (*GetFormTicketResult, error)
+
 	// ExchangeHandoffCodeWithBodyWithResponse Redeem a federated-login handoff code
 	//
 	// A federated login (Google, GitHub, GitLab, Microsoft, Discord, Slack,
@@ -36961,12 +37144,26 @@ type ClientWithResponsesInterface interface {
 
 	// RegisterWithBodyWithResponse Self-service account registration
 	//
+	// Answers the same `200` whether a confirmation email is sent or not:
+	// an already-registered email, a submission dropped by the form guard
+	// (see `GET /auth/form-ticket`) and an address over its hourly email
+	// budget (`SP_AUTH_FORM_GUARD_PER_EMAIL_PER_HOUR`) all look like a
+	// success. Only the per-IP budget (`SP_AUTH_FORM_GUARD_PER_IP_PER_HOUR`)
+	// answers `429`.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/auth/register (the `Register` operationId).
 	RegisterWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RegisterResult, error)
 
 	// RegisterWithResponse Self-service account registration
+	//
+	// Answers the same `200` whether a confirmation email is sent or not:
+	// an already-registered email, a submission dropped by the form guard
+	// (see `GET /auth/form-ticket`) and an address over its hourly email
+	// budget (`SP_AUTH_FORM_GUARD_PER_EMAIL_PER_HOUR`) all look like a
+	// success. Only the per-IP budget (`SP_AUTH_FORM_GUARD_PER_IP_PER_HOUR`)
+	// answers `429`.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -40775,6 +40972,54 @@ func (r PollDeviceTokenResult) ContentType() string {
 	return ""
 }
 
+type GetFormTicketResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *FormTicketResponse
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ValidationError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetFormTicketResult) GetJSON200() *FormTicketResponse {
+	return r.JSON200
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r GetFormTicketResult) GetJSON422() *ValidationError {
+	return r.JSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r GetFormTicketResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetFormTicketResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetFormTicketResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetFormTicketResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ExchangeHandoffCodeResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -41345,6 +41590,8 @@ type RegisterResult struct {
 	JSON200 *MessageResponse
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *ValidationError
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *TooManyRequests
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -41355,6 +41602,11 @@ func (r RegisterResult) GetJSON200() *MessageResponse {
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
 func (r RegisterResult) GetJSON400() *ValidationError {
 	return r.JSON400
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r RegisterResult) GetJSON429() *TooManyRequests {
+	return r.JSON429
 }
 
 // GetBody returns the raw response body bytes
@@ -57749,6 +58001,28 @@ func (c *ClientWithResponses) PollDeviceTokenWithResponse(ctx context.Context, b
 	return ParsePollDeviceTokenResult(rsp)
 }
 
+// GetFormTicketWithResponse Get a form ticket for the sign-up or password-reset form
+//
+// Returns a signed, time-stamped, single-use ticket to send back as
+// `formTicket` with `POST /auth/register` or
+// `POST /auth/request-password-reset`. When the form guard is enabled
+// (`SP_AUTH_FORM_GUARD_ENABLED`, default `true`), a submission without a
+// valid ticket, with a ticket younger than `minAgeMs`, with a reused
+// ticket or with a non-empty `website` honeypot answers exactly like a
+// success and sends no email. A client that is not a browser fetches the
+// ticket first and waits `minAgeMs` before submitting (the `sp` CLI does).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/auth/form-ticket (the `GetFormTicket` operationId).
+func (c *ClientWithResponses) GetFormTicketWithResponse(ctx context.Context, params *GetFormTicketParams, reqEditors ...RequestEditorFn) (*GetFormTicketResult, error) {
+	rsp, err := c.GetFormTicket(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetFormTicketResult(rsp)
+}
+
 // ExchangeHandoffCodeWithBodyWithResponse Redeem a federated-login handoff code
 //
 // A federated login (Google, GitHub, GitLab, Microsoft, Discord, Slack,
@@ -58040,6 +58314,13 @@ func (c *ClientWithResponses) RefreshTokenWithResponse(ctx context.Context, body
 
 // RegisterWithBodyWithResponse Self-service account registration
 //
+// Answers the same `200` whether a confirmation email is sent or not:
+// an already-registered email, a submission dropped by the form guard
+// (see `GET /auth/form-ticket`) and an address over its hourly email
+// budget (`SP_AUTH_FORM_GUARD_PER_EMAIL_PER_HOUR`) all look like a
+// success. Only the per-IP budget (`SP_AUTH_FORM_GUARD_PER_IP_PER_HOUR`)
+// answers `429`.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/auth/register (the `Register` operationId).
@@ -58052,6 +58333,13 @@ func (c *ClientWithResponses) RegisterWithBodyWithResponse(ctx context.Context, 
 }
 
 // RegisterWithResponse Self-service account registration
+//
+// Answers the same `200` whether a confirmation email is sent or not:
+// an already-registered email, a submission dropped by the form guard
+// (see `GET /auth/form-ticket`) and an address over its hourly email
+// budget (`SP_AUTH_FORM_GUARD_PER_EMAIL_PER_HOUR`) all look like a
+// success. Only the per-IP budget (`SP_AUTH_FORM_GUARD_PER_IP_PER_HOUR`)
+// answers `429`.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -63890,6 +64178,39 @@ func ParsePollDeviceTokenResult(rsp *http.Response) (*PollDeviceTokenResult, err
 	return response, nil
 }
 
+// ParseGetFormTicketResult parses an HTTP response from a GetFormTicketWithResponse call
+func ParseGetFormTicketResult(rsp *http.Response) (*GetFormTicketResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetFormTicketResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FormTicketResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseExchangeHandoffCodeResult parses an HTTP response from a ExchangeHandoffCodeWithResponse call
 func ParseExchangeHandoffCodeResult(rsp *http.Response) (*ExchangeHandoffCodeResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -64318,6 +64639,13 @@ func ParseRegisterResult(rsp *http.Response) (*RegisterResult, error) {
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
 
 	}
 

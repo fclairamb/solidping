@@ -125,6 +125,56 @@ func TestCLICoverage_RegisterConfirm(t *testing.T) {
 	r.Equal(newName, user.Name)
 }
 
+// TestCLICoverage_RegisterWithFormGuard drives the form guard through the real
+// router and the generated client, the way `sp auth register` does: fetch a
+// ticket, wait its minAgeMs, send it. The same request without a ticket gets
+// the same 200 and queues no email.
+func TestCLICoverage_RegisterWithFormGuard(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ts := NewTestServerWithConfig(t, func(cfg *config.Config) {
+		withRegistration(cfg)
+		cfg.Auth.FormGuard = config.FormGuardConfig{
+			Enabled:     true,
+			MinFillTime: 300 * time.Millisecond,
+			TicketTTL:   time.Hour,
+		}
+	})
+	ctx := t.Context()
+	apiClient := ts.NewClient()
+
+	register := func(email string, ticket *string) {
+		t.Helper()
+
+		resp, err := apiClient.RegisterWithResponse(ctx, client.RegisterJSONRequestBody{
+			Email:      openapi_types.Email(email),
+			Password:   "registerpass123",
+			FormTicket: ticket,
+		})
+		r.NoError(err)
+		r.Equal(200, resp.StatusCode())
+	}
+
+	register("guard-no-ticket@example.com", nil)
+	r.Empty(registrationConfirmTokenFromQueue(ctx, t, ts, "guard-no-ticket@example.com"),
+		"a submission without a ticket is dropped")
+
+	ticketResp, err := apiClient.GetFormTicketWithResponse(ctx, &client.GetFormTicketParams{
+		Form: client.GetFormTicketParamsFormRegister,
+	})
+	r.NoError(err)
+	r.Equal(200, ticketResp.StatusCode())
+	r.NotNil(ticketResp.JSON200)
+	r.Equal(int64(300), ticketResp.JSON200.MinAgeMs)
+
+	time.Sleep(time.Duration(ticketResp.JSON200.MinAgeMs)*time.Millisecond + 100*time.Millisecond)
+
+	register("guard-ticket@example.com", &ticketResp.JSON200.Ticket)
+	r.NotEmpty(registrationConfirmTokenFromQueue(ctx, t, ts, "guard-ticket@example.com"),
+		"positive control: a submission with an aged ticket is sent")
+}
+
 // TestCLICoverage_PasswordReset covers requestPasswordReset (existing user) and
 // resetPassword (token seeded the way the request flow persists it).
 func TestCLICoverage_PasswordReset(t *testing.T) {

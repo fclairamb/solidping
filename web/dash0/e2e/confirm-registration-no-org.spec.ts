@@ -37,10 +37,13 @@ test.describe("Confirm registration with no matching org", () => {
     // lives in login.spec.ts's "Register: public route stays public".
     await page.goto("orgs/test/register");
 
-    await page.locator("#name").fill("Confirm No Org User");
-    await page.locator("#email").fill(email);
-    await page.locator("#password").fill(password);
-    await page.getByRole("button", { name: "Create account" }).click();
+    // The form sends back the form ticket it fetched on render; in test run
+    // mode the server still requires it (only its minimum age is 0), so the
+    // email job asserted below also proves the dashboard sends a valid one.
+    await page.getByTestId("register-name").fill("Confirm No Org User");
+    await page.getByTestId("register-email").fill(email);
+    await page.getByTestId("register-password").fill(password);
+    await page.getByTestId("register-submit").click();
 
     // "Check your email" success screen renders the address back.
     await expect(page.getByTestId("register-confirmation-message")).toContainText(email, { timeout: 10000 });
@@ -79,6 +82,15 @@ test.describe("Confirm registration with no matching org", () => {
     expect(token).toBeTruthy();
 
     await page.goto(`confirm-registration/${token}`);
+
+    // The token is spent on a click, never on load: mail link scanners open
+    // the link before the human does. Loading the page alone must leave the
+    // visitor on the confirm button, not on the dashboard.
+    const confirmButton = page.getByTestId("confirm-registration-button");
+    await expect(confirmButton).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    expect(page.url()).toContain("/confirm-registration/");
+    await confirmButton.click();
 
     // The "confirmed" screen flashes, then the route auto-navigates after
     // 1.5s — wait for the real destination, not the flash.

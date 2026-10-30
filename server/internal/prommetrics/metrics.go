@@ -28,6 +28,8 @@ const (
 	labelDetector     = "detector"
 	labelSeverity     = "severity"
 	labelProduct      = "product"
+	labelForm         = "form"
+	labelReason       = "reason"
 )
 
 // Lane label values for CheckLaneClaims (spec 2026-07-01-03).
@@ -722,7 +724,23 @@ var (
 		},
 	)
 
+	// AuthFormDropped counts submissions of the public sign-up and
+	// password-reset forms that the form guard refused, by form ("register",
+	// "password-reset") and reason ("honeypot", "missing_ticket",
+	// "invalid_ticket", "expired_ticket", "wrong_form", "too_fast",
+	// "replayed_ticket", "ip_rate_limited", "email_rate_limited"). Every
+	// reason but ip_rate_limited answers like a success, so this counter is
+	// the only place a bot campaign shows up.
+	AuthFormDropped = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_auth_form_dropped_total",
+			Help: "Sign-up and password-reset submissions refused by the form guard, by form and reason",
+		},
+		[]string{labelForm, labelReason},
+	)
+
 	allCollectors = []prometheus.Collector{
+		AuthFormDropped,
 		SupportCapture, SupportMirror, SupportDMUnavailable, OrgProviderLinksDangling,
 		OperatorNotice,
 		WatchdogAnomalies, WatchdogStrandedJobs, WatchdogStaleIncidents,

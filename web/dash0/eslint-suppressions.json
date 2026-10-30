@@ -334,16 +334,6 @@
       "count": 1
     }
   },
-  "src/routes/confirm-registration.$token.tsx": {
-    "testid-local/require-testid-on-interactive": {
-      "count": 1
-    }
-  },
-  "src/routes/forgot-password.tsx": {
-    "testid-local/require-testid-on-interactive": {
-      "count": 5
-    }
-  },
   "src/routes/invite.$token.tsx": {
     "testid-local/require-testid-on-interactive": {
       "count": 6
@@ -612,11 +602,6 @@
   "src/routes/orgs/$org/organization.usage.tsx": {
     "testid-local/require-testid-on-interactive": {
       "count": 2
-    }
-  },
-  "src/routes/orgs/$org/register.tsx": {
-    "testid-local/require-testid-on-interactive": {
-      "count": 6
     }
   },
   "src/routes/orgs/$org/server.aggregation.tsx": {

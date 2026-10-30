@@ -121,6 +121,32 @@ Over budget, the form still answers `202` but sends nothing. Subscribing an addr
 
 A confirm link expires after 7 days. The cleanup job then deletes the unconfirmed subscription.
 
+## Sign-Up and Password-Reset Forms Are Guarded
+
+The sign-up and forgot-password forms make the server email an address an anonymous visitor typed. Bots abuse such forms to flood a third party's mailbox with sign-up confirmations from many sites at once ("subscription bombing"), which also hurts your mail domain's reputation. Both forms are guarded:
+
+- **Form ticket.** When the form renders, the dashboard fetches a signed, single-use ticket stamped with the time (`GET /api/v1/auth/form-ticket`) and sends it back with the form. A submission without a valid ticket, with a ticket used before, or less than 3 seconds after the form was shown, is dropped. A person needs longer than that to type a name, an email and a password.
+- **Honeypot.** The forms carry an extra field nobody can see or reach with the keyboard, which screen readers and password managers skip. A submission that fills it is dropped.
+- **Budgets.** Each form accepts a limited number of submissions per client IP and sends a limited number of emails to one address, per hour.
+
+A dropped submission, and one over the per-address budget, answers exactly like a success and sends no email, so a bot learns nothing. Only the per-IP budget answers `429`. Every drop is logged at `INFO` (`Form submission dropped by the form guard`, with the form, the reason and the client IP) and counted in the `solidping_auth_form_dropped_total{form,reason}` metric.
+
+| Variable | Default | Description |
+|---|---|---|
+| `SP_AUTH_FORM_GUARD_ENABLED` | `true` | Require the form ticket and an empty honeypot |
+| `SP_AUTH_FORM_GUARD_MIN_FILL_TIME` | `3s` | Minimum age of the ticket when the form is submitted (`0s` in test run mode unless set) |
+| `SP_AUTH_FORM_GUARD_TICKET_TTL` | `24h` | How long a ticket stays usable |
+| `SP_AUTH_FORM_GUARD_PER_IP_PER_HOUR` | `12` | Submissions of each form one client IP can make |
+| `SP_AUTH_FORM_GUARD_PER_EMAIL_PER_HOUR` | `3` | Emails each form can send to one address |
+
+`0` turns a budget off. The client IP follows `SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES`, like the rate limiter. The per-IP budget and the per-address budget apply even when the ticket check is off.
+
+A script that calls `POST /api/v1/auth/register` or `POST /api/v1/auth/request-password-reset` directly must fetch a ticket first, wait `minAgeMs`, and send it as `formTicket`. The `sp auth register` and `sp auth request-password-reset` commands do this for you.
+
+The emailed confirmation link opens a page with a **Confirm my account** button instead of confirming on load, so a mail security scanner that opens links before you do cannot use up the one-time link.
+
+Every HTTP request is logged with its client IP (same trusted-proxy rule) and user agent, so abuse of a public form can be traced to its source.
+
 ## Super-Admin Impersonation
 
 A super admin can sign in as another user to see exactly what they see: **Server → Users**, then the eye icon on the user's row. It is meant for support and debugging, and it is built so it cannot become an account takeover:

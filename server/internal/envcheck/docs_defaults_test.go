@@ -144,6 +144,19 @@ var docsDefaultAccessors = map[string]func(*config.Config) string{
 	"SP_LDAP_EMAIL_ATTRIBUTE": fixed(config.LDAPDefaultEmailAttribute),
 	"SP_LDAP_NAME_ATTRIBUTE":  fixed(config.LDAPDefaultNameAttribute),
 
+	"SP_AUTH_FORM_GUARD_ENABLED": boolOf(func(c *config.Config) bool { return c.Auth.FormGuard.Enabled }),
+	"SP_AUTH_FORM_GUARD_MIN_FILL_TIME": durOf(func(c *config.Config) time.Duration {
+		return c.Auth.FormGuard.MinFillTime
+	}),
+	"SP_AUTH_FORM_GUARD_TICKET_TTL": durOf(func(c *config.Config) time.Duration {
+		return c.Auth.FormGuard.TicketTTL
+	}),
+	"SP_AUTH_FORM_GUARD_PER_IP_PER_HOUR": intOf(func(c *config.Config) int {
+		return c.Auth.FormGuard.PerIPPerHour
+	}),
+	"SP_AUTH_FORM_GUARD_PER_EMAIL_PER_HOUR": intOf(func(c *config.Config) int {
+		return c.Auth.FormGuard.PerEmailPerHour
+	}),
 	"SP_STATUS_SUBSCRIBERS_CONFIRM_PER_RECIPIENT_PER_HOUR": intOf(func(c *config.Config) int {
 		return c.StatusSubscribers.ConfirmPerRecipientPerHour
 	}),

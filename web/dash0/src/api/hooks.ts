@@ -4103,10 +4103,45 @@ export function useProviders() {
   });
 }
 
+// Form guard (auth.form_guard): the sign-up and password-reset forms send
+// back a signed, time-stamped, single-use ticket fetched when they render,
+// plus an empty honeypot field. The server silently drops a submission
+// without them, so a bot posting a second after the page loads is told
+// nothing.
+export type GuardedForm = "register" | "password-reset";
+
+export interface FormTicket {
+  ticket: string;
+  minAgeMs: number;
+  expiresAt: string;
+}
+
+export interface FormGuardFields {
+  formTicket?: string;
+  website?: string;
+}
+
+export function useFormTicket(form: GuardedForm) {
+  return useQuery({
+    queryKey: ["form-ticket", form],
+    queryFn: () =>
+      apiFetch<FormTicket>(`/api/v1/auth/form-ticket?form=${form}`, {
+        skipAuth: true,
+      }),
+    // A ticket is single-use: never share one across mounts, never refetch
+    // one behind the form's back (a fresh ticket would be too young).
+    staleTime: Infinity,
+    gcTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
 // Registration hooks
 export function useRegister() {
   return useMutation({
-    mutationFn: (data: {
+    mutationFn: (data: FormGuardFields & {
       name?: string;
       email: string;
       password: string;
@@ -4157,7 +4192,7 @@ export function useConfirmRegistration() {
 
 export function useRequestPasswordReset() {
   return useMutation({
-    mutationFn: (data: { email: string }) =>
+    mutationFn: (data: FormGuardFields & { email: string }) =>
       apiFetch<{ message: string }>("/api/v1/auth/request-password-reset", {
         method: "POST",
         body: JSON.stringify(data),

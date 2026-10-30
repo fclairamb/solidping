@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -70,6 +71,15 @@ func authRegisterAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
+	apiClient, err := publicAPIClient(cliCtx)
+	if err != nil {
+		return cliCtx.HandleError("Failed to create client", err)
+	}
+
+	// Fetched before the prompts, so the time spent typing counts toward the
+	// ticket's minimum age.
+	ticket := fetchFormTicket(ctx, apiClient, client.GetFormTicketParamsFormRegister)
+
 	email := cmd.String(flagEmail)
 	if email == "" {
 		if email, err = promptForInput("Email: "); err != nil {
@@ -85,16 +95,16 @@ func authRegisterAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	body := client.RegisterJSONRequestBody{
-		Email:    openapi_types.Email(email),
-		Password: password,
+		Email:      openapi_types.Email(email),
+		Password:   password,
+		FormTicket: ticket.value,
 	}
 	if name := cmd.String(flagName); name != "" {
 		body.Name = &name
 	}
 
-	apiClient, err := publicAPIClient(cliCtx)
-	if err != nil {
-		return cliCtx.HandleError("Failed to create client", err)
+	if err = ticket.wait(ctx); err != nil {
+		return err
 	}
 
 	resp, err := apiClient.RegisterWithResponse(ctx, body)
@@ -113,6 +123,54 @@ func authRegisterAction(ctx context.Context, cmd *cli.Command) error {
 	output.PrintSuccess(os.Stdout, derefMessage(resp.JSON200.Message, "Registration submitted"))
 
 	return nil
+}
+
+// formTicketMargin is added to the server's minimum ticket age, so a clock
+// tick between the server's stamp and ours never drops the submission.
+const formTicketMargin = 250 * time.Millisecond
+
+// pendingFormTicket is a form ticket and the moment it becomes old enough to
+// submit. The zero value (no ticket) submits right away without one.
+type pendingFormTicket struct {
+	value   *string
+	readyAt time.Time
+}
+
+// fetchFormTicket gets the ticket the server's form guard expects with a
+// sign-up or password-reset submission. A server that predates the endpoint
+// (or any failure) yields no ticket: the request is still sent, as before.
+func fetchFormTicket(
+	ctx context.Context, apiClient *client.SolidPingClient, form client.GetFormTicketParamsForm,
+) pendingFormTicket {
+	resp, err := apiClient.GetFormTicketWithResponse(ctx, &client.GetFormTicketParams{Form: form})
+	if err != nil || resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return pendingFormTicket{}
+	}
+
+	ticket := resp.JSON200.Ticket
+
+	return pendingFormTicket{
+		value:   &ticket,
+		readyAt: time.Now().Add(time.Duration(resp.JSON200.MinAgeMs)*time.Millisecond + formTicketMargin),
+	}
+}
+
+// wait blocks until the ticket is old enough to be accepted.
+func (p pendingFormTicket) wait(ctx context.Context) error {
+	delay := time.Until(p.readyAt)
+	if p.value == nil || delay <= 0 {
+		return nil
+	}
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // authConfirmRegistrationAction handles `sp auth confirm-registration <token>`.
@@ -166,6 +224,13 @@ func authRequestPasswordResetAction(ctx context.Context, cmd *cli.Command) error
 		return err
 	}
 
+	apiClient, err := publicAPIClient(cliCtx)
+	if err != nil {
+		return cliCtx.HandleError("Failed to create client", err)
+	}
+
+	ticket := fetchFormTicket(ctx, apiClient, client.GetFormTicketParamsFormPasswordReset)
+
 	email := cmd.String(flagEmail)
 	if email == "" {
 		if email, err = promptForInput("Email: "); err != nil {
@@ -173,13 +238,13 @@ func authRequestPasswordResetAction(ctx context.Context, cmd *cli.Command) error
 		}
 	}
 
-	apiClient, err := publicAPIClient(cliCtx)
-	if err != nil {
-		return cliCtx.HandleError("Failed to create client", err)
+	if err = ticket.wait(ctx); err != nil {
+		return err
 	}
 
 	resp, err := apiClient.RequestPasswordResetWithResponse(ctx, client.RequestPasswordResetJSONRequestBody{
-		Email: openapi_types.Email(email),
+		Email:      openapi_types.Email(email),
+		FormTicket: ticket.value,
 	})
 	if err != nil {
 		return cliCtx.HandleError("Failed to request password reset", err)
