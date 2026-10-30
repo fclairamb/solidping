@@ -393,6 +393,12 @@ func TestGetUserInfoZeroOrgSession(t *testing.T) {
 		user.PasswordHash = &hash
 		r.NoError(dbSvc.CreateUser(ctx, user))
 
+		// A pending membership request keeps them org-less: without one they
+		// would get an automatic personal org (spec 2026-10-30-04).
+		other := models.NewOrganization("zero-org-target", "Target")
+		r.NoError(dbSvc.CreateOrganization(ctx, other))
+		r.NoError(dbSvc.CreateMembershipRequest(ctx, models.NewMembershipRequest(other.UID, user.UID, nil)))
+
 		// Real login, no org preference → LoginActionNoOrg, access token with
 		// an empty OrgSlug claim and NO refresh token (by design).
 		loginResp, err := svc.Login(ctx, "", "zero-org@example.com", "testpass1234", Context{})

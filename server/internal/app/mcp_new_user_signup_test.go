@@ -21,11 +21,12 @@ import (
 // authorize endpoint (fclairamb/solidping-business#35):
 //
 //	authorize (no session) → login bounce → register with returnTo → confirm
-//	(returnTo comes back) → authorize (org-less session) → /no-org bounce →
-//	create org → authorize → consent → approve → token → MCP create_check.
+//	(returnTo comes back, personal org created) → authorize → consent →
+//	approve → token → MCP create_check.
 //
 // Before the fix the register call dropped returnTo, and the org-less
-// session was sent to "/d/orgs//oauth/consent".
+// session was sent to "/d/orgs//oauth/consent". The /no-org bounce for a user
+// who really has no org is still covered by the oauth authorize tests.
 //
 //nolint:maintidx // deliberate single linear walk-through of the whole flow
 func TestMCPConnectBrandNewPasswordUser(t *testing.T) {
@@ -95,34 +96,16 @@ func TestMCPConnectBrandNewPasswordUser(t *testing.T) {
 	}
 	r.NoError(json.Unmarshal(res.body, &confirmed))
 	r.NotEmpty(confirmed.AccessToken)
-	r.Nil(confirmed.Organization, "precondition: the new account has no org")
+	// A personal org was created at confirmation (spec 2026-10-30-04): the
+	// newcomer is not stranded on /no-org, and the pending authorization is
+	// still handed back to resume.
+	r.NotNil(confirmed.Organization, "the new account gets a personal org")
 	r.Equal(authorizePath, confirmed.ReturnTo)
 
-	// --- Authorize with the org-less session: the org-creation page, not
-	// "/orgs//oauth/consent".
-	res = env.get(t, confirmed.ReturnTo, map[string]string{"Authorization": "Bearer " + confirmed.AccessToken})
-	r.Equal(http.StatusFound, res.status, "authorize (no org): %s", res.body)
-	noOrgLoc, err := url.Parse(res.header.Get("Location"))
-	r.NoError(err)
-	r.Equal(config.DashboardBasePath+"/no-org", noOrgLoc.Path)
-	r.Equal(authorizePath, noOrgLoc.Query().Get("returnTo"))
-
-	// --- Approving without an org is refused cleanly.
-	res = env.postForm(t, "/api/v1/oauth/authorize", confirmed.AccessToken, authQuery)
-	r.Equal(http.StatusForbidden, res.status, "approve (no org): %s", res.body)
-	r.Contains(string(res.body), "FORBIDDEN")
-
-	// --- Create the first org: the response carries a session scoped to it.
-	res = env.postJSON(t, "/api/v1/orgs", confirmed.AccessToken, `{"name":"Acme"}`)
-	r.Equal(http.StatusCreated, res.status, "create org: %s", res.body)
-
-	var org struct {
-		Slug        string `json:"slug"`
-		AccessToken string `json:"accessToken"`
-	}
-	r.NoError(json.Unmarshal(res.body, &org))
-	r.NotEmpty(org.Slug)
-	r.NotEmpty(org.AccessToken)
+	org := struct {
+		Slug        string
+		AccessToken string
+	}{Slug: confirmed.Organization.Slug, AccessToken: confirmed.AccessToken}
 
 	// --- Resume authorize: now the consent screen of the new org.
 	res = env.get(t, authorizePath, map[string]string{"Authorization": "Bearer " + org.AccessToken})

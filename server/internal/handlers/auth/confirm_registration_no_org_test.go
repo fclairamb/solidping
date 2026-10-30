@@ -2,8 +2,11 @@ package auth
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
 // TestConfirmRegistrationNoOrgMintsSession is the regression test for spec
@@ -31,6 +34,15 @@ func TestConfirmRegistrationNoOrgMintsSession(t *testing.T) {
 	f.svc.fullCfg.Auth.RegistrationEmailPattern = ".*"
 
 	const email = "no-org-registrant@acme.com"
+
+	// A pending invitation elsewhere keeps the user org-less: it is the reason
+	// they must not get an automatic personal org (spec 2026-10-30-04).
+	ttl := time.Hour
+	inviteKey := inviteKeyPrefix + "tok-no-org"
+	r.NoError(f.db.SetStateEntry(ctx, &f.org.UID, inviteKey, &models.JSONMap{
+		keyEmail: email, "role": string(models.MemberRoleUser),
+	}, &ttl))
+	r.NoError(f.db.SetStateEntry(ctx, nil, inviteKey, &models.JSONMap{keyInviteOrgUID: f.org.UID}, &ttl))
 
 	_, err := f.svc.Register(ctx, RegisterRequest{
 		Name: "No Org User", Email: email, Password: "supersecret123",

@@ -1018,6 +1018,15 @@ func (s *Service) resolveOrgPreference(
 		return nil, "", "", nil, err
 	}
 
+	// Nothing to join and nothing pending: sign the user into an org of their
+	// own instead of /no-org (spec 2026-10-30-04).
+	if len(members) == 0 {
+		if personal := s.ensurePersonalOrg(ctx, user); personal != nil {
+			return personal.Organization, string(personal.Role), LoginActionDefault,
+				buildOrgSummaries([]*models.OrganizationMember{personal}), nil
+		}
+	}
+
 	orgSummaries := buildOrgSummaries(members)
 
 	// If orgSlug provided, try to use it
@@ -2788,6 +2797,12 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	// Auto-join matching orgs
 	s.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
 
+	// Nothing to join: give the newcomer an org of their own rather than
+	// stranding them on /no-org (spec 2026-10-30-04).
+	if joined, _ := s.db.ListMembersByUser(ctx, user.UID); len(joined) == 0 {
+		s.ensurePersonalOrg(ctx, user)
+	}
+
 	// Try to resolve an org for login response
 	members, _ := s.db.ListMembersByUser(ctx, user.UID)
 	if len(members) == 0 {
@@ -2858,71 +2873,34 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 
 // autoJoinMatchingOrgs checks org-scoped registration email patterns and auto-joins matching orgs.
 func (s *Service) autoJoinMatchingOrgs(ctx context.Context, userUID, userEmail string) {
-	params, err := s.db.ListOrgParametersByKey(ctx, "registration.email_pattern")
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to list org email patterns", "error", err)
-
-		return
-	}
-
-	for _, param := range params {
-		if param.OrganizationUID == nil {
-			continue
-		}
-
-		patternVal, ok := param.Value["value"].(string)
-		if !ok || patternVal == "" {
-			continue
-		}
-
-		// Defensive: leftover unsafe patterns (set before validation existed)
-		// must be skipped so they cannot adopt every signup. Log and move on
-		// rather than blowing up the registration confirmation path.
-		if err := validateAutoJoinRegex(patternVal); err != nil {
-			slog.WarnContext(
-				ctx, "skipping unsafe auto-join regex",
-				"orgUID", *param.OrganizationUID, "error", err,
-			)
-
-			continue
-		}
-
-		re, err := regexp.Compile(patternVal)
-		if err != nil {
-			continue
-		}
-
-		if !re.MatchString(userEmail) {
-			continue
-		}
-
+	for _, orgUID := range s.autoJoinOrgUIDs(ctx, userEmail) {
 		// Check if already a member
-		_, err = s.db.GetMemberByUserAndOrg(ctx, userUID, *param.OrganizationUID)
+		_, err := s.db.GetMemberByUserAndOrg(ctx, userUID, orgUID)
 		if err == nil {
 			continue // Already a member
 		}
 
 		// Skip orgs that are at their MaxUsers cap. Logged at INFO so
 		// operators can see why an auto-join didn't happen.
-		if err := s.CheckMembershipSlot(ctx, *param.OrganizationUID); err != nil {
+		if err := s.CheckMembershipSlot(ctx, orgUID); err != nil {
 			slog.InfoContext(ctx, "Skipping SSO auto-join, org at cap",
-				"orgUID", *param.OrganizationUID, "userUID", userUID, "error", err)
+				"orgUID", orgUID, "userUID", userUID, "error", err)
 
 			continue
 		}
 
 		// Create membership
-		member := models.NewOrganizationMember(*param.OrganizationUID, userUID, models.MemberRoleUser)
+		member := models.NewOrganizationMember(orgUID, userUID, models.MemberRoleUser)
 		now := time.Now()
 		member.JoinedAt = &now
 
 		if createErr := s.db.CreateOrganizationMember(ctx, member); createErr != nil {
-			slog.ErrorContext(ctx, "Failed to auto-join org", "error", createErr, "orgUID", *param.OrganizationUID)
+			slog.ErrorContext(ctx, "Failed to auto-join org", "error", createErr, "orgUID", orgUID)
 
 			continue
 		}
 
-		s.recordMemberJoined(ctx, *param.OrganizationUID, userUID, userEmail,
+		s.recordMemberJoined(ctx, orgUID, userUID, userEmail,
 			models.MemberRoleUser, joinSourceAutoJoin)
 	}
 }

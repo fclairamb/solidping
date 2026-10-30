@@ -78,5 +78,8 @@
     "andBeforeVowel": "{head} et {last}",
     "or": "{head} ou {last}",
     "orBeforeVowel": "{head} ou {last}"
+  },
+  "personalOrg": {
+    "name": "L'organisation de {firstName}"
   }
 }
