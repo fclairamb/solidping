@@ -2,6 +2,7 @@ package analytics_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -222,4 +223,44 @@ func TestNoopCaptureIsSafeWithEmptyEvent(t *testing.T) {
 	client := analytics.NewNoop()
 	client.Capture(context.Background(), analytics.Event{})
 	require.NoError(t, client.Close(context.Background()))
+}
+
+func TestConfiguredClientCapturesException(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	rec, host := newRecorder(t)
+
+	client := analytics.New(config.PostHogConfig{Enabled: true, Host: host, ProjectAPIKey: "phc_test_key"})
+
+	client.CaptureException(context.Background(), &analytics.Exception{
+		Err:       fmt.Errorf("fetch https://x.example/cb?code=sekret&page=2: %w", io.ErrUnexpectedEOF),
+		Stack:     "frame https://x.example/y?token=hunter2",
+		OrgUID:    "org1",
+		UserUID:   "user1",
+		SessionID: "sess-1",
+		Tags:      map[string]string{"http.route": "/api/v1/x", "empty": ""},
+	})
+	r.NoError(client.Close(context.Background()))
+
+	body := rec.allBodies()
+	r.Contains(body, "$exception")
+	r.Contains(body, "org:org1/user:user1")
+	r.Contains(body, "sess-1")
+	r.Contains(body, "/api/v1/x")
+	r.NotContains(body, `"empty"`)
+	r.NotContains(body, "sekret")
+	r.NotContains(body, "hunter2")
+	r.Contains(body, "page=2")
+}
+
+func TestNoopClientSendsNoException(t *testing.T) {
+	t.Parallel()
+
+	rec, host := newRecorder(t)
+
+	client := analytics.New(config.PostHogConfig{Host: host, ProjectAPIKey: "phc_test_key"})
+	client.CaptureException(context.Background(), &analytics.Exception{Err: io.EOF})
+	require.NoError(t, client.Close(context.Background()))
+	require.Zero(t, rec.count())
 }

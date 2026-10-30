@@ -16,6 +16,14 @@
 // the package-level Capture helper. Call sites therefore never ask "is
 // analytics on" — they just Capture, and the no-op swallows it.
 //
+// # Error tracking
+//
+// Besides product events, the client forwards server faults (5xx responses,
+// recovered panics) to PostHog error tracking as `$exception` events, through
+// CaptureException. This is independent of Sentry: either sink works alone.
+// The message and stack are redacted with the same rules as Sentry (see the
+// scrub package); no request body, header, or query string is ever attached.
+//
 // # Privacy
 //
 // Events are keyed by a pseudonymous distinct id built from the organization
@@ -27,6 +35,7 @@ package analytics
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -34,6 +43,7 @@ import (
 	"github.com/posthog/posthog-go"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/scrub"
 )
 
 // Event names. Deliberately a small, closed set: it is far easier to add an
@@ -69,11 +79,32 @@ type Event struct {
 	Properties map[string]any
 }
 
+// Exception is a server fault reported to PostHog error tracking.
+type Exception struct {
+	// Err is the error to report. Required.
+	Err error
+	// Stack is an optional stack trace, redacted before sending.
+	Stack string
+	// OrgUID and UserUID build the distinct id (see DistinctID).
+	OrgUID  string
+	UserUID string
+	// DistinctID, when non-empty, overrides the id built from OrgUID/UserUID.
+	DistinctID string
+	// SessionID is the PostHog session id the dashboard sent, if any; it links
+	// the exception to the session replay.
+	SessionID string
+	// Tags are low-cardinality facets; empty values are skipped.
+	Tags map[string]string
+}
+
 // Client captures product events.
 type Client interface {
 	// Capture records an event. It must never block the caller and never
 	// return an error to a request path — delivery is best-effort.
 	Capture(ctx context.Context, event Event)
+	// CaptureException records a server fault as a `$exception` event. Same
+	// contract as Capture: non-blocking, best-effort, never an error.
+	CaptureException(ctx context.Context, exc *Exception)
 	// Enabled reports whether this client actually sends anything.
 	Enabled() bool
 	// Close flushes buffered events. Safe to call on a no-op client.
@@ -102,9 +133,10 @@ func DistinctID(orgUID, userUID string) string {
 // touches no socket. This is what every unconfigured deployment gets.
 type noopClient struct{}
 
-func (noopClient) Capture(context.Context, Event) {}
-func (noopClient) Enabled() bool                  { return false }
-func (noopClient) Close(context.Context) error    { return nil }
+func (noopClient) Capture(context.Context, Event)               {}
+func (noopClient) CaptureException(context.Context, *Exception) {}
+func (noopClient) Enabled() bool                                { return false }
+func (noopClient) Close(context.Context) error                  { return nil }
 
 // NewNoop returns the no-op client. Exported for tests and for call sites that
 // want to be explicit about disabling analytics.
@@ -184,6 +216,52 @@ func (c *posthogClient) Capture(ctx context.Context, event Event) {
 	}
 }
 
+// CaptureException enqueues a `$exception` event. Never blocks, never returns
+// an error to the caller.
+func (c *posthogClient) CaptureException(ctx context.Context, exc *Exception) {
+	if exc == nil || exc.Err == nil {
+		return
+	}
+
+	distinctID := exc.DistinctID
+	if distinctID == "" {
+		distinctID = DistinctID(exc.OrgUID, exc.UserUID)
+	}
+
+	props := posthog.NewProperties()
+	for k, v := range exc.Tags {
+		if v != "" {
+			props.Set(k, v)
+		}
+	}
+
+	if exc.OrgUID != "" {
+		props.Set("orgUid", exc.OrgUID)
+	}
+
+	if exc.SessionID != "" {
+		props.Set("$session_id", exc.SessionID)
+	}
+
+	if exc.Stack != "" {
+		props.Set("stack", scrub.Text(exc.Stack))
+	}
+
+	handled := true
+
+	if err := c.client.Enqueue(posthog.Exception{
+		DistinctId: distinctID,
+		Properties: props,
+		ExceptionList: []posthog.ExceptionItem{{
+			Type:      fmt.Sprintf("%T", exc.Err),
+			Value:     scrub.Text(exc.Err.Error()),
+			Mechanism: &posthog.ExceptionMechanism{Handled: &handled},
+		}},
+	}); err != nil {
+		slog.DebugContext(ctx, "analytics: failed to enqueue exception", "error", err)
+	}
+}
+
 // Enabled reports true — a posthogClient only exists when PostHog is active.
 func (c *posthogClient) Enabled() bool { return true }
 
@@ -220,6 +298,12 @@ func Default() Client {
 // use; when analytics is not configured it is a no-op function call.
 func Capture(ctx context.Context, event Event) {
 	Default().Capture(ctx, event)
+}
+
+// CaptureException reports a server fault on the process-wide client; a no-op
+// when PostHog is not configured.
+func CaptureException(ctx context.Context, exc *Exception) {
+	Default().CaptureException(ctx, exc)
 }
 
 // Close flushes the process-wide client. Called on graceful shutdown.

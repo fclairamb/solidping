@@ -164,6 +164,24 @@ replay URLs (for example heatmap data, the `href` of clicked links in
 autocapture, or the URL nested in web vitals) is not
 filtered either. Treat access to the PostHog project accordingly.
 
+## Server errors (error tracking)
+
+When PostHog is active the server also reports its own faults to PostHog error
+tracking, as `$exception` events (`$lib` = `posthog-go`, so they are told apart
+from the dashboard's `web` errors): responses with a 5xx status, and recovered
+panics in the HTTP, check-worker and job-worker paths. An event carries the error
+type, the redacted message, a redacted stack for panics, the HTTP method and
+route pattern (or the check/job type and uid for workers), and the pseudonymous
+distinct id. When the dashboard sent the `X-POSTHOG-SESSION-ID` /
+`X-POSTHOG-DISTINCT-ID` headers, the event carries the session id too, so it
+shows up next to the session replay.
+
+The server never attaches the request body, the `Authorization` / `Cookie`
+headers, the raw path or query string; credential query parameters (`token`,
+`code`, `state`, …) embedded in a message are redacted, with the same rules as
+Sentry. Sentry and PostHog error tracking are independent: use either, both, or
+none.
+
 ## What is never sent
 
 The product events listed above (captured by the server) never carry:

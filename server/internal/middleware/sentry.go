@@ -6,6 +6,7 @@ import (
 
 	"github.com/getsentry/sentry-go"
 
+	"github.com/fclairamb/solidping/server/internal/errorreport"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
@@ -32,7 +33,7 @@ func SentryMiddleware() httpx.Middleware {
 
 			hub.Scope().SetRequest(req)
 
-			ctx := sentry.SetHubOnContext(req.Context(), hub)
+			ctx := errorreport.WithIdentityHolder(sentry.SetHubOnContext(req.Context(), hub))
 
 			return next(writer, req.WithContext(ctx))
 		}
