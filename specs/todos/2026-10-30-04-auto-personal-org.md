@@ -81,3 +81,15 @@ abandoned orgs, and an instance setting.
 ## To verify
 
 - Whether a pending membership request can be queried per user, for step 1.3.
+
+## Implementation notes
+
+- There is no "failed invite" join reason: the invite route never navigates to
+  `/no-org`, so the join card's reasons are `?join=<slug>`, `membershipPending`
+  and existing membership requests only.
+- The Playwright check uses the register-confirm and login flows, because a
+  real Google sign-up cannot be exercised in E2E.
+- A pending device authorization `returnTo` is resolved client-side
+  (`orgCreationReturnTo`) and echoed opaquely by the server; the server-side
+  resume after personal org creation is covered by
+  `TestMCPConnectBrandNewPasswordUser`, so no separate device Go test was added.
