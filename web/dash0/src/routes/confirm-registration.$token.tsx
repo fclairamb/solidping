@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
@@ -19,6 +20,7 @@ function ConfirmRegistrationPage() {
   const { t } = useTranslation("auth");
   const { token } = Route.useParams();
   const navigate = useNavigate();
+  const { refreshUser } = useAuth();
   const confirmRegistration = useConfirmRegistration();
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -47,8 +49,12 @@ function ConfirmRegistrationPage() {
       .then((data) => {
         const target = applyConfirmRegistrationHandoff(data);
         setConfirmed(true);
+        // The auth context validated an empty session when this page
+        // mounted: have it adopt the new one, or an org landing (a personal
+        // org, spec 2026-10-30-04, or an auto-joined org) bounces to login.
+        const adopted = refreshUser().catch(() => {});
         setTimeout(() => {
-          navigate(target);
+          void adopted.then(() => navigate(target));
         }, 1500);
       })
       .catch((err) => {

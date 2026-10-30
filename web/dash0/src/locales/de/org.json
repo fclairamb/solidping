@@ -450,5 +450,14 @@
     "title": "Tarif ändern",
     "redirecting": "Weiterleitung zur Tarifseite...",
     "unavailable": "Nur Organisationsadmins können den Tarif ändern, oder diese Installation hat keine Abrechnung. Fragen Sie einen Admin Ihrer Organisation."
+  },
+  "colleagueHint": {
+    "title": "Ihre Kolleginnen und Kollegen nutzen SolidPing bereits",
+    "description": "Personen von {{domain}} nutzen SolidPing in {{org}}. Bitten Sie um Beitritt, um an ihren Prüfungen mitzuarbeiten.",
+    "request": "Beitritt anfragen",
+    "requesting": "Wird gesendet…",
+    "sent": "Anfrage gesendet. Ein Admin von {{org}} wird sie beantworten.",
+    "dismiss": "Ausblenden",
+    "error": "Die Anfrage konnte nicht gesendet werden. Versuchen Sie es erneut."
   }
 }

@@ -4349,6 +4349,27 @@ export function useMyMembershipRequests() {
   });
 }
 
+/** GET /api/v1/auth/colleague-hint (spec 2026-10-30-04). */
+export interface ColleagueHint {
+  org: { slug: string; name: string } | null;
+  domain?: string;
+  personalOrgSlug?: string;
+}
+
+/**
+ * The one organization the caller's colleagues (same non-webmail domain)
+ * use, for the banner on a personal org's dashboard. `org` is null when there
+ * is nothing to suggest.
+ */
+export function useColleagueHint(enabled = true) {
+  return useQuery({
+    queryKey: ["membership-requests", "colleague-hint"],
+    queryFn: () => apiFetch<ColleagueHint>("/api/v1/auth/colleague-hint"),
+    enabled,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useCancelMembershipRequest() {
   const queryClient = useQueryClient();
   return useMutation({

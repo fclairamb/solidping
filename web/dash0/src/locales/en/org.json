@@ -450,5 +450,14 @@
     "title": "Upgrade your plan",
     "redirecting": "Redirecting you to the plan page...",
     "unavailable": "Only organization admins can change the plan, or this deployment has no billing. Ask an admin of your organization."
+  },
+  "colleagueHint": {
+    "title": "Your colleagues already use SolidPing",
+    "description": "People from {{domain}} use SolidPing in {{org}}. Ask to join it to work on their checks.",
+    "request": "Request to join",
+    "requesting": "Sending…",
+    "sent": "Request sent. An admin of {{org}} will answer it.",
+    "dismiss": "Dismiss",
+    "error": "The request could not be sent. Try again."
   }
 }

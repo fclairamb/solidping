@@ -450,5 +450,14 @@
     "title": "Changer de formule",
     "redirecting": "Redirection vers la page des formules...",
     "unavailable": "Seuls les administrateurs de l'organisation peuvent changer de formule, ou ce déploiement n'a pas de facturation. Demandez à un administrateur de votre organisation."
+  },
+  "colleagueHint": {
+    "title": "Vos collègues utilisent déjà SolidPing",
+    "description": "Des personnes de {{domain}} utilisent SolidPing dans {{org}}. Demandez à la rejoindre pour travailler sur leurs contrôles.",
+    "request": "Demander à rejoindre",
+    "requesting": "Envoi…",
+    "sent": "Demande envoyée. Un administrateur de {{org}} y répondra.",
+    "dismiss": "Masquer",
+    "error": "La demande n'a pas pu être envoyée. Réessayez."
   }
 }

@@ -23,6 +23,12 @@ test.describe("Confirm registration with no matching org", () => {
   test("register -> confirm lands the user on /no-org still authenticated, no bounce to login", async ({
     page,
   }) => {
+    // On SaaS the account gets a personal org instead (spec 2026-10-30-04,
+    // auth.auto_personal_org): auto-personal-org.spec.ts covers that landing.
+    const configResp = await page.request.get(`${API_BASE}/api/v1/config`);
+    const { deploymentMode } = (await configResp.json()) as { deploymentMode?: string };
+    test.skip(deploymentMode === "saas", "SaaS creates a personal org: see auto-personal-org.spec.ts");
+
     const stamp = Date.now();
     const email = `confirm-no-org-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";

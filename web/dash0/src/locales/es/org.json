@@ -450,5 +450,14 @@
     "title": "Mejorar el plan",
     "redirecting": "Redirigiendo a la página de planes...",
     "unavailable": "Solo los administradores de la organización pueden cambiar el plan, o este despliegue no tiene facturación. Pregunta a un administrador de tu organización."
+  },
+  "colleagueHint": {
+    "title": "Tus compañeros ya usan SolidPing",
+    "description": "Personas de {{domain}} usan SolidPing en {{org}}. Pide unirte para trabajar en sus comprobaciones.",
+    "request": "Pedir unirme",
+    "requesting": "Enviando…",
+    "sent": "Solicitud enviada. Un administrador de {{org}} la responderá.",
+    "dismiss": "Ocultar",
+    "error": "No se pudo enviar la solicitud. Inténtalo de nuevo."
   }
 }
