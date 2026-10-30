@@ -777,8 +777,12 @@ type Service interface {
 	ListOnCallScheduleOverrides(
 		ctx context.Context, scheduleUID string, from, until *time.Time,
 	) ([]*models.OnCallScheduleOverride, error)
-	GetOnCallScheduleOverride(ctx context.Context, overrideUID string) (*models.OnCallScheduleOverride, error)
-	DeleteOnCallScheduleOverride(ctx context.Context, overrideUID string) error
+	GetOnCallScheduleOverride(
+		ctx context.Context, scheduleUID, overrideUID string,
+	) (*models.OnCallScheduleOverride, error)
+	// DeleteOnCallScheduleOverride deletes an override of the given schedule and
+	// returns sql.ErrNoRows when the override does not belong to it.
+	DeleteOnCallScheduleOverride(ctx context.Context, scheduleUID, overrideUID string) error
 
 	// Escalation policies (header)
 	CreateEscalationPolicy(ctx context.Context, policy *models.EscalationPolicy) error

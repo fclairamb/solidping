@@ -572,12 +572,12 @@ func (m *mockDBService) ListOnCallScheduleOverrides(
 }
 
 func (m *mockDBService) GetOnCallScheduleOverride(
-	_ context.Context, _ string,
+	_ context.Context, _, _ string,
 ) (*models.OnCallScheduleOverride, error) {
 	return nil, errMockNotImplemented
 }
 
-func (m *mockDBService) DeleteOnCallScheduleOverride(_ context.Context, _ string) error {
+func (m *mockDBService) DeleteOnCallScheduleOverride(_ context.Context, _, _ string) error {
 	return nil
 }
 

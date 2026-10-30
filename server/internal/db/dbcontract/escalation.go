@@ -1,6 +1,7 @@
 package dbcontract
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
@@ -114,9 +115,24 @@ func runOnCall(t *testing.T, fix *fixture) {
 	override.Reason = &reason
 	must.NoError(svc.CreateOnCallScheduleOverride(ctx, override))
 
-	gotOverride, err := svc.GetOnCallScheduleOverride(ctx, override.UID)
+	gotOverride, err := svc.GetOnCallScheduleOverride(ctx, sched.UID, override.UID)
 	must.NoError(err)
 	must.Equal(fix.user.UID, gotOverride.UserUID)
+
+	// An override is only reachable through its own schedule: another
+	// schedule (here of another organization) neither reads nor deletes it.
+	otherOrg := models.NewOrganization("contract-org-other", "Contract Org Other")
+	must.NoError(svc.CreateOrganization(ctx, otherOrg))
+
+	otherSched := models.NewOnCallSchedule(otherOrg.UID, "Other rota", "UTC", models.RotationTypeDaily)
+	must.NoError(svc.CreateOnCallSchedule(ctx, otherSched))
+
+	_, err = svc.GetOnCallScheduleOverride(ctx, otherSched.UID, override.UID)
+	must.ErrorIs(err, sql.ErrNoRows)
+	must.ErrorIs(svc.DeleteOnCallScheduleOverride(ctx, otherSched.UID, override.UID), sql.ErrNoRows)
+
+	_, err = svc.GetOnCallScheduleOverride(ctx, sched.UID, override.UID)
+	must.NoError(err, "a delete through another schedule leaves the override in place")
 
 	from := now.Add(-time.Hour)
 	until := now.Add(2 * time.Hour)
@@ -124,9 +140,11 @@ func runOnCall(t *testing.T, fix *fixture) {
 	must.NoError(err)
 	must.Len(overrides, 1)
 
-	must.NoError(svc.DeleteOnCallScheduleOverride(ctx, override.UID))
-	_, err = svc.GetOnCallScheduleOverride(ctx, override.UID)
-	must.Error(err)
+	must.NoError(svc.DeleteOnCallScheduleOverride(ctx, sched.UID, override.UID))
+	_, err = svc.GetOnCallScheduleOverride(ctx, sched.UID, override.UID)
+	must.ErrorIs(err, sql.ErrNoRows)
+	must.ErrorIs(svc.DeleteOnCallScheduleOverride(ctx, sched.UID, override.UID), sql.ErrNoRows,
+		"deleting a missing override reports it")
 
 	must.NoError(svc.DeleteOnCallSchedule(ctx, sched.UID))
 	_, err = svc.GetOnCallSchedule(ctx, fix.org.UID, sched.UID)
