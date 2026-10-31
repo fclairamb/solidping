@@ -103,7 +103,16 @@ A token is meant for a script, a CI job or the CLI, so it cannot change how your
 
 To do any of that, sign in to the dashboard, or with `sp auth login`. A token can still create another token in its own organization.
 
-Adding a passkey sends you an email, with a link to your account security page: a passkey signs in to every organization of the account and survives a password reset, so one you did not add must not go unnoticed.
+Adding a passkey sends you an email, with a link to your account security page: a passkey signs in to every organization of the account and survives a password reset, so one you did not add must not go unnoticed. Turning on 2FA sends one too.
+
+## Adding a Sign-In Factor Asks Who You Are
+
+Being signed in is not enough to add a way to sign in. Setting up 2FA, adding a passkey or setting a first password asks you to prove it is you again, so someone who got hold of a signed-in session cannot lock you out with their own authenticator, or keep a way in after you reset your password:
+
+- **An account with a password** types its current password. A wrong password answers `401 INVALID_CURRENT_PASSWORD`; the attempts share the budget of the password change form, and past it the answer is `429`.
+- **An account without a password** (it signs in through an identity provider or a passkey) must have signed in within the last 10 minutes. Otherwise the answer is `403 REAUTHENTICATION_REQUIRED` and the dashboard asks you to sign in again. Refreshing a session does not count as signing in.
+
+Over the API, send `currentPassword` in the body of `POST /api/v1/auth/2fa/setup` and `POST /api/v1/auth/passkeys/register/begin`. The setup returns a `setupToken`, valid 10 minutes, that `POST /api/v1/auth/2fa/confirm` needs with the code.
 
 ## Status-Page Subscriptions Are Budgeted
 
