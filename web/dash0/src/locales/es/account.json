@@ -114,9 +114,20 @@
       "disableSubtitle": "Introduce un código de 6 dígitos actual para confirmar.",
       "setupFailed": "No se pudo configurar la autenticación de dos factores. Inténtalo de nuevo.",
       "disableFailed": "No se pudo desactivar la autenticación de dos factores.",
-      "qrAlt": "Código QR para tu aplicación de autenticación"
+      "qrAlt": "Código QR para tu aplicación de autenticación",
+      "setupExpired": "La configuración ha caducado. Vuelve a empezar."
     },
-    "loadFailed": "No se pudo cargar tu configuración de seguridad."
+    "loadFailed": "No se pudo cargar tu configuración de seguridad.",
+    "reauth": {
+      "subtitle": "Por seguridad, confirma tu contraseña actual para continuar.",
+      "passwordLabel": "Contraseña actual",
+      "continue": "Continuar",
+      "invalidPassword": "Esa no es tu contraseña actual.",
+      "rateLimited": "Demasiados intentos. Espera unos minutos y vuelve a intentarlo.",
+      "failed": "No se pudo confirmar tu identidad.",
+      "signInAgainBody": "Por seguridad, vuelve a iniciar sesión para hacer este cambio. Tu último inicio de sesión fue hace más de 10 minutos.",
+      "signInAgain": "Volver a iniciar sesión"
+    }
   },
   "sessions": {
     "title": "Sesiones",

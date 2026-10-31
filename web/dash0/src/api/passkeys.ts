@@ -50,9 +50,15 @@ export interface PasskeyLoginResponse {
   loginAction?: string;
 }
 
-export async function beginPasskeyRegistration(): Promise<RegisterBeginResponse> {
+// A new passkey needs a re-authentication (spec 2026-10-31-02): see
+// setup2FA in ./twofa.ts for the rules and the 401/403 answers.
+export async function beginPasskeyRegistration(
+  currentPassword?: string,
+): Promise<RegisterBeginResponse> {
   return apiFetch<RegisterBeginResponse>("/api/v1/auth/passkeys/register/begin", {
     method: "POST",
+    body: JSON.stringify(currentPassword !== undefined ? { currentPassword } : {}),
+    suppress401Handling: true,
   });
 }
 

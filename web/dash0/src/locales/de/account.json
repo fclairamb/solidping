@@ -114,9 +114,20 @@
       "disableSubtitle": "Geben Sie zur Bestätigung einen aktuellen 6-stelligen Code ein.",
       "setupFailed": "Die Zwei-Faktor-Authentifizierung konnte nicht eingerichtet werden. Bitte erneut versuchen.",
       "disableFailed": "Zwei-Faktor-Authentifizierung konnte nicht deaktiviert werden.",
-      "qrAlt": "QR-Code für Ihre Authenticator-App"
+      "qrAlt": "QR-Code für Ihre Authenticator-App",
+      "setupExpired": "Die Einrichtung ist abgelaufen. Starten Sie sie erneut."
     },
-    "loadFailed": "Ihre Sicherheitseinstellungen konnten nicht geladen werden."
+    "loadFailed": "Ihre Sicherheitseinstellungen konnten nicht geladen werden.",
+    "reauth": {
+      "subtitle": "Bestätigen Sie zu Ihrer Sicherheit Ihr aktuelles Passwort, um fortzufahren.",
+      "passwordLabel": "Aktuelles Passwort",
+      "continue": "Weiter",
+      "invalidPassword": "Das ist nicht Ihr aktuelles Passwort.",
+      "rateLimited": "Zu viele Versuche. Warten Sie einige Minuten und versuchen Sie es erneut.",
+      "failed": "Ihre Identität konnte nicht bestätigt werden.",
+      "signInAgainBody": "Melden Sie sich zu Ihrer Sicherheit erneut an, um diese Änderung vorzunehmen. Ihre letzte Anmeldung liegt mehr als 10 Minuten zurück.",
+      "signInAgain": "Erneut anmelden"
+    }
   },
   "sessions": {
     "title": "Sitzungen",

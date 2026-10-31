@@ -30,6 +30,8 @@ import {
 import { disable2FA } from "@/api/twofa";
 import { TOTPSetupDialog } from "@/components/security/TOTPSetupDialog";
 import { TOTPDisableDialog } from "@/components/security/TOTPDisableDialog";
+import { ReauthPasswordDialog, SignInAgainAlert } from "@/components/security/reauth";
+import { isReauthRequired } from "@/components/security/reauth-errors";
 import { changePassword } from "@/api/password";
 import { ApiError, apiFetch } from "@/api/client";
 
@@ -63,12 +65,14 @@ function PasswordCard({
   const [confirm, setConfirm] = useState("");
   const [currentError, setCurrentError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [signInRequired, setSignInRequired] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCurrentError(null);
     setFormError(null);
+    setSignInRequired(false);
 
     if (next.length < MIN_PASSWORD_LENGTH) {
       setFormError(t("account:security.password.tooShort", { min: MIN_PASSWORD_LENGTH }));
@@ -92,6 +96,9 @@ function PasswordCard({
       // Alert — the user needs to know *which* box to retype.
       if (err instanceof ApiError && err.code === "INVALID_CURRENT_PASSWORD") {
         setCurrentError(t("account:security.password.invalidCurrent"));
+      } else if (isReauthRequired(err)) {
+        // Setting a first password needs a recent sign-in (spec 2026-10-31-02).
+        setSignInRequired(true);
       } else {
         setFormError(err instanceof Error ? err.message : t("account:security.password.failed"));
       }
@@ -117,6 +124,7 @@ function PasswordCard({
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="max-w-sm space-y-4">
+          {signInRequired && <SignInAgainAlert />}
           {formError && (
             <Alert variant="destructive" data-testid="password-form-error">
               <AlertCircle className="h-4 w-4" />
@@ -202,6 +210,8 @@ function SecurityPage() {
   const [adding, setAdding] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [showDisable, setShowDisable] = useState(false);
+  const [showPasskeyReauth, setShowPasskeyReauth] = useState(false);
+  const [signInRequired, setSignInRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refreshAll = async () => {
@@ -222,15 +232,36 @@ function SecurityPage() {
     refreshAll();
   }, []);
 
-  const onAddPasskey = async () => {
+  // A new passkey needs a re-authentication (spec 2026-10-31-02): the
+  // current password first when the account has one.
+  const onAddPasskey = () => {
     if (!browserSupportsWebAuthn()) {
       toast.error(t("account:security.passkeys.unsupported"));
       return;
     }
-    setAdding(true);
     setError(null);
+    setSignInRequired(false);
+    if (me?.hasPassword) {
+      setShowPasskeyReauth(true);
+      return;
+    }
+    void registerPasskey();
+  };
+
+  // The password dialog shows a refused password itself, so begin errors
+  // are rethrown to it; the ceremony errors after begin are shown here.
+  const onPasskeyReauth = async (password: string) => {
+    const begin = await beginPasskeyRegistration(password);
+    setShowPasskeyReauth(false);
+    await registerPasskey(begin);
+  };
+
+  const registerPasskey = async (
+    started?: Awaited<ReturnType<typeof beginPasskeyRegistration>>,
+  ) => {
+    setAdding(true);
     try {
-      const begin = await beginPasskeyRegistration();
+      const begin = started ?? (await beginPasskeyRegistration());
       // The Go server returns the options under `options` directly; the
       // simplewebauthn-browser API expects `optionsJSON` to be the
       // PublicKeyCredentialCreationOptionsJSON that the server's
@@ -242,7 +273,9 @@ function SecurityPage() {
       toast.success(t("account:security.passkeys.added"));
       refreshAll();
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (isReauthRequired(err)) {
+        setSignInRequired(true);
+      } else if (err instanceof ApiError) {
         setError(err.message);
       } else if (err instanceof Error) {
         // NotAllowedError fires when the user cancels — treat as silent.
@@ -307,6 +340,8 @@ function SecurityPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      {signInRequired && <SignInAgainAlert />}
 
       <PasswordCard hasPassword={me.hasPassword} onChanged={refreshAll} />
 
@@ -431,11 +466,21 @@ function SecurityPage() {
       {showSetup && (
         <TOTPSetupDialog
           open={showSetup}
+          hasPassword={me.hasPassword}
           onClose={() => setShowSetup(false)}
           onComplete={() => {
             setShowSetup(false);
             refreshAll();
           }}
+        />
+      )}
+      {showPasskeyReauth && (
+        <ReauthPasswordDialog
+          open={showPasskeyReauth}
+          title={t("account:security.passkeys.add")}
+          testIdPrefix="passkey"
+          onClose={() => setShowPasskeyReauth(false)}
+          onSubmit={onPasskeyReauth}
         />
       )}
       {showDisable && (
