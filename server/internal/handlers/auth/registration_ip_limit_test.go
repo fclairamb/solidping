@@ -50,6 +50,16 @@ func registerFromIP(ctx context.Context, svc *Service, email, clientIP string) e
 	return err
 }
 
+// registerAMinuteLater signs up as if the last sign-up from clientIP was more
+// than a minute ago, by dropping its once-a-minute counter first.
+func registerAMinuteLater(ctx context.Context, svc *Service, email, clientIP string) error {
+	if _, err := svc.db.DeleteStateEntry(ctx, nil, registrationIPRateKeyPrefix+clientIP); err != nil {
+		return err
+	}
+
+	return registerFromIP(ctx, svc, email, clientIP)
+}
+
 // requireNothingSent asserts that a refused sign-up left no pending entry and
 // queued no confirmation email for email.
 func requireNothingSent(t *testing.T, dbSvc db.Service, email string) {
@@ -69,25 +79,25 @@ func TestRegisterPendingPerIPLimit(t *testing.T) {
 
 	svc, dbSvc, ctx := setupRegistrationLimitService(t, 2)
 
-	r.NoError(registerFromIP(ctx, svc, "one@acme.com", limitTestIP))
-	r.NoError(registerFromIP(ctx, svc, "two@acme.com", limitTestIP))
+	r.NoError(registerAMinuteLater(ctx, svc, "one@acme.com", limitTestIP))
+	r.NoError(registerAMinuteLater(ctx, svc, "two@acme.com", limitTestIP))
 
 	entry, err := dbSvc.GetStateEntry(ctx, nil, registrationKeyPrefix+"one@acme.com")
 	r.NoError(err)
 	r.NotNil(entry)
 	r.Equal(limitTestIP, (*entry.Value)[keyClientIP], "the pending entry keeps the client IP")
 
-	err = registerFromIP(ctx, svc, "three@acme.com", limitTestIP)
+	err = registerAMinuteLater(ctx, svc, "three@acme.com", limitTestIP)
 	r.ErrorIs(err, ErrTooManyPendingRegistrations)
 	r.ErrorIs(err, ErrRateLimited, "the handler maps it to 429 through ErrRateLimited")
 	requireNothingSent(t, dbSvc, "three@acme.com")
 
 	// Another client is not affected.
-	r.NoError(registerFromIP(ctx, svc, "other@acme.com", limitTestOtherIP))
+	r.NoError(registerAMinuteLater(ctx, svc, "other@acme.com", limitTestOtherIP))
 
 	// Signing up again for an address already pending replaces its entry and
 	// resends the link: it does not count against itself.
-	r.NoError(registerFromIP(ctx, svc, "one@acme.com", limitTestIP))
+	r.NoError(registerAMinuteLater(ctx, svc, "one@acme.com", limitTestIP))
 
 	// Confirming a registration frees its slot.
 	token := extractRegistrationConfirmToken(t, ctx, dbSvc, "two@acme.com")
@@ -95,13 +105,38 @@ func TestRegisterPendingPerIPLimit(t *testing.T) {
 	_, err = svc.ConfirmRegistration(ctx, token)
 	r.NoError(err)
 
-	r.NoError(registerFromIP(ctx, svc, "three@acme.com", limitTestIP))
+	r.NoError(registerAMinuteLater(ctx, svc, "three@acme.com", limitTestIP))
 	r.NotEmpty(extractRegistrationConfirmToken(t, ctx, dbSvc, "three@acme.com"))
 }
 
-// An IP over its limit gets the same refusal for an address that already has
-// an account, so the limit is not an oracle for which addresses are taken.
-func TestRegisterPendingPerIPLimitHidesTakenEmails(t *testing.T) {
+func TestRegisterOncePerMinutePerIP(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, ctx := setupRegistrationLimitService(t, 10)
+
+	r.NoError(registerFromIP(ctx, svc, "first@acme.com", limitTestIP))
+
+	err := registerFromIP(ctx, svc, "second@acme.com", limitTestIP)
+	r.ErrorIs(err, ErrRegistrationTooSoon)
+	r.ErrorIs(err, ErrRateLimited, "the handler maps it to 429 through ErrRateLimited")
+	requireNothingSent(t, dbSvc, "second@acme.com")
+
+	// Resending the link of the pending address waits out the minute too.
+	r.ErrorIs(registerFromIP(ctx, svc, "first@acme.com", limitTestIP), ErrRegistrationTooSoon)
+
+	// Another client is not affected.
+	r.NoError(registerFromIP(ctx, svc, "other@acme.com", limitTestOtherIP))
+
+	// A minute later, the same client gets through.
+	r.NoError(registerAMinuteLater(ctx, svc, "second@acme.com", limitTestIP))
+	r.NotEmpty(extractRegistrationConfirmToken(t, ctx, dbSvc, "second@acme.com"))
+}
+
+// An IP over a limit gets the same refusal for an address that already has an
+// account, and a taken address spends the minute like a real sign-up, so
+// neither limit is an oracle for which addresses are taken.
+func TestRegisterPerIPLimitsHideTakenEmails(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
@@ -115,12 +150,13 @@ func TestRegisterPendingPerIPLimitHidesTakenEmails(t *testing.T) {
 	user.PasswordHash = &hash
 	r.NoError(dbSvc.CreateUser(ctx, user))
 
-	// Under the limit, a taken address answers like a success and spends no slot.
+	// A taken address answers like a success, spends the minute but no slot.
 	r.NoError(registerFromIP(ctx, svc, takenEmail, limitTestIP))
-	r.NoError(registerFromIP(ctx, svc, "first@acme.com", limitTestIP))
+	r.ErrorIs(registerFromIP(ctx, svc, "free@acme.com", limitTestIP), ErrRegistrationTooSoon)
+	r.NoError(registerAMinuteLater(ctx, svc, "first@acme.com", limitTestIP))
 
-	r.ErrorIs(registerFromIP(ctx, svc, takenEmail, limitTestIP), ErrTooManyPendingRegistrations)
-	r.ErrorIs(registerFromIP(ctx, svc, "free@acme.com", limitTestIP), ErrTooManyPendingRegistrations)
+	r.ErrorIs(registerAMinuteLater(ctx, svc, takenEmail, limitTestIP), ErrTooManyPendingRegistrations)
+	r.ErrorIs(registerAMinuteLater(ctx, svc, "free@acme.com", limitTestIP), ErrTooManyPendingRegistrations)
 }
 
 func TestRegisterPendingPerIPLimitWindow(t *testing.T) {
@@ -129,8 +165,8 @@ func TestRegisterPendingPerIPLimitWindow(t *testing.T) {
 
 	svc, dbSvc, ctx := setupRegistrationLimitService(t, 1)
 
-	r.NoError(registerFromIP(ctx, svc, "yesterday@acme.com", limitTestIP))
-	r.ErrorIs(registerFromIP(ctx, svc, "today@acme.com", limitTestIP), ErrTooManyPendingRegistrations,
+	r.NoError(registerAMinuteLater(ctx, svc, "yesterday@acme.com", limitTestIP))
+	r.ErrorIs(registerAMinuteLater(ctx, svc, "today@acme.com", limitTestIP), ErrTooManyPendingRegistrations,
 		"precondition: the pending sign-up takes the only slot")
 
 	// The pending sign-up was submitted 25 hours ago: its link is still valid
@@ -143,10 +179,10 @@ func TestRegisterPendingPerIPLimitWindow(t *testing.T) {
 		Exec(ctx)
 	r.NoError(err)
 
-	r.NoError(registerFromIP(ctx, svc, "today@acme.com", limitTestIP))
+	r.NoError(registerAMinuteLater(ctx, svc, "today@acme.com", limitTestIP))
 }
 
-func TestRegisterPendingPerIPLimitOff(t *testing.T) {
+func TestRegisterPerIPLimitsOff(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -165,6 +201,7 @@ func TestRegisterPendingPerIPLimitOff(t *testing.T) {
 
 			svc, _, ctx := setupRegistrationLimitService(t, tc.limit)
 
+			// Back to back: neither the count nor the minute applies.
 			for i := range 3 {
 				r.NoError(registerFromIP(ctx, svc, fmt.Sprintf("user%d@acme.com", i), tc.clientIP))
 			}
@@ -172,12 +209,13 @@ func TestRegisterPendingPerIPLimitOff(t *testing.T) {
 	}
 }
 
-// A burst of parallel sign-ups from one IP cannot all pass the count.
-func TestRegisterPendingPerIPLimitParallelBurst(t *testing.T) {
+// A burst of parallel sign-ups from one IP gets one through: the minute
+// counter is bumped atomically by the database, so the burst cannot all pass.
+func TestRegisterPerIPParallelBurst(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	svc, dbSvc, ctx := setupRegistrationLimitService(t, 2)
+	svc, dbSvc, ctx := setupRegistrationLimitService(t, 10)
 
 	const burst = 6
 
@@ -202,19 +240,20 @@ func TestRegisterPendingPerIPLimitParallelBurst(t *testing.T) {
 			continue
 		}
 
-		r.ErrorIs(err, ErrTooManyPendingRegistrations)
+		r.ErrorIs(err, ErrRegistrationTooSoon)
 	}
 
-	r.Equal(2, accepted)
+	r.Equal(1, accepted)
 
 	entries, err := dbSvc.ListStateEntries(ctx, nil, registrationKeyPrefix)
 	r.NoError(err)
-	r.Len(entries, 2)
+	r.Len(entries, 1)
 }
 
 // The handler takes the client IP with the trusted-proxy rules: with no
-// trusted proxy, a forged X-Forwarded-For does not get a fresh budget.
-func TestRegisterHandlerPendingPerIPLimit(t *testing.T) {
+// trusted proxy, a forged X-Forwarded-For does not get a fresh budget. The
+// once-a-minute refusal carries Retry-After, the dashboard tells it apart by it.
+func TestRegisterHandlerPerIPLimits(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
@@ -248,6 +287,16 @@ func TestRegisterHandlerPendingPerIPLimit(t *testing.T) {
 	rec := doRegister("second@acme.com", limitTestIP+":40001", "203.0.113.50")
 	r.Equal(http.StatusTooManyRequests, rec.Code)
 	r.Contains(rec.Body.String(), base.ErrorCodeRateLimited)
+	r.Equal("60", rec.Header().Get("Retry-After"))
+	requireNothingSent(t, dbSvc, "second@acme.com")
+
+	_, err = dbSvc.DeleteStateEntry(ctx, nil, registrationIPRateKeyPrefix+limitTestIP)
+	r.NoError(err)
+
+	rec = doRegister("second@acme.com", limitTestIP+":40002", "203.0.113.51")
+	r.Equal(http.StatusTooManyRequests, rec.Code, "a minute later, the unconfirmed sign-up still takes the slot")
+	r.Contains(rec.Body.String(), base.ErrorCodeRateLimited)
+	r.Empty(rec.Header().Get("Retry-After"))
 	requireNothingSent(t, dbSvc, "second@acme.com")
 
 	// Positive control: another client gets through.

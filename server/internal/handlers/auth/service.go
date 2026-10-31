@@ -199,10 +199,6 @@ type Service struct {
 	// patFillHook runs between the database read and the cache insert of
 	// ValidatePATToken. Test-only: always nil in production.
 	patFillHook func()
-	// registrationMu serializes Register's per-IP pending count with the write
-	// of the new pending entry, so a burst of parallel sign-ups from one IP
-	// cannot all pass the count (checkPendingRegistrationsPerIP).
-	registrationMu sync.Mutex
 	// eventNotifier broadcasts PAT revocations to the other replicas. Nil
 	// means local-only eviction (unit tests, `solidping mcp --stdio`).
 	eventNotifier notifier.EventNotifier
@@ -2490,7 +2486,7 @@ type RegisterRequest struct {
 	Timezone string `json:"timezone,omitempty"`
 	// ClientIP is the caller's address, set by the HTTP handler with the
 	// trusted-proxy rules, never read from the body. It counts the sign-up
-	// against auth.registration_max_pending_per_ip; empty skips that check.
+	// against auth.registration_max_pending_per_ip; empty skips the per-IP limits.
 	ClientIP string `json:"-"`
 }
 
@@ -2586,12 +2582,10 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		return nil, fmt.Errorf("%w: password must be at least %d characters", ErrInvalidCredentials, minPasswordLength)
 	}
 
-	s.registrationMu.Lock()
-	defer s.registrationMu.Unlock()
-
-	// Before the taken-email branch: an IP over its limit gets 429 whatever
-	// the address, so the limit cannot tell which ones have an account.
-	if limitErr := s.checkPendingRegistrationsPerIP(ctx, req.ClientIP, req.Email); limitErr != nil {
+	// Before the taken-email branch, which spends the minute like a real
+	// sign-up: an IP over a limit gets 429 whatever the address, so the limits
+	// cannot tell which ones have an account.
+	if limitErr := s.checkRegistrationPerIPLimits(ctx, req.ClientIP, req.Email); limitErr != nil {
 		return nil, limitErr
 	}
 

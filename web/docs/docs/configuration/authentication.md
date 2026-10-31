@@ -25,20 +25,21 @@ SP_AUTH_REGISTRATION_EMAIL_PATTERN=@(yourcompany|partner)\.com$
 
 ### Limiting Unconfirmed Sign-Ups per IP
 
-Each sign-up sends a confirmation email to the address typed in the form. To stop a bot from using the form to send email to strangers, a client IP may have at most a few sign-ups waiting for confirmation:
+Each sign-up sends a confirmation email to the address typed in the form. To stop a bot from using the form to send email to strangers, you can cap the sign-ups that come from one client IP:
 
 ```bash
 # Unconfirmed sign-ups allowed per client IP over 24 hours (0 turns the limit off)
-SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP=3
+SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP=10
 ```
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP` | `3` | Sign-ups from one client IP that may wait for email confirmation, counting those submitted in the last 24 hours. `0` turns the limit off. |
+| `SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP` | `0` (`10` in SaaS mode) | Sign-ups from one client IP that may wait for email confirmation, counting those submitted in the last 24 hours. While it is on, one client IP may also sign up at most once a minute. `0` turns both limits off. |
 
-- Past the limit, the sign-up answers `429 RATE_LIMITED` and sends no email.
+- The limit is off by default on a self-hosted instance and set to `10` in SaaS mode (`SP_DEPLOYMENT_MODE=saas`).
+- Past either limit, the sign-up answers `429 RATE_LIMITED` and sends no email. The once-a-minute refusal carries a `Retry-After: 60` header.
 - Confirming a sign-up frees its slot, so several colleagues behind one office network get through as long as they confirm.
-- Signing up again with an address that is already waiting for confirmation does not take another slot. It sends a new link.
+- Signing up again with an address that is already waiting for confirmation does not take another slot. It sends a new link, at most once a minute.
 - The limit is also the `auth.registration_max_pending_per_ip` system parameter. A stored value applies at the next start, and the environment variable wins over it.
 - The client IP follows `SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES`. Behind a reverse proxy, set it, or every visitor shares the proxy's address.
 - In test run mode (`SP_RUNMODE=test`) the limit is off unless the variable is set.
@@ -487,7 +488,7 @@ Users can secure their accounts with **TOTP** two-factor authentication (compati
 auth:
   jwt_secret: your-secure-random-secret
   registration_email_pattern: "@yourcompany\\.com$"
-  registration_max_pending_per_ip: 3 # 0 turns the limit off
+  registration_max_pending_per_ip: 10 # 0 turns the limit off (default: 10 in SaaS mode, else 0)
   password:
     algorithm: argon2id # or "bcrypt"
     argon2:

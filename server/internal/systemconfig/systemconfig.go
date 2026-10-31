@@ -43,8 +43,8 @@ const (
 	KeyEmailInsecure            ParameterKey = "email.insecure_skip_verify"
 	KeyRegistrationEmailPattern ParameterKey = "auth.registration_email_pattern"
 	// KeyRegistrationMaxPendingPerIP caps the sign-ups one client IP may leave
-	// unconfirmed over 24 hours (config.AuthConfig.RegistrationMaxPendingPerIP).
-	// 0 turns the limit off.
+	// unconfirmed over 24 hours, and turns on the once-a-minute sign-up limit
+	// per IP (config.AuthConfig.RegistrationMaxPendingPerIP). 0 turns both off.
 	KeyRegistrationMaxPendingPerIP ParameterKey = "auth.registration_max_pending_per_ip"
 	KeyEmailProtocol               ParameterKey = "email.protocol"
 	// KeyEmailReplyTo is the instance support mailbox (spec 2026-08-22-02).
