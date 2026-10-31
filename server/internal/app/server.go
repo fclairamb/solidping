@@ -2517,9 +2517,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// assumption (spec 2026-09-25-26) — see reportRateLimitConfig.
 	// RateLimitRoute (not RateLimit) because the route itself is the scope
 	// here, not a path prefix. What it can STORE is bounded in
-	// feedback.Service (spec 2026-10-29-01): anonymous screenshots spend an
-	// instance-wide hourly budget (app.feedback_anon_screenshots_per_hour)
-	// and need a free GitHub issue dispatch slot, every screenshot also fits
+	// feedback.Service (spec 2026-10-29-01): screenshots from anyone but
+	// members of the named org (and super admins), anonymous or signed in
+	// (spec 2026-10-30-02), spend an instance-wide hourly budget
+	// (app.feedback_anon_screenshots_per_hour) and need a free GitHub issue
+	// dispatch slot, every screenshot also fits
 	// the per-org quota (checked atomically with the insert), and the
 	// state-cleanup job purges report files past app.feedback_retention_days.
 	reportLimiter := middleware.NewRateLimiter(reportRateLimitConfig(s.config.Server.RateLimiting), ctx)
