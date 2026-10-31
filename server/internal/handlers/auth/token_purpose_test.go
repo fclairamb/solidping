@@ -102,7 +102,7 @@ func TestValidateTokenRefusesNonBearerTokens(t *testing.T) {
 		}, false},
 		{"passkey register session", func(t *testing.T) string {
 			t.Helper()
-			resp, err := f.pkSvc.BeginRegistration(ctx, uid)
+			resp, err := f.pkSvc.BeginRegistration(signedInCtxFor(ctx, uid), uid, nil)
 			require.NoError(t, err)
 
 			return resp.Session
@@ -154,7 +154,7 @@ func TestValidateTokenRefusesNonBearerTokens(t *testing.T) {
 		}, false},
 		{"access token", func(t *testing.T) string {
 			t.Helper()
-			tok, err := f.svc.generateAccessToken(uid, "acme", string(models.MemberRoleAdmin), "", false)
+			tok, err := f.svc.generateAccessToken(uid, "acme", string(models.MemberRoleAdmin), "", false, 0)
 			require.NoError(t, err)
 
 			return tok
@@ -210,10 +210,10 @@ func TestNonBearerTokensStayWithinTheirPurpose(t *testing.T) {
 	login, err := f.pkSvc.BeginLogin(ctx, f.user.Email)
 	r.NoError(err)
 
-	register, err := f.pkSvc.BeginRegistration(ctx, f.user.UID)
+	register, err := f.pkSvc.BeginRegistration(signedInCtxFor(ctx, f.user.UID), f.user.UID, nil)
 	r.NoError(err)
 
-	access, err := f.svc.generateAccessToken(f.user.UID, "acme", string(models.MemberRoleAdmin), "", false)
+	access, err := f.svc.generateAccessToken(f.user.UID, "acme", string(models.MemberRoleAdmin), "", false, 0)
 	r.NoError(err)
 
 	// Positive controls: each verifier accepts its own token.

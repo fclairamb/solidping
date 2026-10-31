@@ -83,6 +83,14 @@
     "revoke": "Si vous ne l'avez pas ajoutée vous-même, supprimez-la dès maintenant depuis la page de sécurité de votre compte et changez votre mot de passe :",
     "cta": "Voir mes clés d'accès"
   },
+  "totpEnabled": {
+    "subject": "La double authentification a été activée sur votre compte SolidPing",
+    "preheader": "La connexion demande désormais un code d'une application d'authentification.",
+    "title": "La double authentification a été activée",
+    "body": "La double authentification a été activée sur votre compte SolidPing le {date}. La connexion demande désormais un code de l'application d'authentification utilisée lors de l'activation.",
+    "revoke": "Si vous ne l'avez pas activée vous-même, contactez immédiatement votre administrateur et changez votre mot de passe :",
+    "cta": "Voir la sécurité de mon compte"
+  },
   "invitation": {
     "subject": "Invitation à rejoindre {org} sur SolidPing",
     "preheader": {

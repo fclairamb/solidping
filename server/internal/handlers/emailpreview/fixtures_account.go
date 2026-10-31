@@ -78,6 +78,13 @@ func passkeyAddedFixture(_ i18n.Locale) map[string]any {
 	}
 }
 
+func totpEnabledFixture(_ i18n.Locale) map[string]any {
+	return map[string]any{
+		"EnabledAt":   fixtureChangedAt(),
+		"SecurityURL": fixtureDashboardURL + "/orgs/acme/account/security",
+	}
+}
+
 func invitationFixture(loc i18n.Locale) map[string]any {
 	return map[string]any{
 		keyOrgName:    fixtureOrgName,

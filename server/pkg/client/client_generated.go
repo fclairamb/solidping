@@ -5288,6 +5288,20 @@ type CloneCheckRequest struct {
 	Slug          *string `json:"slug,omitempty"`
 }
 
+// Confirm2FARequest defines model for Confirm2FARequest.
+type Confirm2FARequest struct {
+	// Code A current code from the authenticator.
+	Code string `json:"code"`
+
+	// SetupToken The `setupToken` returned by `/api/v1/auth/2fa/setup`.
+	SetupToken string `json:"setupToken"`
+}
+
+// Confirm2FAResponse defines model for Confirm2FAResponse.
+type Confirm2FAResponse struct {
+	RecoveryCodes []string `json:"recoveryCodes"`
+}
+
 // ConfirmRegistrationRequest defines model for ConfirmRegistrationRequest.
 type ConfirmRegistrationRequest struct {
 	// Token Registration confirmation token from the emailed link
@@ -7583,6 +7597,12 @@ type OrganizationSummary struct {
 	Uid  *openapi_types.UUID `json:"uid,omitempty"`
 }
 
+// PasskeyRegisterBeginRequest defines model for PasskeyRegisterBeginRequest.
+type PasskeyRegisterBeginRequest struct {
+	// CurrentPassword The password currently on the account. Required unless the account has no password (it then needs a sign-in within the last 10 minutes).
+	CurrentPassword *string `json:"currentPassword,omitempty"`
+}
+
 // PerCheckDependenciesResponse defines model for PerCheckDependenciesResponse.
 type PerCheckDependenciesResponse struct {
 	Data *struct {
@@ -8285,6 +8305,24 @@ type SetSystemParameterRequest struct {
 
 	// Value The parameter value to set
 	Value interface{} `json:"value,omitempty"`
+}
+
+// Setup2FARequest defines model for Setup2FARequest.
+type Setup2FARequest struct {
+	// CurrentPassword The password currently on the account. Required unless the account has no password (it then needs a sign-in within the last 10 minutes).
+	CurrentPassword *string `json:"currentPassword,omitempty"`
+}
+
+// Setup2FAResponse defines model for Setup2FAResponse.
+type Setup2FAResponse struct {
+	// Secret The TOTP secret, for manual entry.
+	Secret string `json:"secret"`
+
+	// SetupToken Proof of this setup, required by `/api/v1/auth/2fa/confirm`. Expires after 10 minutes.
+	SetupToken string `json:"setupToken"`
+
+	// Uri otpauth:// URI to render as a QR code.
+	Uri string `json:"uri"`
 }
 
 // Severity defines model for Severity.
@@ -10401,6 +10439,12 @@ type ImpersonateUserJSONBody struct {
 	OrgSlug *string `json:"orgSlug,omitempty"`
 }
 
+// Confirm2FAJSONRequestBody defines body for Confirm2FA for application/json ContentType.
+type Confirm2FAJSONRequestBody = Confirm2FARequest
+
+// Setup2FAJSONRequestBody defines body for Setup2FA for application/json ContentType.
+type Setup2FAJSONRequestBody = Setup2FARequest
+
 // AcceptInviteJSONRequestBody defines body for AcceptInvite for application/json ContentType.
 type AcceptInviteJSONRequestBody = AcceptInviteRequest
 
@@ -10433,6 +10477,9 @@ type UpdateMeJSONRequestBody = UpdateProfileRequest
 
 // CreateMembershipRequestJSONRequestBody defines body for CreateMembershipRequest for application/json ContentType.
 type CreateMembershipRequestJSONRequestBody = CreateMembershipRequestRequest
+
+// BeginPasskeyRegistrationJSONRequestBody defines body for BeginPasskeyRegistration for application/json ContentType.
+type BeginPasskeyRegistrationJSONRequestBody = PasskeyRegisterBeginRequest
 
 // RefreshTokenJSONRequestBody defines body for RefreshToken for application/json ContentType.
 type RefreshTokenJSONRequestBody = RefreshRequest
@@ -10998,6 +11045,42 @@ type ClientInterface interface {
 	// Corresponds with GET /api/mgmt/version (the `GetVersion` operationId).
 	GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// Confirm2FAWithBody Confirm and enable TOTP two-factor authentication
+	//
+	// Checks a code from the authenticator against the pending secret and enables two-factor authentication. Returns the recovery codes, once. `setupToken` must be the one `/api/v1/auth/2fa/setup` returned with that secret (it expires after 10 minutes). A notice email is sent to the account's address.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/auth/2fa/confirm (the `Confirm2FA` operationId).
+	Confirm2FAWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// Confirm2FA Confirm and enable TOTP two-factor authentication
+	//
+	// Checks a code from the authenticator against the pending secret and enables two-factor authentication. Returns the recovery codes, once. `setupToken` must be the one `/api/v1/auth/2fa/setup` returned with that secret (it expires after 10 minutes). A notice email is sent to the account's address.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/auth/2fa/confirm (the `Confirm2FA` operationId).
+	Confirm2FA(ctx context.Context, body Confirm2FAJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// Setup2FAWithBody Start enabling TOTP two-factor authentication
+	//
+	// Generates a TOTP secret for the caller (stored, not yet enabled) and returns it with a `setupToken` that `/api/v1/auth/2fa/confirm` requires. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes. Every attempt spends the per-user change-password budget. Refused for personal access tokens and impersonation tokens.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/auth/2fa/setup (the `Setup2FA` operationId).
+	Setup2FAWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// Setup2FA Start enabling TOTP two-factor authentication
+	//
+	// Generates a TOTP secret for the caller (stored, not yet enabled) and returns it with a `setupToken` that `/api/v1/auth/2fa/confirm` requires. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes. Every attempt spends the per-user change-password budget. Refused for personal access tokens and impersonation tokens.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/auth/2fa/setup (the `Setup2FA` operationId).
+	Setup2FA(ctx context.Context, body Setup2FAJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// AcceptInviteWithBody Accept an invitation
 	//
 	// Optionally authenticated. An invitation for an email that has no
@@ -11030,7 +11113,7 @@ type ClientInterface interface {
 
 	// ChangePasswordWithBody Change (or set) the authenticated user's password
 	//
-	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
+	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password, provided the session comes from a sign-in within the last 10 minutes (otherwise 403 `REAUTHENTICATION_REQUIRED`: sign in again first). All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -11039,7 +11122,7 @@ type ClientInterface interface {
 
 	// ChangePassword Change (or set) the authenticated user's password
 	//
-	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
+	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password, provided the session comes from a sign-in within the last 10 minutes (otherwise 403 `REAUTHENTICATION_REQUIRED`: sign in again first). All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -11264,6 +11347,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /api/v1/auth/membership-requests/{uid} (the `CancelMembershipRequest` operationId).
 	CancelMembershipRequest(ctx context.Context, uid MembershipRequestUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BeginPasskeyRegistrationWithBody Start registering a passkey
+	//
+	// Returns the WebAuthn creation options and a sealed `session` to send back to `/api/v1/auth/passkeys/register/finish`. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/auth/passkeys/register/begin (the `BeginPasskeyRegistration` operationId).
+	BeginPasskeyRegistrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BeginPasskeyRegistration Start registering a passkey
+	//
+	// Returns the WebAuthn creation options and a sealed `session` to send back to `/api/v1/auth/passkeys/register/finish`. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/auth/passkeys/register/begin (the `BeginPasskeyRegistration` operationId).
+	BeginPasskeyRegistration(ctx context.Context, body BeginPasskeyRegistrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAuthProviders List configured auth providers
 	//
@@ -14176,6 +14277,82 @@ func (c *Client) GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) 
 	return c.Client.Do(req)
 }
 
+// Confirm2FAWithBody Confirm and enable TOTP two-factor authentication
+//
+// Checks a code from the authenticator against the pending secret and enables two-factor authentication. Returns the recovery codes, once. `setupToken` must be the one `/api/v1/auth/2fa/setup` returned with that secret (it expires after 10 minutes). A notice email is sent to the account's address.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/auth/2fa/confirm (the `Confirm2FA` operationId).
+func (c *Client) Confirm2FAWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfirm2FARequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// Confirm2FA Confirm and enable TOTP two-factor authentication
+//
+// Checks a code from the authenticator against the pending secret and enables two-factor authentication. Returns the recovery codes, once. `setupToken` must be the one `/api/v1/auth/2fa/setup` returned with that secret (it expires after 10 minutes). A notice email is sent to the account's address.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/auth/2fa/confirm (the `Confirm2FA` operationId).
+func (c *Client) Confirm2FA(ctx context.Context, body Confirm2FAJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfirm2FARequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// Setup2FAWithBody Start enabling TOTP two-factor authentication
+//
+// Generates a TOTP secret for the caller (stored, not yet enabled) and returns it with a `setupToken` that `/api/v1/auth/2fa/confirm` requires. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes. Every attempt spends the per-user change-password budget. Refused for personal access tokens and impersonation tokens.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/auth/2fa/setup (the `Setup2FA` operationId).
+func (c *Client) Setup2FAWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetup2FARequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// Setup2FA Start enabling TOTP two-factor authentication
+//
+// Generates a TOTP secret for the caller (stored, not yet enabled) and returns it with a `setupToken` that `/api/v1/auth/2fa/confirm` requires. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes. Every attempt spends the per-user change-password budget. Refused for personal access tokens and impersonation tokens.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/auth/2fa/setup (the `Setup2FA` operationId).
+func (c *Client) Setup2FA(ctx context.Context, body Setup2FAJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetup2FARequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // AcceptInviteWithBody Accept an invitation
 //
 // Optionally authenticated. An invitation for an email that has no
@@ -14228,7 +14405,7 @@ func (c *Client) AcceptInvite(ctx context.Context, body AcceptInviteJSONRequestB
 
 // ChangePasswordWithBody Change (or set) the authenticated user's password
 //
-// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
+// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password, provided the session comes from a sign-in within the last 10 minutes (otherwise 403 `REAUTHENTICATION_REQUIRED`: sign in again first). All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 //
 // Takes any type of body and a specified content type.
 //
@@ -14247,7 +14424,7 @@ func (c *Client) ChangePasswordWithBody(ctx context.Context, contentType string,
 
 // ChangePassword Change (or set) the authenticated user's password
 //
-// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
+// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password, provided the session comes from a sign-in within the last 10 minutes (otherwise 403 `REAUTHENTICATION_REQUIRED`: sign in again first). All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -14703,6 +14880,44 @@ func (c *Client) CreateMembershipRequest(ctx context.Context, body CreateMembers
 // Corresponds with DELETE /api/v1/auth/membership-requests/{uid} (the `CancelMembershipRequest` operationId).
 func (c *Client) CancelMembershipRequest(ctx context.Context, uid MembershipRequestUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCancelMembershipRequestRequest(c.Server, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BeginPasskeyRegistrationWithBody Start registering a passkey
+//
+// Returns the WebAuthn creation options and a sealed `session` to send back to `/api/v1/auth/passkeys/register/finish`. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/auth/passkeys/register/begin (the `BeginPasskeyRegistration` operationId).
+func (c *Client) BeginPasskeyRegistrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBeginPasskeyRegistrationRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BeginPasskeyRegistration Start registering a passkey
+//
+// Returns the WebAuthn creation options and a sealed `session` to send back to `/api/v1/auth/passkeys/register/finish`. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/auth/passkeys/register/begin (the `BeginPasskeyRegistration` operationId).
+func (c *Client) BeginPasskeyRegistration(ctx context.Context, body BeginPasskeyRegistrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBeginPasskeyRegistrationRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -21451,6 +21666,86 @@ func NewGetVersionRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewConfirm2FARequest calls the generic Confirm2FA builder with application/json body
+func NewConfirm2FARequest(server string, body Confirm2FAJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewConfirm2FARequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewConfirm2FARequestWithBody constructs an http.Request for the Confirm2FA method, with any body, and a specified content type
+func NewConfirm2FARequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/2fa/confirm")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSetup2FARequest calls the generic Setup2FA builder with application/json body
+func NewSetup2FARequest(server string, body Setup2FAJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetup2FARequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSetup2FARequestWithBody constructs an http.Request for the Setup2FA method, with any body, and a specified content type
+func NewSetup2FARequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/2fa/setup")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewAcceptInviteRequest calls the generic AcceptInvite builder with application/json body
 func NewAcceptInviteRequest(server string, body AcceptInviteJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -22059,6 +22354,46 @@ func NewCancelMembershipRequestRequest(server string, uid MembershipRequestUidPa
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewBeginPasskeyRegistrationRequest calls the generic BeginPasskeyRegistration builder with application/json body
+func NewBeginPasskeyRegistrationRequest(server string, body BeginPasskeyRegistrationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBeginPasskeyRegistrationRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewBeginPasskeyRegistrationRequestWithBody constructs an http.Request for the BeginPasskeyRegistration method, with any body, and a specified content type
+func NewBeginPasskeyRegistrationRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/passkeys/register/begin")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -36661,6 +36996,42 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/mgmt/version (the `GetVersion` operationId).
 	GetVersionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVersionResult, error)
 
+	// Confirm2FAWithBodyWithResponse Confirm and enable TOTP two-factor authentication
+	//
+	// Checks a code from the authenticator against the pending secret and enables two-factor authentication. Returns the recovery codes, once. `setupToken` must be the one `/api/v1/auth/2fa/setup` returned with that secret (it expires after 10 minutes). A notice email is sent to the account's address.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/auth/2fa/confirm (the `Confirm2FA` operationId).
+	Confirm2FAWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*Confirm2FAResult, error)
+
+	// Confirm2FAWithResponse Confirm and enable TOTP two-factor authentication
+	//
+	// Checks a code from the authenticator against the pending secret and enables two-factor authentication. Returns the recovery codes, once. `setupToken` must be the one `/api/v1/auth/2fa/setup` returned with that secret (it expires after 10 minutes). A notice email is sent to the account's address.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/auth/2fa/confirm (the `Confirm2FA` operationId).
+	Confirm2FAWithResponse(ctx context.Context, body Confirm2FAJSONRequestBody, reqEditors ...RequestEditorFn) (*Confirm2FAResult, error)
+
+	// Setup2FAWithBodyWithResponse Start enabling TOTP two-factor authentication
+	//
+	// Generates a TOTP secret for the caller (stored, not yet enabled) and returns it with a `setupToken` that `/api/v1/auth/2fa/confirm` requires. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes. Every attempt spends the per-user change-password budget. Refused for personal access tokens and impersonation tokens.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/auth/2fa/setup (the `Setup2FA` operationId).
+	Setup2FAWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*Setup2FAResult, error)
+
+	// Setup2FAWithResponse Start enabling TOTP two-factor authentication
+	//
+	// Generates a TOTP secret for the caller (stored, not yet enabled) and returns it with a `setupToken` that `/api/v1/auth/2fa/confirm` requires. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes. Every attempt spends the per-user change-password budget. Refused for personal access tokens and impersonation tokens.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/auth/2fa/setup (the `Setup2FA` operationId).
+	Setup2FAWithResponse(ctx context.Context, body Setup2FAJSONRequestBody, reqEditors ...RequestEditorFn) (*Setup2FAResult, error)
+
 	// AcceptInviteWithBodyWithResponse Accept an invitation
 	//
 	// Optionally authenticated. An invitation for an email that has no
@@ -36693,7 +37064,7 @@ type ClientWithResponsesInterface interface {
 
 	// ChangePasswordWithBodyWithResponse Change (or set) the authenticated user's password
 	//
-	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
+	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password, provided the session comes from a sign-in within the last 10 minutes (otherwise 403 `REAUTHENTICATION_REQUIRED`: sign in again first). All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -36702,7 +37073,7 @@ type ClientWithResponsesInterface interface {
 
 	// ChangePasswordWithResponse Change (or set) the authenticated user's password
 	//
-	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
+	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password, provided the session comes from a sign-in within the last 10 minutes (otherwise 403 `REAUTHENTICATION_REQUIRED`: sign in again first). All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -36937,6 +37308,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with DELETE /api/v1/auth/membership-requests/{uid} (the `CancelMembershipRequest` operationId).
 	CancelMembershipRequestWithResponse(ctx context.Context, uid MembershipRequestUidPath, reqEditors ...RequestEditorFn) (*CancelMembershipRequestResult, error)
+
+	// BeginPasskeyRegistrationWithBodyWithResponse Start registering a passkey
+	//
+	// Returns the WebAuthn creation options and a sealed `session` to send back to `/api/v1/auth/passkeys/register/finish`. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/auth/passkeys/register/begin (the `BeginPasskeyRegistration` operationId).
+	BeginPasskeyRegistrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BeginPasskeyRegistrationResult, error)
+
+	// BeginPasskeyRegistrationWithResponse Start registering a passkey
+	//
+	// Returns the WebAuthn creation options and a sealed `session` to send back to `/api/v1/auth/passkeys/register/finish`. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/auth/passkeys/register/begin (the `BeginPasskeyRegistration` operationId).
+	BeginPasskeyRegistrationWithResponse(ctx context.Context, body BeginPasskeyRegistrationJSONRequestBody, reqEditors ...RequestEditorFn) (*BeginPasskeyRegistrationResult, error)
 
 	// ListAuthProvidersWithResponse List configured auth providers
 	//
@@ -40390,6 +40779,137 @@ func (r GetVersionResult) ContentType() string {
 	return ""
 }
 
+type Confirm2FAResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Confirm2FAResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r Confirm2FAResult) GetJSON200() *Confirm2FAResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r Confirm2FAResult) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r Confirm2FAResult) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r Confirm2FAResult) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r Confirm2FAResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r Confirm2FAResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r Confirm2FAResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r Confirm2FAResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type Setup2FAResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Setup2FAResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *TooManyRequests
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r Setup2FAResult) GetJSON200() *Setup2FAResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r Setup2FAResult) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r Setup2FAResult) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r Setup2FAResult) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r Setup2FAResult) GetJSON429() *TooManyRequests {
+	return r.JSON429
+}
+
+// GetBody returns the raw response body bytes
+func (r Setup2FAResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r Setup2FAResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r Setup2FAResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r Setup2FAResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type AcceptInviteResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -40468,6 +40988,8 @@ type ChangePasswordResult struct {
 	JSON400 *ValidationError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
 	// JSON409 the response for an HTTP 409 `application/json` response
@@ -40489,6 +41011,11 @@ func (r ChangePasswordResult) GetJSON400() *ValidationError {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r ChangePasswordResult) GetJSON401() *Error {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ChangePasswordResult) GetJSON403() *Error {
+	return r.JSON403
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
@@ -41243,6 +41770,83 @@ func (r CancelMembershipRequestResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CancelMembershipRequestResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type BeginPasskeyRegistrationResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		// Options PublicKeyCredentialCreationOptions, as navigator.credentials.create expects.
+		Options *map[string]interface{} `json:"options,omitempty"`
+		Session *string                 `json:"session,omitempty"`
+	}
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *TooManyRequests
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r BeginPasskeyRegistrationResult) GetJSON200() *struct {
+	// Options PublicKeyCredentialCreationOptions, as navigator.credentials.create expects.
+	Options *map[string]interface{} `json:"options,omitempty"`
+	Session *string                 `json:"session,omitempty"`
+} {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r BeginPasskeyRegistrationResult) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r BeginPasskeyRegistrationResult) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r BeginPasskeyRegistrationResult) GetJSON429() *TooManyRequests {
+	return r.JSON429
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r BeginPasskeyRegistrationResult) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r BeginPasskeyRegistrationResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r BeginPasskeyRegistrationResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BeginPasskeyRegistrationResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r BeginPasskeyRegistrationResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -57560,6 +58164,66 @@ func (c *ClientWithResponses) GetVersionWithResponse(ctx context.Context, reqEdi
 	return ParseGetVersionResult(rsp)
 }
 
+// Confirm2FAWithBodyWithResponse Confirm and enable TOTP two-factor authentication
+//
+// Checks a code from the authenticator against the pending secret and enables two-factor authentication. Returns the recovery codes, once. `setupToken` must be the one `/api/v1/auth/2fa/setup` returned with that secret (it expires after 10 minutes). A notice email is sent to the account's address.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/auth/2fa/confirm (the `Confirm2FA` operationId).
+func (c *ClientWithResponses) Confirm2FAWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*Confirm2FAResult, error) {
+	rsp, err := c.Confirm2FAWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfirm2FAResult(rsp)
+}
+
+// Confirm2FAWithResponse Confirm and enable TOTP two-factor authentication
+//
+// Checks a code from the authenticator against the pending secret and enables two-factor authentication. Returns the recovery codes, once. `setupToken` must be the one `/api/v1/auth/2fa/setup` returned with that secret (it expires after 10 minutes). A notice email is sent to the account's address.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/auth/2fa/confirm (the `Confirm2FA` operationId).
+func (c *ClientWithResponses) Confirm2FAWithResponse(ctx context.Context, body Confirm2FAJSONRequestBody, reqEditors ...RequestEditorFn) (*Confirm2FAResult, error) {
+	rsp, err := c.Confirm2FA(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfirm2FAResult(rsp)
+}
+
+// Setup2FAWithBodyWithResponse Start enabling TOTP two-factor authentication
+//
+// Generates a TOTP secret for the caller (stored, not yet enabled) and returns it with a `setupToken` that `/api/v1/auth/2fa/confirm` requires. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes. Every attempt spends the per-user change-password budget. Refused for personal access tokens and impersonation tokens.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/auth/2fa/setup (the `Setup2FA` operationId).
+func (c *ClientWithResponses) Setup2FAWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*Setup2FAResult, error) {
+	rsp, err := c.Setup2FAWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetup2FAResult(rsp)
+}
+
+// Setup2FAWithResponse Start enabling TOTP two-factor authentication
+//
+// Generates a TOTP secret for the caller (stored, not yet enabled) and returns it with a `setupToken` that `/api/v1/auth/2fa/confirm` requires. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes. Every attempt spends the per-user change-password budget. Refused for personal access tokens and impersonation tokens.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/auth/2fa/setup (the `Setup2FA` operationId).
+func (c *ClientWithResponses) Setup2FAWithResponse(ctx context.Context, body Setup2FAJSONRequestBody, reqEditors ...RequestEditorFn) (*Setup2FAResult, error) {
+	rsp, err := c.Setup2FA(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetup2FAResult(rsp)
+}
+
 // AcceptInviteWithBodyWithResponse Accept an invitation
 //
 // Optionally authenticated. An invitation for an email that has no
@@ -57604,7 +58268,7 @@ func (c *ClientWithResponses) AcceptInviteWithResponse(ctx context.Context, body
 
 // ChangePasswordWithBodyWithResponse Change (or set) the authenticated user's password
 //
-// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
+// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password, provided the session comes from a sign-in within the last 10 minutes (otherwise 403 `REAUTHENTICATION_REQUIRED`: sign in again first). All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -57619,7 +58283,7 @@ func (c *ClientWithResponses) ChangePasswordWithBodyWithResponse(ctx context.Con
 
 // ChangePasswordWithResponse Change (or set) the authenticated user's password
 //
-// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
+// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password, provided the session comes from a sign-in within the last 10 minutes (otherwise 403 `REAUTHENTICATION_REQUIRED`: sign in again first). All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -57997,6 +58661,36 @@ func (c *ClientWithResponses) CancelMembershipRequestWithResponse(ctx context.Co
 		return nil, err
 	}
 	return ParseCancelMembershipRequestResult(rsp)
+}
+
+// BeginPasskeyRegistrationWithBodyWithResponse Start registering a passkey
+//
+// Returns the WebAuthn creation options and a sealed `session` to send back to `/api/v1/auth/passkeys/register/finish`. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/auth/passkeys/register/begin (the `BeginPasskeyRegistration` operationId).
+func (c *ClientWithResponses) BeginPasskeyRegistrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BeginPasskeyRegistrationResult, error) {
+	rsp, err := c.BeginPasskeyRegistrationWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBeginPasskeyRegistrationResult(rsp)
+}
+
+// BeginPasskeyRegistrationWithResponse Start registering a passkey
+//
+// Returns the WebAuthn creation options and a sealed `session` to send back to `/api/v1/auth/passkeys/register/finish`. Adding a sign-in factor needs a re-authentication: `currentPassword` when the account has a password, otherwise a sign-in within the last 10 minutes.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/auth/passkeys/register/begin (the `BeginPasskeyRegistration` operationId).
+func (c *ClientWithResponses) BeginPasskeyRegistrationWithResponse(ctx context.Context, body BeginPasskeyRegistrationJSONRequestBody, reqEditors ...RequestEditorFn) (*BeginPasskeyRegistrationResult, error) {
+	rsp, err := c.BeginPasskeyRegistration(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBeginPasskeyRegistrationResult(rsp)
 }
 
 // ListAuthProvidersWithResponse List configured auth providers
@@ -63607,6 +64301,107 @@ func ParseGetVersionResult(rsp *http.Response) (*GetVersionResult, error) {
 	return response, nil
 }
 
+// ParseConfirm2FAResult parses an HTTP response from a Confirm2FAWithResponse call
+func ParseConfirm2FAResult(rsp *http.Response) (*Confirm2FAResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &Confirm2FAResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Confirm2FAResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetup2FAResult parses an HTTP response from a Setup2FAWithResponse call
+func ParseSetup2FAResult(rsp *http.Response) (*Setup2FAResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &Setup2FAResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Setup2FAResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseAcceptInviteResult parses an HTTP response from a AcceptInviteWithResponse call
 func ParseAcceptInviteResult(rsp *http.Response) (*AcceptInviteResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -63695,6 +64490,13 @@ func ParseChangePasswordResult(rsp *http.Response) (*ChangePasswordResult, error
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
@@ -64226,6 +65028,64 @@ func ParseCancelMembershipRequestResult(rsp *http.Response) (*CancelMembershipRe
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseBeginPasskeyRegistrationResult parses an HTTP response from a BeginPasskeyRegistrationWithResponse call
+func ParseBeginPasskeyRegistrationResult(rsp *http.Response) (*BeginPasskeyRegistrationResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BeginPasskeyRegistrationResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			// Options PublicKeyCredentialCreationOptions, as navigator.credentials.create expects.
+			Options *map[string]interface{} `json:"options,omitempty"`
+			Session *string                 `json:"session,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
 
 	}
 

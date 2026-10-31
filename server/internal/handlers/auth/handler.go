@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -804,6 +805,9 @@ func (h *Handler) ChangePassword(writer http.ResponseWriter, req *http.Request) 
 
 func (h *Handler) handleChangePasswordError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
+	case errors.Is(err, ErrReauthenticationRequired):
+		return h.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodeReauthenticationRequired,
+			"Sign in again to set a password", err)
 	case errors.Is(err, ErrInvalidCurrentPassword):
 		return h.WriteErrorErr(writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidCurrentPassword,
 			"Current password is incorrect", err)
@@ -1343,8 +1347,20 @@ func (h *Handler) Setup2FA(writer http.ResponseWriter, req *http.Request) error 
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	resp, err := h.svc.Setup2FA(req.Context(), claims.UserUID)
+	// The body is optional: an account without a password sends none.
+	var setupReq Setup2FARequest
+	if err := json.NewDecoder(req.Body).Decode(&setupReq); err != nil && !errors.Is(err, io.EOF) {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	resp, err := h.svc.Setup2FA(req.Context(), claims.UserUID, setupReq)
 	if err != nil {
+		if handled, writeErr := writeReauthError(&h.HandlerBase, writer, req, err); handled {
+			return writeErr
+		}
+
 		return h.handle2FAError(writer, req, err)
 	}
 
@@ -1358,7 +1374,7 @@ func (h *Handler) Confirm2FA(writer http.ResponseWriter, req *http.Request) erro
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	var confirmReq Verify2FARequest
+	var confirmReq Confirm2FARequest
 	if err := json.NewDecoder(req.Body).Decode(&confirmReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
 			{Name: fieldBody, Message: msgInvalidJSON},
@@ -1371,7 +1387,7 @@ func (h *Handler) Confirm2FA(writer http.ResponseWriter, req *http.Request) erro
 		})
 	}
 
-	resp, err := h.svc.Confirm2FA(req.Context(), claims.UserUID, confirmReq.Code)
+	resp, err := h.svc.Confirm2FA(req.Context(), claims.UserUID, confirmReq)
 	if err != nil {
 		return h.handle2FAError(writer, req, err)
 	}
@@ -1490,6 +1506,9 @@ func (h *Handler) handle2FAError(writer http.ResponseWriter, request *http.Reque
 			writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidRecoveryCode, "Invalid recovery code", err)
 	case errors.Is(err, ErrTwoFAAlreadyEnabled):
 		return h.WriteErrorErr(writer, request, http.StatusConflict, base.ErrorCodeConflict, "2FA is already enabled", err)
+	case errors.Is(err, ErrInvalidSetupToken):
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeInvalidSetupToken,
+			"2FA setup expired, start it again", err)
 	case errors.Is(err, ErrTwoFANotEnabled):
 		return h.WriteErrorErr(
 			writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, "2FA is not enabled", err)

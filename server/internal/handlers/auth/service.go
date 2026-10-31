@@ -264,6 +264,13 @@ type Claims struct {
 	// 2026-10-16-12). Empty on every other token. It lets RequireAuth tell the
 	// first-party CLI client from a third-party one; see IsMCPCredential.
 	ClientID string `json:"clientId,omitempty"`
+	// AuthTime is when (Unix seconds) the primary sign-in that opened this
+	// session happened (spec 2026-10-31-02). It survives refreshes and org
+	// switches, but never takes the time a refresh minted the token. A
+	// passwordless account may only add a sign-in factor while it is recent.
+	// 0 when unknown (sessions opened before the claim existed, impersonation,
+	// MCP and PAT credentials).
+	AuthTime int64 `json:"authTime,omitempty"`
 	// pat marks claims produced by ValidatePATToken (spec 2026-10-28-01).
 	// Unexported, so it never appears in a signed JWT: no token can claim to
 	// be, or not to be, a PAT. See IsPAT and patForbiddenRoutes.
@@ -479,6 +486,23 @@ type TwoFAClaims struct {
 type Setup2FAResponse struct {
 	URI    string `json:"uri"`
 	Secret string `json:"secret"`
+	// SetupToken binds the confirm step to this secret and to the
+	// re-authentication that produced it (spec 2026-10-31-02). It expires
+	// after 10 minutes; POST /auth/2fa/confirm requires it.
+	SetupToken string `json:"setupToken"`
+}
+
+// Setup2FARequest is the body of POST /auth/2fa/setup. CurrentPassword is
+// required when the account has a password; an account without one must
+// have signed in within the last 10 minutes instead.
+type Setup2FARequest struct {
+	CurrentPassword *string `json:"currentPassword,omitempty"`
+}
+
+// Confirm2FARequest is the body of POST /auth/2fa/confirm.
+type Confirm2FARequest struct {
+	Code       string `json:"code"`
+	SetupToken string `json:"setupToken"`
 }
 
 // Confirm2FAResponse contains the recovery codes after enabling 2FA.
@@ -823,6 +847,13 @@ func (s *Service) completeLogin(
 ) (*LoginResponse, error) {
 	now := time.Now()
 
+	// A completed login is a primary sign-in. The session minted after an org
+	// deletion is not: it keeps the caller's sign-in time.
+	authTime := now.Unix()
+	if method == methodOrgDeleted {
+		authTime = callerAuthTime(ctx)
+	}
+
 	if updateErr := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{LastActiveAt: &now}); updateErr != nil {
 		slog.ErrorContext(ctx, "Failed to update user last_active_at", "error", updateErr, "userUID", user.UID)
 	}
@@ -830,7 +861,7 @@ func (s *Service) completeLogin(
 	userInfo := newUserInfo(user, role)
 
 	if resolvedOrg == nil {
-		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "", user.Demo)
+		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "", user.Demo, authTime)
 		if tokenErr != nil {
 			return nil, tokenErr
 		}
@@ -851,6 +882,7 @@ func (s *Service) completeLogin(
 	}
 
 	refreshToken := s.newRefreshTokenRow(ctx, user, resolvedOrg, refreshTokenValue, method, now, authContext)
+	stampSignedInAt(refreshToken, authTime)
 
 	if err = s.startSession(
 		ctx, actorFromUser(user), resolvedOrg, refreshToken, role, method, authContext,
@@ -858,7 +890,8 @@ func (s *Service) completeLogin(
 		return nil, err
 	}
 
-	accessToken, err := s.generateAccessToken(user.UID, resolvedOrg.Slug, role, refreshToken.UID, user.Demo)
+	accessToken, err := s.generateAccessToken(
+		user.UID, resolvedOrg.Slug, role, refreshToken.UID, user.Demo, authTime)
 	if err != nil {
 		return nil, err
 	}
@@ -1522,7 +1555,8 @@ func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*Login
 	}
 
 	// Generate new access token, bound to the refresh-token row that issued it.
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, token.UID, user.Demo)
+	// It carries the session's sign-in time, never the time of this refresh.
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, token.UID, user.Demo, signedInAtOf(token))
 	if err != nil {
 		return nil, err
 	}
@@ -2222,6 +2256,10 @@ func (s *Service) SwitchOrg(
 		keyCreatedWith: authContext.ToMap(),
 	}
 
+	// An org switch is not a sign-in: the new session keeps the caller's.
+	authTime := callerAuthTime(ctx)
+	stampSignedInAt(refreshToken, authTime)
+
 	if err = s.startSession(
 		ctx, actorFromUser(user), org, refreshToken, role, AuthMethodSwitchOrg, authContext,
 	); err != nil {
@@ -2229,7 +2267,7 @@ func (s *Service) SwitchOrg(
 	}
 
 	// Generate access token, bound to the new refresh-token row.
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo)
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo, authTime)
 	if err != nil {
 		return nil, err
 	}
@@ -2300,8 +2338,11 @@ func (s *Service) GetAllUserTokens(
 // user_tokens.uid of the refresh-token row this access token is bound to —
 // pass "" when there is no such row (no-org login, PAT validation, 2FA temp
 // tokens). demo is the owning user's users.demo flag, which the write guard
-// reads straight off the claims (spec 2026-09-06-02).
-func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string, demo bool) (string, error) {
+// reads straight off the claims (spec 2026-09-06-02). authTime is the primary
+// sign-in time of the session (Claims.AuthTime), 0 when unknown.
+func (s *Service) generateAccessToken(
+	userUID, orgSlug, role, refreshUID string, demo bool, authTime int64,
+) (string, error) {
 	now := time.Now()
 	claims := &Claims{
 		UserUID:    userUID,
@@ -2309,6 +2350,7 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string,
 		Role:       role,
 		RefreshUID: refreshUID,
 		Demo:       demo,
+		AuthTime:   authTime,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.cfg.AccessTokenExpiry)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -2444,6 +2486,7 @@ func (s *Service) GenerateTokensForOAuth(
 
 	createdWith[keyMethod] = method
 	refreshToken.Properties = models.JSONMap{keyCreatedWith: createdWith}
+	stampSignedInAt(refreshToken, now.Unix())
 
 	if err = s.startSession(
 		ctx, actorFromUser(user), org, refreshToken, role, method, authContext,
@@ -2452,7 +2495,7 @@ func (s *Service) GenerateTokensForOAuth(
 	}
 
 	// Generate access token, bound to the new refresh-token row.
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo)
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo, now.Unix())
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -2775,6 +2818,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	createdWith := authContext.ToMap()
 	createdWith[keyMethod] = AuthMethodRegistration
 	refreshToken.Properties = models.JSONMap{keyCreatedWith: createdWith}
+	stampSignedInAt(refreshToken, now.Unix())
 
 	if err = s.startSession(
 		ctx, actorFromUser(user), org, refreshToken, role, AuthMethodRegistration, authContext,
@@ -2782,7 +2826,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo)
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo, now.Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -3216,6 +3260,14 @@ func (s *Service) bumpChangePasswordCounter(ctx context.Context, userUID string)
 		changePasswordCountKeyPrefix+userUID, changePasswordMaxPerUser, changePasswordWindow)
 }
 
+// resetChangePasswordCounter clears the per-user change-password counter
+// after a successful re-authentication. Best effort.
+func (s *Service) resetChangePasswordCounter(ctx context.Context, userUID string) {
+	if _, err := s.db.DeleteStateEntry(ctx, nil, changePasswordCountKeyPrefix+userUID); err != nil {
+		slog.DebugContext(ctx, "Failed to delete change-password counter", "error", err)
+	}
+}
+
 // ChangePassword rotates the password of an already-authenticated user.
 //
 // It is the authenticated twin of ResetPassword: identical post-change side
@@ -3227,6 +3279,9 @@ func (s *Service) bumpChangePasswordCounter(ctx context.Context, userUID string)
 //   - When the account has no password yet (signed up through an identity
 //     provider), currentPassword is ignored and this *sets* the initial
 //     password. Without it an SSO user is permanently locked to their IdP.
+//     A first password is a new sign-in factor, so the session must come
+//     from a sign-in within the last 10 minutes (ErrReauthenticationRequired
+//     otherwise, spec 2026-10-31-02).
 //   - currentRefreshUID (the caller's own Claims.RefreshUID) is spared by the
 //     revocation sweep. Changing your password from the settings page must not
 //     bounce you to the login screen; every *other* session still dies.
@@ -3250,7 +3305,7 @@ func (s *Service) ChangePassword(
 		return nil, ErrUserNotFound
 	}
 
-	if err = checkPasswordChange(user, req); err != nil {
+	if err = checkPasswordChange(ctx, user, req); err != nil {
 		return nil, err
 	}
 
@@ -3269,9 +3324,7 @@ func (s *Service) ChangePassword(
 
 	// Best-effort: the rotation already succeeded, so a stale counter is the
 	// worst outcome and it ages out at the window TTL anyway.
-	if _, err := s.db.DeleteStateEntry(ctx, nil, changePasswordCountKeyPrefix+user.UID); err != nil {
-		slog.DebugContext(ctx, "Failed to delete change-password counter", "error", err)
-	}
+	s.resetChangePasswordCounter(ctx, user.UID)
 
 	// Same policy as the reset flow: session refresh tokens die, PATs
 	// (TokenTypePAT) survive as separately managed credentials — except the
@@ -3299,8 +3352,16 @@ func (s *Service) ChangePassword(
 // checkPasswordChange applies the password rules of ChangePassword: the
 // current password (when the account has one), the minimum length, and "must
 // differ".
-func checkPasswordChange(user *models.User, req ChangePasswordRequest) error {
-	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
+func checkPasswordChange(ctx context.Context, user *models.User, req ChangePasswordRequest) error {
+	hasPassword := userHasPassword(user)
+
+	// Setting a first password adds a sign-in factor: without a password to
+	// check, the session must come from a recent sign-in (spec 2026-10-31-02).
+	if !hasPassword {
+		if err := requireRecentSignIn(ctx); err != nil {
+			return err
+		}
+	}
 
 	if hasPassword {
 		// Always run the verify — even for an empty currentPassword — so the
@@ -4112,13 +4173,22 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, cal
 	createdWith[keyMethod] = AuthMethodInvitation
 	refreshToken.Properties = models.JSONMap{keyCreatedWith: createdWith}
 
+	// Accepting from a signed-in session keeps that session's sign-in time;
+	// accepting while signed out signs in.
+	authTime := now.Unix()
+	if callerUID != "" {
+		authTime = callerAuthTime(ctx)
+	}
+
+	stampSignedInAt(refreshToken, authTime)
+
 	if err = s.startSession(
 		ctx, actorFromUser(user), matchedOrg, refreshToken, role, AuthMethodInvitation, authContext,
 	); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
-	accessToken, err := s.generateAccessToken(user.UID, matchedOrg.Slug, role, refreshToken.UID, user.Demo)
+	accessToken, err := s.generateAccessToken(user.UID, matchedOrg.Slug, role, refreshToken.UID, user.Demo, authTime)
 	if err != nil {
 		return nil, err
 	}
@@ -4686,8 +4756,11 @@ func generateRecoveryCodes() ([]string, error) {
 	return codes, nil
 }
 
-// Setup2FA generates a TOTP secret for the user and stores it (not yet enabled).
-func (s *Service) Setup2FA(ctx context.Context, userUID string) (*Setup2FAResponse, error) {
+// Setup2FA generates a TOTP secret for the user and stores it (not yet
+// enabled). TOTP is a sign-in factor, so the caller re-authenticates first
+// (reauthenticateForFactor): a hijacked session must not be able to enable
+// 2FA with its own authenticator and lock the owner out.
+func (s *Service) Setup2FA(ctx context.Context, userUID string, req Setup2FARequest) (*Setup2FAResponse, error) {
 	user, err := s.db.GetUser(ctx, userUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -4699,6 +4772,10 @@ func (s *Service) Setup2FA(ctx context.Context, userUID string) (*Setup2FARespon
 
 	if user.TOTPEnabled {
 		return nil, ErrTwoFAAlreadyEnabled
+	}
+
+	if err = s.reauthenticateForFactor(ctx, user, req.CurrentPassword); err != nil {
+		return nil, err
 	}
 
 	key, err := totp.Generate(totp.GenerateOpts{
@@ -4716,14 +4793,26 @@ func (s *Service) Setup2FA(ctx context.Context, userUID string) (*Setup2FARespon
 		return nil, updateErr
 	}
 
+	setupToken, err := s.generateTOTPSetupToken(userUID, secret)
+	if err != nil {
+		return nil, err
+	}
+
+	// A successful re-authentication resets the shared counter, like a
+	// successful password change does.
+	s.resetChangePasswordCounter(ctx, userUID)
+
 	return &Setup2FAResponse{
-		URI:    key.URL(),
-		Secret: secret,
+		URI:        key.URL(),
+		Secret:     secret,
+		SetupToken: setupToken,
 	}, nil
 }
 
 // Confirm2FA validates the TOTP code, enables 2FA, and returns recovery codes.
-func (s *Service) Confirm2FA(ctx context.Context, userUID, code string) (*Confirm2FAResponse, error) {
+// setupToken must be the one Setup2FA returned with the pending secret: it is
+// what proves the re-authentication.
+func (s *Service) Confirm2FA(ctx context.Context, userUID string, req Confirm2FARequest) (*Confirm2FAResponse, error) {
 	user, err := s.db.GetUser(ctx, userUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -4741,7 +4830,11 @@ func (s *Service) Confirm2FA(ctx context.Context, userUID, code string) (*Confir
 		return nil, ErrTwoFANotEnabled
 	}
 
-	if !totp.Validate(code, *user.TOTPSecret) {
+	if err = s.checkTOTPSetupToken(req.SetupToken, userUID, *user.TOTPSecret); err != nil {
+		return nil, err
+	}
+
+	if !totp.Validate(req.Code, *user.TOTPSecret) {
 		return nil, ErrInvalid2FACode
 	}
 
@@ -4757,6 +4850,8 @@ func (s *Service) Confirm2FA(ctx context.Context, userUID, code string) (*Confir
 	}); updateErr != nil {
 		return nil, updateErr
 	}
+
+	s.notifyTOTPEnabled(ctx, user)
 
 	return &Confirm2FAResponse{
 		RecoveryCodes: recoveryCodes,
@@ -4978,7 +5073,7 @@ func (s *Service) completeLoginAfter2FA(
 
 	// No org case
 	if orgSlug == "" {
-		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "", user.Demo)
+		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "", user.Demo, now.Unix())
 		if tokenErr != nil {
 			return nil, tokenErr
 		}
@@ -5014,6 +5109,7 @@ func (s *Service) completeLoginAfter2FA(
 	refreshToken.Properties = models.JSONMap{
 		keyCreatedWith: authContext.ToMap(),
 	}
+	stampSignedInAt(refreshToken, now.Unix())
 
 	if createErr := s.startSession(
 		ctx, actorFromUser(user), org, refreshToken, role, method, authContext,
@@ -5021,7 +5117,7 @@ func (s *Service) completeLoginAfter2FA(
 		return nil, createErr
 	}
 
-	accessToken, err := s.generateAccessToken(user.UID, orgSlug, role, refreshToken.UID, user.Demo)
+	accessToken, err := s.generateAccessToken(user.UID, orgSlug, role, refreshToken.UID, user.Demo, now.Unix())
 	if err != nil {
 		return nil, err
 	}

@@ -140,6 +140,16 @@ const (
 	// CLI reads it to tell the user to create a token in the target org or
 	// to log in interactively.
 	ErrorCodePATForbidden ErrorCode = "PAT_FORBIDDEN"
+	// ErrorCodeReauthenticationRequired accompanies the 403 an account
+	// without a password gets when it tries to add a sign-in factor (2FA,
+	// passkey, first password) from a session whose sign-in is more than 10
+	// minutes old (spec 2026-10-31-02). The dashboard sends the user through
+	// a fresh sign-in.
+	ErrorCodeReauthenticationRequired ErrorCode = "REAUTHENTICATION_REQUIRED"
+	// ErrorCodeInvalidSetupToken is returned by POST /auth/2fa/confirm when
+	// the setupToken from POST /auth/2fa/setup is missing, expired, or does
+	// not match the pending secret. The client restarts the setup.
+	ErrorCodeInvalidSetupToken ErrorCode = "INVALID_SETUP_TOKEN"
 )
 
 // ContextKey is the type used for context keys in middleware and handlers.

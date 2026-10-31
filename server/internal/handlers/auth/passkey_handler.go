@@ -24,6 +24,13 @@ func NewPasskeyHandler(svc *PasskeyService, base base.HandlerBase) *PasskeyHandl
 	return &PasskeyHandler{HandlerBase: base, svc: svc}
 }
 
+// passkeyRegisterBeginRequest is the body of POST
+// /auth/passkeys/register/begin: the re-authentication a new passkey needs
+// (spec 2026-10-31-02).
+type passkeyRegisterBeginRequest struct {
+	CurrentPassword *string `json:"currentPassword,omitempty"`
+}
+
 // passkeyFinishRegisterRequest is the wire body for register/finish.
 type passkeyFinishRegisterRequest struct {
 	Session    string          `json:"session"`
@@ -67,8 +74,20 @@ func (h *PasskeyHandler) RegisterBegin(writer http.ResponseWriter, req *http.Req
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	resp, err := h.svc.BeginRegistration(req.Context(), claims.UserUID)
+	// The body is optional: an account without a password sends none.
+	var body passkeyRegisterBeginRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	resp, err := h.svc.BeginRegistration(req.Context(), claims.UserUID, body.CurrentPassword)
 	if err != nil {
+		if handled, writeErr := writeReauthError(&h.HandlerBase, writer, req, err); handled {
+			return writeErr
+		}
+
 		return h.translatePasskeyError(writer, req, err)
 	}
 

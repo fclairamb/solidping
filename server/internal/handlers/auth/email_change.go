@@ -16,7 +16,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/defaults"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
-	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
 // maxEmailLength is the practical upper bound of an address (RFC 5321 path
@@ -228,33 +227,6 @@ func (s *Service) recordEmailChanged(ctx context.Context, change *emailChange, o
 	}
 }
 
-// verifyEmailChangePassword re-authenticates a self-service email change. The
-// current-password check is a brute-force surface, like the one in
-// ChangePassword, so it shares that per-user counter.
-func (s *Service) verifyEmailChangePassword(ctx context.Context, user *models.User, currentPassword *string) error {
-	limited, err := s.bumpChangePasswordCounter(ctx, user.UID)
-	if err != nil {
-		return fmt.Errorf("failed to bump change-password counter: %w", err)
-	}
-
-	if limited {
-		return ErrRateLimited
-	}
-
-	given := ""
-	if currentPassword != nil {
-		given = *currentPassword
-	}
-
-	// Always run the verify, even for an empty password, so "missing" and
-	// "wrong" cost the same time.
-	if !passwords.Verify(given, *user.PasswordHash) {
-		return ErrInvalidCurrentPassword
-	}
-
-	return nil
-}
-
 // changeOwnEmail validates and applies a self-service email change requested
 // through PATCH /auth/me. It returns (false, nil) when the address is
 // unchanged, so the caller only applies the name.
@@ -291,7 +263,7 @@ func (s *Service) changeOwnEmail(ctx context.Context, claims *Claims, req Update
 		return false, ErrEmailChangeNoPassword
 	}
 
-	if err := s.verifyEmailChangePassword(ctx, user, req.CurrentPassword); err != nil {
+	if err := s.verifyCurrentPassword(ctx, user, req.CurrentPassword); err != nil {
 		return false, err
 	}
 

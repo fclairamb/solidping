@@ -189,8 +189,13 @@ type LoginBeginResponse struct {
 // BeginRegistration starts the ceremony for an authenticated user.
 // The returned session JWT carries the WebAuthn challenge and the user's
 // UID; the client must echo it back to FinishRegistration.
+//
+// A passkey is a sign-in factor that survives a password reset, so the
+// caller re-authenticates first: currentPassword when the account has a
+// password, a recent sign-in otherwise (spec 2026-10-31-02). FinishRegistration
+// is bound to this call by the sealed session.
 func (s *PasskeyService) BeginRegistration(
-	ctx context.Context, userUID string,
+	ctx context.Context, userUID string, currentPassword *string,
 ) (*RegisterBeginResponse, error) {
 	if !s.enabled {
 		return nil, ErrWebAuthnNotConfigured
@@ -199,6 +204,10 @@ func (s *PasskeyService) BeginRegistration(
 	user, err := s.dbSvc.GetUser(ctx, userUID)
 	if err != nil {
 		return nil, fmt.Errorf("load user: %w", err)
+	}
+
+	if err = s.authSvc.reauthenticateForFactor(ctx, user, currentPassword); err != nil {
+		return nil, err
 	}
 
 	existing, err := s.dbSvc.ListUserPasskeysByUser(ctx, userUID)
