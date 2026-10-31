@@ -8,20 +8,21 @@
 * auto-create a personal org for new users, resume OAuth after org creation ([#716](https://github.com/fclairamb/solidping/issues/716)) ([2ae5575](https://github.com/fclairamb/solidping/commit/2ae5575dd6116c0c949f6b92298e1819426ef78a))
 
 
-### Bug Fixes
-
-* **auth:** limit sign-ups per client IP (unconfirmed per day, once a minute) ([#727](https://github.com/fclairamb/solidping/issues/727)) ([b2eb48f](https://github.com/fclairamb/solidping/commit/b2eb48f89210aa3ca65f96e87b36a9cadb70edc2))
-* **deps:** update github.com/dop251/goja digest to 032d024 ([#724](https://github.com/fclairamb/solidping/issues/724)) ([025e97a](https://github.com/fclairamb/solidping/commit/025e97a29866983466c1259794153533974c8f65))
-* **deps:** update go dependencies (non-major) ([#725](https://github.com/fclairamb/solidping/issues/725)) ([5796b1f](https://github.com/fclairamb/solidping/commit/5796b1f537cb8a3c82ea50dd8b6b9e0f5392da95))
-* **deps:** update module github.com/prometheus/common to v0.73.1 ([#720](https://github.com/fclairamb/solidping/issues/720)) ([9bef875](https://github.com/fclairamb/solidping/commit/9bef875c71275d9fb0fc0f4fa40152cd2adbdc24))
-* **deps:** update module github.com/slack-go/slack to v0.33.0 ([#722](https://github.com/fclairamb/solidping/issues/722)) ([ad19df4](https://github.com/fclairamb/solidping/commit/ad19df40bb2740de951edc11cb18435761e195af))
-* **security:** bug-report budget for non-members, retention sparing crawl reports ([#715](https://github.com/fclairamb/solidping/issues/715)) ([d929999](https://github.com/fclairamb/solidping/commit/d92999976540fbc4d6eddfef7acde56200a760b7))
-* **security:** JS check memory budget, re-authentication for new sign-in factors ([#728](https://github.com/fclairamb/solidping/issues/728)) ([a78f954](https://github.com/fclairamb/solidping/commit/a78f954b1d1bb84bf2f8e122a94ff47c08daa2ea))
-
-
 ### Performance Improvements
 
 * **dash0:** load only the active language's translations ([#729](https://github.com/fclairamb/solidping/issues/729)) ([406f211](https://github.com/fclairamb/solidping/commit/406f211df39ca734121784b85878402f13fa40bd))
+
+
+### Security
+
+* **auth:** limit sign-ups per client IP (unconfirmed per day, once a minute) ([#727](https://github.com/fclairamb/solidping/issues/727)) ([b2eb48f](https://github.com/fclairamb/solidping/commit/b2eb48f89210aa3ca65f96e87b36a9cadb70edc2))
+* JS check memory budget, re-authentication for new sign-in factors ([#728](https://github.com/fclairamb/solidping/issues/728)) ([a78f954](https://github.com/fclairamb/solidping/commit/a78f954b1d1bb84bf2f8e122a94ff47c08daa2ea))
+* bug-report budget for non-members, retention sparing crawl reports ([#715](https://github.com/fclairamb/solidping/issues/715)) ([d929999](https://github.com/fclairamb/solidping/commit/d92999976540fbc4d6eddfef7acde56200a760b7))
+
+
+### Dependencies
+
+* update Go dependencies: goja, prometheus/common v0.73.1, slack-go/slack v0.33.0 and other non-major bumps ([#720](https://github.com/fclairamb/solidping/issues/720), [#722](https://github.com/fclairamb/solidping/issues/722), [#724](https://github.com/fclairamb/solidping/issues/724), [#725](https://github.com/fclairamb/solidping/issues/725))
 
 ## [0.42.1](https://github.com/fclairamb/solidping/compare/v0.42.0...v0.42.1) (2026-10-30)
 
