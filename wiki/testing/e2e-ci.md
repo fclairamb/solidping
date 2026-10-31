@@ -51,7 +51,7 @@ merged `results.json` when the two shards drift apart. Re-check the split in the
 - **Runner**: ubuntu-26.04
 - **Browser**: Chromium only
 - **Database**: Postgres from `docker-compose.yml` (`SP_DB_TYPE=postgres`), reset at start
-- **Server env**: `SP_RUNMODE=test`, rate limiting off, `SP_AUTH_REGISTRATION_EMAIL_PATTERN=.*`
+- **Server env**: `SP_RUNMODE=test`, rate limiting off, `SP_AUTH_REGISTRATION_EMAIL_PATTERN=.*`, `SP_AUTH_AUTO_PERSONAL_ORG=true`
   (a local side-car must match these, see [local-e2e.md](local-e2e.md))
 - **Test credentials**: `test@test.com` / `test` / org `test`
 

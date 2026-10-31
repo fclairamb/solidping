@@ -23,7 +23,8 @@ import (
 //  1. a pending invitation for the email: join that org (the invite is used);
 //  2. an org whose registration.email_pattern matches: join it;
 //  3. a pending membership request by this user: nothing, /no-org shows it;
-//  4. otherwise create a personal org, the user its OWNER.
+//  4. otherwise, when auth.auto_personal_org is on (the default on SaaS, off
+//     on self-hosted), create a personal org, the user its OWNER.
 //
 // Every no-org site calls it (password, LDAP and passkey logins through
 // resolveOrgPreference, the registration confirmation and the federated
@@ -31,17 +32,22 @@ import (
 // deletion deliberately does not: a user who deleted their last org lands on
 // /no-org, and keeps landing there (one personal org per lifetime).
 
+// autoPersonalOrgEnabled reports whether auth.auto_personal_org is on.
+func (s *Service) autoPersonalOrgEnabled() bool {
+	return s.fullCfg != nil && s.fullCfg.AutoPersonalOrgEnabled()
+}
+
 // ensurePersonalOrg settles a user who has no organization (see the order at
 // the top of this file). It returns the membership the sign-in should land on,
-// with Organization populated, or nil when the user stays org-less:
-// a pending request, a super admin or a demo user (neither may create an
+// with Organization populated, or nil when the user stays org-less: setting
+// off, a pending request, a super admin or a demo user (neither may create an
 // org by hand: the demo write guard refuses POST /orgs), or a user whose one
 // personal org already existed and was deleted.
 //
 // Best-effort: a failure is logged and the user lands on /no-org as before,
 // never an error that fails the sign-in.
 func (s *Service) ensurePersonalOrg(ctx context.Context, user *models.User) *models.OrganizationMember {
-	if user == nil || user.SuperAdmin || user.Demo {
+	if user == nil || user.SuperAdmin || user.Demo || !s.autoPersonalOrgEnabled() {
 		return nil
 	}
 

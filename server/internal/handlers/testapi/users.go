@@ -25,7 +25,8 @@ type CreateUserRequest struct {
 	// behavior.
 	MustChangePassword bool `json:"mustChangePassword"`
 	// PersonalOrg lets the first sign-in give the user a personal org, as for
-	// any real new user (spec 2026-10-30-04). Off by default: this route
+	// any real new user when auth.auto_personal_org is on (spec 2026-10-30-04;
+	// the e2e servers turn it on). Off by default: this route
 	// exists to seed a zero-org identity, so the user is marked as having had
 	// (and deleted) their one personal org, which keeps the sign-in on /no-org.
 	PersonalOrg bool `json:"personalOrg"`

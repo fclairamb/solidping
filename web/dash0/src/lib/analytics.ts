@@ -159,6 +159,8 @@ export interface PublicConfig {
   ai?: { enabled: boolean };
   runMode?: string;
   deploymentMode?: DeploymentMode;
+  /** Sign-ins create a personal org (auth.auto_personal_org, spec 2026-10-30-04). */
+  autoPersonalOrg?: boolean;
 }
 
 /**

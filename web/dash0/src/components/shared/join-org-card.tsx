@@ -12,6 +12,7 @@ import {
   useCreateMembershipRequest,
   useMyMembershipRequests,
 } from "@/api/hooks";
+import { useAutoPersonalOrg } from "@/api/public-config";
 
 function JoinOrgForm({ joinSlug }: { joinSlug?: string }) {
   const { t } = useTranslation("auth");
@@ -120,18 +121,22 @@ interface JoinOrgCardProps {
 }
 
 /**
- * "I'd rather join an existing organization", shown only to a user who came
- * through a join path: a `join` search param, a sign-in the org did not admit,
- * or a pending / rejected membership request. Everyone else only sees org
- * creation (spec 2026-10-30-04).
+ * "I'd rather join an existing organization". Where sign-ins create a personal
+ * org (auth.auto_personal_org, the SaaS default), it is shown only to a user
+ * who came through a join path: a `join` search param, a sign-in the org did
+ * not admit, or a pending / rejected membership request; everyone else only
+ * sees org creation (spec 2026-10-30-04). Elsewhere it is always offered.
  */
 export function JoinOrgCard({ joinSlug, membershipPending }: JoinOrgCardProps) {
+  const autoPersonalOrg = useAutoPersonalOrg();
   const { data } = useMyMembershipRequests();
   const hasRequest = (data?.data ?? []).some(
     (r) => r.status === "pending" || r.status === "rejected",
   );
 
-  if (!joinSlug && !membershipPending && !hasRequest) return null;
+  if (autoPersonalOrg !== false && !joinSlug && !membershipPending && !hasRequest) {
+    return null;
+  }
 
   return <JoinOrgForm joinSlug={joinSlug} />;
 }

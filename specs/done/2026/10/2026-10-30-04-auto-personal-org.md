@@ -18,8 +18,13 @@ A user who signs in and belongs to no organization lands on `/no-org`
   organization" (`JoinOrgCard`, `web/dash0/src/routes/no-org.tsx:123`,
   `:147`), then they left without sending a join request.
 
-So two cheap changes. Out of scope: the colleague banner, cleanup of
-abandoned orgs, and an instance setting.
+So two cheap changes. Out of scope: the colleague banner and cleanup of
+abandoned orgs.
+
+Both changes sit behind the `auth.auto_personal_org` server setting
+(`SP_AUTH_AUTO_PERSONAL_ORG`, also a system parameter applied at startup),
+added back at review: on by default in SaaS mode, off otherwise. Off, a
+self-hosted instance keeps today's `/no-org` page, join card included.
 
 ## Proposal
 

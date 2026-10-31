@@ -376,6 +376,54 @@ func TestPersonalOrgNotRecreatedAfterDeletion(t *testing.T) {
 	r.Nil(afterDelete.Organization)
 }
 
+// TestPersonalOrgFollowsSetting: auth.auto_personal_org is on by default in
+// SaaS mode and off on self-hosted, and an explicit value wins both ways. Off,
+// the sign-in stays on /no-org and no org is created.
+func TestPersonalOrgFollowsSetting(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		mode    string
+		setting *bool
+		want    bool
+	}{
+		{name: "saas default", mode: config.DeploymentModeSaaS, want: true},
+		{name: "saas opt-out", mode: config.DeploymentModeSaaS, setting: config.BoolPtr(false), want: false},
+		{name: "self-hosted default", mode: config.DeploymentModeSelfHosted, want: false},
+		{name: "self-hosted opt-in", mode: config.DeploymentModeSelfHosted, setting: config.BoolPtr(true), want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			f, ctx := newPersonalOrgFixture(t)
+			f.svc.fullCfg.Deployment.Mode = tc.mode
+			f.svc.fullCfg.Auth.AutoPersonalOrg = tc.setting
+
+			user := f.passwordUser(ctx, t, "alice@acme.com", "Alice")
+
+			login, err := f.svc.Login(ctx, "", user.Email, personalOrgTestPassword, Context{})
+			r.NoError(err)
+
+			members, err := f.db.ListMembersByUser(ctx, user.UID)
+			r.NoError(err)
+
+			if tc.want {
+				r.Equal(LoginActionDefault, login.LoginAction)
+				r.NotNil(login.Organization)
+				r.Len(members, 1)
+
+				return
+			}
+
+			r.Equal(LoginActionNoOrg, login.LoginAction)
+			r.Nil(login.Organization)
+			r.Empty(members)
+		})
+	}
+}
+
 // TestPersonalOrgSkipsSuperAdminsAndDemoUsers: neither may create an org by
 // hand, so none is created for them.
 func TestPersonalOrgSkipsSuperAdminsAndDemoUsers(t *testing.T) {
