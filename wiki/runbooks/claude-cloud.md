@@ -47,11 +47,12 @@ The CI E2E job (`.github/workflows/ci.yml`, "E2E" job env) runs the server with 
 | `SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE` | `0` | specs hammer the API |
 | `SP_SERVER_RATE_LIMITING_MAX_CONCURRENT` | `0` | same |
 | `SP_AUTH_REGISTRATION_EMAIL_PATTERN` | `.*` | register-and-confirm specs; read once at boot |
+| `SP_AUTH_AUTO_PERSONAL_ORG` | `true` | SaaS sign-up behaviour (personal org, no join card on `/no-org`); read once at boot |
 | `SP_DB_RESET` | `true` | fresh database per run |
 | `PORT` | `4000` | listen port |
 | `SP_DB_TYPE` / `SP_DB_URL` | `postgres` / `postgres://solidping:solidping@localhost:55432/solidping?sslmode=disable` | CI only; SQLite is fine locally |
 
-A side-car server missing any of the first four produces false test failures.
+A side-car server missing any of the first five produces false test failures.
 
 ## Before pushing from a sandbox
 

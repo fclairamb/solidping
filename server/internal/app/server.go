@@ -2790,7 +2790,8 @@ func isAllowedCORSOrigin(origin string, allowed []string) bool {
 func (s *Server) corsMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) error {
 		writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-		writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
+		writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin, "+
+			"X-POSTHOG-SESSION-ID, X-POSTHOG-DISTINCT-ID")
 		writer.Header().Set("Access-Control-Max-Age", "86400")
 
 		switch origin := req.Header.Get("Origin"); {

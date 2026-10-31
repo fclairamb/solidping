@@ -1003,6 +1003,23 @@ func (s *Service) enforceSessionCap(ctx context.Context, userUID string) {
 func (s *Service) resolveOrgPreference(
 	ctx context.Context, orgSlug string, user *models.User,
 ) (*models.Organization, string, LoginAction, []OrganizationSummary, error) {
+	org, role, action, summaries, err := s.resolveOrgPreferenceFromMemberships(ctx, orgSlug, user)
+	if err != nil {
+		return nil, "", "", nil, err
+	}
+
+	// No org: settle the user (invitation, pattern, personal org) before the
+	// login lands on /no-org (spec 2026-10-30-04).
+	org, role, action, summaries = s.withPersonalOrg(ctx, user, org, role, action, summaries)
+
+	return org, role, action, summaries, nil
+}
+
+// resolveOrgPreferenceFromMemberships is resolveOrgPreference on the user's
+// current memberships only.
+func (s *Service) resolveOrgPreferenceFromMemberships(
+	ctx context.Context, orgSlug string, user *models.User,
+) (*models.Organization, string, LoginAction, []OrganizationSummary, error) {
 	// Super admins: resolve org normally (they can access any org)
 	if user.SuperAdmin {
 		return s.resolveOrgForSuperAdmin(ctx, orgSlug, user.UID)
@@ -2740,6 +2757,14 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	// Try to resolve an org for login response
 	members, _ := s.db.ListMembersByUser(ctx, user.UID)
 	if len(members) == 0 {
+		// No org adopted the account: an invitation or a personal org may
+		// still give it one (spec 2026-10-30-04).
+		if member := s.ensurePersonalOrg(ctx, user); member != nil {
+			members = []*models.OrganizationMember{member}
+		}
+	}
+
+	if len(members) == 0 {
 		// No org to join yet — mint an org-less session (access token only,
 		// no refresh token) rather than a bare user payload, mirroring
 		// completeLogin's resolvedOrg==nil branch, so the frontend lands on
@@ -3484,6 +3509,41 @@ type OrgResponse struct {
 func (s *Service) CreateOrg(
 	ctx context.Context, userUID string, req CreateOrgRequest, authContext Context,
 ) (*OrgResponse, error) {
+	org, err := s.createOrgForUser(ctx, userUID, req, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Mint a session scoped to the new org, exactly like SwitchOrg: a fresh
+	// refresh-token row plus an access token whose orgSlug claim is the new
+	// org's slug. Without this, the caller's existing token (orgSlug "" for
+	// a zero-org user, or their previous org otherwise) 403s on every
+	// org-scoped call to the org they just created.
+	session, err := s.mintOrgSession(ctx, userUID, org, string(models.MemberRoleOwner), authContext)
+	if err != nil {
+		return nil, err
+	}
+
+	return &OrgResponse{
+		UID:          org.UID,
+		Slug:         org.Slug,
+		Name:         org.Name,
+		LogoURL:      org.LogoURL,
+		AccessToken:  session.AccessToken,
+		RefreshToken: session.RefreshToken,
+		ExpiresIn:    session.ExpiresIn,
+		TokenType:    session.TokenType,
+	}, nil
+}
+
+// createOrgForUser is CreateOrg without the session: it creates the org, makes
+// userUID its OWNER, records the activation milestone and seeds the default
+// alerting. autoPersonalOwner, when set, marks the org as the user's
+// auto-created personal org (spec 2026-10-30-04); the partial unique index on
+// it makes a concurrent second creation fail instead of yielding two orgs.
+func (s *Service) createOrgForUser(
+	ctx context.Context, userUID string, req CreateOrgRequest, autoPersonalOwner *string,
+) (*models.Organization, error) {
 	slug := req.Slug
 
 	if slug == "" {
@@ -3514,9 +3574,10 @@ func (s *Service) CreateOrg(
 
 	// Create organization
 	org := &models.Organization{
-		UID:  uuid.New().String(),
-		Slug: slug,
-		Name: req.Name,
+		UID:                  uuid.New().String(),
+		Slug:                 slug,
+		Name:                 req.Name,
+		AutoPersonalOwnerUID: autoPersonalOwner,
 	}
 	now := time.Now()
 	org.CreatedAt = now
@@ -3537,9 +3598,14 @@ func (s *Service) CreateOrg(
 		return nil, fmt.Errorf("failed to create membership: %w", createMemberErr)
 	}
 
+	source := activation.SourceRegularForm
+	if autoPersonalOwner != nil {
+		source = activation.SourceSystem
+	}
+
 	activation.Emit(ctx, s.db, org.UID,
 		models.EventTypeOrgActivationSignupCompleted,
-		activation.SourceRegularForm, userUID)
+		source, userUID)
 
 	// Seed default alerting so a brand-new org isn't silent by default (spec
 	// 2026-08-28-15). Best-effort: a seed failure must never fail org
@@ -3550,26 +3616,7 @@ func (s *Service) CreateOrg(
 	// a special case here.
 	s.seedOrgDefaults(ctx, org, userUID)
 
-	// Mint a session scoped to the new org, exactly like SwitchOrg: a fresh
-	// refresh-token row plus an access token whose orgSlug claim is the new
-	// org's slug. Without this, the caller's existing token (orgSlug "" for
-	// a zero-org user, or their previous org otherwise) 403s on every
-	// org-scoped call to the org they just created.
-	session, err := s.mintOrgSession(ctx, userUID, org, string(models.MemberRoleOwner), authContext)
-	if err != nil {
-		return nil, err
-	}
-
-	return &OrgResponse{
-		UID:          org.UID,
-		Slug:         org.Slug,
-		Name:         org.Name,
-		LogoURL:      org.LogoURL,
-		AccessToken:  session.AccessToken,
-		RefreshToken: session.RefreshToken,
-		ExpiresIn:    session.ExpiresIn,
-		TokenType:    session.TokenType,
-	}, nil
+	return org, nil
 }
 
 // seedOrgDefaults seeds the convenience rows that make a self-created org

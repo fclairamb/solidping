@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/errorreport"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
@@ -266,6 +267,13 @@ func setSentryIdentity(ctx context.Context, claims *auth.Claims) {
 	if claims == nil {
 		return
 	}
+
+	orgUID := ""
+	if org, ok := GetOrganizationFromContext(ctx); ok && org != nil {
+		orgUID = org.UID
+	}
+
+	errorreport.SetIdentity(ctx, orgUID, claims.UserUID)
 
 	hub := sentry.GetHubFromContext(ctx)
 	if hub == nil {
