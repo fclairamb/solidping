@@ -61,3 +61,14 @@ func TestFormGuardTestRunMode(t *testing.T) {
 	applyFormGuardEnv(&guard, runModeTest)
 	r.Equal(2*time.Second, guard.MinFillTime)
 }
+
+// TestFormGuardResolvedTicketTTL: an unset or negative lifetime falls back to
+// the default, an explicit one is kept.
+func TestFormGuardResolvedTicketTTL(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	r.Equal(DefaultFormGuardTicketTTL, FormGuardConfig{}.ResolvedTicketTTL())
+	r.Equal(DefaultFormGuardTicketTTL, FormGuardConfig{TicketTTL: -time.Minute}.ResolvedTicketTTL())
+	r.Equal(time.Hour, FormGuardConfig{TicketTTL: time.Hour}.ResolvedTicketTTL())
+}

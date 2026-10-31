@@ -29,8 +29,6 @@ const (
 	// (purposeKey), so a ticket can never verify as a session token or as any
 	// other purpose's token.
 	formTicketPurpose = "form-ticket"
-	// formTicketNonceSize is the random ticket ID that makes it single-use.
-	formTicketNonceSize = 16
 
 	formTicketUsedKeyPrefix = "form_ticket_used:"
 	formIPKeyPrefix         = "form_rl_ip:"
@@ -99,10 +97,9 @@ func (s *Service) issueFormTicketAt(form string, issuedAt time.Time) (*FormTicke
 		return nil, ErrUnknownForm
 	}
 
-	nonce := make([]byte, formTicketNonceSize)
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, fmt.Errorf("failed to generate form ticket nonce: %w", err)
-	}
+	// rand.Text cannot fail: it crashes the process if the system's entropy
+	// source does, so there is no error to handle here.
+	nonce := rand.Text()
 
 	guard := s.fullCfg.Auth.FormGuard
 	expiresAt := issuedAt.Add(guard.ResolvedTicketTTL())
@@ -111,7 +108,7 @@ func (s *Service) issueFormTicketAt(form string, issuedAt time.Time) (*FormTicke
 		Form:       form,
 		IssuedAtMs: issuedAt.UnixMilli(),
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        hex.EncodeToString(nonce),
+			ID:        nonce,
 			IssuedAt:  jwt.NewNumericDate(issuedAt),
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 		},
