@@ -41,6 +41,13 @@ func TestSwitchOrgAcceptsOrgLessSession(t *testing.T) {
 	user.PasswordHash = &hash
 	require.NoError(t, f.dbSvc.CreateUser(f.ctx, user))
 
+	// A pending membership request keeps the user org-less: without one the
+	// sign-in would create a personal org (spec 2026-10-30-04).
+	decoy := models.NewOrganization("decoy", "Decoy")
+	require.NoError(t, f.dbSvc.CreateOrganization(f.ctx, decoy))
+	require.NoError(t, f.dbSvc.CreateMembershipRequest(f.ctx,
+		models.NewMembershipRequest(decoy.UID, user.UID, nil)))
+
 	// Signed in while belonging to no org: an org-less session.
 	login, err := f.authSvc.Login(f.ctx, "", email, password, auth.Context{})
 	require.NoError(t, err)

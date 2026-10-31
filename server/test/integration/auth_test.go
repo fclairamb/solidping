@@ -376,6 +376,18 @@ func TestLoginOrgPreference(t *testing.T) {
 			t.Fatalf("failed to create user: %v", err)
 		}
 
+		// A pending membership request keeps the user org-less: without one the
+		// sign-in would create a personal org (spec 2026-10-30-04).
+		decoy := models.NewOrganization("decoy-org", "Decoy")
+		if err := dbService.CreateOrganization(ctx, decoy); err != nil {
+			t.Fatalf("failed to create decoy org: %v", err)
+		}
+
+		if err := dbService.CreateMembershipRequest(ctx,
+			models.NewMembershipRequest(decoy.UID, noOrgUser.UID, nil)); err != nil {
+			t.Fatalf("failed to create membership request: %v", err)
+		}
+
 		apiClient := testServer.NewClient()
 		resp, loginErr := apiClient.Login(ctx, "some-org", "noorg@example.com", "noorgpass123")
 		if loginErr != nil {
