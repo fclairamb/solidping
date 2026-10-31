@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.1](https://github.com/fclairamb/solidping/compare/v0.43.0...v0.43.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **deps:** update github.com/dop251/goja digest to cf2ff0e ([#730](https://github.com/fclairamb/solidping/issues/730)) ([92b6c17](https://github.com/fclairamb/solidping/commit/92b6c17b651dfe8a9c096198aacd5994f8fde386))
+
 ## [0.43.0](https://github.com/fclairamb/solidping/compare/v0.42.1...v0.43.0) (2026-10-31)
 
 
