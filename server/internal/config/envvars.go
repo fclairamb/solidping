@@ -240,6 +240,8 @@ func manualReaderServerEnvVars() []string {
 		"SP_AUTH_IMPERSONATION_ENABLED",
 		"SP_AUTH_ADMIN_EMAIL",
 		"SP_ADMIN_EMAIL",
+		// applyRegistrationLimitEnv
+		"SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP",
 		// applyServerEnv
 		"SP_SERVER_DOCS_HOST",
 		"SP_DOCS_HOST",

@@ -60,7 +60,11 @@ function RegisterPage() {
       clearSignupAttribution();
       setSuccess(true);
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.status === 429) {
+        // Too many unconfirmed sign-ups from this network (server setting
+        // auth.registration_max_pending_per_ip).
+        setError(t("auth:registrationTooManyPending"));
+      } else if (err instanceof ApiError) {
         setError(err.message);
       } else {
         setError(t("auth:unexpectedError"));

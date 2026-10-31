@@ -34,6 +34,16 @@ to test whether an email has an account. Callers must not key on a distinct
 "email already taken" error; there isn't one here anymore (contrast with
 `request-password-reset` below, which was already uniform-success).
 
+**Pending sign-ups per IP:** the pending entry keeps the client IP (trusted-proxy
+rules of `server.rate_limiting.trusted_proxies`). A client IP with
+`auth.registration_max_pending_per_ip` (default 3, `0` = off, off in test run mode
+unless `SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP` is set) pending entries written in
+the last 24 hours gets `429 RATE_LIMITED`, with nothing stored or sent. Confirming
+deletes the entry and frees the slot; re-registering an address that is already
+pending rewrites its entry and is not counted against itself. The check runs before
+the taken-email branch, so an IP over its limit gets `429` for every address and
+the limit cannot tell which ones have an account.
+
 ### POST /api/v1/auth/confirm-registration
 Confirm a registration via email token. Returns access token.
 

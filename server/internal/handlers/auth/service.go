@@ -199,6 +199,10 @@ type Service struct {
 	// patFillHook runs between the database read and the cache insert of
 	// ValidatePATToken. Test-only: always nil in production.
 	patFillHook func()
+	// registrationMu serializes Register's per-IP pending count with the write
+	// of the new pending entry, so a burst of parallel sign-ups from one IP
+	// cannot all pass the count (checkPendingRegistrationsPerIP).
+	registrationMu sync.Mutex
 	// eventNotifier broadcasts PAT revocations to the other replicas. Nil
 	// means local-only eviction (unit tests, `solidping mcp --stdio`).
 	eventNotifier notifier.EventNotifier
@@ -2484,6 +2488,10 @@ type RegisterRequest struct {
 	// lenient: an unsupported value is dropped, never refused.
 	Locale   string `json:"locale,omitempty"`
 	Timezone string `json:"timezone,omitempty"`
+	// ClientIP is the caller's address, set by the HTTP handler with the
+	// trusted-proxy rules, never read from the body. It counts the sign-up
+	// against auth.registration_max_pending_per_ip; empty skips that check.
+	ClientIP string `json:"-"`
 }
 
 // RegisterResponse contains the response after registration.
@@ -2578,6 +2586,15 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		return nil, fmt.Errorf("%w: password must be at least %d characters", ErrInvalidCredentials, minPasswordLength)
 	}
 
+	s.registrationMu.Lock()
+	defer s.registrationMu.Unlock()
+
+	// Before the taken-email branch: an IP over its limit gets 429 whatever
+	// the address, so the limit cannot tell which ones have an account.
+	if limitErr := s.checkPendingRegistrationsPerIP(ctx, req.ClientIP, req.Email); limitErr != nil {
+		return nil, limitErr
+	}
+
 	// Check if email is already taken
 	existing, err := s.db.GetUserByEmail(ctx, req.Email)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -2611,29 +2628,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 
 	token := hex.EncodeToString(tokenBytes)
 
-	// Store in state entries. Only sha256hex(token) is kept — a DB leak
-	// during the 3-day TTL window must not also hand out a usable
-	// confirmation token alongside the pending password hash (spec
-	// 2026-09-25-30). ConfirmRegistration hashes the presented token and
-	// compares it against keyTokenHash for each candidate entry.
-	stateValue := &models.JSONMap{
-		keyTokenHash:   hashPendingToken(token),
-		keyEmail:       req.Email,
-		keyName:        req.Name,
-		"passwordHash": hash,
-	}
-
-	// The account does not exist yet, so the attribution rides along in the
-	// pending entry and is applied at confirmation. It goes in only when there
-	// is something to keep: the common untagged signup stores nothing extra.
-	if attribution := normalizeSignupAttribution(req.Attribution); attribution != nil {
-		(*stateValue)[keyAttribution] = attribution
-	}
-
-	if prefs := signupPreferences(req.Locale, req.Timezone); prefs != nil {
-		(*stateValue)[keyPreferences] = prefs
-	}
-
+	stateValue := pendingRegistrationValue(&req, hash, token)
 	ttl := registrationTTL
 
 	if err := s.db.SetStateEntry(ctx, nil, registrationKeyPrefix+req.Email, stateValue, &ttl); err != nil {
@@ -2650,6 +2645,37 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 	)
 
 	return registerSuccessResponse, nil
+}
+
+// pendingRegistrationValue builds the state value of a pending registration.
+// Only sha256hex(token) is kept — a DB leak during the 3-day TTL window must
+// not also hand out a usable confirmation token alongside the pending password
+// hash (spec 2026-09-25-30). ConfirmRegistration hashes the presented token and
+// compares it against keyTokenHash for each candidate entry.
+func pendingRegistrationValue(req *RegisterRequest, passwordHash, token string) *models.JSONMap {
+	stateValue := &models.JSONMap{
+		keyTokenHash:   hashPendingToken(token),
+		keyEmail:       req.Email,
+		keyName:        req.Name,
+		"passwordHash": passwordHash,
+	}
+
+	// The account does not exist yet, so the attribution rides along in the
+	// pending entry and is applied at confirmation. It goes in only when there
+	// is something to keep: the common untagged signup stores nothing extra.
+	if attribution := normalizeSignupAttribution(req.Attribution); attribution != nil {
+		(*stateValue)[keyAttribution] = attribution
+	}
+
+	if prefs := signupPreferences(req.Locale, req.Timezone); prefs != nil {
+		(*stateValue)[keyPreferences] = prefs
+	}
+
+	if req.ClientIP != "" {
+		(*stateValue)[keyClientIP] = req.ClientIP
+	}
+
+	return stateValue
 }
 
 // ConfirmRegistrationRequest contains the confirmation request data.

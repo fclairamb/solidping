@@ -23,6 +23,26 @@ SP_AUTH_REGISTRATION_EMAIL_PATTERN=@yourcompany\.com$
 SP_AUTH_REGISTRATION_EMAIL_PATTERN=@(yourcompany|partner)\.com$
 ```
 
+### Limiting Unconfirmed Sign-Ups per IP
+
+Each sign-up sends a confirmation email to the address typed in the form. To stop a bot from using the form to send email to strangers, a client IP may have at most a few sign-ups waiting for confirmation:
+
+```bash
+# Unconfirmed sign-ups allowed per client IP over 24 hours (0 turns the limit off)
+SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP=3
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP` | `3` | Sign-ups from one client IP that may wait for email confirmation, counting those submitted in the last 24 hours. `0` turns the limit off. |
+
+- Past the limit, the sign-up answers `429 RATE_LIMITED` and sends no email.
+- Confirming a sign-up frees its slot, so several colleagues behind one office network get through as long as they confirm.
+- Signing up again with an address that is already waiting for confirmation does not take another slot. It sends a new link.
+- The limit is also the `auth.registration_max_pending_per_ip` system parameter. A stored value applies at the next start, and the environment variable wins over it.
+- The client IP follows `SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES`. Behind a reverse proxy, set it, or every visitor shares the proxy's address.
+- In test run mode (`SP_RUNMODE=test`) the limit is off unless the variable is set.
+
 ### JWT Configuration
 
 ```bash
@@ -467,6 +487,7 @@ Users can secure their accounts with **TOTP** two-factor authentication (compati
 auth:
   jwt_secret: your-secure-random-secret
   registration_email_pattern: "@yourcompany\\.com$"
+  registration_max_pending_per_ip: 3 # 0 turns the limit off
   password:
     algorithm: argon2id # or "bcrypt"
     argon2:

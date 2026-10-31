@@ -11286,12 +11286,24 @@ type ClientInterface interface {
 
 	// RegisterWithBody Self-service account registration
 	//
+	// Stores a pending registration and emails a confirmation link. The
+	// caller's IP may have at most `auth.registration_max_pending_per_ip`
+	// (default 3) sign-ups waiting for confirmation from the last 24 hours;
+	// past it the request answers `429` and sends nothing. Confirming a
+	// registration frees its slot.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/auth/register (the `Register` operationId).
 	RegisterWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// Register Self-service account registration
+	//
+	// Stores a pending registration and emails a confirmation link. The
+	// caller's IP may have at most `auth.registration_max_pending_per_ip`
+	// (default 3) sign-ups waiting for confirmation from the last 24 hours;
+	// past it the request answers `429` and sends nothing. Confirming a
+	// registration frees its slot.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -14764,6 +14776,12 @@ func (c *Client) RefreshToken(ctx context.Context, body RefreshTokenJSONRequestB
 
 // RegisterWithBody Self-service account registration
 //
+// Stores a pending registration and emails a confirmation link. The
+// caller's IP may have at most `auth.registration_max_pending_per_ip`
+// (default 3) sign-ups waiting for confirmation from the last 24 hours;
+// past it the request answers `429` and sends nothing. Confirming a
+// registration frees its slot.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/auth/register (the `Register` operationId).
@@ -14780,6 +14798,12 @@ func (c *Client) RegisterWithBody(ctx context.Context, contentType string, body 
 }
 
 // Register Self-service account registration
+//
+// Stores a pending registration and emails a confirmation link. The
+// caller's IP may have at most `auth.registration_max_pending_per_ip`
+// (default 3) sign-ups waiting for confirmation from the last 24 hours;
+// past it the request answers `429` and sends nothing. Confirming a
+// registration frees its slot.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -36961,12 +36985,24 @@ type ClientWithResponsesInterface interface {
 
 	// RegisterWithBodyWithResponse Self-service account registration
 	//
+	// Stores a pending registration and emails a confirmation link. The
+	// caller's IP may have at most `auth.registration_max_pending_per_ip`
+	// (default 3) sign-ups waiting for confirmation from the last 24 hours;
+	// past it the request answers `429` and sends nothing. Confirming a
+	// registration frees its slot.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/auth/register (the `Register` operationId).
 	RegisterWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RegisterResult, error)
 
 	// RegisterWithResponse Self-service account registration
+	//
+	// Stores a pending registration and emails a confirmation link. The
+	// caller's IP may have at most `auth.registration_max_pending_per_ip`
+	// (default 3) sign-ups waiting for confirmation from the last 24 hours;
+	// past it the request answers `429` and sends nothing. Confirming a
+	// registration frees its slot.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -41345,6 +41381,8 @@ type RegisterResult struct {
 	JSON200 *MessageResponse
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *ValidationError
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *TooManyRequests
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -41355,6 +41393,11 @@ func (r RegisterResult) GetJSON200() *MessageResponse {
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
 func (r RegisterResult) GetJSON400() *ValidationError {
 	return r.JSON400
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r RegisterResult) GetJSON429() *TooManyRequests {
+	return r.JSON429
 }
 
 // GetBody returns the raw response body bytes
@@ -58040,6 +58083,12 @@ func (c *ClientWithResponses) RefreshTokenWithResponse(ctx context.Context, body
 
 // RegisterWithBodyWithResponse Self-service account registration
 //
+// Stores a pending registration and emails a confirmation link. The
+// caller's IP may have at most `auth.registration_max_pending_per_ip`
+// (default 3) sign-ups waiting for confirmation from the last 24 hours;
+// past it the request answers `429` and sends nothing. Confirming a
+// registration frees its slot.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/auth/register (the `Register` operationId).
@@ -58052,6 +58101,12 @@ func (c *ClientWithResponses) RegisterWithBodyWithResponse(ctx context.Context, 
 }
 
 // RegisterWithResponse Self-service account registration
+//
+// Stores a pending registration and emails a confirmation link. The
+// caller's IP may have at most `auth.registration_max_pending_per_ip`
+// (default 3) sign-ups waiting for confirmation from the last 24 hours;
+// past it the request answers `429` and sends nothing. Confirming a
+// registration frees its slot.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -64318,6 +64373,13 @@ func ParseRegisterResult(rsp *http.Response) (*RegisterResult, error) {
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
 
 	}
 
