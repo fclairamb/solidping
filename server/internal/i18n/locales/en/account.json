@@ -155,5 +155,8 @@
       "reasonIntro": "Reason from the admin:",
       "retry": "You can submit a new request after the cooldown period."
     }
+  },
+  "personalOrg": {
+    "name": "{firstName}'s organization"
   }
 }

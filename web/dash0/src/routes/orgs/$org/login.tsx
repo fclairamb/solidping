@@ -58,6 +58,7 @@ import {
   isOAuthAuthorizeReturnTo,
   resolveDestination,
   isInviteReturnTo,
+  orgCreationReturnTo,
   parseLoginNotice,
   startOAuthLogin,
   type LoginDestination,
@@ -289,7 +290,11 @@ function LoginPage() {
           goToDestination({ href: returnTo }, true);
           return;
         }
-        navigate({ to: "/no-org", replace: true });
+        navigate({
+          to: "/no-org",
+          search: { returnTo: orgCreationReturnTo(returnTo, BASE_PATH) },
+          replace: true,
+        });
         return;
       }
       // resolveDestination needs no change: it already drops a `returnTo`
@@ -330,7 +335,10 @@ function LoginPage() {
           if (isInviteReturnTo(returnTo, BASE_PATH)) {
             goToDestination({ href: returnTo });
           } else {
-            navigate({ to: "/no-org" });
+            navigate({
+              to: "/no-org",
+              search: { returnTo: orgCreationReturnTo(returnTo, BASE_PATH) },
+            });
           }
           break;
         case "orgChoice":

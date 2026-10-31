@@ -1,6 +1,7 @@
 package testapi
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -23,6 +24,12 @@ type CreateUserRequest struct {
 	// here instead. Test-only route; the flag itself is ordinary production
 	// behavior.
 	MustChangePassword bool `json:"mustChangePassword"`
+	// PersonalOrg lets the first sign-in give the user a personal org, as for
+	// any real new user when auth.auto_personal_org is on (spec 2026-10-30-04;
+	// the e2e servers turn it on). Off by default: this route
+	// exists to seed a zero-org identity, so the user is marked as having had
+	// (and deleted) their one personal org, which keeps the sign-in on /no-org.
+	PersonalOrg bool `json:"personalOrg"`
 }
 
 // CreateUser creates a pre-confirmed, org-less user directly in the
@@ -78,9 +85,28 @@ func (h *Handler) CreateUser(writer http.ResponseWriter, req *http.Request) erro
 		return h.writeInternalError(writer, err)
 	}
 
+	if !body.PersonalOrg {
+		if err := h.retirePersonalOrg(req.Context(), user); err != nil {
+			return h.writeInternalError(writer, err)
+		}
+	}
+
 	return h.writeJSON(writer, http.StatusCreated, map[string]any{
 		"uid":                user.UID,
 		"email":              user.Email,
 		"mustChangePassword": user.MustChangePassword,
 	})
+}
+
+// retirePersonalOrg records a soft-deleted personal org for the user: a user
+// gets one personal org in their lifetime, so none is created at sign-in.
+func (h *Handler) retirePersonalOrg(ctx context.Context, user *models.User) error {
+	org := models.NewOrganization("retired-"+user.UID[:8], "Retired personal org")
+	org.AutoPersonalOwnerUID = &user.UID
+
+	if err := h.dbService.CreateOrganization(ctx, org); err != nil {
+		return err
+	}
+
+	return h.dbService.DeleteOrganization(ctx, org.UID)
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/analytics/analyticstest"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/errorreport/errorreporttest"
 )
@@ -94,4 +95,24 @@ func TestRunCheckerGuarded_TargetDownIsNotReported(t *testing.T) {
 	r.NotNil(result)
 	r.Equal(checkerdef.StatusDown, result.Status)
 	r.Equal(0, transport.Len(), "a check whose target is down is normal operation, not an error to report")
+}
+
+//nolint:paralleltest // binds the process-wide analytics client
+func TestRunCheckerGuarded_PanicReachesPostHog(t *testing.T) {
+	ph := analyticstest.Install(t)
+
+	runner, dbSvc, ctx := setupTestRunner(t)
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	checkJob := testCheckJob("test-panicking")
+
+	_, execErr := runner.runCheckerGuarded(
+		ctx, runner.logger, panickingChecker{}, hangingConfig{}, checkJob, time.Second, time.Now(),
+	)
+	require.ErrorIs(t, execErr, ErrCheckerPanic)
+
+	excs := ph.Exceptions()
+	require.Len(t, excs, 1)
+	require.Equal(t, "test-panicking", excs[0].Tags["check.type"])
+	require.Equal(t, checkJob.OrganizationUID, excs[0].OrgUID)
 }

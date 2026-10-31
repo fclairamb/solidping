@@ -337,6 +337,7 @@ dev-test: kill ## Run backend, dash0 and status0 in development test mode
 		SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE=0 \
 		SP_SERVER_RATE_LIMITING_MAX_CONCURRENT=0 \
 		SP_AUTH_REGISTRATION_EMAIL_PATTERN='.*' \
+		SP_AUTH_AUTO_PERSONAL_ORG=true \
 		SP_PLUGINS_DIR=$(CURDIR)/plugins \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 

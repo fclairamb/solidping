@@ -132,6 +132,23 @@ The `bcrypt` algorithm pre-hashes passwords as `base64(sha256(password))` before
 The server validates the hashing policy at startup and **fails fast** on a misconfiguration (unknown algorithm; bcrypt cost outside `10–31`; argon2id memory below the `8192` KiB floor). Values below the OWASP-recommended floors are allowed but warn-logged. There is never a silent fallback.
 :::
 
+## Sign-up and organizations
+
+Every check, status page and alert lives in an organization. When `auth.auto_personal_org` is on, a user who signs in and belongs to none is placed this way, in order:
+
+1. a pending invitation for their email: they join that organization;
+2. an organization whose registration email pattern matches their email: they join it;
+3. a membership request they already sent: they wait for its answer on the "no organization" page;
+4. otherwise SolidPing creates a personal organization for them ("Alice's organization", in their language) and makes them its owner. They land on its dashboard, with no form to fill.
+
+The "no organization" page then only offers to join an existing organization when the user came through a join link or has a membership request. A user gets one personal organization: if they delete it, the next sign-in shows that page.
+
+With the setting off, such a user lands on the "no organization" page, where they create an organization or ask to join one.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_AUTH_AUTO_PERSONAL_ORG` | `true` when `SP_DEPLOYMENT_MODE=saas`, `false` otherwise | Create a personal organization for a user who signs in belonging to none. Also the `auth.auto_personal_org` system parameter, applied at startup |
+
 ## Changing an email address
 
 A user changes their sign-in email from **Account > Profile**: enter the new address and the current password. A super admin changes anyone's email from **Server > Users**, with the pencil icon on the user's row, without the user's password.

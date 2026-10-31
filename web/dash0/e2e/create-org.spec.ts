@@ -243,7 +243,7 @@ test.describe("/no-org proposes an organization to a fresh account", () => {
     return session;
   }
 
-  test("a named fresh user gets a possessive proposal, a secondary join card, and no mention of default", async ({
+  test("a named fresh user gets a possessive proposal, no join card, and no mention of default", async ({
     page,
   }) => {
     const stamp = Date.now().toString(36);
@@ -280,18 +280,9 @@ test.describe("/no-org proposes an organization to a fresh account", () => {
     await page.getByTestId("no-org-advanced-toggle").click();
     await expect(page.locator("#orgSlug")).toHaveValue(expectedSlug);
 
-    // 2. The join path is present but secondary: its trigger is visible, its
-    //    form is not until you ask for it.
-    const joinToggle = page.getByTestId("no-org-join-toggle");
-    await expect(joinToggle).toBeVisible();
-    await expect(page.locator("#joinOrgSlug")).toBeHidden();
-    await joinToggle.click();
-    await expect(page.locator("#joinOrgSlug")).toBeVisible();
-    // ...and it never hints at an org — the placeholder stays the generic one.
-    await expect(page.locator("#joinOrgSlug")).toHaveAttribute(
-      "placeholder",
-      "acme",
-    );
+    // 2. Nothing to join, so the join path is not offered at all (spec
+    //    2026-10-30-04).
+    await expect(page.getByTestId("no-org-join-toggle")).toHaveCount(0);
 
     // 3. The word `default` appears nowhere on this screen. This is the whole
     //    point of the backend half of the spec: a brand-new SaaS account must
