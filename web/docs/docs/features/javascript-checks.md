@@ -662,6 +662,11 @@ build a large value in one call draw from a 64 MiB budget per execution,
 - `Array.prototype.join` and the typed-array `join` (the result's length);
 - `Array(n)` / `new Array(n)`, `Array.prototype.fill` and `Array.from` (16
   bytes per slot);
+- `Array.prototype.map`, `toSorted`, `toReversed`, `toSpliced` and `with` (16
+  bytes per slot of the result, sized from `length`: setting `a.length = 4e9`
+  is free, copying it is not); `Array.prototype.sort` sorts in place, so it is
+  only refused when its working copy (16 bytes per slot of `length`) would not
+  fit in what is left;
 - `new ArrayBuffer(n)` and the typed-array constructors (`new Uint8Array(n)`,
   a copy of an array or typed array, `Uint8Array.from`, …), but not a view on
   an existing buffer.

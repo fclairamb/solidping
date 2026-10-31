@@ -46,6 +46,11 @@ var typedArrayCtorNames = []string{
 //nolint:gochecknoglobals // Comparison target for a goja export type.
 var arrayBufferType = reflect.TypeOf(goja.ArrayBuffer{})
 
+// reflectTypeArray is what a goja array (dense or sparse) exports as.
+//
+//nolint:gochecknoglobals // Comparison target for a goja export type.
+var reflectTypeArray = reflect.TypeOf([]any{})
+
 // memoryBudget is the allocation state of one run. The VM is single-threaded
 // and every charge happens on its goroutine, so it needs no lock.
 type memoryBudget struct {
@@ -179,6 +184,7 @@ func (r *jsRuntime) installMemoryBudget() {
 	r.setMethod(arrayProto, "join", 1, r.boundedJoin("Array.prototype.join"))
 	r.wrapMethod(arrayProto, "fill", 1, r.capArrayFill)
 	r.wrapMethod(arrayCtor, "from", 1, r.capArrayFrom)
+	r.installArrayCopyCaps(arrayProto)
 	r.replaceCtor("Array", r.chargeArrayCtor, false)
 
 	r.replaceCtor("ArrayBuffer", r.chargeArrayBufferCtor, true)
@@ -367,10 +373,158 @@ func (r *jsRuntime) capArrayFill(orig goja.Callable) func(goja.FunctionCall) goj
 // becomes a billion slots in one native call.
 func (r *jsRuntime) capArrayFrom(orig goja.Callable) func(goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
-		r.spendAlloc("Array.from", r.lengthOf(call.Argument(0))*jsValueSlotBytes)
+		args := call.Arguments
+		src := call.Argument(0)
 
-		return callOriginal(orig, call.This, call.Arguments...)
+		// An array-like (no iterator) is read by its length: freeze that
+		// length so a getter cannot answer 0 here and 4e9 to the original.
+		if obj, ok := src.(*goja.Object); ok && !isRealArray(obj) && !hasIterator(obj) {
+			snap, length := r.snapshotLength(obj)
+			r.spendAlloc("Array.from", length*jsValueSlotBytes)
+
+			args = append([]goja.Value{snap}, args[1:]...)
+
+			return callOriginal(orig, call.This, args...)
+		}
+
+		r.spendAlloc("Array.from", r.lengthOf(src)*jsValueSlotBytes)
+
+		return callOriginal(orig, call.This, args...)
 	}
+}
+
+// arrayCopyCharge sizes a call of an Array.prototype method from its
+// receiver's length: the slots it allocates, and the arguments to pass on
+// (converted, so a valueOf runs once and cannot answer differently twice).
+type arrayCopyCharge func(call goja.FunctionCall, length float64) (slots float64, args []goja.Value)
+
+// installArrayCopyCaps caps the Array.prototype methods that allocate from
+// the receiver's `length` in one native call. Setting `a.length = 4e9` costs
+// nothing, but goja then preallocates from it: sort and toSorted
+// `make([]Value, 0, length)` on a holey array or an array-like, map
+// `make([]Value, length)`, and with, toReversed and toSpliced fill a new
+// array slot by slot in a Go loop.
+//
+// The copies are spent (the result is new memory the script keeps); sort's
+// buffer is transient, so sort is only checked against what is left.
+// concat, slice, splice, flat and filter copy only the elements that exist
+// (holes stay holes), so they amplify nothing and stay as they are.
+func (r *jsRuntime) installArrayCopyCaps(arrayProto *goja.Object) {
+	wholeLength := func(call goja.FunctionCall, length float64) (float64, []goja.Value) {
+		return length, call.Arguments
+	}
+
+	r.wrapMethod(arrayProto, "sort", 1, r.capArrayCopy("Array.prototype.sort", false, wholeLength))
+	r.wrapMethod(arrayProto, "map", 1, r.capArrayCopy("Array.prototype.map", true, wholeLength))
+	r.wrapMethod(arrayProto, "toReversed", 0, r.capArrayCopy("Array.prototype.toReversed", true, wholeLength))
+	r.wrapMethod(arrayProto, "toSorted", 1, r.capArrayCopy("Array.prototype.toSorted", true,
+		func(call goja.FunctionCall, length float64) (float64, []goja.Value) {
+			if length >= math.MaxUint32 {
+				return 0, call.Arguments // the original's RangeError
+			}
+
+			return length, call.Arguments
+		}))
+	r.wrapMethod(arrayProto, "with", 2, r.capArrayCopy("Array.prototype.with", true,
+		func(call goja.FunctionCall, length float64) (float64, []goja.Value) {
+			return length, []goja.Value{r.vm.ToValue(toIntegerOrInfinity(call.Argument(0))), call.Argument(1)}
+		}))
+	r.wrapMethod(arrayProto, "toSpliced", 2, r.capArrayCopy("Array.prototype.toSpliced", true, r.toSplicedCharge))
+}
+
+// toSplicedCharge sizes toSpliced's result as goja does: length minus the
+// skipped elements plus the inserted ones.
+func (r *jsRuntime) toSplicedCharge(call goja.FunctionCall, length float64) (float64, []goja.Value) {
+	if len(call.Arguments) == 0 {
+		return length, nil
+	}
+
+	start := relativeIndex(toIntegerOrInfinity(call.Argument(0)), length)
+	args := []goja.Value{r.vm.ToValue(start)}
+	skip := length - start
+
+	if len(call.Arguments) > 1 {
+		skip = math.Min(math.Max(toIntegerOrInfinity(call.Argument(1)), 0), length-start)
+		args = append(args, r.vm.ToValue(skip))
+		args = append(args, call.Arguments[2:]...)
+	}
+
+	items := math.Max(float64(len(call.Arguments)-2), 0)
+
+	return length - skip + items, args
+}
+
+// capArrayCopy charges an Array.prototype method for the slots it allocates
+// before it runs. spend draws them from the budget; otherwise the call is
+// only refused when they do not fit (a transient buffer).
+func (r *jsRuntime) capArrayCopy(
+	what string, spend bool, charge arrayCopyCharge,
+) func(orig goja.Callable) func(goja.FunctionCall) goja.Value {
+	return func(orig goja.Callable) func(goja.FunctionCall) goja.Value {
+		return func(call goja.FunctionCall) goja.Value {
+			this := call.This.ToObject(r.vm) // undefined/null: the original's TypeError
+			snap, length := r.snapshotLength(this)
+			slots, args := charge(call, length)
+
+			if spend {
+				r.spendAlloc(what, slots*jsValueSlotBytes)
+			} else {
+				r.checkAlloc(what, slots*jsValueSlotBytes)
+			}
+
+			result := callOriginal(orig, snap, args...)
+
+			// sort returns its receiver: the script's object, not the snapshot.
+			if obj, ok := result.(*goja.Object); ok && obj.SameAs(snap) {
+				return this
+			}
+
+			return result
+		}
+	}
+}
+
+// isRealArray reports whether obj is a goja array (or a wrapped Go slice):
+// its length is a plain value, read the same by every caller.
+func isRealArray(obj *goja.Object) bool {
+	return obj.ExportType() == reflectTypeArray
+}
+
+// hasIterator reports whether obj has a Symbol.iterator method, so Array.from
+// iterates it instead of reading its length.
+func hasIterator(obj *goja.Object) bool {
+	it := obj.GetSymbol(goja.SymIterator)
+
+	return it != nil && !goja.IsUndefined(it) && !goja.IsNull(it)
+}
+
+// snapshotLength reads obj.length once and returns the object the original
+// builtin should run on, with that length. A real array goes as is; anything
+// else goes behind a Proxy that answers the length read here, so a getter
+// cannot report a small length to the charge and a huge one to goja.
+func (r *jsRuntime) snapshotLength(obj *goja.Object) (*goja.Object, float64) {
+	if isRealArray(obj) {
+		return obj, toLength(obj.Get("length"))
+	}
+
+	length := toLength(obj.Get("length"))
+	lengthVal := r.vm.ToValue(length)
+
+	proxy := r.vm.NewProxy(obj, &goja.ProxyTrapConfig{
+		Get: func(target *goja.Object, property string, _ goja.Value) goja.Value {
+			if property == "length" {
+				return lengthVal
+			}
+
+			if v := target.Get(property); v != nil {
+				return v
+			}
+
+			return goja.Undefined()
+		},
+	})
+
+	return r.vm.ToValue(proxy).ToObject(r.vm), length
 }
 
 // lengthOf is the `length` of an object or string source, 0 for anything else.

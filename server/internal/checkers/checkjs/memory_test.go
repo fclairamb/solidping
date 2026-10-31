@@ -19,7 +19,10 @@ import (
 func TestMemoryBudgetRefusesNativeAmplifiers(t *testing.T) {
 	t.Parallel()
 
-	const huge = "512 * 1024 * 1024"
+	const (
+		huge  = "512 * 1024 * 1024"
+		slots = "8 * 1024 * 1024"
+	)
 
 	tests := []struct {
 		name   string
@@ -41,6 +44,17 @@ func TestMemoryBudgetRefusesNativeAmplifiers(t *testing.T) {
 		{"Array.from array-like", `var s = Array.from({ length: ` + huge + ` });`},
 		{"sparse fill", `var a = []; a.length = ` + huge + `; var s = a.fill(0);`},
 		{"typed array join", `var s = new Uint8Array(1024 * 1024).join("x".repeat(64));`},
+		// Length writes cost nothing, but these builtins preallocate from
+		// length: 8 Mi slots are 128 MiB, past the budget yet harmless.
+		{"holey sort", `var a = [2, 1]; a.length = ` + slots + `; a.sort();`},
+		{"holey toSorted", `var a = [2, 1]; a.length = ` + slots + `; var s = a.toSorted();`},
+		{"array-like sort", `Array.prototype.sort.call({ length: ` + slots + ` });`},
+		{"array-like toSorted", `var s = Array.prototype.toSorted.call({ length: ` + slots + ` });`},
+		{"holey map", `var a = [1]; a.length = ` + slots + `; var s = a.map(function (x) { return x; });`},
+		{"holey with", `var a = [1]; a.length = ` + slots + `; var s = a.with(0, 2);`},
+		{"holey toReversed", `var a = [1]; a.length = ` + slots + `; var s = a.toReversed();`},
+		{"holey toSpliced", `var a = [1]; a.length = ` + slots + `; var s = a.toSpliced(0, 0, 1);`},
+		{"huge length sort", `var a = []; a.length = 4e9; a.sort();`},
 	}
 
 	for _, tt := range tests {
@@ -61,6 +75,37 @@ func TestMemoryBudgetRefusesNativeAmplifiers(t *testing.T) {
 			r.Less(elapsed, time.Second, "the refusal must come before the allocation")
 		})
 	}
+}
+
+// TestMemoryBudgetReadsLengthOnce: an array-like whose length getter answers
+// 0 to the charge and 4e9 afterwards is read once, so goja works on the length
+// that was charged instead of preallocating from the second answer.
+func TestMemoryBudgetReadsLengthOnce(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	start := time.Now()
+	result := runScript(t, `
+function like() { var n = 0; return { get length() { return n++ ? 4e9 : 0; } }; }
+var o = like();
+Array.prototype.sort.call(o);
+return {
+  status: "up",
+  output: {
+    toSorted: Array.prototype.toSorted.call(like()).length,
+    toReversed: Array.prototype.toReversed.call(like()).length,
+    from: Array.from(like()).length,
+    sortedReads: String(o.length),
+  },
+};
+`)
+
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+	r.EqualValues(0, result.Output["toSorted"])
+	r.EqualValues(0, result.Output["toReversed"])
+	r.EqualValues(0, result.Output["from"])
+	r.Equal("4000000000", result.Output["sortedReads"], "the getter ran once inside sort")
+	r.Less(time.Since(start), time.Second)
 }
 
 // TestMemoryBudgetIsCumulative: allocations each under the budget add up, so
@@ -127,6 +172,11 @@ cyclic.push(cyclic);
 class Bytes extends Uint8Array {}
 var b = new Bytes(4);
 var unicode = ["é", "€"].join("·");
+function sortSame() { var a = [2, 1]; return a.sort() === a; }
+function likeSort() {
+  var o = { length: 3, 0: "c", 1: "a", 2: "b" };
+  return (Array.prototype.sort.call(o) === o) + ":" + o[0] + o[1] + o[2] + ":" + o.length;
+}
 return {
   status: "up",
   output: {
@@ -155,6 +205,17 @@ return {
     bpe: Uint8Array.BYTES_PER_ELEMENT + Float64Array.BYTES_PER_ELEMENT,
     ctorName: ArrayBuffer.name + "/" + Uint8Array.name,
     repeatLength: "".repeat.length,
+    sorted: [3, 1, 2].sort().join(","),
+    sortSame: sortSame(),
+    likeSort: likeSort(),
+    toSorted: [3, 1, 2].toSorted(function (a, b) { return b - a; }).join(","),
+    mapped: [1, 2, 3].map(function (x) { return x * 2; }).join(","),
+    withed: [1, 2, 3].with(-1, 9).join(","),
+    reversed: [1, 2, 3].toReversed().join(","),
+    spliced: [1, 2, 3, 4].toSpliced(1, 2, "x").join(","),
+    argsSorted: (function () { return Array.prototype.toSorted.call(arguments).join(","); })(3, 1, 2),
+    fromLike: Array.from({ length: 2, 0: "a", 1: "b" }).join(""),
+    fromSet: Array.from(new Set([1, 2])).join(","),
   },
 };
 `)
@@ -187,6 +248,17 @@ return {
 	r.EqualValues(9, out["bpe"])
 	r.Equal("ArrayBuffer/Uint8Array", out["ctorName"])
 	r.EqualValues(1, out["repeatLength"])
+	r.Equal("1,2,3", out["sorted"])
+	r.Equal(true, out["sortSame"])
+	r.Equal("true:abc:3", out["likeSort"])
+	r.Equal("3,2,1", out["toSorted"])
+	r.Equal("2,4,6", out["mapped"])
+	r.Equal("1,2,9", out["withed"])
+	r.Equal("3,2,1", out["reversed"])
+	r.Equal("1,x,4", out["spliced"])
+	r.Equal("1,2,3", out["argsSorted"])
+	r.Equal("ab", out["fromLike"])
+	r.Equal("1,2", out["fromSet"])
 }
 
 // TestMemoryBudgetKeepsOriginalErrors: arguments the builtins reject still
@@ -205,6 +277,9 @@ return {
     badLength: msg(function () { new Array(-1); }),
     noNew: msg(function () { ArrayBuffer(4); }),
     nullThis: msg(function () { String.prototype.repeat.call(null, 2); }),
+    badIndex: msg(function () { [1].with(5, 0); }),
+    badCompare: msg(function () { [1].toSorted(1); }),
+    sortNullThis: msg(function () { Array.prototype.sort.call(null); }),
   },
 };
 `)
@@ -215,4 +290,7 @@ return {
 	r.Equal("RangeError", result.Output["badLength"])
 	r.Equal("TypeError", result.Output["noNew"])
 	r.Equal("TypeError", result.Output["nullThis"])
+	r.Equal("RangeError", result.Output["badIndex"])
+	r.Equal("TypeError", result.Output["badCompare"])
+	r.Equal("TypeError", result.Output["sortNullThis"])
 }
