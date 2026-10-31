@@ -46,7 +46,8 @@ func TestPasskeyRegistrationNotifiesOwner(t *testing.T) {
 	pkSvc := auth.NewPasskeyService(authSvc, dbSvc)
 
 	// The request context RequireAuth builds for a session in org acme.
-	reqCtx := context.WithValue(ctx, base.ContextKeyClaims, &auth.Claims{UserUID: user.UID, OrgSlug: "acme", AuthTime: time.Now().Unix()})
+	reqCtx := context.WithValue(ctx, base.ContextKeyClaims,
+		&auth.Claims{UserUID: user.UID, OrgSlug: "acme", AuthTime: time.Now().Unix()})
 
 	device := newSoftAuthenticator(t)
 	begin, err := pkSvc.BeginRegistration(reqCtx, user.UID, nil)

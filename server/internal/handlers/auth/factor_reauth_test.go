@@ -40,6 +40,7 @@ func signedInCtxAt(ctx context.Context, userUID string, at time.Time) context.Co
 
 func strPtr(s string) *string { return &s }
 
+//nolint:revive // ctx-second matches the existing helpers in this package
 func storedTOTPSecret(t *testing.T, ctx context.Context, dbSvc db.Service, userUID string) string {
 	t.Helper()
 
@@ -281,6 +282,8 @@ func TestConfirm2FAEnqueuesTOTPEnabledNotice(t *testing.T) {
 }
 
 // postFactorRoute calls a factor-adding handler with the given claims.
+//
+//nolint:revive // ctx-second matches the existing helpers in this package
 func postFactorRoute(
 	t *testing.T, ctx context.Context, claims *Claims, path, body string,
 	serve func(http.ResponseWriter, *http.Request) error,

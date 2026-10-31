@@ -245,17 +245,17 @@ func (s *Service) notifyTOTPEnabled(ctx context.Context, user *models.User) {
 // false when err is not one of them, so the caller falls through to its own
 // mapping.
 func writeReauthError(
-	h *base.HandlerBase, writer http.ResponseWriter, request *http.Request, err error,
+	handler *base.HandlerBase, writer http.ResponseWriter, request *http.Request, err error,
 ) (bool, error) {
 	switch {
 	case errors.Is(err, ErrInvalidCurrentPassword):
-		return true, h.WriteErrorErr(writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidCurrentPassword,
+		return true, handler.WriteErrorErr(writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidCurrentPassword,
 			"Current password is incorrect", err)
 	case errors.Is(err, ErrReauthenticationRequired):
-		return true, h.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodeReauthenticationRequired,
+		return true, handler.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodeReauthenticationRequired,
 			"Sign in again to make this change", err)
 	case errors.Is(err, ErrRateLimited):
-		return true, h.WriteErrorErr(writer, request, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+		return true, handler.WriteErrorErr(writer, request, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
 			"Too many attempts, please try again later", err)
 	default:
 		return false, nil
