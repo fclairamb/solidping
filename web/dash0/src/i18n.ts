@@ -1,213 +1,134 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
-import enCommon from "./locales/en/common.json";
-import enNav from "./locales/en/nav.json";
-import enAuth from "./locales/en/auth.json";
-import enChecks from "./locales/en/checks.json";
-import enIncidents from "./locales/en/incidents.json";
-import enEvents from "./locales/en/events.json";
-import enAccount from "./locales/en/account.json";
-import enOrg from "./locales/en/org.json";
-import enServer from "./locales/en/server.json";
-import enStatusPages from "./locales/en/statusPages.json";
-import enStatusUpdates from "./locales/en/statusUpdates.json";
-import enBadges from "./locales/en/badges.json";
-import enDashboard from "./locales/en/dashboard.json";
-import enFeedback from "./locales/en/feedback.json";
-import enDependencies from "./locales/en/dependencies.json";
-import enOncall from "./locales/en/oncall.json";
-import enEscalation from "./locales/en/escalation.json";
-import enIntegrations from "./locales/en/integrations.json";
-import enDiscovery from "./locales/en/discovery.json";
-import enJobs from "./locales/en/jobs.json";
-import enMaintenanceWindows from "./locales/en/maintenanceWindows.json";
-import enSlos from "./locales/en/slos.json";
-import enSupport from "./locales/en/support.json";
-import frCommon from "./locales/fr/common.json";
-import frNav from "./locales/fr/nav.json";
-import frAuth from "./locales/fr/auth.json";
-import frChecks from "./locales/fr/checks.json";
-import frIncidents from "./locales/fr/incidents.json";
-import frEvents from "./locales/fr/events.json";
-import frAccount from "./locales/fr/account.json";
-import frOrg from "./locales/fr/org.json";
-import frServer from "./locales/fr/server.json";
-import frStatusPages from "./locales/fr/statusPages.json";
-import frStatusUpdates from "./locales/fr/statusUpdates.json";
-import frBadges from "./locales/fr/badges.json";
-import frDashboard from "./locales/fr/dashboard.json";
-import frFeedback from "./locales/fr/feedback.json";
-import frDependencies from "./locales/fr/dependencies.json";
-import frOncall from "./locales/fr/oncall.json";
-import frEscalation from "./locales/fr/escalation.json";
-import frIntegrations from "./locales/fr/integrations.json";
-import frDiscovery from "./locales/fr/discovery.json";
-import frJobs from "./locales/fr/jobs.json";
-import frMaintenanceWindows from "./locales/fr/maintenanceWindows.json";
-import frSlos from "./locales/fr/slos.json";
-import frSupport from "./locales/fr/support.json";
-import deCommon from "./locales/de/common.json";
-import deNav from "./locales/de/nav.json";
-import deAuth from "./locales/de/auth.json";
-import deChecks from "./locales/de/checks.json";
-import deIncidents from "./locales/de/incidents.json";
-import deEvents from "./locales/de/events.json";
-import deAccount from "./locales/de/account.json";
-import deOrg from "./locales/de/org.json";
-import deServer from "./locales/de/server.json";
-import deStatusPages from "./locales/de/statusPages.json";
-import deStatusUpdates from "./locales/de/statusUpdates.json";
-import deBadges from "./locales/de/badges.json";
-import deDashboard from "./locales/de/dashboard.json";
-import deFeedback from "./locales/de/feedback.json";
-import deDependencies from "./locales/de/dependencies.json";
-import deOncall from "./locales/de/oncall.json";
-import deEscalation from "./locales/de/escalation.json";
-import deIntegrations from "./locales/de/integrations.json";
-import deDiscovery from "./locales/de/discovery.json";
-import deJobs from "./locales/de/jobs.json";
-import deMaintenanceWindows from "./locales/de/maintenanceWindows.json";
-import deSlos from "./locales/de/slos.json";
-import deSupport from "./locales/de/support.json";
-import esCommon from "./locales/es/common.json";
-import esNav from "./locales/es/nav.json";
-import esAuth from "./locales/es/auth.json";
-import esChecks from "./locales/es/checks.json";
-import esIncidents from "./locales/es/incidents.json";
-import esEvents from "./locales/es/events.json";
-import esAccount from "./locales/es/account.json";
-import esOrg from "./locales/es/org.json";
-import esServer from "./locales/es/server.json";
-import esStatusPages from "./locales/es/statusPages.json";
-import esStatusUpdates from "./locales/es/statusUpdates.json";
-import esBadges from "./locales/es/badges.json";
-import esDashboard from "./locales/es/dashboard.json";
-import esFeedback from "./locales/es/feedback.json";
-import esDependencies from "./locales/es/dependencies.json";
-import esOncall from "./locales/es/oncall.json";
-import esEscalation from "./locales/es/escalation.json";
-import esIntegrations from "./locales/es/integrations.json";
-import esDiscovery from "./locales/es/discovery.json";
-import esJobs from "./locales/es/jobs.json";
-import esMaintenanceWindows from "./locales/es/maintenanceWindows.json";
-import esSlos from "./locales/es/slos.json";
-import esSupport from "./locales/es/support.json";
+import en_account from "./locales/en/account.json";
+import en_auth from "./locales/en/auth.json";
+import en_badges from "./locales/en/badges.json";
+import en_checks from "./locales/en/checks.json";
+import en_common from "./locales/en/common.json";
+import en_dashboard from "./locales/en/dashboard.json";
+import en_dependencies from "./locales/en/dependencies.json";
+import en_discovery from "./locales/en/discovery.json";
+import en_escalation from "./locales/en/escalation.json";
+import en_events from "./locales/en/events.json";
+import en_feedback from "./locales/en/feedback.json";
+import en_incidents from "./locales/en/incidents.json";
+import en_integrations from "./locales/en/integrations.json";
+import en_jobs from "./locales/en/jobs.json";
+import en_maintenanceWindows from "./locales/en/maintenanceWindows.json";
+import en_nav from "./locales/en/nav.json";
+import en_oncall from "./locales/en/oncall.json";
+import en_org from "./locales/en/org.json";
+import en_server from "./locales/en/server.json";
+import en_slos from "./locales/en/slos.json";
+import en_statusPages from "./locales/en/statusPages.json";
+import en_statusUpdates from "./locales/en/statusUpdates.json";
+import en_support from "./locales/en/support.json";
 
-i18n
+// English is the fallback language and stays in the main chunk. fr, de and es
+// each live in one lazily loaded chunk (all namespaces together), so a visitor
+// only downloads and parses the language they use.
+type Bundle = Record<string, Record<string, unknown>>;
+
+export const localeLoaders: Record<string, () => Promise<{ default: Bundle }>> = {
+  fr: () => import("./locales/bundles/fr"),
+  de: () => import("./locales/bundles/de"),
+  es: () => import("./locales/bundles/es"),
+};
+
+const loaded = new Map<string, Promise<void>>();
+
+function baseLanguage(lng: string): string {
+  return lng.split("-")[0].toLowerCase();
+}
+
+/** Loads a language's translations (once). Rejects if the chunk fails; a failed attempt is retried next time. */
+export function loadLanguage(lng: string): Promise<void> {
+  const base = baseLanguage(lng);
+  const loader = localeLoaders[base];
+  if (!loader) return Promise.resolve();
+  let p = loaded.get(base);
+  if (!p) {
+    p = loader().then((mod) => {
+      for (const [ns, data] of Object.entries(mod.default)) {
+        i18n.addResourceBundle(base, ns, data, true, true);
+      }
+    });
+    p = p.catch((err) => {
+      loaded.delete(base);
+      throw err;
+    });
+    loaded.set(base, p);
+  }
+  return p;
+}
+
+const enResources = {
+  account: en_account,
+  auth: en_auth,
+  badges: en_badges,
+  checks: en_checks,
+  common: en_common,
+  dashboard: en_dashboard,
+  dependencies: en_dependencies,
+  discovery: en_discovery,
+  escalation: en_escalation,
+  events: en_events,
+  feedback: en_feedback,
+  incidents: en_incidents,
+  integrations: en_integrations,
+  jobs: en_jobs,
+  maintenanceWindows: en_maintenanceWindows,
+  nav: en_nav,
+  oncall: en_oncall,
+  org: en_org,
+  server: en_server,
+  slos: en_slos,
+  statusPages: en_statusPages,
+  statusUpdates: en_statusUpdates,
+  support: en_support,
+};
+
+const initPromise = i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    resources: {
-      en: {
-        common: enCommon,
-        nav: enNav,
-        auth: enAuth,
-        checks: enChecks,
-        incidents: enIncidents,
-        events: enEvents,
-        account: enAccount,
-        org: enOrg,
-        server: enServer,
-        statusPages: enStatusPages,
-        statusUpdates: enStatusUpdates,
-        badges: enBadges,
-        dashboard: enDashboard,
-        feedback: enFeedback,
-        dependencies: enDependencies,
-        oncall: enOncall,
-        escalation: enEscalation,
-        integrations: enIntegrations,
-        discovery: enDiscovery,
-        jobs: enJobs,
-        maintenanceWindows: enMaintenanceWindows,
-        slos: enSlos,
-        support: enSupport,
-      },
-      fr: {
-        common: frCommon,
-        nav: frNav,
-        auth: frAuth,
-        checks: frChecks,
-        incidents: frIncidents,
-        events: frEvents,
-        account: frAccount,
-        org: frOrg,
-        server: frServer,
-        statusPages: frStatusPages,
-        statusUpdates: frStatusUpdates,
-        badges: frBadges,
-        dashboard: frDashboard,
-        feedback: frFeedback,
-        dependencies: frDependencies,
-        oncall: frOncall,
-        escalation: frEscalation,
-        integrations: frIntegrations,
-        discovery: frDiscovery,
-        jobs: frJobs,
-        maintenanceWindows: frMaintenanceWindows,
-        slos: frSlos,
-        support: frSupport,
-      },
-      de: {
-        common: deCommon,
-        nav: deNav,
-        auth: deAuth,
-        checks: deChecks,
-        incidents: deIncidents,
-        events: deEvents,
-        account: deAccount,
-        org: deOrg,
-        server: deServer,
-        statusPages: deStatusPages,
-        statusUpdates: deStatusUpdates,
-        badges: deBadges,
-        dashboard: deDashboard,
-        feedback: deFeedback,
-        dependencies: deDependencies,
-        oncall: deOncall,
-        escalation: deEscalation,
-        integrations: deIntegrations,
-        discovery: deDiscovery,
-        jobs: deJobs,
-        maintenanceWindows: deMaintenanceWindows,
-        slos: deSlos,
-        support: deSupport,
-      },
-      es: {
-        common: esCommon,
-        nav: esNav,
-        auth: esAuth,
-        checks: esChecks,
-        incidents: esIncidents,
-        events: esEvents,
-        account: esAccount,
-        org: esOrg,
-        server: esServer,
-        statusPages: esStatusPages,
-        statusUpdates: esStatusUpdates,
-        badges: esBadges,
-        dashboard: esDashboard,
-        feedback: esFeedback,
-        dependencies: esDependencies,
-        oncall: esOncall,
-        escalation: esEscalation,
-        integrations: esIntegrations,
-        discovery: esDiscovery,
-        jobs: esJobs,
-        maintenanceWindows: esMaintenanceWindows,
-        slos: esSlos,
-        support: esSupport,
-      },
-    },
+    resources: { en: enResources },
     defaultNS: "common",
     fallbackLng: "en",
     interpolation: { escapeValue: false },
+    react: { useSuspense: false },
     detection: {
       order: ["localStorage", "navigator"],
       lookupLocalStorage: "solidping_language",
       caches: ["localStorage"],
     },
   });
+
+// changeLanguage resolves only once the target language's chunk is loaded. If
+// the load fails it rejects and the current language stays active.
+const originalChangeLanguage = i18n.changeLanguage.bind(i18n);
+i18n.changeLanguage = (async (lng?: string, callback?: Parameters<typeof originalChangeLanguage>[1]) => {
+  if (lng) await loadLanguage(lng);
+  return originalChangeLanguage(lng, callback);
+}) as typeof i18n.changeLanguage;
+
+const LOAD_TIMEOUT_MS = 2000;
+
+/**
+ * Resolves once the detected language is ready to render. If its chunk fails
+ * or takes longer than ~2 s, English is rendered rather than a blank page.
+ */
+export const i18nReady: Promise<void> = initPromise.then(async () => {
+  const detected = i18n.language;
+  if (!detected || baseLanguage(detected) === "en") return;
+  const load = i18n.changeLanguage(detected).then(() => undefined);
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, LOAD_TIMEOUT_MS));
+  try {
+    await Promise.race([load, timeout]);
+  } catch {
+    // Keep English.
+  }
+});
 
 export default i18n;
