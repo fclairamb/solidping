@@ -392,7 +392,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }),
     });
     if (plan.changeLanguage) {
-      void i18n.changeLanguage(plan.changeLanguage);
+      i18n.changeLanguage(plan.changeLanguage).catch(() => {
+        // Chunk failed to load: keep the current language.
+      });
     }
     // Each distinct write goes out once per page load: a refused or failed
     // PATCH (an odd browser zone the server does not know) is not retried in
