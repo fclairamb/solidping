@@ -61,3 +61,8 @@ Reach:
 
 - Builtin caps now, process isolation later, or process isolation now? **Recommended:** builtin caps in this change (small, testable, closes the one-line case), and a separate spec for a memory-limited JS worker pool.
 - Per-run budget value? **Recommended:** 64 MB, the same order as the payload budget, with no config knob until someone asks.
+
+## Resolved open questions
+
+- Builtin caps in this change; memory-limited JS worker pool is a separate later spec. (autopilot: recommended answer)
+- Per-run budget: 64 MB, no config knob. (autopilot: recommended answer)

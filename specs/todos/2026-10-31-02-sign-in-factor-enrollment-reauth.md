@@ -62,3 +62,8 @@ Impact:
 
 - How does an account with no password re-authenticate? **Recommended:** require a primary sign-in (federated or passkey) within the last 10 minutes, read from a sign-in time carried by the session. If the session has no such time, the user signs in again through their provider. Do not accept a refresh-rotated token's issue time.
 - Should a super admin get a "reset 2FA" action for a locked-out user? **Recommended:** yes, in a separate spec: audited, with an email to the user, refused under impersonation and PATs. It is the recovery path missing today whatever the cause.
+
+## Resolved open questions
+
+- Accounts without a password re-authenticate with a primary sign-in (federated or passkey) within the last 10 minutes, read from a sign-in time carried by the session; otherwise sign in again. Never accept a refresh-rotated token's issue time. (autopilot: recommended answer)
+- Super-admin "reset 2FA" action: yes, but in a separate spec, not in this change. (autopilot: recommended answer)
