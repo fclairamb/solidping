@@ -398,6 +398,10 @@ type jsRuntime struct {
 	// remainingPayload.
 	payloadUsed atomic.Int64
 
+	// memory is the run's allocation budget (maxScriptAllocBytes), drawn by
+	// the capped native builtins. See installMemoryBudget.
+	memory memoryBudget
+
 	// invalidStatus is the unknown status string a plugin script returned.
 	invalidStatus string
 }
@@ -446,6 +450,7 @@ func newJSRuntime(ctx context.Context, cfg *JSConfig) *jsRuntime {
 
 // registerGlobals sets up the global objects available to the script.
 func (r *jsRuntime) registerGlobals() {
+	r.installMemoryBudget()
 	r.registerEnv()
 	r.registerSecrets()
 	r.registerPluginConfig()

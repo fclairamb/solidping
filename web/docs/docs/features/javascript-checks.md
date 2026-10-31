@@ -648,6 +648,29 @@ string.
 | `env` / `secrets` entries | 50 each |
 | Default / maximum timeout | 30s |
 | Cookie jar (per session) | 100 cookies, 4 KiB each |
+| Memory built by native calls (see below) | 64 MiB per execution |
+
+### Memory budget
+
+The script runs inside the check worker, which every organization shares, and
+the timeout cannot stop a single native call: `"x".repeat(1e9)` would allocate
+the whole string before the deadline is even looked at. So the builtins that
+build a large value in one call draw from a 64 MiB budget per execution,
+**before** they allocate:
+
+- `String.prototype.repeat`, `padStart`, `padEnd` (the result's length);
+- `Array.prototype.join` and the typed-array `join` (the result's length);
+- `Array(n)` / `new Array(n)`, `Array.prototype.fill` and `Array.from` (16
+  bytes per slot);
+- `new ArrayBuffer(n)` and the typed-array constructors (`new Uint8Array(n)`,
+  a copy of an array or typed array, `Uint8Array.from`, …), but not a view on
+  an existing buffer.
+
+A string counts one byte per character. The budget adds up across calls, so a
+loop of medium allocations is refused once their sum passes 64 MiB. A refused
+call allocates nothing and throws a `RangeError` whose message starts with
+`memory budget exceeded`; uncaught, the check reports `error`. Ordinary
+scripts stay far below it.
 
 Every budget is spent **before** the call runs, so a refused call still costs
 its unit and a script cannot spin the refusal path for free. Connections share
