@@ -42,7 +42,11 @@ const (
 	KeyEmailAuthType            ParameterKey = "email.auth_type"
 	KeyEmailInsecure            ParameterKey = "email.insecure_skip_verify"
 	KeyRegistrationEmailPattern ParameterKey = "auth.registration_email_pattern"
-	KeyEmailProtocol            ParameterKey = "email.protocol"
+	// KeyRegistrationMaxPendingPerIP caps the sign-ups one client IP may leave
+	// unconfirmed over 24 hours, and turns on the once-a-minute sign-up limit
+	// per IP (config.AuthConfig.RegistrationMaxPendingPerIP). 0 turns both off.
+	KeyRegistrationMaxPendingPerIP ParameterKey = "auth.registration_max_pending_per_ip"
+	KeyEmailProtocol               ParameterKey = "email.protocol"
 	// KeyEmailReplyTo is the instance support mailbox (spec 2026-08-22-02).
 	// Empty means the whole support-reply feature is off: no Reply-To header,
 	// no "you can reply" notice, no inbound-message mirror.
@@ -516,6 +520,17 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
 					cfg.Auth.RegistrationEmailPattern = v
+				}
+			},
+		},
+		{
+			Key:    KeyRegistrationMaxPendingPerIP,
+			EnvVar: "SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				// A negative count has no meaning: keep the configured value.
+				if n, ok := parseInt(value); ok && n >= 0 {
+					cfg.Auth.RegistrationMaxPendingPerIP = n
 				}
 			},
 		},

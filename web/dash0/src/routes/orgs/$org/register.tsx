@@ -60,7 +60,15 @@ function RegisterPage() {
       clearSignupAttribution();
       setSuccess(true);
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.status === 429) {
+        // Per-IP sign-up limits (server setting
+        // auth.registration_max_pending_per_ip): the once-a-minute one sends
+        // Retry-After, the unconfirmed-sign-ups one does not.
+        const key = err.retryAfter
+          ? "auth:registrationTryAgainInAMinute"
+          : "auth:registrationTooManyPending";
+        setError(t(key));
+      } else if (err instanceof ApiError) {
         setError(err.message);
       } else {
         setError(t("auth:unexpectedError"));

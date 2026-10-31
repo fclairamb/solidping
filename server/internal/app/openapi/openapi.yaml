@@ -1088,6 +1088,13 @@ paths:
       tags: [Authentication]
       summary: Self-service account registration
       operationId: register
+      description: |
+        Stores a pending registration and emails a confirmation link. When
+        `auth.registration_max_pending_per_ip` is set (default 10 in SaaS
+        mode, off otherwise), the caller's IP may sign up at most once a
+        minute (`429` with `Retry-After`) and have at most that many sign-ups
+        waiting for confirmation from the last 24 hours (`429`). A refused
+        request sends nothing. Confirming a registration frees its slot.
       requestBody:
         required: true
         content:
@@ -1103,6 +1110,8 @@ paths:
                 $ref: "#/components/schemas/MessageResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
   /api/v1/auth/confirm-registration:
     post:
