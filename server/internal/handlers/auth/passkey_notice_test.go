@@ -3,6 +3,7 @@ package auth_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -45,10 +46,11 @@ func TestPasskeyRegistrationNotifiesOwner(t *testing.T) {
 	pkSvc := auth.NewPasskeyService(authSvc, dbSvc)
 
 	// The request context RequireAuth builds for a session in org acme.
-	reqCtx := context.WithValue(ctx, base.ContextKeyClaims, &auth.Claims{UserUID: user.UID, OrgSlug: "acme"})
+	reqCtx := context.WithValue(ctx, base.ContextKeyClaims,
+		&auth.Claims{UserUID: user.UID, OrgSlug: "acme", AuthTime: time.Now().Unix()})
 
 	device := newSoftAuthenticator(t)
-	begin, err := pkSvc.BeginRegistration(reqCtx, user.UID)
+	begin, err := pkSvc.BeginRegistration(reqCtx, user.UID, nil)
 	r.NoError(err)
 
 	info, err := pkSvc.FinishRegistration(reqCtx, begin.Session,

@@ -1,0 +1,18 @@
+{{define "subject"}}{{t "account.totpEnabled.subject"}}{{end}}
+{{define "preheader"}}{{t "account.totpEnabled.preheader"}}{{end}}
+{{template "base.html" .}}
+{{define "content"}}
+    <h1>{{t "account.totpEnabled.title"}}</h1>
+    <p>{{t "account.totpEnabled.body" "date" (date .EnabledAt)}}</p>
+    <p>{{t "account.totpEnabled.revoke"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .SecurityURL "Label" (t "account.totpEnabled.cta") "Variant" "primary"}}</div>
+    <p class="meta">{{t "account.securityNotice.warning"}}</p>
+{{end}}
+{{define "text"}}{{t "account.totpEnabled.title"}}
+
+{{t "account.totpEnabled.body" "date" (date .EnabledAt)}}
+
+{{t "account.totpEnabled.revoke"}} {{.SecurityURL}}
+
+{{t "account.securityNotice.warning"}}
+{{end}}

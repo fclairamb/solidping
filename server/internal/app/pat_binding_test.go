@@ -174,7 +174,9 @@ func TestPATCannotLeaveItsOrg(t *testing.T) {
 	r.Equal(string(base.ErrorCodePATForbidden), body["code"])
 
 	// Positive controls: the password session does what the PAT may not.
-	status, body = env.do(http.MethodPost, "/api/v1/auth/passkeys/register/begin", env.session, `{}`)
+	// (A new passkey needs the current password, spec 2026-10-31-02.)
+	status, body = env.do(http.MethodPost, "/api/v1/auth/passkeys/register/begin", env.session,
+		`{"currentPassword":"`+patBindingPassword+`"}`)
 	r.Equal(http.StatusOK, status, body)
 
 	status, body = env.do(http.MethodPost, "/api/v1/auth/switch-org", env.session, `{"org":"patb"}`)

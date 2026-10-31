@@ -74,7 +74,12 @@ func TestPasskeyHandlerGatesAndErrors(t *testing.T) { //nolint:tparallel // subt
 		want   int
 	}{
 		{"register begin unauth", enabled.RegisterBegin, nil, nil, "", http.StatusUnauthorized},
-		{"register begin ok", enabled.RegisterBegin, f.admin, nil, "", http.StatusOK},
+		{"register begin no password", enabled.RegisterBegin, f.admin, nil, "", http.StatusUnauthorized},
+		{"register begin bad json", enabled.RegisterBegin, f.admin, nil, "{", http.StatusUnprocessableEntity},
+		{
+			"register begin ok", enabled.RegisterBegin, f.admin, nil,
+			`{"currentPassword":"testpass1234"}`, http.StatusOK,
+		},
 		{"register begin disabled", disabled.RegisterBegin, f.admin, nil, "", http.StatusServiceUnavailable},
 		{"register finish unauth", enabled.RegisterFinish, nil, nil, "", http.StatusUnauthorized},
 		{"register finish bad json", enabled.RegisterFinish, f.admin, nil, "{", http.StatusUnprocessableEntity},

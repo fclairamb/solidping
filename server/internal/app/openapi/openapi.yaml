@@ -1190,7 +1190,9 @@ paths:
         Rotates the caller's password without an emailed reset token.
         `currentPassword` is required when the account already has a password;
         for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is
-        ignored and this call sets the initial password. All of the caller's
+        ignored and this call sets the initial password, provided the session
+        comes from a sign-in within the last 10 minutes (otherwise 403
+        `REAUTHENTICATION_REQUIRED`: sign in again first). All of the caller's
         *other* sessions are revoked; the calling session and any personal access
         tokens keep working. A confirmation email is sent.
         While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional
@@ -1223,12 +1225,170 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: >
+            The account has no password and the session's sign-in is more than
+            10 minutes old (error code `REAUTHENTICATION_REQUIRED`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/auth/2fa/setup:
+    post:
+      tags: [Authentication]
+      summary: Start enabling TOTP two-factor authentication
+      description: >
+        Generates a TOTP secret for the caller (stored, not yet enabled) and
+        returns it with a `setupToken` that `/api/v1/auth/2fa/confirm`
+        requires. Adding a sign-in factor needs a re-authentication:
+        `currentPassword` when the account has a password, otherwise a sign-in
+        within the last 10 minutes. Every attempt spends the per-user
+        change-password budget. Refused for personal access tokens and
+        impersonation tokens.
+      operationId: setup2FA
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Setup2FARequest"
+      responses:
+        "200":
+          description: Pending TOTP secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Setup2FAResponse"
+        "401":
+          description: >
+            Not authenticated, or `currentPassword` is missing or wrong (error
+            code `INVALID_CURRENT_PASSWORD`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: >
+            The account has no password and the session's sign-in is more than
+            10 minutes old (error code `REAUTHENTICATION_REQUIRED`), or the
+            credential may not change sign-in factors.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/auth/2fa/confirm:
+    post:
+      tags: [Authentication]
+      summary: Confirm and enable TOTP two-factor authentication
+      description: >
+        Checks a code from the authenticator against the pending secret and
+        enables two-factor authentication. Returns the recovery codes, once.
+        `setupToken` must be the one `/api/v1/auth/2fa/setup` returned with
+        that secret (it expires after 10 minutes). A notice email is sent to
+        the account's address.
+      operationId: confirm2FA
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Confirm2FARequest"
+      responses:
+        "200":
+          description: Two-factor authentication enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Confirm2FAResponse"
+        "400":
+          description: >
+            Missing code, no pending setup, or a missing, expired or mismatched
+            `setupToken` (error code `INVALID_SETUP_TOKEN`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not authenticated, or the code is wrong (error code `INVALID_2FA_CODE`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/auth/passkeys/register/begin:
+    post:
+      tags: [Authentication]
+      summary: Start registering a passkey
+      description: >
+        Returns the WebAuthn creation options and a sealed `session` to send
+        back to `/api/v1/auth/passkeys/register/finish`. Adding a sign-in
+        factor needs a re-authentication: `currentPassword` when the account
+        has a password, otherwise a sign-in within the last 10 minutes.
+      operationId: beginPasskeyRegistration
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasskeyRegisterBeginRequest"
+      responses:
+        "200":
+          description: WebAuthn creation options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  options:
+                    type: object
+                    description: PublicKeyCredentialCreationOptions, as navigator.credentials.create expects.
+                  session:
+                    type: string
+        "401":
+          description: >
+            Not authenticated, or `currentPassword` is missing or wrong (error
+            code `INVALID_CURRENT_PASSWORD`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: >
+            The account has no password and the session's sign-in is more than
+            10 minutes old (error code `REAUTHENTICATION_REQUIRED`), or the
+            credential may not change sign-in factors.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          description: WebAuthn is not configured on this server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/v1/auth/invite/{token}:
     get:
@@ -11304,6 +11464,60 @@ components:
             Optional. Accepted only while the caller's `mustChangeEmail` is true;
             must not be the default admin address. Omit it to change only the
             password.
+
+    Setup2FARequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          description: >
+            The password currently on the account. Required unless the account
+            has no password (it then needs a sign-in within the last 10
+            minutes).
+
+    Setup2FAResponse:
+      type: object
+      required: [uri, secret, setupToken]
+      properties:
+        uri:
+          type: string
+          description: otpauth:// URI to render as a QR code.
+        secret:
+          type: string
+          description: The TOTP secret, for manual entry.
+        setupToken:
+          type: string
+          description: Proof of this setup, required by `/api/v1/auth/2fa/confirm`. Expires after 10 minutes.
+
+    Confirm2FARequest:
+      type: object
+      required: [code, setupToken]
+      properties:
+        code:
+          type: string
+          description: A current code from the authenticator.
+        setupToken:
+          type: string
+          description: The `setupToken` returned by `/api/v1/auth/2fa/setup`.
+
+    Confirm2FAResponse:
+      type: object
+      required: [recoveryCodes]
+      properties:
+        recoveryCodes:
+          type: array
+          items:
+            type: string
+
+    PasskeyRegisterBeginRequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          description: >
+            The password currently on the account. Required unless the account
+            has no password (it then needs a sign-in within the last 10
+            minutes).
 
     AcceptInviteRequest:
       type: object

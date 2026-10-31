@@ -47,16 +47,19 @@ test.describe("Login with 2FA", () => {
 
     const setupResp = await page.request.post(
       `${API_BASE}/api/v1/auth/2fa/setup`,
-      { headers: { Authorization: `Bearer ${org.accessToken}` } },
+      {
+        headers: { Authorization: `Bearer ${org.accessToken}` },
+        data: { currentPassword: PASSWORD },
+      },
     );
     expect(setupResp.status()).toBe(200);
-    const setup = (await setupResp.json()) as { secret: string };
+    const setup = (await setupResp.json()) as { secret: string; setupToken: string };
 
     const confirmResp = await page.request.post(
       `${API_BASE}/api/v1/auth/2fa/confirm`,
       {
         headers: { Authorization: `Bearer ${org.accessToken}` },
-        data: { code: generateTotp(setup.secret) },
+        data: { code: generateTotp(setup.secret), setupToken: setup.setupToken },
       },
     );
     expect(confirmResp.status()).toBe(200);

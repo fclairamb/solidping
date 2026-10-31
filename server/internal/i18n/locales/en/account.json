@@ -83,6 +83,14 @@
     "revoke": "If you did not add it yourself, remove it now from your account security page and change your password:",
     "cta": "Review my passkeys"
   },
+  "totpEnabled": {
+    "subject": "Two-factor authentication was turned on for your SolidPing account",
+    "preheader": "Signing in now asks for a code from an authenticator app.",
+    "title": "Two-factor authentication was turned on",
+    "body": "Two-factor authentication was turned on for your SolidPing account on {date}. Signing in now asks for a code from the authenticator app it was set up with.",
+    "revoke": "If you did not turn it on yourself, contact your administrator right away and change your password:",
+    "cta": "Review my account security"
+  },
   "invitation": {
     "subject": "You're invited to join {org} on SolidPing",
     "preheader": {
