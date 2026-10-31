@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.43.0](https://github.com/fclairamb/solidping/compare/v0.42.1...v0.43.0) (2026-10-31)
+
+
+### Features
+
+* auto-create a personal org for new users, resume OAuth after org creation ([#716](https://github.com/fclairamb/solidping/issues/716)) ([2ae5575](https://github.com/fclairamb/solidping/commit/2ae5575dd6116c0c949f6b92298e1819426ef78a))
+
+
+### Performance Improvements
+
+* **dash0:** load only the active language's translations ([#729](https://github.com/fclairamb/solidping/issues/729)) ([406f211](https://github.com/fclairamb/solidping/commit/406f211df39ca734121784b85878402f13fa40bd))
+
+
+### Security
+
+* **auth:** limit sign-ups per client IP (unconfirmed per day, once a minute) ([#727](https://github.com/fclairamb/solidping/issues/727)) ([b2eb48f](https://github.com/fclairamb/solidping/commit/b2eb48f89210aa3ca65f96e87b36a9cadb70edc2))
+* JS check memory budget, re-authentication for new sign-in factors ([#728](https://github.com/fclairamb/solidping/issues/728)) ([a78f954](https://github.com/fclairamb/solidping/commit/a78f954b1d1bb84bf2f8e122a94ff47c08daa2ea))
+* bug-report budget for non-members, retention sparing crawl reports ([#715](https://github.com/fclairamb/solidping/issues/715)) ([d929999](https://github.com/fclairamb/solidping/commit/d92999976540fbc4d6eddfef7acde56200a760b7))
+
+
+### Dependencies
+
+* update Go dependencies: goja, prometheus/common v0.73.1, slack-go/slack v0.33.0 and other non-major bumps ([#720](https://github.com/fclairamb/solidping/issues/720), [#722](https://github.com/fclairamb/solidping/issues/722), [#724](https://github.com/fclairamb/solidping/issues/724), [#725](https://github.com/fclairamb/solidping/issues/725))
+
 ## [0.42.1](https://github.com/fclairamb/solidping/compare/v0.42.0...v0.42.1) (2026-10-30)
 
 
