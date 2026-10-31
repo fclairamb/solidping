@@ -56,3 +56,7 @@ Measured 2026-10-31 on the dash0 build at `8344a9d8` (`vite build`, M-series Mac
 ## Open questions
 
 - First paint for a non-English visitor: wait for the language chunk before rendering, or render English and then switch? **Recommended: wait.** The chunk is first-party and small once gzipped. If it fails or takes longer than about 2 s, render English rather than a blank page.
+
+## Resolved open questions
+
+- First paint for a non-English visitor: wait for the language chunk before rendering; if it fails or takes longer than about 2 s, render English rather than a blank page. (autopilot: recommended answer)
