@@ -213,6 +213,7 @@ If you ship Docker logs to a log collector, set `SP_LOG_FORMAT=json`.
 |----------|---------|-------------|
 | `SP_AUTH_JWT_SECRET` | auto-generated | JWT signing secret |
 | `SP_AUTH_REGISTRATION_EMAIL_PATTERN` | - | Restrict registration by email regex |
+| `SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP` | `0` (`10` in SaaS mode) | Unconfirmed sign-ups allowed per client IP over 24 hours, plus at most one sign-up per minute; `0` for no limit — see [Limiting Unconfirmed Sign-Ups per IP](/configuration/authentication#limiting-unconfirmed-sign-ups-per-ip) |
 | `SP_AUTH_AUTO_PERSONAL_ORG` | `true` in SaaS mode, else `false` | Create a personal organization for a user who signs in belonging to none — see [Sign-up and organizations](/configuration/authentication#sign-up-and-organizations) |
 | `SP_AUTH_PASSWORD_ALGORITHM` | `argon2id` | Password hashing algorithm (`argon2id` or `bcrypt`) — see [Password Hashing](/configuration/authentication#password-hashing) for cost parameters |
 

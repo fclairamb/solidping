@@ -1513,6 +1513,15 @@ type AuthConfig struct {
 	AccessTokenExpiry        time.Duration `koanf:"access_token_expiry"`
 	RefreshTokenExpiry       time.Duration `koanf:"refresh_token_expiry"`
 	RegistrationEmailPattern string        `koanf:"registration_email_pattern"`
+	// RegistrationMaxPendingPerIP caps the sign-ups one client IP may have
+	// waiting for email confirmation, counting those submitted in the last 24
+	// hours. While it is on, the IP may also sign up at most once a minute.
+	// Past either, POST /auth/register answers 429. 0 turns both off. Default
+	// DefaultRegistrationMaxPendingPerIP: 10 in SaaS mode, 0 otherwise and in
+	// test run mode. Env: SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP
+	// (resolveRegistrationLimit), also the
+	// systemconfig.KeyRegistrationMaxPendingPerIP system parameter.
+	RegistrationMaxPendingPerIP int `koanf:"registration_max_pending_per_ip"`
 	// SessionMaxDuration is a hard absolute cap on session lifetime,
 	// measured from login — unlike RefreshTokenExpiry (a sliding *idle*
 	// window), this bounds total session length even under continuous
@@ -2528,6 +2537,7 @@ func Load() (*Config, error) {
 	applyCheckersEnv(&cfg.Checkers)
 	applyAgentEnv(&cfg.Agent)
 	applyAuthEnv(&cfg.Auth)
+	resolveRegistrationLimit(&cfg, fileKoanf.Exists(registrationLimitFileKey))
 	applyPasswordHashingEnv(&cfg.Auth.Password)
 	applyFileStorageEnv(&cfg.FileStorage)
 	applyWebPushEnv(&cfg.WebPush)

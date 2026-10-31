@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/analytics"
@@ -680,6 +681,8 @@ func (h *Handler) Register(writer http.ResponseWriter, req *http.Request) error 
 		})
 	}
 
+	regReq.ClientIP = h.trustedClientIP(req)
+
 	resp, err := h.svc.Register(req.Context(), regReq)
 	if err != nil {
 		return h.handleRegistrationError(writer, req, err)
@@ -1300,6 +1303,15 @@ func (h *Handler) handleRegistrationError(writer http.ResponseWriter, request *h
 	case errors.Is(err, ErrInvalidCredentials):
 		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			err.Error(), err)
+	case errors.Is(err, ErrRegistrationTooSoon):
+		writer.Header().Set("Retry-After", strconv.Itoa(int(registrationIPRateWindow.Seconds())))
+
+		return h.WriteErrorErr(writer, request, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+			"A sign-up from your network was sent less than a minute ago. Wait a minute, then try again.", err)
+	case errors.Is(err, ErrTooManyPendingRegistrations):
+		return h.WriteErrorErr(writer, request, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+			"Too many sign-ups from your network are waiting for email confirmation. "+
+				"Confirm one of them, or try again tomorrow.", err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
