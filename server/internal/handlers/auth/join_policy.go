@@ -403,6 +403,12 @@ func (s *Service) completePendingLogin(
 	}
 
 	fallback := s.fallbackMemberOrg(ctx, user.UID)
+	if fallback == nil {
+		// Org-less: an invitation or a personal org may settle the user
+		// (spec 2026-10-30-04). Never when this login just filed a request:
+		// ensurePersonalOrg sees it and leaves the user waiting for it.
+		fallback = s.ensurePersonalOrg(ctx, user)
+	}
 
 	var (
 		result *ProviderLoginResult

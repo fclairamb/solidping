@@ -11,6 +11,7 @@ import { clearImpersonation, getImpersonationToken } from "@/lib/impersonation";
 // announceDemoReadOnly). Static, because sonner is already in every page's
 // bundle — a dynamic import here bought nothing and split no chunk.
 import { toast } from "sonner";
+import { getAnalyticsRequestHeaders } from "@/lib/analytics";
 // i18next is usable outside React components/hooks — this module runs below
 // any component tree, so it calls the singleton directly rather than going
 // through useTranslation. Used to localize the DEMO_READ_ONLY message (see
@@ -366,8 +367,21 @@ export function redirectToPasswordChange(): void {
   window.location.href = `${basepath}${PASSWORD_CHANGE_PATH}`;
 }
 
+function isSameOrigin(url: string): boolean {
+  try {
+    return new URL(url, window.location.href).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 async function doFetch(url: string, headers: Headers, fetchOptions: RequestInit): Promise<Response> {
   noteApiActivity();
+  if (isSameOrigin(url)) {
+    for (const [name, value] of Object.entries(getAnalyticsRequestHeaders())) {
+      headers.set(name, value);
+    }
+  }
   try {
     const response = await fetch(url, { ...fetchOptions, headers });
     noteApiActivity();

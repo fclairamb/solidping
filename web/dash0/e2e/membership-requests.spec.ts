@@ -120,7 +120,7 @@ test.describe("Membership requests", () => {
     ).toBeVisible();
   });
 
-  test("/no-org screen exposes both create and join cards", async ({
+  test("/no-org screen exposes the join card only through a join path", async ({
     page,
   }) => {
     // No login; this view is only meaningful when the user is signed in
@@ -143,7 +143,7 @@ test.describe("Membership requests", () => {
       window.localStorage.setItem("solidping_token", "stub");
     });
 
-    await page.goto("no-org");
+    await page.goto("no-org?join=acme");
 
     await expect(
       page.getByRole("heading", { name: /start a new organization/i }),

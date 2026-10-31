@@ -163,5 +163,8 @@
       "reasonIntro": "Begründung des Admins:",
       "retry": "Nach Ablauf der Wartezeit können Sie eine neue Anfrage stellen."
     }
+  },
+  "personalOrg": {
+    "name": "Organisation von {firstName}"
   }
 }

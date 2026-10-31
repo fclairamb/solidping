@@ -113,9 +113,9 @@ test.describe("Invitations", () => {
     });
 
     // Spec 2026-10-16-06: an invitation for an existing account is accepted
-    // only signed in as that account. The account here has left every org,
-    // the case an invitation exists to bring back, so its login takes the
-    // zero-org branch, which must still resume the invitation.
+    // only signed in as that account. The account here has left the invited
+    // org but still belongs to another one, so its login must resume the
+    // invitation instead of landing in that other org.
     test("logged-out existing user is sent to login, lands back on the invite and accepts", async ({
       authenticatedPage,
       page,
@@ -145,11 +145,24 @@ test.describe("Invitations", () => {
           },
         );
         expect(created.status()).toBe(200);
+
+        // Give it an org of its own: a sign-in with no org at all settles the
+        // account on its own (a pending invitation is joined directly, else a
+        // personal org is created, spec 2026-10-30-04), so the invitation page
+        // is only reached by an account that still belongs to an org.
+        const { accessToken } = (await created.json()) as {
+          accessToken: string;
+        };
+        const ownOrg = await anon.post(`${API_BASE}/api/v1/orgs`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          data: { name: `Existing Co ${stamp}`, slug: `ex-${stamp}` },
+        });
+        expect(ownOrg.status()).toBe(201);
       } finally {
         await anon.dispose();
       }
 
-      // Then make it leave the org.
+      // Then make it leave the invited org.
       const membersResp = await authenticatedPage.request.get(
         `${API_BASE}/api/v1/orgs/test/members`,
       );

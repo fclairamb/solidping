@@ -495,6 +495,27 @@ func TestGetConfigRunAndDeploymentMode(t *testing.T) {
 	r.Equal("self-hosted", body["deploymentMode"])
 }
 
+// TestGetConfigAutoPersonalOrg: autoPersonalOrg follows the deployment mode
+// default, and an explicit auth.auto_personal_org wins (spec 2026-10-30-04).
+func TestGetConfigAutoPersonalOrg(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := &config.Config{}
+	cfg.Deployment.Mode = config.DeploymentModeSaaS
+	r.Equal(true, serve(t, cfg)["autoPersonalOrg"])
+
+	cfg.Auth.AutoPersonalOrg = config.BoolPtr(false)
+	r.Equal(false, serve(t, cfg)["autoPersonalOrg"])
+
+	cfg = &config.Config{}
+	cfg.Deployment.Mode = config.DeploymentModeSelfHosted
+	r.Equal(false, serve(t, cfg)["autoPersonalOrg"])
+
+	cfg.Auth.AutoPersonalOrg = config.BoolPtr(true)
+	r.Equal(true, serve(t, cfg)["autoPersonalOrg"])
+}
+
 // TestBuildAIFlag: ai.enabled follows SP_AI_PROVIDER, and nothing about the
 // provider leaks (spec 2026-10-03-07).
 func TestBuildAIFlag(t *testing.T) {

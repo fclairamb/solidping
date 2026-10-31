@@ -163,5 +163,8 @@
       "reasonIntro": "Motif indiqué par l'administrateur :",
       "retry": "Vous pourrez envoyer une nouvelle demande à la fin du délai d'attente."
     }
+  },
+  "personalOrg": {
+    "name": "L'organisation de {firstName}"
   }
 }

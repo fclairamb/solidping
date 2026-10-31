@@ -11618,6 +11618,11 @@ components:
         deploymentMode:
           type: string
           enum: [saas, self-hosted]
+        autoPersonalOrg:
+          type: boolean
+          description: |
+            Whether a user who signs in belonging to no organization gets a
+            personal one (`auth.auto_personal_org`, on by default in SaaS mode).
 
     PublicTelegramConfig:
       type: object

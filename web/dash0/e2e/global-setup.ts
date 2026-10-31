@@ -220,6 +220,9 @@ export default async function globalSetup(): Promise<void> {
         // underscore to a dot); it works because systemconfig declares this
         // exact EnvVar.
         SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*",
+        // Sign-ins without an org create a personal one, as on SaaS (off by
+        // default on self-hosted). The specs of spec 2026-10-30-04 assert it.
+        SP_AUTH_AUTO_PERSONAL_ORG: "true",
         // Belt and braces for the case no teardown can cover: if this
         // Playwright process is killed outright, the server would otherwise be
         // reparented to PID 1 and keep running against a database we are about
