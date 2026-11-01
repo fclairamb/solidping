@@ -48,3 +48,7 @@ In `server/internal/checkers/checkjs/`:
 ## Open questions
 
 - Match time limit? **Recommended:** 2 s per match, a named constant with no config knob. A legitimate monitoring regexp finishes in microseconds.
+
+## Resolved open questions
+
+- (autopilot: recommended answer) Match time limit is 2 s per match, a named constant with no config knob.

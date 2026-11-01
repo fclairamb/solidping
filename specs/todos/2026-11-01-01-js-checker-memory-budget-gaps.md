@@ -60,3 +60,7 @@ In `server/internal/checkers/checkjs/memory_test.go`. Each regression test must 
 
 - How to close the `+` rope? **Recommended:** process isolation (step 2) as the real fix, delivered in this spec's PR or the next one. Meanwhile, a cheap stopgap: wrap every binding that receives a string from the script (`http.*`, `console.*`, `solidping.*`, the result) so it refuses one longer than the budget. This only covers the flatten paths through bindings, so say so in the docs.
 - Ship the builtin caps (step 1) before process isolation? **Recommended:** yes. They are small, testable, and close the one-line cases that need no `+`.
+
+## Resolved open questions
+
+- (autopilot: recommended answer) Ship the builtin caps (step 1) first, plus the cheap stopgap: wrap every binding that receives a string from the script so it refuses one longer than the budget. Document that this only covers flatten paths through bindings. Process isolation (step 2) is a follow-up, not part of this PR.

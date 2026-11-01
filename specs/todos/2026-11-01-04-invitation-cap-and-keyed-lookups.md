@@ -53,3 +53,7 @@ Found by the security scan of 2026-11-01 (finding AB4).
 ## Open questions
 
 - Cap value? **Recommended:** 50 live invitations per org, or the seat cap when lower. Raise it on request.
+
+## Resolved open questions
+
+- (autopilot: recommended answer) Cap is 50 live invitations per org, or the seat cap when lower.
