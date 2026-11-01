@@ -166,6 +166,14 @@ func (s *Service) reauthenticateForFactor(ctx context.Context, user *models.User
 	return requireRecentSignIn(ctx)
 }
 
+// ReauthenticateForFactor is reauthenticateForFactor for the routes outside
+// this package that add a sign-in factor: linking a Discord account from a
+// session (spec 2026-11-01-03) binds an identity that signs in. Its errors are
+// the ones WriteReauthError answers.
+func (s *Service) ReauthenticateForFactor(ctx context.Context, user *models.User, currentPassword *string) error {
+	return s.reauthenticateForFactor(ctx, user, currentPassword)
+}
+
 // totpSetupClaims is the body of the token binding Confirm2FA to the secret a
 // re-authenticated Setup2FA handed out.
 type totpSetupClaims struct {
@@ -235,16 +243,16 @@ func (s *Service) notifyTOTPEnabled(ctx context.Context, user *models.User) {
 
 	s.enqueueEmail(ctx, "", user.Email, email.TemplateTOTPEnabled, recipient.ForUser(user),
 		map[string]any{
-			"EnabledAt":   time.Now().UTC(),
-			"SecurityURL": securityURL,
+			"EnabledAt":    time.Now().UTC(),
+			keySecurityURL: securityURL,
 		},
 	)
 }
 
-// writeReauthError answers the errors of reauthenticateForFactor. It reports
+// WriteReauthError answers the errors of reauthenticateForFactor. It reports
 // false when err is not one of them, so the caller falls through to its own
 // mapping.
-func writeReauthError(
+func WriteReauthError(
 	handler *base.HandlerBase, writer http.ResponseWriter, request *http.Request, err error,
 ) (bool, error) {
 	switch {

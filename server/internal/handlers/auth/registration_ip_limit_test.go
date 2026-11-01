@@ -174,8 +174,8 @@ func TestRegisterPendingPerIPLimitWindow(t *testing.T) {
 	bunner, ok := dbSvc.(interface{ DB() *bun.DB })
 	r.True(ok, "the test database exposes its bun handle")
 	_, err := bunner.DB().NewUpdate().Model((*models.StateEntry)(nil)).
-		Set("updated_at = ?", time.Now().Add(-25*time.Hour)).
-		Where("key = ?", registrationKeyPrefix+"yesterday@acme.com").
+		Set("expires_at = ?", time.Now().Add(-time.Hour)).
+		Where("key = ?", registrationIPKey(limitTestIP, "yesterday@acme.com")).
 		Exec(ctx)
 	r.NoError(err)
 

@@ -210,6 +210,12 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	val, err := runtime.vm.RunString(wrapped)
 	runtime.vm.ClearInterrupt()
 
+	// Exporting the result flattens every string in it: a rope built with
+	// `+` past the memory budget is refused first.
+	if err == nil {
+		err = runtime.guardResult(val)
+	}
+
 	duration := time.Since(start)
 
 	result := runtime.resultFor(val, err, duration, timeout)
@@ -317,6 +323,14 @@ func (r *jsRuntime) resultFor(
 			Status:   checkerdef.StatusTimeout,
 			Duration: duration,
 			Output:   r.buildOutput("script timed out after " + timeout.String()),
+		}
+	}
+
+	if isRegexpTimeout(err) {
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusError,
+			Duration: duration,
+			Output:   r.buildOutput("script error: " + regexpTooLongMessage()),
 		}
 	}
 
@@ -465,6 +479,7 @@ func (r *jsRuntime) registerGlobals() {
 	r.registerTCP()
 	r.registerUDP()
 	r.registerWebSocket()
+	r.guardBindings()
 }
 
 // registerEnv exposes checkconfig.Env as a read-only "env" object.

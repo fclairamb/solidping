@@ -91,6 +91,14 @@
     "revoke": "If you did not turn it on yourself, contact your administrator right away and change your password:",
     "cta": "Review my account security"
   },
+  "discordLinked": {
+    "subject": "A Discord account was linked to your SolidPing account",
+    "preheader": "It can now be used to sign in to your account.",
+    "title": "A Discord account was linked",
+    "body": "A Discord account was linked to your SolidPing account on {date}. Signing in with Discord now opens your account.",
+    "revoke": "If you did not link it yourself, contact your administrator right away to remove it. You can change your password from the security page:",
+    "cta": "Change my password"
+  },
   "invitation": {
     "subject": "You're invited to join {org} on SolidPing",
     "preheader": {

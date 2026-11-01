@@ -151,6 +151,9 @@ type Service struct {
 	// serverBaseURL is the public base URL, needed to build the Discord OAuth
 	// callback a link round trip returns to.
 	serverBaseURL string
+	// reauth re-authenticates the member before a Discord link, which binds
+	// an identity that signs in (spec 2026-11-01-03). Nil refuses every link.
+	reauth FactorReauthenticator
 	// discordAPIBaseURL overrides Discord's REST base. Empty in production;
 	// set only by in-package tests so the Test button's real code path can be
 	// driven against an httptest stand-in. A per-instance field rather than a

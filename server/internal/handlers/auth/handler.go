@@ -1332,6 +1332,9 @@ func (h *Handler) handleInvitationError(writer http.ResponseWriter, request *htt
 	case errors.Is(err, ErrInvalidExpiresIn):
 		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			err.Error(), err)
+	case errors.Is(err, ErrTooManyInvitations):
+		return h.WriteErrorErr(writer, request, http.StatusConflict, base.ErrorCodeTooManyInvitations,
+			"This organization has too many pending invitations. Revoke some, or wait for them to expire.", err)
 	case errors.Is(err, ErrInvalidApp):
 		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			err.Error(), err)
@@ -1369,7 +1372,7 @@ func (h *Handler) Setup2FA(writer http.ResponseWriter, req *http.Request) error 
 
 	resp, err := h.svc.Setup2FA(req.Context(), claims.UserUID, setupReq)
 	if err != nil {
-		if handled, writeErr := writeReauthError(&h.HandlerBase, writer, req, err); handled {
+		if handled, writeErr := WriteReauthError(&h.HandlerBase, writer, req, err); handled {
 			return writeErr
 		}
 

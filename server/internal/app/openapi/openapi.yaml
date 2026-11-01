@@ -4326,6 +4326,65 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/users/me/discord/link-start:
+    post:
+      tags: [Notifications]
+      summary: Start linking a Discord account to the caller
+      description: |
+        Mints a single-use link token (TTL 15 minutes) and returns the Discord
+        authorization URL carrying it. Discord sends the browser back to
+        `/api/v1/auth/discord/callback`, which binds the Discord account that
+        completed the round trip to the caller and emails the account owner a
+        "Discord account linked" notice.
+
+        A linked Discord identity signs in, so this is a new sign-in factor and
+        needs a re-authentication: `currentPassword` when the account has a
+        password, otherwise a sign-in within the last 10 minutes. Every attempt
+        spends the per-user change-password budget. Refused for personal
+        access tokens and impersonation tokens. Returns `VALIDATION_ERROR` when
+        the instance has no Discord bot configured.
+      operationId: createMyDiscordLink
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiscordLinkRequest"
+      responses:
+        "201":
+          description: Link round trip started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordLinkResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          description: >
+            Not authenticated, or `currentPassword` is missing or wrong (error
+            code `INVALID_CURRENT_PASSWORD`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: >
+            The account has no password and the session's sign-in is more than
+            10 minutes old (error code `REAUTHENTICATION_REQUIRED`), or the
+            request runs under impersonation or a personal access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
   /api/v1/orgs/{org}/users/me/notification-contacts/{contactUid}:
     delete:
       tags: [Notifications]
@@ -14469,6 +14528,34 @@ components:
           type: string
           description: The t.me deep link to open, carrying the single-use token.
           example: https://t.me/solidping_bot?start=Zm9vYmFyYmF6
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the token stops working (15 minutes after minting).
+
+    DiscordLinkRequest:
+      type: object
+      properties:
+        redirectUri:
+          type: string
+          description: >
+            Same-origin dashboard path to return to after the round trip.
+            Anything else lands on the dashboard root.
+          example: /d/orgs/acme/account/notifications
+        currentPassword:
+          type: string
+          description: >
+            The password currently on the account. Required unless the account
+            has no password (it then needs a sign-in within the last 10
+            minutes).
+
+    DiscordLinkResponse:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url:
+          type: string
+          description: The Discord authorization URL, carrying the single-use link token.
         expiresAt:
           type: string
           format: date-time

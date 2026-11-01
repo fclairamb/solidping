@@ -7170,13 +7170,29 @@ export interface DiscordLinkResponse {
  * them here with `?discord_linked=1`; the page then calls `useConnectDiscord`.
  * That split is deliberate — the callback is a PUBLIC route, so the less it is
  * allowed to write the better.
+ *
+ * A linked Discord identity signs in, so the call needs a re-authentication:
+ * the current password, or a recent sign-in for a passwordless account.
  */
 export function useCreateDiscordLink(org: string) {
   return useMutation({
-    mutationFn: (redirectUri: string) =>
+    mutationFn: ({
+      redirectUri,
+      currentPassword,
+    }: {
+      redirectUri: string;
+      /** Required when the account has a password (spec 2026-11-01-03). */
+      currentPassword?: string;
+    }) =>
       apiFetch<DiscordLinkResponse>(
         `/api/v1/orgs/${org}/users/me/discord/link-start`,
-        { method: "POST", body: JSON.stringify({ redirectUri }) },
+        {
+          method: "POST",
+          body: JSON.stringify({ redirectUri, currentPassword }),
+          // A wrong password answers 401 INVALID_CURRENT_PASSWORD: about the
+          // body, not the session, so it must not sign the member out.
+          suppress401Handling: true,
+        },
       ),
   });
 }

@@ -3,7 +3,10 @@ package auth
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
 const (
@@ -19,7 +22,11 @@ const (
 	// registrationIPRateKeyPrefix keys the counter that lets one client IP
 	// sign up at most once per registrationIPRateWindow.
 	registrationIPRateKeyPrefix = "registration_ip_rl:"
-	registrationIPRateWindow    = time.Minute
+
+	// registrationIPKeyPrefix keys registration_ip:<sha256(ip)>:<email>, one
+	// entry per pending sign-up of an IP, living for registrationIPWindow.
+	registrationIPKeyPrefix  = "registration_ip:"
+	registrationIPRateWindow = time.Minute
 )
 
 var (
@@ -63,22 +70,18 @@ func (s *Service) checkRegistrationPerIPLimits(ctx context.Context, clientIP, em
 		return ErrRegistrationTooSoon
 	}
 
-	entries, err := s.db.ListStateEntries(ctx, nil, registrationKeyPrefix)
+	// The per-IP index lists only this IP's pending sign-ups (at most the
+	// limit, since each one took a slot), whatever the instance holds.
+	entries, err := s.db.ListStateEntries(ctx, nil, registrationIPPrefix(clientIP))
 	if err != nil {
 		return fmt.Errorf("failed to list registration entries: %w", err)
 	}
 
-	// UpdatedAt, not CreatedAt: re-submitting a sign-up rewrites its entry in
-	// place (SetStateEntry upserts), and that is when it was last requested.
-	since := time.Now().Add(-registrationIPWindow)
 	pending := 0
+	own := registrationIPKey(clientIP, email)
 
 	for _, entry := range entries {
-		if entry.Value == nil || entry.Key == registrationKeyPrefix+email || entry.UpdatedAt.Before(since) {
-			continue
-		}
-
-		if ip, _ := (*entry.Value)[keyClientIP].(string); ip == clientIP {
+		if entry.Key != own {
 			pending++
 		}
 	}
@@ -88,4 +91,50 @@ func (s *Service) checkRegistrationPerIPLimits(ctx context.Context, clientIP, em
 	}
 
 	return nil
+}
+
+// registrationIPPrefix is the key prefix of the pending sign-ups of clientIP.
+// The IP is hashed so no prefix can be the prefix of another IP's keys.
+func registrationIPPrefix(clientIP string) string {
+	return registrationIPKeyPrefix + hashPendingToken(clientIP) + ":"
+}
+
+func registrationIPKey(clientIP, email string) string {
+	return registrationIPPrefix(clientIP) + email
+}
+
+// indexPendingRegistration writes the two lookup keys of a pending
+// registration: its token hash (for ConfirmRegistration) and, when the
+// sign-up has a client IP, its slot in the per-IP count (living for the
+// per-IP window).
+func (s *Service) indexPendingRegistration(
+	ctx context.Context, email, clientIP, token string, ttl time.Duration,
+) error {
+	value := &models.JSONMap{keyEmail: email}
+
+	if err := s.db.SetStateEntry(ctx, nil, registrationTokenKeyPrefix+hashPendingToken(token), value, &ttl); err != nil {
+		return fmt.Errorf("failed to index registration: %w", err)
+	}
+
+	if clientIP == "" {
+		return nil
+	}
+
+	window := registrationIPWindow
+	if err := s.db.SetStateEntry(ctx, nil, registrationIPKey(clientIP, email), value, &window); err != nil {
+		return fmt.Errorf("failed to index registration by address: %w", err)
+	}
+
+	return nil
+}
+
+// dropPendingRegistration deletes a pending registration and its lookup keys.
+func (s *Service) dropPendingRegistration(ctx context.Context, entry *models.StateEntry, tokenHash string) {
+	_, _ = s.db.DeleteStateEntry(ctx, nil, entry.Key)
+	_, _ = s.db.DeleteStateEntry(ctx, nil, registrationTokenKeyPrefix+tokenHash)
+
+	if ip, _ := (*entry.Value)[keyClientIP].(string); ip != "" {
+		email := strings.TrimPrefix(entry.Key, registrationKeyPrefix)
+		_, _ = s.db.DeleteStateEntry(ctx, nil, registrationIPKey(ip, email))
+	}
 }

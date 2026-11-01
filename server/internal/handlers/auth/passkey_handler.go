@@ -84,7 +84,7 @@ func (h *PasskeyHandler) RegisterBegin(writer http.ResponseWriter, req *http.Req
 
 	resp, err := h.svc.BeginRegistration(req.Context(), claims.UserUID, body.CurrentPassword)
 	if err != nil {
-		if handled, writeErr := writeReauthError(&h.HandlerBase, writer, req, err); handled {
+		if handled, writeErr := WriteReauthError(&h.HandlerBase, writer, req, err); handled {
 			return writeErr
 		}
 

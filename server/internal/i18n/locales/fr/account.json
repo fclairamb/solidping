@@ -91,6 +91,14 @@
     "revoke": "Si vous ne l'avez pas activée vous-même, contactez immédiatement votre administrateur et changez votre mot de passe :",
     "cta": "Voir la sécurité de mon compte"
   },
+  "discordLinked": {
+    "subject": "Un compte Discord a été associé à votre compte SolidPing",
+    "preheader": "Il permet désormais de se connecter à votre compte.",
+    "title": "Un compte Discord a été associé",
+    "body": "Un compte Discord a été associé à votre compte SolidPing le {date}. La connexion avec Discord ouvre désormais votre compte.",
+    "revoke": "Si vous ne l'avez pas associé vous-même, contactez immédiatement votre administrateur pour le retirer. Vous pouvez changer votre mot de passe depuis la page de sécurité :",
+    "cta": "Changer mon mot de passe"
+  },
   "invitation": {
     "subject": "Invitation à rejoindre {org} sur SolidPing",
     "preheader": {

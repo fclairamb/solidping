@@ -24,10 +24,10 @@ func TestImpersonationCannotBindAChannel(t *testing.T) {
 		ctx, env := setupContactEnv(t, WithServerBaseURL("https://solidping.example"))
 
 		_, err := env.svc.CreateDiscordLink(
-			audit.WithImpersonator(ctx, "admin-uid"), env.org.Slug, env.user, "")
+			audit.WithImpersonator(ctx, "admin-uid"), env.org.Slug, env.user, "", nil)
 		r.ErrorIs(err, ErrImpersonationForbidden)
 
-		resp, err := env.svc.CreateDiscordLink(ctx, env.org.Slug, env.user, "")
+		resp, err := env.svc.CreateDiscordLink(ctx, env.org.Slug, env.user, "", nil)
 		r.NoError(err)
 		r.NotEmpty(resp.URL)
 	})
