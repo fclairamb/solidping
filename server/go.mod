@@ -237,7 +237,7 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/crewjam/saml v0.5.1
-	github.com/dlclark/regexp2/v2 v2.11.0
+	github.com/dlclark/regexp2/v2 v2.12.0
 	github.com/docker/go-units v0.5.0
 	github.com/dop251/goja v0.0.0-20261031103838-cf2ff0ec0b31
 	github.com/dreamscached/minequery/v2 v2.5.0
