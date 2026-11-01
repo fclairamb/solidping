@@ -5,12 +5,34 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 )
+
+func countEmailJobs(ctx context.Context, t *testing.T, dbSvc db.Service) int {
+	t.Helper()
+
+	listed, err := dbSvc.ListJobs(ctx, nil, 0)
+	require.NoError(t, err)
+
+	n := 0
+
+	for _, job := range listed {
+		if job.Type == string(jobdef.JobTypeEmail) {
+			n++
+		}
+	}
+
+	return n
+}
 
 func inviteRequestFor(email string) InviteRequest {
 	return InviteRequest{
@@ -42,12 +64,18 @@ func TestCreateInvitationCap(t *testing.T) {
 	t.Parallel()
 
 	svc, dbSvc, ctx := setupAuthTestService(t)
+	svc.jobsSvc = jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 	org, inviter := inviteHashFixture(t, dbSvc, "cap-org")
 
 	invites := fillInvitations(ctx, t, svc, org.Slug, inviter.UID, "cap", maxLiveInvitationsPerOrg)
 
+	// Positive control: accepted invitations enqueue their email.
+	emailsBefore := countEmailJobs(ctx, t, dbSvc)
+	require.Equal(t, maxLiveInvitationsPerOrg, emailsBefore, "each accepted invitation enqueues one email")
+
 	_, err := svc.CreateInvitation(ctx, org.Slug, inviter.UID, inviteRequestFor("over@acme.com"))
 	require.ErrorIs(t, err, ErrTooManyInvitations)
+	require.Equal(t, emailsBefore, countEmailJobs(ctx, t, dbSvc), "a refused invitation enqueues no email")
 
 	idx, getErr := dbSvc.GetStateEntry(ctx, nil, inviteEmailKey("over@acme.com", org.UID))
 	require.NoError(t, getErr)
@@ -70,7 +98,11 @@ func TestCreateInvitationCap(t *testing.T) {
 	_, err = svc.CreateInvitation(ctx, org.Slug, inviter.UID, inviteRequestFor("still-over@acme.com"))
 	require.ErrorIs(t, err, ErrTooManyInvitations)
 
-	_, err = dbSvc.DeleteStateEntry(ctx, &org.UID, inviteKeyPrefix+hashPendingToken(invites[1].Token))
+	_, err = dbSvc.DB().NewUpdate().Model((*models.StateEntry)(nil)).
+		Set("expires_at = ?", time.Now().Add(-time.Minute)).
+		Where("organization_uid = ?", org.UID).
+		Where("key = ?", inviteKeyPrefix+hashPendingToken(invites[1].Token)).
+		Exec(ctx)
 	require.NoError(t, err)
 	_, err = svc.CreateInvitation(ctx, org.Slug, inviter.UID, inviteRequestFor("after-expiry@acme.com"))
 	require.NoError(t, err)

@@ -49,6 +49,7 @@ Found by the security scan of 2026-11-01 (finding AB4).
 
 - Whether `ListStateEntries` already has a `LIMIT`-taking variant in `server/internal/db`.
 - Whether a migration is needed for existing invitations: index entries written before the change have no email key. Either backfill at startup, or fall back to the scan while old entries can still exist (one week).
+  - **Decision (checked): no fallback, no backfill**, deliberately (precedent: spec 2026-10-28-03). A fallback would keep the unauthenticated-route scan alive for a week. Consequence: invitations created before the deploy are not auto-joined at org-less sign-in for up to 7 days (their invitation link still works); registrations pending before the deploy must sign up again (up to 3 days).
 
 ## Open questions
 
