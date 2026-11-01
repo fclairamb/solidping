@@ -96,8 +96,8 @@
     "preheader": "Damit kann man sich jetzt bei Ihrem Konto anmelden.",
     "title": "Ein Discord-Konto wurde verknüpft",
     "body": "Mit Ihrem SolidPing-Konto wurde am {date} ein Discord-Konto verknüpft. Die Anmeldung mit Discord öffnet jetzt Ihr Konto.",
-    "revoke": "Wenn Sie es nicht selbst verknüpft haben, wenden Sie sich sofort an Ihren Administrator, um es zu entfernen, und ändern Sie Ihr Passwort:",
-    "cta": "Kontosicherheit ansehen"
+    "revoke": "Wenn Sie es nicht selbst verknüpft haben, wenden Sie sich sofort an Ihren Administrator, um es zu entfernen. Ihr Passwort können Sie auf der Sicherheitsseite ändern:",
+    "cta": "Passwort ändern"
   },
   "invitation": {
     "subject": "Einladung zu {org} bei SolidPing",

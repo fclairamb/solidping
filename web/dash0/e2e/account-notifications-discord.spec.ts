@@ -250,7 +250,7 @@ test.describe("Account Notifications — Discord", () => {
     // The browser leaves for Discord: nothing is created until Discord sends the
     // member back with a code.
     await page.waitForURL(/discord\.com\/oauth2\/authorize/);
-    expect(state.linkCalls).toBe(2);
+    await expect.poll(() => state.linkCalls).toBe(2);
     expect(state.linkBodies[1]).toMatchObject({
       redirectUri: "/d/orgs/test/account/notifications",
       currentPassword: TEST_PASSWORD,

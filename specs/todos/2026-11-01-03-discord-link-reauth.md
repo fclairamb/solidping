@@ -42,3 +42,5 @@ Apply the AA2 rule (`server/internal/handlers/auth/factor_reauth.go`) to the Dis
 
 - Whether other "link an external identity from a session" flows exist besides Discord. The scan found none: Slack and the other providers link only during their own sign-in or install.
 - Where the account page lists linked identities, and whether the user can remove a Discord link there, so the notice email can point to it.
+
+- Decision (autopilot): no dash0 page lists or removes linked identities, so the notice email keeps "contact your administrator to remove it" and its button now says "Change my password" (it points to the security page for the password, not for removing the link), in all 4 locales. Gap, follow-up: a UI to list and unlink linked identities (Discord included) does not exist yet.
