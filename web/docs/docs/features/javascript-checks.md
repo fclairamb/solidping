@@ -667,9 +667,30 @@ build a large value in one call draw from a 64 MiB budget per execution,
   is free, copying it is not); `Array.prototype.sort` sorts in place, so it is
   only refused when its working copy (16 bytes per slot of `length`) would not
   fit in what is left;
+- `Array.prototype.concat`, `slice`, `splice`, `filter`, `flat` and `flatMap`
+  (16 bytes per slot of the result: on a dense array, `a = a.concat(a)`
+  doubles the memory at every call);
+- `String.prototype.split` (16 bytes per part: `s.split("")` makes one slot
+  per character), `replace` and `replaceAll` (the output: the input plus every
+  expanded replacement, `$&`, `` $` ``, `$'`, `$1` or a replacer function's
+  result);
+- `Function.prototype.apply`, `Reflect.apply` and `Reflect.construct` with an
+  array-like argument list (16 bytes per argument);
 - `new ArrayBuffer(n)` and the typed-array constructors (`new Uint8Array(n)`,
-  a copy of an array or typed array, `Uint8Array.from`, …), but not a view on
-  an existing buffer.
+  a copy of an array, an array-like or a typed array, `Uint8Array.from`, …),
+  but not a view on an existing buffer.
+
+A `length` is read once: an array-like whose `length` getter answers 0 to the
+charge cannot answer `4e9` to the copy.
+
+A string built with `+` is stored as its two halves until something needs its
+characters, so doubling a string 30 times costs nothing until then. Over 64
+KiB, that first read is charged too (one byte per character) when it happens
+in a `String.prototype` or `RegExp` method, in any binding (`console.*`,
+`http.*`, `solidping.*`, `base64.*`, …, strings nested in their arguments
+included) or in the returned result. A read outside those calls (`s[0]`,
+`s == t`, `Number(s)`, a template literal) is not charged: only the timeout
+stops it.
 
 A string counts one byte per character. The budget adds up across calls, so a
 loop of medium allocations is refused once their sum passes 64 MiB. A refused
