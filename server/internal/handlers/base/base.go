@@ -59,6 +59,7 @@ const (
 	ErrorCodeRegistrationExpired        ErrorCode = "REGISTRATION_EXPIRED"
 	ErrorCodeInvitationExpired          ErrorCode = "INVITATION_EXPIRED"
 	ErrorCodeInvitationNotFound         ErrorCode = "INVITATION_NOT_FOUND"
+	ErrorCodeTooManyInvitations         ErrorCode = "TOO_MANY_INVITATIONS"
 	// ErrorCodeInviteLoginRequired: the invitation targets an existing account,
 	// so it must be accepted by that account, signed in (spec 2026-10-16-06).
 	ErrorCodeInviteLoginRequired ErrorCode = "INVITE_LOGIN_REQUIRED"

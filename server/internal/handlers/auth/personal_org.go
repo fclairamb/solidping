@@ -85,16 +85,17 @@ func (s *Service) joinPendingInvitation(
 		return nil, false
 	}
 
-	// The global index entries (invite:<hash>, no org) name the org of every
-	// live invitation, so this is one query plus one per inviting org.
-	index, err := s.db.ListStateEntries(ctx, nil, inviteKeyPrefix)
+	// The per-invitee index (invite_email:<hash>:<orgUID>) names the orgs
+	// with a live invitation for this address: one prefix read, bounded by
+	// the number of orgs that invited it, whatever the instance holds.
+	index, err := s.db.ListStateEntries(ctx, nil, inviteEmailKeyPrefix+hashPendingToken(
+		strings.ToLower(strings.TrimSpace(user.Email)))+":")
 	if err != nil {
 		slog.WarnContext(ctx, "personal org: cannot list invitations", "userUID", user.UID, "error", err)
 
 		return nil, false
 	}
 
-	seen := make(map[string]struct{}, len(index))
 	invited := false
 
 	for _, entry := range index {
@@ -103,20 +104,23 @@ func (s *Service) joinPendingInvitation(
 		}
 
 		orgUID := stringFromMap(*entry.Value, keyInviteOrgUID)
-		if orgUID == "" {
+		inviteKey := stringFromMap(*entry.Value, keyInviteKey)
+
+		if orgUID == "" || inviteKey == "" {
 			continue
 		}
 
-		if _, done := seen[orgUID]; done {
+		stored, getErr := s.db.GetStateEntry(ctx, &orgUID, inviteKey)
+		if getErr != nil || stored == nil || stored.Value == nil {
 			continue
 		}
 
-		seen[orgUID] = struct{}{}
-
-		invite := s.findOrgInvitationForEmail(ctx, orgUID, user.Email)
-		if invite == nil {
-			continue
+		role := stringFromMap(*stored.Value, "role")
+		if role == "" {
+			role = string(models.MemberRoleUser)
 		}
+
+		invite := &orgInvitation{key: inviteKey, role: role, inviterUID: stringFromMap(*stored.Value, "inviterUID")}
 
 		org, orgErr := s.db.GetOrganization(ctx, orgUID)
 		if orgErr != nil || org.DeletedAt != nil {

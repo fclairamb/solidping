@@ -108,8 +108,12 @@ var (
 	ErrRegistrationExpired     = errors.New("registration link has expired")
 	ErrEmailAlreadyTaken       = errors.New("email is already registered")
 	ErrInvitationNotFound      = errors.New("invitation not found")
-	ErrInvitationExpired       = errors.New("invitation has expired")
-	ErrEmailMismatch           = errors.New("email does not match invitation")
+	// ErrTooManyInvitations is returned when the org already has the maximum
+	// number of live invitations (maxLiveInvitationsPerOrg, or its seat cap
+	// when lower).
+	ErrTooManyInvitations = errors.New("too many pending invitations")
+	ErrInvitationExpired  = errors.New("invitation has expired")
+	ErrEmailMismatch      = errors.New("email does not match invitation")
 	// ErrInviteLoginRequired refuses an anonymous acceptance of an invitation
 	// addressed to an existing account: the invite token alone is not proof of
 	// being that account, since the inviter holds it (spec 2026-10-16-06).
@@ -2556,9 +2560,18 @@ type RegisterResponse struct {
 }
 
 const (
-	registrationKeyPrefix       = "email_registration:"
-	registrationTTL             = 3 * 24 * time.Hour
-	inviteKeyPrefix             = "invite:"
+	registrationKeyPrefix = "email_registration:"
+	registrationTTL       = 3 * 24 * time.Hour
+	inviteKeyPrefix       = "invite:"
+	// inviteEmailKeyPrefix keys the global per-invitee index:
+	// invite_email:<sha256(lower(email))>:<orgUID>, value {orgUID, inviteKey}.
+	inviteEmailKeyPrefix = "invite_email:"
+	keyInviteKey         = "inviteKey"
+	// maxLiveInvitationsPerOrg caps the live invitations of one org.
+	maxLiveInvitationsPerOrg = 50
+	// registrationTokenKeyPrefix keys registration_token:<tokenHash>, value
+	// {email}: ConfirmRegistration resolves the pending entry through it.
+	registrationTokenKeyPrefix  = "registration_token:"
 	keyInviteOrgUID             = "orgUID"
 	passwordResetKeyPrefix      = "password_reset:"
 	passwordResetCountKeyPrefix = "password_reset_count:"
@@ -2689,6 +2702,10 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		return nil, fmt.Errorf("failed to store registration: %w", err)
 	}
 
+	if err := s.indexPendingRegistration(ctx, req.Email, req.ClientIP, token, ttl); err != nil {
+		return nil, err
+	}
+
 	// Send confirmation email asynchronously via the email job
 	confirmURL := fmt.Sprintf("%s%s/confirm-registration/%s",
 		s.fullCfg.Server.BaseURL, config.DashboardBasePath, token)
@@ -2741,34 +2758,35 @@ type ConfirmRegistrationRequest struct {
 //
 //nolint:cyclop,funlen // Registration confirmation requires multiple steps
 func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*LoginResponse, error) {
-	// Registration entries are keyed by email, not by token, so there is no
-	// direct lookup key to hash into (unlike password reset's
-	// password_reset:<hash> key) — scan and hash-compare per candidate
-	// instead. The plaintext token itself is never stored (spec
-	// 2026-09-25-30), so this is comparing hashes, not the raw values.
+	// Registration entries are keyed by email, so a second key,
+	// registration_token:<hash>, names the email of a token: one lookup, no
+	// scan of the pending registrations of the instance. The plaintext token
+	// is never stored (spec 2026-09-25-30). Registrations pending before this
+	// key existed have none and must be re-submitted.
 	tokenHash := hashPendingToken(token)
 
-	entries, err := s.db.ListStateEntries(ctx, nil, registrationKeyPrefix)
+	tokenEntry, err := s.db.GetStateEntry(ctx, nil, registrationTokenKeyPrefix+tokenHash)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list registration entries: %w", err)
+		return nil, fmt.Errorf("failed to look up registration: %w", err)
 	}
 
-	var matchedEntry *models.StateEntry
-
-	for _, entry := range entries {
-		if entry.Value == nil {
-			continue
-		}
-
-		entryHash, ok := (*entry.Value)[keyTokenHash].(string)
-		if ok && entryHash == tokenHash {
-			matchedEntry = entry
-
-			break
-		}
+	if tokenEntry == nil || tokenEntry.Value == nil {
+		return nil, ErrRegistrationExpired
 	}
 
-	if matchedEntry == nil {
+	pendingEmail := stringFromMap(*tokenEntry.Value, keyEmail)
+
+	matchedEntry, err := s.db.GetStateEntry(ctx, nil, registrationKeyPrefix+pendingEmail)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get registration: %w", err)
+	}
+
+	if matchedEntry == nil || matchedEntry.Value == nil {
+		return nil, ErrRegistrationExpired
+	}
+
+	// A newer sign-up for the same address replaced the token.
+	if entryHash, ok := (*matchedEntry.Value)[keyTokenHash].(string); !ok || entryHash != tokenHash {
 		return nil, ErrRegistrationExpired
 	}
 
@@ -2790,7 +2808,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 
 	if existing != nil {
 		// Delete the state entry
-		_, _ = s.db.DeleteStateEntry(ctx, nil, matchedEntry.Key)
+		s.dropPendingRegistration(ctx, matchedEntry, tokenHash)
 
 		return nil, ErrEmailAlreadyTaken
 	}
@@ -2811,8 +2829,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		return nil, fmt.Errorf("failed to create user: %w", createErr)
 	}
 
-	// Delete the state entry
-	_, _ = s.db.DeleteStateEntry(ctx, nil, matchedEntry.Key)
+	s.dropPendingRegistration(ctx, matchedEntry, tokenHash)
 
 	// Auto-join matching orgs
 	s.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
@@ -3880,6 +3897,8 @@ type AcceptInviteRequest struct {
 }
 
 // CreateInvitation creates an invitation for a user to join an organization.
+//
+//nolint:funlen // Validation, storage, indexing and email form one flow
 func (s *Service) CreateInvitation(
 	ctx context.Context, orgSlug, inviterUID string, req InviteRequest,
 ) (*InviteResponse, error) {
@@ -3907,6 +3926,10 @@ func (s *Service) CreateInvitation(
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		return nil, ErrOrganizationNotFound
+	}
+
+	if capErr := s.checkInvitationCap(ctx, org.UID); capErr != nil {
+		return nil, capErr
 	}
 
 	// Generate token
@@ -3940,6 +3963,13 @@ func (s *Service) CreateInvitation(
 	indexValue := &models.JSONMap{keyInviteOrgUID: org.UID}
 	if storeErr := s.db.SetStateEntry(ctx, nil, stateKey, indexValue, &ttl); storeErr != nil {
 		return nil, fmt.Errorf("failed to index invitation: %w", storeErr)
+	}
+
+	// Per-invitee index: lets a sign-in find its pending invitations with one
+	// prefix read instead of scanning every invitation of the instance.
+	emailValue := &models.JSONMap{keyInviteOrgUID: org.UID, keyInviteKey: stateKey}
+	if storeErr := s.db.SetStateEntry(ctx, nil, inviteEmailKey(req.Email, org.UID), emailValue, &ttl); storeErr != nil {
+		return nil, fmt.Errorf("failed to index invitation by email: %w", storeErr)
 	}
 
 	// Get the state entry to return its UID
@@ -3976,6 +4006,48 @@ func (s *Service) CreateInvitation(
 		ExpiresAt: expiresAt,
 		EmailSent: emailSent,
 	}, nil
+}
+
+// inviteEmailKey is the per-invitee index key of an invitation: the email is
+// hashed (case-insensitively) so the key holds no address.
+func inviteEmailKey(email, orgUID string) string {
+	return inviteEmailKeyPrefix + hashPendingToken(strings.ToLower(strings.TrimSpace(email))) + ":" + orgUID
+}
+
+// maxInvitationsFor returns the live-invitation cap of an org: the constant,
+// or its seat cap when lower.
+func (s *Service) maxInvitationsFor(ctx context.Context, orgUID string) int {
+	limit := maxLiveInvitationsPerOrg
+
+	seats, ok := s.entitlements.(interface {
+		MaxUsers(ctx context.Context, orgUID string) (*int, error)
+	})
+	if !ok {
+		return limit
+	}
+
+	maxSeats, err := seats.MaxUsers(ctx, orgUID)
+	if err != nil || maxSeats == nil {
+		return limit
+	}
+
+	return min(limit, *maxSeats)
+}
+
+// checkInvitationCap refuses a new invitation once the org has its maximum
+// of live ones. Expired entries are not listed, revoked ones are deleted, so
+// both free their slot.
+func (s *Service) checkInvitationCap(ctx context.Context, orgUID string) error {
+	entries, err := s.db.ListStateEntries(ctx, &orgUID, inviteKeyPrefix)
+	if err != nil {
+		return fmt.Errorf("failed to count invitations: %w", err)
+	}
+
+	if len(entries) >= s.maxInvitationsFor(ctx, orgUID) {
+		return ErrTooManyInvitations
+	}
+
+	return nil
 }
 
 // ListInvitations lists pending invitations for an organization.
@@ -4092,6 +4164,19 @@ func (s *Service) findInvite(
 // deleteInvite consumes or revokes an invitation: its org-scoped entry and
 // the global index entry findInvite resolves it through share the key.
 func (s *Service) deleteInvite(ctx context.Context, orgUID, key string) error {
+	// The per-invitee index entry goes too, unless a newer invitation of the
+	// same org to the same address now owns it.
+	if entry, getErr := s.db.GetStateEntry(ctx, &orgUID, key); getErr == nil && entry != nil && entry.Value != nil {
+		if email := stringFromMap(*entry.Value, keyEmail); email != "" {
+			emailKey := inviteEmailKey(email, orgUID)
+
+			idx, idxErr := s.db.GetStateEntry(ctx, nil, emailKey)
+			if idxErr == nil && idx != nil && idx.Value != nil && stringFromMap(*idx.Value, keyInviteKey) == key {
+				_, _ = s.db.DeleteStateEntry(ctx, nil, emailKey)
+			}
+		}
+	}
+
 	if _, err := s.db.DeleteStateEntry(ctx, &orgUID, key); err != nil {
 		return err
 	}
