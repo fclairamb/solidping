@@ -21,6 +21,22 @@ sudo mv sp /usr/local/bin/
 sp --version
 ```
 
+`sp --version` prints the client version alone. `sp version` prints the client and the server side by side, with their commits and build times, which shows at a glance whether the two are on the same release. Add `--client` to skip the server, `-o json` for a script:
+
+```bash
+$ sp --url https://solidping.acme.com version
+Client:
+  Version:   0.44.0
+  Commit:    1a2b3c4d
+  Git Time:  2026-11-01T10:00:00Z
+Server (https://solidping.acme.com):
+  Version:   0.43.0
+  Commit:    5e6f7a8b
+  Git Time:  2026-10-31T10:30:01Z
+```
+
+When the server can't be reached, `sp version` still prints the client half, then the error, and exits 1.
+
 Or pin a specific version by pointing the same file name at that release's tag:
 
 ```bash
@@ -109,6 +125,7 @@ requester IP, with a link to revoke the token.
 | `sp members list` / `add` / `update` / `remove` | Manage organization members |
 | `sp jobs list` / `get` / `create` / `cancel` | Manage background jobs |
 | `sp system get` / `set` / `delete` | Read and write system parameters |
+| `sp version` | Print the client version and the version of the server it talks to (`--client` skips the server) |
 | `sp server health` / `version` | Check server status |
 | `sp mcp` | Serve the MCP endpoint over stdin/stdout for command-based MCP clients ([MCP Server](/features/mcp)) |
 
