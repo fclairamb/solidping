@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.43.1](https://github.com/fclairamb/solidping/compare/v0.43.0...v0.43.1) (2026-11-01)
+
+
+### Bug Fixes
+
+* **deps:** update dependency @hookform/resolvers to v7 ([#736](https://github.com/fclairamb/solidping/issues/736)) ([f44707a](https://github.com/fclairamb/solidping/commit/f44707a32d944c7aefc8318fc9e56ada499bcb81))
+* **deps:** update github.com/dop251/goja digest to cf2ff0e ([#730](https://github.com/fclairamb/solidping/issues/730)) ([92b6c17](https://github.com/fclairamb/solidping/commit/92b6c17b651dfe8a9c096198aacd5994f8fde386))
+* **deps:** update module github.com/dlclark/regexp2/v2 to v2.12.0 ([#737](https://github.com/fclairamb/solidping/issues/737)) ([50fdb8d](https://github.com/fclairamb/solidping/commit/50fdb8d24ef470fe449f39cf2ec4e533ae578031))
+* **deps:** update module github.com/oapi-codegen/oapi-codegen/v2 to v2.8.2 ([#733](https://github.com/fclairamb/solidping/issues/733)) ([672293f](https://github.com/fclairamb/solidping/commit/672293ffb26131d882ddb53b502d8ffde7e217b6))
+* **deps:** update module modernc.org/sqlite to v1.61.1 ([#732](https://github.com/fclairamb/solidping/issues/732)) ([02cd682](https://github.com/fclairamb/solidping/commit/02cd682222eb606d6aad110209229eb033c0ba1f))
+* **security:** JS check memory budget gaps and regexp time limit, Discord link re-authentication, invitation cap ([#735](https://github.com/fclairamb/solidping/issues/735)) ([6026b05](https://github.com/fclairamb/solidping/commit/6026b05dbf664a3fc6b04e8e192a10b7c8538431))
+
 ## [0.43.0](https://github.com/fclairamb/solidping/compare/v0.42.1...v0.43.0) (2026-10-31)
 
 
