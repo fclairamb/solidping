@@ -28,10 +28,7 @@ func TestMemoryBudgetRefusesNativeAmplifiers(t *testing.T) {
 		rope = `var s = "x".repeat(64); for (var i = 0; i < 22; i++) s = s + s; `
 	)
 
-	tests := []struct {
-		name   string
-		script string
-	}{
+	tests := []refusalCase{
 		{"repeat", `var s = "x".repeat(` + huge + `);`},
 		{"padStart", `var s = "".padStart(` + huge + `, "ab");`},
 		{"padEnd", `var s = "a".padEnd(` + huge + `);`},
@@ -61,13 +58,6 @@ func TestMemoryBudgetRefusesNativeAmplifiers(t *testing.T) {
 		{"huge length sort", `var a = []; a.length = 4e9; a.sort();`},
 		// Spec 2026-11-01-01: dense copies, string splitting and replacing,
 		// argument lists and ropes built with + are charged too.
-		{"concat doubling", `var a = [1]; for (var i = 0; i < 24; i++) a = a.concat(a);`},
-		{"dense slice", `var a = Array.from({ length: 3 * 1024 * 1024 }); var s = a.slice();`},
-		{"dense splice", `var a = Array.from({ length: 3 * 1024 * 1024 }); var s = a.splice(0);`},
-		{"dense filter", `var a = Array.from({ length: 3 * 1024 * 1024 }); var s = a.filter(function () { return true; });`},
-		{"flat of a repeated array", `var b = Array.from({ length: 1024 * 1024 }); var s = Array(16).fill(b).flat();`},
-		{"flatMap to a repeated array", `var b = Array.from({ length: 1024 * 1024 });
-var s = Array(16).fill(0).flatMap(function () { return b; });`},
 		{"split empty", `var s = "x".repeat(` + slots + `).split("");`},
 		{"split regexp", `var s = "x".repeat(` + slots + `).split(/(?:)/);`},
 		{"replaceAll expanding", `var s = "a".repeat(1024 * 1024).replaceAll("a", "$&".repeat(128));`},
@@ -86,21 +76,59 @@ var s = "a".repeat(100).replace(/a/g, function () { return big; });`},
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			r := require.New(t)
-
-			start := time.Now()
-			result, err := (&JSChecker{}).Execute(context.Background(), &JSConfig{
-				Script:  tt.script + "\nreturn { status: \"up\" };",
-				Timeout: 2 * time.Second,
-			})
-			elapsed := time.Since(start)
-
-			r.NoError(err)
-			r.Equal(checkerdef.StatusError, result.Status, "output: %v", result.Output)
-			r.Contains(result.Output["error"], "RangeError: memory budget exceeded")
-			r.Less(elapsed, time.Second, "the refusal must come before the allocation")
+			requireRefusal(t, tt.script)
 		})
 	}
+}
+
+// TestMemoryBudgetRefusesHeavyCopies: the amplifiers whose refusal only comes
+// after goja has really copied up to the budget (millions of slots, 0.3 to
+// 0.5s of CPU each on a quiet machine). Run in parallel with the rest of the
+// package on a loaded 4-core runner, with coverage on, they timed out at 2s
+// and missed the 1s bound, so they run one at a time instead, before the
+// parallel tests resume. The assertions are the same as above.
+//
+//nolint:paralleltest // sequential on purpose, see above
+func TestMemoryBudgetRefusesHeavyCopies(t *testing.T) {
+	tests := []refusalCase{
+		{"concat doubling", `var a = [1]; for (var i = 0; i < 24; i++) a = a.concat(a);`},
+		{"dense slice", `var a = Array.from({ length: 3 * 1024 * 1024 }); var s = a.slice();`},
+		{"dense splice", `var a = Array.from({ length: 3 * 1024 * 1024 }); var s = a.splice(0);`},
+		{"dense filter", `var a = Array.from({ length: 3 * 1024 * 1024 }); var s = a.filter(function () { return true; });`},
+		{"flat of a repeated array", `var b = Array.from({ length: 1024 * 1024 }); var s = Array(16).fill(b).flat();`},
+		{"flatMap to a repeated array", `var b = Array.from({ length: 1024 * 1024 });
+var s = Array(16).fill(0).flatMap(function () { return b; });`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requireRefusal(t, tt.script)
+		})
+	}
+}
+
+// requireRefusal runs the script and requires the memory budget refusal, well
+// before the allocation it asks for.
+func requireRefusal(t *testing.T, script string) {
+	t.Helper()
+	r := require.New(t)
+
+	start := time.Now()
+	result, err := (&JSChecker{}).Execute(context.Background(), &JSConfig{
+		Script:  script + "\nreturn { status: \"up\" };",
+		Timeout: 2 * time.Second,
+	})
+	elapsed := time.Since(start)
+
+	r.NoError(err)
+	r.Equal(checkerdef.StatusError, result.Status, "output: %v", result.Output)
+	r.Contains(result.Output["error"], "RangeError: memory budget exceeded")
+	r.Less(elapsed, time.Second, "the refusal must come before the allocation")
+}
+
+type refusalCase struct {
+	name   string
+	script string
 }
 
 // TestMemoryBudgetReadsLengthOnce: an array-like whose length getter answers
