@@ -21,6 +21,7 @@ import (
 var accountTemplates = []string{
 	"registration.html", "welcome.html", "password-reset.html", "password-reset-sso.html",
 	"password-changed.html", "email-changed.html", "device-token-created.html", "passkey-added.html", "totp-enabled.html",
+	"discord-linked.html",
 	"invitation.html",
 	"membership-request-new.html", "membership-request-decision.html",
 }
@@ -147,6 +148,24 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 			i18n.LangSpanish: {
 				"Se ha activado la verificación en dos pasos en tu cuenta de SolidPing",
 				"El 5 jul, 10:00 UTC se activó la verificación en dos pasos",
+			},
+		},
+		"discord-linked.html": {
+			i18n.LangEnglish: {
+				"A Discord account was linked to your SolidPing account",
+				"was linked to your SolidPing account on Jul 5, 10:00 UTC.",
+			},
+			i18n.LangFrench: {
+				"Un compte Discord a été associé à votre compte SolidPing",
+				"a été associé à votre compte SolidPing le 5 juil., 10:00 UTC.",
+			},
+			i18n.LangGerman: {
+				"Mit Ihrem SolidPing-Konto wurde ein Discord-Konto verknüpft",
+				"am 5. Juli, 10:00 UTC ein Discord-Konto verknüpft",
+			},
+			i18n.LangSpanish: {
+				"Se ha vinculado una cuenta de Discord a tu cuenta de SolidPing",
+				"El 5 jul, 10:00 UTC se vinculó una cuenta de Discord",
 			},
 		},
 		"passkey-added.html": {

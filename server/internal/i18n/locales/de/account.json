@@ -91,6 +91,14 @@
     "revoke": "Wenn Sie sie nicht selbst aktiviert haben, wenden Sie sich sofort an Ihren Administrator und ändern Sie Ihr Passwort:",
     "cta": "Kontosicherheit ansehen"
   },
+  "discordLinked": {
+    "subject": "Mit Ihrem SolidPing-Konto wurde ein Discord-Konto verknüpft",
+    "preheader": "Damit kann man sich jetzt bei Ihrem Konto anmelden.",
+    "title": "Ein Discord-Konto wurde verknüpft",
+    "body": "Mit Ihrem SolidPing-Konto wurde am {date} ein Discord-Konto verknüpft. Die Anmeldung mit Discord öffnet jetzt Ihr Konto.",
+    "revoke": "Wenn Sie es nicht selbst verknüpft haben, wenden Sie sich sofort an Ihren Administrator, um es zu entfernen, und ändern Sie Ihr Passwort:",
+    "cta": "Kontosicherheit ansehen"
+  },
   "invitation": {
     "subject": "Einladung zu {org} bei SolidPing",
     "preheader": {

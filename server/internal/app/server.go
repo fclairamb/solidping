@@ -1691,6 +1691,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// them too — otherwise they would be the unguarded way to spend the
 		// instance's money on a premium-rate destination.
 		usernotifications.WithEntitlements(s.services.Entitlements),
+		// A Discord link binds an identity that signs in, so it asks the same
+		// re-authentication as a new TOTP or passkey (spec 2026-11-01-03).
+		usernotifications.WithFactorReauthenticator(s.authService),
 	)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender, s.services.EmailFormatter)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()

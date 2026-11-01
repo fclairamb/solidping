@@ -1369,7 +1369,7 @@ func (h *Handler) Setup2FA(writer http.ResponseWriter, req *http.Request) error 
 
 	resp, err := h.svc.Setup2FA(req.Context(), claims.UserUID, setupReq)
 	if err != nil {
-		if handled, writeErr := writeReauthError(&h.HandlerBase, writer, req, err); handled {
+		if handled, writeErr := WriteReauthError(&h.HandlerBase, writer, req, err); handled {
 			return writeErr
 		}
 
