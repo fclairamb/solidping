@@ -43,6 +43,7 @@ const (
 	cmdDelete       = "delete"
 	cmdCancel       = "cancel"
 	cmdConfig       = "config"
+	cmdVersion      = "version"
 	argChildParent  = "<child-slug> <parent-slug>"
 
 	colTimestamp = "TIMESTAMP"
