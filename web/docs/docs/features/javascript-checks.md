@@ -698,6 +698,14 @@ call allocates nothing and throws a `RangeError` whose message starts with
 `memory budget exceeded`; uncaught, the check reports `error`. Ordinary
 scripts stay far below it.
 
+A regular expression with a lookaround (`(?=…)`, `(?<=…)`) or a backreference
+(`\1`) runs on a backtracking engine, and the timeout cannot stop it in the
+middle of a match. Each such match is limited to **2 seconds**: past it, the
+call throws a `RangeError` and, uncaught, the check reports `error` with
+`regular expression took too long`. A pattern with nested quantifiers such as
+`/^(?=a)(a+)+$/` against a long non-matching input hits it. Patterns without
+lookarounds or backreferences run in linear time and are not affected.
+
 Every budget is spent **before** the call runs, so a refused call still costs
 its unit and a script cannot spin the refusal path for free. Connections share
 the 20-call budget rather than getting a pool of their own because `http.*` set

@@ -326,6 +326,14 @@ func (r *jsRuntime) resultFor(
 		}
 	}
 
+	if isRegexpTimeout(err) {
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusError,
+			Duration: duration,
+			Output:   r.buildOutput("script error: " + regexpTooLongMessage()),
+		}
+	}
+
 	if err != nil {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
