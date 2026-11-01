@@ -82,27 +82,50 @@ var s = "a".repeat(100).replace(/a/g, function () { return big; });`},
 }
 
 // TestMemoryBudgetRefusesHeavyCopies: the amplifiers whose refusal only comes
-// after goja has really copied up to the budget (millions of slots, 0.3 to
-// 0.5s of CPU each on a quiet machine). Run in parallel with the rest of the
-// package on a loaded 4-core runner, with coverage on, they timed out at 2s
-// and missed the 1s bound, so they run one at a time instead, before the
-// parallel tests resume. The assertions are the same as above.
+// after goja has really copied what the budget still allowed (millions of
+// slots, 0.3 to 0.5s of CPU each on a quiet machine, several times that on a
+// loaded runner with coverage on). That copying is permitted work, so a wall
+// clock bound cannot tell it from a refusal that came too late. Each case
+// carries a baseline: the same script stopped one step short of the refused
+// allocation, which succeeds. The refusal must cost about what the permitted
+// work costs on this machine right now, not the refused allocation, which is
+// several times bigger (concat doubling would copy 16M slots, not 2M).
 //
-//nolint:paralleltest // sequential on purpose, see above
+//nolint:paralleltest // sequential on purpose, the timings must not compete
 func TestMemoryBudgetRefusesHeavyCopies(t *testing.T) {
-	tests := []refusalCase{
-		{"concat doubling", `var a = [1]; for (var i = 0; i < 24; i++) a = a.concat(a);`},
-		{"dense slice", `var a = Array.from({ length: 3 * 1024 * 1024 }); var s = a.slice();`},
-		{"dense splice", `var a = Array.from({ length: 3 * 1024 * 1024 }); var s = a.splice(0);`},
-		{"dense filter", `var a = Array.from({ length: 3 * 1024 * 1024 }); var s = a.filter(function () { return true; });`},
-		{"flat of a repeated array", `var b = Array.from({ length: 1024 * 1024 }); var s = Array(16).fill(b).flat();`},
-		{"flatMap to a repeated array", `var b = Array.from({ length: 1024 * 1024 });
-var s = Array(16).fill(0).flatMap(function () { return b; });`},
+	tests := []heavyCase{
+		{
+			"concat doubling", `var a = [1]; for (var i = 0; i < 24; i++) a = a.concat(a);`,
+			`var a = [1]; for (var i = 0; i < 20; i++) a = a.concat(a);`,
+		},
+		{"dense slice", `var a = Array.from({ length: 3 * 1024 * 1024 }); var s = a.slice();`, ""},
+		{"dense splice", `var a = Array.from({ length: 3 * 1024 * 1024 }); var s = a.splice(0);`, ""},
+		{"dense filter", `var a = Array.from({ length: 3 * 1024 * 1024 });
+var s = a.filter(function () { return true; });`, ""},
+		{
+			"flat of a repeated array", `var b = Array.from({ length: 1024 * 1024 }); var s = Array(16).fill(b).flat();`,
+			`var b = Array.from({ length: 1024 * 1024 }); var s = Array(1).fill(b).flat();`,
+		},
+		{
+			"flatMap to a repeated array", `var b = Array.from({ length: 1024 * 1024 });
+var s = Array(16).fill(0).flatMap(function () { return b; });`,
+			`var b = Array.from({ length: 1024 * 1024 });
+var s = Array(1).fill(0).flatMap(function () { return b; });`,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			requireRefusal(t, tt.script)
+			bound := time.Second
+			if tt.baseline != "" {
+				start := time.Now()
+				result := runScript(t, tt.baseline+"\nreturn { status: \"up\" };")
+				require.Equal(t, checkerdef.StatusUp, result.Status, "baseline must fit the budget: %v", result.Output)
+				// 3x the permitted work, plus a margin for scheduler noise.
+				bound = 3*time.Since(start) + 250*time.Millisecond
+			}
+
+			requireRefusalWithin(t, tt.script, bound)
 		})
 	}
 }
@@ -111,24 +134,37 @@ var s = Array(16).fill(0).flatMap(function () { return b; });`},
 // before the allocation it asks for.
 func requireRefusal(t *testing.T, script string) {
 	t.Helper()
+	requireRefusalWithin(t, script, time.Second)
+}
+
+func requireRefusalWithin(t *testing.T, script string, bound time.Duration) {
+	t.Helper()
 	r := require.New(t)
 
 	start := time.Now()
 	result, err := (&JSChecker{}).Execute(context.Background(), &JSConfig{
 		Script:  script + "\nreturn { status: \"up\" };",
-		Timeout: 2 * time.Second,
+		Timeout: 10 * time.Second,
 	})
 	elapsed := time.Since(start)
 
 	r.NoError(err)
 	r.Equal(checkerdef.StatusError, result.Status, "output: %v", result.Output)
 	r.Contains(result.Output["error"], "RangeError: memory budget exceeded")
-	r.Less(elapsed, time.Second, "the refusal must come before the allocation")
+	r.Less(elapsed, bound, "the refusal must come before the allocation")
 }
 
 type refusalCase struct {
 	name   string
 	script string
+}
+
+// heavyCase is a refusalCase with the permitted part of its script, timed to
+// size the bound; "" means the refusal is instant.
+type heavyCase struct {
+	name     string
+	script   string
+	baseline string
 }
 
 // TestMemoryBudgetReadsLengthOnce: an array-like whose length getter answers
