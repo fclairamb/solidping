@@ -90,7 +90,7 @@ func TestCreateInvitationCap(t *testing.T) {
 	createHashTestInvite(t, svc, other.Slug, otherInviter.UID, "fine@acme.com")
 
 	// Positive control: a revoked invitation frees a slot.
-	require.NoError(t, svc.RevokeInvitation(ctx, org.Slug, list.Data[0].UID))
+	require.NoError(t, svc.RevokeInvitation(ctx, org.Slug, invites[0].UID))
 	_, err = svc.CreateInvitation(ctx, org.Slug, inviter.UID, inviteRequestFor("after-revoke@acme.com"))
 	require.NoError(t, err)
 
