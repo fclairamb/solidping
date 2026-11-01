@@ -28,7 +28,13 @@ type StubOptions = {
   /** A verified `discord` contact already exists. */
   connectedContact?: boolean;
   mention?: DiscordMention;
+  /** What /auth/me says about the account's password (default: has one). */
+  hasPassword?: boolean;
+  /** link-start answers 403 REAUTHENTICATION_REQUIRED (stale sign-in). */
+  staleSignIn?: boolean;
 };
+
+const TEST_PASSWORD = "test";
 
 const EMAIL_ROUTE = {
   uid: "route-email",
@@ -60,7 +66,26 @@ const DISCORD_ROUTE = {
 
 async function stubAccount(page: Page, opts: StubOptions = {}) {
   const botEnabled = opts.botEnabled ?? true;
-  const state = { connectCalls: 0, linkCalls: 0, testCalls: 0 };
+  const hasPassword = opts.hasPassword ?? true;
+  const state = {
+    connectCalls: 0,
+    linkCalls: 0,
+    testCalls: 0,
+    linkBodies: [] as Array<{ redirectUri?: string; currentPassword?: string }>,
+  };
+
+  // Only hasPassword is overridden: the rest of /auth/me is the real session.
+  await page.route("**/api/v1/auth/me", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+
+      return;
+    }
+
+    const response = await route.fetch();
+    const body = await response.json();
+    await route.fulfill({ response, json: { ...body, hasPassword } });
+  });
 
   await page.route("**/api/v1/config", async (route) => {
     await route.fulfill({
@@ -118,6 +143,37 @@ async function stubAccount(page: Page, opts: StubOptions = {}) {
     "**/api/v1/orgs/test/users/me/discord/link-start",
     async (route) => {
       state.linkCalls += 1;
+      const body = route.request().postDataJSON() ?? {};
+      state.linkBodies.push(body);
+
+      // The server's re-authentication (spec 2026-11-01-03), as answered by
+      // auth.WriteReauthError.
+      if (hasPassword && body.currentPassword !== TEST_PASSWORD) {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({
+            code: "INVALID_CURRENT_PASSWORD",
+            title: "Current password is incorrect",
+          }),
+        });
+
+        return;
+      }
+
+      if (!hasPassword && opts.staleSignIn) {
+        await route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({
+            code: "REAUTHENTICATION_REQUIRED",
+            title: "Sign in again to make this change",
+          }),
+        });
+
+        return;
+      }
+
       await route.fulfill({
         status: 201,
         contentType: "application/json",
@@ -160,7 +216,7 @@ test.describe("Account Notifications — Discord", () => {
     await expect.poll(() => state.connectCalls).toBe(1);
   });
 
-  test("with no sign-in on file the entry point is the OAuth link round trip", async ({
+  test("with no sign-in on file the entry point is the OAuth link round trip, behind the password", async ({
     authenticatedPage: page,
   }) => {
     const state = await stubAccount(page);
@@ -177,11 +233,56 @@ test.describe("Account Notifications — Discord", () => {
     await expect(link).toBeVisible();
     await expect(link).toHaveText(/link discord/i);
 
+    // A linked Discord identity signs in, so the password comes first
+    // (spec 2026-11-01-03): nothing is requested before it is typed.
     await link.click();
-    await expect.poll(() => state.linkCalls).toBe(1);
+    await expect(page.getByTestId("discord-link-reauth-dialog")).toBeVisible();
+    expect(state.linkCalls).toBe(0);
+
+    // A wrong password is refused in the dialog, and the member stays signed in.
+    await page.getByTestId("discord-link-current-password").fill("not-the-password");
+    await page.getByTestId("discord-link-reauth-continue").click();
+    await expect(page.getByTestId("discord-link-reauth-error")).toBeVisible();
+    await expect(page).toHaveURL(/account\/notifications/);
+
+    await page.getByTestId("discord-link-current-password").fill(TEST_PASSWORD);
+    await page.getByTestId("discord-link-reauth-continue").click();
     // The browser leaves for Discord: nothing is created until Discord sends the
     // member back with a code.
     await page.waitForURL(/discord\.com\/oauth2\/authorize/);
+    expect(state.linkCalls).toBe(2);
+    expect(state.linkBodies[1]).toMatchObject({
+      redirectUri: "/d/orgs/test/account/notifications",
+      currentPassword: TEST_PASSWORD,
+    });
+  });
+
+  test("a passwordless account links straight away after a recent sign-in", async ({
+    authenticatedPage: page,
+  }) => {
+    const state = await stubAccount(page, { hasPassword: false });
+
+    await page.goto("orgs/test/account/notifications");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByTestId("discord-link-button").click();
+    await page.waitForURL(/discord\.com\/oauth2\/authorize/);
+    expect(state.linkCalls).toBe(1);
+    await expect(page.getByTestId("discord-link-reauth-dialog")).toHaveCount(0);
+  });
+
+  test("a passwordless account with a stale sign-in is told to sign in again", async ({
+    authenticatedPage: page,
+  }) => {
+    const state = await stubAccount(page, { hasPassword: false, staleSignIn: true });
+
+    await page.goto("orgs/test/account/notifications");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByTestId("discord-link-button").click();
+    await expect(page.getByTestId("reauth-sign-in-required")).toBeVisible();
+    expect(state.linkCalls).toBe(1);
+    await expect(page).toHaveURL(/account\/notifications/);
   });
 
   test("returning with ?discord_linked=1 creates the contact and cleans the URL", async ({
