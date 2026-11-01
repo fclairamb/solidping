@@ -278,8 +278,8 @@ func (s *Service) CreateDiscordLink(
 		return nil, ErrReauthUnavailable
 	}
 
-	if err := s.reauth.ReauthenticateForFactor(ctx, user, currentPassword); err != nil {
-		return nil, err
+	if reauthErr := s.reauth.ReauthenticateForFactor(ctx, user, currentPassword); reauthErr != nil {
+		return nil, reauthErr
 	}
 
 	token, err := discordlink.Mint(ctx, s.db, discordlink.Payload{

@@ -28,6 +28,7 @@ const (
 	fixturePersonName = "Alice Admin"
 
 	keyOrgName      = "OrgName"
+	keySecurityURL  = "SecurityURL"
 	keyDashboardURL = "DashboardURL"
 	keySubject      = "Subject"
 	keyName         = "Name"

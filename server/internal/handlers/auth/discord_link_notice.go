@@ -12,6 +12,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 )
 
+// keySecurityURL is the template field of the security notices (passkey added,
+// TOTP enabled, Discord linked) pointing at the account security page.
+const keySecurityURL = "SecurityURL"
+
 // notifyDiscordLinked emails the account owner that a Discord account was
 // linked to their SolidPing account (spec 2026-11-01-03). A linked Discord
 // identity signs in, and survives a password change and the revocation of every
@@ -39,8 +43,8 @@ func (s *Service) notifyDiscordLinked(ctx context.Context, userUID, orgUID strin
 
 	s.enqueueEmail(ctx, "", user.Email, email.TemplateDiscordLinked, recipient.ForUser(user),
 		map[string]any{
-			"LinkedAt":    time.Now().UTC(),
-			"SecurityURL": securityURL,
+			"LinkedAt":     time.Now().UTC(),
+			keySecurityURL: securityURL,
 		},
 	)
 }

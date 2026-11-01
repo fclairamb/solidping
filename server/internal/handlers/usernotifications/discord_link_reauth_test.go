@@ -57,6 +57,8 @@ func sessionCtx(ctx context.Context, user *models.User, signedInAt time.Time) co
 }
 
 // postLinkStart drives the real link-start handler.
+//
+//nolint:revive // ctx-second matches the existing test helpers
 func postLinkStart(
 	t *testing.T, ctx context.Context, handler *Handler, body string,
 ) *httptest.ResponseRecorder {
@@ -86,6 +88,8 @@ func errorCode(t *testing.T, rec *httptest.ResponseRecorder) string {
 }
 
 // linkTokenCount is the number of live link tokens.
+//
+//nolint:revive // ctx-second matches the existing test helpers
 func linkTokenCount(t *testing.T, ctx context.Context, env *contactEnv) int {
 	t.Helper()
 

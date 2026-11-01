@@ -243,8 +243,8 @@ func (s *Service) notifyTOTPEnabled(ctx context.Context, user *models.User) {
 
 	s.enqueueEmail(ctx, "", user.Email, email.TemplateTOTPEnabled, recipient.ForUser(user),
 		map[string]any{
-			"EnabledAt":   time.Now().UTC(),
-			"SecurityURL": securityURL,
+			"EnabledAt":    time.Now().UTC(),
+			keySecurityURL: securityURL,
 		},
 	)
 }

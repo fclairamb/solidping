@@ -28,9 +28,9 @@ func (s *Service) notifyPasskeyAdded(ctx context.Context, user *models.User, pas
 
 	s.enqueueEmail(ctx, "", user.Email, email.TemplatePasskeyAdded, recipient.ForUser(user),
 		map[string]any{
-			"PasskeyName": passkey.Name,
-			"CreatedAt":   time.Now().UTC(),
-			"SecurityURL": securityURL,
+			"PasskeyName":  passkey.Name,
+			"CreatedAt":    time.Now().UTC(),
+			keySecurityURL: securityURL,
 		},
 	)
 }
