@@ -8,12 +8,13 @@ import (
 )
 
 // maxRegexpMatchTime bounds a single regular expression match that goja runs
-// on regexp2, its backtracking engine (patterns with lookarounds or
-// backreferences). goja checks vm.Interrupt only between instructions, so the
+// on regexp2, its backtracking engine (every pattern, on the pinned goja).
+// goja checks vm.Interrupt only between instructions, so the
 // check's timeout never reaches a running match: without this limit a nested
 // quantifier on a non-matching input backtracks for hours and leaks a goroutine
 // pinned at 100 % of a core (spec 2026-11-01-02). A monitoring regexp finishes
-// in microseconds; 2 s stays well under the 30 s check budget.
+// in microseconds; 2 s stays well under the 30 s check budget. A call that
+// matches many times is bounded by the run's deadline (regexp_deadline.go).
 const maxRegexpMatchTime = 2 * time.Second
 
 // regexpTimeoutMarker starts the error regexp2 returns when a match runs past

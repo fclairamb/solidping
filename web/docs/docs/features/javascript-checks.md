@@ -712,13 +712,17 @@ call allocates nothing and throws a `RangeError` whose message starts with
 `memory budget exceeded`; uncaught, the check reports `error`. Ordinary
 scripts stay far below it.
 
-A regular expression with a lookaround (`(?=…)`, `(?<=…)`) or a backreference
-(`\1`) runs on a backtracking engine, and the timeout cannot stop it in the
-middle of a match. Each such match is limited to **2 seconds**: past it, the
-call throws a `RangeError` and, uncaught, the check reports `error` with
+Regular expressions run on a backtracking engine, and the timeout cannot stop
+one in the middle of a match. Each match is limited to **2 seconds**: past it,
+the call throws a `RangeError` and, uncaught, the check reports `error` with
 `regular expression took too long`. A pattern with nested quantifiers such as
-`/^(?=a)(a+)+$/` against a long non-matching input hits it. Patterns without
-lookarounds or backreferences run in linear time and are not affected.
+`/^(?=a)(a+)+$/` against a long non-matching input hits it.
+
+A call that matches many times (a global `replace`, `replaceAll`, `match` or
+`matchAll`, and every `split`) is bounded by the check's **timeout** as a
+whole: before each match it checks the run's deadline, and once the deadline
+has passed the next match throws instead of starting, so the check reports
+`timeout`. A run overshoots its timeout by one match (2 seconds) at most.
 
 Every budget is spent **before** the call runs, so a refused call still costs
 its unit and a script cannot spin the refusal path for free. Connections share

@@ -35,6 +35,7 @@ const (
 const (
 	classNumber  = "Number"
 	classString  = "String"
+	classRegExp  = "RegExp"
 	classBoolean = "Boolean"
 	classError   = "Error"
 	classRawJSON = "RawJSON"
@@ -96,7 +97,7 @@ func (r *jsRuntime) installFlattenGuards() {
 		r.guardMethod(global, name, name)
 	}
 
-	for _, name := range []string{"RegExp", classString, classNumber} {
+	for _, name := range []string{classRegExp, classString, classNumber} {
 		what := name
 
 		r.replaceCtor(name, func(_ *goja.Object, args []goja.Value) []goja.Value {
