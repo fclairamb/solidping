@@ -35,7 +35,7 @@
       "automerge": false
     },
     {
-      "description": "OTel log signal: hold at 0.20.x. go.opentelemetry.io/contrib/bridges/otelslog is only released up to v0.19.0, which is built against otel/log v0.20.0 — advancing the log modules alone breaks the build (undefined: log.Value / log.KeyValue, see PR #190). Remove this rule once an otelslog release supports the newer API.",
+      "description": "OTel log signal: hold at 0.20.x. go.opentelemetry.io/contrib/bridges/otelslog is only released up to v0.19.0, which is built against otel/log v0.20.0 \u2014 advancing the log modules alone breaks the build (undefined: log.Value / log.KeyValue, see PR #190). Remove this rule once an otelslog release supports the newer API.",
       "matchDepNames": [
         "go.opentelemetry.io/otel/log",
         "go.opentelemetry.io/otel/sdk/log",
@@ -73,13 +73,34 @@
       "platformAutomerge": true
     },
     {
-      "description": "chromedp/headless-shell: always automerge, whatever the update type. Its version IS the Chrome version (151.0.7922.109 -> 152.x), so every ~4-week Chrome release reads to renovate as a major and is held by the no-major-automerge rule above, even though nothing breaking happened (PR #263). It is pinned only in docker-compose.yml — local dev and the E2E browser, never a shipped artifact — and CI's E2E job exercises it on every PR. Must stay AFTER the major rule: renovate applies packageRules in order and the last match wins.",
+      "description": "chromedp/headless-shell: always automerge, whatever the update type. Its version IS the Chrome version (151.0.7922.109 -> 152.x), so every ~4-week Chrome release reads to renovate as a major and is held by the no-major-automerge rule above, even though nothing breaking happened (PR #263). It is pinned only in docker-compose.yml \u2014 local dev and the E2E browser, never a shipped artifact \u2014 and CI's E2E job exercises it on every PR. Must stay AFTER the major rule: renovate applies packageRules in order and the last match wins. Only the numbered tag that the `stable` tag points to is offered (custom datasource `headless-shell-stable`): the numbered tags mix stable, beta and dev builds (157.0.8092.0 was a dev build), so the tag name alone cannot tell them apart.",
       "matchDepNames": ["chromedp/headless-shell"],
       "addLabels": ["deps"],
       "automerge": true,
       "automergeType": "pr",
       "automergeStrategy": "squash",
       "platformAutomerge": true
+    }
+  ],
+  "customDatasources": {
+    "headless-shell-stable": {
+      "defaultRegistryUrlTemplate": "https://hub.docker.com/v2/repositories/chromedp/headless-shell/tags?page_size=100&ordering=last_updated",
+      "transformTemplates": [
+        "{\"releases\": [($d := results[name='stable'].digest; results[digest=$d and $contains(name, /^\\d+\\.\\d+\\.\\d+\\.\\d+$/)].{\"version\": name})]}"
+      ]
+    }
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "chromedp/headless-shell pinned to the numbered tag that the image's `stable` tag currently points to",
+      "fileMatch": ["/^docker-compose\\.yml$/"],
+      "matchStrings": [
+        "image: chromedp/headless-shell:(?<currentValue>\\d+\\.\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "chromedp/headless-shell",
+      "datasourceTemplate": "custom.headless-shell-stable",
+      "versioningTemplate": "loose"
     }
   ]
 }
