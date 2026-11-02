@@ -53,14 +53,17 @@ type wireMsg struct {
 // wireInit starts the child: the script, its config, and the host globals
 // it reaches over the channel.
 type wireInit struct {
-	Script       string               `json:"script"`
-	Env          map[string]string    `json:"env,omitempty"`
-	Secrets      map[string]string    `json:"secrets,omitempty"`
-	PluginConfig map[string]any       `json:"pluginConfig,omitempty"`
-	TimeoutNs    int64                `json:"timeoutNs"`
-	DeadlineNs   int64                `json:"deadlineNs"`
-	MemoryLimit  int64                `json:"memoryLimit"`
-	Globals      map[string]*wireNode `json:"globals"`
+	Script       string            `json:"script"`
+	Env          map[string]string `json:"env,omitempty"`
+	Secrets      map[string]string `json:"secrets,omitempty"`
+	PluginConfig map[string]any    `json:"pluginConfig,omitempty"`
+	// Plugin is set when PluginConfig is non-nil, empty or not: a JS
+	// plugin's script, which a plain js check is not.
+	Plugin      bool                 `json:"plugin,omitempty"`
+	TimeoutNs   int64                `json:"timeoutNs"`
+	DeadlineNs  int64                `json:"deadlineNs"`
+	MemoryLimit int64                `json:"memoryLimit"`
+	Globals     map[string]*wireNode `json:"globals"`
 }
 
 // wireNode is a value crossing the channel.

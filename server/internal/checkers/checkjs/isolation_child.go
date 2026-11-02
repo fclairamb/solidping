@@ -75,6 +75,9 @@ func runChildProcess(stdin io.Reader, stdout io.Writer) int {
 	defer cancel()
 
 	pluginConfig, _ := normalizeNumbers(setup.PluginConfig).(map[string]any)
+	if setup.Plugin && pluginConfig == nil {
+		pluginConfig = map[string]any{}
+	}
 
 	cfg := &JSConfig{
 		Script:       setup.Script,

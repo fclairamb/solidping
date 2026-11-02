@@ -187,6 +187,7 @@ func executeIsolated(
 		Env:          cfg.Env,
 		Secrets:      cfg.Secrets,
 		PluginConfig: cfg.PluginConfig,
+		Plugin:       cfg.PluginConfig != nil,
 		TimeoutNs:    int64(timeout),
 		DeadlineNs:   deadline.UnixNano(),
 		MemoryLimit:  settings.MemoryLimit,

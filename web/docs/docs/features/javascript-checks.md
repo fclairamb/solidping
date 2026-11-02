@@ -649,6 +649,7 @@ string.
 | Default / maximum timeout | 30s |
 | Cookie jar (per session) | 100 cookies, 4 KiB each |
 | Memory built by native calls (see below) | 64 MiB per execution |
+| Memory of the script process (see below) | 256 MiB per execution |
 
 ### Memory budget
 
@@ -700,9 +701,8 @@ thrown string, or an `Error`'s message). A binding argument or a result nested
 more than 64 levels deep, or holding more than a million values, is refused
 rather than left unchecked. A read outside those calls (`s[0]`, `s == t`,
 `+s`, a template literal) is not charged, and the timeout cannot stop it
-either: the copy happens in one native call, which runs to completion. Only
-running the check in a process of its own, with a hard memory limit, closes
-those paths.
+either: the copy happens in one native call, which runs to completion. The
+script process's memory limit (below) is what stops those.
 
 The error text of a check that ends on an uncaught exception is cut at 16 KiB.
 
@@ -711,6 +711,32 @@ loop of medium allocations is refused once their sum passes 64 MiB. A refused
 call allocates nothing and throws a `RangeError` whose message starts with
 `memory budget exceeded`; uncaught, the check reports `error`. Ordinary
 scripts stay far below it.
+
+### Process isolation
+
+Each run executes the script in a process of its own, a child of the check
+worker (or of the API, for the AI authoring tools). The child has a hard
+memory limit of 256 MiB and is killed at the check's timeout if a native call
+keeps it from returning. The bindings (`http`, `solidping.*`, `browser`,
+`rdp`, `vnc`, `tcp`, `udp`, `websocket`) still run in the worker, so the
+egress rules, host allowlists and limits above apply to them unchanged.
+
+- A script that passes the memory limit ends as `error`, with
+  `memory limit exceeded` in its error text. The worker and the other checks
+  carry on.
+- A script killed at its timeout ends as `timeout`.
+- In both cases the console output is lost: it lived in the killed process.
+
+Self-hosted operators can tune this with environment variables:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SP_JS_ISOLATION` | on | `off` runs scripts inside the worker process, as before |
+| `SP_JS_MEMORY_LIMIT_MB` | `256` | Memory limit of the script process (minimum 32) |
+| `SP_JS_CGROUP` | unset | Linux: a delegated cgroup v2 directory. Each script process gets a sub-cgroup of it with `memory.max` set |
+
+On Linux the limit is also enforced as an address-space limit (`RLIMIT_AS`),
+measured from what the Go runtime had already mapped when the script started.
 
 Regular expressions run on a backtracking engine, and the timeout cannot stop
 one in the middle of a match. Each match is limited to **2 seconds**: past it,

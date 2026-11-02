@@ -205,6 +205,29 @@ return { status: "up", output: { as: __rlimitAS() } };`, 10*time.Second)
 	r.Less(limit, uint64(1)<<62, "a finite limit")
 }
 
+// A JS plugin's config reaches the child as the `config` global, and an
+// empty one still makes the script a plugin (warning is a valid status).
+func TestIsolationPluginConfigReachesTheChild(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	result, err := (&JSChecker{}).Execute(context.Background(), &JSConfig{
+		Script:       `return { status: "up", output: { n: config.n, frozen: Object.isFrozen(config) } };`,
+		PluginConfig: map[string]any{"n": 3},
+	})
+	r.NoError(err)
+	r.Equal(checkerdef.StatusUp, result.Status, result.Output)
+	r.Equal(int64(3), result.Output["n"])
+	r.Equal(true, result.Output["frozen"])
+
+	warning, err := (&JSChecker{}).Execute(context.Background(), &JSConfig{
+		Script: `return { status: "warning" };`, PluginConfig: map[string]any{},
+	})
+	r.NoError(err)
+	r.Equal(checkerdef.StatusWarning, warning.Status, warning.Output)
+}
+
 // A child that cannot start is an error result, not a crash.
 //
 //nolint:paralleltest // Swaps the package-level isolation settings.
