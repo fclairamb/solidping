@@ -1,5 +1,5 @@
 .PHONY: test-upgrade docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs embed-placeholders cloud-setup check-clean-clone \
-	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash0 dev-status0 dev-docs dev-backend \
+	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-browser dev-dash0 dev-status0 dev-docs dev-backend \
 	test test-cover test-postgres test-slow test-scenario test-dash0 test-docs lint lint-agent-docs lint-migrations lint-back lint-dash0 lint-status0 fmt deps migrate help sync-brand-assets build-favicons \
 	showcase showcase-terminal showcase-cut \
 	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres \
@@ -320,7 +320,23 @@ DEV_ENV_FILE ?= dev.priv.env
 DEV_ENV_PATH := $(firstword $(wildcard $(CURDIR)/$(DEV_ENV_FILE) \
 	$(abspath $(shell git rev-parse --git-common-dir 2>/dev/null)/../$(DEV_ENV_FILE))))
 
-dev: kill ## Run backend, dash0 and status0 in development mode (demo on; DEMO=false to disable; loads dev.priv.env if present)
+# macOS: browser checks run in the `browser` compose container, not a local
+# Chrome. Chrome takes a "Capturing" power assertion on every screenshot, which
+# keeps the Mac's display from sleeping; inside the Docker VM it stays there.
+# The container maps localhost to the Mac, so localhost targets keep working.
+# `make dev BROWSER_CDP_URL=` goes back to the local Chrome. dev.priv.env and
+# the shell can still set SP_CHECKERS_BROWSER_CDP_URL themselves.
+ifeq ($(shell uname -s),Darwin)
+BROWSER_CDP_URL ?= ws://127.0.0.1:9322
+endif
+
+dev-browser: ## Start the headless Chrome container `make dev` uses on macOS (no-op when BROWSER_CDP_URL is empty)
+	@if [ -n "$(BROWSER_CDP_URL)" ]; then \
+		docker compose --profile browser up -d browser || \
+		echo "WARNING: browser container not started, browser checks will fail (BROWSER_CDP_URL= to use a local Chrome)"; \
+	fi
+
+dev: kill dev-browser ## Run backend, dash0 and status0 in development mode (demo on; DEMO=false to disable; loads dev.priv.env if present)
 	@echo "Running application in development mode (demo: $(DEMO))..."
 	@if [ -n "$(DEV_ENV_PATH)" ]; then echo "Loading env from $(DEV_ENV_PATH)"; fi
 	@set -a; if [ -n "$(DEV_ENV_PATH)" ]; then . "$(DEV_ENV_PATH)"; fi; set +a; \
@@ -328,9 +344,10 @@ dev: kill ## Run backend, dash0 and status0 in development mode (demo on; DEMO=f
 		SP_DB_MIGRATION_GUARD_MODE=warn \
 		SP_DEMO_ENABLED=$(DEMO) \
 		SP_PLUGINS_DIR="$${SP_PLUGINS_DIR:-$(CURDIR)/plugins}" \
+		SP_CHECKERS_BROWSER_CDP_URL="$${SP_CHECKERS_BROWSER_CDP_URL-$(BROWSER_CDP_URL)}" \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
-dev-test: kill ## Run backend, dash0 and status0 in development test mode
+dev-test: kill dev-browser ## Run backend, dash0 and status0 in development test mode
 	@echo "Running application in development test mode..."
 	@cd $(BACK_DIR) && SP_RUNMODE=test SP_REDIRECTS="/d:localhost:5174/d,/s:localhost:5175/s" \
 		SP_DB_MIGRATION_GUARD_MODE=warn \
@@ -338,9 +355,10 @@ dev-test: kill ## Run backend, dash0 and status0 in development test mode
 		SP_SERVER_RATE_LIMITING_MAX_CONCURRENT=0 \
 		SP_AUTH_REGISTRATION_EMAIL_PATTERN='.*' \
 		SP_PLUGINS_DIR=$(CURDIR)/plugins \
+		SP_CHECKERS_BROWSER_CDP_URL="$${SP_CHECKERS_BROWSER_CDP_URL-$(BROWSER_CDP_URL)}" \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
-dev-saas: kill ## Run backend (SaaS mode) + dash0 + status0 — pairs with ../solidping-billing `make dev`
+dev-saas: kill dev-browser ## Run backend (SaaS mode) + dash0 + status0 — pairs with ../solidping-billing `make dev`
 	@echo "Running application in SaaS mode (billing via ../solidping-billing on :4050)..."
 	@echo "  upgrade URL template: $(SAAS_UPGRADE_URL)"
 	@cd $(BACK_DIR) && \
@@ -353,6 +371,7 @@ dev-saas: kill ## Run backend (SaaS mode) + dash0 + status0 — pairs with ../so
 		SP_ENTITLEMENTS_OUTBOUND_SIGNING_KEYS='$(SAAS_SIGNING_KEYS_OUT)' \
 		SP_ENTITLEMENTS_ALLOW_LEGACY_SERVICE_TOKEN=$(SAAS_ALLOW_LEGACY_TOKEN) \
 		SP_REDIRECTS="/d:localhost:5174/d,/s:localhost:5175/s" \
+		SP_CHECKERS_BROWSER_CDP_URL="$${SP_CHECKERS_BROWSER_CDP_URL-$(BROWSER_CDP_URL)}" \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
 clean: ## Remove built binaries and SPA artifacts

@@ -24,6 +24,7 @@ Before calling the API of any server, `GET /api/mgmt/version`: it gives the run 
 1. Start infrastructure: `docker-compose up -d`
 2. Run everything: `make dev` (backend + dash0 + status0 with hot reload)
 2b. Local env: `make dev` sources `dev.priv.env` (git-ignored, shell `KEY=value` lines) when it exists, e.g. the `SP_AI_*` variables. A git worktree without one uses the main checkout's. Read secrets there with `$(gopass show -o <path>)`.
+2c. Browser checks on macOS: `make dev` starts the `browser` compose container (`make dev-browser`) and points the server at it (`SP_CHECKERS_BROWSER_CDP_URL=ws://127.0.0.1:9322`). A local Chrome holds a "Capturing" assertion on each screenshot that keeps the display awake. That Chrome maps `localhost`/`127.0.0.1` to the Mac, so localhost targets work. `make dev BROWSER_CDP_URL=` uses a local Chrome again.
 3. Test mode: `make dev-test` (same but with `SP_RUNMODE=test`)
 4. Database changes: add migrations, then `make migrate`
 4b. A migration file is never edited once a git tag contains it, whatever its name says (`027_v0_39_0` shipped in v0.38.1). Check with `git tag --contains $(git log --diff-filter=A --format=%h -1 -- <file>)`; if any tag lists it, add the next `NNN` instead. `make lint-migrations` and CI enforce it.
