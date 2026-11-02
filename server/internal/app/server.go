@@ -1691,6 +1691,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// them too — otherwise they would be the unguarded way to spend the
 		// instance's money on a premium-rate destination.
 		usernotifications.WithEntitlements(s.services.Entitlements),
+		// A Discord link binds an identity that signs in, so it asks the same
+		// re-authentication as a new TOTP or passkey (spec 2026-11-01-03).
+		usernotifications.WithFactorReauthenticator(s.authService),
 	)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender, s.services.EmailFormatter)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
@@ -2141,8 +2144,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		statussubscribers.WithConfirmBudget(s.config.StatusSubscribers))
 	statusSubscribersHandler := statussubscribers.NewHandler(
 		statusSubscribersService, s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config)
-	// Authed admin: list (count + redactable addresses) and remove.
-	orgStatusPages.GET("/:statusPageUid/subscribers", statusSubscribersHandler.ListSubscribers)
+	// The list is org ADMIN only, structurally (spec 2026-11-02-04): it carries
+	// the email addresses of third parties who subscribed on the public page,
+	// which neither a viewer nor a `user` member needs. orgGroup's write floor
+	// lets every GET through, so this route gets its own admin chain (with the
+	// slug redirect first, like every other admin group). Removal keeps the
+	// orgGroup write floor below.
+	orgStatusPagesAdmin := api.NewGroup("/orgs/:org/status-pages").
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgStatusPagesAdmin.GET("/:statusPageUid/subscribers", statusSubscribersHandler.ListSubscribers)
 	// Operator-side webhook/Slack subscriptions (spec 2026-08-21-07).
 	//
 	// The path is `/subscribers/endpoints`, NOT `/subscribers`, and that is
@@ -2790,7 +2801,8 @@ func isAllowedCORSOrigin(origin string, allowed []string) bool {
 func (s *Server) corsMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) error {
 		writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-		writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
+		writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin, "+
+			"X-POSTHOG-SESSION-ID, X-POSTHOG-DISTINCT-ID")
 		writer.Header().Set("Access-Control-Max-Age", "86400")
 
 		switch origin := req.Header.Get("Origin"); {

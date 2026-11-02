@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import i18n from "@/i18n";
+import i18n, { loadLanguage } from "@/i18n";
 import {
   incidentKindOf,
   incidentKindTextClass,
@@ -75,7 +75,8 @@ describe("incidentRowClass", () => {
 
 describe("incidentStateLabel", () => {
   // fclairamb/solidping-business#8: the check page showed the raw "resolved".
-  it("translates the state", () => {
+  it("translates the state", async () => {
+    await loadLanguage("fr");
     const fr = i18n.getFixedT("fr");
     expect(incidentStateLabel(fr, "resolved")).toBe("Résolu");
     expect(incidentStateLabel(fr, "active")).toBe("Actif");

@@ -83,6 +83,22 @@
     "revoke": "Si no la añadiste tú, elimínala ahora desde la página de seguridad de tu cuenta y cambia tu contraseña:",
     "cta": "Ver mis llaves de acceso"
   },
+  "totpEnabled": {
+    "subject": "Se ha activado la verificación en dos pasos en tu cuenta de SolidPing",
+    "preheader": "Ahora el inicio de sesión pide un código de una app de autenticación.",
+    "title": "Se ha activado la verificación en dos pasos",
+    "body": "El {date} se activó la verificación en dos pasos en tu cuenta de SolidPing. Ahora el inicio de sesión pide un código de la app de autenticación con la que se configuró.",
+    "revoke": "Si no la activaste tú, contacta de inmediato con tu administrador y cambia tu contraseña:",
+    "cta": "Ver la seguridad de mi cuenta"
+  },
+  "discordLinked": {
+    "subject": "Se ha vinculado una cuenta de Discord a tu cuenta de SolidPing",
+    "preheader": "Ahora permite iniciar sesión en tu cuenta.",
+    "title": "Se ha vinculado una cuenta de Discord",
+    "body": "El {date} se vinculó una cuenta de Discord a tu cuenta de SolidPing. Ahora el inicio de sesión con Discord abre tu cuenta.",
+    "revoke": "Si no la vinculaste tú, contacta de inmediato con tu administrador para que la retire. Puedes cambiar tu contraseña desde la página de seguridad:",
+    "cta": "Cambiar mi contraseña"
+  },
   "invitation": {
     "subject": "Te han invitado a unirte a {org} en SolidPing",
     "preheader": {
@@ -155,5 +171,8 @@
       "reasonIntro": "Motivo indicado por el administrador:",
       "retry": "Podrás enviar una nueva solicitud cuando termine el periodo de espera."
     }
+  },
+  "personalOrg": {
+    "name": "Organización de {firstName}"
   }
 }

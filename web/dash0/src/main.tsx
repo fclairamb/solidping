@@ -19,7 +19,7 @@ import { registerServiceWorker } from "@/lib/service-worker";
 import { reactRootErrorOptions } from "@/lib/react-root-error-handling";
 import "@fontsource-variable/inter/index.css";
 import "@fontsource-variable/jetbrains-mono/index.css";
-import "./i18n";
+import { i18nReady } from "./i18n";
 import "./index.css";
 
 installErrorCollector();
@@ -159,13 +159,17 @@ const w = window as unknown as { __reactRoot__?: Root };
 // (and onUncaughtError / onRecoverableError deliberately are not).
 const root: Root = w.__reactRoot__ ?? createRoot(container, reactRootErrorOptions);
 w.__reactRoot__ = root;
-root.render(
-  <StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </StrictMode>,
-);
+// Wait for the detected language's chunk (capped at ~2 s, see i18n.ts) so the
+// first paint is not an English flash.
+void i18nReady.then(() => {
+  root.render(
+    <StrictMode>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </StrictMode>,
+  );
+});
 
 // Register the service worker for Web Push notifications. The worker's script
 // URL and scope are derived from the app base, and any registration left over

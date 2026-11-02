@@ -70,6 +70,22 @@ Returns `VALIDATION_ERROR` when the instance has no Telegram bot configured.
 catch a wrong one, so accepting it from a request body would let any user page
 a stranger.
 
+### POST /api/v1/orgs/:org/users/me/discord/link-start
+Start linking a Discord account to the caller. Body (optional):
+`{redirectUri, currentPassword}`. Returns `{url, expiresAt}`: the Discord
+authorization URL carrying a single-use link token (TTL 15 minutes). Discord
+sends the browser back to `/api/v1/auth/discord/callback`, which binds the
+Discord account to the caller and emails the owner a "Discord account linked"
+notice (`discord-linked.html`).
+
+A linked Discord identity signs in, so this asks the same re-authentication as
+a new TOTP or passkey (spec 2026-11-01-03): `currentPassword` when the account
+has a password (`401 INVALID_CURRENT_PASSWORD` when missing or wrong), otherwise
+a sign-in within the last 10 minutes (`403 REAUTHENTICATION_REQUIRED`). Every
+attempt spends the per-user change-password budget (`429 RATE_LIMITED`).
+Refused under impersonation and for personal access tokens. Returns
+`VALIDATION_ERROR` when the instance has no Discord bot configured.
+
 ## Web push
 
 ### GET /api/v1/orgs/:org/webpush/vapid-public-key

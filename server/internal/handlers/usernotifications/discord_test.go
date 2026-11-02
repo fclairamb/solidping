@@ -133,6 +133,11 @@ type contactEnv struct {
 	user *models.User
 }
 
+// passReauth is a re-authenticator that accepts every request.
+type passReauth struct{}
+
+func (passReauth) ReauthenticateForFactor(context.Context, *models.User, *string) error { return nil }
+
 func setupContactEnv(t *testing.T, opts ...Option) (context.Context, *contactEnv) {
 	t.Helper()
 
@@ -152,7 +157,9 @@ func setupContactEnv(t *testing.T, opts ...Option) (context.Context, *contactEnv
 	r.NoError(dbSvc.CreateOrganizationMember(ctx,
 		models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)))
 
-	opts = append([]Option{WithDiscordConfig(configuredDiscord())}, opts...)
+	// The re-authentication a link needs (spec 2026-11-01-03) is passed by
+	// default here; discord_link_reauth_test.go drives the real one.
+	opts = append([]Option{WithDiscordConfig(configuredDiscord()), WithFactorReauthenticator(passReauth{})}, opts...)
 
 	return ctx, &contactEnv{
 		db:   dbSvc,
@@ -265,7 +272,7 @@ func TestCreateDiscordLinkAsksForNoGuildsScope(t *testing.T) {
 	r := require.New(t)
 	ctx, env := setupContactEnv(t, WithServerBaseURL("https://solidping.example"))
 
-	resp, err := env.svc.CreateDiscordLink(ctx, env.org.Slug, env.user, "/d/orgs/acme/account/notifications")
+	resp, err := env.svc.CreateDiscordLink(ctx, env.org.Slug, env.user, "/d/orgs/acme/account/notifications", nil)
 	r.NoError(err)
 
 	parsed, err := url.Parse(resp.URL)

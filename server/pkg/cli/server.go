@@ -73,43 +73,19 @@ func serverVersionAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	// Create API client without authentication (version doesn't require auth)
-	cfg := client.Config{
-		BaseURL: cliCtx.Config.URL,
-		Verbose: cliCtx.Verbose,
-	}
-	apiClient, err := client.New(cfg)
-	if err != nil {
-		if !cliCtx.IsText() {
-			return cliCtx.Outputter.PrintError(err)
-		}
-		output.PrintError(os.Stdout, err.Error())
-		return cli.Exit("", 1)
-	}
-
-	// Call version endpoint
-	resp, err := apiClient.GetVersionWithResponse(ctx)
+	resp, err := fetchServerVersion(ctx, cliCtx)
 	if err != nil {
 		return cliCtx.HandleError("Failed to get server version", err)
-	}
-
-	if resp.StatusCode() != 200 || resp.JSON200 == nil {
-		return cliCtx.HandleStatusError("Failed to get version", resp.StatusCode())
 	}
 
 	// Output version
 	if !cliCtx.IsText() {
 		return cliCtx.Outputter.Print(map[string]interface{}{
-			"version": resp.JSON200.Version,
+			"version": resp.Version,
 		})
 	}
 
-	version := ""
-	if resp.JSON200.Version != nil {
-		version = *resp.JSON200.Version
-	}
-
-	output.PrintMessage(os.Stdout, "Version: "+version)
+	output.PrintMessage(os.Stdout, "Version: "+derefMessage(resp.Version, unknownValue))
 	return nil
 }
 

@@ -99,13 +99,14 @@ async function enrollTotp(page: Page, email: string, slug: string): Promise<stri
 
   const setup = await page.request.post(`${API_BASE}/api/v1/auth/2fa/setup`, {
     headers: { Authorization: `Bearer ${accessToken}` },
+    data: { currentPassword: "Strong-Pass-123!" },
   });
   expect(setup.status()).toBe(200);
-  const { secret } = (await setup.json()) as { secret: string };
+  const { secret, setupToken } = (await setup.json()) as { secret: string; setupToken: string };
 
   const confirm = await page.request.post(`${API_BASE}/api/v1/auth/2fa/confirm`, {
     headers: { Authorization: `Bearer ${accessToken}` },
-    data: { code: generateTotp(secret) },
+    data: { code: generateTotp(secret), setupToken },
   });
   expect(confirm.status()).toBe(200);
 

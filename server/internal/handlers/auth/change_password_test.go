@@ -148,7 +148,8 @@ func TestChangePasswordSetsInitialPasswordForSSOUser(t *testing.T) {
 	svc, dbSvc, ctx := setupAuthTestService(t)
 	user := ssoOnlyUser(t, ctx, dbSvc, "sso-change@example.com")
 
-	_, err := svc.ChangePassword(ctx, user.UID, "", ChangePasswordRequest{
+	// Signed in just now: a first password needs a recent sign-in.
+	_, err := svc.ChangePassword(signedInCtxFor(ctx, user.UID), user.UID, "", ChangePasswordRequest{
 		CurrentPassword: "irrelevant-garbage",
 		NewPassword:     "myfirstpassword",
 	})
@@ -170,7 +171,7 @@ func TestChangePasswordSSOStillEnforcesMinLength(t *testing.T) {
 	svc, dbSvc, ctx := setupAuthTestService(t)
 	user := ssoOnlyUser(t, ctx, dbSvc, "sso-short@example.com")
 
-	_, err := svc.ChangePassword(ctx, user.UID, "", ChangePasswordRequest{NewPassword: "short"})
+	_, err := svc.ChangePassword(signedInCtxFor(ctx, user.UID), user.UID, "", ChangePasswordRequest{NewPassword: "short"})
 	r.ErrorIs(err, ErrInvalidCredentials)
 
 	refreshed, err := dbSvc.GetUser(ctx, user.UID)

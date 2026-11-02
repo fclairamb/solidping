@@ -403,6 +403,12 @@ func (s *Service) completePendingLogin(
 	}
 
 	fallback := s.fallbackMemberOrg(ctx, user.UID)
+	if fallback == nil {
+		// Org-less: an invitation or a personal org may settle the user
+		// (spec 2026-10-30-04). Never when this login just filed a request:
+		// ensurePersonalOrg sees it and leaves the user waiting for it.
+		fallback = s.ensurePersonalOrg(ctx, user)
+	}
 
 	var (
 		result *ProviderLoginResult
@@ -534,7 +540,7 @@ func (s *Service) fallbackMemberOrg(ctx context.Context, userUID string) *models
 // and deliberately no refresh token — the same shape completeLogin produces
 // for a password login by a user with no membership.
 func (s *Service) pendingSession(ctx context.Context, user *models.User) (*ProviderLoginResult, error) {
-	accessToken, err := s.generateAccessToken(user.UID, "", "", "", user.Demo)
+	accessToken, err := s.generateAccessToken(user.UID, "", "", "", user.Demo, time.Now().Unix())
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token: %w", err)
 	}

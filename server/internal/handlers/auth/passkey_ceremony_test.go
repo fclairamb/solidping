@@ -153,7 +153,7 @@ func TestPasskeyService_FullCeremony(t *testing.T) {
 	_, err := pkSvc.FinishRegistration(ctx, "not-a-session", []byte("{}"), "x")
 	r.ErrorIs(err, auth.ErrPasskeyVerificationFailed)
 
-	begin, err := pkSvc.BeginRegistration(ctx, user.UID)
+	begin, err := pkSvc.BeginRegistration(ctx, user.UID, passkeyTestPasswordPtr())
 	r.NoError(err)
 	_, err = pkSvc.FinishRegistration(ctx, begin.Session, []byte("{"), "x")
 	r.ErrorIs(err, auth.ErrPasskeyVerificationFailed)
@@ -169,7 +169,7 @@ func TestPasskeyService_FullCeremony(t *testing.T) {
 	r.NotEmpty(info.Name, "a default display name is picked")
 
 	// Registering the same credential twice is a replay.
-	again, err := pkSvc.BeginRegistration(ctx, user.UID)
+	again, err := pkSvc.BeginRegistration(ctx, user.UID, passkeyTestPasswordPtr())
 	r.NoError(err)
 	r.Len(again.Options.Response.CredentialExcludeList, 1)
 	duplicate := device.register(t, again.Options.Response.Challenge.String())

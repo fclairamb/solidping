@@ -17,7 +17,7 @@
 // scrubs it from every URL PostHog sees.
 
 import { apiFetch } from "@/api/client";
-import { isInviteReturnTo, resolveDestination } from "./login-destination";
+import { isInviteReturnTo, orgCreationReturnTo, resolveDestination } from "./login-destination";
 
 /** The route every provider callback redirects to (see join_policy.go). */
 export const HANDOFF_COMPLETE_PATH = "/auth/complete";
@@ -58,7 +58,7 @@ export interface HandoffExchangeResponse {
 export type HandoffLanding =
   | { href: string }
   | { to: "/orgs/$org"; params: { org: string } }
-  | { to: "/no-org"; search: { membershipPending?: string } };
+  | { to: "/no-org"; search: { membershipPending?: string; returnTo?: string } };
 
 /**
  * Picks the landing for an exchanged session. Pure: no router, no DOM.
@@ -71,8 +71,9 @@ export type HandoffLanding =
  *   round-trip, and what keeps a forged `returnTo` from going anywhere.
  * - An org-less session resumes an invitation `returnTo` (the only org-less
  *   page it may go back to), and otherwise (the org did not admit the user) lands on /no-org,
- *   naming the org that has the pending request. The exchange's answer wins
- *   over the URL's flag; the URL's is the fallback.
+ *   naming the org that has the pending request and carrying a pending MCP
+ *   authorization or device approval ({@link orgCreationReturnTo}). The
+ *   exchange's answer wins over the URL's flag; the URL's is the fallback.
  */
 export function resolveHandoffLanding(
   response: Pick<HandoffExchangeResponse, "organization" | "returnTo" | "membershipPending">,
@@ -90,8 +91,13 @@ export function resolveHandoffLanding(
     return { href: response.returnTo };
   }
 
+  // A pending MCP authorization (or device approval) survives /no-org: the
+  // org-creation form resumes it once the session has an org.
   const membershipPending = response.membershipPending || membershipPendingFromUrl || undefined;
-  return { to: "/no-org", search: { membershipPending } };
+  return {
+    to: "/no-org",
+    search: { membershipPending, returnTo: orgCreationReturnTo(response.returnTo, basepath) },
+  };
 }
 
 /**

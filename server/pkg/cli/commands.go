@@ -123,6 +123,7 @@ func GetCommands() []*cli.Command {
 				},
 			},
 		},
+		VersionCommand(),
 		{
 			Name:  "server",
 			Usage: "Server management commands",
@@ -133,7 +134,7 @@ func GetCommands() []*cli.Command {
 					Action: serverHealthAction,
 				},
 				{
-					Name:   "version",
+					Name:   cmdVersion,
 					Usage:  "Get server version",
 					Action: serverVersionAction,
 				},

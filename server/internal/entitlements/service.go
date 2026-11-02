@@ -315,6 +315,16 @@ func (s *Service) CheckMembership(ctx context.Context, orgUID string) error {
 	return nil
 }
 
+// MaxUsers returns the org's resolved seat cap, nil when unlimited.
+func (s *Service) MaxUsers(ctx context.Context, orgUID string) (*int, error) {
+	resolved, err := s.Resolve(ctx, orgUID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve entitlements: %w", err)
+	}
+
+	return resolved.Limits.MaxUsers, nil
+}
+
 // ReserveCheckExecution consults a per-org token bucket. Each call
 // consumes one token; a depleted bucket returns ErrEntitlementExceeded
 // (wrapped in QuotaError). Refill rate is `cap / 60` tokens/sec and

@@ -188,6 +188,10 @@ type Response struct {
 	// "self-hosted") used to ride on GET /api/mgmt/version.
 	RunMode        string `json:"runMode"`
 	DeploymentMode string `json:"deploymentMode"`
+	// AutoPersonalOrg tells /no-org whether sign-ins create a personal org
+	// (auth.auto_personal_org, spec 2026-10-30-04). When they do, its join
+	// card is only offered through a join path.
+	AutoPersonalOrg bool `json:"autoPersonalOrg"`
 }
 
 // Handler serves the public config document.
@@ -249,6 +253,7 @@ func Build(cfg *config.Config) Response {
 		resp.AI = AIPublicConfig{Enabled: cfg.AI.Enabled()}
 		resp.RunMode = cfg.RunMode
 		resp.DeploymentMode = cfg.Deployment.Mode
+		resp.AutoPersonalOrg = cfg.AutoPersonalOrgEnabled()
 	}
 
 	if cfg != nil {

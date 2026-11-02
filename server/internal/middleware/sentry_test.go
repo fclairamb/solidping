@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/analytics/analyticstest"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -450,4 +451,32 @@ func TestRequireMCPAuth_AuthenticatedRequestCarriesUserAndOrg(t *testing.T) {
 	r.Len(events, 1)
 	r.Equal(fixture.user.UID, events[0].User.ID)
 	r.Equal(sentryTestOrg, events[0].Tags["organization"])
+}
+
+//nolint:paralleltest // binds the process-wide analytics client
+func TestRecoverer_PanicReachesPostHogOnce(t *testing.T) {
+	r := require.New(t)
+	ph := analyticstest.Install(t)
+
+	fixture := newSentryAuthFixture(t)
+
+	hub, _, err := errorreporttest.NewHub(t)
+	r.NoError(err)
+
+	resp := serve(t, "/api/v1/orgs/:org/panic",
+		[]httpx.Middleware{
+			hubInjector(hub),
+			middleware.SentryMiddleware(),
+			middleware.Recoverer,
+			fixture.mw.RequireAuth,
+		},
+		panickingHandler, fixture.token)
+	r.Equal(http.StatusInternalServerError, resp.status)
+
+	excs := ph.Exceptions()
+	r.Len(excs, 1)
+	r.Contains(excs[0].Err.Error(), "simulated handler panic")
+	r.Equal(fixture.user.UID, excs[0].UserUID)
+	r.NotEmpty(excs[0].Stack)
+	r.Equal("/api/v1/orgs/{org}/panic", excs[0].Tags["http.route"])
 }

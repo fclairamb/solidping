@@ -895,6 +895,11 @@ jobs:
           # bound by koanf's env loader (which collapses every underscore to a
           # dot); it works because systemconfig declares this exact EnvVar.
           SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*"
+          # Sign-ins without an org create a personal one, as on SaaS: off by
+          # default under SP_RUNMODE=test (self-hosted), and the specs of spec
+          # 2026-10-30-04 (confirm-registration-no-org, the /no-org join card)
+          # assert the SaaS behaviour.
+          SP_AUTH_AUTO_PERSONAL_ORG: "true"
           # The reference plugin (x-gopher), for checker-plugins.spec.ts.
           SP_PLUGINS_DIR: ${{ github.workspace }}/plugins
 
@@ -921,6 +926,7 @@ jobs:
           SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
           SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"
           SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*"
+          SP_AUTH_AUTO_PERSONAL_ORG: "true"
           SP_PLUGINS_DIR: ${{ github.workspace }}/plugins
 
       - name: Wait for servers

@@ -5,6 +5,7 @@ import {
   distinctId,
   dropKnownExceptionNoise,
   fetchPublicConfig,
+  getAnalyticsRequestHeaders,
   identifyAnalytics,
   initAnalytics,
   isAnalyticsEnabled,
@@ -446,5 +447,33 @@ describe("fetchPublicConfig", () => {
       }),
     );
     expect(await fetchPublicConfig()).toEqual({ posthog: { enabled: false } });
+  });
+});
+
+describe("getAnalyticsRequestHeaders", () => {
+  it("is empty when analytics is off", () => {
+    expect(getAnalyticsRequestHeaders()).toEqual({});
+  });
+
+  it("carries the session and distinct ids once analytics is loaded", async () => {
+    vi.doMock("./posthog-loader", () => ({
+      default: {
+        init: () => {},
+        identify: () => {},
+        reset: () => {},
+        capture: () => {},
+        captureException: () => {},
+        get_session_id: () => "sess-1",
+        get_distinct_id: () => "dist-1",
+      },
+    }));
+
+    await initAnalytics({ posthog: { enabled: true, projectApiKey: "phc_k" } });
+
+    expect(getAnalyticsRequestHeaders()).toEqual({
+      "X-POSTHOG-SESSION-ID": "sess-1",
+      "X-POSTHOG-DISTINCT-ID": "dist-1",
+    });
+    vi.doUnmock("./posthog-loader");
   });
 });

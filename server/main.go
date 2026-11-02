@@ -84,6 +84,7 @@ func buildRootCommand() *cli.Command {
 	return &cli.Command{
 		Name:           "solidping",
 		Usage:          "SolidPing monitoring service",
+		Version:        version.Get().Version,
 		DefaultCommand: "serve",
 		// The pkg/cli client flags (config/url/org/output/json/verbose) are
 		// declared here, at the root, rather than on the "client" node below.
@@ -141,6 +142,7 @@ func buildRootCommand() *cli.Command {
 				Action: encryptCredentials,
 			},
 			devCommand(),
+			spCli.BinaryVersionCommand(),
 		},
 	}
 }

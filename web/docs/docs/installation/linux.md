@@ -72,9 +72,32 @@ before first run:
 xattr -d com.apple.quarantine solidping
 ```
 
-There is no dedicated macOS page (launchd service, Homebrew tap) yet — once
-the binary is in place, the "Running" section below and the rest of this
-guide apply the same way on macOS as on Linux.
+Or install it with Homebrew:
+
+```bash
+brew install fclairamb/tap/solidping
+```
+
+There is no dedicated macOS page (launchd service) yet — once the binary is
+in place, the "Running" section below and the rest of this guide apply the
+same way on macOS as on Linux.
+
+## Checking the installed version
+
+`solidping --version` prints the version of the binary, whichever way you
+installed it. `solidping version` adds the commit and build time (`-o json`
+for a script). Neither starts the server or reads its configuration:
+
+```bash
+$ solidping --version
+solidping version 0.44.0
+$ solidping version
+Version:    0.44.0
+Commit:     1a2b3c4d
+Git Time:   2026-11-01T10:00:00Z
+```
+
+A running server reports the same fields at `GET /api/mgmt/version`.
 
 ## Running
 

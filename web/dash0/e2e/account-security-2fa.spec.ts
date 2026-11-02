@@ -88,6 +88,76 @@ test.describe("Account > Security > 2FA setup", () => {
     );
   }
 
+  // Spec 2026-10-31-02: the secret is only handed out after the current
+  // password. Opens the setup dialog and passes that step.
+  async function openSetupWithPassword(page: import("@playwright/test").Page) {
+    await page.getByTestId("2fa-enable-button").click();
+    await page.getByTestId("2fa-current-password").fill(PASSWORD);
+    await page.getByTestId("2fa-reauth-continue").click();
+  }
+
+  test("setup asks for the current password: a wrong one is refused, the right one goes through", async ({
+    page,
+  }) => {
+    const { org } = await seedUserWithOrg(page);
+    await seedBrowserSession(page, { ...org, slug: org.slug });
+
+    await page.goto(`orgs/${org.slug}/account/security`);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("2fa-enable-button").click();
+
+    // No secret before re-authentication.
+    await expect(page.getByTestId("2fa-current-password")).toBeVisible();
+    await expect(page.getByTestId("2fa-manual-secret")).toHaveCount(0);
+
+    await page.getByTestId("2fa-current-password").fill("not-my-password");
+    await page.getByTestId("2fa-reauth-continue").click();
+    await expect(page.getByTestId("2fa-reauth-error")).toContainText(
+      /not your current password/i,
+    );
+    await expect(page.getByTestId("2fa-manual-secret")).toHaveCount(0);
+    // A wrong password in the body is not a dead session: still signed in.
+    await expect(page).toHaveURL(/account\/security/);
+
+    await page.getByTestId("2fa-current-password").fill(PASSWORD);
+    await page.getByTestId("2fa-reauth-continue").click();
+    await expect(page.getByTestId("2fa-manual-secret")).not.toHaveValue("");
+  });
+
+  test("the API refuses 2FA setup without the current password", async ({ page }) => {
+    const { org } = await seedUserWithOrg(page);
+    const auth = { Authorization: `Bearer ${org.accessToken}` };
+
+    const noPassword = await page.request.post(`${API_BASE}/api/v1/auth/2fa/setup`, {
+      headers: auth,
+    });
+    expect(noPassword.status()).toBe(401);
+    expect(((await noPassword.json()) as { code: string }).code).toBe(
+      "INVALID_CURRENT_PASSWORD",
+    );
+
+    const noPasskey = await page.request.post(
+      `${API_BASE}/api/v1/auth/passkeys/register/begin`,
+      { headers: auth, data: {} },
+    );
+    // 401 when WebAuthn is on, 503 when this server has it off: never 200.
+    expect([401, 503]).toContain(noPasskey.status());
+  });
+
+  test("adding a passkey asks for the current password first", async ({ page }) => {
+    const { org } = await seedUserWithOrg(page);
+    await seedBrowserSession(page, { ...org, slug: org.slug });
+
+    await page.goto(`orgs/${org.slug}/account/security`);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("passkey-add-button").click();
+
+    await expect(page.getByTestId("passkey-reauth-dialog")).toBeVisible();
+    await page.getByTestId("passkey-current-password").fill("not-my-password");
+    await page.getByTestId("passkey-reauth-continue").click();
+    await expect(page.getByTestId("passkey-reauth-error")).toBeVisible();
+  });
+
   test("setup dialog renders the QR code, manual secret, and code input", async ({
     page,
   }) => {
@@ -97,7 +167,7 @@ test.describe("Account > Security > 2FA setup", () => {
     await page.goto(`orgs/${org.slug}/account/security`);
     await page.waitForLoadState("networkidle");
 
-    await page.getByTestId("2fa-enable-button").click();
+    await openSetupWithPassword(page);
 
     // Fails on the pre-fix code: the whole body stayed hidden because
     // `qrCodeUrl` was always empty.
@@ -141,7 +211,7 @@ test.describe("Account > Security > 2FA setup", () => {
 
     await page.goto(`orgs/${org.slug}/account/security`);
     await page.waitForLoadState("networkidle");
-    await page.getByTestId("2fa-enable-button").click();
+    await openSetupWithPassword(page);
     await expect(page.getByTestId("2fa-qr-code")).toBeVisible();
 
     expect(thirdPartyRequests).toEqual([]);
@@ -155,7 +225,7 @@ test.describe("Account > Security > 2FA setup", () => {
 
     await page.goto(`orgs/${org.slug}/account/security`);
     await page.waitForLoadState("networkidle");
-    await page.getByTestId("2fa-enable-button").click();
+    await openSetupWithPassword(page);
 
     const secretInput = page.getByTestId("2fa-manual-secret");
     await expect(secretInput).toBeVisible();
@@ -185,12 +255,16 @@ test.describe("Account > Security > 2FA setup", () => {
 
     const setupResp = await page.request.post(`${API_BASE}/api/v1/auth/2fa/setup`, {
       headers: auth,
+      data: { currentPassword: PASSWORD },
     });
     expect(setupResp.status()).toBe(200);
-    const { secret } = (await setupResp.json()) as { secret: string };
+    const { secret, setupToken } = (await setupResp.json()) as {
+      secret: string;
+      setupToken: string;
+    };
     const confirmResp = await page.request.post(`${API_BASE}/api/v1/auth/2fa/confirm`, {
       headers: auth,
-      data: { code: generateTotp(secret) },
+      data: { code: generateTotp(secret), setupToken },
     });
     expect(confirmResp.status()).toBe(200);
 

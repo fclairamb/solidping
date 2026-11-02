@@ -42,7 +42,11 @@ const (
 	KeyEmailAuthType            ParameterKey = "email.auth_type"
 	KeyEmailInsecure            ParameterKey = "email.insecure_skip_verify"
 	KeyRegistrationEmailPattern ParameterKey = "auth.registration_email_pattern"
-	KeyEmailProtocol            ParameterKey = "email.protocol"
+	// KeyRegistrationMaxPendingPerIP caps the sign-ups one client IP may leave
+	// unconfirmed over 24 hours, and turns on the once-a-minute sign-up limit
+	// per IP (config.AuthConfig.RegistrationMaxPendingPerIP). 0 turns both off.
+	KeyRegistrationMaxPendingPerIP ParameterKey = "auth.registration_max_pending_per_ip"
+	KeyEmailProtocol               ParameterKey = "email.protocol"
 	// KeyEmailReplyTo is the instance support mailbox (spec 2026-08-22-02).
 	// Empty means the whole support-reply feature is off: no Reply-To header,
 	// no "you can reply" notice, no inbound-message mirror.
@@ -61,6 +65,12 @@ const (
 	// Unset/zero means unlimited, matching today's behavior (only the
 	// sliding RefreshTokenExpiry idle window applies).
 	KeySessionMaxDuration ParameterKey = "auth.session_max_duration"
+
+	// KeyAutoPersonalOrg creates a personal organization for a user who signs
+	// in belonging to none (spec 2026-10-30-04). Unset means the deployment
+	// mode default: on for saas, off for self-hosted (see
+	// config.Config.AutoPersonalOrgEnabled). Applied at startup.
+	KeyAutoPersonalOrg ParameterKey = "auth.auto_personal_org"
 
 	// KeyOAuthEnforceClientSecret gates RFC 6749 client authentication at the
 	// embedded MCP OAuth authorization server's token endpoint (spec
@@ -514,6 +524,17 @@ func getKnownParameters() []ParameterDefinition {
 			},
 		},
 		{
+			Key:    KeyRegistrationMaxPendingPerIP,
+			EnvVar: "SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				// A negative count has no meaning: keep the configured value.
+				if n, ok := parseInt(value); ok && n >= 0 {
+					cfg.Auth.RegistrationMaxPendingPerIP = n
+				}
+			},
+		},
+		{
 			Key:    KeySessionMaxDuration,
 			EnvVar: "SP_AUTH_SESSION_MAX_DURATION",
 			Secret: false,
@@ -803,6 +824,16 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
 					cfg.PostHog.PersonalAPIKey = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeyAutoPersonalOrg,
+			EnvVar: config.EnvAuthAutoPersonalOrg,
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if allow, ok := parseTriStateBool(value); ok {
+					cfg.Auth.AutoPersonalOrg = &allow
 				}
 			},
 		},
@@ -1478,24 +1509,28 @@ func parseBool(value any, defaultValue bool) bool {
 // derived default in place: an unparseable value must never flip a SaaS
 // worker open, nor a private agent shut.
 func applyEgressAllowPrivate(cfg *config.Config, value any) {
-	var allow bool
+	if allow, ok := parseTriStateBool(value); ok {
+		cfg.Egress.AllowPrivateTargets = &allow
+	}
+}
 
+// parseTriStateBool reads a boolean for a tri-state setting: ok is false when
+// the value is not a recognizable boolean, which leaves the setting unset.
+func parseTriStateBool(value any) (bool, bool) {
 	switch v := value.(type) {
 	case bool:
-		allow = v
+		return v, true
 	case string:
 		// parseBool's two defaults agree only on a recognizable boolean.
 		asTrue, asFalse := parseBool(v, true), parseBool(v, false)
 		if asTrue != asFalse {
-			return
+			return false, false
 		}
 
-		allow = asTrue
+		return asTrue, true
 	default:
-		return
+		return false, false
 	}
-
-	cfg.Egress.AllowPrivateTargets = &allow
 }
 
 // Service manages system configuration.

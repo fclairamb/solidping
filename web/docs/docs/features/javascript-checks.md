@@ -648,6 +648,107 @@ string.
 | `env` / `secrets` entries | 50 each |
 | Default / maximum timeout | 30s |
 | Cookie jar (per session) | 100 cookies, 4 KiB each |
+| Memory built by native calls (see below) | 64 MiB per execution |
+| Memory of the script process (see below) | 256 MiB per execution |
+
+### Memory budget
+
+The script runs inside the check worker, which every organization shares, and
+the timeout cannot stop a single native call: `"x".repeat(1e9)` would allocate
+the whole string before the deadline is even looked at. So the builtins that
+build a large value in one call draw from a 64 MiB budget per execution,
+**before** they allocate:
+
+- `String.prototype.repeat`, `padStart`, `padEnd` (the result's length);
+- `Array.prototype.join` and the typed-array `join` (the result's length);
+- `Array(n)` / `new Array(n)`, `Array.prototype.fill` and `Array.from` (16
+  bytes per slot);
+- `Array.prototype.map`, `toSorted`, `toReversed`, `toSpliced` and `with` (16
+  bytes per slot of the result, sized from `length`: setting `a.length = 4e9`
+  is free, copying it is not); `Array.prototype.sort` sorts in place, so it is
+  only refused when its working copy (16 bytes per slot of `length`) would not
+  fit in what is left;
+- `Array.prototype.concat`, `slice`, `splice`, `filter`, `flat` and `flatMap`
+  (16 bytes per slot of the result: on a dense array, `a = a.concat(a)`
+  doubles the memory at every call);
+- `String.prototype.split` (16 bytes per part: `s.split("")` makes one slot
+  per character), `replace` and `replaceAll` (the output: the input plus every
+  expanded replacement, `$&`, `` $` ``, `$'`, `$1` or a replacer function's
+  result);
+- `Function.prototype.apply`, `Reflect.apply` and `Reflect.construct` with an
+  array-like argument list (16 bytes per argument);
+- `new ArrayBuffer(n)` and the typed-array constructors (`new Uint8Array(n)`,
+  a copy of an array, an array-like or a typed array, `Uint8Array.from`, …),
+  but not a view on an existing buffer;
+- `JSON.stringify` (the output as it is written: every key, value and
+  indent, so an array of a million references to one string is refused
+  partway), `Array.prototype.toLocaleString` and the typed-array one (like
+  `join`), `String.prototype.normalize`, `String.raw`, `encodeURI`,
+  `encodeURIComponent` and `escape` (the output).
+
+A `length` is read once: an array-like whose `length` getter answers 0 to the
+charge cannot answer `4e9` to the copy.
+
+A string built with `+` is stored as its two halves until something needs its
+characters, so doubling a string 30 times costs nothing until then. Over 64
+KiB, that first read is charged too (one byte per character) when it happens
+in a `String.prototype` or `RegExp` method, in `JSON.parse`, `JSON.stringify`,
+`parseInt`, `parseFloat`, the `decode*`/`encode*` functions, `escape`,
+`unescape`, `RegExp(s)`, `String(s)` and `Number(s)`, in any binding
+(`console.*`, `http.*`, `solidping.*`, `base64.*`, …, strings nested in their
+arguments included), in the returned result, or in an uncaught exception (a
+thrown string, or an `Error`'s message). A binding argument or a result nested
+more than 64 levels deep, or holding more than a million values, is refused
+rather than left unchecked. A read outside those calls (`s[0]`, `s == t`,
+`+s`, a template literal) is not charged, and the timeout cannot stop it
+either: the copy happens in one native call, which runs to completion. The
+script process's memory limit (below) is what stops those.
+
+The error text of a check that ends on an uncaught exception is cut at 16 KiB.
+
+A string counts one byte per character. The budget adds up across calls, so a
+loop of medium allocations is refused once their sum passes 64 MiB. A refused
+call allocates nothing and throws a `RangeError` whose message starts with
+`memory budget exceeded`; uncaught, the check reports `error`. Ordinary
+scripts stay far below it.
+
+### Process isolation
+
+Each run executes the script in a process of its own, a child of the check
+worker (or of the API, for the AI authoring tools). The child has a hard
+memory limit of 256 MiB and is killed at the check's timeout if a native call
+keeps it from returning. The bindings (`http`, `solidping.*`, `browser`,
+`rdp`, `vnc`, `tcp`, `udp`, `websocket`) still run in the worker, so the
+egress rules, host allowlists and limits above apply to them unchanged.
+
+- A script that passes the memory limit ends as `error`, with
+  `memory limit exceeded` in its error text. The worker and the other checks
+  carry on.
+- A script killed at its timeout ends as `timeout`.
+- In both cases the console output is lost: it lived in the killed process.
+
+Self-hosted operators can tune this with environment variables:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SP_JS_ISOLATION` | on | `off` runs scripts inside the worker process, as before |
+| `SP_JS_MEMORY_LIMIT_MB` | `256` | Memory limit of the script process (minimum 32) |
+| `SP_JS_CGROUP` | unset | Linux: a delegated cgroup v2 directory. Each script process gets a sub-cgroup of it with `memory.max` set |
+
+On Linux the limit is also enforced as an address-space limit (`RLIMIT_AS`),
+measured from what the Go runtime had already mapped when the script started.
+
+Regular expressions run on a backtracking engine, and the timeout cannot stop
+one in the middle of a match. Each match is limited to **2 seconds**: past it,
+the call throws a `RangeError` and, uncaught, the check reports `error` with
+`regular expression took too long`. A pattern with nested quantifiers such as
+`/^(?=a)(a+)+$/` against a long non-matching input hits it.
+
+A call that matches many times (a global `replace`, `replaceAll`, `match` or
+`matchAll`, and every `split`) is bounded by the check's **timeout** as a
+whole: before each match it checks the run's deadline, and once the deadline
+has passed the next match throws instead of starting, so the check reports
+`timeout`. A run overshoots its timeout by one match (2 seconds) at most.
 
 Every budget is spent **before** the call runs, so a refused call still costs
 its unit and a script cannot spin the refusal path for free. Connections share

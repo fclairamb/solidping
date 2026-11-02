@@ -8,6 +8,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/webpush"
@@ -179,15 +180,22 @@ func (h *Handler) CreateDiscordLink(writer http.ResponseWriter, req *http.Reques
 
 	var body struct {
 		RedirectURI string `json:"redirectUri"`
+		// CurrentPassword re-authenticates the member (spec 2026-11-01-03).
+		// Required when the account has a password.
+		CurrentPassword *string `json:"currentPassword"`
 	}
 
-	// A missing or unparseable body is fine — the redirect is optional and the
-	// callback falls back to the dashboard root.
+	// A missing or unparseable body is decoded as empty: the redirect is
+	// optional, and a missing password is refused by the re-authentication.
 	_ = json.NewDecoder(req.Body).Decode(&body)
 
 	resp, err := h.svc.CreateDiscordLink(
-		req.Context(), httpx.Param(req, "org"), user, body.RedirectURI)
+		req.Context(), httpx.Param(req, "org"), user, body.RedirectURI, body.CurrentPassword)
 	if err != nil {
+		if handled, writeErr := auth.WriteReauthError(&h.HandlerBase, writer, req, err); handled {
+			return writeErr
+		}
+
 		return h.handleError(writer, req, err)
 	}
 

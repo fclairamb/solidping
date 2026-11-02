@@ -133,6 +133,11 @@ type Service interface {
 	UpdateOrganization(ctx context.Context, uid string, update models.OrganizationUpdate) error
 	DeleteOrganization(ctx context.Context, uid string) error
 
+	// GetAutoPersonalOrgByOwner returns the auto-created personal org of the
+	// user (spec 2026-10-30-04), nil when none; includeDeleted also returns a
+	// soft-deleted one.
+	GetAutoPersonalOrgByOwner(ctx context.Context, userUID string, includeDeleted bool) (*models.Organization, error)
+
 	// Organization previous-slug (rename alias) operations. See
 	// models.OrganizationPreviousSlug for the semantics; the invariant is that
 	// a live organizations.slug always wins over an alias, and that an alias

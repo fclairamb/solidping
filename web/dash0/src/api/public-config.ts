@@ -69,6 +69,17 @@ export function useDeploymentMode(): DeploymentMode | undefined {
   return data?.deploymentMode;
 }
 
+/**
+ * Whether a sign-in with no organization creates a personal one
+ * (auth.auto_personal_org: on by default in SaaS mode, off otherwise). Undefined
+ * while loading.
+ */
+export function useAutoPersonalOrg(): boolean | undefined {
+  const { data } = usePublicConfig();
+
+  return data?.autoPersonalOrg;
+}
+
 /** The server run mode ("normal" | "demo" | "test"), or undefined while loading. */
 export function useRunMode(): string | undefined {
   const { data } = usePublicConfig();

@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/config"
 )
 
 // TestConfirmRegistrationNoOrgMintsSession is the regression test for spec
@@ -22,50 +24,76 @@ import (
 func TestConfirmRegistrationNoOrgMintsSession(t *testing.T) {
 	t.Parallel()
 
-	r := require.New(t)
-	f, ctx := newLoginAuditFixture(t)
+	// With auth.auto_personal_org (the SaaS default) the new user gets a
+	// personal org and an org-scoped session (spec 2026-10-30-04). Without it
+	// (the self-hosted default) the session is org-less, for /no-org.
+	for _, tc := range []struct {
+		mode        string
+		personalOrg bool
+	}{
+		{mode: config.DeploymentModeSaaS, personalOrg: true},
+		{mode: config.DeploymentModeSelfHosted, personalOrg: false},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			t.Parallel()
 
-	// Allow registration globally, but deliberately do NOT set the org's
-	// registration.email_pattern — so autoJoinMatchingOrgs admits the new
-	// user into no org, reproducing the common "brand new email" case.
-	f.svc.fullCfg.Auth.RegistrationEmailPattern = ".*"
+			r := require.New(t)
+			f, ctx := newLoginAuditFixture(t)
 
-	const email = "no-org-registrant@acme.com"
+			f.svc.fullCfg.Deployment.Mode = tc.mode
+			// Allow registration globally, but deliberately do NOT set the org's
+			// registration.email_pattern — so autoJoinMatchingOrgs admits the new
+			// user into no org, reproducing the common "brand new email" case.
+			f.svc.fullCfg.Auth.RegistrationEmailPattern = ".*"
 
-	_, err := f.svc.Register(ctx, RegisterRequest{
-		Name: "No Org User", Email: email, Password: "supersecret123",
-	})
-	r.NoError(err)
+			const email = "no-org-registrant@acme.com"
 
-	token := extractRegistrationConfirmToken(t, ctx, f.db, email)
-	r.NotEmpty(token, "precondition: the registration token must have been stored")
+			_, err := f.svc.Register(ctx, RegisterRequest{
+				Name: "No Org User", Email: email, Password: "supersecret123",
+			})
+			r.NoError(err)
 
-	resp, err := f.svc.ConfirmRegistration(ctx, token)
-	r.NoError(err)
+			token := extractRegistrationConfirmToken(t, ctx, f.db, email)
+			r.NotEmpty(token, "precondition: the registration token must have been stored")
 
-	// Precondition: this test is only meaningful for the zero-org branch.
-	user, err := f.db.GetUserByEmail(ctx, email)
-	r.NoError(err)
+			resp, err := f.svc.ConfirmRegistration(ctx, token)
+			r.NoError(err)
 
-	members, err := f.db.ListMembersByUser(ctx, user.UID)
-	r.NoError(err)
-	r.Empty(members, "precondition: the new user must have joined no org")
+			user, err := f.db.GetUserByEmail(ctx, email)
+			r.NoError(err)
 
-	// The actual assertion: a usable, org-less session was minted.
-	r.NotEmpty(resp.AccessToken, "confirming registration with no matching org must still mint an access token")
-	r.Empty(resp.RefreshToken,
-		"the no-org branch issues no refresh token, consistent with Login's resolvedOrg==nil branch")
-	r.Positive(resp.ExpiresIn)
-	r.Equal(LoginActionNoOrg, resp.LoginAction)
-	r.Equal(email, resp.User.Email)
+			members, err := f.db.ListMembersByUser(ctx, user.UID)
+			r.NoError(err)
 
-	// And it must actually authenticate, exactly as /no-org's first
-	// authenticated call would exercise it.
-	claims, err := f.svc.ValidateToken(ctx, resp.AccessToken)
-	r.NoError(err, "the minted access token must validate")
-	r.Empty(claims.OrgSlug, "the token must carry no org")
+			// The actual assertion: a usable session was minted.
+			r.NotEmpty(resp.AccessToken, "confirming registration with no matching org must still mint an access token")
+			r.Positive(resp.ExpiresIn)
+			r.Equal(email, resp.User.Email)
 
-	meResp, err := f.svc.GetUserInfo(ctx, claims)
-	r.NoError(err, "/auth/me must succeed with the confirm-registration access token")
-	r.Equal(email, meResp.User.Email)
+			// And it must actually authenticate, exactly as the landing page's
+			// first authenticated call would exercise it.
+			claims, err := f.svc.ValidateToken(ctx, resp.AccessToken)
+			r.NoError(err, "the minted access token must validate")
+
+			meResp, err := f.svc.GetUserInfo(ctx, claims)
+			r.NoError(err, "/auth/me must succeed with the confirm-registration access token")
+			r.Equal(email, meResp.User.Email)
+
+			if tc.personalOrg {
+				r.Len(members, 1, "the new user is settled into a personal org")
+				r.NotEmpty(resp.RefreshToken, "the personal org gets a regular org-scoped session")
+				r.Equal(LoginActionDefault, resp.LoginAction)
+				r.NotEmpty(claims.OrgSlug, "the token must carry the personal org")
+				r.NotNil(meResp.Organization)
+
+				return
+			}
+
+			r.Empty(members, "without auth.auto_personal_org the new user joins no org")
+			r.Empty(resp.RefreshToken,
+				"the no-org branch issues no refresh token, consistent with Login's resolvedOrg==nil branch")
+			r.Equal(LoginActionNoOrg, resp.LoginAction)
+			r.Empty(claims.OrgSlug, "the token must carry no org")
+		})
+	}
 }

@@ -30,9 +30,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.11.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.8 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.20.8 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.12.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.39.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.44.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.12.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.39.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.44.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.6 // indirect
 	github.com/aws/smithy-go v1.28.7 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
@@ -55,7 +55,6 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/dlclark/regexp2 v1.12.0 // indirect
-	github.com/dlclark/regexp2/v2 v2.11.0 // indirect
 	github.com/docker/go-connections v0.8.2 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/eapache/go-resiliency v1.7.0 // indirect
@@ -228,8 +227,8 @@ require (
 	github.com/anthropics/anthropic-sdk-go v1.84.0
 	github.com/arran4/golang-ical v0.3.8
 	github.com/aws/aws-sdk-go-v2 v1.47.5
-	github.com/aws/aws-sdk-go-v2/config v1.33.12
-	github.com/aws/aws-sdk-go-v2/credentials v1.20.12
+	github.com/aws/aws-sdk-go-v2/config v1.33.13
+	github.com/aws/aws-sdk-go-v2/credentials v1.20.13
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.6
 	github.com/beevik/ntp v1.6.0
 	github.com/caddyserver/certmagic v0.25.6
@@ -238,8 +237,9 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/crewjam/saml v0.5.1
+	github.com/dlclark/regexp2/v2 v2.12.0
 	github.com/docker/go-units v0.5.0
-	github.com/dop251/goja v0.0.0-20261029153331-f81816846776
+	github.com/dop251/goja v0.0.0-20261031103838-cf2ff0ec0b31
 	github.com/dreamscached/minequery/v2 v2.5.0
 	github.com/dustin/go-humanize v1.1.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
@@ -249,7 +249,7 @@ require (
 	github.com/getsentry/sentry-go v0.50.0
 	github.com/go-asn1-ber/asn1-ber v1.5.8
 	github.com/go-chi/chi/v5 v5.5.0
-	github.com/go-jose/go-jose/v4 v4.1.6
+	github.com/go-jose/go-jose/v4 v4.1.7
 	github.com/go-ldap/ldap/v3 v3.4.15
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/go-webauthn/webauthn v0.18.2
@@ -278,7 +278,7 @@ require (
 	github.com/miekg/dns v1.1.73
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
-	github.com/oapi-codegen/oapi-codegen/v2 v2.8.1
+	github.com/oapi-codegen/oapi-codegen/v2 v2.8.2
 	github.com/oapi-codegen/runtime v1.8.0
 	github.com/ohler55/ojg v1.28.9
 	github.com/pires/go-proxyproto v0.16.0
@@ -337,5 +337,5 @@ require (
 	k8s.io/api v0.37.2
 	k8s.io/apimachinery v0.37.2
 	k8s.io/client-go v0.37.2
-	modernc.org/sqlite v1.61.0
+	modernc.org/sqlite v1.61.1
 )

@@ -9,6 +9,7 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/analytics/analyticstest"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/errorreport/errorreporttest"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -113,4 +114,19 @@ func jobEventText(event *sentry.Event) string {
 	}
 
 	return strings.Join(parts, " | ")
+}
+
+//nolint:paralleltest // binds the process-wide analytics client
+func TestExecuteWithRecovery_PanicReachesPostHog(t *testing.T) {
+	ph := analyticstest.Install(t)
+	orgUID := "org-uid-7"
+	worker := &JobWorker{}
+
+	err := worker.executeWithRecovery(t.Context(), panickingJob{}, jobPanicContext(&orgUID))
+	require.ErrorIs(t, err, ErrJobPanic)
+
+	excs := ph.Exceptions()
+	require.Len(t, excs, 1)
+	require.Equal(t, "aggregation", excs[0].Tags["job.type"])
+	require.Equal(t, orgUID, excs[0].OrgUID)
 }

@@ -84,22 +84,25 @@ func NewCLIContext(cmd *cli.Command) (*Context, error) {
 	// Create API helper
 	helper := apihelper.NewHelper(cfg, tokenPath, verbose)
 
-	// Resolve output format from -o flag or --json alias
-	outputFormat := output.Format(cmd.String("output"))
-	if cmd.Bool("json") && outputFormat == output.FormatText {
-		outputFormat = output.FormatJSON
-	}
-
-	// Create outputter
-	outputter := output.NewOutputter(outputFormat, os.Stdout)
+	format := outputFormat(cmd)
 
 	return &Context{
 		Config:       cfg,
 		APIHelper:    helper,
-		Outputter:    outputter,
-		OutputFormat: outputFormat,
+		Outputter:    output.NewOutputter(format, os.Stdout),
+		OutputFormat: format,
 		Verbose:      verbose,
 	}, nil
+}
+
+// outputFormat resolves the output format from the -o flag or its --json alias.
+func outputFormat(cmd *cli.Command) output.Format {
+	format := output.Format(cmd.String("output"))
+	if cmd.Bool("json") && format == output.FormatText {
+		format = output.FormatJSON
+	}
+
+	return format
 }
 
 // IsText returns true if the output format is text (human-readable).

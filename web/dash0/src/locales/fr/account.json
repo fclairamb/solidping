@@ -160,9 +160,20 @@
       "disableSubtitle": "Saisissez un code à 6 chiffres actuel pour confirmer.",
       "setupFailed": "Impossible de configurer l'authentification à deux facteurs. Réessayez.",
       "disableFailed": "Impossible de désactiver l'authentification à deux facteurs.",
-      "qrAlt": "QR code pour votre application d'authentification"
+      "qrAlt": "QR code pour votre application d'authentification",
+      "setupExpired": "La configuration a expiré. Recommencez-la."
     },
-    "loadFailed": "Impossible de charger vos paramètres de sécurité."
+    "loadFailed": "Impossible de charger vos paramètres de sécurité.",
+    "reauth": {
+      "subtitle": "Par sécurité, confirmez votre mot de passe actuel pour continuer.",
+      "passwordLabel": "Mot de passe actuel",
+      "continue": "Continuer",
+      "invalidPassword": "Ce n'est pas votre mot de passe actuel.",
+      "rateLimited": "Trop de tentatives. Attendez quelques minutes et réessayez.",
+      "failed": "Impossible de confirmer votre identité.",
+      "signInAgainBody": "Par sécurité, reconnectez-vous pour faire cette modification. Votre dernière connexion date de plus de 10 minutes.",
+      "signInAgain": "Se reconnecter"
+    }
   },
   "organizations": {
     "title": "Organisations",

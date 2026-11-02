@@ -10,6 +10,7 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/analytics/analyticstest"
 	"github.com/fclairamb/solidping/server/internal/errorreport/errorreporttest"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
@@ -140,4 +141,44 @@ func TestHandlerBase_WriteInternalErrorBodyShape(t *testing.T) {
 	r.Equal(string(base.ErrorCodeInternalError), body.Code)
 	r.Equal("Internal server error", body.Title)
 	r.Equal("application/json", rec.Header().Get("Content-Type"))
+}
+
+//nolint:paralleltest // binds the process-wide analytics client
+func TestHandlerBase_5xxReachesPostHogWithSessionID(t *testing.T) {
+	handlerBase := base.NewHandlerBase(nil)
+
+	cases := []struct {
+		name string
+		call func(w http.ResponseWriter, r *http.Request) error
+		want int
+	}{
+		{"internal error", func(w http.ResponseWriter, r *http.Request) error {
+			return handlerBase.WriteInternalError(w, r, errDatabaseExploded)
+		}, 1},
+		{"503", func(w http.ResponseWriter, r *http.Request) error {
+			return handlerBase.WriteErrorErr(w, r, http.StatusServiceUnavailable,
+				base.ErrorCodeInternalError, "down", errDatabaseExploded)
+		}, 1},
+		{"404", func(w http.ResponseWriter, r *http.Request) error {
+			return handlerBase.WriteErrorErr(w, r, http.StatusNotFound,
+				base.ErrorCodeNotFound, "nope", errDatabaseExploded)
+		}, 0},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ph := analyticstest.Install(t)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/x", http.NoBody)
+			req.Header.Set("X-Posthog-Session-Id", "sess-42")
+
+			require.NoError(t, tc.call(httptest.NewRecorder(), req))
+
+			excs := ph.Exceptions()
+			require.Len(t, excs, tc.want)
+
+			if tc.want > 0 {
+				require.Equal(t, "sess-42", excs[0].SessionID)
+			}
+		})
+	}
 }

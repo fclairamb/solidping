@@ -18,6 +18,8 @@ type eventRecorder struct {
 	events []analytics.Event
 }
 
+func (*eventRecorder) CaptureException(context.Context, *analytics.Exception) {}
+
 func (r *eventRecorder) Capture(_ context.Context, event analytics.Event) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

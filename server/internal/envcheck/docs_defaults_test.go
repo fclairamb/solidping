@@ -128,6 +128,9 @@ var docsDefaultAccessors = map[string]func(*config.Config) string{
 	"SP_AUTH_IMPERSONATION_ENABLED": boolOf(func(c *config.Config) bool {
 		return c.Auth.ImpersonationEnabled
 	}),
+	"SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP": intOf(func(c *config.Config) int {
+		return c.Auth.RegistrationMaxPendingPerIP
+	}),
 	"SP_SMS_PROVIDER": func(c *config.Config) string { return c.SMS.ResolvedProvider() },
 	"SP_SMS_GLOBAL_RUNAWAY_PER_HOUR": intOf(func(c *config.Config) int {
 		return c.SMS.ResolvedGlobalRunawayPerHour()

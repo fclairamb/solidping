@@ -356,6 +356,10 @@ func (s *Service) mintOrgSession(
 		keyCreatedWith: authContext.ToMap(),
 	}
 
+	// Creating or joining an org is not a sign-in: keep the caller's.
+	authTime := callerAuthTime(ctx)
+	stampSignedInAt(refreshToken, authTime)
+
 	if createTokenErr := s.startSession(
 		ctx, sessionActor{UID: userUID}, org, refreshToken, role, AuthMethodOrgSession, authContext,
 	); createTokenErr != nil {
@@ -374,7 +378,7 @@ func (s *Service) mintOrgSession(
 		demo = u.Demo
 	}
 
-	accessToken, err := s.generateAccessToken(userUID, org.Slug, role, refreshToken.UID, demo)
+	accessToken, err := s.generateAccessToken(userUID, org.Slug, role, refreshToken.UID, demo, authTime)
 	if err != nil {
 		return nil, err
 	}

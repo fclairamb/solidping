@@ -76,7 +76,7 @@ func (h *DiscordOAuthHandler) handleLinkCallback(
 			discordLinkErrorCode, "Discord did not confirm your account")
 	}
 
-	if err := h.svc.LinkDiscordProvider(req.Context(), payload.UserUID, userInfo.ID); err != nil {
+	if err := h.svc.LinkDiscordProvider(req.Context(), payload.UserUID, payload.OrgUID, userInfo.ID); err != nil {
 		return h.redirectWithError(writer, req, payload.RedirectURI,
 			discordLinkErrorCode, err.Error())
 	}
@@ -138,8 +138,12 @@ func (s *DiscordOAuthService) exchangeAndIdentify(
 // Already bound to this user — nothing to do. Already bound to someone else —
 // refused: the first binding wins, because overwriting it would move another
 // member's Discord paging route onto this account without telling either of them.
+//
+// A new binding is a new way to sign in to the account, so the owner gets a
+// "Discord account linked" notice (spec 2026-11-01-03). orgUID is the org whose
+// account page started the link; it only shapes the notice's link.
 func (s *DiscordOAuthService) LinkDiscordProvider(
-	ctx context.Context, userUID, discordUserID string,
+	ctx context.Context, userUID, orgUID, discordUserID string,
 ) error {
 	if userUID == "" || discordUserID == "" {
 		return ErrDiscordLinkStateInvalid
@@ -158,6 +162,10 @@ func (s *DiscordOAuthService) LinkDiscordProvider(
 	provider := models.NewUserProvider(userUID, models.ProviderTypeDiscord, discordUserID)
 	if err := s.db.CreateUserProvider(ctx, provider); err != nil {
 		return fmt.Errorf("link discord provider: %w", err)
+	}
+
+	if s.authService != nil {
+		s.authService.notifyDiscordLinked(ctx, userUID, orgUID)
 	}
 
 	return nil

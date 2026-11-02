@@ -146,6 +146,41 @@ export function deviceVerificationReturnTo(
     : path;
 }
 
+/**
+ * The pending flow an org-less session resumes once it has created its first
+ * org, or undefined when there is none to resume.
+ *
+ * A brand-new account sent to /login by an MCP client (or by the CLI's device
+ * flow) has no org yet, so it lands on /no-org instead of the consent screen.
+ * Both flows are org-agnostic by construction (see {@link resolveDestination})
+ * and resume as soon as the session is scoped to an org, so /no-org carries
+ * them through org creation. Two shapes are kept:
+ *
+ * - the flow itself: the OAuth authorize request or the device page;
+ * - the login page wrapping it (`{basepath}/orgs/<org>/login?returnTo=<authorize>`),
+ *   which is what a federated login hands back (see {@link buildOAuthLoginUrl}).
+ *   The inner value is returned, so it goes through the same guards.
+ *
+ * Anything else, an in-app deep link included, returns undefined: it named an
+ * org the user is not a member of, and the new org's root is the right landing.
+ */
+export function orgCreationReturnTo(
+  returnTo: unknown,
+  basepath: string,
+): string | undefined {
+  if (typeof returnTo !== "string" || !returnTo) return undefined;
+  // A plain boolean: the type guards would narrow `returnTo` to never below.
+  const resumable: boolean =
+    isOAuthAuthorizeReturnTo(returnTo) || isDeviceVerificationReturnTo(returnTo, basepath);
+  if (resumable) return returnTo;
+  if (!isSafeReturnTo(returnTo, basepath)) return undefined;
+
+  const [path, query = ""] = returnTo.split("#")[0].split("?", 2);
+  if (!/^\/orgs\/[^/]+\/login$/.test(path.slice(basepath.length))) return undefined;
+  const inner = new URLSearchParams(query).get("returnTo");
+  return isOAuthAuthorizeReturnTo(inner) ? inner : undefined;
+}
+
 /** The org-less invitation page prefix. */
 const INVITE_PATH = "/invite/";
 

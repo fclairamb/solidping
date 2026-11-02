@@ -18,25 +18,37 @@ import { toast } from "sonner";
 import { setup2FA, confirm2FA } from "@/api/twofa";
 import { ApiError } from "@/api/client";
 import { RecoveryCodesDialog } from "./RecoveryCodesDialog";
+import { ReauthPasswordForm, SignInAgainAlert } from "./reauth";
+import { isReauthRequired } from "./reauth-errors";
 
 interface TOTPSetupDialogProps {
   open: boolean;
+  /** The account has a password: the dialog asks for it first. */
+  hasPassword: boolean;
   onClose: () => void;
   onComplete: () => void;
 }
 
-// Two-step modal: first show the QR/manual key, then prompt for the
-// 6-digit verification code. On success the recovery-codes dialog
-// takes over via a state hand-off.
-export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogProps) {
+// Multi-step modal. An account with a password re-authenticates first
+// (spec 2026-10-31-02): the secret is only handed out after the current
+// password. Then it shows the QR/manual key and prompts for the 6-digit
+// verification code. On success the recovery-codes dialog takes over via a
+// state hand-off.
+export function TOTPSetupDialog({ open, hasPassword, onClose, onComplete }: TOTPSetupDialogProps) {
   const { t } = useTranslation(["account", "common"]);
-  const [step, setStep] = useState<"setup" | "verify" | "recovery">("setup");
+  const firstStep = hasPassword ? "reauth" : "setup";
+  const [step, setStep] = useState<"reauth" | "setup" | "recovery">(firstStep);
   const [secret, setSecret] = useState("");
+  const [setupToken, setSetupToken] = useState("");
+  const [signInRequired, setSignInRequired] = useState(false);
   const [otpauthUri, setOtpauthUri] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [code, setCode] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  // An account without a password fetches the secret on mount.
+  const [loading, setLoading] = useState(!hasPassword);
+  // Bumped to fetch a new secret after the setup token expired.
+  const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   // Sentinel, not a message: resolved through t() at render time so this
   // effect never depends on `t` (whose identity changes on language switch
@@ -44,22 +56,42 @@ export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogPr
   // via a second setup2FA() call).
   const [setupFailed, setSetupFailed] = useState(false);
 
+  const applySetup = (resp: Awaited<ReturnType<typeof setup2FA>>) => {
+    if (!resp.secret && !resp.uri) {
+      setSetupFailed(true);
+      return;
+    }
+    setSecret(resp.secret);
+    setOtpauthUri(resp.uri);
+    setSetupToken(resp.setupToken);
+  };
+
+  // An account without a password starts the setup right away: the server
+  // accepts it when the session signed in recently, and otherwise answers
+  // REAUTHENTICATION_REQUIRED, which shows the "sign in again" notice.
   useEffect(() => {
-    if (!open || step !== "setup") return;
-    setLoading(true);
-    setSetupFailed(false);
+    if (hasPassword || !open || step !== "setup" || secret) return;
     setup2FA()
-      .then((resp) => {
-        if (!resp.secret && !resp.uri) {
-          setSetupFailed(true);
-          return;
+      .then(applySetup)
+      .catch((err) => {
+        if (isReauthRequired(err)) {
+          setSignInRequired(true);
+        } else {
+          setError(err instanceof Error ? err.message : "failed");
         }
-        setSecret(resp.secret);
-        setOtpauthUri(resp.uri);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "failed"))
       .finally(() => setLoading(false));
-  }, [open, step]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, step, attempt]);
+
+  // The current-password step: setup2FA throws on a wrong password and the
+  // form shows it.
+  const onReauth = async (password: string) => {
+    const resp = await setup2FA(password);
+    setError(null);
+    applySetup(resp);
+    setStep("setup");
+  };
 
   // Render the otpauth URI as a QR code entirely client-side — no network
   // request may leave the page with the TOTP seed.
@@ -82,11 +114,23 @@ export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogPr
     setLoading(true);
     setError(null);
     try {
-      const resp = await confirm2FA(code);
+      const resp = await confirm2FA(code, setupToken);
       setRecoveryCodes(resp.recoveryCodes);
       setStep("recovery");
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.code === "INVALID_SETUP_TOKEN") {
+        // The setup expired (10 minutes): start over from the first step.
+        setSecret("");
+        setOtpauthUri("");
+        setQrDataUrl("");
+        setSetupToken("");
+        setCode("");
+        setSetupFailed(false);
+        setStep(firstStep);
+        setError(t("account:security.totp.setupExpired"));
+        if (!hasPassword) setAttempt((n) => n + 1);
+        return;
+      } else if (err instanceof ApiError) {
         setError(err.message);
       } else {
         setError(err instanceof Error ? err.message : "failed");
@@ -107,8 +151,9 @@ export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogPr
         open={open}
         codes={recoveryCodes}
         onClose={() => {
-          setStep("setup");
+          setStep(firstStep);
           setCode("");
+          setSetupToken("");
           setSecret("");
           setOtpauthUri("");
           setQrDataUrl("");
@@ -124,10 +169,28 @@ export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogPr
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("account:security.totp.setupTitle")}</DialogTitle>
-          <DialogDescription>{t("account:security.totp.setupSubtitle")}</DialogDescription>
+          <DialogDescription>
+            {step === "reauth"
+              ? t("account:security.reauth.subtitle")
+              : t("account:security.totp.setupSubtitle")}
+          </DialogDescription>
         </DialogHeader>
 
-        {(error || setupFailed) && (
+        {step === "reauth" && (
+          <>
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            <ReauthPasswordForm testIdPrefix="2fa" onSubmit={onReauth} onCancel={onClose} />
+          </>
+        )}
+
+        {step === "setup" && signInRequired && <SignInAgainAlert />}
+
+        {step === "setup" && (error || setupFailed) && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
@@ -194,6 +257,7 @@ export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogPr
           </div>
         )}
 
+        {step === "setup" && (
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             {t("common:cancel")}
@@ -209,6 +273,7 @@ export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogPr
             {t("account:security.totp.confirm")}
           </Button>
         </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );
