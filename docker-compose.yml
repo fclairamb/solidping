@@ -25,16 +25,34 @@ services:
     image: chromedp/headless-shell:157.0.8103.27
     container_name: solidping-browser
     profiles: ["browser"]
+    # Loopback only, CDP is unauthenticated. `make dev` on macOS drives this
+    # Chrome from the host (ws://127.0.0.1:9322). Not 9222 on the host: a
+    # desktop Chrome with remote debugging on often holds it already.
+    ports:
+      - "127.0.0.1:9322:9222"
+    # Replaces the image's run.sh, which word-splits its arguments (so a
+    # --host-resolver-rules value cannot get through). Same two processes:
+    # Chrome only listens on 127.0.0.1, socat relays 9222 to it.
+    #
     # --remote-allow-origins is required from Chrome 111 on for a websocket
     # client that is not a browser page.
-    command:
-      - --remote-debugging-address=0.0.0.0
-      - --remote-debugging-port=9222
-      - --remote-allow-origins=*
-      - --disable-gpu
-      - --no-sandbox
+    # --host-resolver-rules sends a check on localhost / 127.0.0.1 to the host
+    # (the Mac running `make dev`, or the `server` port published there):
+    # inside this container, loopback is only Chrome itself.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        socat TCP4-LISTEN:9222,fork TCP4:127.0.0.1:9223 &
+        exec /headless-shell/headless-shell --no-sandbox --disable-gpu \
+          --use-gl=angle --use-angle=swiftshader \
+          --remote-debugging-port=9223 --remote-allow-origins='*' \
+          --host-resolver-rules='MAP localhost host.docker.internal, MAP 127.0.0.1 host.docker.internal'
     # Chrome mounts /dev/shm and the Docker default (64 MB) makes tabs crash.
     shm_size: 1gb
+    # Docker Desktop and OrbStack define it; plain Docker on Linux needs this.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     stop_grace_period: 1s
 
   server:
