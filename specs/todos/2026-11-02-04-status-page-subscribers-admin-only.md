@@ -30,3 +30,7 @@ Found by the security scan of 2026-11-02 (finding AC5). Severity: low. Any viewe
 ## Open questions
 
 - Should `user` (write) members keep the list? **Recommended:** no, admin only: it is personal data of third parties, and nothing a `user` does needs it.
+
+## Resolved open questions
+
+- `user` (write) members do not keep the list: admin only. (autopilot: recommended answer)
