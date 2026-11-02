@@ -181,6 +181,7 @@
     "title": "Subscribers",
     "description": "People subscribed to email notifications for this status page.",
     "empty": "No subscribers yet.",
+    "adminOnly": "Only organization administrators can see who subscribed to this page.",
     "email": "Email",
     "scope": "Scope",
     "status": "Status",

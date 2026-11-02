@@ -3741,7 +3741,14 @@ export function useCreateEndpointSubscriber(
   });
 }
 
-export function useStatusPageSubscribers(org: string, statusPageUid: string) {
+// The list is org-admin only on the server (it carries third parties' email
+// addresses), so callers pass `enabled: false` below admin instead of firing a
+// request that can only be refused.
+export function useStatusPageSubscribers(
+  org: string,
+  statusPageUid: string,
+  options: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: ["statusPageSubscribers", org, statusPageUid],
     queryFn: async () => {
@@ -3754,7 +3761,7 @@ export function useStatusPageSubscribers(org: string, statusPageUid: string) {
         count: response.meta?.count ?? response.data?.length ?? 0,
       };
     },
-    enabled: !!org && !!statusPageUid,
+    enabled: !!org && !!statusPageUid && (options.enabled ?? true),
   });
 }
 
