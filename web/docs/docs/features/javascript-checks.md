@@ -678,7 +678,12 @@ build a large value in one call draw from a 64 MiB budget per execution,
   array-like argument list (16 bytes per argument);
 - `new ArrayBuffer(n)` and the typed-array constructors (`new Uint8Array(n)`,
   a copy of an array, an array-like or a typed array, `Uint8Array.from`, …),
-  but not a view on an existing buffer.
+  but not a view on an existing buffer;
+- `JSON.stringify` (the output as it is written: every key, value and
+  indent, so an array of a million references to one string is refused
+  partway), `Array.prototype.toLocaleString` and the typed-array one (like
+  `join`), `String.prototype.normalize`, `String.raw`, `encodeURI`,
+  `encodeURIComponent` and `escape` (the output).
 
 A `length` is read once: an array-like whose `length` getter answers 0 to the
 charge cannot answer `4e9` to the copy.
@@ -686,11 +691,20 @@ charge cannot answer `4e9` to the copy.
 A string built with `+` is stored as its two halves until something needs its
 characters, so doubling a string 30 times costs nothing until then. Over 64
 KiB, that first read is charged too (one byte per character) when it happens
-in a `String.prototype` or `RegExp` method, in any binding (`console.*`,
-`http.*`, `solidping.*`, `base64.*`, …, strings nested in their arguments
-included) or in the returned result. A read outside those calls (`s[0]`,
-`s == t`, `Number(s)`, a template literal) is not charged: only the timeout
-stops it.
+in a `String.prototype` or `RegExp` method, in `JSON.parse`, `JSON.stringify`,
+`parseInt`, `parseFloat`, the `decode*`/`encode*` functions, `escape`,
+`unescape`, `RegExp(s)`, `String(s)` and `Number(s)`, in any binding
+(`console.*`, `http.*`, `solidping.*`, `base64.*`, …, strings nested in their
+arguments included), in the returned result, or in an uncaught exception (a
+thrown string, or an `Error`'s message). A binding argument or a result nested
+more than 64 levels deep, or holding more than a million values, is refused
+rather than left unchecked. A read outside those calls (`s[0]`, `s == t`,
+`+s`, a template literal) is not charged, and the timeout cannot stop it
+either: the copy happens in one native call, which runs to completion. Only
+running the check in a process of its own, with a hard memory limit, closes
+those paths.
+
+The error text of a check that ends on an uncaught exception is cut at 16 KiB.
 
 A string counts one byte per character. The budget adds up across calls, so a
 loop of medium allocations is refused once their sum passes 64 MiB. A refused
