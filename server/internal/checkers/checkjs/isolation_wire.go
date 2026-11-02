@@ -110,6 +110,9 @@ func writeFrame(dst io.Writer, msg *wireMsg) error {
 	if uint64(len(body)) > math.MaxUint32 {
 		return errFrameTooLarge
 	}
+	if frameHeaderBytes > math.MaxInt || len(body) > math.MaxInt-frameHeaderBytes {
+		return errFrameTooLarge
+	}
 
 	frame := binary.BigEndian.AppendUint32(nil, uint32(len(body)))
 	frame = append(frame, body...)
