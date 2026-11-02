@@ -219,8 +219,10 @@ func (r *jsRuntime) installMemoryBudget() {
 		}
 	}
 
+	r.installBuiltinCaps(stringProto, arrayProto)
 	r.installStringCaps(stringProto)
 	r.installArgListCaps()
+	r.installFlattenGuards()
 }
 
 // installArgListCaps caps the calls that build an argument list from an

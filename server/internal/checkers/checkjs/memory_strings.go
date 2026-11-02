@@ -58,7 +58,7 @@ func (r *jsRuntime) spendFlatten(what string, val goja.Value) {
 // puts a flatten guard in front of every String.prototype and RegExp method:
 // a rope over the budget is refused before goja flattens it. The guard does
 // not reach the flattens that happen outside a call (`s[0]`, `s == t`,
-// `Number(s)`, a template literal): only running the check in a process of
+// `+s`, a template literal): only running the check in a process of
 // its own with a hard memory limit closes those.
 func (r *jsRuntime) installStringCaps(stringProto *goja.Object) {
 	r.wrapMethod(stringProto, "split", 2, r.capSplit)

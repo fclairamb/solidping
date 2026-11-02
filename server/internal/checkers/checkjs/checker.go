@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dop251/goja"
 
@@ -86,6 +87,8 @@ var DeploymentGate DeploymentGateFunc //nolint:gochecknoglobals // Mirrors TypeE
 const (
 	maxSubChecks     = 20
 	maxConsoleOutput = 16 * 1024 // 16KB
+	// maxErrorOutput caps the error text of a result, like the console.
+	maxErrorOutput = 16 * 1024
 	// maxHTTPBody is checkerdef's shared payload cap: the same number bounds a
 	// page's text() / evaluate() result, so there is ONE number to change.
 	maxHTTPBody = checkerdef.MaxPayloadBytes
@@ -214,6 +217,9 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	// `+` past the memory budget is refused first.
 	if err == nil {
 		err = runtime.guardResult(val)
+	} else {
+		// So does an uncaught throw's message.
+		err = runtime.guardThrown(err)
 	}
 
 	duration := time.Since(start)
@@ -1331,7 +1337,7 @@ func (r *jsRuntime) parseStatus(obj *goja.Object) checkerdef.Status {
 // failure, and a script's own output goes through buildOutputFromObj instead.
 func (r *jsRuntime) buildOutput(value string) map[string]any {
 	out := make(map[string]any)
-	out[logLevelError] = value
+	out[logLevelError] = truncateErrorText(value)
 
 	if r.consoleBuf.Len() > 0 {
 		out["console"] = r.consoleBuf.String()
@@ -1357,4 +1363,22 @@ func (r *jsRuntime) buildOutputFromObj(obj *goja.Object) map[string]any {
 	}
 
 	return out
+}
+
+// errorTruncatedSuffix ends an error text cut at maxErrorOutput.
+const errorTruncatedSuffix = "... (truncated)"
+
+// truncateErrorText caps the error text stored with the result (spec
+// 2026-11-02-01): a script can throw a string of tens of megabytes.
+func truncateErrorText(text string) string {
+	if len(text) <= maxErrorOutput {
+		return text
+	}
+
+	cut := maxErrorOutput - len(errorTruncatedSuffix)
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+
+	return text[:cut] + errorTruncatedSuffix
 }
