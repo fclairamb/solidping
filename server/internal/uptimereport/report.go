@@ -356,7 +356,7 @@ func (b *Builder) measure(
 
 	baseURL := ""
 	if b.cfg != nil {
-		data.DashboardURL = b.cfg.Server.BaseURL
+		data.DashboardURL = orgReportURL(b.cfg.Server.BaseURL, org.Slug)
 		baseURL = b.cfg.Server.BaseURL
 	}
 
@@ -767,6 +767,21 @@ func checkDisplayName(check *models.Check) string {
 	}
 
 	return check.UID
+}
+
+// orgReportURL builds the dashboard home URL of the report's organization, the
+// target of the "Open dashboard" call to action. Falls back to the bare base
+// URL when the slug is unknown, and returns "" without a base URL.
+func orgReportURL(baseURL, orgSlug string) string {
+	if baseURL == "" {
+		return ""
+	}
+
+	if orgSlug == "" {
+		return baseURL
+	}
+
+	return fmt.Sprintf("%s%s/orgs/%s", strings.TrimRight(baseURL, "/"), config.DashboardBasePath, orgSlug)
 }
 
 // checkReportURL builds the dash0 detail-page URL for a check row, mirroring

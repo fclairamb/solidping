@@ -104,3 +104,13 @@ func redness(t *testing.T, hex string) int {
 
 	return red - green
 }
+
+// TestOrgReportURL pins the "Open dashboard" target to the organization's
+// dashboard home rather than the bare base URL.
+func TestOrgReportURL(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "https://solidping.example/d/orgs/acme", orgReportURL("https://solidping.example/", "acme"))
+	require.Equal(t, "https://solidping.example", orgReportURL("https://solidping.example", ""))
+	require.Empty(t, orgReportURL("", "acme"))
+}
