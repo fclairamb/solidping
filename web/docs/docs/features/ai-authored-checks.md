@@ -183,8 +183,10 @@ tool (`kind`: `script`, `fetch` or `browser`), so any external agent can author
 
 The `openai` driver speaks Chat Completions (`POST {base_url}/chat/completions`
 with `tools`), which covers OpenAI, BytePlus ModelArk, Mistral, Groq, DeepSeek,
-Gemini's OpenAI endpoint, OpenRouter, LiteLLM, Ollama and vLLM. The `anthropic`
-driver uses the Messages API with prompt caching on the system prompt.
+Gemini's OpenAI endpoint, OpenRouter, LiteLLM, Ollama and vLLM. A thinking
+model's `reasoning_content` (DeepSeek, GLM) is sent back with its turn, as
+those APIs require when tools are in play. The `anthropic` driver uses the
+Messages API with prompt caching on the system prompt.
 
 BytePlus ModelArk example:
 
