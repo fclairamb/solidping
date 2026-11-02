@@ -2575,13 +2575,20 @@ const (
 	keyInviteOrgUID             = "orgUID"
 	passwordResetKeyPrefix      = "password_reset:"
 	passwordResetCountKeyPrefix = "password_reset_count:"
-	passwordResetIPKeyPrefix    = "pwd_reset_rl:"
-	passwordResetTTL            = 1 * time.Hour
-	passwordResetIPWindow       = time.Minute
-	passwordResetMaxPerUser     = 3
-	passwordResetMaxPerIP       = 5
-	minPasswordLength           = 8
-	registrationTokenSize       = 32
+	// passwordResetUserKeyPrefix indexes a user's outstanding reset entries:
+	// password_reset_user:<userUID>:<tokenHash>, same TTL as the entry, so
+	// purgePasswordResets can find and delete them all.
+	passwordResetUserKeyPrefix = "password_reset_user:"
+	// stateValueKeyEmailHash holds sha256 of the address the reset link was
+	// sent to; the reset is refused once the account's email differs.
+	stateValueKeyEmailHash   = "emailHash"
+	passwordResetIPKeyPrefix = "pwd_reset_rl:"
+	passwordResetTTL         = 1 * time.Hour
+	passwordResetIPWindow    = time.Minute
+	passwordResetMaxPerUser  = 3
+	passwordResetMaxPerIP    = 5
+	minPasswordLength        = 8
+	registrationTokenSize    = 32
 
 	// Authenticated change-password rate limit. The endpoint sits behind a
 	// valid session, but a stolen-but-unprivileged token must not become an
@@ -3063,23 +3070,9 @@ func (s *Service) RequestPasswordReset(
 		return successMsg, nil
 	}
 
-	// Generate reset token
-	tokenBytes := make([]byte, registrationTokenSize)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		return nil, fmt.Errorf("failed to generate token: %w", err)
-	}
-
-	token := hex.EncodeToString(tokenBytes)
-	tokenHash := hashPendingToken(token)
-
-	// Store at password_reset:<sha256(token)> with userUid only. The
-	// plaintext token never lands on disk; a leaked DB snapshot has no
-	// way to mint a valid reset URL.
-	stateValue := &models.JSONMap{stateValueKeyUserUID: user.UID}
-	ttl := passwordResetTTL
-
-	if err := s.db.SetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash, stateValue, &ttl); err != nil {
-		return nil, fmt.Errorf("failed to store password reset: %w", err)
+	token, err := s.storePasswordReset(ctx, user)
+	if err != nil {
+		return nil, err
 	}
 
 	// Send reset email asynchronously via the email job. An SSO-only user
@@ -3101,6 +3094,79 @@ func (s *Service) RequestPasswordReset(
 	s.enqueueEmail(ctx, "", req.Email, emailTemplate, loc, templateData)
 
 	return successMsg, nil
+}
+
+// storePasswordReset mints a reset token for user and stores it at
+// password_reset:<sha256(token)>, with its per-user index entry. The
+// plaintext token never lands on disk: a leaked DB snapshot has no way to
+// mint a valid reset URL. The value carries the user UID and a hash of the
+// address the link goes to, never the address itself.
+func (s *Service) storePasswordReset(ctx context.Context, user *models.User) (string, error) {
+	tokenBytes := make([]byte, registrationTokenSize)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", fmt.Errorf("failed to generate token: %w", err)
+	}
+
+	token := hex.EncodeToString(tokenBytes)
+	tokenHash := hashPendingToken(token)
+	ttl := passwordResetTTL
+
+	stateValue := &models.JSONMap{
+		stateValueKeyUserUID:   user.UID,
+		stateValueKeyEmailHash: resetEmailHash(user.Email),
+	}
+
+	if err := s.db.SetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash, stateValue, &ttl); err != nil {
+		return "", fmt.Errorf("failed to store password reset: %w", err)
+	}
+
+	indexValue := &models.JSONMap{stateValueKeyUserUID: user.UID}
+	if err := s.db.SetStateEntry(ctx, nil, passwordResetIndexKey(user.UID, tokenHash), indexValue, &ttl); err != nil {
+		return "", fmt.Errorf("failed to index password reset: %w", err)
+	}
+
+	return token, nil
+}
+
+// passwordResetIndexKey is the per-user index key of one reset entry.
+func passwordResetIndexKey(userUID, tokenHash string) string {
+	return passwordResetUserKeyPrefix + userUID + ":" + tokenHash
+}
+
+// resetEmailHash is the at-rest form of the address a reset link was sent to.
+func resetEmailHash(address string) string {
+	return hashPendingToken(strings.ToLower(strings.TrimSpace(address)))
+}
+
+// purgePasswordResets deletes every outstanding reset link of the user, with
+// its index entry. Called whenever the password or the email changes, so a
+// link requested before cannot be used after. Best effort: errors are logged,
+// the entries age out at their TTL anyway.
+func (s *Service) purgePasswordResets(ctx context.Context, userUID string) {
+	prefix := passwordResetUserKeyPrefix + userUID + ":"
+
+	entries, err := s.db.ListStateEntries(ctx, nil, prefix)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to list password reset entries", "error", err, "userUid", userUID)
+
+		return
+	}
+
+	for _, entry := range entries {
+		// LIKE treats "_" as a wildcard: keep only exact-prefix keys.
+		tokenHash, ok := strings.CutPrefix(entry.Key, prefix)
+		if !ok || tokenHash == "" {
+			continue
+		}
+
+		if _, err := s.db.DeleteStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash); err != nil {
+			slog.ErrorContext(ctx, "Failed to delete password reset entry", "error", err, "userUid", userUID)
+		}
+
+		if _, err := s.db.DeleteStateEntry(ctx, nil, entry.Key); err != nil {
+			slog.ErrorContext(ctx, "Failed to delete password reset index entry", "error", err, "userUid", userUID)
+		}
+	}
 }
 
 // ssoFallbackLabel is the display name used for a SAML/OIDC provider with no
@@ -3205,6 +3271,42 @@ func (s *Service) bumpResetIPCounter(ctx context.Context, remoteAddr string) (bo
 		passwordResetIPKeyPrefix+remoteAddr, passwordResetMaxPerIP, passwordResetIPWindow)
 }
 
+// resolvePasswordReset loads the reset entry of token and its user. Any
+// missing, malformed or stale entry is ErrPasswordResetExpired.
+func (s *Service) resolvePasswordReset(
+	ctx context.Context, token string,
+) (*models.StateEntry, *models.User, error) {
+	tokenHash := hashPendingToken(token)
+
+	entry, err := s.db.GetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load password reset entry: %w", err)
+	}
+
+	if entry == nil || entry.Value == nil {
+		return nil, nil, ErrPasswordResetExpired
+	}
+
+	userUID, ok := (*entry.Value)[stateValueKeyUserUID].(string)
+	if !ok || userUID == "" {
+		return nil, nil, ErrPasswordResetExpired
+	}
+
+	user, err := s.db.GetUser(ctx, userUID)
+	if err != nil || user == nil {
+		return nil, nil, ErrPasswordResetExpired
+	}
+
+	// Defense in depth: the link was mailed to an address the account no
+	// longer has. Entries written before the hash existed carry none and age
+	// out within the TTL.
+	if sent, hasHash := (*entry.Value)[stateValueKeyEmailHash].(string); hasHash && sent != resetEmailHash(user.Email) {
+		return nil, nil, ErrPasswordResetExpired
+	}
+
+	return entry, user, nil
+}
+
 // ResetPassword validates a reset token and sets a new password.
 //
 // Validation order matters for the regression guarantees in this spec:
@@ -3216,25 +3318,9 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 			ErrInvalidCredentials, minPasswordLength)
 	}
 
-	tokenHash := hashPendingToken(req.Token)
-
-	entry, err := s.db.GetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash)
+	entry, user, err := s.resolvePasswordReset(ctx, req.Token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load password reset entry: %w", err)
-	}
-
-	if entry == nil || entry.Value == nil {
-		return nil, ErrPasswordResetExpired
-	}
-
-	userUID, ok := (*entry.Value)[stateValueKeyUserUID].(string)
-	if !ok || userUID == "" {
-		return nil, ErrPasswordResetExpired
-	}
-
-	user, err := s.db.GetUser(ctx, userUID)
-	if err != nil || user == nil {
-		return nil, ErrPasswordResetExpired
+		return nil, err
 	}
 
 	// The shared demo password is published, not owned (spec 2026-09-06-02).
@@ -3273,6 +3359,9 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 	if _, err := s.db.DeleteStateEntry(ctx, nil, entry.Key); err != nil {
 		slog.ErrorContext(ctx, "Failed to delete password reset entry", "error", err)
 	}
+
+	// Every other outstanding link of the user dies with this one.
+	s.purgePasswordResets(ctx, user.UID)
 
 	if _, err := s.db.DeleteStateEntry(ctx, nil, passwordResetCountKeyPrefix+user.UID); err != nil {
 		slog.DebugContext(ctx, "Failed to delete password reset counter", "error", err)
@@ -3487,6 +3576,9 @@ func (s *Service) persistPasswordChange(
 	if newEmail != "" {
 		user.Email = newEmail
 	}
+
+	// A link requested before the change must not set a password after it.
+	s.purgePasswordResets(ctx, user.UID)
 
 	return nil
 }

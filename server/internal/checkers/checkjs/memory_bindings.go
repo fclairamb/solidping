@@ -1,6 +1,7 @@
 package checkjs
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/dop251/goja"
@@ -17,10 +18,7 @@ const (
 // bindingGlobals are the globals whose methods hand script values to Go.
 //
 //nolint:gochecknoglobals // Fixed list of binding names.
-var bindingGlobals = []string{
-	"console", "sleep", "solidping", "http", "base64",
-	"browser", "rdp", "vnc", "tcp", "udp", "websocket",
-}
+var bindingGlobals = append([]string{"console", "sleep", "base64"}, hostGlobals...)
 
 // guardBindings puts the flatten guard in front of every binding (spec
 // 2026-11-01-01): a binding reads its string arguments in Go, which flattens
@@ -71,9 +69,15 @@ func (r *jsRuntime) guardObject(prefix string, obj *goja.Object) {
 // methods of the handle it returns.
 func (r *jsRuntime) guardBinding(name string, orig goja.Callable) func(goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
-		scan := ropeScan{seen: map[*goja.Object]struct{}{}}
+		scan := r.newRopeScan()
 		for _, arg := range call.Arguments {
 			scan.walk(arg, 0)
+		}
+
+		if scan.exhausted {
+			r.throwRangeError(fmt.Sprintf(
+				"%s: %s: an argument nested more than %d levels deep, or holding more than %d values, cannot be checked",
+				errMemoryBudgetPrefix, name, ropeScanMaxDepth, ropeScanMaxNodes))
 		}
 
 		r.spendAlloc(name+" (a string argument built with +)", scan.bytes)
@@ -94,14 +98,47 @@ func (r *jsRuntime) guardBinding(name string, orig goja.Callable) func(goja.Func
 // the budget. It runs after the script, outside the VM, so it returns an
 // error instead of throwing.
 func (r *jsRuntime) guardResult(val goja.Value) error {
-	scan := ropeScan{seen: map[*goja.Object]struct{}{}}
+	scan := r.newRopeScan()
 	scan.walk(val, 0)
+
+	return r.scanRefusal("the script result", scan)
+}
+
+// guardThrown refuses an uncaught exception whose message would flatten
+// ropes past the budget: err.Error() reads the thrown value as a string.
+// Any other error passes as is.
+func (r *jsRuntime) guardThrown(err error) error {
+	var exc *goja.Exception
+	if !errors.As(err, &exc) || exc.Value() == nil {
+		return err
+	}
+
+	scan := r.newRopeScan()
+	scan.walk(exc.Value(), 0)
+
+	if refusal := r.scanRefusal("the thrown value", scan); refusal != nil {
+		return refusal
+	}
+
+	return err
+}
+
+// scanRefusal is the error for a value whose ropes do not fit what is left
+// of the budget, or that is too deep or too large to scan: what the scan did
+// not see is not assumed to be free.
+func (r *jsRuntime) scanRefusal(what string, scan *ropeScan) error {
+	if scan.exhausted {
+		//nolint:err113 // Built per call: carries the limits.
+		return fmt.Errorf(
+			"RangeError: %s: %s is nested more than %d levels deep, or holds more than %d values, and cannot be checked",
+			errMemoryBudgetPrefix, what, ropeScanMaxDepth, ropeScanMaxNodes)
+	}
 
 	if scan.bytes > 0 && !r.fits(scan.bytes) {
 		//nolint:err113 // Built per call: carries the sizes.
 		return fmt.Errorf(
-			"RangeError: %s: the script result would allocate %.0f bytes; a JS check may allocate at most %d MiB in total",
-			errMemoryBudgetPrefix, scan.bytes, maxScriptAllocBytes>>20)
+			"RangeError: %s: %s would allocate %.0f bytes; a JS check may allocate at most %d MiB in total",
+			errMemoryBudgetPrefix, what, scan.bytes, maxScriptAllocBytes>>20)
 	}
 
 	return nil
@@ -112,11 +149,30 @@ type ropeScan struct {
 	seen  map[*goja.Object]struct{}
 	nodes int
 	bytes float64
+	// limit is what is left of the budget: the scan stops once past it.
+	limit float64
+	// exhausted is set when the scan hit its depth or node cap: the part it
+	// did not visit may hold a rope, so the value is refused.
+	exhausted bool
+}
+
+// newRopeScan starts a scan bounded by what is left of the budget.
+func (r *jsRuntime) newRopeScan() *ropeScan {
+	return &ropeScan{
+		seen:  map[*goja.Object]struct{}{},
+		limit: float64(maxScriptAllocBytes - r.memory.used),
+	}
 }
 
 func (s *ropeScan) walk(val goja.Value, depth int) {
+	if s.done() || val == nil {
+		return
+	}
+
 	s.nodes++
-	if val == nil || s.nodes > ropeScanMaxNodes || depth > ropeScanMaxDepth {
+	if s.nodes > ropeScanMaxNodes || depth > ropeScanMaxDepth {
+		s.exhausted = true
+
 		return
 	}
 
@@ -126,11 +182,18 @@ func (s *ropeScan) walk(val goja.Value, depth int) {
 		return
 	}
 
-	obj, ok := val.(*goja.Object)
-	if !ok {
-		return
+	if obj, ok := val.(*goja.Object); ok {
+		s.walkObject(obj, depth)
 	}
+}
 
+// done reports whether the scan already has its answer: over the limit, or
+// past what it can check.
+func (s *ropeScan) done() bool {
+	return s.exhausted || s.bytes > s.limit
+}
+
+func (s *ropeScan) walkObject(obj *goja.Object, depth int) {
 	if _, done := s.seen[obj]; done {
 		return
 	}
@@ -141,6 +204,20 @@ func (s *ropeScan) walk(val goja.Value, depth int) {
 		return
 	}
 
+	// An Error's name and message are not enumerable, and listing its keys
+	// formats its stack, which copies them: they are counted twice, and the
+	// keys are only listed when that fits.
+	if obj.ClassName() == classError {
+		before := s.bytes
+		s.walk(obj.Get("name"), depth+1)
+		s.walk(obj.Get("message"), depth+1)
+		s.bytes += s.bytes - before
+
+		if s.done() {
+			return
+		}
+	}
+
 	// Typed arrays, buffers and wrapped Go values hold no JS strings.
 	if _, typed := typedArrayLength(obj); typed || obj.ExportType() == arrayBufferType {
 		return
@@ -148,7 +225,7 @@ func (s *ropeScan) walk(val goja.Value, depth int) {
 
 	if isRealArray(obj) {
 		length := int64(toLength(obj.Get("length")))
-		for idx := int64(0); idx < length && s.nodes <= ropeScanMaxNodes; idx++ {
+		for idx := int64(0); idx < length && !s.done(); idx++ {
 			s.walk(obj.GetIdx(idx), depth+1)
 		}
 
@@ -156,7 +233,7 @@ func (s *ropeScan) walk(val goja.Value, depth int) {
 	}
 
 	for _, key := range obj.Keys() {
-		if s.nodes > ropeScanMaxNodes {
+		if s.done() {
 			return
 		}
 

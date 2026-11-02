@@ -181,6 +181,7 @@
     "title": "Abonnenten",
     "description": "Personen, die E-Mail-Benachrichtigungen für diese Statusseite abonniert haben.",
     "empty": "Noch keine Abonnenten.",
+    "adminOnly": "Nur Administratoren der Organisation können sehen, wer diese Seite abonniert hat.",
     "email": "E-Mail",
     "scope": "Bereich",
     "status": "Status",

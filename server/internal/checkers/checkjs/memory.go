@@ -67,6 +67,9 @@ type memoryBudget struct {
 	// regexpReplace is RegExp.prototype[Symbol.replace] as installed, so
 	// replace() knows a regexp pattern from a script-defined replacer.
 	regexpReplace goja.Value
+	// regexpExec is RegExp.prototype.exec as installed (checking the run's
+	// deadline), which the split loop calls once per match.
+	regexpExec goja.Callable
 	// guarded holds the binding objects whose methods already refuse a huge
 	// unflattened string, so a handle returned twice is wrapped once.
 	guarded map[*goja.Object]struct{}
@@ -219,8 +222,10 @@ func (r *jsRuntime) installMemoryBudget() {
 		}
 	}
 
+	r.installBuiltinCaps(stringProto, arrayProto)
 	r.installStringCaps(stringProto)
 	r.installArgListCaps()
+	r.installFlattenGuards()
 }
 
 // installArgListCaps caps the calls that build an argument list from an
