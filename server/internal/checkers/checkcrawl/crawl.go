@@ -208,6 +208,10 @@ func (r *runner) stepRobots(ctx context.Context) bool {
 		r.state.Phase = phaseCrawl
 	case crawlconfig.SitemapAuto:
 		for _, sitemapURL := range parsed.sitemaps {
+			if !isAbsoluteHTTP(sitemapURL) {
+				continue
+			}
+
 			r.state.Sitemap.Pending = append(r.state.Sitemap.Pending, sitemapItem{U: sitemapURL})
 		}
 
@@ -263,6 +267,16 @@ func (r *runner) stepSitemap(ctx context.Context) bool {
 	return true
 }
 
+// isAbsoluteHTTP reports whether raw is an absolute http(s) URL. Sitemap URLs
+// come from the crawled site (robots.txt, sitemap indexes): anything else
+// (javascript:, data:, relative...) is dropped silently, like resolveRef does
+// for page links, so it is neither fetched nor stored as a finding.
+func isAbsoluteHTTP(raw string) bool {
+	parsed, err := url.Parse(raw)
+
+	return err == nil && (parsed.Scheme == schemeHTTP || parsed.Scheme == schemeHTTPS) && parsed.Host != ""
+}
+
 func (r *runner) absorbSitemap(sitemapURL string, body []byte) {
 	parsed, err := parseSitemap(body)
 	if err != nil {
@@ -273,6 +287,10 @@ func (r *runner) absorbSitemap(sitemapURL string, body []byte) {
 	}
 
 	for _, child := range parsed.children {
+		if !isAbsoluteHTTP(child) {
+			continue
+		}
+
 		r.state.Sitemap.Pending = append(r.state.Sitemap.Pending, sitemapItem{U: child})
 	}
 
