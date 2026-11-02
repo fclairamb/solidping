@@ -30,10 +30,13 @@ func regexpTooLongMessage() string {
 // compiles script patterns at run time, so setting it once at process start
 // covers every VM: the JS checker, the AI check runner and any other user.
 //
-//nolint:gochecknoinits // must run before any VM compiles a pattern
-func init() {
+// A package variable rather than an init: variables are set before any init
+// runs, and the script child (isolation_child.go) runs its script from one.
+var _ = func() bool {
 	regexp2.DefaultMatchTimeout = maxRegexpMatchTime
-}
+
+	return true
+}()
 
 // isRegexpTimeout reports whether a script error is a regexp2 match timeout.
 func isRegexpTimeout(err error) bool {

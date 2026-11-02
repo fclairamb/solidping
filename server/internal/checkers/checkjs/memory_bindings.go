@@ -18,10 +18,7 @@ const (
 // bindingGlobals are the globals whose methods hand script values to Go.
 //
 //nolint:gochecknoglobals // Fixed list of binding names.
-var bindingGlobals = []string{
-	"console", "sleep", "solidping", "http", "base64",
-	"browser", "rdp", "vnc", "tcp", "udp", "websocket",
-}
+var bindingGlobals = append([]string{"console", "sleep", "base64"}, hostGlobals...)
 
 // guardBindings puts the flatten guard in front of every binding (spec
 // 2026-11-01-01): a binding reads its string arguments in Go, which flattens
