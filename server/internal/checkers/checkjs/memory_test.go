@@ -586,10 +586,12 @@ console.log(o);`},
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			// goja writes up to 64 MiB of permitted output before the
-			// refusal (0.5 s on a quiet machine for JSON.stringify): the
-			// bound leaves room for a loaded runner. Without the caps these
-			// do not fail on time but on their status: they return "up".
-			requireRefusalWithin(t, tt.script, 3*time.Second)
+			// refusal (0.7 s on a quiet machine for JSON.stringify, 3.5 s
+			// seen on a CI runner with every parallel case competing for
+			// its cores): the bound only has to stay under the script
+			// timeout. Without the caps these do not fail on time but on
+			// their status: they return "up".
+			requireRefusalWithin(t, tt.script, 8*time.Second)
 		})
 	}
 }
