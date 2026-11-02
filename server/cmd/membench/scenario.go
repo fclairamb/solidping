@@ -112,6 +112,7 @@ func allScenarios() []scenario {
 			LocalOnly: true,
 			Caveat:    "embedded Postgres downloads and runs its own distribution, so this scenario is local-mode only",
 		},
+		checksScenario(3),
 		checksScenario(200),
 		checksScenario(500),
 		checksScenario(1000),
