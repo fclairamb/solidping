@@ -59,7 +59,7 @@ test.describe("Login with 2FA", () => {
       `${API_BASE}/api/v1/auth/2fa/confirm`,
       {
         headers: { Authorization: `Bearer ${org.accessToken}` },
-        data: { code: generateTotp(setup.secret), setupToken: setup.setupToken },
+        data: { code: generateTotp(setup.secret, -1), setupToken: setup.setupToken },
       },
     );
     expect(confirmResp.status()).toBe(200);

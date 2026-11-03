@@ -106,7 +106,7 @@ async function enrollTotp(page: Page, email: string, slug: string): Promise<stri
 
   const confirm = await page.request.post(`${API_BASE}/api/v1/auth/2fa/confirm`, {
     headers: { Authorization: `Bearer ${accessToken}` },
-    data: { code: generateTotp(secret), setupToken },
+    data: { code: generateTotp(secret, -1), setupToken },
   });
   expect(confirm.status()).toBe(200);
 

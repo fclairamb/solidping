@@ -735,8 +735,6 @@ func TestMemoryBudgetChargesRegexpSymbolMethods(t *testing.T) {
 	t.Cleanup(func() { SetIsolation(previous) })
 
 	tests := []refusalCase{
-		{"replace suffix", `var s = RegExp.prototype[Symbol.replace].call(/x/g, "x".repeat(200000), "$'");`},
-		{"replace prefix", `var s = /x/g[Symbol.replace]("x".repeat(200000), "$` + "`" + `");`},
 		{"replace function returning a big string", `var big = "x".repeat(1024 * 1024);
 var s = /a/g[Symbol.replace]("a".repeat(100), function () { return big; });`},
 		{"replace non-global", `var s = /x/[Symbol.replace]("x".repeat(1024 * 1024), "$'".repeat(128));`},
@@ -746,6 +744,29 @@ var s = /a/g[Symbol.replace]("a".repeat(100), function () { return big; });`},
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			requireRefusal(t, tt.script)
+		})
+	}
+
+	// The `$'` and `$`+"`"+` replacements are refused only after the matches the
+	// budget allows were processed: that work is permitted, so the bound is
+	// sized by a baseline of the same script on a shorter subject, as for the
+	// heavy copies, not by a fixed wall clock.
+	heavy := []heavyCase{
+		{
+			"replace suffix", `var s = RegExp.prototype[Symbol.replace].call(/x/g, "x".repeat(200000), "$'");`,
+			`var s = RegExp.prototype[Symbol.replace].call(/x/g, "x".repeat(10000), "$'");`,
+		},
+		{
+			"replace prefix", `var s = /x/g[Symbol.replace]("x".repeat(200000), "$` + "`" + `");`,
+			`var s = /x/g[Symbol.replace]("x".repeat(10000), "$` + "`" + `");`,
+		},
+	}
+	for _, tt := range heavy {
+		t.Run(tt.name, func(t *testing.T) {
+			start := time.Now()
+			result := runScript(t, tt.baseline+"\nreturn { status: \"up\" };")
+			require.Equal(t, checkerdef.StatusUp, result.Status, "baseline must fit the budget: %v", result.Output)
+			requireRefusalWithin(t, tt.script, 3*time.Since(start)+250*time.Millisecond)
 		})
 	}
 
