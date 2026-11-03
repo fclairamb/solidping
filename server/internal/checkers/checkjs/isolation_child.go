@@ -51,6 +51,10 @@ func init() {
 type childChannel struct {
 	in  *bufio.Reader
 	out io.Writer
+	// stringify is the capped JSON.stringify, read before the script runs:
+	// a script that replaces JSON.stringify cannot hand the parent arguments
+	// it did not pay for (spec 2026-11-03-01).
+	stringify goja.Callable
 }
 
 // runChildProcess runs the script init describes and writes its result.
@@ -90,6 +94,8 @@ func runChildProcess(stdin io.Reader, stdout io.Writer) int {
 	start := time.Now()
 	jsr := newJSRuntime(ctx, cfg)
 	jsr.registerLocalGlobals()
+
+	channel.stringify, _ = goja.AssertFunction(jsr.vm.Get("JSON").ToObject(jsr.vm).Get("stringify"))
 
 	for _, name := range hostGlobals {
 		if node, ok := setup.Globals[name]; ok {
@@ -222,11 +228,12 @@ func (c *childChannel) stub(jsr *jsRuntime, id int) func(goja.FunctionCall) goja
 	}
 }
 
-// encodeArgs writes the arguments with the script's own JSON.stringify, the
-// capped one, so it draws from the memory budget.
+// encodeArgs writes the arguments with the capped JSON.stringify captured
+// before the script ran, so they draw from the memory budget whatever the
+// script did to the global JSON.
 func (c *childChannel) encodeArgs(r *jsRuntime, args []goja.Value) (string, []int) {
-	stringify, ok := goja.AssertFunction(r.vm.Get("JSON").ToObject(r.vm).Get("stringify"))
-	if !ok {
+	stringify := c.stringify
+	if stringify == nil {
 		panic(r.vm.NewGoError(errChildProtocol))
 	}
 

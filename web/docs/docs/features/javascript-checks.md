@@ -674,7 +674,10 @@ build a large value in one call draw from a 64 MiB budget per execution,
 - `String.prototype.split` (16 bytes per part: `s.split("")` makes one slot
   per character), `replace` and `replaceAll` (the output: the input plus every
   expanded replacement, `$&`, `` $` ``, `$'`, `$1` or a replacer function's
-  result);
+  result), and `match` with a global regexp (32 bytes per match, as each one
+  is found); the same goes for the `RegExp.prototype` methods they rely on,
+  called directly (`re[Symbol.split](s)`, `re[Symbol.replace](s, "$'")`,
+  `re[Symbol.match](s)`);
 - `Function.prototype.apply`, `Reflect.apply` and `Reflect.construct` with an
   array-like argument list (16 bytes per argument);
 - `new ArrayBuffer(n)` and the typed-array constructors (`new Uint8Array(n)`,
@@ -726,6 +729,12 @@ egress rules, host allowlists and limits above apply to them unchanged.
   carry on.
 - A script killed at its timeout ends as `timeout`.
 - In both cases the console output is lost: it lived in the killed process.
+- The worker bounds what it builds from the values the script process sends
+  back. A binding call's arguments are limited to 8 MiB, the script's result
+  to 4 MiB, and each to 131,072 JSON values. Past one of these limits the run ends as `error`,
+  naming the limit, and the worker builds nothing from the message. Arguments
+  are always serialized with the original `JSON.stringify`, even if the
+  script replaced it.
 
 Self-hosted operators can tune this with environment variables:
 

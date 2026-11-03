@@ -91,6 +91,14 @@
     "revoke": "Wenn Sie sie nicht selbst aktiviert haben, wenden Sie sich sofort an Ihren Administrator und ändern Sie Ihr Passwort:",
     "cta": "Kontosicherheit ansehen"
   },
+  "totpDisabled": {
+    "subject": "Für Ihr SolidPing-Konto wurde die Zwei-Faktor-Authentifizierung deaktiviert",
+    "preheader": "Die Anmeldung verlangt keinen Code aus einer Authenticator-App mehr.",
+    "title": "Die Zwei-Faktor-Authentifizierung wurde deaktiviert",
+    "body": "Für Ihr SolidPing-Konto wurde am {date} die Zwei-Faktor-Authentifizierung deaktiviert. Die Anmeldung verlangt keinen Code aus einer Authenticator-App mehr.",
+    "revoke": "Wenn Sie sie nicht selbst deaktiviert haben, wenden Sie sich sofort an Ihren Administrator, ändern Sie Ihr Passwort und aktivieren Sie sie wieder:",
+    "cta": "Kontosicherheit ansehen"
+  },
   "discordLinked": {
     "subject": "Mit Ihrem SolidPing-Konto wurde ein Discord-Konto verknüpft",
     "preheader": "Damit kann man sich jetzt bei Ihrem Konto anmelden.",

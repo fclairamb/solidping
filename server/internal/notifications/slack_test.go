@@ -1746,6 +1746,12 @@ func (m *mockDBService) BumpGlobalCounter(
 	panic("not implemented")
 }
 
+func (m *mockDBService) RaiseGlobalCounter(
+	_ context.Context, _ string, _ int, _ time.Duration,
+) (bool, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) DeleteFile(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }

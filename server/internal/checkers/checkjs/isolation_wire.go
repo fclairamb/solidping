@@ -19,9 +19,21 @@ import (
 const (
 	// frameHeaderBytes is the big-endian length in front of every frame.
 	frameHeaderBytes = 4
-	// maxChildFrameBytes caps a frame the child sends (a call's arguments,
-	// the result). The child's own budget keeps an honest script far below.
-	maxChildFrameBytes = 32 << 20
+	// maxCallArgsBytes caps the arguments of one binding call. The largest
+	// legitimate one is an http request body or a browser script, both far
+	// below (a response body is 1 MiB at most, and JSON escaping can grow
+	// one several times).
+	maxCallArgsBytes = 8 << 20
+	// maxResultBytes caps the result frame: the output is stored with the
+	// check's result.
+	maxResultBytes = 4 << 20
+	// maxChildFrameBytes caps any frame the child sends: the larger of the
+	// two above, plus room for the envelope.
+	maxChildFrameBytes = maxCallArgsBytes + 64<<10
+	// maxChildFrameValues caps the JSON values the parent builds from what
+	// the child sends (a call's arguments, the result): compact JSON
+	// amplifies, `[]` is 2 bytes of text and hundreds of bytes as an object.
+	maxChildFrameValues = 1 << 17
 	// maxParentFrameBytes caps a frame the parent sends (a binding's result).
 	maxParentFrameBytes = 64 << 20
 )
@@ -37,6 +49,10 @@ const (
 
 // errFrameTooLarge is a frame over its cap.
 var errFrameTooLarge = errors.New("message too large")
+
+// errTooManyValues is a frame holding more JSON values than the parent
+// builds.
+var errTooManyValues = errors.New("message with too many values")
 
 // wireMsg is one frame. Exactly one field is set.
 type wireMsg struct {
@@ -126,6 +142,21 @@ func writeFrame(dst io.Writer, msg *wireMsg) error {
 
 // readFrame reads one frame of at most limit bytes.
 func readFrame(src *bufio.Reader, limit int) (*wireMsg, error) {
+	body, err := readFrameBody(src, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	msg := &wireMsg{}
+	if err := decodeUsingNumber(body, msg); err != nil {
+		return nil, fmt.Errorf("decoding a message: %w", err)
+	}
+
+	return msg, nil
+}
+
+// readFrameBody reads the body of one frame of at most limit bytes.
+func readFrameBody(src *bufio.Reader, limit int) ([]byte, error) {
 	var header [frameHeaderBytes]byte
 	if _, err := io.ReadFull(src, header[:]); err != nil {
 		return nil, err //nolint:wrapcheck // io.EOF is how the caller sees the peer leave.
@@ -141,16 +172,115 @@ func readFrame(src *bufio.Reader, limit int) (*wireMsg, error) {
 		return nil, fmt.Errorf("reading a message: %w", err)
 	}
 
-	msg := &wireMsg{}
+	return body, nil
+}
 
-	dec := json.NewDecoder(bytes.NewReader(body))
-	dec.UseNumber()
+// childFrame is a frame the child sent, with its result left undecoded
+// until it is checked.
+type childFrame struct {
+	Call *wireCall       `json:"call,omitempty"`
+	Done json.RawMessage `json:"done,omitempty"`
+}
 
-	if err := dec.Decode(msg); err != nil {
+// readChildFrame reads a frame the child sent, the parent's side of the
+// channel (spec 2026-11-03-01): before building anything from it, the
+// result and a call's arguments are checked against their byte cap and
+// their count of JSON values, so the objects the parent builds stay bounded
+// whatever text the child wrote.
+func readChildFrame(src *bufio.Reader) (*wireMsg, error) {
+	body, err := readFrameBody(src, maxChildFrameBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// The envelope only: a call's arguments are one JSON string in it, and
+	// the result stays raw.
+	frame := &childFrame{}
+	if err := json.Unmarshal(body, frame); err != nil {
 		return nil, fmt.Errorf("decoding a message: %w", err)
 	}
 
-	return msg, nil
+	switch {
+	case frame.Call != nil:
+		if err := checkChildJSON("a binding call's arguments", []byte(frame.Call.Args), maxCallArgsBytes); err != nil {
+			return nil, err
+		}
+
+		return &wireMsg{Call: frame.Call}, nil
+	case len(frame.Done) > 0 && !bytes.Equal(frame.Done, []byte("null")):
+		if err := checkChildJSON("the result", frame.Done, maxResultBytes); err != nil {
+			return nil, err
+		}
+
+		done := &wireResult{}
+		if err := decodeUsingNumber(frame.Done, done); err != nil {
+			return nil, fmt.Errorf("decoding the result: %w", err)
+		}
+
+		return &wireMsg{Done: done}, nil
+	default:
+		return &wireMsg{}, nil
+	}
+}
+
+// checkChildJSON refuses JSON text over maxBytes, or holding more than
+// maxChildFrameValues values.
+func checkChildJSON(what string, text []byte, maxBytes int) error {
+	if len(text) > maxBytes {
+		return fmt.Errorf("%w: %s: %d bytes, over the %d MiB limit",
+			errFrameTooLarge, what, len(text), maxBytes/bytesPerMiB)
+	}
+
+	if countJSONValues(text, maxChildFrameValues) > maxChildFrameValues {
+		return fmt.Errorf("%w: %s: more than the limit of %d JSON values",
+			errTooManyValues, what, maxChildFrameValues)
+	}
+
+	return nil
+}
+
+// countJSONValues counts the structural tokens of JSON text (`[`, `{`, `,`,
+// `:`) outside its strings, in one scan that allocates nothing: a bound on
+// the values decoding it builds. It stops once the count passes limit.
+func countJSONValues(text []byte, limit int) int {
+	count := 0
+	inString := false
+	escaped := false
+
+	for _, char := range text {
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case char == '\\':
+				escaped = true
+			case char == '"':
+				inString = false
+			}
+
+			continue
+		}
+
+		switch char {
+		case '"':
+			inString = true
+		case '[', '{', ',', ':':
+			count++
+			if count > limit {
+				return count
+			}
+		}
+	}
+
+	return count
+}
+
+// decodeUsingNumber decodes data into out, numbers as json.Number.
+func decodeUsingNumber(data []byte, out any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+
+	return dec.Decode(out) //nolint:wrapcheck // Wrapped by the callers.
 }
 
 // decodeJSONValue decodes raw the way goja exports a value: an integral

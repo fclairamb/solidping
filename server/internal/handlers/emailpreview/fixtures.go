@@ -85,6 +85,7 @@ var fixtureBuilders = map[string]func(i18n.Locale) map[string]any{
 	"device-token-created.html":        deviceTokenCreatedFixture,
 	"passkey-added.html":               passkeyAddedFixture,
 	"totp-enabled.html":                totpEnabledFixture,
+	"totp-disabled.html":               totpDisabledFixture,
 	"discord-linked.html":              discordLinkedFixture,
 	"membership-request-new.html":      membershipRequestNewFixture,
 	"membership-request-decision.html": membershipRequestDecisionFixture,

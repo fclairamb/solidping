@@ -85,8 +85,13 @@ func (r *jsRuntime) installStringCaps(stringProto *goja.Object) {
 		return
 	}
 
-	// Inside the flatten guard, which then sees every call first.
+	// Inside the flatten guard, which then sees every call first. The
+	// charges sit outside the deadline loops, so String.prototype.replace
+	// and split, which reach these symbol methods for a regexp, are charged
+	// once, by them.
 	r.installRegexpDeadline(regexpCtor, regexpProto)
+	r.wrapSymbol(regexpProto, goja.SymReplace, r.capRegexpReplace)
+	r.wrapSymbol(regexpProto, goja.SymSplit, r.capRegexpSplit)
 
 	// Named, not walked: RegExp.prototype also holds accessors (flags,
 	// source, …) that must stay accessors.
@@ -110,7 +115,7 @@ func (r *jsRuntime) installStringCaps(stringProto *goja.Object) {
 		_ = regexpProto.DefineDataPropertySymbol(sym, fn, goja.FLAG_TRUE, goja.FLAG_TRUE, goja.FLAG_FALSE)
 	}
 
-	r.memory.regexpReplace = regexpProto.GetSymbol(goja.SymReplace)
+	r.memory.regexpSplit = regexpProto.GetSymbol(goja.SymSplit)
 }
 
 // guardMethod puts the flatten guard in front of obj[name] when it is a
@@ -178,6 +183,11 @@ func (r *jsRuntime) capSplit(orig goja.Callable) func(goja.FunctionCall) goja.Va
 		if obj, ok := sep.(*goja.Object); ok {
 			if splitter := obj.GetSymbol(goja.SymSplit); splitter != nil &&
 				!goja.IsUndefined(splitter) && !goja.IsNull(splitter) {
+				// RegExp.prototype[Symbol.split] charges itself.
+				if splitterObj, isObj := splitter.(*goja.Object); isObj && splitterObj.SameAs(r.memory.regexpSplit) {
+					return callOriginal(orig, call.This, call.Arguments...)
+				}
+
 				return r.regexpSplit(orig, call, obj)
 			}
 		}
@@ -212,15 +222,39 @@ func (r *jsRuntime) capSplit(orig goja.Callable) func(goja.FunctionCall) goja.Va
 	}
 }
 
-// regexpSplit runs split with a separator that has its own Symbol.split.
+// regexpSplit runs split with a separator that has a Symbol.split of its
+// own, defined by the script.
 func (r *jsRuntime) regexpSplit(orig goja.Callable, call goja.FunctionCall, sep *goja.Object) goja.Value {
-	const what = "String.prototype.split"
+	return r.chargeRegexpSplit("String.prototype.split", sep, call.This, call.Argument(1),
+		func(str, limit goja.Value) goja.Value { return callOriginal(orig, str, sep, limit) })
+}
 
-	str := call.This.ToString()
+// capRegexpSplit charges RegExp.prototype[Symbol.split] as split charges a
+// regexp separator, which reaches it: `/(?:)/[Symbol.split](s)` turns every
+// character into an array slot too.
+func (r *jsRuntime) capRegexpSplit(orig goja.Callable) func(goja.FunctionCall) goja.Value {
+	return func(call goja.FunctionCall) goja.Value {
+		regex, ok := call.This.(*goja.Object)
+		if !ok {
+			return callOriginal(orig, call.This, call.Arguments...)
+		}
+
+		return r.chargeRegexpSplit("RegExp.prototype[Symbol.split]", regex, call.Argument(0), call.Argument(1),
+			func(str, limit goja.Value) goja.Value { return callOriginal(orig, regex, str, limit) })
+	}
+}
+
+// chargeRegexpSplit runs split(input, limit) on sep: its parts are bounded by
+// one per character (times sep's capture groups) before the call and
+// charged exactly after it, 16 bytes each.
+func (r *jsRuntime) chargeRegexpSplit(
+	what string, sep *goja.Object, input, limitArg goja.Value,
+	split func(str, limit goja.Value) goja.Value,
+) goja.Value {
+	str := input.ToString()
 	r.spendFlatten(what, str)
 
 	limit := math.Inf(1)
-	limitArg := call.Argument(1)
 
 	if !goja.IsUndefined(limitArg) {
 		limit = toUint32(limitArg)
@@ -235,7 +269,7 @@ func (r *jsRuntime) regexpSplit(orig goja.Callable, call goja.FunctionCall, sep 
 	bound := math.Min((float64(jsStringLen(str))+1)*(groups+1), limit)
 	r.checkAlloc(what, bound*jsValueSlotBytes)
 
-	result := callOriginal(orig, str, sep, limitArg)
+	result := split(str, limitArg)
 	r.spendAlloc(what, r.lengthOf(result)*jsValueSlotBytes)
 
 	return result
@@ -261,8 +295,9 @@ func splitParts(str, sep goja.Value) float64 {
 // goes to goja as a Go function, so each expansion ($&, the $` prefix, the
 // $' suffix, $1, or what a replacer function returns) is measured and charged before
 // goja appends it: `s.replaceAll("a", "$&$&$&…")` cannot multiply the input
-// in one call any more. A pattern with a Symbol.replace of its own (not a
-// RegExp) is left alone: it is script code, and runs as such.
+// in one call any more. A pattern with a Symbol.replace of its own is left to
+// it: RegExp.prototype[Symbol.replace] charges itself (capRegexpReplace), and
+// a script-defined one is script code, and runs as such.
 func (r *jsRuntime) capReplace(what string, all bool, orig goja.Callable) func(goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if goja.IsUndefined(call.This) || goja.IsNull(call.This) {
@@ -273,8 +308,7 @@ func (r *jsRuntime) capReplace(what string, all bool, orig goja.Callable) func(g
 		repl := call.Argument(1)
 
 		if obj, ok := pattern.(*goja.Object); ok {
-			replacer, isObj := obj.GetSymbol(goja.SymReplace).(*goja.Object)
-			if isObj && !replacer.SameAs(r.memory.regexpReplace) {
+			if _, isObj := obj.GetSymbol(goja.SymReplace).(*goja.Object); isObj {
 				return callOriginal(orig, call.This, call.Arguments...)
 			}
 		} else {
@@ -286,29 +320,11 @@ func (r *jsRuntime) capReplace(what string, all bool, orig goja.Callable) func(g
 		r.spendFlatten(what, str)
 
 		inputLen := float64(jsStringLen(str))
-		charged := false
 
-		chargeInput := func() {
-			if !charged {
-				charged = true
-				r.spendAlloc(what, inputLen)
-			}
-		}
-
-		var replacer func(goja.FunctionCall) goja.Value
-
-		if fn, ok := goja.AssertFunction(repl); ok {
-			replacer = func(c goja.FunctionCall) goja.Value {
-				chargeInput()
-
-				out := callOriginal(fn, goja.Undefined(), c.Arguments...).ToString()
-				r.spendAlloc(what, float64(jsStringLen(out)))
-
-				return out
-			}
-		} else {
+		if _, isFn := goja.AssertFunction(repl); !isFn {
 			replStr, _ := repl.ToString().(goja.String)
 			r.spendFlatten(what, replStr)
+			repl = replStr
 
 			// A string pattern with a template that does not depend on the
 			// match's position expands the same way at every match: charge
@@ -326,15 +342,73 @@ func (r *jsRuntime) capReplace(what string, all bool, orig goja.Callable) func(g
 
 				return callOriginal(orig, str, pattern, replStr)
 			}
-
-			replacer = func(c goja.FunctionCall) goja.Value {
-				chargeInput()
-
-				return r.substitute(what, replStr, c.Arguments)
-			}
 		}
 
-		return callOriginal(orig, str, pattern, r.vm.ToValue(replacer))
+		return callOriginal(orig, str, pattern, r.vm.ToValue(r.chargingReplacer(what, inputLen, repl)))
+	}
+}
+
+// capRegexpReplace charges RegExp.prototype[Symbol.replace] as capReplace
+// charges String.prototype.replace, which reaches it for a regexp pattern: a
+// script calling it directly, with a `$'` template over a global regexp,
+// would otherwise have goja expand the rest of the input at every match.
+func (r *jsRuntime) capRegexpReplace(orig goja.Callable) func(goja.FunctionCall) goja.Value {
+	const what = "RegExp.prototype[Symbol.replace]"
+
+	return func(call goja.FunctionCall) goja.Value {
+		if _, ok := call.This.(*goja.Object); !ok {
+			return callOriginal(orig, call.This, call.Arguments...)
+		}
+
+		str := call.Argument(0).ToString()
+		r.spendFlatten(what, str)
+
+		repl := call.Argument(1)
+		if _, isFn := goja.AssertFunction(repl); !isFn {
+			replStr, _ := repl.ToString().(goja.String)
+			r.spendFlatten(what, replStr)
+			repl = replStr
+		}
+
+		replacer := r.chargingReplacer(what, float64(jsStringLen(str)), repl)
+
+		return callOriginal(orig, call.This, str, r.vm.ToValue(replacer))
+	}
+}
+
+// chargingReplacer is the replacer function handed to goja in place of repl
+// (a function, or a template already converted to a string): it charges the
+// input once, at the first match, then each replacement before goja appends
+// it.
+func (r *jsRuntime) chargingReplacer(
+	what string, inputLen float64, repl goja.Value,
+) func(goja.FunctionCall) goja.Value {
+	charged := false
+
+	chargeInput := func() {
+		if !charged {
+			charged = true
+			r.spendAlloc(what, inputLen)
+		}
+	}
+
+	if fn, ok := goja.AssertFunction(repl); ok {
+		return func(c goja.FunctionCall) goja.Value {
+			chargeInput()
+
+			out := callOriginal(fn, goja.Undefined(), c.Arguments...).ToString()
+			r.spendAlloc(what, float64(jsStringLen(out)))
+
+			return out
+		}
+	}
+
+	replStr, _ := repl.(goja.String)
+
+	return func(c goja.FunctionCall) goja.Value {
+		chargeInput()
+
+		return r.substitute(what, replStr, c.Arguments)
 	}
 }
 

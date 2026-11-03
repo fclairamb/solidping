@@ -356,7 +356,7 @@ func (c *hostChannel) serve(stdout *bufio.Reader, stdin io.Writer, init *wireIni
 	}
 
 	for {
-		msg, err := readFrame(stdout, maxChildFrameBytes)
+		msg, err := readChildFrame(stdout)
 		if err != nil {
 			return nil, err
 		}
@@ -603,6 +603,14 @@ func (r *jsRuntime) outcomeResult(
 			Duration: duration,
 			Output:   r.buildOutput("script error: the run was canceled"),
 		}
+	case errors.Is(outcome.protoErr, errFrameTooLarge), errors.Is(outcome.protoErr, errTooManyValues):
+		// Refused by this process, which then killed the child: not an
+		// out-of-memory kill.
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusError,
+			Duration: duration,
+			Output:   r.buildOutput("script error: the script process sent " + outcome.protoErr.Error()),
+		}
 	case outcome.killedAt:
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusTimeout,
@@ -617,12 +625,6 @@ func (r *jsRuntime) outcomeResult(
 			Output: r.buildOutput(fmt.Sprintf(
 				"script error: memory limit exceeded: the script process used more than its %d MiB "+
 					"memory limit and was killed", settings.MemoryLimit/bytesPerMiB)),
-		}
-	case errors.Is(outcome.protoErr, errFrameTooLarge):
-		return &checkerdef.Result{
-			Status:   checkerdef.StatusError,
-			Duration: duration,
-			Output:   r.buildOutput("script error: the script process sent " + outcome.protoErr.Error()),
 		}
 	default:
 		return &checkerdef.Result{

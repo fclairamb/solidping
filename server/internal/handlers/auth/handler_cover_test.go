@@ -371,7 +371,11 @@ func TestHandlerTwoFactorFlow(t *testing.T) {
 	r.Equal(http.StatusUnauthorized,
 		f.do(t, coverCall{fn: h.Disable2FA, claims: f.admin, body: `{"code":"000000"}`}).Code)
 
-	rec = f.do(t, coverCall{fn: h.Disable2FA, claims: f.admin, body: `{"code":"` + code + `"}`})
+	// The confirm code is spent (single use, spec 2026-11-03-03): disabling
+	// takes the next one.
+	nextCode, err := totp.GenerateCode(*user.TOTPSecret, time.Now().Add(30*time.Second))
+	r.NoError(err)
+	rec = f.do(t, coverCall{fn: h.Disable2FA, claims: f.admin, body: `{"code":"` + nextCode + `"}`})
 	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
 
 	// Unknown user.

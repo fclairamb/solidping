@@ -2,12 +2,14 @@ package checkjs
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -284,4 +286,173 @@ func TestLastLine(t *testing.T) {
 	r.Equal("fatal error: runtime: out of memory", lastLine("\nfatal error: runtime: out of memory\n\ngoroutine 1\n"))
 	r.Equal("b", lastLine("a\nb\n"))
 	r.Empty(strings.TrimSpace(lastLine("")))
+}
+
+// parentHeapBound is how much the parent's heap may grow while it serves a
+// child that sends it hostile JSON (spec 2026-11-03-01). Before the parent
+// bounded its decoding, one call reached about 4.8 GB.
+const parentHeapBound = 256 << 20
+
+// runMeasuringParentHeap runs script isolated and returns its result and the
+// peak growth of this process's heap during the run. The tests calling it
+// are not parallel, so the heap is this run's.
+func runMeasuringParentHeap(t *testing.T, script string) (*checkerdef.Result, uint64) {
+	t.Helper()
+
+	runtime.GC()
+
+	var stats runtime.MemStats
+
+	runtime.ReadMemStats(&stats)
+	baseline := stats.HeapAlloc
+
+	var peak atomic.Uint64
+
+	stop := make(chan struct{})
+	sampled := make(chan struct{})
+
+	go func() {
+		defer close(sampled)
+
+		var sample runtime.MemStats
+
+		for {
+			runtime.ReadMemStats(&sample)
+
+			if sample.HeapAlloc > peak.Load() {
+				peak.Store(sample.HeapAlloc)
+			}
+
+			select {
+			case <-stop:
+				return
+			case <-time.After(5 * time.Millisecond):
+			}
+		}
+	}()
+
+	result := runIsolated(t, script, 20*time.Second)
+
+	close(stop)
+	<-sampled
+
+	if peak.Load() < baseline {
+		return result, 0
+	}
+
+	return result, peak.Load() - baseline
+}
+
+// A script replacing JSON.stringify cannot make the parent parse arguments
+// it did not pay for: the capped stringify captured before the script ran
+// encodes them, and the parent refuses them by size.
+//
+//nolint:paralleltest // Measures this process's heap.
+func TestIsolationReplacedStringifyCannotInflateTheParent(t *testing.T) {
+	r := require.New(t)
+	result, grown := runMeasuringParentHeap(t, `var s = "[],".repeat(8e6) + "[]";
+JSON.stringify = function () { return s; };
+http.get(s);
+return { status: "up" };`)
+
+	r.Equal(checkerdef.StatusError, result.Status, result.Output)
+	r.NotEmpty(result.Output["error"])
+	r.Less(grown, uint64(parentHeapBound), "parent heap grew by %d MiB", grown>>20)
+}
+
+// Honest arguments holding many values are refused before the parent parses
+// them, with an error naming the limit.
+//
+//nolint:paralleltest // Measures this process's heap.
+func TestIsolationCallArgumentsWithTooManyValues(t *testing.T) {
+	r := require.New(t)
+	result, grown := runMeasuringParentHeap(t, `var e = [];
+var a = new Array(2e5).fill(e);
+http.get(a);
+return { status: "up" };`)
+
+	r.Equal(checkerdef.StatusError, result.Status, result.Output)
+	r.Contains(result.Output["error"], "a binding call's arguments")
+	r.Contains(result.Output["error"], strconv.Itoa(maxChildFrameValues)+" JSON values")
+	r.Less(grown, uint64(parentHeapBound), "parent heap grew by %d MiB", grown>>20)
+}
+
+// A result holding a million values, or over its byte cap, is refused
+// before the parent decodes it.
+//
+//nolint:paralleltest // Measures this process's heap.
+func TestIsolationResultWithTooManyValues(t *testing.T) {
+	r := require.New(t)
+
+	values, grown := runMeasuringParentHeap(t,
+		`return { status: "up", output: { a: new Array(1e6).fill([]) } };`)
+	r.Equal(checkerdef.StatusError, values.Status, values.Output)
+	r.Contains(values.Output["error"], "the result")
+	r.Contains(values.Output["error"], strconv.Itoa(maxChildFrameValues)+" JSON values")
+	r.Less(grown, uint64(parentHeapBound), "parent heap grew by %d MiB", grown>>20)
+
+	size, grown := runMeasuringParentHeap(t,
+		`return { status: "up", output: { s: "x".repeat(5 << 20) } };`)
+	r.Equal(checkerdef.StatusError, size.Status, size.Output["error"])
+	r.Contains(size.Output["error"], "the result")
+	r.Contains(size.Output["error"], strconv.Itoa(maxResultBytes/bytesPerMiB)+" MiB limit")
+	r.Less(grown, uint64(parentHeapBound), "parent heap grew by %d MiB", grown>>20)
+}
+
+// An http.post with a 1 MB body and a result with a few hundred keys still
+// cross the channel.
+func TestIsolationLegitimateArgumentsAndResult(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		body, _ := io.ReadAll(req.Body)
+		_, _ = w.Write([]byte(strconv.Itoa(len(body))))
+	}))
+	t.Cleanup(srv.Close)
+
+	script := `var res = http.post(env.BASE + "/upload", { body: "x".repeat(1 << 20) });
+var out = { received: res.body };
+for (var i = 0; i < 300; i++) { out["k" + i] = { n: i, s: "v" + i, l: [i, i + 1] }; }
+return { status: res.statusCode === 200 ? "up" : "down", output: out };`
+
+	result, err := (&JSChecker{}).Execute(context.Background(), &JSConfig{
+		Script: script, Env: map[string]string{"BASE": srv.URL}, Timeout: 10 * time.Second,
+	})
+	r.NoError(err)
+	r.Equal(checkerdef.StatusUp, result.Status, result.Output["error"])
+	r.Equal(strconv.Itoa(1<<20), result.Output["received"])
+	r.Contains(result.Output, "k299")
+}
+
+func TestCountJSONValues(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	r.Equal(0, countJSONValues([]byte(`"a,b:[{}]"`), 10))
+	r.Equal(0, countJSONValues([]byte(`"esc\",[{"`), 10))
+	r.Equal(7, countJSONValues([]byte(`[{"a":1,"b":[]},2]`), 10))
+	r.Equal(3, countJSONValues([]byte(`[[],[],[],[]]`), 2), "stops past the limit")
+}
+
+// What a binding receives is what the script passed, whatever it did to the
+// global JSON.stringify.
+func TestIsolationArgumentsIgnoreAReplacedStringify(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		_, _ = w.Write([]byte(req.URL.Path))
+	}))
+	t.Cleanup(srv.Close)
+
+	result, err := (&JSChecker{}).Execute(context.Background(), &JSConfig{
+		Script: `JSON.stringify = function () { return '"http://127.0.0.1:1/replaced"'; };
+var res = http.get(env.BASE + "/real");
+return { status: "up", output: { path: res.body } };`,
+		Env: map[string]string{"BASE": srv.URL}, Timeout: 10 * time.Second,
+	})
+	r.NoError(err)
+	r.Equal(checkerdef.StatusUp, result.Status, result.Output["error"])
+	r.Equal("/real", result.Output["path"])
 }

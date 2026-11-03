@@ -2,7 +2,9 @@ package checkjs
 
 import (
 	"context"
+	"fmt"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
@@ -117,16 +119,12 @@ var s = Array(1).fill(0).flatMap(function () { return b; });`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			bound := time.Second
-			if tt.baseline != "" {
-				start := time.Now()
-				result := runScript(t, tt.baseline+"\nreturn { status: \"up\" };")
-				require.Equal(t, checkerdef.StatusUp, result.Status, "baseline must fit the budget: %v", result.Output)
-				// 3x the permitted work, plus a margin for scheduler noise.
-				bound = 3*time.Since(start) + 250*time.Millisecond
+			if tt.baseline == "" {
+				requireRefusal(t, tt.script)
+				return
 			}
 
-			requireRefusalWithin(t, tt.script, bound)
+			requireRefusalAllocating(t, tt.script, tt.baseline)
 		})
 	}
 }
@@ -153,6 +151,36 @@ func requireRefusalWithin(t *testing.T, script string, bound time.Duration) {
 	r.Equal(checkerdef.StatusError, result.Status, "output: %v", result.Output)
 	r.Contains(result.Output["error"], "RangeError: memory budget exceeded")
 	r.Less(elapsed, bound, "the refusal must come before the allocation")
+}
+
+// requireRefusalAllocating requires the memory budget refusal for script and
+// that the process allocated no more than about three times what the baseline
+// (the permitted part of the script, which succeeds) allocates. Allocated
+// bytes (runtime.MemStats.TotalAlloc) do not depend on CPU load, unlike a
+// wall clock, and the refused allocation is many times the permitted work.
+func requireRefusalAllocating(t *testing.T, script, baseline string) {
+	t.Helper()
+
+	var result *checkerdef.Result
+	permitted := allocatedDuring(func() {
+		result = runScript(t, baseline+"\nreturn { status: \"up\" };")
+	})
+	require.Equal(t, checkerdef.StatusUp, result.Status, "baseline must fit the budget: %v", result.Output)
+
+	const margin = 16 << 20
+	used := allocatedDuring(func() { requireRefusalWithin(t, script, 10*time.Second) })
+	require.Less(t, used, 3*permitted+margin,
+		"the refusal must come before the allocation: %d bytes allocated, the permitted work takes %d", used, permitted)
+}
+
+// allocatedDuring returns the bytes the process allocated while f ran.
+func allocatedDuring(f func()) uint64 {
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	f()
+	runtime.ReadMemStats(&after)
+
+	return after.TotalAlloc - before.TotalAlloc
 }
 
 type refusalCase struct {
@@ -721,4 +749,118 @@ func TestMemoryBudgetKeepsShortThrownMessage(t *testing.T) {
 
 	require.Equal(t, checkerdef.StatusError, result.Status)
 	require.Contains(t, result.Output["error"], "Error: short")
+}
+
+// TestMemoryBudgetChargesRegexpSymbolMethods: the RegExp.prototype symbol
+// methods called directly are charged like their String.prototype twins
+// (spec 2026-11-03-02). With isolation off, the `$'` replacement used to grow
+// the worker's heap to tens of GB, past the timeout.
+//
+//nolint:paralleltest // Swaps the package-level isolation settings.
+func TestMemoryBudgetChargesRegexpSymbolMethods(t *testing.T) {
+	previous := SetIsolation(IsolationSettings{Enabled: false})
+	t.Cleanup(func() { SetIsolation(previous) })
+
+	tests := []refusalCase{
+		{"replace function returning a big string", `var big = "x".repeat(1024 * 1024);
+var s = /a/g[Symbol.replace]("a".repeat(100), function () { return big; });`},
+		{"replace non-global", `var s = /x/[Symbol.replace]("x".repeat(1024 * 1024), "$'".repeat(128));`},
+		{"split empty regexp", `var s = RegExp.prototype[Symbol.split].call(/(?:)/, "x".repeat(8 * 1024 * 1024));`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requireRefusal(t, tt.script)
+		})
+	}
+
+	// The `$'` and `$`+"`"+` replacements are refused only after the matches the
+	// budget allows were processed: that work is permitted, so the bound is
+	// sized by a baseline of the same script on a shorter subject, as for the
+	// heavy copies, not by a fixed wall clock.
+	heavy := []heavyCase{
+		{
+			"replace suffix", `var s = RegExp.prototype[Symbol.replace].call(/x/g, "x".repeat(200000), "$'");`,
+			`var s = RegExp.prototype[Symbol.replace].call(/x/g, "x".repeat(10000), "$'");`,
+		},
+		{
+			"replace prefix", `var s = /x/g[Symbol.replace]("x".repeat(200000), "$` + "`" + `");`,
+			`var s = /x/g[Symbol.replace]("x".repeat(10000), "$` + "`" + `");`,
+		},
+	}
+	for _, tt := range heavy {
+		t.Run(tt.name, func(t *testing.T) {
+			requireRefusalAllocating(t, tt.script, tt.baseline)
+		})
+	}
+
+	// A global match is charged as exec finds each match, so the refusal
+	// comes after the matches the budget allows (2 Mi of them): that work
+	// is permitted, and sized by a baseline that fits, as for the heavy
+	// copies.
+	t.Run("match global empty regexp", func(t *testing.T) {
+		const match = `var s = RegExp.prototype[Symbol.match].call(/(?:)/g, "x".repeat(%d));`
+
+		requireRefusalAllocating(t, fmt.Sprintf(match, 4*1024*1024), fmt.Sprintf(match, 1024*1024))
+	})
+}
+
+// TestMemoryBudgetPositiveControlRegexpSymbolMethods: within the budget, the
+// symbol methods called directly, and the String.prototype methods that reach
+// them, give what they always gave.
+//
+//nolint:paralleltest // Swaps the package-level isolation settings.
+func TestMemoryBudgetPositiveControlRegexpSymbolMethods(t *testing.T) {
+	previous := SetIsolation(IsolationSettings{Enabled: false})
+	t.Cleanup(func() { SetIsolation(previous) })
+
+	r := require.New(t)
+
+	result := runScript(t, `
+var rp = RegExp.prototype;
+return {
+  status: "up",
+  output: {
+    suffix: rp[Symbol.replace].call(/a/g, "banana", "$'"),
+    prefix: /n/g[Symbol.replace]("banana", "[$`+"`"+`]"),
+    whole: /(an)/g[Symbol.replace]("banana", "<$&|$1>"),
+    named: /(?<v>a)/[Symbol.replace]("banana", "$<v>$<v>"),
+    dollar: /a/[Symbol.replace]("banana", "$$"),
+    fn: /a(n)?/g[Symbol.replace]("banana", function (m, g, pos) { return "(" + m + g + pos + ")"; }),
+    viaString: "banana".replace(/a/g, "$'"),
+    viaStringFn: "banana".replace(/a/g, function (m, pos) { return pos; }),
+    split: rp[Symbol.split].call(/(n)/, "banana").join("|"),
+    splitLimit: /a/[Symbol.split]("banana", 2).join("|"),
+    viaStringSplit: "a,b,,c".split(/,/).join("|"),
+    match: rp[Symbol.match].call(/a/g, "banana").join("|"),
+    matchOne: /n(a)/[Symbol.match]("banana").join("|"),
+    matchNone: String(/z/g[Symbol.match]("banana")),
+    viaStringMatch: "banana".match(/an/g).join("|"),
+    matchAll: Array.from("banana".matchAll(/a/g), function (m) { return m.index; }).join("|"),
+    search: /n/[Symbol.search]("banana"),
+    bigMatch: "ab".repeat(100000).match(/a/g).length,
+  },
+};`)
+
+	r.Equal(checkerdef.StatusUp, result.Status, result.Output)
+
+	out := result.Output
+	r.Equal("bnanannan", out["suffix"])
+	r.Equal("ba[ba]a[bana]a", out["prefix"])
+	r.Equal("b<an|an><an|an>a", out["whole"])
+	r.Equal("baanana", out["named"])
+	r.Equal("b$nana", out["dollar"])
+	r.Equal("b(ann1)(ann3)(aundefined5)", out["fn"])
+	r.Equal("bnanannan", out["viaString"])
+	r.Equal("b1n3n5", out["viaStringFn"])
+	r.Equal("ba|n|a|n|a", out["split"])
+	r.Equal("b|n", out["splitLimit"])
+	r.Equal("a|b||c", out["viaStringSplit"])
+	r.Equal("a|a|a", out["match"])
+	r.Equal("na|a", out["matchOne"])
+	r.Equal("null", out["matchNone"])
+	r.Equal("an|an", out["viaStringMatch"])
+	r.Equal("1|3|5", out["matchAll"])
+	r.EqualValues(2, out["search"])
+	r.EqualValues(100000, out["bigMatch"])
 }
