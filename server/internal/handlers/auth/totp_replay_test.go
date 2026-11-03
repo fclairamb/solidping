@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -112,7 +113,7 @@ func TestTOTPConcurrentVerifyOneWins(t *testing.T) {
 			switch {
 			case verifyErr == nil:
 				accepted.Add(1)
-			case verifyErr == ErrInvalid2FACode: //nolint:errorlint // sentinel returned as is
+			case errors.Is(verifyErr, ErrInvalid2FACode):
 				refused.Add(1)
 			}
 		})
