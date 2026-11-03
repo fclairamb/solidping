@@ -674,7 +674,10 @@ build a large value in one call draw from a 64 MiB budget per execution,
 - `String.prototype.split` (16 bytes per part: `s.split("")` makes one slot
   per character), `replace` and `replaceAll` (the output: the input plus every
   expanded replacement, `$&`, `` $` ``, `$'`, `$1` or a replacer function's
-  result);
+  result), and `match` with a global regexp (32 bytes per match, as each one
+  is found); the same goes for the `RegExp.prototype` methods they rely on,
+  called directly (`re[Symbol.split](s)`, `re[Symbol.replace](s, "$'")`,
+  `re[Symbol.match](s)`);
 - `Function.prototype.apply`, `Reflect.apply` and `Reflect.construct` with an
   array-like argument list (16 bytes per argument);
 - `new ArrayBuffer(n)` and the typed-array constructors (`new Uint8Array(n)`,

@@ -10,6 +10,10 @@ import (
 // methodExec is RegExp.prototype.exec's name.
 const methodExec = "exec"
 
+// matchSlotBytes is what a global match keeps per match: an array slot and
+// the string value boxed in it.
+const matchSlotBytes = 2 * jsValueSlotBytes
+
 // The per-match limit (maxRegexpMatchTime) bounds one match, not one call:
 // goja runs the whole match loop of a global replace, a global match and
 // every split natively, inside one call that vm.Interrupt never reaches, and
@@ -38,8 +42,17 @@ func (r *jsRuntime) installRegexpDeadline(regexpCtor, regexpProto *goja.Object) 
 		r.memory.regexpExec = exec
 	}
 
-	r.wrapSymbol(regexpProto, goja.SymReplace, r.execDrivenGlobal)
-	r.wrapSymbol(regexpProto, goja.SymMatch, r.execDrivenGlobal)
+	r.wrapSymbol(regexpProto, goja.SymReplace, func(orig goja.Callable) func(goja.FunctionCall) goja.Value {
+		return r.execDrivenGlobal(orig, nil)
+	})
+	// A global match keeps every match in its result array: each one is
+	// charged as exec finds it, its slot and the boxed string in it
+	// (String.prototype.match reaches this too).
+	r.wrapSymbol(regexpProto, goja.SymMatch, func(orig goja.Callable) func(goja.FunctionCall) goja.Value {
+		return r.execDrivenGlobal(orig, func() {
+			r.spendAlloc("RegExp.prototype[Symbol.match]", matchSlotBytes)
+		})
+	})
 	r.wrapSymbol(regexpProto, goja.SymSplit, func(orig goja.Callable) func(goja.FunctionCall) goja.Value {
 		return r.boundedRegexpSplit(regexpCtor, regexpProto, orig)
 	})
@@ -83,8 +96,9 @@ func (r *jsRuntime) deadlineGuard(orig goja.Callable) func(goja.FunctionCall) go
 // execDrivenGlobal runs Symbol.replace or Symbol.match with a global regexp
 // on a Proxy of it: goja's native shortcut needs the regexp itself, so it
 // takes the spec loop, one exec per match. A regexp with an exec of its own
-// already takes that loop, and a non-global one matches once.
-func (r *jsRuntime) execDrivenGlobal(orig goja.Callable) func(goja.FunctionCall) goja.Value {
+// already takes that loop, and a non-global one matches once. onMatch, when
+// set, runs after every exec that found a match.
+func (r *jsRuntime) execDrivenGlobal(orig goja.Callable, onMatch func()) func(goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		regex, ok := call.This.(*goja.Object)
 		if !ok || regex.ClassName() != classRegExp || hasOwn(regex, methodExec) {
@@ -96,13 +110,16 @@ func (r *jsRuntime) execDrivenGlobal(orig goja.Callable) func(goja.FunctionCall)
 			return callOriginal(orig, call.This, call.Arguments...)
 		}
 
-		return callOriginal(orig, r.execProxy(regex), call.Arguments...)
+		return callOriginal(orig, r.execProxy(regex, onMatch), call.Arguments...)
 	}
 }
 
 // execProxy is regex seen through a Proxy that reads and writes regex itself, so
 // its accessors (flags, global, …) and exec still see a RegExp receiver.
-func (r *jsRuntime) execProxy(regex *goja.Object) goja.Value {
+func (r *jsRuntime) execProxy(regex *goja.Object, onMatch func()) goja.Value {
+	// The loop reads exec once per match: the wrapper is built once per exec.
+	var lastExec, lastWrapper goja.Value
+
 	proxy := r.vm.NewProxy(regex, &goja.ProxyTrapConfig{
 		Get: func(target *goja.Object, property string, _ goja.Value) goja.Value {
 			val := target.Get(property)
@@ -110,14 +127,26 @@ func (r *jsRuntime) execProxy(regex *goja.Object) goja.Value {
 				return val
 			}
 
+			if lastExec != nil && val != nil && lastExec.SameAs(val) {
+				return lastWrapper
+			}
+
 			exec, ok := goja.AssertFunction(val)
 			if !ok {
 				return val
 			}
 
-			return r.vm.ToValue(func(c goja.FunctionCall) goja.Value {
-				return callOriginal(exec, target, c.Arguments...)
+			lastExec = val
+			lastWrapper = r.vm.ToValue(func(c goja.FunctionCall) goja.Value {
+				res := callOriginal(exec, target, c.Arguments...)
+				if onMatch != nil && !goja.IsNull(res) && !goja.IsUndefined(res) {
+					onMatch()
+				}
+
+				return res
 			})
+
+			return lastWrapper
 		},
 		Set: func(target *goja.Object, property string, value, _ goja.Value) bool {
 			if err := target.Set(property, value); err != nil {

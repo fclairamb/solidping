@@ -64,9 +64,10 @@ type memoryBudget struct {
 	// isArray is the original Array.isArray, captured before the script runs
 	// (it sees through a Proxy, which isRealArray does not).
 	isArray goja.Callable
-	// regexpReplace is RegExp.prototype[Symbol.replace] as installed, so
-	// replace() knows a regexp pattern from a script-defined replacer.
-	regexpReplace goja.Value
+	// regexpSplit is RegExp.prototype[Symbol.split] as installed, which
+	// charges itself: split() leaves a regexp separator to it, and charges a
+	// script-defined splitter.
+	regexpSplit goja.Value
 	// regexpExec is RegExp.prototype.exec as installed (checking the run's
 	// deadline), which the split loop calls once per match.
 	regexpExec goja.Callable
