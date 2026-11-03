@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
@@ -118,16 +119,12 @@ var s = Array(1).fill(0).flatMap(function () { return b; });`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			bound := time.Second
-			if tt.baseline != "" {
-				start := time.Now()
-				result := runScript(t, tt.baseline+"\nreturn { status: \"up\" };")
-				require.Equal(t, checkerdef.StatusUp, result.Status, "baseline must fit the budget: %v", result.Output)
-				// 3x the permitted work, plus a margin for scheduler noise.
-				bound = 3*time.Since(start) + 250*time.Millisecond
+			if tt.baseline == "" {
+				requireRefusal(t, tt.script)
+				return
 			}
 
-			requireRefusalWithin(t, tt.script, bound)
+			requireRefusalAllocating(t, tt.script, tt.baseline)
 		})
 	}
 }
@@ -154,6 +151,36 @@ func requireRefusalWithin(t *testing.T, script string, bound time.Duration) {
 	r.Equal(checkerdef.StatusError, result.Status, "output: %v", result.Output)
 	r.Contains(result.Output["error"], "RangeError: memory budget exceeded")
 	r.Less(elapsed, bound, "the refusal must come before the allocation")
+}
+
+// requireRefusalAllocating requires the memory budget refusal for script and
+// that the process allocated no more than about three times what the baseline
+// (the permitted part of the script, which succeeds) allocates. Allocated
+// bytes (runtime.MemStats.TotalAlloc) do not depend on CPU load, unlike a
+// wall clock, and the refused allocation is many times the permitted work.
+func requireRefusalAllocating(t *testing.T, script, baseline string) {
+	t.Helper()
+
+	var result *checkerdef.Result
+	permitted := allocatedDuring(func() {
+		result = runScript(t, baseline+"\nreturn { status: \"up\" };")
+	})
+	require.Equal(t, checkerdef.StatusUp, result.Status, "baseline must fit the budget: %v", result.Output)
+
+	const margin = 16 << 20
+	used := allocatedDuring(func() { requireRefusalWithin(t, script, 10*time.Second) })
+	require.Less(t, used, 3*permitted+margin,
+		"the refusal must come before the allocation: %d bytes allocated, the permitted work takes %d", used, permitted)
+}
+
+// allocatedDuring returns the bytes the process allocated while f ran.
+func allocatedDuring(f func()) uint64 {
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	f()
+	runtime.ReadMemStats(&after)
+
+	return after.TotalAlloc - before.TotalAlloc
 }
 
 type refusalCase struct {
@@ -763,10 +790,7 @@ var s = /a/g[Symbol.replace]("a".repeat(100), function () { return big; });`},
 	}
 	for _, tt := range heavy {
 		t.Run(tt.name, func(t *testing.T) {
-			start := time.Now()
-			result := runScript(t, tt.baseline+"\nreturn { status: \"up\" };")
-			require.Equal(t, checkerdef.StatusUp, result.Status, "baseline must fit the budget: %v", result.Output)
-			requireRefusalWithin(t, tt.script, 3*time.Since(start)+250*time.Millisecond)
+			requireRefusalAllocating(t, tt.script, tt.baseline)
 		})
 	}
 
@@ -777,12 +801,7 @@ var s = /a/g[Symbol.replace]("a".repeat(100), function () { return big; });`},
 	t.Run("match global empty regexp", func(t *testing.T) {
 		const match = `var s = RegExp.prototype[Symbol.match].call(/(?:)/g, "x".repeat(%d));`
 
-		start := time.Now()
-		baseline := runScript(t, fmt.Sprintf(match, 1024*1024)+"\nreturn { status: \"up\" };")
-		require.Equal(t, checkerdef.StatusUp, baseline.Status, "baseline must fit the budget: %v", baseline.Output)
-
-		bound := 3*time.Since(start) + 250*time.Millisecond
-		requireRefusalWithin(t, fmt.Sprintf(match, 4*1024*1024), bound)
+		requireRefusalAllocating(t, fmt.Sprintf(match, 4*1024*1024), fmt.Sprintf(match, 1024*1024))
 	})
 }
 
