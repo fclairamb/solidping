@@ -726,6 +726,12 @@ egress rules, host allowlists and limits above apply to them unchanged.
   carry on.
 - A script killed at its timeout ends as `timeout`.
 - In both cases the console output is lost: it lived in the killed process.
+- The worker bounds what it builds from the values the script process sends
+  back. A binding call's arguments are limited to 8 MiB, the script's result
+  to 4 MiB, and each to 131,072 JSON values. Past one of these limits the run ends as `error`,
+  naming the limit, and the worker builds nothing from the message. Arguments
+  are always serialized with the original `JSON.stringify`, even if the
+  script replaced it.
 
 Self-hosted operators can tune this with environment variables:
 
