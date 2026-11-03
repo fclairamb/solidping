@@ -1022,6 +1022,14 @@ type Service interface {
 	// unit per call. Duplicate rows left by older code are tolerated: the
 	// largest live count wins and every row is rewritten.
 	BumpGlobalCounter(ctx context.Context, key string, limit int, ttl time.Duration) (limited bool, err error)
+	// RaiseGlobalCounter ATOMICALLY raises the global (organization_uid IS
+	// NULL) counter at key to value: raised=true, with expires_at = now+ttl,
+	// when the live value is below value (or there is none); raised=false,
+	// and no write, when it is already at or above value. It is the
+	// compare-and-set behind single-use TOTP codes (spec 2026-11-03-03): two
+	// concurrent callers raising to the same value never both succeed. Same
+	// serialization as BumpGlobalCounter.
+	RaiseGlobalCounter(ctx context.Context, key string, value int, ttl time.Duration) (raised bool, err error)
 	// SetStateEntryIfNotExists creates entry only if key doesn't exist.
 	// Returns (created, error) where created is true if entry was created.
 	SetStateEntryIfNotExists(

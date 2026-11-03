@@ -91,6 +91,14 @@
     "revoke": "If you did not turn it on yourself, contact your administrator right away and change your password:",
     "cta": "Review my account security"
   },
+  "totpDisabled": {
+    "subject": "Two-factor authentication was turned off for your SolidPing account",
+    "preheader": "Signing in no longer asks for a code from an authenticator app.",
+    "title": "Two-factor authentication was turned off",
+    "body": "Two-factor authentication was turned off for your SolidPing account on {date}. Signing in no longer asks for a code from an authenticator app.",
+    "revoke": "If you did not turn it off yourself, contact your administrator right away, change your password and turn it back on:",
+    "cta": "Review my account security"
+  },
   "discordLinked": {
     "subject": "A Discord account was linked to your SolidPing account",
     "preheader": "It can now be used to sign in to your account.",

@@ -5078,8 +5078,8 @@ func (s *Service) Confirm2FA(ctx context.Context, userUID string, req Confirm2FA
 		return nil, err
 	}
 
-	if !totp.Validate(req.Code, *user.TOTPSecret) {
-		return nil, ErrInvalid2FACode
+	if err = s.consumeTOTPCode(ctx, userUID, req.Code, *user.TOTPSecret); err != nil {
+		return nil, err
 	}
 
 	recoveryCodes, err := generateRecoveryCodes()
@@ -5155,8 +5155,10 @@ func (s *Service) Verify2FA(
 		return nil, ErrTwoFANotEnabled
 	}
 
-	if !totp.Validate(code, *user.TOTPSecret) {
-		return nil, ErrInvalid2FACode
+	// Single use: a replayed code is refused like a wrong one and, the
+	// budget being spent above, counts as a failed attempt.
+	if err = s.consumeTOTPCode(ctx, claims.UserUID, code, *user.TOTPSecret); err != nil {
+		return nil, err
 	}
 
 	s.resetTwoFAAttemptCounter(ctx, claims.UserUID)
@@ -5257,8 +5259,9 @@ func (s *Service) Disable2FA(ctx context.Context, userUID, code string) error {
 		return ErrTwoFANotEnabled
 	}
 
-	if !totp.Validate(code, *user.TOTPSecret) {
-		return ErrInvalid2FACode
+	// The code that just signed the user in cannot also remove the factor.
+	if err = s.consumeTOTPCode(ctx, userUID, code, *user.TOTPSecret); err != nil {
+		return err
 	}
 
 	emptySecret := ""
@@ -5274,6 +5277,7 @@ func (s *Service) Disable2FA(ctx context.Context, userUID, code string) error {
 	}
 
 	s.resetTwoFAAttemptCounter(ctx, userUID)
+	s.notifyTOTPDisabled(ctx, user)
 
 	return nil
 }
