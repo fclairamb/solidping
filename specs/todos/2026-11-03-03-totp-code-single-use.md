@@ -34,3 +34,7 @@ Found by the security scan of 2026-11-03 (finding AD3). Severity: low. It helps 
 ## Open questions
 
 - Reuse the 2FA attempt budget for refused replays? Recommended: yes, a replay counts as a failed attempt.
+
+## Resolved open questions
+
+- Reuse the 2FA attempt budget for refused replays: yes, a replay counts as a failed attempt. (autopilot: recommended answer)
