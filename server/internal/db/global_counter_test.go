@@ -40,6 +40,7 @@ func TestBumpGlobalCounter_SQLite(t *testing.T) {
 	require.NoError(t, svc.Initialize(t.Context()))
 
 	testBumpGlobalCounter(t, svc)
+	testRaiseGlobalCounter(t, svc)
 }
 
 // TestBumpGlobalCounter_Postgres is the real-engine twin: Postgres has a
@@ -70,6 +71,7 @@ func TestBumpGlobalCounter_Postgres(t *testing.T) {
 	}
 
 	testBumpGlobalCounter(t, svc)
+	testRaiseGlobalCounter(t, svc)
 }
 
 // burstGlobalCounter fires n concurrent bumps and returns how many were
@@ -282,4 +284,73 @@ func insertRawStateEntry(ctx context.Context, svc db.Service, entry *models.Stat
 	_, err := svc.DB().NewInsert().Model(entry).Exec(ctx)
 
 	return err
+}
+
+// testRaiseGlobalCounter proves the compare-and-set behind single-use TOTP
+// codes (spec 2026-11-03-03): a value is accepted once, a lower or equal one
+// is refused, a higher one is accepted, and a concurrent burst raising to the
+// same value admits exactly one caller.
+func testRaiseGlobalCounter(t *testing.T, svc db.Service) {
+	t.Helper()
+
+	ctx := t.Context()
+	r := require.New(t)
+	key := "test_raise:" + t.Name()
+
+	raised, err := svc.RaiseGlobalCounter(ctx, key, 100, time.Minute)
+	r.NoError(err)
+	r.True(raised, "first value is accepted")
+
+	for _, value := range []int{100, 99} {
+		raised, err = svc.RaiseGlobalCounter(ctx, key, value, time.Minute)
+		r.NoError(err)
+		r.False(raised, "value %d at or below the recorded one is refused", value)
+	}
+
+	raised, err = svc.RaiseGlobalCounter(ctx, key, 101, time.Minute)
+	r.NoError(err)
+	r.True(raised, "a higher value is accepted")
+
+	rows := liveCounterRows(ctx, t, svc, key)
+	r.Len(rows, 1)
+	r.Equal(101, models.CounterValue(rows[0]))
+
+	// Concurrent callers raising to one value: exactly one wins.
+	burstKey := key + ":burst"
+
+	var (
+		wg      sync.WaitGroup
+		winners atomic.Int32
+		errs    atomic.Int32
+	)
+
+	for range globalCounterBurst {
+		wg.Go(func() {
+			ok, raiseErr := svc.RaiseGlobalCounter(ctx, burstKey, 7, time.Minute)
+			if raiseErr != nil {
+				errs.Add(1)
+
+				return
+			}
+
+			if ok {
+				winners.Add(1)
+			}
+		})
+	}
+
+	wg.Wait()
+	r.Equal(int32(1), winners.Load(), "exactly one concurrent raise wins")
+	r.Equal(int32(0), errs.Load())
+
+	// An expired record no longer blocks.
+	expiredKey := key + ":expired"
+	raised, err = svc.RaiseGlobalCounter(ctx, expiredKey, 5, time.Millisecond)
+	r.NoError(err)
+	r.True(raised)
+	time.Sleep(1100 * time.Millisecond)
+
+	raised, err = svc.RaiseGlobalCounter(ctx, expiredKey, 5, time.Minute)
+	r.NoError(err)
+	r.True(raised, "an expired record is ignored")
 }
