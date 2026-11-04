@@ -295,7 +295,7 @@ require (
 	github.com/rumblefrog/go-a2s v1.0.3
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/sijms/go-ora/v3 v3.0.1
-	github.com/slack-go/slack v0.33.0
+	github.com/slack-go/slack v0.34.0
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.44.0
@@ -306,8 +306,8 @@ require (
 	github.com/urfave/cli/v3 v3.14.0
 	github.com/vanng822/go-premailer v1.37.0
 	github.com/wneessen/go-mail v0.8.1
-	github.com/xdg-go/scram v1.2.0
-	go.mongodb.org/mongo-driver/v2 v2.9.2
+	github.com/xdg-go/scram v1.3.0
+	go.mongodb.org/mongo-driver/v2 v2.9.3
 	go.opentelemetry.io/contrib/bridges/otelslog v0.21.0
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.21.0
