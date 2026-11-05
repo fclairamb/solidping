@@ -308,7 +308,7 @@ func (s *Service) bulkUpdateOne(
 
 	plan, err := s.prepareCheckUpdate(ctx, check, changes)
 	if err != nil {
-		return skip(s.bulkSkipReason(ctx, check, err))
+		return skip(s.bulkSkipReason(ctx, check.UID, err))
 	}
 
 	if dryRun {
@@ -321,7 +321,7 @@ func (s *Service) bulkUpdateOne(
 
 	updated, err := s.writeCheckUpdate(ctx, plan, changes)
 	if err != nil {
-		return skip(s.bulkSkipReason(ctx, check, err))
+		return skip(s.bulkSkipReason(ctx, check.UID, err))
 	}
 
 	return nil, updated.Warnings
@@ -330,12 +330,12 @@ func (s *Service) bulkUpdateOne(
 // bulkSkipReason tells a check the caller can fix (rejected, with the
 // validation message) from a server fault, which is logged and reported
 // without its internals.
-func (s *Service) bulkSkipReason(ctx context.Context, check *models.Check, err error) (string, error) {
+func (s *Service) bulkSkipReason(ctx context.Context, checkUID string, err error) (string, error) {
 	if isCheckUpdateRejection(err) {
 		return BulkUpdateSkipRejected, err
 	}
 
-	slog.ErrorContext(ctx, "bulk update of a check failed", "check_uid", check.UID, "error", err)
+	slog.ErrorContext(ctx, "bulk update of a check failed", "check_uid", checkUID, "error", err)
 
 	return BulkUpdateSkipError, errBulkInternal
 }
