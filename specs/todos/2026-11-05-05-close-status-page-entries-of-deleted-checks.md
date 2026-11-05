@@ -41,6 +41,11 @@ The report is right about the symptom and partly outdated about the cause: a che
 1. **Resolve or delete the entries?** Recommended: **resolve** them (with a resolved update), as a recovery does. The public history stays truthful and subscribers get a closure. Trade-off: the deleted check's name stays in the page's history; deleting the entries (soft-delete via `softDeletePublicationRow`) erases that, but rewrites a public history visitors may already have seen. For the demo org, which is wiped hourly anyway, deleting would also be acceptable.
 2. **Override `auto_resolve = never` on deletion?** Recommended: **yes**. `never` means "a human closes it after a recovery", and after a deletion there is nothing left to watch. Trade-off: an operator who wanted to write their own closing note loses that chance.
 
+## Resolved open questions
+
+1. Resolve the entries (with a resolved update), do not delete them. (autopilot: recommended answer)
+2. Override `auto_resolve = never` on deletion: yes. (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes fclairamb/solidping-business#44 (already closed when the spec was filed; the spec file tracks it). The implementing PR body must carry `Closes fclairamb/solidping-business#44`. When the spec is archived to `specs/done/`, verify the issue is closed and, if not, close it by hand:
