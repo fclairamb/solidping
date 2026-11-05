@@ -847,3 +847,59 @@ func TestRegionOfflineAgreesWithCount(t *testing.T) {
 		r.Contains(text, want[1])
 	}
 }
+
+// buttonVariantFor returns the btn-table variant class ("btn-primary",
+// "btn-secondary", ...) of the button whose link points at url, or "" when no
+// such link is rendered.
+func buttonVariantFor(html, url string) string {
+	idx := strings.Index(html, `href="`+url+`"`)
+	if idx < 0 {
+		return ""
+	}
+
+	const marker = `class="btn-table `
+
+	start := strings.LastIndex(html[:idx], marker)
+	if start < 0 {
+		return ""
+	}
+
+	rest := html[start+len(marker):]
+	end := strings.Index(rest, `"`)
+
+	return rest[:end]
+}
+
+func TestFormatter_FormatIncidentResolvedViewIncidentIsPrimary(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := NewFormatter()
+	r.NoError(err)
+
+	data := incidentViewModel()
+	_, html, _, err := formatter.Format("incident-resolved.html", i18n.English, data)
+	r.NoError(err)
+
+	r.Equal("btn-primary", buttonVariantFor(html, "https://example.com/d/orgs/acme/incidents/inc-123"),
+		"the only call to action of a resolved email must be a primary button")
+}
+
+func TestFormatter_IncidentActionsKeepHierarchy(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := NewFormatter()
+	r.NoError(err)
+
+	data := incidentViewModel()
+	_, html, _, err := formatter.Format("incident-created.html", i18n.English, data)
+	r.NoError(err)
+
+	r.Equal("btn-primary", buttonVariantFor(html, "https://example.com/api/v1/orgs/acme/incidents/inc-123/ack?token=abc"),
+		"ack stays the primary action")
+	r.Equal("btn-secondary", buttonVariantFor(html, "https://example.com/d/orgs/acme/incidents/inc-123"),
+		"view incident stays secondary next to the ack button")
+}

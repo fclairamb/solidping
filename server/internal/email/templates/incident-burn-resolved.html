@@ -24,7 +24,7 @@
         <tr><td class="label">{{t "incident.labels.until"}}</td><td class="value">{{date .ResolvedAt}}{{if .Duration}} ({{duration .Duration}}){{end}}</td></tr>
         {{if .IncidentNumber}}<tr><td class="label">{{t "common.labels.incident"}}</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
     </table>
-    {{if .IncidentURL}}<div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" (t "common.incidentActions.viewIncident") "Variant" "secondary"}}</div>{{end}}
+    {{if .IncidentURL}}<div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" (t "common.incidentActions.viewIncident") "Variant" "primary"}}</div>{{end}}
 {{end}}
 {{define "text"}}{{t "incident.burnResolved.title" "slo" .SLOName}}
 
