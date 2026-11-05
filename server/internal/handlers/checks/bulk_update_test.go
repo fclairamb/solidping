@@ -7,8 +7,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 const missingCheckUID = "00000000-0000-0000-0000-000000000000"
@@ -232,4 +234,166 @@ func TestBulkUpdateRefusesCrossOrgCheck(t *testing.T) {
 	got, err := w.svc.GetCheck(ctx, foreign.Slug, foreignCheck.UID, checks.GetCheckOptions{})
 	r.NoError(err)
 	r.True(*got.Enabled, "another org's check is never written")
+}
+
+func TestBulkUpdateUnknownOrganization(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	w := newPlacementWorld(t, 0, "gravelines", "paris")
+
+	_, err := w.svc.BulkUpdateChecks(t.Context(), "ghost-org", bulkRequest([]string{"x"}, `{"enabled": false}`, false))
+	r.ErrorIs(err, checks.ErrOrganizationNotFound)
+}
+
+func TestBulkUpdateRejectsForeignPrivateRegion(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	w := newPlacementWorld(t, 0, "gravelines", "paris")
+	check := w.create(t, checks.CreateCheckRequest{})
+
+	_, err := w.svc.BulkUpdateChecks(t.Context(), w.org.Slug, bulkRequest(
+		[]string{check.UID}, `{"regions": ["@acmetech/aws-paris"]}`, false))
+	r.Error(err)
+	r.True(checks.IsBulkUpdateRequestError(err), "another org's private location is a 400")
+}
+
+func TestBulkUpdatePrivateRegionOfTheOrg(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	w := newPlacementWorld(t, 0, "gravelines", "paris")
+	check := w.create(t, checks.CreateCheckRequest{})
+
+	resp, err := w.svc.BulkUpdateChecks(ctx, w.org.Slug, bulkRequest(
+		[]string{check.UID}, `{"regions": ["@`+w.org.Slug+`/office"]}`, false))
+	r.NoError(err)
+	r.Len(resp.Data, 1)
+
+	got, err := w.svc.GetCheck(ctx, w.org.Slug, check.UID, checks.GetCheckOptions{})
+	r.NoError(err)
+	r.Equal([]string{"@office"}, got.Regions)
+}
+
+func TestBulkUpdateSkipsChecksDemoCannotWrite(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	w := newPlacementWorld(t, 0, "gravelines", "paris")
+	check := w.create(t, checks.CreateCheckRequest{})
+
+	resp, err := w.svc.BulkUpdateChecks(demoCtx("visitor-1"), w.org.Slug, bulkRequest(
+		[]string{check.UID}, `{"regions": ["paris"]}`, false))
+	r.NoError(err)
+	r.Empty(resp.Data)
+	r.Len(resp.Skipped, 1)
+	r.Equal(checks.BulkUpdateSkipReadOnly, resp.Skipped[0].Reason)
+
+	got, err := w.svc.GetCheck(t.Context(), w.org.Slug, check.UID, checks.GetCheckOptions{})
+	r.NoError(err)
+	r.Equal(check.Regions, got.Regions)
+}
+
+// TestBulkUpdateDedupesWarnings: two browser checks pinned to a region
+// without headless Chrome raise the same advisory, reported once.
+func TestBulkUpdateDedupesWarnings(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	w := newPlacementWorld(t, 0, "tokyo", "gravelines")
+	cfg := map[string]any{"url": "https://acme.com"}
+	first := w.create(t, checks.CreateCheckRequest{Type: "browser", Config: cfg})
+	second := w.create(t, checks.CreateCheckRequest{Type: "browser", Config: cfg})
+
+	resp, err := w.svc.BulkUpdateChecks(t.Context(), w.org.Slug, bulkRequest(
+		[]string{first.UID, second.UID}, `{"regions": ["tokyo"]}`, false))
+	r.NoError(err)
+	r.Len(resp.Data, 2)
+	r.Len(resp.Warnings, 1)
+}
+
+// TestBulkUpdateRejectsAGatedCheck: a check the type gates refuse at the
+// requested regions is skipped as rejected, on a real run and on a dry run.
+func TestBulkUpdateRejectsAGatedCheck(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	w := newPlacementWorld(t, 0, "gravelines", "paris")
+	docker := w.create(t, checks.CreateCheckRequest{
+		Type: "docker", Config: map[string]any{"containerName": "postgres"},
+	})
+	plain := w.create(t, checks.CreateCheckRequest{})
+
+	w.svc.SetDeploymentMode(config.DeploymentModeSaaS)
+
+	for _, dryRun := range []bool{false, true} {
+		resp, err := w.svc.BulkUpdateChecks(ctx, w.org.Slug, bulkRequest(
+			[]string{docker.UID, plain.UID}, `{"regions": ["paris"]}`, dryRun))
+		r.NoError(err)
+		r.Len(resp.Data, 1, "dryRun=%v", dryRun)
+		r.Equal(plain.UID, resp.Data[0].UID)
+		r.Len(resp.Skipped, 1)
+		r.Equal(docker.UID, resp.Skipped[0].UID)
+		r.Equal(checks.BulkUpdateSkipRejected, resp.Skipped[0].Reason)
+		r.NotEmpty(resp.Skipped[0].Message)
+	}
+
+	got, err := w.svc.GetCheck(ctx, w.org.Slug, docker.UID, checks.GetCheckOptions{})
+	r.NoError(err)
+	r.Equal(docker.Regions, got.Regions, "a rejected check is left untouched")
+}
+
+func TestBulkUpdateReportsStorageFailures(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	w := newPlacementWorld(t, 0, "gravelines", "paris")
+	check := w.create(t, checks.CreateCheckRequest{})
+
+	r.NoError(w.db.SetSystemParameter(ctx, regions.ParamRegions, "not-a-list", false))
+
+	_, err := w.svc.BulkUpdateChecks(ctx, w.org.Slug, bulkRequest([]string{check.UID}, `{"regions": ["paris"]}`, false))
+	r.Error(err)
+	r.False(checks.IsBulkUpdateRequestError(err), "a storage failure is a 500, not a 400")
+}
+
+func TestBulkUpdateReportsListFailure(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	w := newPlacementWorld(t, 0, "gravelines", "paris")
+	check := w.create(t, checks.CreateCheckRequest{})
+
+	_, err := w.db.DB().ExecContext(ctx, "DROP TABLE checks")
+	r.NoError(err)
+
+	_, err = w.svc.BulkUpdateChecks(ctx, w.org.Slug, bulkRequest([]string{check.UID}, `{"enabled": false}`, false))
+	r.Error(err)
+	r.False(checks.IsBulkUpdateRequestError(err))
+}
+
+// TestBulkUpdateReportsAServerFaultPerCheck: a failure that is not the
+// caller's to fix is reported as error, without its internals.
+func TestBulkUpdateReportsAServerFaultPerCheck(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	w := newPlacementWorld(t, 0, "gravelines", "paris")
+	check := w.create(t, checks.CreateCheckRequest{})
+
+	_, err := w.db.DB().ExecContext(ctx, "DROP TABLE check_jobs")
+	r.NoError(err)
+
+	resp, err := w.svc.BulkUpdateChecks(ctx, w.org.Slug, bulkRequest([]string{check.UID}, `{"enabled": false}`, false))
+	r.NoError(err)
+	r.Empty(resp.Data)
+	r.Len(resp.Skipped, 1)
+	r.Equal(checks.BulkUpdateSkipError, resp.Skipped[0].Reason)
+	r.Equal("internal error", resp.Skipped[0].Message)
 }
