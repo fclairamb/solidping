@@ -348,4 +348,49 @@ test.describe("Organization profile", () => {
     await expect(page.getByTestId("auto-join-pattern-save")).toBeVisible();
     await expect(page.getByTestId("org-profile-card")).toHaveCount(0);
   });
+
+  test("a super admin outside the org sees its name and logo after a reload", async ({
+    page,
+  }) => {
+    // A super admin working in an org they don't belong to has no entry in
+    // /auth/me's `organizations` (memberships only): the name and logo must
+    // come from the session's scoped `organization`, or a reload blanks them.
+    const { orgSlug, ownerToken } = await seedOwnedOrg(page);
+    const orgName = `Acme Outside ${uniqueStamp()}`;
+    const logoUrl = "https://acme.example/logo.png";
+
+    const patchResp = await page.request.patch(`${API_BASE}/api/v1/orgs/${orgSlug}`, {
+      headers: { Authorization: `Bearer ${ownerToken}` },
+      data: { name: orgName, logoUrl },
+    });
+    expect(patchResp.ok()).toBeTruthy();
+
+    // `test@test.com` is a super admin (testdata.go) with no membership here.
+    const loginResp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
+      data: { org: orgSlug, email: "test@test.com", password: "test" },
+    });
+    expect(loginResp.status()).toBe(200);
+    const admin = (await loginResp.json()) as {
+      accessToken: string;
+      refreshToken?: string;
+      expiresIn?: number;
+      organizations?: { slug: string }[];
+    };
+    // Precondition: the org is really absent from the membership list.
+    expect((admin.organizations ?? []).map((o) => o.slug)).not.toContain(orgSlug);
+
+    // Registered after the owner's: init scripts run in order, so this
+    // session is the one the page boots with.
+    await seedBrowserSession(page, { ...admin, slug: orgSlug });
+
+    await page.goto(`orgs/${orgSlug}/organization/settings`);
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("org-profile-name")).toHaveValue(orgName, {
+      timeout: 15000,
+    });
+    await expect(page.getByTestId("sidebar-org-name")).toHaveText(orgName);
+    await expect(page.getByTestId("sidebar-org-logo")).toHaveAttribute("src", logoUrl);
+  });
 });
