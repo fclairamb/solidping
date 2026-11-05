@@ -436,11 +436,7 @@ func runStartupDataFixupsInner(ctx context.Context, server *app.Server) error {
 		return recErr
 	}
 
-	// Best-effort: a stale status-page entry is a papercut, not a reason to
-	// refuse to boot.
-	if pubErr := server.CloseOrphanedStatusPagePublications(ctx); pubErr != nil {
-		slog.WarnContext(ctx, "Failed to close status-page entries of deleted checks", "error", pubErr)
-	}
+	server.CloseOrphanedStatusPagePublications(ctx)
 
 	return nil
 }
