@@ -436,6 +436,8 @@ func runStartupDataFixupsInner(ctx context.Context, server *app.Server) error {
 		return recErr
 	}
 
+	server.CloseOrphanedStatusPagePublications(ctx)
+
 	return nil
 }
 
