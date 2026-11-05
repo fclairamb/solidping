@@ -72,10 +72,28 @@ inside it.
   `"placement": "pinned"` (it keeps its current regions), or an explicit
   `regions` list to pin it somewhere else. `"regions": []` puts a check back on
   the default placement.
-- **Every pinned check at once:** **Automatic placement** on the checks list
-  (`POST /api/v1/orgs/{org}/checks/auto-placement`). Each check keeps its
-  regions and its region count, so neither its cost nor where it runs today
-  changes; it only gains failover. Checks on a private location are skipped.
+- **Every pinned check at once:** **Automatic placement** on the checks list.
+  Each check keeps its region count, and its regions while they are healthy, so
+  its cost does not change; it gains failover. Checks on a private location
+  stay pinned.
+- **Pin many checks to the same regions:** **Set regions…** in the ⋯ menu of
+  the checks list opens a dialog with a region picker. It applies to the checks
+  currently matched by the list's filters (type, status, group, search) and
+  shows how many that is before you confirm.
+- **Over the API, many checks at once:** `PATCH /api/v1/orgs/{org}/checks` with
+  `{"checkUids": [...], "changes": {...}, "dryRun": false}` applies `changes`,
+  shaped like a single-check `PATCH` body, to every listed check (at most
+  1000). For example `{"placement": "auto"}`, `{"regions": ["eu-fr-paris"]}`,
+  `{"enabled": false}` or `{"period": "00:05:00"}`. A bulk update accepts
+  `enabled`, `resolveOpenIncidents`, `period`, `placement`, `regions`,
+  `regionCount`, `regionPool`, `confirmationPeriodSeconds` and
+  `recoveryPeriodSeconds`; any other field is refused. The answer lists the
+  updated checks in `data` and the `skipped` ones with their reason
+  (`not_found`, `read_only`, `rejected` with the validation message, `error`),
+  plus the `warnings` a single update would return. `"dryRun": true` runs every
+  validation without writing.
+- `POST /api/v1/orgs/{org}/checks/auto-placement` is deprecated and will be
+  removed after 2026-12-15: use the bulk `PATCH` with `{"placement": "auto"}`.
 
 Checks created before automatic placement existed are pinned, with one
 exception: a check whose regions were exactly the platform's default regions
