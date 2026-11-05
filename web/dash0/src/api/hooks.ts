@@ -1147,58 +1147,7 @@ export function useCloneCheck(org: string) {
   });
 }
 
-/** One check switched to automatic placement (spec 2026-09-25-06). */
-export interface AutoPlacementItem {
-  uid: string;
-  slug?: string;
-  name?: string;
-  regions: string[];
-  regionCount: number;
-}
-
-/** Response of POST /checks/auto-placement. */
-export interface AutoPlacementResponse {
-  dryRun: boolean;
-  data: AutoPlacementItem[];
-  skipped: { uid: string; slug?: string; reason: string }[];
-}
-
-/** Dry-runs the checks list's bulk "Switch to automatic placement": which
- * pinned checks would switch. Only fetched while the dialog is open. */
-export function useAutoPlacementPreview(org: string, enabled: boolean) {
-  return useQuery({
-    queryKey: ["autoPlacementPreview", org],
-    queryFn: () =>
-      apiFetch<AutoPlacementResponse>(`/api/v1/orgs/${org}/checks/auto-placement`, {
-        method: "POST",
-        body: JSON.stringify({ dryRun: true }),
-      }),
-    enabled: !!org && enabled,
-    staleTime: 0,
-  });
-}
-
-/** Switches every eligible pinned check (or the named ones) to automatic
- * placement: same regions, same count, empty pool — only failover is gained. */
-export function useSwitchToAutoPlacement(org: string) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (checkUids?: string[]) =>
-      apiFetch<AutoPlacementResponse>(`/api/v1/orgs/${org}/checks/auto-placement`, {
-        method: "POST",
-        body: JSON.stringify(checkUids && checkUids.length > 0 ? { checkUids } : {}),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["checks", org] });
-      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
-      queryClient.invalidateQueries({ queryKey: ["check", org] });
-      queryClient.invalidateQueries({ queryKey: ["autoPlacementPreview", org] });
-    },
-  });
-}
-
-/** Filters of the checks list that scope the bulk "Set regions" action. */
+/** Filters of the checks list that scope a bulk action. */
 export interface BulkCheckFilters {
   q?: string;
   type?: string;
@@ -1207,75 +1156,87 @@ export interface BulkCheckFilters {
   internal?: string;
 }
 
-/** Every check UID matching the list's filters, all pages walked (spec
- * 2026-11-05-01). Only fetched while the bulk dialog is open. */
-export function useCheckUidsMatching(
-  org: string,
-  filters: BulkCheckFilters,
-  enabled: boolean,
-) {
+/** Every check matching the list's filters, all pages walked (spec
+ * 2026-11-05-01). Only fetched while a bulk dialog is open. */
+export function useChecksMatching(org: string, filters: BulkCheckFilters, enabled: boolean) {
   return useQuery({
-    queryKey: ["checkUidsMatching", org, filters],
+    queryKey: ["checksMatching", org, filters],
     queryFn: async () => {
-      const uids: string[] = [];
+      const checks: Check[] = [];
       let cursor: string | undefined;
       do {
         const page = await apiFetch<ChecksListResponse>(
           buildChecksUrl(org, { ...filters, limit: 100, cursor }),
         );
-        for (const check of page.data ?? []) uids.push(check.uid);
+        checks.push(...(page.data ?? []));
         cursor = page.pagination?.cursor;
       } while (cursor);
-      return uids;
+      return checks;
     },
     enabled: !!org && enabled,
     staleTime: 0,
   });
 }
 
-/** Response of POST /checks/regions. */
-export interface SetRegionsResponse {
+/** The fields of a check PATCH a bulk update accepts (spec 2026-11-05-01). */
+export interface BulkCheckChanges {
+  enabled?: boolean;
+  resolveOpenIncidents?: boolean;
+  period?: string;
+  placement?: CheckPlacement;
+  regions?: string[];
+  regionCount?: number;
+  regionPool?: string[];
+  confirmationPeriodSeconds?: number;
+  recoveryPeriodSeconds?: number;
+}
+
+/** Response of PATCH /checks: the checks updated (or that would be) and the
+ * ones left alone, with why. */
+export interface BulkUpdateChecksResponse {
   dryRun: boolean;
-  updated: { uid: string; slug?: string; name?: string; regions: string[] }[];
+  data: { uid: string; slug?: string; name?: string }[];
   skipped: { uid: string; slug?: string; reason: string; message?: string }[];
   warnings?: { name: string; message: string; code?: string }[];
 }
 
-/** Dry-runs the bulk "Set regions": how many of the given checks would be
- * pinned to the chosen regions. */
-export function useSetRegionsPreview(
+function bulkUpdateChecks(
+  org: string,
+  body: { checkUids: string[]; changes: BulkCheckChanges; dryRun?: boolean },
+) {
+  return apiFetch<BulkUpdateChecksResponse>(`/api/v1/orgs/${org}/checks`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Dry-runs a bulk update: which of the given checks the changes would apply to. */
+export function useBulkUpdateChecksPreview(
   org: string,
   checkUids: string[],
-  regions: string[],
+  changes: BulkCheckChanges | null,
   enabled: boolean,
 ) {
   return useQuery({
-    queryKey: ["setRegionsPreview", org, checkUids, regions],
-    queryFn: () =>
-      apiFetch<SetRegionsResponse>(`/api/v1/orgs/${org}/checks/regions`, {
-        method: "POST",
-        body: JSON.stringify({ checkUids, regions, dryRun: true }),
-      }),
-    enabled: !!org && enabled && checkUids.length > 0 && regions.length > 0,
+    queryKey: ["bulkUpdateChecksPreview", org, checkUids, changes],
+    queryFn: () => bulkUpdateChecks(org, { checkUids, changes: changes ?? {}, dryRun: true }),
+    enabled: !!org && enabled && checkUids.length > 0 && changes !== null,
     staleTime: 0,
   });
 }
 
-/** Pins the given checks to exactly the given regions. */
-export function useSetRegions(org: string) {
+/** Applies one set of changes, shaped like a check PATCH, to several checks. */
+export function useBulkUpdateChecks(org: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (body: { checkUids: string[]; regions: string[] }) =>
-      apiFetch<SetRegionsResponse>(`/api/v1/orgs/${org}/checks/regions`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+    mutationFn: (body: { checkUids: string[]; changes: BulkCheckChanges }) => bulkUpdateChecks(org, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
       queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
       queryClient.invalidateQueries({ queryKey: ["check", org] });
-      queryClient.invalidateQueries({ queryKey: ["setRegionsPreview", org] });
+      queryClient.invalidateQueries({ queryKey: ["checksMatching", org] });
+      queryClient.invalidateQueries({ queryKey: ["bulkUpdateChecksPreview", org] });
     },
   });
 }

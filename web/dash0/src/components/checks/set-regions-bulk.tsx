@@ -1,13 +1,13 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
-  useCheckUidsMatching,
+  useBulkUpdateChecks,
+  useBulkUpdateChecksPreview,
+  useChecksMatching,
   useRegions,
-  useSetRegions,
-  useSetRegionsPreview,
   type BulkCheckFilters,
 } from "@/api/hooks";
 import {
@@ -26,7 +26,8 @@ import { Checkbox } from "@/components/ui/checkbox";
  * The checks list's bulk action "Set regions…" (spec 2026-11-05-01), a
  * controlled dialog opened from the header ⋯ menu. Its scope is the checks the
  * list's filters currently match; the dialog states that count, dry-runs the
- * pin for the chosen regions, then pins them all on confirm.
+ * pin for the chosen regions, then pins them all on confirm, both through the
+ * bulk check PATCH.
  */
 export function SetRegionsBulkDialog({
   org,
@@ -44,25 +45,26 @@ export function SetRegionsBulkDialog({
   const [selected, setSelected] = useState<string[]>([]);
 
   const { data: regionsData } = useRegions(org);
-  const matching = useCheckUidsMatching(org, filters, open);
-  const uids = matching.data ?? [];
-  const preview = useSetRegionsPreview(org, uids, selected, open);
-  const setRegions = useSetRegions(org);
+  const matching = useChecksMatching(org, filters, open);
+  const uids = useMemo(() => (matching.data ?? []).map((check) => check.uid), [matching.data]);
+  const changes = useMemo(() => (selected.length > 0 ? { regions: selected } : null), [selected]);
+  const preview = useBulkUpdateChecksPreview(org, uids, changes, open);
+  const setRegions = useBulkUpdateChecks(org);
 
   const toggle = (slug: string) =>
     setSelected((current) =>
       current.includes(slug) ? current.filter((s) => s !== slug) : [...current, slug],
     );
 
-  const updatable = preview.data?.updated.length ?? 0;
+  const updatable = preview.data?.data.length ?? 0;
   const skipped = preview.data?.skipped.length ?? 0;
 
   const confirm = () => {
     setRegions.mutate(
-      { checkUids: uids, regions: selected },
+      { checkUids: uids, changes: { regions: selected } },
       {
         onSuccess: (result) => {
-          toast.success(t("setRegions.updated", { count: result.updated.length }));
+          toast.success(t("setRegions.updated", { count: result.data.length }));
           onOpenChange(false);
         },
         onError: () => {

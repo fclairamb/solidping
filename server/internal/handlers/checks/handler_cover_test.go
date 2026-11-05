@@ -52,7 +52,7 @@ func newFullChecksRouterWithDB(t *testing.T) (*httpx.Router, *sqlite.Service) {
 	g.GET("/stats", h.GetCheckStats)
 	g.POST("/validate", h.ValidateCheck)
 	g.POST("/auto-placement", h.SwitchToAutoPlacement)
-	g.POST("/regions", h.SetRegions)
+	g.PATCH("", h.BulkUpdateChecks)
 	g.GET("/export", h.ExportChecks)
 	g.POST("/import", h.ImportChecks)
 	g.POST("/apply", h.ApplyChecks)
@@ -228,7 +228,7 @@ func TestChecksHandlerEndpoints(t *testing.T) {
 	}
 }
 
-func TestSetRegionsHandler(t *testing.T) {
+func TestBulkUpdateChecksHandler(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
@@ -248,15 +248,16 @@ func TestSetRegionsHandler(t *testing.T) {
 		name, path, body string
 		want             int
 	}{
-		{"bad json", base + "/regions", "{", http.StatusUnprocessableEntity},
-		{"unknown region", base + "/regions", `{"checkUids":["x"],"regions":["paris"]}`, http.StatusBadRequest},
-		{"ghost org", "/orgs/ghost/checks/regions", `{"checkUids":["x"],"regions":["paris"]}`, http.StatusNotFound},
-		{"no checks", base + "/regions", `{"regions":["paris"]}`, http.StatusBadRequest},
-		{"no regions", base + "/regions", `{"checkUids":["x"]}`, http.StatusBadRequest},
+		{"bad json", base, "{", http.StatusUnprocessableEntity},
+		{"unknown region", base, `{"checkUids":["x"],"changes":{"regions":["paris"]}}`, http.StatusBadRequest},
+		{"ghost org", "/orgs/ghost/checks", `{"checkUids":["x"],"changes":{"enabled":false}}`, http.StatusNotFound},
+		{"no checks", base, `{"changes":{"enabled":false}}`, http.StatusBadRequest},
+		{"no changes", base, `{"checkUids":["x"]}`, http.StatusBadRequest},
+		{"unsupported field", base, `{"checkUids":["x"],"changes":{"slug":"y"}}`, http.StatusBadRequest},
 	}
 
 	for _, step := range steps {
-		rec := checksCall(t, router, http.MethodPost, step.path, step.body)
+		rec := checksCall(t, router, http.MethodPatch, step.path, step.body)
 		r.Equal(step.want, rec.Code, "%s: %s", step.name, rec.Body.String())
 	}
 
@@ -265,24 +266,23 @@ func TestSetRegionsHandler(t *testing.T) {
 		{Slug: "paris"},
 	}, false))
 
-	rec := checksCall(t, router, http.MethodPost, base+"/regions",
-		`{"checkUids":["`+check.UID+`","missing"],"regions":["paris"]}`)
+	rec := checksCall(t, router, http.MethodPatch, base,
+		`{"checkUids":["`+check.UID+`","missing"],"changes":{"regions":["paris"]}}`)
 	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
 
-	var resp checks.SetRegionsResponse
+	var resp checks.BulkUpdateChecksResponse
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
 	r.False(resp.DryRun)
-	r.Len(resp.Updated, 1)
-	r.Equal(check.UID, resp.Updated[0].UID)
-	r.Equal([]string{"paris"}, resp.Updated[0].Regions)
+	r.Len(resp.Data, 1)
+	r.Equal(check.UID, resp.Data[0].UID)
 	r.Len(resp.Skipped, 1)
 	r.Equal("missing", resp.Skipped[0].UID)
-	r.Equal(checks.SetRegionsSkipNotFound, resp.Skipped[0].Reason)
+	r.Equal(checks.BulkUpdateSkipNotFound, resp.Skipped[0].Reason)
 
 	// A broken regions parameter is a storage failure, not a bad request.
 	r.NoError(dbSvc.SetSystemParameter(t.Context(), regions.ParamRegions, "not-a-list", false))
 
-	rec = checksCall(t, router, http.MethodPost, base+"/regions",
-		`{"checkUids":["`+check.UID+`"],"regions":["paris"]}`)
+	rec = checksCall(t, router, http.MethodPatch, base,
+		`{"checkUids":["`+check.UID+`"],"changes":{"regions":["paris"]}}`)
 	r.Equal(http.StatusInternalServerError, rec.Code, rec.Body.String())
 }

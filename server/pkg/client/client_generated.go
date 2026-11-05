@@ -312,6 +312,24 @@ func (e AvailabilityBucketStatus) Valid() bool {
 	}
 }
 
+// Defines values for BulkCheckChangesPlacement.
+const (
+	BulkCheckChangesPlacementAuto   BulkCheckChangesPlacement = "auto"
+	BulkCheckChangesPlacementPinned BulkCheckChangesPlacement = "pinned"
+)
+
+// Valid indicates whether the value is a known member of the BulkCheckChangesPlacement enum.
+func (e BulkCheckChangesPlacement) Valid() bool {
+	switch e {
+	case BulkCheckChangesPlacementAuto:
+		return true
+	case BulkCheckChangesPlacementPinned:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ChannelTestResultCode.
 const (
 	ChannelTestResultCodeINTEGRATIONMISCONFIGURED ChannelTestResultCode = "INTEGRATION_MISCONFIGURED"
@@ -3663,6 +3681,30 @@ func (e ListChecksParamsSort) Valid() bool {
 	}
 }
 
+// Defines values for BulkUpdateChecks200JSONResponseBodySkippedReason.
+const (
+	BulkUpdateChecks200JSONResponseBodySkippedReasonError    BulkUpdateChecks200JSONResponseBodySkippedReason = "error"
+	BulkUpdateChecks200JSONResponseBodySkippedReasonNotFound BulkUpdateChecks200JSONResponseBodySkippedReason = "not_found"
+	BulkUpdateChecks200JSONResponseBodySkippedReasonReadOnly BulkUpdateChecks200JSONResponseBodySkippedReason = "read_only"
+	BulkUpdateChecks200JSONResponseBodySkippedReasonRejected BulkUpdateChecks200JSONResponseBodySkippedReason = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the BulkUpdateChecks200JSONResponseBodySkippedReason enum.
+func (e BulkUpdateChecks200JSONResponseBodySkippedReason) Valid() bool {
+	switch e {
+	case BulkUpdateChecks200JSONResponseBodySkippedReasonError:
+		return true
+	case BulkUpdateChecks200JSONResponseBodySkippedReasonNotFound:
+		return true
+	case BulkUpdateChecks200JSONResponseBodySkippedReasonReadOnly:
+		return true
+	case BulkUpdateChecks200JSONResponseBodySkippedReasonRejected:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AiCheckGenerateJSONBodyRepair.
 const (
 	AiCheckGenerateJSONBodyRepairAuto    AiCheckGenerateJSONBodyRepair = "auto"
@@ -4500,6 +4542,22 @@ type AvailabilityThresholds struct {
 	ThresholdDegraded float64 `json:"thresholdDegraded"`
 	ThresholdUp       float64 `json:"thresholdUp"`
 }
+
+// BulkCheckChanges The fields of a single-check PATCH that a bulk update accepts, with the same meaning (see `UpdateCheckRequest`).
+type BulkCheckChanges struct {
+	ConfirmationPeriodSeconds *int                       `json:"confirmationPeriodSeconds,omitempty"`
+	Enabled                   *bool                      `json:"enabled,omitempty"`
+	Period                    *string                    `json:"period,omitempty"`
+	Placement                 *BulkCheckChangesPlacement `json:"placement,omitempty"`
+	RecoveryPeriodSeconds     *int                       `json:"recoveryPeriodSeconds,omitempty"`
+	RegionCount               *int                       `json:"regionCount,omitempty"`
+	RegionPool                *[]string                  `json:"regionPool,omitempty"`
+	Regions                   *[]string                  `json:"regions,omitempty"`
+	ResolveOpenIncidents      *bool                      `json:"resolveOpenIncidents,omitempty"`
+}
+
+// BulkCheckChangesPlacement defines model for BulkCheckChanges.Placement.
+type BulkCheckChangesPlacement string
 
 // ChangePasswordRequest defines model for ChangePasswordRequest.
 type ChangePasswordRequest struct {
@@ -9788,6 +9846,17 @@ type ListChecksParamsInternal string
 // ListChecksParamsSort defines parameters for ListChecks.
 type ListChecksParamsSort string
 
+// BulkUpdateChecksJSONBody defines parameters for BulkUpdateChecks.
+type BulkUpdateChecksJSONBody struct {
+	// Changes The fields of a single-check PATCH that a bulk update accepts, with the same meaning (see `UpdateCheckRequest`).
+	Changes   BulkCheckChanges `json:"changes"`
+	CheckUids []string         `json:"checkUids"`
+	DryRun    *bool            `json:"dryRun,omitempty"`
+}
+
+// BulkUpdateChecks200JSONResponseBodySkippedReason defines parameters for BulkUpdateChecks.
+type BulkUpdateChecks200JSONResponseBodySkippedReason string
+
 // AiCheckContractJSONBody defines parameters for AiCheckContract.
 type AiCheckContractJSONBody struct {
 	// Prompt What to watch, in plain words.
@@ -10542,6 +10611,9 @@ type CreateCheckGroupJSONRequestBody = CreateCheckGroupRequest
 // UpdateCheckGroupJSONRequestBody defines body for UpdateCheckGroup for application/json ContentType.
 type UpdateCheckGroupJSONRequestBody = UpdateCheckGroupRequest
 
+// BulkUpdateChecksJSONRequestBody defines body for BulkUpdateChecks for application/json ContentType.
+type BulkUpdateChecksJSONRequestBody BulkUpdateChecksJSONBody
+
 // CreateCheckJSONRequestBody defines body for CreateCheck for application/json ContentType.
 type CreateCheckJSONRequestBody = CreateCheckRequest
 
@@ -10552,6 +10624,8 @@ type AiCheckContractJSONRequestBody AiCheckContractJSONBody
 type AiCheckGenerateJSONRequestBody AiCheckGenerateJSONBody
 
 // SwitchChecksToAutoPlacementJSONRequestBody defines body for SwitchChecksToAutoPlacement for application/json ContentType.
+//
+// Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 type SwitchChecksToAutoPlacementJSONRequestBody SwitchChecksToAutoPlacementJSONBody
 
 // ValidateCheckJSONRequestBody defines body for ValidateCheck for application/json ContentType.
@@ -11775,6 +11849,24 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/orgs/{org}/checks (the `ListChecks` operationId).
 	ListChecks(ctx context.Context, org OrgPath, params *ListChecksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// BulkUpdateChecksWithBody Update several checks at once
+	//
+	// Applies one set of `changes`, shaped like a single-check PATCH body, to every check of `checkUids`, with exactly the semantics of that PATCH (spec 2026-11-05-01). Only the fields of `BulkCheckChanges` are accepted; any other field is a `VALIDATION_ERROR`, never silently ignored. Per-check: a check the changes cannot apply to (a placement change on a passive check, a value its PATCH would reject, a read-only demo check, a check not in this organization) is reported in `skipped` and the others are still updated. `dryRun` runs every validation and writes nothing; it checks each check against the current state, so it cannot see a plan limit only the earlier checks of the same batch would exhaust.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/checks (the `BulkUpdateChecks` operationId).
+	BulkUpdateChecksWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BulkUpdateChecks Update several checks at once
+	//
+	// Applies one set of `changes`, shaped like a single-check PATCH body, to every check of `checkUids`, with exactly the semantics of that PATCH (spec 2026-11-05-01). Only the fields of `BulkCheckChanges` are accepted; any other field is a `VALIDATION_ERROR`, never silently ignored. Per-check: a check the changes cannot apply to (a placement change on a passive check, a value its PATCH would reject, a read-only demo check, a check not in this organization) is reported in `skipped` and the others are still updated. `dryRun` runs every validation and writes nothing; it checks each check against the current state, so it cannot see a plan limit only the earlier checks of the same batch would exhaust.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/checks (the `BulkUpdateChecks` operationId).
+	BulkUpdateChecks(ctx context.Context, org OrgPath, body BulkUpdateChecksJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// CreateCheckWithBody Create monitoring check
 	//
 	// Takes any type of body and a specified content type.
@@ -11827,20 +11919,24 @@ type ClientInterface interface {
 
 	// SwitchChecksToAutoPlacementWithBody Switch pinned checks to automatic placement
 	//
-	// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+	// **Deprecated, removed after 2026-12-15**: use `PATCH /api/v1/orgs/{org}/checks` with `{"placement": "auto"}`. Responses carry `Deprecation` and `Sunset` headers. The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	SwitchChecksToAutoPlacementWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SwitchChecksToAutoPlacement Switch pinned checks to automatic placement
 	//
-	// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+	// **Deprecated, removed after 2026-12-15**: use `PATCH /api/v1/orgs/{org}/checks` with `{"placement": "auto"}`. Responses carry `Deprecation` and `Sunset` headers. The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	SwitchChecksToAutoPlacement(ctx context.Context, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetCheckStats Aggregate check counters for an organization
@@ -15871,6 +15967,44 @@ func (c *Client) ListChecks(ctx context.Context, org OrgPath, params *ListChecks
 	return c.Client.Do(req)
 }
 
+// BulkUpdateChecksWithBody Update several checks at once
+//
+// Applies one set of `changes`, shaped like a single-check PATCH body, to every check of `checkUids`, with exactly the semantics of that PATCH (spec 2026-11-05-01). Only the fields of `BulkCheckChanges` are accepted; any other field is a `VALIDATION_ERROR`, never silently ignored. Per-check: a check the changes cannot apply to (a placement change on a passive check, a value its PATCH would reject, a read-only demo check, a check not in this organization) is reported in `skipped` and the others are still updated. `dryRun` runs every validation and writes nothing; it checks each check against the current state, so it cannot see a plan limit only the earlier checks of the same batch would exhaust.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/checks (the `BulkUpdateChecks` operationId).
+func (c *Client) BulkUpdateChecksWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBulkUpdateChecksRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BulkUpdateChecks Update several checks at once
+//
+// Applies one set of `changes`, shaped like a single-check PATCH body, to every check of `checkUids`, with exactly the semantics of that PATCH (spec 2026-11-05-01). Only the fields of `BulkCheckChanges` are accepted; any other field is a `VALIDATION_ERROR`, never silently ignored. Per-check: a check the changes cannot apply to (a placement change on a passive check, a value its PATCH would reject, a read-only demo check, a check not in this organization) is reported in `skipped` and the others are still updated. `dryRun` runs every validation and writes nothing; it checks each check against the current state, so it cannot see a plan limit only the earlier checks of the same batch would exhaust.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/checks (the `BulkUpdateChecks` operationId).
+func (c *Client) BulkUpdateChecks(ctx context.Context, org OrgPath, body BulkUpdateChecksJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBulkUpdateChecksRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // CreateCheckWithBody Create monitoring check
 //
 // Takes any type of body and a specified content type.
@@ -15983,11 +16117,12 @@ func (c *Client) AiCheckGenerate(ctx context.Context, org OrgPath, body AiCheckG
 
 // SwitchChecksToAutoPlacementWithBody Switch pinned checks to automatic placement
 //
-// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+// **Deprecated, removed after 2026-12-15**: use `PATCH /api/v1/orgs/{org}/checks` with `{"placement": "auto"}`. Responses carry `Deprecation` and `Sunset` headers. The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
 //
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *Client) SwitchChecksToAutoPlacementWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSwitchChecksToAutoPlacementRequestWithBody(c.Server, org, contentType, body)
 	if err != nil {
@@ -16002,11 +16137,12 @@ func (c *Client) SwitchChecksToAutoPlacementWithBody(ctx context.Context, org Or
 
 // SwitchChecksToAutoPlacement Switch pinned checks to automatic placement
 //
-// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+// **Deprecated, removed after 2026-12-15**: use `PATCH /api/v1/orgs/{org}/checks` with `{"placement": "auto"}`. Responses carry `Deprecation` and `Sunset` headers. The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
 //
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *Client) SwitchChecksToAutoPlacement(ctx context.Context, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSwitchChecksToAutoPlacementRequest(c.Server, org, body)
 	if err != nil {
@@ -24181,6 +24317,53 @@ func NewListChecksRequest(server string, org OrgPath, params *ListChecksParams) 
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewBulkUpdateChecksRequest calls the generic BulkUpdateChecks builder with application/json body
+func NewBulkUpdateChecksRequest(server string, org OrgPath, body BulkUpdateChecksJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBulkUpdateChecksRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewBulkUpdateChecksRequestWithBody constructs an http.Request for the BulkUpdateChecks method, with any body, and a specified content type
+func NewBulkUpdateChecksRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -37959,6 +38142,24 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/orgs/{org}/checks (the `ListChecks` operationId).
 	ListChecksWithResponse(ctx context.Context, org OrgPath, params *ListChecksParams, reqEditors ...RequestEditorFn) (*ListChecksResult, error)
 
+	// BulkUpdateChecksWithBodyWithResponse Update several checks at once
+	//
+	// Applies one set of `changes`, shaped like a single-check PATCH body, to every check of `checkUids`, with exactly the semantics of that PATCH (spec 2026-11-05-01). Only the fields of `BulkCheckChanges` are accepted; any other field is a `VALIDATION_ERROR`, never silently ignored. Per-check: a check the changes cannot apply to (a placement change on a passive check, a value its PATCH would reject, a read-only demo check, a check not in this organization) is reported in `skipped` and the others are still updated. `dryRun` runs every validation and writes nothing; it checks each check against the current state, so it cannot see a plan limit only the earlier checks of the same batch would exhaust.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/checks (the `BulkUpdateChecks` operationId).
+	BulkUpdateChecksWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BulkUpdateChecksResult, error)
+
+	// BulkUpdateChecksWithResponse Update several checks at once
+	//
+	// Applies one set of `changes`, shaped like a single-check PATCH body, to every check of `checkUids`, with exactly the semantics of that PATCH (spec 2026-11-05-01). Only the fields of `BulkCheckChanges` are accepted; any other field is a `VALIDATION_ERROR`, never silently ignored. Per-check: a check the changes cannot apply to (a placement change on a passive check, a value its PATCH would reject, a read-only demo check, a check not in this organization) is reported in `skipped` and the others are still updated. `dryRun` runs every validation and writes nothing; it checks each check against the current state, so it cannot see a plan limit only the earlier checks of the same batch would exhaust.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/checks (the `BulkUpdateChecks` operationId).
+	BulkUpdateChecksWithResponse(ctx context.Context, org OrgPath, body BulkUpdateChecksJSONRequestBody, reqEditors ...RequestEditorFn) (*BulkUpdateChecksResult, error)
+
 	// CreateCheckWithBodyWithResponse Create monitoring check
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -38011,20 +38212,24 @@ type ClientWithResponsesInterface interface {
 
 	// SwitchChecksToAutoPlacementWithBodyWithResponse Switch pinned checks to automatic placement
 	//
-	// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+	// **Deprecated, removed after 2026-12-15**: use `PATCH /api/v1/orgs/{org}/checks` with `{"placement": "auto"}`. Responses carry `Deprecation` and `Sunset` headers. The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	SwitchChecksToAutoPlacementWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SwitchChecksToAutoPlacementResult, error)
 
 	// SwitchChecksToAutoPlacementWithResponse Switch pinned checks to automatic placement
 	//
-	// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+	// **Deprecated, removed after 2026-12-15**: use `PATCH /api/v1/orgs/{org}/checks` with `{"placement": "auto"}`. Responses carry `Deprecation` and `Sunset` headers. The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	SwitchChecksToAutoPlacementWithResponse(ctx context.Context, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*SwitchChecksToAutoPlacementResult, error)
 
 	// GetCheckStatsWithResponse Aggregate check counters for an organization
@@ -44014,6 +44219,92 @@ func (r ListChecksResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListChecksResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type BulkUpdateChecksResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		// Data The checks updated (or, on a dry run, that would be).
+		Data []struct {
+			Name *string `json:"name,omitempty"`
+			Slug *string `json:"slug,omitempty"`
+			Uid  string  `json:"uid"`
+		} `json:"data"`
+		DryRun  bool `json:"dryRun"`
+		Skipped []struct {
+			Message *string                                          `json:"message,omitempty"`
+			Reason  BulkUpdateChecks200JSONResponseBodySkippedReason `json:"reason"`
+			Slug    *string                                          `json:"slug,omitempty"`
+			Uid     string                                           `json:"uid"`
+		} `json:"skipped"`
+		Warnings *[]struct {
+			Code    *string `json:"code,omitempty"`
+			Message *string `json:"message,omitempty"`
+			Name    *string `json:"name,omitempty"`
+		} `json:"warnings,omitempty"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r BulkUpdateChecksResult) GetJSON200() *struct {
+	// Data The checks updated (or, on a dry run, that would be).
+	Data []struct {
+		Name *string `json:"name,omitempty"`
+		Slug *string `json:"slug,omitempty"`
+		Uid  string  `json:"uid"`
+	} `json:"data"`
+	DryRun  bool `json:"dryRun"`
+	Skipped []struct {
+		Message *string                                          `json:"message,omitempty"`
+		Reason  BulkUpdateChecks200JSONResponseBodySkippedReason `json:"reason"`
+		Slug    *string                                          `json:"slug,omitempty"`
+		Uid     string                                           `json:"uid"`
+	} `json:"skipped"`
+	Warnings *[]struct {
+		Code    *string `json:"code,omitempty"`
+		Message *string `json:"message,omitempty"`
+		Name    *string `json:"name,omitempty"`
+	} `json:"warnings,omitempty"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r BulkUpdateChecksResult) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetBody returns the raw response body bytes
+func (r BulkUpdateChecksResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r BulkUpdateChecksResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BulkUpdateChecksResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r BulkUpdateChecksResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -59750,6 +60041,36 @@ func (c *ClientWithResponses) ListChecksWithResponse(ctx context.Context, org Or
 	return ParseListChecksResult(rsp)
 }
 
+// BulkUpdateChecksWithBodyWithResponse Update several checks at once
+//
+// Applies one set of `changes`, shaped like a single-check PATCH body, to every check of `checkUids`, with exactly the semantics of that PATCH (spec 2026-11-05-01). Only the fields of `BulkCheckChanges` are accepted; any other field is a `VALIDATION_ERROR`, never silently ignored. Per-check: a check the changes cannot apply to (a placement change on a passive check, a value its PATCH would reject, a read-only demo check, a check not in this organization) is reported in `skipped` and the others are still updated. `dryRun` runs every validation and writes nothing; it checks each check against the current state, so it cannot see a plan limit only the earlier checks of the same batch would exhaust.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/checks (the `BulkUpdateChecks` operationId).
+func (c *ClientWithResponses) BulkUpdateChecksWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BulkUpdateChecksResult, error) {
+	rsp, err := c.BulkUpdateChecksWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBulkUpdateChecksResult(rsp)
+}
+
+// BulkUpdateChecksWithResponse Update several checks at once
+//
+// Applies one set of `changes`, shaped like a single-check PATCH body, to every check of `checkUids`, with exactly the semantics of that PATCH (spec 2026-11-05-01). Only the fields of `BulkCheckChanges` are accepted; any other field is a `VALIDATION_ERROR`, never silently ignored. Per-check: a check the changes cannot apply to (a placement change on a passive check, a value its PATCH would reject, a read-only demo check, a check not in this organization) is reported in `skipped` and the others are still updated. `dryRun` runs every validation and writes nothing; it checks each check against the current state, so it cannot see a plan limit only the earlier checks of the same batch would exhaust.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/checks (the `BulkUpdateChecks` operationId).
+func (c *ClientWithResponses) BulkUpdateChecksWithResponse(ctx context.Context, org OrgPath, body BulkUpdateChecksJSONRequestBody, reqEditors ...RequestEditorFn) (*BulkUpdateChecksResult, error) {
+	rsp, err := c.BulkUpdateChecks(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBulkUpdateChecksResult(rsp)
+}
+
 // CreateCheckWithBodyWithResponse Create monitoring check
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -59838,11 +60159,13 @@ func (c *ClientWithResponses) AiCheckGenerateWithResponse(ctx context.Context, o
 
 // SwitchChecksToAutoPlacementWithBodyWithResponse Switch pinned checks to automatic placement
 //
-// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+// **Deprecated, removed after 2026-12-15**: use `PATCH /api/v1/orgs/{org}/checks` with `{"placement": "auto"}`. Responses carry `Deprecation` and `Sunset` headers. The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+//
+// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *ClientWithResponses) SwitchChecksToAutoPlacementWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SwitchChecksToAutoPlacementResult, error) {
 	rsp, err := c.SwitchChecksToAutoPlacementWithBody(ctx, org, contentType, body, reqEditors...)
 	if err != nil {
@@ -59853,11 +60176,12 @@ func (c *ClientWithResponses) SwitchChecksToAutoPlacementWithBodyWithResponse(ct
 
 // SwitchChecksToAutoPlacementWithResponse Switch pinned checks to automatic placement
 //
-// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+// **Deprecated, removed after 2026-12-15**: use `PATCH /api/v1/orgs/{org}/checks` with `{"placement": "auto"}`. Responses carry `Deprecation` and `Sunset` headers. The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *ClientWithResponses) SwitchChecksToAutoPlacementWithResponse(ctx context.Context, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*SwitchChecksToAutoPlacementResult, error) {
 	rsp, err := c.SwitchChecksToAutoPlacement(ctx, org, body, reqEditors...)
 	if err != nil {
@@ -66864,6 +67188,58 @@ func ParseListChecksResult(rsp *http.Response) (*ListChecksResult, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseBulkUpdateChecksResult parses an HTTP response from a BulkUpdateChecksWithResponse call
+func ParseBulkUpdateChecksResult(rsp *http.Response) (*BulkUpdateChecksResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BulkUpdateChecksResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			// Data The checks updated (or, on a dry run, that would be).
+			Data []struct {
+				Name *string `json:"name,omitempty"`
+				Slug *string `json:"slug,omitempty"`
+				Uid  string  `json:"uid"`
+			} `json:"data"`
+			DryRun  bool `json:"dryRun"`
+			Skipped []struct {
+				Message *string                                          `json:"message,omitempty"`
+				Reason  BulkUpdateChecks200JSONResponseBodySkippedReason `json:"reason"`
+				Slug    *string                                          `json:"slug,omitempty"`
+				Uid     string                                           `json:"uid"`
+			} `json:"skipped"`
+			Warnings *[]struct {
+				Code    *string `json:"code,omitempty"`
+				Message *string `json:"message,omitempty"`
+				Name    *string `json:"name,omitempty"`
+			} `json:"warnings,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	}
 
