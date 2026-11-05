@@ -532,6 +532,13 @@ The default exists because the moment you edit a public incident, its narrative
 is yours. Auto-resolving under you would overwrite a deliberate editorial
 decision with a machine's opinion.
 
+**Deleting a check** is different: a deleted check never recovers, so its public
+incidents are resolved whatever the setting says and whether or not somebody
+edited them, with a "the monitored resource was removed" update. A grouped
+incident still stays open while another member it covers is down. Public
+incidents of checks deleted before this rule existed are closed the same way
+when SolidPing starts, and by a periodic cleanup.
+
 If the check relapses shortly after recovering, the **same** incident is
 reopened rather than a second one being created — a flapping service reads as
 one incident with a history, not five.
