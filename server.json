@@ -10,6 +10,29 @@
     "id": "1189028253"
   },
   "websiteUrl": "https://solidping.io",
+  "icons": [
+    {
+      "src": "https://solidping.io/d/assets/favicon.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": [
+        "any"
+      ]
+    },
+    {
+      "src": "https://solidping.io/d/assets/favicon-512.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "512x512"
+      ]
+    },
+    {
+      "src": "https://solidping.io/d/assets/favicon-192.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "192x192"
+      ]
+    }
+  ],
   "remotes": [
     {
       "type": "streamable-http",
