@@ -4655,6 +4655,25 @@ func (s *Server) ReconcileCheckJobSchedules(ctx context.Context) error {
 	return nil
 }
 
+// CloseOrphanedStatusPagePublications resolves, once at startup, the
+// status-page entries whose check was deleted and that nothing will ever close
+// (spec 2026-11-05-05): those of checks deleted before the check-deletion hook
+// existed. Idempotent; the state_cleanup job runs the same sweep periodically.
+// No subscriber notifier here: its egress guard is built later, and these
+// entries are old enough that a closure mail would only be noise.
+func (s *Server) CloseOrphanedStatusPagePublications(ctx context.Context) error {
+	if s.dbService == nil || s.services == nil {
+		return nil
+	}
+
+	publications := incidentpublications.NewService(s.dbService, s.services.Clock, s.services.Realtime)
+	if _, err := publications.CloseOrphanedPublications(ctx); err != nil {
+		return fmt.Errorf("close orphaned status-page publications: %w", err)
+	}
+
+	return nil
+}
+
 // maybeSplitPlaintextSecrets is the no-master-key counterpart to the encryption
 // auto-migrate: with encryption disabled, it moves any secret still sitting in a
 // PUBLIC column (checks.config, check_jobs.config, connection settings) into a

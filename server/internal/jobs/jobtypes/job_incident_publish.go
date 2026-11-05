@@ -74,6 +74,19 @@ func (r *IncidentPublishJobRun) Run(ctx context.Context, jctx *jobdef.JobContext
 		return ErrIncidentPublishConfig
 	}
 
+	svc := newJobPublicationService(jctx)
+
+	if err := svc.AutoPublish(ctx, orgUID, r.config.IncidentUID, r.config.StatusPageUID); err != nil {
+		return jobdef.NewRetryableError(fmt.Errorf("incident publish: %w", err))
+	}
+
+	return nil
+}
+
+// newJobPublicationService builds the publication service from the job
+// context rather than from the HTTP server's wiring, so a worker-only process
+// can run the jobs that use it.
+func newJobPublicationService(jctx *jobdef.JobContext) *incidentpublications.Service {
 	var (
 		clk       clockpkg.Clock
 		publisher *realtime.Publisher
@@ -104,11 +117,7 @@ func (r *IncidentPublishJobRun) Run(ctx context.Context, jctx *jobdef.JobContext
 		))
 	}
 
-	if err := svc.AutoPublish(ctx, orgUID, r.config.IncidentUID, r.config.StatusPageUID); err != nil {
-		return jobdef.NewRetryableError(fmt.Errorf("incident publish: %w", err))
-	}
-
-	return nil
+	return svc
 }
 
 // IncidentPublishScheduler enqueues the debounce job. It satisfies
