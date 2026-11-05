@@ -70,8 +70,11 @@ func SetIdentity(ctx context.Context, orgUID, userUID string) {
 // CaptureOnRequest reports err for the request: on the request-scoped Sentry
 // hub (skipped when absent, so non-HTTP callers stay silent there) and to
 // PostHog error tracking.
+//
+// An error caused by the client going away (see callerCanceled) is not a server
+// fault and is not reported.
 func CaptureOnRequest(req *http.Request, err error) {
-	if req == nil || err == nil {
+	if req == nil || err == nil || callerCanceled(req.Context(), err) {
 		return
 	}
 
@@ -124,11 +127,21 @@ func requestException(req *http.Request, err error, stack string) *analytics.Exc
 	return exc
 }
 
+// callerCanceled reports whether err is only the echo of ctx having been
+// canceled: a client that closed the tab or dropped the connection, or the
+// process shutting down. Neither is a server fault. A deadline (ours or an
+// outgoing call's) is not filtered: a timeout stays reported.
+func callerCanceled(ctx context.Context, err error) bool {
+	return ctx != nil && errors.Is(err, context.Canceled) && errors.Is(ctx.Err(), context.Canceled)
+}
+
 // CaptureWithTags reports err with the given tags to both sinks, on the context
 // hub when one is present and on the current (process-wide) hub otherwise. Tags
 // with an empty value are skipped so an absent field never becomes a "" facet.
+// An error caused by ctx itself being canceled (graceful shutdown) is not
+// reported.
 func CaptureWithTags(ctx context.Context, err error, tags map[string]string) {
-	if err == nil {
+	if err == nil || callerCanceled(ctx, err) {
 		return
 	}
 
