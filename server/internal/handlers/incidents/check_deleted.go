@@ -17,7 +17,8 @@ import (
 //
 // Each incident is re-read first: only one still carrying check_deleted is
 // notified, so an incident somebody else resolved in between (and notified for)
-// is never announced twice. Org deletion does not call this: nobody is left to
+// is never announced twice. Its status-page entries are resolved whatever the
+// page's auto_resolve policy says (spec 2026-11-05-05). Org deletion does not call this: nobody is left to
 // read it, and its integrations are being deleted too.
 func (s *Service) NotifyCheckDeletedIncidents(
 	ctx context.Context, orgUID string, check *models.Check, incidentUIDs []string,
@@ -57,7 +58,10 @@ func (s *Service) NotifyCheckDeletedIncidents(
 				"incidentUid", incident.UID, "error", err)
 		}
 
-		s.publishResolved(ctx, incident)
+		// Not publishResolved: the auto-resolve policy is about recoveries a
+		// human may want to confirm, and a deleted check will never recover.
+		// Its status-page entries close here or never (spec 2026-11-05-05).
+		s.publishCheckDeleted(ctx, incident)
 	}
 }
 

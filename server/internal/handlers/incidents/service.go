@@ -241,6 +241,10 @@ type PublicationHook interface {
 	// OnIncidentReopened reopens the SAME publication on a relapse rather than
 	// minting a second public entry.
 	OnIncidentReopened(ctx context.Context, incident *models.Incident)
+	// OnIncidentCheckDeleted closes the publications of an incident its
+	// check's deletion resolved, whatever the page's auto_resolve policy says:
+	// a deleted check never recovers (spec 2026-11-05-05).
+	OnIncidentCheckDeleted(ctx context.Context, incident *models.Incident)
 }
 
 // Service provides incident management functionality.
@@ -714,6 +718,14 @@ func (s *Service) publishReopened(ctx context.Context, incident *models.Incident
 	}
 
 	s.publications.OnIncidentReopened(ctx, incident)
+}
+
+func (s *Service) publishCheckDeleted(ctx context.Context, incident *models.Incident) {
+	if s.publications == nil {
+		return
+	}
+
+	s.publications.OnIncidentCheckDeleted(ctx, incident)
 }
 
 // IsCheckInActiveMaintenance reports whether the check is inside an active
