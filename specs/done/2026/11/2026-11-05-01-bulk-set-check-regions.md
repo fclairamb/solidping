@@ -89,3 +89,33 @@ close it, close it by hand:
 ## Resolved open questions
 
 1. (autopilot: recommended answer) Target the checks currently matched by the list's filters (type, status, group, search), as the dialog's scope, with the count shown before confirming. No row-selection UI.
+
+## Rework: a generic bulk update instead of `/checks/regions`
+
+Review of PR #755 replaced the per-purpose `POST /checks/regions` (never released)
+with one generic bulk update, so that enabling, period changes and placement do
+not each need their own endpoint:
+
+- `PATCH /api/v1/orgs/:org/checks` with
+  `{"checkUids": [...], "changes": {...}, "dryRun": bool}`. `changes` has the shape
+  of a single-check PATCH body and the same semantics: each check goes through the
+  PATCH's own validation (`prepareCheckUpdate`) and write (`writeCheckUpdate`).
+- Allowlist: `enabled`, `resolveOpenIncidents`, `period`, `placement`, `regions`,
+  `regionCount`, `regionPool`, `confirmationPeriodSeconds`,
+  `recoveryPeriodSeconds`. Any other field is a 400, never ignored.
+  `checkGroupUid` and `escalationPolicyUid` stay out: the single PATCH does not
+  check that they belong to the org, and a bulk update would widen that gap.
+- At most 1000 checks; repeated UIDs count once. Per-check results: `data`
+  (updated) and `skipped` with `not_found`, `read_only`, `rejected` (the
+  validation message; also a placement change on a passive check) or `error`
+  (logged, no internals). An unknown region is a 400 for the whole request.
+- Dry run: validation only (`prepareCheckUpdate`), no write. Not a rolled-back
+  transaction: the DB layer ignores context transactions (see `labels.go`).
+  It checks each check against the current state, so it cannot see a plan limit
+  that only the earlier checks of the same batch would exhaust.
+- `POST /checks/auto-placement` is deprecated (OpenAPI, `Deprecation` and
+  `Sunset` headers) in favour of `{"placement": "auto"}`, and removed after
+  2026-12-15 (`specs/backlog/2026-11-05-02-remove-auto-placement-endpoint.md`).
+  The dashboard's dialog already uses the bulk PATCH. One difference: the old
+  endpoint left the regions untouched, while `placement: auto` keeps the region
+  count and the current regions only while they are healthy and eligible.
