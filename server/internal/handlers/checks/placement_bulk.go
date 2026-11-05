@@ -72,6 +72,10 @@ func (s *Service) SwitchToAutoPlacement(
 		return nil, ErrOrganizationNotFound
 	}
 
+	if len(req.CheckUIDs) > MaxBulkUpdateChecks {
+		return nil, errBulkTooManyChecks
+	}
+
 	var rows []*models.Check
 
 	query := s.db.DB().NewSelect().
