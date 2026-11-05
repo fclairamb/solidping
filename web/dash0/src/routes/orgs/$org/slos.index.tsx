@@ -5,6 +5,7 @@ import { FileChartColumn, Flame, Layers, Pencil, Plus, Target, Trash2 } from "lu
 import { toast } from "sonner";
 
 import { ApiError } from "@/api/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteSlo, useSloStatus, useSlos, type Slo } from "@/api/hooks";
 import { PageHeader } from "@/components/shared/page-header";
 import { QueryErrorView } from "@/components/shared/error-views";
@@ -169,6 +170,8 @@ function SlosIndexPage() {
   const { t } = useTranslation("slos");
   const { org } = Route.useParams();
   const navigate = useNavigate();
+  // Uptime reports live under the admin-only Organization section.
+  const { user } = useAuth();
   const { data: slos, isLoading, error, refetch } = useSlos(org);
   const deleteSlo = useDeleteSlo(org);
   const [pendingDelete, setPendingDelete] = useState<Slo | null>(null);
@@ -191,18 +194,20 @@ function SlosIndexPage() {
                 pulled — but they live under Organization, so an operator
                 looking at SLOs has no way to reach them from here. Icon-only
                 below sm, matching the header idiom used elsewhere. */}
-            <Button asChild variant="outline">
-              <Link
-                to="/orgs/$org/organization/report-schedules"
-                params={{ org }}
-                data-testid="slo-uptime-reports-link"
-              >
-                <FileChartColumn className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">
-                  {t("nav:reportSchedules", "Uptime reports")}
-                </span>
-              </Link>
-            </Button>
+            {user?.isAdmin && (
+              <Button asChild variant="outline">
+                <Link
+                  to="/orgs/$org/organization/report-schedules"
+                  params={{ org }}
+                  data-testid="slo-uptime-reports-link"
+                >
+                  <FileChartColumn className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">
+                    {t("nav:reportSchedules", "Uptime reports")}
+                  </span>
+                </Link>
+              </Button>
+            )}
             <Button
               onClick={() => navigate({ to: "/orgs/$org/slos/new", params: { org } })}
               data-testid="slo-new"

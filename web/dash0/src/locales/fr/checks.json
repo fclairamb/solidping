@@ -1722,5 +1722,21 @@
   "plugin": {
     "configLabel": "Paramétrage (JSON)",
     "configHelp": "Ce type de vérification vient d'un plugin du serveur. Modifiez sa configuration en JSON ; elle est contrôlée avec le schéma du plugin."
+  },
+  "setRegions": {
+    "button": "Définir les régions",
+    "title": "Définir les régions des checks listés",
+    "scope_one": "S'applique au {{count}} check correspondant aux filtres actuels.",
+    "scope_other": "S'applique aux {{count}} checks correspondant aux filtres actuels.",
+    "scopeNone": "Aucun check ne correspond aux filtres actuels.",
+    "pick": "Choisissez les régions sur lesquelles ces checks seront épinglés.",
+    "preview_one": "{{count}} check sera épinglé exactement sur ces régions.",
+    "preview_other": "{{count}} checks seront épinglés exactement sur ces régions.",
+    "previewSkipped_one": "{{count}} check ne sera pas modifié.",
+    "previewSkipped_other": "{{count}} checks ne seront pas modifiés.",
+    "confirm": "Définir les régions",
+    "updated_one": "Régions définies sur {{count}} check",
+    "updated_other": "Régions définies sur {{count}} checks",
+    "failed": "Impossible de définir les régions"
   }
 }

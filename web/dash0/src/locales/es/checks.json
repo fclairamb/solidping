@@ -1722,5 +1722,21 @@
   "plugin": {
     "configLabel": "Configuración (JSON)",
     "configHelp": "Este tipo de comprobación viene de un plugin del servidor. Edite su configuración en JSON; se valida con el esquema del plugin."
+  },
+  "setRegions": {
+    "button": "Definir regiones",
+    "title": "Definir las regiones de los checks listados",
+    "scope_one": "Se aplica al {{count}} check que coincide con los filtros actuales.",
+    "scope_other": "Se aplica a los {{count}} checks que coinciden con los filtros actuales.",
+    "scopeNone": "Ningún check coincide con los filtros actuales.",
+    "pick": "Elija las regiones a las que se fijarán estos checks.",
+    "preview_one": "{{count}} check se fijará exactamente a estas regiones.",
+    "preview_other": "{{count}} checks se fijarán exactamente a estas regiones.",
+    "previewSkipped_one": "{{count}} check no se modificará.",
+    "previewSkipped_other": "{{count}} checks no se modificarán.",
+    "confirm": "Definir regiones",
+    "updated_one": "Regiones definidas en {{count}} check",
+    "updated_other": "Regiones definidas en {{count}} checks",
+    "failed": "No se pudieron definir las regiones"
   }
 }
