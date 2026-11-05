@@ -51,7 +51,7 @@ Other ways to run it:
 | Homebrew | `brew install fclairamb/tap/solidping` |
 | Scoop | `scoop bucket add fclairamb https://github.com/fclairamb/scoop-bucket` then `scoop install solidping` |
 | Kubernetes | [Helm chart](deploy/helm/solidping), [guide](https://docs.solidping.io/installation/kubernetes) |
-| Railway, Coolify, CasaOS, YunoHost | [installation guides](https://docs.solidping.io/installation/railway) |
+| Railway, Fly.io, Coolify, CasaOS, YunoHost | [installation guides](https://docs.solidping.io/installation/railway) |
 
 ## Screenshots
 
