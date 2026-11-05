@@ -10,7 +10,8 @@ import (
 
 // TestUniqueCheckUIDsIsLinear: the dedup must not be quadratic (security scan
 // 2026-11-05, AE1): 200,000 distinct UIDs took tens of seconds with a
-// slices.Contains loop.
+// slices.Contains loop. The bound is loose on purpose: a shared CI runner took
+// 213 ms for the linear version, the quadratic one takes tens of seconds.
 func TestUniqueCheckUIDsIsLinear(t *testing.T) {
 	t.Parallel()
 
