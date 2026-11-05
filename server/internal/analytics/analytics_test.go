@@ -254,6 +254,23 @@ func TestConfiguredClientCapturesException(t *testing.T) {
 	r.Contains(body, "page=2")
 }
 
+// A handled error has no stack of its own: the capture site's frames are
+// attached so PostHog can group it. A panic ships its own stack instead.
+func TestConfiguredClientAttachesCaptureSiteStack(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	rec, host := newRecorder(t)
+
+	client := analytics.New(config.PostHogConfig{Enabled: true, Host: host, ProjectAPIKey: "phc_test_key"})
+	client.CaptureException(context.Background(), &analytics.Exception{Err: io.ErrUnexpectedEOF})
+	r.NoError(client.Close(context.Background()))
+
+	body := rec.allBodies()
+	r.Contains(body, `"stacktrace"`)
+	r.Contains(body, "TestConfiguredClientAttachesCaptureSiteStack")
+}
+
 func TestNoopClientSendsNoException(t *testing.T) {
 	t.Parallel()
 

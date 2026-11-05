@@ -216,6 +216,13 @@ func (c *posthogClient) Capture(ctx context.Context, event Event) {
 	}
 }
 
+// captureSiteSkip drops runtime.Callers, GetStackTrace and
+// posthogClient.CaptureException from the attached stack.
+const captureSiteSkip = 3
+
+//nolint:gochecknoglobals // stateless extractor
+var captureSiteStack = posthog.DefaultStackTraceExtractor{InAppDecider: posthog.SimpleInAppDecider}
+
 // CaptureException enqueues a `$exception` event. Never blocks, never returns
 // an error to the caller.
 func (c *posthogClient) CaptureException(ctx context.Context, exc *Exception) {
@@ -249,14 +256,23 @@ func (c *posthogClient) CaptureException(ctx context.Context, exc *Exception) {
 
 	handled := true
 
+	item := posthog.ExceptionItem{
+		Type:      fmt.Sprintf("%T", exc.Err),
+		Value:     scrub.Text(exc.Err.Error()),
+		Mechanism: &posthog.ExceptionMechanism{Handled: &handled},
+	}
+
+	// A handled error carries no stack of its own: attach the capture site's
+	// frames so PostHog groups it by where it was reported rather than by its
+	// message alone. A panic already ships its own stack in the "stack" property.
+	if exc.Stack == "" {
+		item.Stacktrace = captureSiteStack.GetStackTrace(captureSiteSkip)
+	}
+
 	if err := c.client.Enqueue(posthog.Exception{
-		DistinctId: distinctID,
-		Properties: props,
-		ExceptionList: []posthog.ExceptionItem{{
-			Type:      fmt.Sprintf("%T", exc.Err),
-			Value:     scrub.Text(exc.Err.Error()),
-			Mechanism: &posthog.ExceptionMechanism{Handled: &handled},
-		}},
+		DistinctId:    distinctID,
+		Properties:    props,
+		ExceptionList: []posthog.ExceptionItem{item},
 	}); err != nil {
 		slog.DebugContext(ctx, "analytics: failed to enqueue exception", "error", err)
 	}
