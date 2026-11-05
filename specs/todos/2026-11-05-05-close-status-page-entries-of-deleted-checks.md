@@ -46,3 +46,8 @@ The report is right about the symptom and partly outdated about the cause: a che
 This spec closes fclairamb/solidping-business#44 (already closed when the spec was filed; the spec file tracks it). The implementing PR body must carry `Closes fclairamb/solidping-business#44`. When the spec is archived to `specs/done/`, verify the issue is closed and, if not, close it by hand:
 
     gh issue close 44 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+1. Resolve the entries (with a resolved update), do not delete them. (autopilot: recommended answer)
+2. Override `auto_resolve = never` on deletion: yes. (autopilot: recommended answer)
