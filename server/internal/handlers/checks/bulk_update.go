@@ -335,9 +335,24 @@ func (s *Service) bulkSkipReason(ctx context.Context, checkUID string, err error
 		return BulkUpdateSkipRejected, err
 	}
 
-	slog.ErrorContext(ctx, "bulk update of a check failed", "check_uid", checkUID, "error_type", fmt.Sprintf("%T", err))
+	slog.ErrorContext(ctx, "bulk update of a check failed", "check_uid", checkUID, "cause", bulkFaultCause(err))
 
 	return BulkUpdateSkipError, errBulkInternal
+}
+
+// bulkFaultCause names a server fault with a fixed word: nothing of the error
+// itself is logged, since a check's update error can carry its config,
+// secrets included (CodeQL go/clear-text-logging). A single-check PATCH of
+// that check shows the full error.
+func bulkFaultCause(err error) string {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "deadline_exceeded"
+	default:
+		return "unexpected"
+	}
 }
 
 // isCheckUpdateRejection reports whether a PATCH error is the caller's to fix:
