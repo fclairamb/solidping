@@ -21,6 +21,10 @@ import (
 // MaxBulkUpdateChecks caps the checks one bulk update may name.
 const MaxBulkUpdateChecks = 1000
 
+// MaxBulkRequestBytes caps the body of the bulk check routes: far above
+// MaxBulkUpdateChecks UIDs plus the changes.
+const MaxBulkRequestBytes = 1 << 20
+
 // Reasons a check is left out of a bulk update.
 const (
 	BulkUpdateSkipNotFound = "not_found"
@@ -114,6 +118,12 @@ func (s *Service) BulkUpdateChecks(
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		return nil, ErrOrganizationNotFound
+	}
+
+	// The raw list is capped before the dedup: duplicates count, a client
+	// never needs to send the same UID twice.
+	if len(req.CheckUIDs) > MaxBulkUpdateChecks {
+		return nil, errBulkTooManyChecks
 	}
 
 	uids := uniqueCheckUIDs(req.CheckUIDs)
@@ -239,11 +249,19 @@ func touchesBulkPlacement(raw json.RawMessage) bool {
 // uniqueCheckUIDs drops empty and repeated UIDs, keeping the request order.
 func uniqueCheckUIDs(uids []string) []string {
 	out := make([]string, 0, len(uids))
+	seen := make(map[string]struct{}, len(uids))
 
 	for _, uid := range uids {
-		if uid != "" && !slices.Contains(out, uid) {
-			out = append(out, uid)
+		if uid == "" {
+			continue
 		}
+
+		if _, dup := seen[uid]; dup {
+			continue
+		}
+
+		seen[uid] = struct{}{}
+		out = append(out, uid)
 	}
 
 	return out
