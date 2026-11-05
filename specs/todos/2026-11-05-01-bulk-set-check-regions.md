@@ -85,3 +85,7 @@ archived to `specs/done/`, verify the issue is closed and, if the merge did not
 close it, close it by hand:
 
     gh issue close 39 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+1. (autopilot: recommended answer) Target the checks currently matched by the list's filters (type, status, group, search), as the dialog's scope, with the count shown before confirming. No row-selection UI.
