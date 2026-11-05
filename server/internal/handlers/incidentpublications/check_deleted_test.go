@@ -187,8 +187,10 @@ func (s *delSetup) updates(pub *models.IncidentPublication) []*models.StatusUpda
 func (s *delSetup) kinds(pub *models.IncidentPublication) []models.StatusUpdateKind {
 	s.t.Helper()
 
-	out := []models.StatusUpdateKind{}
-	for _, upd := range s.updates(pub) {
+	updates := s.updates(pub)
+
+	out := make([]models.StatusUpdateKind, 0, len(updates))
+	for _, upd := range updates {
 		out = append(out, upd.Kind)
 	}
 
@@ -366,6 +368,11 @@ func runCheckDeletedScenarios(t *testing.T, newDB func(t *testing.T) db.Service)
 	})
 }
 
+// The scenarios run in sequence: the sweep is cross-organization, so on the
+// shared Postgres database a concurrent scenario's sweep could resolve an
+// entry another scenario is still asserting on.
+//
+//nolint:tparallel // see above; the SQLite run mirrors the Postgres one.
 func TestStatusPageEntriesOfDeletedChecks(t *testing.T) {
 	t.Parallel()
 
@@ -381,6 +388,7 @@ func TestStatusPageEntriesOfDeletedChecks(t *testing.T) {
 	})
 }
 
+//nolint:tparallel // the scenarios share one database and a cross-org sweep.
 func TestStatusPageEntriesOfDeletedChecks_Postgres(t *testing.T) {
 	t.Parallel()
 
