@@ -4659,19 +4659,25 @@ func (s *Server) ReconcileCheckJobSchedules(ctx context.Context) error {
 // status-page entries whose check was deleted and that nothing will ever close
 // (spec 2026-11-05-05): those of checks deleted before the check-deletion hook
 // existed. Idempotent; the state_cleanup job runs the same sweep periodically.
+// Best-effort: a stale status-page entry is a papercut, not a reason to refuse
+// to boot, so a failure is logged and not returned.
 // No subscriber notifier here: its egress guard is built later, and these
 // entries are old enough that a closure mail would only be noise.
-func (s *Server) CloseOrphanedStatusPagePublications(ctx context.Context) error {
-	if s.dbService == nil || s.services == nil {
-		return nil
+func (s *Server) CloseOrphanedStatusPagePublications(ctx context.Context) {
+	var (
+		clk       clock.Clock
+		publisher *realtime.Publisher
+	)
+
+	if s.services != nil {
+		clk = s.services.Clock
+		publisher = s.services.Realtime
 	}
 
-	publications := incidentpublications.NewService(s.dbService, s.services.Clock, s.services.Realtime)
+	publications := incidentpublications.NewService(s.dbService, clk, publisher)
 	if _, err := publications.CloseOrphanedPublications(ctx); err != nil {
-		return fmt.Errorf("close orphaned status-page publications: %w", err)
+		slog.WarnContext(ctx, "Failed to close status-page entries of deleted checks", "error", err)
 	}
-
-	return nil
 }
 
 // maybeSplitPlaintextSecrets is the no-master-key counterpart to the encryption
