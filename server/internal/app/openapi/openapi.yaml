@@ -1843,7 +1843,8 @@ paths:
                         code: {type: string}
         "400":
           description: >-
-            No check, more than 1000, no change, a field a bulk update does not
+            No check, more than 1000 entries in `checkUids` (counted as sent,
+            duplicates included), no change, a field a bulk update does not
             support, or an unknown region
           content:
             application/json:
@@ -2114,7 +2115,10 @@ paths:
               properties:
                 checkUids:
                   type: array
-                  description: Limit the switch to these checks. Omit for every eligible check.
+                  description: >-
+                    Limit the switch to these checks, at most 1000 (more is a
+                    400). Omit for every eligible check.
+                  maxItems: 1000
                   items:
                     type: string
                 dryRun:
@@ -2160,6 +2164,12 @@ paths:
                         reason:
                           type: string
                           enum: [not_found, already_auto, passive, no_region, private_region, read_only]
+        "400":
+          description: More than 1000 entries in `checkUids`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           $ref: "#/components/responses/NotFound"
 

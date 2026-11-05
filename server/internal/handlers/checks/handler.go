@@ -643,6 +643,8 @@ func (h *Handler) SwitchToAutoPlacement(writer http.ResponseWriter, req *http.Re
 	writer.Header().Set("Deprecation", "@1793836800") // 2026-11-05
 	writer.Header().Set("Sunset", autoPlacementSunset)
 
+	req.Body = http.MaxBytesReader(writer, req.Body, MaxBulkRequestBytes)
+
 	var body AutoPlacementRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -657,6 +659,11 @@ func (h *Handler) SwitchToAutoPlacement(writer http.ResponseWriter, req *http.Re
 				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 		}
 
+		if errors.Is(err, errBulkTooManyChecks) {
+			return h.WriteErrorErr(
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+		}
+
 		return h.WriteInternalError(writer, req, err)
 	}
 
@@ -668,6 +675,8 @@ func (h *Handler) SwitchToAutoPlacement(writer http.ResponseWriter, req *http.Re
 // (spec 2026-11-05-01).
 func (h *Handler) BulkUpdateChecks(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")
+
+	req.Body = http.MaxBytesReader(writer, req.Body, MaxBulkRequestBytes)
 
 	var body BulkUpdateChecksRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
