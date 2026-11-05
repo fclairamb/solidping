@@ -653,6 +653,35 @@ func (h *Handler) SwitchToAutoPlacement(writer http.ResponseWriter, req *http.Re
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
+// SetRegions handles POST /api/v1/orgs/:org/checks/regions, the checks list's
+// bulk "Set regions" (spec 2026-11-05-01).
+func (h *Handler) SetRegions(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+
+	var body SetRegionsRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	resp, err := h.svc.SetRegions(req.Context(), orgSlug, &body)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrOrganizationNotFound):
+			return h.WriteErrorErr(
+				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		case IsSetRegionsRequestError(err):
+			return h.WriteErrorErr(
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+		default:
+			return h.WriteInternalError(writer, req, err)
+		}
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
 // ExportChecks handles exporting all checks for an organization as JSON.
 func (h *Handler) ExportChecks(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")

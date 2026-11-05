@@ -76,6 +76,17 @@ inside it.
   (`POST /api/v1/orgs/{org}/checks/auto-placement`). Each check keeps its
   regions and its region count, so neither its cost nor where it runs today
   changes; it only gains failover. Checks on a private location are skipped.
+- **Pin many checks to the same regions:** **Set regions…** in the ⋯ menu of
+  the checks list opens a dialog with a region picker. It applies to the checks
+  currently matched by the list's filters (type, status, group, search) and
+  shows how many that is before you confirm. Over the API,
+  `POST /api/v1/orgs/{org}/checks/regions` with
+  `{"checkUids": [...], "regions": ["eu-fr-paris"], "dryRun": false}` pins every
+  listed check to exactly those regions, like an explicit `regions` list on a
+  `PATCH`. The answer lists the `updated` checks and the `skipped` ones with
+  their reason (`not_found`, `passive`, `read_only`, `rejected`), plus the
+  rate-limit `warnings` a single update would return. `"dryRun": true` reports
+  the same without writing.
 
 Checks created before automatic placement existed are pinned, with one
 exception: a check whose regions were exactly the platform's default regions

@@ -1198,6 +1198,88 @@ export function useSwitchToAutoPlacement(org: string) {
   });
 }
 
+/** Filters of the checks list that scope the bulk "Set regions" action. */
+export interface BulkCheckFilters {
+  q?: string;
+  type?: string;
+  status?: string;
+  labels?: string;
+  internal?: string;
+}
+
+/** Every check UID matching the list's filters, all pages walked (spec
+ * 2026-11-05-01). Only fetched while the bulk dialog is open. */
+export function useCheckUidsMatching(
+  org: string,
+  filters: BulkCheckFilters,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["checkUidsMatching", org, filters],
+    queryFn: async () => {
+      const uids: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await apiFetch<ChecksListResponse>(
+          buildChecksUrl(org, { ...filters, limit: 100, cursor }),
+        );
+        for (const check of page.data ?? []) uids.push(check.uid);
+        cursor = page.pagination?.cursor;
+      } while (cursor);
+      return uids;
+    },
+    enabled: !!org && enabled,
+    staleTime: 0,
+  });
+}
+
+/** Response of POST /checks/regions. */
+export interface SetRegionsResponse {
+  dryRun: boolean;
+  updated: { uid: string; slug?: string; name?: string; regions: string[] }[];
+  skipped: { uid: string; slug?: string; reason: string; message?: string }[];
+  warnings?: { name: string; message: string; code?: string }[];
+}
+
+/** Dry-runs the bulk "Set regions": how many of the given checks would be
+ * pinned to the chosen regions. */
+export function useSetRegionsPreview(
+  org: string,
+  checkUids: string[],
+  regions: string[],
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["setRegionsPreview", org, checkUids, regions],
+    queryFn: () =>
+      apiFetch<SetRegionsResponse>(`/api/v1/orgs/${org}/checks/regions`, {
+        method: "POST",
+        body: JSON.stringify({ checkUids, regions, dryRun: true }),
+      }),
+    enabled: !!org && enabled && checkUids.length > 0 && regions.length > 0,
+    staleTime: 0,
+  });
+}
+
+/** Pins the given checks to exactly the given regions. */
+export function useSetRegions(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: { checkUids: string[]; regions: string[] }) =>
+      apiFetch<SetRegionsResponse>(`/api/v1/orgs/${org}/checks/regions`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+      queryClient.invalidateQueries({ queryKey: ["check", org] });
+      queryClient.invalidateQueries({ queryKey: ["setRegionsPreview", org] });
+    },
+  });
+}
+
 /** One capture in a check's screenshot listing (spec 2026-09-25-34): an
  * incident's screenshot or a check-scoped one. Operator-only evidence. */
 export interface CheckScreenshot {

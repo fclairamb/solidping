@@ -1242,6 +1242,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Bulk "Switch to automatic placement" (spec 2026-09-25-06). A literal
 	// segment, registered ahead of the "/:checkUid" routes.
 	orgChecks.POST("/auto-placement", checksHandler.SwitchToAutoPlacement)
+	// Bulk "Set regions" (spec 2026-11-05-01): pins listed checks to a region set.
+	orgChecks.POST("/regions", checksHandler.SetRegions)
 
 	// Config-as-code surface (export/import/apply) is admin-only: import and
 	// apply mutate the whole check set, and apply can delete-by-absence.

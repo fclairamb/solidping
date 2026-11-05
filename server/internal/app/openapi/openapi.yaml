@@ -8074,6 +8074,81 @@ paths:
                         url: {type: string}
                         category: {type: string}
 
+  /api/v1/orgs/{org}/checks/regions:
+    post:
+      tags: [Checks]
+      summary: Pin several checks to the same regions
+      description: >-
+        Pins every listed check to exactly `regions`, with the semantics of an
+        explicit `regions` list on a single-check PATCH. Per-check: a check that
+        cannot take the regions (passive, read-only, rejected by a placement or
+        tunnel rule, or not in this organization) is reported in `skipped` and the
+        others are still updated. `dryRun` validates and counts without writing.
+      operationId: setChecksRegions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [checkUids, regions]
+              properties:
+                checkUids:
+                  type: array
+                  items: {type: string}
+                regions:
+                  type: array
+                  items: {type: string}
+                dryRun: {type: boolean}
+      responses:
+        "200":
+          description: Per-check results
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated, skipped, dryRun]
+                properties:
+                  dryRun: {type: boolean}
+                  updated:
+                    type: array
+                    items:
+                      type: object
+                      required: [uid, regions]
+                      properties:
+                        uid: {type: string}
+                        slug: {type: string}
+                        name: {type: string}
+                        regions:
+                          type: array
+                          items: {type: string}
+                  skipped:
+                    type: array
+                    items:
+                      type: object
+                      required: [uid, reason]
+                      properties:
+                        uid: {type: string}
+                        slug: {type: string}
+                        reason:
+                          type: string
+                          enum: [not_found, passive, read_only, rejected]
+                        message: {type: string}
+                  warnings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: {type: string}
+                        message: {type: string}
+                        code: {type: string}
+        "400":
+          description: No check, no region, or an unknown region
+
   /api/v1/orgs/{org}/checks/vendor-status/components:
     post:
       tags: [Checks]
