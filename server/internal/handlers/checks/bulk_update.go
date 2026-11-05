@@ -335,7 +335,7 @@ func (s *Service) bulkSkipReason(ctx context.Context, checkUID string, err error
 		return BulkUpdateSkipRejected, err
 	}
 
-	slog.ErrorContext(ctx, "bulk update of a check failed", "check_uid", checkUID, "error", err)
+	slog.ErrorContext(ctx, "bulk update of a check failed", "check_uid", checkUID, "error_type", fmt.Sprintf("%T", err))
 
 	return BulkUpdateSkipError, errBulkInternal
 }
