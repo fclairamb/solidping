@@ -99,7 +99,9 @@ Deleting a check resolves its open incidents with a `check_deleted` resolution,
 whatever the path (dashboard, API, MCP, chat-ops, deleting the whole
 organization). Their pending escalation steps stop. A single-check delete sends
 one resolved notification per incident, worded "check deleted" rather than
-"recovered". Deleting an organization sends none.
+"recovered". Deleting an organization sends none. A deleted check's status-page
+incidents are resolved too, whatever the page's auto-resolve setting (see
+[Status pages](./status-pages.md#resolving)).
 
 Disabling a check does not touch its open incidents by default: a disabled check
 runs no more probes, so nothing would ever auto-resolve them. To close them in
