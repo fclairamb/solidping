@@ -3,29 +3,22 @@
 ## [0.43.1](https://github.com/fclairamb/solidping/compare/v0.43.0...v0.43.1) (2026-11-05)
 
 
+### Security
+
+* **security:** harden the JS check sandbox (memory budget gaps and residuals, regexp time limit and call time, process isolation, parent decode budget, RegExp symbol methods budget), require re-authentication for Discord linking, cap invitations, validate crawl link schemes, restrict the subscriber list by role, invalidate reset links on password change and make TOTP codes single-use ([#735](https://github.com/fclairamb/solidping/issues/735), [#742](https://github.com/fclairamb/solidping/issues/742), [#749](https://github.com/fclairamb/solidping/issues/749))
+
+
 ### Bug Fixes
 
 * **ai:** send DeepSeek's reasoning_content back on assistant turns ([#739](https://github.com/fclairamb/solidping/issues/739)) ([d62bfc6](https://github.com/fclairamb/solidping/commit/d62bfc6ca03dbbb5eee1f78cf9232dadab5aad55))
 * **dash0:** email-scanner filter, non-admin crash, audit incident target ([#755](https://github.com/fclairamb/solidping/issues/755)) ([920d231](https://github.com/fclairamb/solidping/commit/920d231617180a8a613ebe1524b5a673cfe8d970))
-* **deps:** update dependency @hookform/resolvers to v7 ([#736](https://github.com/fclairamb/solidping/issues/736)) ([f44707a](https://github.com/fclairamb/solidping/commit/f44707a32d944c7aefc8318fc9e56ada499bcb81))
-* **deps:** update github.com/dop251/goja digest to 2413f21 ([#756](https://github.com/fclairamb/solidping/issues/756)) ([166579c](https://github.com/fclairamb/solidping/commit/166579cac8ad73a15aadd251a27e923d514c493e))
-* **deps:** update github.com/dop251/goja digest to 622d100 ([#746](https://github.com/fclairamb/solidping/issues/746)) ([f46b46c](https://github.com/fclairamb/solidping/commit/f46b46c17fcbc8e2e91a3fbfd40005791bd068f9))
-* **deps:** update github.com/dop251/goja digest to a177d21 ([#747](https://github.com/fclairamb/solidping/issues/747)) ([09b0d72](https://github.com/fclairamb/solidping/commit/09b0d72d07f2e4ef4dfa02ceff637238667d1316))
-* **deps:** update github.com/dop251/goja digest to a537e0c ([#754](https://github.com/fclairamb/solidping/issues/754)) ([70ca3d6](https://github.com/fclairamb/solidping/commit/70ca3d6dfcb62a2e5e6d36867b80a3f03c10e002))
-* **deps:** update github.com/dop251/goja digest to a7bf126 ([#753](https://github.com/fclairamb/solidping/issues/753)) ([962eff3](https://github.com/fclairamb/solidping/commit/962eff36079ed152facee09421585454dcbecec9))
-* **deps:** update github.com/dop251/goja digest to cf2ff0e ([#730](https://github.com/fclairamb/solidping/issues/730)) ([92b6c17](https://github.com/fclairamb/solidping/commit/92b6c17b651dfe8a9c096198aacd5994f8fde386))
-* **deps:** update github.com/dop251/goja digest to f5d1d00 ([#750](https://github.com/fclairamb/solidping/issues/750)) ([44c6ecc](https://github.com/fclairamb/solidping/commit/44c6ecc138acd0a7dafcf046023e97959f341956))
-* **deps:** update go dependencies (non-major) ([#748](https://github.com/fclairamb/solidping/issues/748)) ([e3c2416](https://github.com/fclairamb/solidping/commit/e3c2416dab3d34aeaff91dde127d666a7b2b3633))
-* **deps:** update go dependencies (non-major) ([#751](https://github.com/fclairamb/solidping/issues/751)) ([146bec5](https://github.com/fclairamb/solidping/commit/146bec5f89dea679b93d282189f7e1a6d9ec1535))
-* **deps:** update go dependencies (non-major) ([#758](https://github.com/fclairamb/solidping/issues/758)) ([17b0d6d](https://github.com/fclairamb/solidping/commit/17b0d6d1a0378075113ede5c9aa7d5bc3f282cb8))
-* **deps:** update module github.com/dlclark/regexp2/v2 to v2.12.0 ([#737](https://github.com/fclairamb/solidping/issues/737)) ([50fdb8d](https://github.com/fclairamb/solidping/commit/50fdb8d24ef470fe449f39cf2ec4e533ae578031))
-* **deps:** update module github.com/oapi-codegen/oapi-codegen/v2 to v2.8.2 ([#733](https://github.com/fclairamb/solidping/issues/733)) ([672293f](https://github.com/fclairamb/solidping/commit/672293ffb26131d882ddb53b502d8ffde7e217b6))
-* **deps:** update module modernc.org/sqlite to v1.61.1 ([#732](https://github.com/fclairamb/solidping/issues/732)) ([02cd682](https://github.com/fclairamb/solidping/commit/02cd682222eb606d6aad110209229eb033c0ba1f))
-* **docs:** tour video under 500 KB ([#752](https://github.com/fclairamb/solidping/issues/752)) ([1cdcce4](https://github.com/fclairamb/solidping/commit/1cdcce42b1adcd87fc52060e857be91e764ffd4d))
 * **reports:** point "Open dashboard" at the organization's dashboard ([#744](https://github.com/fclairamb/solidping/issues/744)) ([061eca0](https://github.com/fclairamb/solidping/commit/061eca0f99103d1b84e4d8273902e340d42f573a))
-* **security:** JS check memory budget gaps and regexp time limit, Discord link re-authentication, invitation cap ([#735](https://github.com/fclairamb/solidping/issues/735)) ([6026b05](https://github.com/fclairamb/solidping/commit/6026b05dbf664a3fc6b04e8e192a10b7c8538431))
-* **security:** JS check memory budget residuals, regexp call time and process isolation, crawl link scheme, subscriber list role, reset links on password change ([#742](https://github.com/fclairamb/solidping/issues/742)) ([de9aac0](https://github.com/fclairamb/solidping/commit/de9aac04f5dc93c0d08f490b5c8df63b51ad670a))
-* **security:** JS isolation parent decode budget, RegExp symbol methods budget, single-use TOTP codes ([#749](https://github.com/fclairamb/solidping/issues/749)) ([d55abe5](https://github.com/fclairamb/solidping/commit/d55abe5faa2b5d0c8ebe87ed6bdef33c032b81de))
+* **docs:** tour video under 500 KB ([#752](https://github.com/fclairamb/solidping/issues/752)) ([1cdcce4](https://github.com/fclairamb/solidping/commit/1cdcce42b1adcd87fc52060e857be91e764ffd4d))
+
+
+### Dependencies
+
+* update Go and frontend dependencies: goja, regexp2 v2.12.0, oapi-codegen v2.8.2, modernc.org/sqlite v1.61.1, @hookform/resolvers v7 and other non-major bumps ([#736](https://github.com/fclairamb/solidping/issues/736), [#756](https://github.com/fclairamb/solidping/issues/756), [#746](https://github.com/fclairamb/solidping/issues/746), [#747](https://github.com/fclairamb/solidping/issues/747), [#754](https://github.com/fclairamb/solidping/issues/754), [#753](https://github.com/fclairamb/solidping/issues/753), [#730](https://github.com/fclairamb/solidping/issues/730), [#750](https://github.com/fclairamb/solidping/issues/750), [#748](https://github.com/fclairamb/solidping/issues/748), [#751](https://github.com/fclairamb/solidping/issues/751), [#758](https://github.com/fclairamb/solidping/issues/758), [#737](https://github.com/fclairamb/solidping/issues/737), [#733](https://github.com/fclairamb/solidping/issues/733), [#732](https://github.com/fclairamb/solidping/issues/732))
 
 ## [0.43.0](https://github.com/fclairamb/solidping/compare/v0.42.1...v0.43.0) (2026-10-31)
 
