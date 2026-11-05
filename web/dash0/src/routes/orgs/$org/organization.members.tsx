@@ -305,7 +305,7 @@ function MembersPage() {
                   <TableHead className="hidden lg:table-cell">
                     {t("members.column.lastSeen")}
                   </TableHead>
-                  <TableHead className="w-[120px]" />
+                  <TableHead className="w-px" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -314,7 +314,7 @@ function MembersPage() {
                   const joined = member.joinedAt || member.createdAt;
                   return (
                     <TableRow key={member.uid}>
-                      <TableCell className="max-w-0">
+                      <TableCell className="w-full min-w-48 max-w-0">
                         <div className="flex min-w-0 items-center gap-3">
                           <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
                             {member.avatarUrl ? (
@@ -350,7 +350,7 @@ function MembersPage() {
                               <span className="inline-block">
                                 <Select value={member.role} disabled>
                                   <SelectTrigger
-                                    className="w-[140px]"
+                                    className="w-28 sm:w-[140px]"
                                     data-testid={`member-role-${member.email}`}
                                   >
                                     <SelectValue />
@@ -374,7 +374,7 @@ function MembersPage() {
                             disabled={updateMember.isPending}
                           >
                             <SelectTrigger
-                              className="w-[140px]"
+                              className="w-28 sm:w-[140px]"
                               data-testid={`member-role-${member.email}`}
                             >
                               <SelectValue />
