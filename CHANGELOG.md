@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.43.1](https://github.com/fclairamb/solidping/compare/v0.43.0...v0.43.1) (2026-11-05)
+
+
+### Security
+
+* **security:** harden the JS check sandbox (memory budget gaps and residuals, regexp time limit and call time, process isolation, parent decode budget, RegExp symbol methods budget), require re-authentication for Discord linking, cap invitations, validate crawl link schemes, restrict the subscriber list by role, invalidate reset links on password change and make TOTP codes single-use ([#735](https://github.com/fclairamb/solidping/issues/735), [#742](https://github.com/fclairamb/solidping/issues/742), [#749](https://github.com/fclairamb/solidping/issues/749))
+
+
+### Bug Fixes
+
+* **ai:** send DeepSeek's reasoning_content back on assistant turns ([#739](https://github.com/fclairamb/solidping/issues/739)) ([d62bfc6](https://github.com/fclairamb/solidping/commit/d62bfc6ca03dbbb5eee1f78cf9232dadab5aad55))
+* **dash0:** email-scanner filter, non-admin crash, audit incident target ([#755](https://github.com/fclairamb/solidping/issues/755)) ([920d231](https://github.com/fclairamb/solidping/commit/920d231617180a8a613ebe1524b5a673cfe8d970))
+* **reports:** point "Open dashboard" at the organization's dashboard ([#744](https://github.com/fclairamb/solidping/issues/744)) ([061eca0](https://github.com/fclairamb/solidping/commit/061eca0f99103d1b84e4d8273902e340d42f573a))
+* **docs:** tour video under 500 KB ([#752](https://github.com/fclairamb/solidping/issues/752)) ([1cdcce4](https://github.com/fclairamb/solidping/commit/1cdcce42b1adcd87fc52060e857be91e764ffd4d))
+
+
+### Dependencies
+
+* update Go and frontend dependencies: goja, regexp2 v2.12.0, oapi-codegen v2.8.2, modernc.org/sqlite v1.61.1, @hookform/resolvers v7 and other non-major bumps ([#736](https://github.com/fclairamb/solidping/issues/736), [#756](https://github.com/fclairamb/solidping/issues/756), [#746](https://github.com/fclairamb/solidping/issues/746), [#747](https://github.com/fclairamb/solidping/issues/747), [#754](https://github.com/fclairamb/solidping/issues/754), [#753](https://github.com/fclairamb/solidping/issues/753), [#730](https://github.com/fclairamb/solidping/issues/730), [#750](https://github.com/fclairamb/solidping/issues/750), [#748](https://github.com/fclairamb/solidping/issues/748), [#751](https://github.com/fclairamb/solidping/issues/751), [#758](https://github.com/fclairamb/solidping/issues/758), [#737](https://github.com/fclairamb/solidping/issues/737), [#733](https://github.com/fclairamb/solidping/issues/733), [#732](https://github.com/fclairamb/solidping/issues/732))
+
 ## [0.43.0](https://github.com/fclairamb/solidping/compare/v0.42.1...v0.43.0) (2026-10-31)
 
 
