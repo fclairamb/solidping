@@ -298,6 +298,33 @@ func TestCrawlSitemap(t *testing.T) {
 		require.Zero(t, web.hitCount("/sitemap.xml"), "the robots.txt Sitemap line wins over the guess")
 	})
 
+	t.Run("non-http sitemap URLs from robots.txt and an index are dropped", func(t *testing.T) {
+		t.Parallel()
+
+		web := newSite(t, false)
+		web.html("/", `hello`)
+		web.text("/robots.txt", "text/plain",
+			"User-agent: *\nDisallow:\nSitemap: javascript:alert(document.cookie)\n"+
+				"Sitemap: /relative.xml\nSitemap: "+web.url("/index.xml")+"\n")
+		web.text("/index.xml", "application/xml",
+			`<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`+
+				`<sitemap><loc>data:text/xml,&lt;urlset/&gt;</loc></sitemap>`+
+				`<sitemap><loc>JavaScript:alert(1)</loc></sitemap>`+
+				`<sitemap><loc>`+web.url("/missing.xml")+`</loc></sitemap></sitemapindex>`)
+
+		out := crawl(t, &CrawlChecker{}, map[string]any{"url": web.url("/")}, 20)
+		errs := findingsOfType(reportOf(t, out), findingSitemapError)
+		require.Equal(t, []string{web.url("/missing.xml")}, urlsOf(errs),
+			"only the https sitemap is fetched; its 404 is the one finding")
+		require.Equal(t, 1, web.hitCount("/missing.xml"))
+		require.Zero(t, web.hitCount("/relative.xml"), "relative Sitemap lines are not fetched")
+		require.Zero(t, web.hitCount("/sitemap.xml"), "a valid robots.txt Sitemap line wins over the guess")
+
+		for _, finding := range reportOf(t, out).Findings {
+			require.Regexp(t, `^https?://`, finding.URL)
+		}
+	})
+
 	t.Run("explicit sitemap unreachable", func(t *testing.T) {
 		t.Parallel()
 
@@ -483,6 +510,8 @@ func TestCrawlConfigValidation(t *testing.T) {
 		"run 3h":         {"url": "https://acme.com", "maxRunDuration": "3h"},
 		"bad failOn":     {"url": "https://acme.com", "failOn": []any{"nope"}},
 		"bad sitemap":    {"url": "https://acme.com", "sitemap": "sometimes"},
+		"js sitemap":     {"url": "https://acme.com", "sitemap": "javascript:alert(1)"},
+		"data sitemap":   {"url": "https://acme.com", "sitemap": "data:text/xml,<urlset/>"},
 		"21 excludes":    {"url": "https://acme.com", "exclude": make([]any, 21)},
 	}
 

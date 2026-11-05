@@ -183,6 +183,10 @@ func otherManualReaderEnvVars() []string {
 		"SP_TEST_PG_BINARIES_PATH",
 		"SP_MCP_TOOLSETS",
 		"SP_PLUGIN_FINGER_KEYS",
+		"SP_JS_CGROUP",
+		"SP_JS_CHILD",
+		"SP_JS_ISOLATION",
+		"SP_JS_MEMORY_LIMIT_MB",
 	}
 }
 

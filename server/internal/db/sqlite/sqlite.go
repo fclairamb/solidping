@@ -4876,6 +4876,70 @@ func (s *Service) BumpGlobalCounter(
 	return limited, nil
 }
 
+// RaiseGlobalCounter atomically raises the global counter at key to value
+// when its live value is below it (spec 2026-11-03-03). Serialized like
+// BumpGlobalCounter.
+func (s *Service) RaiseGlobalCounter(
+	ctx context.Context, key string, value int, ttl time.Duration,
+) (bool, error) {
+	raised := false
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		now := time.Now()
+
+		var live []*models.StateEntry
+		if err := tx.NewSelect().Model(&live).
+			Where("organization_uid IS NULL").
+			Where("key = ?", key).
+			Where("deleted_at IS NULL").
+			Where("(expires_at IS NULL OR expires_at > datetime('now'))").
+			Scan(ctx); err != nil {
+			return fmt.Errorf("read counter %q: %w", key, err)
+		}
+
+		for _, entry := range live {
+			if models.CounterValue(entry) >= value {
+				return nil
+			}
+		}
+
+		raised = true
+		newValue := models.NewCounterValue(value)
+		expiresAt := now.Add(ttl)
+
+		res, err := tx.NewUpdate().Model((*models.StateEntry)(nil)).
+			Where("organization_uid IS NULL").
+			Where("key = ?", key).
+			Set("value = ?", newValue).
+			Set("expires_at = ?", expiresAt).
+			Set("updated_at = ?", now).
+			Set("deleted_at = NULL").
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("raise counter %q: %w", key, err)
+		}
+
+		if rows, _ := res.RowsAffected(); rows > 0 {
+			return nil
+		}
+
+		entry := models.NewStateEntry(nil, key)
+		entry.Value = newValue
+		entry.ExpiresAt = &expiresAt
+
+		if _, err := tx.NewInsert().Model(entry).Exec(ctx); err != nil {
+			return fmt.Errorf("seed counter %q: %w", key, err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return raised, nil
+}
+
 // AdmitFixedWindows atomically counts one event against every window, or
 // against none (spec 2026-09-25-34, "Capture now").
 //

@@ -181,6 +181,7 @@
     "title": "Abonnés",
     "description": "Personnes abonnées aux notifications par e-mail de cette page de statut.",
     "empty": "Aucun abonné pour le moment.",
+    "adminOnly": "Seuls les administrateurs de l'organisation peuvent voir qui est abonné à cette page.",
     "email": "E-mail",
     "scope": "Portée",
     "status": "Statut",

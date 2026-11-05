@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dop251/goja"
 
@@ -86,6 +87,8 @@ var DeploymentGate DeploymentGateFunc //nolint:gochecknoglobals // Mirrors TypeE
 const (
 	maxSubChecks     = 20
 	maxConsoleOutput = 16 * 1024 // 16KB
+	// maxErrorOutput caps the error text of a result, like the console.
+	maxErrorOutput = 16 * 1024
 	// maxHTTPBody is checkerdef's shared payload cap: the same number bounds a
 	// page's text() / evaluate() result, so there is ONE number to change.
 	maxHTTPBody = checkerdef.MaxPayloadBytes
@@ -168,6 +171,19 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 		ctx = egress.WithHostAllowlist(ctx, repairList)
 	}
 
+	// The script runs in a memory-limited child process (spec 2026-11-02-06)
+	// unless isolation is off: the bindings stay here, in this process.
+	if settings := currentIsolation(); settings.Enabled {
+		return executeIsolated(ctx, cfg, timeout, repairList, settings), nil
+	}
+
+	return executeInProcess(ctx, cfg, timeout, repairList), nil
+}
+
+// executeInProcess runs the script in this process's own goja VM.
+func executeInProcess(
+	ctx context.Context, cfg *JSConfig, timeout time.Duration, repairList *egress.HostAllowlist,
+) *checkerdef.Result {
 	start := time.Now()
 
 	runtime := newJSRuntime(ctx, cfg)
@@ -191,12 +207,6 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	// connection (spec 2026-09-15-06 §3).
 	defer runtime.closeSockets()
 
-	// Set up interrupt for timeout
-	go func() {
-		<-ctx.Done()
-		runtime.vm.Interrupt("timeout")
-	}()
-
 	// contextcheck: the `browser` bindings derive their per-call contexts from
 	// r.execCtx (the check's own budget), which is exactly the rule spec
 	// 2026-09-12-06 §3 requires — there is no context parameter to thread
@@ -204,21 +214,7 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	//nolint:contextcheck // bindings derive from r.execCtx by design
 	runtime.registerGlobals()
 
-	// Wrap script in a function so top-level return statements work
-	wrapped := "(function() {\n" + cfg.Script + "\n})()"
-
-	val, err := runtime.vm.RunString(wrapped)
-	runtime.vm.ClearInterrupt()
-
-	// Exporting the result flattens every string in it: a rope built with
-	// `+` past the memory budget is refused first.
-	if err == nil {
-		err = runtime.guardResult(val)
-	}
-
-	duration := time.Since(start)
-
-	result := runtime.resultFor(val, err, duration, timeout)
+	result := runtime.runScript(start, timeout)
 
 	// ONE exit point for the capture decision, and deliberately so: a
 	// screenshot the script already took must survive every terminal status
@@ -230,10 +226,42 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	runtime.attachScreenshot(result)
 
 	if refused := repairList.Refused(); refused != nil {
-		return runtime.repairRefusal(refused, duration), nil
+		return runtime.repairRefusal(refused, result.Duration)
 	}
 
-	return result, nil
+	return result
+}
+
+// runScript runs the script on the registered globals and turns its outcome
+// into a result. The VM is interrupted when the run's context ends.
+func (r *jsRuntime) runScript(start time.Time, timeout time.Duration) *checkerdef.Result {
+	stop := make(chan struct{})
+	defer close(stop)
+
+	go func() {
+		select {
+		case <-r.execCtx.Done():
+			r.vm.Interrupt("timeout")
+		case <-stop:
+		}
+	}()
+
+	// Wrap script in a function so top-level return statements work
+	wrapped := "(function() {\n" + r.config.Script + "\n})()"
+
+	val, err := r.vm.RunString(wrapped)
+	r.vm.ClearInterrupt()
+
+	// Exporting the result flattens every string in it: a rope built with
+	// `+` past the memory budget is refused first.
+	if err == nil {
+		err = r.guardResult(val)
+	} else {
+		// So does an uncaught throw's message.
+		err = r.guardThrown(err)
+	}
+
+	return r.resultFor(val, err, time.Since(start), timeout)
 }
 
 // OutputKeyRepairRefused flags the result of a repair-applied script that
@@ -464,22 +492,40 @@ func newJSRuntime(ctx context.Context, cfg *JSConfig) *jsRuntime {
 
 // registerGlobals sets up the global objects available to the script.
 func (r *jsRuntime) registerGlobals() {
+	r.registerLocalGlobals()
+	r.registerHostGlobals()
+	r.guardBindings()
+}
+
+// registerLocalGlobals sets up the globals a child process serves itself:
+// they need nothing but the script's own config.
+func (r *jsRuntime) registerLocalGlobals() {
 	r.installMemoryBudget()
 	r.registerEnv()
 	r.registerSecrets()
 	r.registerPluginConfig()
 	r.registerConsole()
 	r.registerSleep()
+	r.registerBase64()
+}
+
+// hostGlobals are the globals whose bindings need this process (the egress
+// guard and allowlists, the sub-check registry, the browser, RDP and VNC
+// pools, sockets). An isolated script reaches them over its channel.
+//
+//nolint:gochecknoglobals // Fixed list of binding names.
+var hostGlobals = []string{"solidping", "http", "browser", "rdp", "vnc", "tcp", "udp", "websocket"}
+
+// registerHostGlobals sets up the globals listed in hostGlobals.
+func (r *jsRuntime) registerHostGlobals() {
 	r.registerSolidping()
 	r.registerHTTP()
-	r.registerBase64()
 	r.registerBrowser()
 	r.registerRDP()
 	r.registerVNC()
 	r.registerTCP()
 	r.registerUDP()
 	r.registerWebSocket()
-	r.guardBindings()
 }
 
 // registerEnv exposes checkconfig.Env as a read-only "env" object.
@@ -1331,7 +1377,7 @@ func (r *jsRuntime) parseStatus(obj *goja.Object) checkerdef.Status {
 // failure, and a script's own output goes through buildOutputFromObj instead.
 func (r *jsRuntime) buildOutput(value string) map[string]any {
 	out := make(map[string]any)
-	out[logLevelError] = value
+	out[logLevelError] = truncateErrorText(value)
 
 	if r.consoleBuf.Len() > 0 {
 		out["console"] = r.consoleBuf.String()
@@ -1357,4 +1403,22 @@ func (r *jsRuntime) buildOutputFromObj(obj *goja.Object) map[string]any {
 	}
 
 	return out
+}
+
+// errorTruncatedSuffix ends an error text cut at maxErrorOutput.
+const errorTruncatedSuffix = "... (truncated)"
+
+// truncateErrorText caps the error text stored with the result (spec
+// 2026-11-02-01): a script can throw a string of tens of megabytes.
+func truncateErrorText(text string) string {
+	if len(text) <= maxErrorOutput {
+		return text
+	}
+
+	cut := maxErrorOutput - len(errorTruncatedSuffix)
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+
+	return text[:cut] + errorTruncatedSuffix
 }

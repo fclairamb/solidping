@@ -9,6 +9,7 @@ import {
   type StatusPageSubscriberChannel,
 } from "@/api/hooks";
 import { ApiError } from "@/api/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -55,13 +56,22 @@ interface StatusPageSubscribersProps {
 
 // StatusPageSubscribers renders a read-only admin list of a status page's
 // email subscribers, with a count and a per-row remove action. Subscriber
-// emails are PII — managed here only by org admins for their own page.
+// emails are PII — the list is org-admin only on the server, so below admin the
+// list is not requested and a notice takes its place (a 403 from the server,
+// e.g. after a role change, shows the same notice). Adding a webhook/Slack
+// delivery stays open to `user` members.
 export function StatusPageSubscribers({
   org,
   statusPageUid,
 }: StatusPageSubscribersProps) {
   const { t } = useTranslation("statusPages");
-  const { data, isLoading } = useStatusPageSubscribers(org, statusPageUid);
+  const { user } = useAuth();
+  const canList = !!user?.isAdmin;
+  const { data, isLoading, error } = useStatusPageSubscribers(org, statusPageUid, {
+    enabled: canList,
+  });
+  const listDenied =
+    !canList || (error instanceof ApiError && error.status === 403);
   const deleteSubscriber = useDeleteStatusPageSubscriber(org, statusPageUid);
   const createEndpoint = useCreateEndpointSubscriber(org, statusPageUid);
   const [deleteUid, setDeleteUid] = useState<string | null>(null);
@@ -121,14 +131,25 @@ export function StatusPageSubscribers({
         <CardTitle className="flex items-center gap-2">
           <Users className="h-5 w-5" />
           {t("subscribers.title")}
-          <Badge variant="secondary" data-testid="subscriber-count">
-            {count}
-          </Badge>
+          {!listDenied && (
+            <Badge variant="secondary" data-testid="subscriber-count">
+              {count}
+            </Badge>
+          )}
         </CardTitle>
         <CardDescription>{t("subscribers.description")}</CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {listDenied ? (
+          <Alert data-testid="subscribers-permission-denied">
+            <AlertDescription>
+              <span className="font-medium">
+                {t("permissionDenied", { ns: "common" })}
+              </span>{" "}
+              {t("subscribers.adminOnly")}
+            </AlertDescription>
+          </Alert>
+        ) : isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />

@@ -21,9 +21,14 @@ export function base32Decode(encoded: string): Buffer {
 // RFC 6238 TOTP (HMAC-SHA1, 30s step, 6 digits) — matches the
 // `algorithm=SHA1&digits=6&period=30` params in the otpauth URI the
 // backend returns.
-export function generateTotp(secret: string): string {
+//
+// The server accepts each code once (a code at or before the last accepted
+// time step is refused), so a test that confirms enrollment and then signs in
+// must confirm with the previous step (stepOffset -1, inside the server's
+// +/-1 step skew) and sign in with the current one.
+export function generateTotp(secret: string, stepOffset = 0): string {
   const key = base32Decode(secret);
-  const counter = Math.floor(Date.now() / 1000 / 30);
+  const counter = Math.floor(Date.now() / 1000 / 30) + stepOffset;
   const counterBuf = Buffer.alloc(8);
   counterBuf.writeBigUInt64BE(BigInt(counter));
   const hmac = crypto.createHmac("sha1", key).update(counterBuf).digest();

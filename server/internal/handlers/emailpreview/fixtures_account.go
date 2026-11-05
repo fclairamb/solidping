@@ -85,6 +85,13 @@ func totpEnabledFixture(_ i18n.Locale) map[string]any {
 	}
 }
 
+func totpDisabledFixture(_ i18n.Locale) map[string]any {
+	return map[string]any{
+		"DisabledAt":   fixtureChangedAt(),
+		keySecurityURL: fixtureDashboardURL + "/orgs/acme/account/security",
+	}
+}
+
 func discordLinkedFixture(_ i18n.Locale) map[string]any {
 	return map[string]any{
 		"LinkedAt":     fixtureChangedAt(),
