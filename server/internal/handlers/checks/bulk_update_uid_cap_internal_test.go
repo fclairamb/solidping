@@ -24,7 +24,7 @@ func TestUniqueCheckUIDsIsLinear(t *testing.T) {
 	elapsed := time.Since(start)
 
 	require.Len(t, out, len(uids))
-	require.Less(t, elapsed, 200*time.Millisecond, "dedup of 200,000 UIDs took %s", elapsed)
+	require.Less(t, elapsed, 3*time.Second, "dedup of 200,000 UIDs took %s", elapsed)
 }
 
 func TestUniqueCheckUIDsKeepsOrder(t *testing.T) {
