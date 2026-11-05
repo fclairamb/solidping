@@ -2144,8 +2144,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		statussubscribers.WithConfirmBudget(s.config.StatusSubscribers))
 	statusSubscribersHandler := statussubscribers.NewHandler(
 		statusSubscribersService, s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config)
-	// Authed admin: list (count + redactable addresses) and remove.
-	orgStatusPages.GET("/:statusPageUid/subscribers", statusSubscribersHandler.ListSubscribers)
+	// The list is org ADMIN only, structurally (spec 2026-11-02-04): it carries
+	// the email addresses of third parties who subscribed on the public page,
+	// which neither a viewer nor a `user` member needs. orgGroup's write floor
+	// lets every GET through, so this route gets its own admin chain (with the
+	// slug redirect first, like every other admin group). Removal keeps the
+	// orgGroup write floor below.
+	orgStatusPagesAdmin := api.NewGroup("/orgs/:org/status-pages").
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgStatusPagesAdmin.GET("/:statusPageUid/subscribers", statusSubscribersHandler.ListSubscribers)
 	// Operator-side webhook/Slack subscriptions (spec 2026-08-21-07).
 	//
 	// The path is `/subscribers/endpoints`, NOT `/subscribers`, and that is

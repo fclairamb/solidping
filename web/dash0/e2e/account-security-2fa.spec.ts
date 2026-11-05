@@ -264,7 +264,7 @@ test.describe("Account > Security > 2FA setup", () => {
     };
     const confirmResp = await page.request.post(`${API_BASE}/api/v1/auth/2fa/confirm`, {
       headers: auth,
-      data: { code: generateTotp(secret), setupToken },
+      data: { code: generateTotp(secret, -1), setupToken },
     });
     expect(confirmResp.status()).toBe(200);
 

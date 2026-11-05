@@ -91,6 +91,14 @@
     "revoke": "Si no la activaste tú, contacta de inmediato con tu administrador y cambia tu contraseña:",
     "cta": "Ver la seguridad de mi cuenta"
   },
+  "totpDisabled": {
+    "subject": "Se ha desactivado la verificación en dos pasos en tu cuenta de SolidPing",
+    "preheader": "El inicio de sesión ya no pide un código de una app de autenticación.",
+    "title": "Se ha desactivado la verificación en dos pasos",
+    "body": "El {date} se desactivó la verificación en dos pasos en tu cuenta de SolidPing. El inicio de sesión ya no pide un código de una app de autenticación.",
+    "revoke": "Si no la desactivaste tú, contacta de inmediato con tu administrador, cambia tu contraseña y vuelve a activarla:",
+    "cta": "Ver la seguridad de mi cuenta"
+  },
   "discordLinked": {
     "subject": "Se ha vinculado una cuenta de Discord a tu cuenta de SolidPing",
     "preheader": "Ahora permite iniciar sesión en tu cuenta.",

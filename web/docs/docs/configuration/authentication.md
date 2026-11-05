@@ -498,6 +498,8 @@ Users can secure their accounts with **TOTP** two-factor authentication (compati
 - The code is asked on every sign-in: password, LDAP, and every SSO / OAuth connector (Google, GitHub, GitLab, Microsoft, Discord, Slack, OIDC, SAML, and the Slack app install). After the identity provider sends the user back, the dashboard shows the code step, and no session exists until the code is accepted.
 - Passkeys are the only sign-in that skips it, because a passkey already is a second factor.
 - SolidPing does not rely on the identity provider's own MFA (OIDC `amr`, SAML `AuthnContextClassRef`): a user who enabled 2FA is always asked.
+- Each code works once (RFC 6238 §5.2). After a code is accepted, at sign-in or when turning 2FA on or off, that code and earlier ones are refused like a wrong code, and the refusal counts as a failed attempt. To do a second operation right away, wait for the next code.
+- Turning 2FA on or off sends a notice email to the account's address.
 
 ## Configuration File
 

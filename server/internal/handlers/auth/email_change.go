@@ -177,6 +177,9 @@ func (s *Service) applyEmailChange(ctx context.Context, change *emailChange) err
 	// the caller's own), PATs survive as separately managed credentials.
 	s.revokeRefreshTokensForUserExcept(ctx, change.user.UID, change.keepRefreshUID)
 
+	// A reset link mailed to the old address must not outlive the change.
+	s.purgePasswordResets(ctx, change.user.UID)
+
 	changedAt := time.Now().UTC()
 
 	switch {

@@ -181,6 +181,7 @@
     "title": "Suscriptores",
     "description": "Personas suscritas a las notificaciones por correo de esta página de estado.",
     "empty": "Aún no hay suscriptores.",
+    "adminOnly": "Solo los administradores de la organización pueden ver quién está suscrito a esta página.",
     "email": "Correo",
     "scope": "Alcance",
     "status": "Estado",

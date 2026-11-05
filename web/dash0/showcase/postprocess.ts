@@ -621,27 +621,49 @@ function buildCameraFilter(series: CueSeries | null, source: VideoInfo): string 
   return parts.join(",");
 }
 
-const AV1_ARGS = ["-c:v", "libsvtav1", "-crf", "34", "-preset", "6", "-g", "240"];
+/**
+ * Both published encodes are 960×600 at 10 fps, which keeps each under 500 KB:
+ * the docs column is narrower than 960 px anyway, and the cut is typing and
+ * page loads, not motion. Text stays readable down to the terminal logs.
+ */
+const PUBLISHED_FILTER = ["-vf", "fps=10,scale=960:600:flags=lanczos"];
+
+/** `scm=1` is SVT-AV1's screen-content mode: it halves this cut at equal CRF. */
+const AV1_ARGS = [
+  ...PUBLISHED_FILTER,
+  "-c:v",
+  "libsvtav1",
+  "-crf",
+  "50",
+  "-preset",
+  "4",
+  "-g",
+  "600",
+  "-svtav1-params",
+  "scm=1",
+];
 
 /**
  * H.264 tuned for a screen capture: large GOP (almost nothing moves between
  * keyframes), `animation` tuning (flat colour, hard edges — nothing like film
- * grain), and a high enough CRF that the file stays in the same league as the
- * AV1 one.
+ * grain), and a high enough CRF that the file stays under 500 KB too.
  */
 const H264_ARGS = [
+  ...PUBLISHED_FILTER,
   "-c:v",
   "libx264",
   "-crf",
-  "26",
+  "30",
   "-preset",
   "veryslow",
   "-tune",
   "animation",
   "-g",
-  "240",
+  "600",
   "-profile:v",
   "high",
+  "-level:v",
+  "4.0",
 ];
 
 /** Near-lossless intermediate: everything published is re-encoded from this. */
@@ -664,7 +686,7 @@ function humanSize(file: string): string {
     : `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
-/** Re-encodes the master into a published file, no filtering. */
+/** Re-encodes the master into a published file. */
 function transcode(
   output: string,
   codecArgs: string[],

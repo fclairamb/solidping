@@ -2,6 +2,9 @@ package checkjs
 
 import (
 	"context"
+	"fmt"
+	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
@@ -116,16 +119,12 @@ var s = Array(1).fill(0).flatMap(function () { return b; });`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			bound := time.Second
-			if tt.baseline != "" {
-				start := time.Now()
-				result := runScript(t, tt.baseline+"\nreturn { status: \"up\" };")
-				require.Equal(t, checkerdef.StatusUp, result.Status, "baseline must fit the budget: %v", result.Output)
-				// 3x the permitted work, plus a margin for scheduler noise.
-				bound = 3*time.Since(start) + 250*time.Millisecond
+			if tt.baseline == "" {
+				requireRefusal(t, tt.script)
+				return
 			}
 
-			requireRefusalWithin(t, tt.script, bound)
+			requireRefusalAllocating(t, tt.script, tt.baseline)
 		})
 	}
 }
@@ -152,6 +151,36 @@ func requireRefusalWithin(t *testing.T, script string, bound time.Duration) {
 	r.Equal(checkerdef.StatusError, result.Status, "output: %v", result.Output)
 	r.Contains(result.Output["error"], "RangeError: memory budget exceeded")
 	r.Less(elapsed, bound, "the refusal must come before the allocation")
+}
+
+// requireRefusalAllocating requires the memory budget refusal for script and
+// that the process allocated no more than about three times what the baseline
+// (the permitted part of the script, which succeeds) allocates. Allocated
+// bytes (runtime.MemStats.TotalAlloc) do not depend on CPU load, unlike a
+// wall clock, and the refused allocation is many times the permitted work.
+func requireRefusalAllocating(t *testing.T, script, baseline string) {
+	t.Helper()
+
+	var result *checkerdef.Result
+	permitted := allocatedDuring(func() {
+		result = runScript(t, baseline+"\nreturn { status: \"up\" };")
+	})
+	require.Equal(t, checkerdef.StatusUp, result.Status, "baseline must fit the budget: %v", result.Output)
+
+	const margin = 16 << 20
+	used := allocatedDuring(func() { requireRefusalWithin(t, script, 10*time.Second) })
+	require.Less(t, used, 3*permitted+margin,
+		"the refusal must come before the allocation: %d bytes allocated, the permitted work takes %d", used, permitted)
+}
+
+// allocatedDuring returns the bytes the process allocated while f ran.
+func allocatedDuring(f func()) uint64 {
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	f()
+	runtime.ReadMemStats(&after)
+
+	return after.TotalAlloc - before.TotalAlloc
 }
 
 type refusalCase struct {
@@ -341,6 +370,11 @@ func TestRopeDetection(t *testing.T) {
 	small, err := vm.RunString(`"x".repeat(40) + "y"`)
 	r.NoError(err)
 	r.InDelta(0, unflattenedRopeLen(small), 0, "under ropeFreeLen")
+
+	// JSON.stringify's charge counts an ASCII string byte by byte.
+	ascii, err := vm.RunString(`"abc"`)
+	r.NoError(err)
+	r.Equal(asciiStringTypeName, reflect.TypeOf(ascii).String())
 }
 
 // TestMemoryBudgetIsCumulative: allocations each under the budget add up, so
@@ -528,4 +562,305 @@ return {
 	r.Equal("RangeError", result.Output["badIndex"])
 	r.Equal("TypeError", result.Output["badCompare"])
 	r.Equal("TypeError", result.Output["sortNullThis"])
+}
+
+// TestMemoryBudgetRefusesAmplifyingBuiltins: builtins that turn an input the
+// budget accepts into an output it does not are refused as they write, not
+// after (spec 2026-11-02-01). Each input stays a few hundred MB away from
+// harm when the cap is missing: the test then fails on its status or its
+// duration.
+func TestMemoryBudgetRefusesAmplifyingBuiltins(t *testing.T) {
+	t.Parallel()
+
+	const (
+		// kib is a 1 KiB string; refs is 128 Mi characters' worth of it.
+		kib  = `var kib = "x".repeat(1024); `
+		refs = kib + `var refs = Array(128 * 1024).fill(kib); `
+		// rope doubles a 64-character string 21 times: 128 Mi characters.
+		rope = `var s = "x".repeat(64); for (var i = 0; i < 21; i++) s = s + s; `
+	)
+
+	tests := []refusalCase{
+		{"JSON.stringify flat", refs + `JSON.stringify(refs);`},
+		{"JSON.stringify indented shared", kib + `var b = [kib]; for (var i = 0; i < 17; i++) b = [b, b];
+JSON.stringify(b, null, 2);`},
+		{"JSON.stringify with a replacer", refs + `JSON.stringify(refs, function (k, v) { return v; });`},
+		{"JSON.stringify with a property list", kib + `var o = { a: kib }; var a = Array(128 * 1024).fill(o);
+JSON.stringify(a, ["a"]);`},
+		{"Array toLocaleString", refs + `refs.toLocaleString();`},
+		{"normalize NFKD", `"ﷺ".repeat(4 * 1024 * 1024).normalize("NFKD");`},
+		{"normalize NFKC", `"ﷺ".repeat(4 * 1024 * 1024).normalize("NFKC");`},
+		{"String.raw array-like", `String.raw({ raw: { length: 1e7 } });`},
+		{"String.raw substitutions", kib + `var raw = Array(70 * 1024).fill("");
+String.raw.apply(null, [{ raw: raw }].concat(Array(70 * 1024).fill(kib)));`},
+		{"encodeURIComponent", `encodeURIComponent("\u4E2D".repeat(8 * 1024 * 1024));`},
+		{"encodeURI", `encodeURI("\u4E2D".repeat(8 * 1024 * 1024));`},
+		{"escape", `escape("\u4E2D".repeat(12 * 1024 * 1024));`},
+		{"JSON.parse rope", rope + `JSON.parse(s);`},
+		{"RegExp rope", rope + `new RegExp(s);`},
+		{"parseInt rope", rope + `parseInt(s);`},
+		{"decodeURIComponent rope", rope + `decodeURIComponent(s);`},
+		{"Number rope", rope + `Number(s);`},
+		{"String rope", rope + `String(s);`},
+		{"rope nested 70 levels in the result", rope + `var o = s; for (var j = 0; j < 70; j++) o = { a: o };
+return { status: "up", output: { deep: o } };`},
+		{"rope nested 70 levels in a binding argument", rope + `var o = s; for (var j = 0; j < 70; j++) o = [o];
+console.log(o);`},
+		{"thrown rope", rope + `throw s;`},
+		{"thrown Error with a rope message", rope + `throw new Error(s);`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			// goja writes up to 64 MiB of permitted output before the
+			// refusal (0.7 s on a quiet machine for JSON.stringify, 3.5 s
+			// seen on a CI runner with every parallel case competing for
+			// its cores): the bound only has to stay under the script
+			// timeout. Without the caps these do not fail on time but on
+			// their status: they return "up".
+			requireRefusalWithin(t, tt.script, 8*time.Second)
+		})
+	}
+}
+
+// TestMemoryBudgetThrownRopeErrorIsCapped: an uncaught rope ends as an error
+// result quickly, with an error text of at most 16 KiB, and so does a long
+// string the budget lets through.
+func TestMemoryBudgetThrownRopeErrorIsCapped(t *testing.T) {
+	t.Parallel()
+
+	for _, script := range []string{
+		`var s = "x".repeat(64); for (var i = 0; i < 22; i++) s = s + s; throw s;`,
+		`throw "x".repeat(8 * 1024 * 1024);`,
+		`throw new Error("y".repeat(1024 * 1024) + "z");`,
+	} {
+		r := require.New(t)
+		start := time.Now()
+		result := runScript(t, script)
+
+		r.Equal(checkerdef.StatusError, result.Status)
+
+		text, ok := result.Output["error"].(string)
+		r.True(ok, "output: %v", result.Output)
+		r.LessOrEqual(len(text), 16*1024)
+		r.Less(time.Since(start), 2*time.Second)
+	}
+}
+
+// TestMemoryBudgetPositiveControlBuiltins: the builtins wrapped for spec
+// 2026-11-02-01 keep their results on ordinary input. The JSON outputs are
+// compared as text: key order, escapes and indentation are what is tested.
+//
+//nolint:testifylint // Exact JSON text, not JSON equivalence.
+func TestMemoryBudgetPositiveControlBuiltins(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	result := runScript(t, `
+var cyclic = { a: 1 }; cyclic.self = cyclic;
+var cycleError = "";
+try { JSON.stringify(cyclic); } catch (e) { cycleError = e.name; }
+var listCycle = { a: 1 }; listCycle.a = listCycle;
+var listCycleError = "";
+try { JSON.stringify(listCycle, ["a"]); } catch (e) { listCycleError = e.name; }
+var bigintError = "";
+try { JSON.stringify({ n: 1n }); } catch (e) { bigintError = e.name; }
+var shared = { v: 1 };
+var date = { toJSON: function (key) { return "json:" + key; } };
+var inherited = Object.create({ inh: 5 });
+inherited.own = 6;
+var raw = String.raw;
+return {
+  status: "up",
+  output: {
+    json: JSON.stringify({ a: [1, "two", null, true, undefined, function () {}], b: { c: "q\"\né😀\u0001" } }),
+    jsonIndent: JSON.stringify({ a: [1, { b: 2 }], c: {}, d: [] }, null, 2),
+    jsonIndentString: JSON.stringify([1, [2]], null, "--"),
+    jsonIndentObject: JSON.stringify({ a: 1 }, null, new Number(1)),
+    jsonReplacer: JSON.stringify({ a: 1, b: "x", c: { d: 4 } }, function (k, v) {
+      if (k === "b") return undefined;
+      return typeof v === "number" ? v * 10 : v;
+    }),
+    jsonReplacerThis: JSON.stringify({ a: 1 }, function (k, v) { return k === "a" ? typeof this.a : v; }),
+    jsonList: JSON.stringify({ b: 1, 1: 2, a: 3, c: 4 }, ["b", "1", "a", "b", "missing"]),
+    jsonListInherited: JSON.stringify(inherited, ["inh", "own"]),
+    jsonListNested: JSON.stringify({ a: { a: 1, z: 2 }, z: 3, arr: [{ a: 5, q: 6 }] }, ["a", "arr"]),
+    jsonToJSON: JSON.stringify({ d: date, e: [date] }),
+    jsonWrappers: JSON.stringify([new Number(3), new String("s"), new Boolean(false), Object(1n) === 1]),
+    jsonShared: JSON.stringify([shared, shared]),
+    jsonRaw: JSON.stringify({ r: JSON.rawJSON("12345678901234567890") }),
+    jsonTop: JSON.stringify("x") + "|" + JSON.stringify(1) + "|" + String(JSON.stringify(undefined)) +
+      "|" + JSON.stringify(NaN),
+    cycleError: cycleError,
+    listCycleError: listCycleError,
+    bigintError: bigintError,
+    parse: JSON.parse('{"a":[1,2]}').a.join(","),
+    locale: [1, "a", null, undefined, [2, 3]].toLocaleString(),
+    typedLocale: new Uint8Array([1, 2]).toLocaleString(),
+    normalize: ["Å".normalize() === "Å", "ﬁ".normalize("NFKD"), "Å".normalize("NFD").length].join(","),
+    raw: raw`+"`a\\n${1}b${2}`"+` + "|" + String.raw({ raw: ["x", "y", "z"] }, 1) + "|" + String.raw({ raw: [] }),
+    encode: encodeURIComponent("a bé\u4E2D😀") + "|" + encodeURI("http://x/a b?c=d#e") + "|" + escape("aé\u4E2D"),
+    decode: decodeURIComponent("%C3%A9") + unescape("%u4E2D"),
+    ctors: [String(5), Number("12"), new RegExp("a+").test("aa"), new String("s") instanceof String,
+      "s" instanceof String, Number.isInteger(3), String.fromCharCode(65), parseInt("42px"),
+      parseFloat("1.5")].join(","),
+  },
+};
+`)
+
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+
+	out := result.Output
+	wantJSON := `{"a":[1,"two",null,true,null,null],"b":{"c":"q\"\n` + "é😀" + `\u0001"}}`
+	r.Equal(wantJSON, out["json"])
+	r.Equal("{\n  \"a\": [\n    1,\n    {\n      \"b\": 2\n    }\n  ],\n  \"c\": {},\n  \"d\": []\n}", out["jsonIndent"])
+	r.Equal("[\n--1,\n--[\n----2\n--]\n]", out["jsonIndentString"])
+	r.Equal("{\n \"a\": 1\n}", out["jsonIndentObject"])
+	r.Equal(`{"a":10,"c":{"d":40}}`, out["jsonReplacer"])
+	r.Equal(`{"a":"number"}`, out["jsonReplacerThis"])
+	r.Equal(`{"b":1,"1":2,"a":3}`, out["jsonList"])
+	r.Equal(`{"inh":5,"own":6}`, out["jsonListInherited"])
+	r.Equal(`{"a":{"a":1},"arr":[{"a":5}]}`, out["jsonListNested"])
+	r.Equal(`{"d":"json:d","e":["json:0"]}`, out["jsonToJSON"])
+	r.Equal(`[3,"s",false,false]`, out["jsonWrappers"])
+	r.Equal(`[{"v":1},{"v":1}]`, out["jsonShared"])
+	r.Equal(`{"r":12345678901234567890}`, out["jsonRaw"])
+	r.Equal(`"x"|1|undefined|null`, out["jsonTop"])
+	r.Equal("TypeError", out["cycleError"])
+	r.Equal("TypeError", out["listCycleError"])
+	r.Equal("TypeError", out["bigintError"])
+	r.Equal("1,2", out["parse"])
+	r.Equal("1,a,,,2,3", out["locale"])
+	r.Equal("1,2", out["typedLocale"])
+	r.Equal("true,fi,2", out["normalize"])
+	r.Equal(`a\n1b2|x1yz|`, out["raw"])
+	r.Equal("a%20b%C3%A9%E4%B8%AD%F0%9F%98%80|http://x/a%20b?c=d#e|a%E9%u4E2D", out["encode"])
+	r.Equal("é\u4e2d", out["decode"])
+	r.Equal("5,12,true,true,false,true,A,42,1.5", out["ctors"])
+}
+
+// TestMemoryBudgetKeepsShortThrownMessage: an uncaught Error keeps its
+// message in the result.
+func TestMemoryBudgetKeepsShortThrownMessage(t *testing.T) {
+	t.Parallel()
+
+	result := runScript(t, `throw new Error("short");`)
+
+	require.Equal(t, checkerdef.StatusError, result.Status)
+	require.Contains(t, result.Output["error"], "Error: short")
+}
+
+// TestMemoryBudgetChargesRegexpSymbolMethods: the RegExp.prototype symbol
+// methods called directly are charged like their String.prototype twins
+// (spec 2026-11-03-02). With isolation off, the `$'` replacement used to grow
+// the worker's heap to tens of GB, past the timeout.
+//
+//nolint:paralleltest // Swaps the package-level isolation settings.
+func TestMemoryBudgetChargesRegexpSymbolMethods(t *testing.T) {
+	previous := SetIsolation(IsolationSettings{Enabled: false})
+	t.Cleanup(func() { SetIsolation(previous) })
+
+	tests := []refusalCase{
+		{"replace function returning a big string", `var big = "x".repeat(1024 * 1024);
+var s = /a/g[Symbol.replace]("a".repeat(100), function () { return big; });`},
+		{"replace non-global", `var s = /x/[Symbol.replace]("x".repeat(1024 * 1024), "$'".repeat(128));`},
+		{"split empty regexp", `var s = RegExp.prototype[Symbol.split].call(/(?:)/, "x".repeat(8 * 1024 * 1024));`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requireRefusal(t, tt.script)
+		})
+	}
+
+	// The `$'` and `$`+"`"+` replacements are refused only after the matches the
+	// budget allows were processed: that work is permitted, so the bound is
+	// sized by a baseline of the same script on a shorter subject, as for the
+	// heavy copies, not by a fixed wall clock.
+	heavy := []heavyCase{
+		{
+			"replace suffix", `var s = RegExp.prototype[Symbol.replace].call(/x/g, "x".repeat(200000), "$'");`,
+			`var s = RegExp.prototype[Symbol.replace].call(/x/g, "x".repeat(10000), "$'");`,
+		},
+		{
+			"replace prefix", `var s = /x/g[Symbol.replace]("x".repeat(200000), "$` + "`" + `");`,
+			`var s = /x/g[Symbol.replace]("x".repeat(10000), "$` + "`" + `");`,
+		},
+	}
+	for _, tt := range heavy {
+		t.Run(tt.name, func(t *testing.T) {
+			requireRefusalAllocating(t, tt.script, tt.baseline)
+		})
+	}
+
+	// A global match is charged as exec finds each match, so the refusal
+	// comes after the matches the budget allows (2 Mi of them): that work
+	// is permitted, and sized by a baseline that fits, as for the heavy
+	// copies.
+	t.Run("match global empty regexp", func(t *testing.T) {
+		const match = `var s = RegExp.prototype[Symbol.match].call(/(?:)/g, "x".repeat(%d));`
+
+		requireRefusalAllocating(t, fmt.Sprintf(match, 4*1024*1024), fmt.Sprintf(match, 1024*1024))
+	})
+}
+
+// TestMemoryBudgetPositiveControlRegexpSymbolMethods: within the budget, the
+// symbol methods called directly, and the String.prototype methods that reach
+// them, give what they always gave.
+//
+//nolint:paralleltest // Swaps the package-level isolation settings.
+func TestMemoryBudgetPositiveControlRegexpSymbolMethods(t *testing.T) {
+	previous := SetIsolation(IsolationSettings{Enabled: false})
+	t.Cleanup(func() { SetIsolation(previous) })
+
+	r := require.New(t)
+
+	result := runScript(t, `
+var rp = RegExp.prototype;
+return {
+  status: "up",
+  output: {
+    suffix: rp[Symbol.replace].call(/a/g, "banana", "$'"),
+    prefix: /n/g[Symbol.replace]("banana", "[$`+"`"+`]"),
+    whole: /(an)/g[Symbol.replace]("banana", "<$&|$1>"),
+    named: /(?<v>a)/[Symbol.replace]("banana", "$<v>$<v>"),
+    dollar: /a/[Symbol.replace]("banana", "$$"),
+    fn: /a(n)?/g[Symbol.replace]("banana", function (m, g, pos) { return "(" + m + g + pos + ")"; }),
+    viaString: "banana".replace(/a/g, "$'"),
+    viaStringFn: "banana".replace(/a/g, function (m, pos) { return pos; }),
+    split: rp[Symbol.split].call(/(n)/, "banana").join("|"),
+    splitLimit: /a/[Symbol.split]("banana", 2).join("|"),
+    viaStringSplit: "a,b,,c".split(/,/).join("|"),
+    match: rp[Symbol.match].call(/a/g, "banana").join("|"),
+    matchOne: /n(a)/[Symbol.match]("banana").join("|"),
+    matchNone: String(/z/g[Symbol.match]("banana")),
+    viaStringMatch: "banana".match(/an/g).join("|"),
+    matchAll: Array.from("banana".matchAll(/a/g), function (m) { return m.index; }).join("|"),
+    search: /n/[Symbol.search]("banana"),
+    bigMatch: "ab".repeat(100000).match(/a/g).length,
+  },
+};`)
+
+	r.Equal(checkerdef.StatusUp, result.Status, result.Output)
+
+	out := result.Output
+	r.Equal("bnanannan", out["suffix"])
+	r.Equal("ba[ba]a[bana]a", out["prefix"])
+	r.Equal("b<an|an><an|an>a", out["whole"])
+	r.Equal("baanana", out["named"])
+	r.Equal("b$nana", out["dollar"])
+	r.Equal("b(ann1)(ann3)(aundefined5)", out["fn"])
+	r.Equal("bnanannan", out["viaString"])
+	r.Equal("b1n3n5", out["viaStringFn"])
+	r.Equal("ba|n|a|n|a", out["split"])
+	r.Equal("b|n", out["splitLimit"])
+	r.Equal("a|b||c", out["viaStringSplit"])
+	r.Equal("a|a|a", out["match"])
+	r.Equal("na|a", out["matchOne"])
+	r.Equal("null", out["matchNone"])
+	r.Equal("an|an", out["viaStringMatch"])
+	r.Equal("1|3|5", out["matchAll"])
+	r.EqualValues(2, out["search"])
+	r.EqualValues(100000, out["bigMatch"])
 }
