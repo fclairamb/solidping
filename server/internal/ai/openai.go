@@ -20,7 +20,8 @@ const (
 // OpenAI is the Chat Completions driver (POST {base_url}/chat/completions).
 // It covers OpenAI and every compatible endpoint: BytePlus ModelArk, Mistral,
 // Groq, DeepSeek, Gemini's OpenAI endpoint, OpenRouter, LiteLLM, Ollama, vLLM.
-// Unknown response fields (reasoning_content...) are ignored.
+// The reasoning_content a thinking model returns is handed back on its
+// assistant turn, and only there: OpenAI itself rejects the field.
 type OpenAI struct {
 	baseURL string
 	apiKey  string
@@ -62,10 +63,11 @@ type openAIToolCall struct {
 
 //nolint:tagliatelle // OpenAI wire format
 type openAIMessage struct {
-	Role       string           `json:"role"`
-	Content    *string          `json:"content"`
-	ToolCalls  []openAIToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string           `json:"tool_call_id,omitempty"`
+	Role             string           `json:"role"`
+	Content          *string          `json:"content"`
+	ReasoningContent string           `json:"reasoning_content,omitempty"`
+	ToolCalls        []openAIToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string           `json:"tool_call_id,omitempty"`
 }
 
 //nolint:tagliatelle // OpenAI wire format
@@ -103,6 +105,10 @@ func (o *OpenAI) buildRequest(req Request) openAIRequest {
 	for i := range req.Messages {
 		msg := &req.Messages[i]
 		wire := openAIMessage{Role: string(msg.Role), ToolCallID: msg.ToolCallID}
+		if msg.Role == RoleAssistant {
+			wire.ReasoningContent = msg.Reasoning
+		}
+
 		if msg.Content != "" || msg.Role != RoleAssistant {
 			wire.Content = strPtr(msg.Content)
 		}
@@ -184,6 +190,7 @@ func (o *OpenAI) Complete(ctx context.Context, req Request) (*Response, error) {
 
 	choice := decoded.Choices[0]
 	out := &Response{
+		Reasoning:  choice.Message.ReasoningContent,
 		StopReason: choice.FinishReason,
 		Usage:      Usage{InputTokens: decoded.Usage.PromptTokens, OutputTokens: decoded.Usage.CompletionTokens},
 	}

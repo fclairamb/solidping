@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -250,4 +251,98 @@ func TestAnthropicErrorMappedAndKeyRedacted(t *testing.T) {
 	r.Equal(400, apiErr.StatusCode)
 	r.NotContains(err.Error(), testKey)
 	r.NotContains(logs.String(), testKey)
+}
+
+// deepSeekServer mimics DeepSeek's thinking mode with tools: every reply
+// carries reasoning_content when thinking is true, and a request whose
+// assistant turn lacks it is rejected with HTTP 400, as the real API does.
+type deepSeekServer struct {
+	thinking bool
+	requests []map[string]any
+}
+
+func (d *deepSeekServer) start(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		req := map[string]any{}
+		_ = json.Unmarshal(raw, &req)
+		d.requests = append(d.requests, req)
+
+		w.Header().Set("Content-Type", "application/json")
+
+		msgs, _ := req["messages"].([]any)
+		for i, m := range msgs {
+			msg, _ := m.(map[string]any)
+			if msg["role"] == "assistant" && d.thinking && msg["reasoning_content"] == nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = fmt.Fprintf(w, `{"error":{"message":"missing reasoning_content at messages[%d]"}}`, i)
+
+				return
+			}
+		}
+
+		reasoning := ""
+		if d.thinking {
+			reasoning = fmt.Sprintf(`"reasoning_content":"thought %d",`, len(d.requests))
+		}
+
+		if len(d.requests) == 1 {
+			_, _ = fmt.Fprintf(w, `{"choices":[{"message":{"role":"assistant","content":null,%s
+				"tool_calls":[{"id":"call_1","type":"function","function":{"name":"run_script","arguments":"{}"}}]},
+				"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`, reasoning)
+
+			return
+		}
+
+		_, _ = fmt.Fprintf(w, `{"choices":[{"message":{"role":"assistant",%s"content":"done"},
+			"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`, reasoning)
+	}))
+	t.Cleanup(srv.Close)
+
+	return srv
+}
+
+func TestOpenAIReasoningContentRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	for _, thinking := range []bool{true, false} {
+		t.Run(fmt.Sprintf("thinking=%v", thinking), func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			fake := &deepSeekServer{thinking: thinking}
+			srv := fake.start(t)
+
+			loop := &ai.Loop{
+				Client: newClient(t, config.AIProviderOpenAI, srv.URL),
+				Tools: []ai.Tool{{Def: ai.ToolDef{Name: "run_script"}, Run: func(context.Context, json.RawMessage) (string, error) {
+					return "ok", nil
+				}}},
+			}
+
+			res, err := loop.Run(context.Background(), []ai.Message{{Role: ai.RoleUser, Content: "write it"}})
+			r.NoError(err)
+			r.Equal("done", res.Text)
+			r.Len(fake.requests, 2)
+
+			msgs, _ := fake.requests[1]["messages"].([]any)
+			r.Len(msgs, 3)
+			assistant, ok := msgs[1].(map[string]any)
+			r.True(ok)
+			r.Equal("assistant", assistant["role"])
+
+			if thinking {
+				r.Equal("thought 1", assistant["reasoning_content"])
+			} else {
+				// OpenAI rejects the field: it is never sent unless the model produced it.
+				r.NotContains(assistant, "reasoning_content")
+			}
+
+			userMsg, ok := msgs[0].(map[string]any)
+			r.True(ok)
+			r.NotContains(userMsg, "reasoning_content")
+		})
+	}
 }

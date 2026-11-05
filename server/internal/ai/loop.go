@@ -126,7 +126,7 @@ func (l *Loop) Run(ctx context.Context, messages []Message) (*LoopResult, error)
 		result.Usage = result.Usage.Add(resp.Usage)
 		result.Text = resp.Text
 		result.Messages = append(result.Messages, Message{
-			Role: RoleAssistant, Content: resp.Text, ToolCalls: resp.ToolCalls,
+			Role: RoleAssistant, Content: resp.Text, ToolCalls: resp.ToolCalls, Reasoning: resp.Reasoning,
 		})
 
 		if len(resp.ToolCalls) == 0 {
