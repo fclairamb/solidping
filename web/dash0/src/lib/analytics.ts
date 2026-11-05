@@ -44,7 +44,9 @@ export const KNOWN_EXCEPTION_NOISE: readonly RegExp[] = [
   // forgot-password/login links overnight, ~00:45-03:00 UTC (investigated
   // 2026-09-25, spec 2026-09-25-13): a scanner-side bug, not a SolidPing one.
   // Left uncaught it drowns real errors once exception autocapture is on.
-  /^Object Not Found Matching Id:\d+, MethodName:\w+, ParamCount:\d+$/,
+  // Not anchored at the start: posthog-js reports a non-Error rejection as
+  // "Non-Error promise rejection captured with value: <message>".
+  /(?:^|: )Object Not Found Matching Id:\d+, MethodName:\w+, ParamCount:\d+$/,
 ];
 
 /** Browser-safe PostHog settings, as returned by GET /api/v1/config. */

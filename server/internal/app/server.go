@@ -1239,8 +1239,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Components of a vendor status page, for the check form. Behind the same
 	// global rate limiter as /checks/validate (neither has a dedicated one).
 	orgChecks.POST("/vendor-status/components", checkTypesHandler.ListVendorStatusComponents)
+	// Bulk update: one PATCH body applied to many checks (spec 2026-11-05-01).
+	orgChecks.PATCH("", checksHandler.BulkUpdateChecks)
 	// Bulk "Switch to automatic placement" (spec 2026-09-25-06). A literal
-	// segment, registered ahead of the "/:checkUid" routes.
+	// segment, registered ahead of the "/:checkUid" routes. Deprecated by the
+	// bulk PATCH above, removed after 2026-12-15.
 	orgChecks.POST("/auto-placement", checksHandler.SwitchToAutoPlacement)
 
 	// Config-as-code surface (export/import/apply) is admin-only: import and

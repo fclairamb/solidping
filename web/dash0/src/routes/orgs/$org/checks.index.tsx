@@ -34,6 +34,7 @@ import {
 import { useAIChecksEnabled } from "@/api/public-config";
 import { toast } from "sonner";
 import { AutoPlacementBulkDialog } from "@/components/checks/auto-placement-bulk";
+import { SetRegionsBulkDialog } from "@/components/checks/set-regions-bulk";
 import {
   useInfiniteChecks,
   useRegions,
@@ -1384,6 +1385,7 @@ function ChecksIndexPage() {
   // of the import only — it is never persisted here or server-side.
   const [importOpen, setImportOpen] = useState(false);
   const [autoPlacementOpen, setAutoPlacementOpen] = useState(false);
+  const [setRegionsOpen, setSetRegionsOpen] = useState(false);
   const [importSource, setImportSource] = useState<ImportSourceId>("solidping");
   const [importText, setImportText] = useState("");
   const [importToken, setImportToken] = useState("");
@@ -1647,6 +1649,14 @@ function ChecksIndexPage() {
                   <Shuffle className="mr-2 h-4 w-4" />
                   {t("autoPlacement.button")}…
                 </DropdownMenuItem>
+                {/* Bulk "Set regions" on the filtered list (spec 2026-11-05-01). */}
+                <DropdownMenuItem
+                  onSelect={() => setSetRegionsOpen(true)}
+                  data-testid="set-regions-button"
+                >
+                  <Shuffle className="mr-2 h-4 w-4" />
+                  {t("setRegions.button")}…
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <a href="/docs/features/check-types" target="_blank" rel="noreferrer" data-testid="check-types-docs-link">
@@ -1664,6 +1674,18 @@ function ChecksIndexPage() {
         org={org}
         open={autoPlacementOpen}
         onOpenChange={setAutoPlacementOpen}
+      />
+      <SetRegionsBulkDialog
+        org={org}
+        filters={{
+          q: debouncedSearch || undefined,
+          internal: internalFilter,
+          labels: labelsParam,
+          status: statusParam,
+          type: typeParam,
+        }}
+        open={setRegionsOpen}
+        onOpenChange={setSetRegionsOpen}
       />
 
       {/*

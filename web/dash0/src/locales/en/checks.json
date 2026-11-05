@@ -1722,5 +1722,21 @@
   "plugin": {
     "configLabel": "Configuration (JSON)",
     "configHelp": "This check type comes from a server plugin. Edit its configuration as JSON; it is checked against the plugin's schema."
+  },
+  "setRegions": {
+    "button": "Set regions",
+    "title": "Set regions on the listed checks",
+    "scope_one": "Applies to the {{count}} check matching the current filters.",
+    "scope_other": "Applies to the {{count}} checks matching the current filters.",
+    "scopeNone": "No check matches the current filters.",
+    "pick": "Choose the regions these checks will be pinned to.",
+    "preview_one": "{{count}} check will be pinned to exactly these regions.",
+    "preview_other": "{{count}} checks will be pinned to exactly these regions.",
+    "previewSkipped_one": "{{count}} check will be left untouched.",
+    "previewSkipped_other": "{{count}} checks will be left untouched.",
+    "confirm": "Set regions",
+    "updated_one": "Regions set on {{count}} check",
+    "updated_other": "Regions set on {{count}} checks",
+    "failed": "Could not set the regions"
   }
 }

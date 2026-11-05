@@ -276,6 +276,53 @@ test.describe("Members list (mobile)", () => {
     await expect(page.getByRole("columnheader", { name: "Email", exact: true })).toBeHidden();
     await expect(page.getByRole("columnheader", { name: "Joined", exact: true })).toBeHidden();
   });
+
+  // fclairamb/solidping-business#42: on an iPhone (393px) the fixed-width
+  // role select and actions column left the name cell a few pixels, so every
+  // member rendered as an avatar plus "…". The name must keep a readable
+  // width, even if that means the table (not the page) scrolls sideways.
+  test("member name keeps a readable width at 393px", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.setViewportSize({ width: 393, height: 852 });
+
+    await page.route("**/api/v1/orgs/*/members/coverage", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [] }),
+      }),
+    );
+    await page.route("**/api/v1/orgs/*/members", (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            {
+              uid: "e2e-mobile-member-2",
+              userUid: "e2e-mobile-user-2",
+              name: "Jean-Baptiste Dupont",
+              email: "jb.dupont@example.com",
+              role: "admin",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.goto("orgs/test/organization/members");
+
+    const name = page.getByTestId("member-name-jb.dupont@example.com");
+    await expect(name).toBeVisible();
+    await assertNoHorizontalOverflow(page);
+
+    const box = await name.boundingBox();
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(96);
+  });
 });
 
 test.describe("SLOs list (mobile)", () => {

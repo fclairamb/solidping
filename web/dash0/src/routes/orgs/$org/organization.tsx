@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { createFileRoute, Outlet, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Building } from "lucide-react";
@@ -28,6 +29,17 @@ function OrganizationLayout() {
     enabled: !!user?.isAdmin,
   });
   const pendingCount = pendingData?.data.length ?? 0;
+  const redirectNonAdmin = !isLoading && !isOrgDeleted(org) && !user?.isAdmin;
+
+  // Non-admins are bounced to the org dashboard. The navigation must run in an
+  // effect, never during render: navigating while rendering updates the router
+  // state on every render and React aborts with "Maximum update depth
+  // exceeded" (error #185).
+  useEffect(() => {
+    if (redirectNonAdmin) {
+      navigate({ to: "/orgs/$org", params: { org }, replace: true });
+    }
+  }, [redirectNonAdmin, navigate, org]);
 
   const tabs = [
     { label: t("nav:members"), path: "/orgs/$org/organization/members" },
@@ -72,7 +84,6 @@ function OrganizationLayout() {
     return null;
   }
   if (!user?.isAdmin) {
-    navigate({ to: "/orgs/$org", params: { org }, replace: true });
     return null;
   }
 
