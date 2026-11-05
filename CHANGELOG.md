@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.44.0](https://github.com/fclairamb/solidping/compare/v0.43.1...v0.44.0) (2026-11-05)
+
+
+### Features
+
+* close status page entries of deleted checks ([#764](https://github.com/fclairamb/solidping/issues/764)) ([a9618cf](https://github.com/fclairamb/solidping/commit/a9618cf6a924e54e9c2b2068fbfa237932357696))
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([#772](https://github.com/fclairamb/solidping/issues/772)) ([9b87c14](https://github.com/fclairamb/solidping/commit/9b87c14cf169c870bf8325c4d49b88dc7682c2ab))
+* org identity on reload, canceled-request error reports, status page entries ([#763](https://github.com/fclairamb/solidping/issues/763)) ([cc36358](https://github.com/fclairamb/solidping/commit/cc36358f06a1c3776265462964ec8866bf9bfebb))
+* **security:** cap bulk check UID list before dedup ([#760](https://github.com/fclairamb/solidping/issues/760)) ([4ceb286](https://github.com/fclairamb/solidping/commit/4ceb286e28b96bd68aa76852f7790d3ee441188c))
+* **test:** loosen the timing bound of TestUniqueCheckUIDsIsLinear ([#767](https://github.com/fclairamb/solidping/issues/767)) ([4199cfa](https://github.com/fclairamb/solidping/commit/4199cfa35a027c311cee3e0e6c3edce884fdc463))
+
 ## [0.43.1](https://github.com/fclairamb/solidping/compare/v0.43.0...v0.43.1) (2026-11-05)
 
 
