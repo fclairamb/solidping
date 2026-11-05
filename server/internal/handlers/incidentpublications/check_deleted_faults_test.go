@@ -175,7 +175,7 @@ func TestCloseOrphanedPublications_Faults(t *testing.T) {
 		require.Zero(t, closed)
 	})
 
-	t.Run("a cancelled context stops the sweep before anything is closed", func(t *testing.T) {
+	t.Run("a canceled context stops the sweep before anything is closed", func(t *testing.T) {
 		t.Parallel()
 
 		ctx, cancel := context.WithCancel(t.Context())

@@ -23,6 +23,9 @@ func captureDefaultLogger(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
+// Not parallel: it swaps the process-wide default logger.
+//
+//nolint:paralleltest // see above.
 func TestCloseOrphanedStatusPagePublications(t *testing.T) {
 	ctx := context.Background()
 
