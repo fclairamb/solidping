@@ -55,6 +55,10 @@ type Message struct {
 	ToolCallID string
 	// ToolName is the name of the tool a RoleTool message answers.
 	ToolName string
+	// Reasoning is the thinking an assistant turn came with. Thinking models
+	// that call tools (DeepSeek, GLM) answer HTTP 400 unless every later
+	// request carries it back on that turn.
+	Reasoning string
 }
 
 // ToolDef describes a tool the model may call. Parameters is a JSON Schema
@@ -99,6 +103,7 @@ type Request struct {
 // Response is one completion.
 type Response struct {
 	Text       string
+	Reasoning  string
 	ToolCalls  []ToolCall
 	StopReason string
 	Usage      Usage
