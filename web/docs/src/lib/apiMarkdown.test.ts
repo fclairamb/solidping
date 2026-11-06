@@ -89,6 +89,11 @@ describe("renderSchema", () => {
     expect(merged).toContain("`extra`");
   });
 
+  test("escapes pipes and backslashes in cells", () => {
+    const t = renderSchema(spec, { type: "object", properties: { re: { type: "string", description: "a|b \\d" } } });
+    expect(t).toContain("| a\\|b \\\\d. |");
+  });
+
   test("a schema without fields gives its type", () => {
     expect(renderSchema(spec, { type: "string" })).toBe("Type: `string`");
   });

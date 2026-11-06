@@ -45,7 +45,7 @@ function refName(node: Node): string | undefined {
 /** One line, safe inside a markdown table cell. */
 function cell(text: unknown): string {
   if (text === undefined || text === null) return "";
-  return String(text).replace(/\s+/g, " ").trim().replace(/\|/g, "\\|");
+  return String(text).replace(/\s+/g, " ").trim().replace(/[\\|]/g, "\\$&");
 }
 
 /** Merge the members of an `allOf` into one object schema. */
