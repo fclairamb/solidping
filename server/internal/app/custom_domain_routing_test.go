@@ -66,6 +66,10 @@ func TestHostOnly(t *testing.T) {
 	r.Equal("status.acme.com", hostOnly("status.acme.com:8080"))
 	r.Equal("status.acme.com", hostOnly("Status.Acme.Com"))
 	r.Empty(hostOnly(""))
+	// An FQDN trailing dot is the same host (spec 2026-11-06-01).
+	r.Equal("status.acme.com", hostOnly("status.acme.com."))
+	r.Equal("status.acme.com", hostOnly("status.acme.com.:443"))
+	r.Equal("status.acme.com", hostOnly("Status.Acme.Com."))
 }
 
 func TestIsCustomHostAPIAllowed(t *testing.T) {
@@ -473,6 +477,49 @@ func TestHandlerWithCustomDomains(t *testing.T) {
 			wantStatus: http.StatusOK, wantBody: `content="acme/main"`,
 		},
 		{
+			// Spec 2026-11-06-01: a trailing-dot spelling of a custom domain is
+			// the same domain. It used to miss the stored row and fall through
+			// to next, serving the dashboard under the customer's hostname.
+			name: "custom host with trailing dot serves the status page",
+			host: "status.acme.com.", path: "/",
+			wantStatus: http.StatusOK, wantBody: `content="acme/main"`, wantNotBody: "next",
+		},
+		{
+			name: "custom host with trailing dot and port serves the status page",
+			host: "status.acme.com.:443", path: "/",
+			wantStatus: http.StatusOK, wantBody: `content="acme/main"`, wantNotBody: "next",
+		},
+		{
+			name: "custom host with trailing dot denies dash0",
+			host: "status.acme.com.", path: "/d/",
+			wantStatus: http.StatusNotFound, wantNotBody: "next",
+		},
+		{
+			name: "custom host with trailing dot denies dash0 without slash",
+			host: "status.acme.com.", path: "/d",
+			wantStatus: http.StatusNotFound, wantNotBody: "next",
+		},
+		{
+			name: "custom host with trailing dot denies the API",
+			host: "status.acme.com.", path: "/api/v1/orgs/acme/checks",
+			wantStatus: http.StatusNotFound, wantNotBody: "next",
+		},
+		{
+			name: "demoted custom host with trailing dot gets the unavailable page",
+			host: "demoted.acme.com.", path: "/d/",
+			wantStatus: http.StatusServiceUnavailable, wantNotBody: "next",
+		},
+		{
+			name: "reserved base-url host with trailing dot falls through to next",
+			host: "solidping.io.", path: "/",
+			wantStatus: http.StatusOK, wantBody: "next",
+		},
+		{
+			name: "unknown host with trailing dot falls through to next",
+			host: "unknown.example.com.", path: "/",
+			wantStatus: http.StatusOK, wantBody: "next",
+		},
+		{
 			name: "reserved base-url host falls through to next",
 			host: "solidping.io", path: "/",
 			wantStatus: http.StatusOK, wantBody: "next",
@@ -724,4 +771,32 @@ func TestCustomDomainUnavailablePageIsLegibleAndUncached(t *testing.T) {
 	r.Contains(body, "Status page unavailable")
 	r.Contains(body, "demoted.acme.com", "the visitor must be told which host this is about")
 	r.NotContains(body, "next", "it must never fall through to the instance's own routing")
+}
+
+// TestReservedHostWithTrailingDotSkipsLookup checks that the instance's own
+// hostnames, spelled with an FQDN trailing dot, are recognized as reserved
+// before any custom-domain lookup: nothing gets resolved or cached for them
+// (spec 2026-11-06-01).
+func TestReservedHostWithTrailingDotSkipsLookup(t *testing.T) {
+	t.Parallel()
+
+	server := newCustomHostTestServer(t)
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("next"))
+	})
+	handler := server.handlerWithCustomDomains(next)
+
+	for _, host := range []string{"solidping.io.", "docs.solidping.io.", "cname.solidping.io.:443"} {
+		r := require.New(t)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+		req.Host = host
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		r.Equal("next", rec.Body.String(), host)
+
+		_, cached := server.customDomainCache.get(hostOnly(host))
+		r.False(cached, "reserved host %q must not reach the custom-domain lookup", host)
+	}
 }

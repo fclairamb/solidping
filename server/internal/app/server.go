@@ -3053,7 +3053,7 @@ func docsHostMatches(reqHost, docsHost string) bool {
 		host = h
 	}
 
-	return strings.EqualFold(host, docsHost)
+	return strings.EqualFold(strings.TrimSuffix(host, "."), strings.TrimSuffix(docsHost, "."))
 }
 
 // serveDocsRoute is the handler for /docs and /docs/*path. It strips
