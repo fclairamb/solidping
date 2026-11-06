@@ -5,8 +5,9 @@ import { test, expect, DASH_BASE } from "./fixtures";
  * escalated, flapping incident has a long title, four badges and five
  * actions, which used to push Resolve past the right edge at 1280x800.
  *
- * On a phone the actions go on top and the title gets the full width below
- * them: at 361px it used to be squeezed into a one-word column beside them.
+ * On a phone the title comes first with the full width and the actions wrap
+ * below it, as on the check detail page: at 361px the title used to be
+ * squeezed into a one-word column beside them.
  *
  * The detail endpoint is mocked so the incident is deterministic.
  */
@@ -74,8 +75,8 @@ for (const viewport of [
     const title = await page.getByTestId("incident-detail-title").boundingBox();
     expect(title).not.toBeNull();
     if (viewport.width < 640) {
-      // Below the actions, not squeezed beside them.
-      expect(title!.y).toBeGreaterThanOrEqual(box!.y + box!.height);
+      // Above the actions, not squeezed beside them.
+      expect(title!.y + title!.height).toBeLessThanOrEqual(box!.y);
       expect(title!.width).toBeGreaterThan(viewport.width / 2);
     } else {
       // Enough room: title and actions share the top line.
