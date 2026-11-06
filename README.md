@@ -47,8 +47,9 @@ Other ways to run it:
 |---|---|
 | Hosted | [www.solidping.io](https://www.solidping.io), no card needed |
 | Docker Compose | [guide](https://docs.solidping.io/installation/docker-compose) |
-| Binary (Linux, macOS, Windows) | [releases](https://github.com/fclairamb/solidping/releases/latest), [Linux guide](https://docs.solidping.io/installation/linux), [Windows guide](https://docs.solidping.io/installation/windows) |
+| Binary (Linux, macOS, Windows) | [releases](https://github.com/fclairamb/solidping/releases/latest), [Linux guide](https://docs.solidping.io/installation/linux), [macOS guide](https://docs.solidping.io/installation/macos), [Windows guide](https://docs.solidping.io/installation/windows) |
 | Homebrew | `brew install fclairamb/tap/solidping` |
+| winget | `winget install fclairamb.SolidPing` |
 | Scoop | `scoop bucket add fclairamb https://github.com/fclairamb/scoop-bucket` then `scoop install solidping` |
 | Kubernetes | [Helm chart](deploy/helm/solidping), [guide](https://docs.solidping.io/installation/kubernetes) |
 | Railway, Fly.io, Coolify, CasaOS, YunoHost | [installation guides](https://docs.solidping.io/installation/railway) |

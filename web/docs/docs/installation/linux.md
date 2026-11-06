@@ -50,37 +50,7 @@ so this works no matter which platform's file you fetched.
 
 ## macOS
 
-The same release publishes archives for macOS — Apple Silicon and Intel:
-
-```bash
-# Apple Silicon
-curl -L -o solidping-darwin-arm64.gz https://github.com/fclairamb/solidping/releases/latest/download/solidping-darwin-arm64.gz
-gunzip -c solidping-darwin-arm64.gz > solidping
-
-# Intel
-curl -L -o solidping-darwin-amd64.gz https://github.com/fclairamb/solidping/releases/latest/download/solidping-darwin-amd64.gz
-gunzip -c solidping-darwin-amd64.gz > solidping
-
-chmod +x solidping
-```
-
-The binary is unsigned and not notarized, so macOS Gatekeeper quarantines it
-on download and refuses to run it. Clear the quarantine attribute once
-before first run:
-
-```bash
-xattr -d com.apple.quarantine solidping
-```
-
-Or install it with Homebrew:
-
-```bash
-brew install fclairamb/tap/solidping
-```
-
-There is no dedicated macOS page (launchd service) yet — once the binary is
-in place, the "Running" section below and the rest of this guide apply the
-same way on macOS as on Linux.
+See the [macOS guide](./macos.md) (Homebrew, binary download, Gatekeeper, launchd).
 
 ## Checking the installed version
 
