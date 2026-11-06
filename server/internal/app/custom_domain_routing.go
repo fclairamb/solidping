@@ -189,14 +189,17 @@ func (s *Server) handlerWithCustomDomains(next http.Handler) http.Handler {
 	})
 }
 
-// hostOnly strips any port and lowercases a request Host.
+// hostOnly strips any port and one FQDN trailing dot, and lowercases a
+// request Host. Without the dot strip, "status.acme.com." missed the stored
+// (dot-less) custom domain and fell through to the instance's own routing,
+// serving the dashboard under the customer's status hostname.
 func hostOnly(reqHost string) string {
 	host := reqHost
 	if h, _, err := net.SplitHostPort(reqHost); err == nil {
 		host = h
 	}
 
-	return strings.ToLower(host)
+	return strings.ToLower(strings.TrimSuffix(host, "."))
 }
 
 // isReservedCustomHost reports whether a host is one of the instance's own

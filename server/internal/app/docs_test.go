@@ -20,6 +20,8 @@ func TestDocsHostMatches(t *testing.T) {
 		{name: "case insensitive", reqHost: "Docs.SolidPing.IO", docsHost: "docs.solidping.io", want: true},
 		{name: "different host", reqHost: "www.solidping.io", docsHost: "docs.solidping.io", want: false},
 		{name: "app host with port", reqHost: "app.solidping.io:4000", docsHost: "docs.solidping.io", want: false},
+		{name: "trailing dot", reqHost: "docs.solidping.io.", docsHost: "docs.solidping.io", want: true},
+		{name: "trailing dot with port", reqHost: "docs.solidping.io.:443", docsHost: "docs.solidping.io", want: true},
 		{name: "empty request host", reqHost: "", docsHost: "docs.solidping.io", want: false},
 	}
 
