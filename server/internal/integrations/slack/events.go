@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/support"
 )
@@ -117,7 +119,7 @@ func (h *Handler) handleLinkShared(ctx context.Context, event *Event) error {
 			continue
 		}
 
-		unfurl := h.buildLinkUnfurl(ctx, link.URL)
+		unfurl := h.buildLinkUnfurl(ctx, event.TeamID, link.URL)
 		if unfurl != nil {
 			unfurls[link.URL] = *unfurl
 		}
@@ -227,9 +229,18 @@ func (h *Handler) buildAppHomeView(_ context.Context, _ string) *AppHomeView {
 }
 
 // buildLinkUnfurl builds an unfurl preview for a SolidPing link.
-func (h *Handler) buildLinkUnfurl(_ context.Context, linkURL string) *Unfurl {
-	// TODO: Parse the URL and fetch actual check/incident data
-	// For now, return a simple preview
+//
+// A check or incident link of the organization connected to the workspace
+// renders as a one-line preview naming it (with a distinct emoji per type), so
+// two links under one message no longer unfurl to the same generic card. Links
+// to another organization, or that don't resolve, keep the generic preview:
+// the lookup is scoped to the workspace's own organization so an unfurl never
+// leaks another tenant's check or incident names.
+func (h *Handler) buildLinkUnfurl(ctx context.Context, teamID, linkURL string) *Unfurl {
+	text := h.resolveLinkUnfurlText(ctx, teamID, linkURL)
+	if text == "" {
+		text = fmt.Sprintf("*SolidPing Link*\n<%s|View in SolidPing>", linkURL)
+	}
 
 	return &Unfurl{
 		Blocks: []Block{
@@ -237,11 +248,127 @@ func (h *Handler) buildLinkUnfurl(_ context.Context, linkURL string) *Unfurl {
 				Type: BlockTypeSection,
 				Text: &Text{
 					Type: BlockTypeMrkdwn,
-					Text: fmt.Sprintf("*SolidPing Link*\n<%s|View in SolidPing>", linkURL),
+					Text: text,
 				},
 			},
 		},
 	}
+}
+
+// resolveLinkUnfurlText returns the one-line preview of a check or incident
+// dashboard link, or "" when the link isn't one or doesn't resolve within the
+// workspace's organization.
+func (h *Handler) resolveLinkUnfurlText(ctx context.Context, teamID, linkURL string) string {
+	link, ok := parseDashboardEntityLink(linkURL)
+	if !ok || h.svc == nil {
+		return ""
+	}
+
+	conn, err := h.svc.GetConnectionByTeamID(ctx, teamID)
+	if err != nil || conn == nil {
+		return ""
+	}
+
+	org, err := h.svc.db.GetOrganization(ctx, conn.OrganizationUID)
+	if err != nil || org == nil || !strings.EqualFold(org.Slug, link.orgSlug) {
+		return ""
+	}
+
+	if link.kind == linkKindCheck {
+		check, checkErr := h.svc.db.GetCheckByUidOrSlug(ctx, org.UID, link.id)
+		if checkErr != nil || check == nil {
+			return ""
+		}
+
+		return fmt.Sprintf(":mag: <%s|%s>", linkURL, slackEscape(unfurlCheckName(check)))
+	}
+
+	incident, err := h.svc.db.GetIncident(ctx, org.UID, link.id)
+	if err != nil || incident == nil {
+		return ""
+	}
+
+	return fmt.Sprintf(":rotating_light: <%s|%s>", linkURL, slackEscape(h.unfurlIncidentLabel(ctx, org.UID, incident)))
+}
+
+// unfurlIncidentLabel renders an incident as "#42 · <title>", the title
+// falling back to the check's name, as in SolidPing's own Slack messages.
+func (h *Handler) unfurlIncidentLabel(ctx context.Context, orgUID string, incident *models.Incident) string {
+	label := ""
+	if incident.Title != nil && *incident.Title != "" {
+		label = *incident.Title
+	} else if check, err := h.svc.db.GetCheckByUidOrSlug(ctx, orgUID, incident.CheckUID); err == nil && check != nil {
+		label = unfurlCheckName(check)
+	}
+
+	switch {
+	case incident.Number > 0 && label != "":
+		return fmt.Sprintf("#%d · %s", incident.Number, label)
+	case incident.Number > 0:
+		return fmt.Sprintf("#%d", incident.Number)
+	case label != "":
+		return label
+	default:
+		return "Incident"
+	}
+}
+
+const (
+	linkKindCheck    = "checks"
+	linkKindIncident = "incidents"
+)
+
+// dashboardEntityLink is a parsed `/d/orgs/<org>/(checks|incidents)/<id>` link.
+type dashboardEntityLink struct {
+	orgSlug string
+	kind    string
+	id      string
+}
+
+// parseDashboardEntityLink parses a check or incident dashboard link (the
+// legacy `/dash0` prefix included). ok is false for any other link.
+func parseDashboardEntityLink(linkURL string) (dashboardEntityLink, bool) {
+	u, err := url.Parse(linkURL)
+	if err != nil {
+		return dashboardEntityLink{}, false
+	}
+
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+
+	const segments = 5 // <base>, orgs, <org>, <kind>, <id>
+	if len(parts) != segments || parts[1] != "orgs" || parts[2] == "" || parts[4] == "" {
+		return dashboardEntityLink{}, false
+	}
+
+	if base := "/" + parts[0]; base != config.DashboardBasePath && base != config.LegacyDashboardBasePath {
+		return dashboardEntityLink{}, false
+	}
+
+	if parts[3] != linkKindCheck && parts[3] != linkKindIncident {
+		return dashboardEntityLink{}, false
+	}
+
+	return dashboardEntityLink{orgSlug: parts[2], kind: parts[3], id: parts[4]}, true
+}
+
+// unfurlCheckName is the human label of a check: its name, else its slug,
+// else its UID.
+func unfurlCheckName(check *models.Check) string {
+	if check.Name != nil && *check.Name != "" {
+		return *check.Name
+	}
+
+	if check.Slug != nil && *check.Slug != "" {
+		return *check.Slug
+	}
+
+	return check.UID
+}
+
+// slackEscape escapes the characters Slack's mrkdwn treats as control
+// characters, so a name can sit inside a `<url|label>` link.
+func slackEscape(s string) string {
+	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
 }
 
 // State-entry key schema shared between the notification sender (which writes
