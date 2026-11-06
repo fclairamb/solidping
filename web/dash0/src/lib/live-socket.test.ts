@@ -22,10 +22,10 @@ vi.mock("@/api/client", () => ({
 // with backoff" — matching this suite's pre-existing default behavior.
 interface RefreshOutcome {
   accessToken: string | null;
-  failureReason?: "no-refresh-token" | "rejected" | "network-error";
+  failureReason?: "no-refresh-token" | "rejected" | "unavailable";
 }
 const refreshWithOutcomeMock = vi.fn<() => Promise<RefreshOutcome>>(() =>
-  Promise.resolve({ accessToken: null, failureReason: "network-error" })
+  Promise.resolve({ accessToken: null, failureReason: "unavailable" })
 );
 vi.mock("@/lib/token-refresh", () => ({
   refreshWithOutcome: () => refreshWithOutcomeMock(),
@@ -120,7 +120,7 @@ describe("connectLiveSocket", () => {
     currentToken = "test-token";
     currentExpiresAt = null;
     refreshWithOutcomeMock.mockClear();
-    refreshWithOutcomeMock.mockResolvedValue({ accessToken: null, failureReason: "network-error" });
+    refreshWithOutcomeMock.mockResolvedValue({ accessToken: null, failureReason: "unavailable" });
     vi.useFakeTimers();
   });
 
@@ -625,7 +625,7 @@ describe("connectLiveSocket", () => {
       sockets.push(s);
       return s;
     };
-    refreshWithOutcomeMock.mockResolvedValue({ accessToken: null, failureReason: "network-error" });
+    refreshWithOutcomeMock.mockResolvedValue({ accessToken: null, failureReason: "unavailable" });
 
     connectLiveSocket("acme", noopCallbacks(), factory);
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
@@ -690,7 +690,7 @@ describe("connectLiveSocket pre-dial expiry check", () => {
     currentToken = "test-token";
     currentExpiresAt = null;
     refreshWithOutcomeMock.mockClear();
-    refreshWithOutcomeMock.mockResolvedValue({ accessToken: null, failureReason: "network-error" });
+    refreshWithOutcomeMock.mockResolvedValue({ accessToken: null, failureReason: "unavailable" });
     vi.useFakeTimers();
   });
 
@@ -776,7 +776,7 @@ describe("connectLiveSocket pre-dial expiry check", () => {
       return s;
     };
     currentExpiresAt = Date.now() - 1_000;
-    refreshWithOutcomeMock.mockResolvedValueOnce({ accessToken: null, failureReason: "network-error" });
+    refreshWithOutcomeMock.mockResolvedValueOnce({ accessToken: null, failureReason: "unavailable" });
     refreshWithOutcomeMock.mockResolvedValue({ accessToken: "fresh-token" });
 
     connectLiveSocket("acme", noopCallbacks(), factory);

@@ -236,7 +236,7 @@ export function connectLiveSocket(
         // HAR capture).
         const refreshed = await refreshWithOutcome();
         if (!refreshed.accessToken) {
-          if (refreshed.failureReason === "network-error") {
+          if (refreshed.failureReason === "unavailable") {
             attempt += 1;
             await sleep(backoffDelay(attempt), signal);
             continue;
@@ -402,7 +402,7 @@ function connectOnce(
         // escalate() has already cleared the session and redirected to login in
         // that case.
         void refreshWithOutcome().then((outcome) => {
-          finish(outcome.accessToken || outcome.failureReason === "network-error"
+          finish(outcome.accessToken || outcome.failureReason === "unavailable"
             ? "disconnected"
             : "disabled");
         });
