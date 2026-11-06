@@ -224,8 +224,33 @@ describe("refreshWithOutcome", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new Error("network down")));
     expect(await refreshWithOutcome()).toEqual({
       accessToken: null,
-      failureReason: "network-error",
+      failureReason: "unavailable",
     });
+  });
+
+  // A 500 from /auth/refresh (seen 2026-10-25 on a DB hiccup) used to count
+  // as "rejected" and wipe a valid session. Only a 401 ends it.
+  it.each([500, 502, 503, 429])(
+    "keeps the session on a %i: unavailable, no clear, no redirect",
+    async (status) => {
+      vi.stubGlobal("fetch", mockFetchOnce({ ok: false, status }));
+
+      expect(await refreshWithOutcome()).toEqual({
+        accessToken: null,
+        failureReason: "unavailable",
+      });
+      expect(clearTokenMock).not.toHaveBeenCalled();
+      expect(redirectToExpiredLoginMock).not.toHaveBeenCalled();
+      expect(storedRefreshToken).toBe("stored-refresh-token");
+    }
+  );
+
+  it("clears and redirects on a 401 (positive control)", async () => {
+    vi.stubGlobal("fetch", mockFetchOnce({ ok: false, status: 401 }));
+
+    expect(await refreshWithOutcome()).toEqual({ accessToken: null, failureReason: "rejected" });
+    expect(clearTokenMock).toHaveBeenCalledTimes(1);
+    expect(redirectToExpiredLoginMock).toHaveBeenCalledTimes(1);
   });
 
   it("returns the fresh access token on success with no failureReason", async () => {
