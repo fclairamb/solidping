@@ -890,14 +890,14 @@ function IncidentDetailPage() {
     <div className="space-y-6">
       <CausedByBanner org={org} incident={incident} />
       {/*
-        wrap-reverse: when the title and the actions do not fit on one line,
-        the actions line goes on top and the title gets the full width below
-        (instead of being squeezed into a one-word column). The cross axis is
-        flipped too, so items-end aligns both to the top. basis-64 is the
-        width under which the title stops sharing the line.
+        Same layout as the check detail header: when the title and the
+        actions do not fit on one line, the actions wrap below the title,
+        which keeps the full width (instead of being squeezed into a
+        one-word column). basis-64 is the width under which the title stops
+        sharing the line.
       */}
       <div
-        className="flex flex-wrap-reverse items-end justify-between gap-3"
+        className="flex flex-wrap items-start justify-between gap-3"
         data-testid="incident-detail-header"
       >
         <div className="min-w-0 grow basis-64">
@@ -963,7 +963,7 @@ function IncidentDetailPage() {
             )}
           </div>
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
