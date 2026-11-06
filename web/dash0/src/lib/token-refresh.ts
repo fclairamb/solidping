@@ -22,16 +22,20 @@ interface RefreshResponse {
  * Why a refresh attempt failed to produce a new access token.
  * - "no-refresh-token": nothing to refresh with — no refresh token stored
  *   (a legacy/partial session, or a login path that skipped setSession).
- * - "rejected": the server answered with a non-OK status — the refresh
- *   token is invalid, revoked, or expired.
- * - "network-error": the fetch itself threw — a transient blip that says
- *   nothing about whether the stored refresh token is still good.
+ * - "rejected": the server answered 401 — the refresh token is invalid,
+ *   revoked, or expired (or its user or org is gone). That is the only
+ *   answer the server gives for a dead session (auth handleRefreshError).
+ * - "unavailable": the fetch threw, or the server answered anything else
+ *   (5xx during a DB hiccup, a 502 from the ingress during a restart, a
+ *   429) — a transient failure that says nothing about whether the stored
+ *   refresh token is still good. Treating a 500 as "rejected" used to wipe
+ *   a valid session and send returning users to login?session_expired=true.
  *
  * The first two mean the app's belief that it's authenticated is simply
  * wrong; the caller should stop acting as if a retry will ever succeed.
- * Only "network-error" is worth retrying quietly.
+ * Only "unavailable" is worth retrying quietly.
  */
-export type RefreshFailureReason = "no-refresh-token" | "rejected" | "network-error";
+export type RefreshFailureReason = "no-refresh-token" | "rejected" | "unavailable";
 
 export interface RefreshOutcome {
   /** The new access token, or null if the refresh did not succeed. */
@@ -49,7 +53,7 @@ let inFlight: Promise<RefreshOutcome> | null = null;
  * uses console.warn since it's expected and retried quietly. */
 function logRefreshFailure(reason: RefreshFailureReason): void {
   const message = `[auth] token refresh failed: ${reason}`;
-  if (reason === "network-error") {
+  if (reason === "unavailable") {
     console.warn(message);
   } else {
     console.error(message);
@@ -106,9 +110,13 @@ async function doRefresh(): Promise<RefreshOutcome> {
       body: JSON.stringify({ refreshToken }),
     });
 
-    if (!response.ok) {
+    if (response.status === 401) {
       escalate("rejected");
       return { accessToken: null, failureReason: "rejected" };
+    }
+    if (!response.ok) {
+      logRefreshFailure("unavailable");
+      return { accessToken: null, failureReason: "unavailable" };
     }
 
     const data = (await response.json()) as RefreshResponse;
@@ -120,8 +128,8 @@ async function doRefresh(): Promise<RefreshOutcome> {
   } catch {
     // Network error: leave the session as-is (don't clear a possibly-valid
     // refresh token over a transient blip) and report failure for this call.
-    logRefreshFailure("network-error");
-    return { accessToken: null, failureReason: "network-error" };
+    logRefreshFailure("unavailable");
+    return { accessToken: null, failureReason: "unavailable" };
   }
 }
 

@@ -4,7 +4,7 @@
 // at module-evaluation time, so ESM's circular-import handling resolves it
 // safely. Keeping it static (vs. a dynamic import()) keeps the single-flight
 // behavior synchronous-enough to unit test without extra await hops.
-import { refreshAccessToken } from "@/lib/token-refresh";
+import { refreshWithOutcome } from "@/lib/token-refresh";
 import { isOrgPublicRoute } from "@/lib/org-public-routes";
 import { clearImpersonation, getImpersonationToken } from "@/lib/impersonation";
 // A refused demo write is announced, not navigated away from (see
@@ -463,7 +463,15 @@ async function fetchWithAuth(
     !options._isRetry &&
     (!loggingOut || options.allowRefreshDuringLogout)
   ) {
-    const newToken = await refreshAccessToken();
+    const { accessToken: newToken, failureReason } = await refreshWithOutcome();
+
+    // The refresh could not reach a verdict (network down, server error).
+    // The stored session may well be valid, so fail this request like any
+    // other network error instead of letting handleResponse clear the tokens
+    // and redirect to login?session_expired=true.
+    if (failureReason === "unavailable") {
+      throw new NetworkError("Session refresh unavailable");
+    }
 
     if (newToken) {
       const retryHeaders = new Headers(headers);
