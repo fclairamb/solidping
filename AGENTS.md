@@ -133,6 +133,7 @@ curl -s -H "Authorization: Bearer $TOKEN" 'http://localhost:4000/api/v1/orgs/def
 
 - Never write a real company name in this repository: specs, tests, fixtures, sample data, code comments, doc examples, commit messages, changelog, PR descriptions, wiki, issue reports.
 - This covers every third party: employers, customers, vendors, organizations of bug reporters.
+- Never identify a real SolidPing user or org either (name, email, org slug or name), e.g. when citing PostHog replays, logs or DB rows. Cite the first 8 characters of their UUID: user `1a2b3c4d` (org `5e6f7a8b`).
 - Replace it with `acme`, keeping the shape of what you replace:
 
 | Instead of | Use |
