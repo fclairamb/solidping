@@ -6,6 +6,7 @@ import {
   getRefreshToken,
   getToken,
   handleResponse,
+  NetworkError,
   setLoggingOut,
   setSession,
 } from "./client";
@@ -350,6 +351,45 @@ describe("apiFetch — logout POST still refreshes despite loggingOut", () => {
       // so nothing here should have cleared it.
       expect(getToken()).toBe("new-access-token");
       expect(getRefreshToken()).toBe("valid-refresh-token");
+    }
+  );
+
+  it.each([
+    ["a 500 from /auth/refresh", () => new Response(null, { status: 500 })],
+    [
+      "a network error on /auth/refresh",
+      () => {
+        throw new TypeError("Failed to fetch");
+      },
+    ],
+  ])(
+    "keeps a valid session when the refresh hits %s (no clear, no redirect to login)",
+    async (_label, refreshAnswer) => {
+      setSession("expired-access-token", "valid-refresh-token", 3600);
+      const hrefSetter = vi.fn();
+      vi.stubGlobal("window", {
+        location: {
+          pathname: "/d/orgs/acme/checks",
+          search: "",
+          set href(v: string) {
+            hrefSetter(v);
+          },
+        },
+      });
+
+      const fetchSpy = vi.fn(async (url: string) => {
+        if (url === "/api/v1/auth/refresh") {
+          return refreshAnswer();
+        }
+        return new Response(null, { status: 401 });
+      });
+      vi.stubGlobal("fetch", fetchSpy as unknown as typeof fetch);
+
+      await expect(apiFetch("/api/v1/orgs/acme/checks")).rejects.toBeInstanceOf(NetworkError);
+
+      expect(getToken()).toBe("expired-access-token");
+      expect(getRefreshToken()).toBe("valid-refresh-token");
+      expect(hrefSetter).not.toHaveBeenCalled();
     }
   );
 

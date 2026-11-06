@@ -10,6 +10,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
+  NetworkError,
   apiFetch,
   setSession,
   clearToken,
@@ -318,6 +319,28 @@ interface SessionUser {
   preferences?: UserPreferences;
 }
 
+// Delays before retrying /auth/me on a cold page load. A returning visitor's
+// first request is the one that meets a waking network or a restarting pod,
+// and giving up on it would send a still-valid session to the login page.
+const ME_RETRY_DELAYS_MS = [1000, 3000];
+
+/** GET /auth/me, retried on a transient failure (no network, 5xx, or a
+ * refresh that could not reach a verdict). A 401/403 is a verdict and is
+ * thrown at once. */
+async function fetchMeWithRetry(): Promise<MeResponse> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await apiFetch<MeResponse>(`/api/v1/auth/me`, { suppress401Redirect: true });
+    } catch (e) {
+      const transient = e instanceof NetworkError || (e instanceof ApiError && (e.status ?? 0) >= 500);
+      if (!transient || attempt >= ME_RETRY_DELAYS_MS.length) {
+        throw e;
+      }
+      await new Promise((resolve) => setTimeout(resolve, ME_RETRY_DELAYS_MS[attempt]));
+    }
+  }
+}
+
 function toUser(user: SessionUser, impersonation?: ImpersonationInfo | null): User {
   return {
     uid: user.uid,
@@ -484,7 +507,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // validate — the genuinely-dead case is still cleared, just by /auth/me.
     if (getExpiresAt() === null && getRefreshToken() !== null && !getImpersonation()) {
       const outcome = await refreshWithOutcome();
-      if (!outcome.accessToken && outcome.failureReason !== "network-error") {
+      if (!outcome.accessToken && outcome.failureReason !== "unavailable") {
         // escalate() inside token-refresh.ts already cleared the session
         // and redirected to login — nothing left to validate.
         setIsLoading(false);
@@ -493,10 +516,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const data = await apiFetch<MeResponse>(
-        `/api/v1/auth/me`,
-        { suppress401Redirect: true }
-      );
+      const data = await fetchMeWithRetry();
       // A stored session restored on a cold page load never saw a login
       // response, so this is where such a tab discovers it is confined to the
       // rotation screen.
