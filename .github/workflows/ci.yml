@@ -1499,9 +1499,22 @@ jobs:
               --title "$TAG_NAME" --notes "Automated release." --target "${GITHUB_SHA}"
           fi
 
-          gh release upload "$TAG_NAME" dist/sp-* dist/check-config-schemas.tar.gz \
-            dist/check-config-schemas-checksums.txt \
-            --repo "${{ github.repository }}" --clobber
+          # uploads.github.com sometimes answers 404 mid-upload on a release that
+          # exists (v0.44.0, 2026-11-05), which aborts the remaining assets.
+          # --clobber makes a retry idempotent.
+          for attempt in 1 2 3 4 5; do
+            if gh release upload "$TAG_NAME" dist/sp-* dist/check-config-schemas.tar.gz \
+              dist/check-config-schemas-checksums.txt \
+              --repo "${{ github.repository }}" --clobber; then
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "::error::release upload failed after $attempt attempts" >&2
+              exit 1
+            fi
+            echo "::warning::release upload attempt $attempt failed; retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
 
       - name: Log in to the Container registry
         uses: docker/login-action@v4.8.0
@@ -1714,8 +1727,19 @@ jobs:
               || gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null
           fi
 
-          gh release upload "$TAG_NAME" dist/solidping-* \
-            --repo "${{ github.repository }}" --clobber
+          # Same transient 404 as the sp CLI upload: retry, --clobber keeps it idempotent.
+          for attempt in 1 2 3 4 5; do
+            if gh release upload "$TAG_NAME" dist/solidping-* \
+              --repo "${{ github.repository }}" --clobber; then
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "::error::release upload failed after $attempt attempts" >&2
+              exit 1
+            fi
+            echo "::warning::release upload attempt $attempt failed; retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
 
   deploy:
     name: Deploy to k8xp
