@@ -8,7 +8,7 @@
     "gen-api-docs": "docusaurus gen-api-docs all",
     "gen-changelog": "bun scripts/gen-changelog.ts",
     "clean-api-docs": "docusaurus clean-api-docs all",
-    "build": "bun run gen-changelog && docusaurus gen-api-docs all && docusaurus build",
+    "build": "bun run gen-changelog && docusaurus gen-api-docs all && docusaurus build && bun scripts/gen-api-markdown.ts",
     "swizzle": "docusaurus swizzle",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",

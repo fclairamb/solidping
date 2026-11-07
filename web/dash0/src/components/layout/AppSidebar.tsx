@@ -41,7 +41,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, useOrganizationIdentity } from "@/contexts/AuthContext";
 import { useRunMode } from "@/api/public-config";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/shared/language-switcher";
@@ -173,7 +173,7 @@ export function AppSidebar() {
     return gate === "isSuperAdmin" ? !!user?.isSuperAdmin : !!user?.isAdmin;
   };
 
-  const currentOrg = organizations.find((o) => o.slug === org);
+  const currentOrg = useOrganizationIdentity(org);
   const currentOrgName = currentOrg?.name;
 
   const handleLogout = async () => {

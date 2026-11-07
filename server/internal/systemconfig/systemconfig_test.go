@@ -1106,3 +1106,42 @@ func TestEveryParameterEnvVarTakesEffect(t *testing.T) {
 		require.Truef(t, changed, "%s (%s) ignores every string value: the env var has no effect", def.EnvVar, def.Key)
 	}
 }
+
+func TestRegistrationMaxPendingPerIPApplyFunc(t *testing.T) {
+	t.Parallel()
+
+	var def *ParameterDefinition
+
+	for _, p := range getKnownParameters() {
+		if p.Key == KeyRegistrationMaxPendingPerIP {
+			def = &p
+
+			break
+		}
+	}
+
+	require.NotNil(t, def)
+	require.Equal(t, "SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP", def.EnvVar)
+
+	tests := []struct {
+		name  string
+		value any
+		want  int
+	}{
+		{name: "JSON number", value: float64(10), want: 10},
+		{name: "env string", value: "5", want: 5},
+		{name: "0 turns it off", value: float64(0), want: 0},
+		{name: "negative keeps the configured value", value: float64(-1), want: 3},
+		{name: "garbage keeps the configured value", value: "many", want: 3},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &config.Config{Auth: config.AuthConfig{RegistrationMaxPendingPerIP: 3}}
+			def.ApplyFunc(cfg, tc.value)
+			require.Equal(t, tc.want, cfg.Auth.RegistrationMaxPendingPerIP)
+		})
+	}
+}

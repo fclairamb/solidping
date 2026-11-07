@@ -51,7 +51,7 @@ func TestSubmitReport_AnonScreenshotWithoutGitHub(t *testing.T) {
 	cfg.App.GitHub = config.AppGitHubConfig{}
 
 	svc := NewService(dbSvc, files.NewService(dbSvc, cfg), cfg, nil)
-	member := newMember(t, dbSvc)
+	member := newMember(t, dbSvc, orgs[0])
 
 	_, err := svc.SubmitReport(ctx, screenshotReport(orgs[0].Slug, ""))
 	r.ErrorIs(err, ErrReportRateLimited)

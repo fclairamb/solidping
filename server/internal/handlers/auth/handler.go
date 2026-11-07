@@ -3,8 +3,10 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/analytics"
@@ -679,6 +681,8 @@ func (h *Handler) Register(writer http.ResponseWriter, req *http.Request) error 
 		})
 	}
 
+	regReq.ClientIP = h.trustedClientIP(req)
+
 	resp, err := h.svc.Register(req.Context(), regReq)
 	if err != nil {
 		return h.handleRegistrationError(writer, req, err)
@@ -804,6 +808,9 @@ func (h *Handler) ChangePassword(writer http.ResponseWriter, req *http.Request) 
 
 func (h *Handler) handleChangePasswordError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
+	case errors.Is(err, ErrReauthenticationRequired):
+		return h.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodeReauthenticationRequired,
+			"Sign in again to set a password", err)
 	case errors.Is(err, ErrInvalidCurrentPassword):
 		return h.WriteErrorErr(writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidCurrentPassword,
 			"Current password is incorrect", err)
@@ -1296,6 +1303,15 @@ func (h *Handler) handleRegistrationError(writer http.ResponseWriter, request *h
 	case errors.Is(err, ErrInvalidCredentials):
 		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			err.Error(), err)
+	case errors.Is(err, ErrRegistrationTooSoon):
+		writer.Header().Set("Retry-After", strconv.Itoa(int(registrationIPRateWindow.Seconds())))
+
+		return h.WriteErrorErr(writer, request, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+			"A sign-up from your network was sent less than a minute ago. Wait a minute, then try again.", err)
+	case errors.Is(err, ErrTooManyPendingRegistrations):
+		return h.WriteErrorErr(writer, request, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+			"Too many sign-ups from your network are waiting for email confirmation. "+
+				"Confirm one of them, or try again tomorrow.", err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
@@ -1316,6 +1332,9 @@ func (h *Handler) handleInvitationError(writer http.ResponseWriter, request *htt
 	case errors.Is(err, ErrInvalidExpiresIn):
 		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			err.Error(), err)
+	case errors.Is(err, ErrTooManyInvitations):
+		return h.WriteErrorErr(writer, request, http.StatusConflict, base.ErrorCodeTooManyInvitations,
+			"This organization has too many pending invitations. Revoke some, or wait for them to expire.", err)
 	case errors.Is(err, ErrInvalidApp):
 		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			err.Error(), err)
@@ -1343,8 +1362,20 @@ func (h *Handler) Setup2FA(writer http.ResponseWriter, req *http.Request) error 
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	resp, err := h.svc.Setup2FA(req.Context(), claims.UserUID)
+	// The body is optional: an account without a password sends none.
+	var setupReq Setup2FARequest
+	if err := json.NewDecoder(req.Body).Decode(&setupReq); err != nil && !errors.Is(err, io.EOF) {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	resp, err := h.svc.Setup2FA(req.Context(), claims.UserUID, setupReq)
 	if err != nil {
+		if handled, writeErr := WriteReauthError(&h.HandlerBase, writer, req, err); handled {
+			return writeErr
+		}
+
 		return h.handle2FAError(writer, req, err)
 	}
 
@@ -1358,7 +1389,7 @@ func (h *Handler) Confirm2FA(writer http.ResponseWriter, req *http.Request) erro
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	var confirmReq Verify2FARequest
+	var confirmReq Confirm2FARequest
 	if err := json.NewDecoder(req.Body).Decode(&confirmReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
 			{Name: fieldBody, Message: msgInvalidJSON},
@@ -1371,7 +1402,7 @@ func (h *Handler) Confirm2FA(writer http.ResponseWriter, req *http.Request) erro
 		})
 	}
 
-	resp, err := h.svc.Confirm2FA(req.Context(), claims.UserUID, confirmReq.Code)
+	resp, err := h.svc.Confirm2FA(req.Context(), claims.UserUID, confirmReq)
 	if err != nil {
 		return h.handle2FAError(writer, req, err)
 	}
@@ -1490,6 +1521,9 @@ func (h *Handler) handle2FAError(writer http.ResponseWriter, request *http.Reque
 			writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidRecoveryCode, "Invalid recovery code", err)
 	case errors.Is(err, ErrTwoFAAlreadyEnabled):
 		return h.WriteErrorErr(writer, request, http.StatusConflict, base.ErrorCodeConflict, "2FA is already enabled", err)
+	case errors.Is(err, ErrInvalidSetupToken):
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeInvalidSetupToken,
+			"2FA setup expired, start it again", err)
 	case errors.Is(err, ErrTwoFANotEnabled):
 		return h.WriteErrorErr(
 			writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, "2FA is not enabled", err)

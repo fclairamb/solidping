@@ -53,6 +53,9 @@ const (
 	TemplateEmailChanged            = "email-changed.html"
 	TemplateDeviceTokenCreated      = "device-token-created.html"
 	TemplatePasskeyAdded            = "passkey-added.html"
+	TemplateTOTPEnabled             = "totp-enabled.html"
+	TemplateTOTPDisabled            = "totp-disabled.html"
+	TemplateDiscordLinked           = "discord-linked.html"
 	TemplateIncidentAcknowledged    = "incident-acknowledged.html"
 	TemplateIncidentUnacknowledged  = "incident-unacknowledged.html"
 	TemplateIncidentComment         = "incident-comment.html"
@@ -145,6 +148,9 @@ var supportReplyableTemplates = map[string]bool{
 	TemplateEmailChanged:            false,
 	TemplateDeviceTokenCreated:      false,
 	TemplatePasskeyAdded:            false,
+	TemplateTOTPEnabled:             false,
+	TemplateTOTPDisabled:            false,
+	TemplateDiscordLinked:           false,
 	TemplatePasswordReset:           false,
 	TemplatePasswordResetSSO:        false,
 	TemplateRegistration:            false,

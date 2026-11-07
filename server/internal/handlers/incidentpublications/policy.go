@@ -326,6 +326,44 @@ func (s *Service) OnIncidentResolved(ctx context.Context, incident *models.Incid
 		return
 	}
 
+	for _, pub := range s.closablePublications(ctx, incident) {
+		page, pageErr := s.db.GetStatusPage(ctx, incident.OrganizationUID, pub.StatusPageUID)
+		if pageErr != nil || page == nil {
+			continue
+		}
+
+		s.applyResolvePolicy(ctx, page, pub, incident)
+	}
+}
+
+// OnIncidentCheckDeleted closes the publications of an incident its check's
+// deletion resolved. Unlike a recovery, a deletion is final: there is nothing
+// left to watch and no recovery that could ever close the entry later, so the
+// page's auto_resolve policy and human_touched_at are both ignored and the
+// entry is resolved with a "the monitored resource was removed" update (spec
+// 2026-11-05-05). A consolidated group entry still stays open while another
+// member it covers is down, exactly as on a recovery.
+func (s *Service) OnIncidentCheckDeleted(ctx context.Context, incident *models.Incident) {
+	if incident == nil {
+		return
+	}
+
+	for _, pub := range s.closablePublications(ctx, incident) {
+		page, pageErr := s.db.GetStatusPage(ctx, incident.OrganizationUID, pub.StatusPageUID)
+		if pageErr != nil || page == nil {
+			continue
+		}
+
+		s.resolveRemoved(ctx, page, pub, incident)
+	}
+}
+
+// closablePublications lists the open publications a resolving incident may
+// close: its own, plus the group entries hanging off a sibling's incident,
+// minus any consolidated entry that still covers a member that is down.
+func (s *Service) closablePublications(
+	ctx context.Context, incident *models.Incident,
+) []*models.IncidentPublication {
 	groupUID := s.incidentGroupUID(ctx, incident)
 
 	pubs, err := s.db.ListIncidentPublications(ctx, &models.ListIncidentPublicationsFilter{
@@ -337,7 +375,7 @@ func (s *Service) OnIncidentResolved(ctx context.Context, incident *models.Incid
 		s.logger.WarnContext(ctx, "auto-resolve: failed to list publications",
 			"incidentUid", incident.UID, "error", err)
 
-		return
+		return nil
 	}
 
 	// The entry may hang off a SIBLING's incident: consolidation gave ownership
@@ -350,6 +388,8 @@ func (s *Service) OnIncidentResolved(ctx context.Context, incident *models.Incid
 		pubs = append(pubs, s.groupSiblingPublications(ctx, incident, *groupUID)...)
 		activeSiblings = s.groupSiblingIncidents(ctx, incident, *groupUID, true)
 	}
+
+	out := make([]*models.IncidentPublication, 0, len(pubs))
 
 	for _, pub := range pubs {
 		if pub.IncidentUID == nil || pub.IsResolved() {
@@ -366,13 +406,51 @@ func (s *Service) OnIncidentResolved(ctx context.Context, incident *models.Incid
 			continue
 		}
 
-		page, pageErr := s.db.GetStatusPage(ctx, incident.OrganizationUID, pub.StatusPageUID)
-		if pageErr != nil || page == nil {
-			continue
-		}
-
-		s.applyResolvePolicy(ctx, page, pub, incident)
+		out = append(out, pub)
 	}
+
+	return out
+}
+
+// resolveRemoved resolves a publication whose check was deleted, whatever the
+// page's auto_resolve policy says, and never posts a "monitoring" note: a
+// deleted check will not recover. Same side effects as a policy resolve: the
+// resolved update (which notifies subscribers), the
+// status_page.incident.resolved event, the realtime hint and the page memo
+// eviction. Reports whether the publication was resolved.
+func (s *Service) resolveRemoved(
+	ctx context.Context, page *models.StatusPage,
+	pub *models.IncidentPublication, incident *models.Incident,
+) bool {
+	tpl := templatesFor(page.Language)
+
+	title := tpl.RemovedGenericTitle
+	if name := s.affectedName(ctx, incident.OrganizationUID, page, incident); name != "" {
+		title = fmt.Sprintf(tpl.RemovedTitle, name)
+	}
+
+	now := s.clock.Now()
+
+	resolved := models.PublicationStateResolved
+	if err := s.updatePublicationRow(ctx, pub, &models.IncidentPublicationUpdate{
+		PublicState: &resolved,
+		ResolvedAt:  &now,
+	}); err != nil {
+		s.logger.WarnContext(ctx, "check deleted: failed to resolve publication",
+			"publicationUid", pub.UID, "error", err)
+
+		return false
+	}
+
+	pub.PublicState = resolved
+	pub.ResolvedAt = &now
+
+	s.postUpdate(ctx, page, pub, models.StatusUpdateKindResolved, title, tpl.RemovedBody, nil)
+
+	s.emit(ctx, incident.OrganizationUID, models.EventTypeStatusPageIncidentResolved, pub, "")
+	s.publishHint(ctx, incident.OrganizationUID)
+
+	return true
 }
 
 func (s *Service) applyResolvePolicy(

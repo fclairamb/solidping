@@ -150,7 +150,9 @@ event is recorded, so an operator can see that deliveries stopped and why. One
 success resets the counter.
 
 ### GET /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers
-List the subscribers of a status page. Auth: required
+List the subscribers of a status page. Auth: required, org **admin** (or owner).
+A `viewer` or `user` member gets `403 FORBIDDEN`: the rows carry the email
+addresses of third parties who subscribed on the public page.
 
 Each row carries `channel`, the masked `endpoint` (endpoint channels only),
 `failureCount` and `disabled`.
@@ -180,7 +182,7 @@ handlers cannot share `…/subscribers`, or the last registration wins and the
 other becomes unreachable. Pinned by `TestStatusSubscriberRoutesDoNotCollide`.
 
 ### DELETE /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers/:uid
-Remove a subscriber. Auth: required
+Remove a subscriber. Auth: required, `user` role or above.
 
 ### GET /api/v1/public/status-subscribers/confirm
 Confirm a subscription from the emailed link (signed token). Auth: public

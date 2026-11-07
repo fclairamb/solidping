@@ -1,7 +1,9 @@
 package errorreport_test
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,6 +11,7 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/analytics/analyticstest"
 	"github.com/fclairamb/solidping/server/internal/errorreport"
 	"github.com/fclairamb/solidping/server/internal/errorreport/errorreporttest"
 )
@@ -120,4 +123,140 @@ func TestCaptureWithTags_FallsBackToTheCurrentHub(t *testing.T) {
 	events := transport.Events()
 	r.Len(events, 1)
 	r.Equal("aggregation", events[0].Tags["job.type"])
+}
+
+func newReq(t *testing.T) *http.Request {
+	t.Helper()
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/orgs/acme/checks?token=zzz", http.NoBody)
+	req.Header.Set(errorreport.HeaderSessionID, "sess-1")
+	req.Header.Set(errorreport.HeaderDistinctID, "dist-1")
+
+	return req
+}
+
+//nolint:paralleltest // binds the process-wide analytics client
+func TestCaptureOnRequest_ReportsToBothSinks(t *testing.T) {
+	r := require.New(t)
+	ph := analyticstest.Install(t)
+
+	hub, transport, err := errorreporttest.NewHub(t)
+	r.NoError(err)
+
+	req := newReq(t)
+	req = req.WithContext(sentry.SetHubOnContext(req.Context(), hub))
+
+	errorreport.CaptureOnRequest(req, errBoom)
+
+	r.Equal(1, transport.Len())
+
+	excs := ph.Exceptions()
+	r.Len(excs, 1)
+	r.Equal("sess-1", excs[0].SessionID)
+	r.Equal("dist-1", excs[0].DistinctID)
+	r.Equal(http.MethodGet, excs[0].Tags["http.method"])
+}
+
+//nolint:paralleltest // binds the process-wide analytics client
+func TestCaptureOnRequest_NoHubStillReachesPostHog(t *testing.T) {
+	r := require.New(t)
+	ph := analyticstest.Install(t)
+
+	errorreport.CaptureOnRequest(newReq(t), errBoom)
+	r.Len(ph.Exceptions(), 1)
+}
+
+//nolint:paralleltest // binds the process-wide analytics client
+func TestCaptureOnRequest_PostHogOffOnlySentry(t *testing.T) {
+	r := require.New(t)
+
+	hub, transport, err := errorreporttest.NewHub(t)
+	r.NoError(err)
+
+	req := newReq(t)
+	req = req.WithContext(sentry.SetHubOnContext(req.Context(), hub))
+
+	errorreport.CaptureOnRequest(req, errBoom)
+	r.Equal(1, transport.Len())
+}
+
+//nolint:paralleltest // binds the process-wide analytics client
+func TestCaptureOnRequest_IdentityAndMalformedHeaders(t *testing.T) {
+	r := require.New(t)
+	ph := analyticstest.Install(t)
+
+	req := newReq(t)
+	req.Header.Set(errorreport.HeaderSessionID, "bad value\n<script>")
+	req = req.WithContext(errorreport.WithIdentityHolder(req.Context()))
+	errorreport.SetIdentity(req.Context(), "o1", "u1")
+
+	errorreport.CaptureOnRequest(req, errBoom)
+
+	excs := ph.Exceptions()
+	r.Len(excs, 1)
+	r.Empty(excs[0].SessionID)
+	r.Empty(excs[0].DistinctID)
+	r.Equal("o1", excs[0].OrgUID)
+	r.Equal("u1", excs[0].UserUID)
+}
+
+//nolint:paralleltest // binds the process-wide analytics client
+func TestCaptureWithTags_ReachesPostHogWithOrgDistinctID(t *testing.T) {
+	r := require.New(t)
+	ph := analyticstest.Install(t)
+
+	errorreport.CaptureWithTags(t.Context(), errBoom, map[string]string{"organization": "o9", "job.type": "x"})
+	errorreport.CaptureWithTags(t.Context(), errBoom, map[string]string{"job.type": "y"})
+
+	excs := ph.Exceptions()
+	r.Len(excs, 2)
+	r.Equal("o9", excs[0].OrgUID)
+	r.Equal("server", excs[1].DistinctID)
+}
+
+// A request whose client went away fails with context.Canceled: not a server
+// fault, so neither sink hears about it. The positive controls keep reporting:
+// the same error on a live request, and a deadline on a canceled request.
+//
+//nolint:paralleltest // binds the process-wide analytics client
+func TestCaptureOnRequest_SkipsClientCancellation(t *testing.T) {
+	r := require.New(t)
+	ph := analyticstest.Install(t)
+
+	hub, transport, err := errorreporttest.NewHub(t)
+	r.NoError(err)
+
+	ctx, cancel := context.WithCancel(sentry.SetHubOnContext(t.Context(), hub))
+	cancel()
+
+	canceledReq := newReq(t).WithContext(ctx)
+	errorreport.CaptureOnRequest(canceledReq, fmt.Errorf("listing checks: %w", context.Canceled))
+	r.Equal(0, transport.Len())
+	r.Empty(ph.Exceptions())
+
+	errorreport.CaptureOnRequest(canceledReq, fmt.Errorf("upstream: %w", context.DeadlineExceeded))
+	r.Equal(1, transport.Len())
+
+	liveReq := newReq(t).WithContext(sentry.SetHubOnContext(t.Context(), hub))
+	errorreport.CaptureOnRequest(liveReq, context.Canceled)
+	r.Equal(2, transport.Len())
+	r.Len(ph.Exceptions(), 2)
+}
+
+// A worker interrupted by graceful shutdown reports nothing; the same error on
+// a live context still does.
+//
+//nolint:paralleltest // binds the process-wide analytics client
+func TestCaptureWithTags_SkipsShutdownCancellation(t *testing.T) {
+	r := require.New(t)
+	ph := analyticstest.Install(t)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	errorreport.CaptureWithTags(ctx, fmt.Errorf("job: %w", context.Canceled), map[string]string{"job.type": "x"})
+	r.Empty(ph.Exceptions())
+
+	errorreport.CaptureWithTags(t.Context(), fmt.Errorf("job: %w", context.Canceled), map[string]string{"job.type": "x"})
+	r.Len(ph.Exceptions(), 1)
 }

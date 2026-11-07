@@ -25,6 +25,10 @@ var ErrDiscordNotEnabled = errors.New("the Discord bot is not configured on this
 // impersonation denylist; this is the second wall.
 var ErrImpersonationForbidden = errors.New("this action is not available while impersonating a user")
 
+// ErrReauthUnavailable is returned by CreateDiscordLink when the service was
+// built without a re-authenticator: fail closed rather than link unchecked.
+var ErrReauthUnavailable = errors.New("re-authentication is not available")
+
 // refuseImpersonation returns ErrImpersonationForbidden for an impersonated
 // request.
 func refuseImpersonation(ctx context.Context) error {
@@ -116,6 +120,20 @@ func WithDiscordConfig(cfg *config.DiscordOAuthConfig) Option {
 // OAuth callback the link round trip returns to.
 func WithServerBaseURL(baseURL string) Option {
 	return func(s *Service) { s.serverBaseURL = baseURL }
+}
+
+// FactorReauthenticator is the re-authentication the auth service asks before
+// adding a sign-in factor: the current password when the account has one,
+// otherwise a recent primary sign-in. *auth.Service implements it; its errors
+// are the ones auth.WriteReauthError answers.
+type FactorReauthenticator interface {
+	ReauthenticateForFactor(ctx context.Context, user *models.User, currentPassword *string) error
+}
+
+// WithFactorReauthenticator supplies the re-authentication a Discord link
+// needs. Without one, CreateDiscordLink refuses every request.
+func WithFactorReauthenticator(reauth FactorReauthenticator) Option {
+	return func(s *Service) { s.reauth = reauth }
 }
 
 // DiscordEnabled reports whether this instance can create Discord DM contacts.
@@ -234,16 +252,34 @@ func (s *Service) upsertDiscordContact(
 // giving link mode its own token type makes that structural. It asks for
 // `identify email` only — without the `guilds` scope there is literally no guild
 // list for an org-resolution step to read.
+//
+// A linked Discord identity signs in to the account, so the link is a sign-in
+// factor and needs the same re-authentication as a TOTP or a passkey (spec
+// 2026-11-01-03): a hijacked session alone must not be able to keep a way in.
 func (s *Service) CreateDiscordLink(
-	ctx context.Context, orgSlug string, user *models.User, redirectURI string,
+	ctx context.Context, orgSlug string, user *models.User, redirectURI string, currentPassword *string,
 ) (*DiscordLinkResponse, error) {
 	if !s.DiscordEnabled() {
 		return nil, ErrDiscordNotEnabled
 	}
 
+	// Before the password check, so an impersonating admin never spends the
+	// target's change-password attempts.
+	if err := refuseImpersonation(ctx); err != nil {
+		return nil, err
+	}
+
 	orgUID, err := s.resolveOrgUID(ctx, orgSlug)
 	if err != nil {
 		return nil, err
+	}
+
+	if s.reauth == nil {
+		return nil, ErrReauthUnavailable
+	}
+
+	if reauthErr := s.reauth.ReauthenticateForFactor(ctx, user, currentPassword); reauthErr != nil {
+		return nil, reauthErr
 	}
 
 	token, err := discordlink.Mint(ctx, s.db, discordlink.Payload{

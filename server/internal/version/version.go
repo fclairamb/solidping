@@ -67,10 +67,12 @@ func Get() Info {
 
 // String returns a formatted string with all version information.
 func String() string {
+	info := Get()
+
 	var builder strings.Builder
-	fmt.Fprintf(&builder, "Version:    %s\n", Version)
-	fmt.Fprintf(&builder, "Commit:     %s\n", Commit)
-	fmt.Fprintf(&builder, "Git Time:   %s\n", GitTime)
+	fmt.Fprintf(&builder, "Version:    %s\n", info.Version)
+	fmt.Fprintf(&builder, "Commit:     %s\n", info.Commit)
+	fmt.Fprintf(&builder, "Git Time:   %s\n", info.GitTime)
 
 	return builder.String()
 }

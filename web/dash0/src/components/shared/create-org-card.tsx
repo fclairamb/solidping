@@ -39,6 +39,14 @@ interface CreateOrgCardProps {
    * good — see the `slug` derivation below.
    */
   suggestedSlug?: string;
+  /**
+   * A pending flow to resume once the org exists, instead of its dashboard:
+   * the MCP OAuth authorize request or the device approval page a brand-new
+   * account signed in for (see orgCreationReturnTo). Only /no-org passes one.
+   * POST /api/v1/orgs sets the access_token cookie for the new org, which is
+   * what the authorize endpoint reads, so a full-page load is enough.
+   */
+  returnTo?: string;
 }
 
 /**
@@ -51,6 +59,7 @@ export function CreateOrgCard({
   onCancel,
   suggestedName,
   suggestedSlug,
+  returnTo,
 }: CreateOrgCardProps) {
   const { t } = useTranslation(["auth", "common"]);
   const navigate = useNavigate();
@@ -121,6 +130,10 @@ export function CreateOrgCard({
       // proceeds even if this fails — the new token is already good enough
       // for the dashboard.
       await refreshUser().catch(() => {});
+      if (returnTo) {
+        window.location.assign(returnTo);
+        return;
+      }
       navigate(landingForOrg(result.slug));
     } catch (err) {
       // 422 VALIDATION_ERROR / 409 CONFLICT already carry a usable message

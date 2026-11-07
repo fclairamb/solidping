@@ -20,7 +20,10 @@ import (
 //nolint:gochecknoglobals // read-only test table.
 var accountTemplates = []string{
 	"registration.html", "welcome.html", "password-reset.html", "password-reset-sso.html",
-	"password-changed.html", "email-changed.html", "device-token-created.html", "passkey-added.html", "invitation.html",
+	"password-changed.html", "email-changed.html", "device-token-created.html", "passkey-added.html", "totp-enabled.html",
+	"totp-disabled.html",
+	"discord-linked.html",
+	"invitation.html",
 	"membership-request-new.html", "membership-request-decision.html",
 }
 
@@ -129,6 +132,60 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 			i18n.LangFrench:  {"Votre mot de passe SolidPing a été modifié", "a été modifié le 5 juil., 10:00 UTC."},
 			i18n.LangGerman:  {"Ihr SolidPing-Passwort wurde geändert", "am 5. Juli, 10:00 UTC geändert wurde."},
 			i18n.LangSpanish: {"Se ha cambiado tu contraseña de SolidPing", "se cambió el 5 jul, 10:00 UTC."},
+		},
+		"totp-disabled.html": {
+			i18n.LangEnglish: {
+				"Two-factor authentication was turned off for your SolidPing account",
+				"was turned off for your SolidPing account on Jul 5, 10:00 UTC.",
+			},
+			i18n.LangFrench: {
+				"La double authentification a été désactivée sur votre compte SolidPing",
+				"a été désactivée sur votre compte SolidPing le 5 juil., 10:00 UTC.",
+			},
+			i18n.LangGerman: {
+				"Für Ihr SolidPing-Konto wurde die Zwei-Faktor-Authentifizierung deaktiviert",
+				"am 5. Juli, 10:00 UTC die Zwei-Faktor-Authentifizierung deaktiviert",
+			},
+			i18n.LangSpanish: {
+				"Se ha desactivado la verificación en dos pasos en tu cuenta de SolidPing",
+				"El 5 jul, 10:00 UTC se desactivó la verificación en dos pasos",
+			},
+		},
+		"totp-enabled.html": {
+			i18n.LangEnglish: {
+				"Two-factor authentication was turned on for your SolidPing account",
+				"was turned on for your SolidPing account on Jul 5, 10:00 UTC.",
+			},
+			i18n.LangFrench: {
+				"La double authentification a été activée sur votre compte SolidPing",
+				"a été activée sur votre compte SolidPing le 5 juil., 10:00 UTC.",
+			},
+			i18n.LangGerman: {
+				"Für Ihr SolidPing-Konto wurde die Zwei-Faktor-Authentifizierung aktiviert",
+				"am 5. Juli, 10:00 UTC die Zwei-Faktor-Authentifizierung aktiviert",
+			},
+			i18n.LangSpanish: {
+				"Se ha activado la verificación en dos pasos en tu cuenta de SolidPing",
+				"El 5 jul, 10:00 UTC se activó la verificación en dos pasos",
+			},
+		},
+		"discord-linked.html": {
+			i18n.LangEnglish: {
+				"A Discord account was linked to your SolidPing account",
+				"was linked to your SolidPing account on Jul 5, 10:00 UTC.",
+			},
+			i18n.LangFrench: {
+				"Un compte Discord a été associé à votre compte SolidPing",
+				"a été associé à votre compte SolidPing le 5 juil., 10:00 UTC.",
+			},
+			i18n.LangGerman: {
+				"Mit Ihrem SolidPing-Konto wurde ein Discord-Konto verknüpft",
+				"am 5. Juli, 10:00 UTC ein Discord-Konto verknüpft",
+			},
+			i18n.LangSpanish: {
+				"Se ha vinculado una cuenta de Discord a tu cuenta de SolidPing",
+				"El 5 jul, 10:00 UTC se vinculó una cuenta de Discord",
+			},
 		},
 		"passkey-added.html": {
 			i18n.LangEnglish: {

@@ -2133,8 +2133,6 @@ type UpsertCheckRequest struct {
 }
 
 // UpdateCheck updates an existing check by UID or slug.
-//
-//nolint:cyclop,funlen,gocognit // Complex due to multiple validation and field update paths
 func (s *Service) UpdateCheck(
 	ctx context.Context, orgSlug, identifier string, req *UpdateCheckRequest,
 ) (CheckResponse, error) {
@@ -2161,11 +2159,39 @@ func (s *Service) UpdateCheck(
 		return CheckResponse{}, ErrCheckNotFound
 	}
 
+	plan, err := s.prepareCheckUpdate(ctx, check, req)
+	if err != nil {
+		return CheckResponse{}, err
+	}
+
+	return s.writeCheckUpdate(ctx, plan, req)
+}
+
+// checkUpdatePlan is a PATCH validated against one check and not written yet:
+// the row update, the placement outcome, and what the write follows up on.
+type checkUpdatePlan struct {
+	check          *models.Check
+	update         models.CheckUpdate
+	placement      *placementOutcome
+	regionsChanged bool
+	// configBefore is the stored config before this PATCH, to spot a dns
+	// baseline reset once the write landed.
+	configBefore models.JSONMap
+}
+
+// prepareCheckUpdate runs every validation of a PATCH on check and builds the
+// row update without writing anything. The bulk update's dry run stops here
+// (spec 2026-11-05-01).
+//
+//nolint:cyclop,funlen,gocognit // Complex due to multiple validation and field update paths
+func (s *Service) prepareCheckUpdate(
+	ctx context.Context, check *models.Check, req *UpdateCheckRequest,
+) (*checkUpdatePlan, error) {
 	// A demo session edits only what it created (spec 2026-09-06-02). The
 	// seeded catalog carries created_by = NULL and is therefore immutable
 	// here without any "protected" column.
 	if demoErr := assertDemoMayWriteCheck(ctx, check); demoErr != nil {
-		return CheckResponse{}, demoErr
+		return nil, demoErr
 	}
 
 	if req.Config != nil {
@@ -2174,8 +2200,8 @@ func (s *Service) UpdateCheck(
 
 	// Validate slug if provided
 	if req.Slug != nil && *req.Slug != "" {
-		if errSlug := s.validateAndCheckSlugConflict(ctx, org.UID, *req.Slug, check.Slug); errSlug != nil {
-			return CheckResponse{}, errSlug
+		if errSlug := s.validateAndCheckSlugConflict(ctx, check.OrganizationUID, *req.Slug, check.Slug); errSlug != nil {
+			return nil, errSlug
 		}
 	}
 
@@ -2185,7 +2211,7 @@ func (s *Service) UpdateCheck(
 	// re-import.
 	if req.Name != nil {
 		if nameErr := validateCheckName(*req.Name); nameErr != nil {
-			return CheckResponse{}, nameErr
+			return nil, nameErr
 		}
 	}
 
@@ -2195,7 +2221,7 @@ func (s *Service) UpdateCheck(
 	// its jobs and its schedule had already been updated.
 	if req.Labels != nil {
 		if labelErr := models.ValidateLabels(*req.Labels); labelErr != nil {
-			return CheckResponse{}, labelErr
+			return nil, labelErr
 		}
 	}
 
@@ -2229,10 +2255,10 @@ func (s *Service) UpdateCheck(
 	)
 	if placementErr != nil {
 		if isPlacementError(placementErr) {
-			return CheckResponse{}, placementErr
+			return nil, placementErr
 		}
 
-		return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", placementErr)
+		return nil, fmt.Errorf("failed to resolve regions: %w", placementErr)
 	}
 
 	regionsChanged := placement != nil
@@ -2250,7 +2276,7 @@ func (s *Service) UpdateCheck(
 		// causes it.
 		if req.Config == nil {
 			if cfgErr := s.validateRegionGates(check.Type, check.Regions); cfgErr != nil {
-				return CheckResponse{}, cfgErr
+				return nil, cfgErr
 			}
 		}
 	}
@@ -2259,11 +2285,11 @@ func (s *Service) UpdateCheck(
 	configBefore := check.Config
 	if req.Config != nil {
 		if cfgErr := s.applyConfigUpdate(ctx, check, *req.Config, &update); cfgErr != nil {
-			return CheckResponse{}, cfgErr
+			return nil, cfgErr
 		}
 
 		if floorErr := validateConfigOnlyPatchFloor(check, req.Period); floorErr != nil {
-			return CheckResponse{}, floorErr
+			return nil, floorErr
 		}
 	} else if regionsChanged {
 		// A regions-only PATCH still has to re-validate a tunnel reference: the
@@ -2274,7 +2300,7 @@ func (s *Service) UpdateCheck(
 		if tunnelErr := s.validateTunnelConfig(
 			ctx, check.OrganizationUID, check.Type, check.Config, check.Regions,
 		); tunnelErr != nil {
-			return CheckResponse{}, tunnelErr
+			return nil, tunnelErr
 		}
 	}
 	// Guard the SSH check's own side: narrowing its regions (or making it
@@ -2283,11 +2309,11 @@ func (s *Service) UpdateCheck(
 	// applied by applyConfigUpdate when config changed).
 	if regionsChanged || req.Config != nil {
 		if coverErr := s.assertTunnelRegionsStillCover(ctx, check); coverErr != nil {
-			return CheckResponse{}, coverErr
+			return nil, coverErr
 		}
 	}
 	if validateErr := validateResolveOpenIncidents(req); validateErr != nil {
-		return CheckResponse{}, validateErr
+		return nil, validateErr
 	}
 	if req.Enabled != nil {
 		update.Enabled = req.Enabled
@@ -2295,7 +2321,7 @@ func (s *Service) UpdateCheck(
 	if req.Period != nil {
 		var duration timeutils.Duration
 		if errScan := duration.Scan(*req.Period); errScan != nil {
-			return CheckResponse{}, errScan
+			return nil, errScan
 		}
 		// Enforce per-type period bounds on the new value (spec
 		// 2026-07-01-04 D1) — existing rows are grandfathered until the
@@ -2310,7 +2336,7 @@ func (s *Service) UpdateCheck(
 			ctx, check.OrganizationUID, check.Type, time.Duration(duration), check.Internal,
 			parsedConfigForType(check.Type, check.Config),
 		); periodErr != nil {
-			return CheckResponse{}, periodErr
+			return nil, periodErr
 		}
 		update.Period = &duration
 	}
@@ -2321,13 +2347,13 @@ func (s *Service) UpdateCheck(
 			effectivePeriod = time.Duration(*update.Period)
 		}
 		if applyErr := applyRegionSpreadUpdate(&update, *req.RegionSpread, effectivePeriod); applyErr != nil {
-			return CheckResponse{}, applyErr
+			return nil, applyErr
 		}
 	}
 	if req.TracerouteOnFailure != nil {
 		value, ok := parseTraceroutePolicy(*req.TracerouteOnFailure)
 		if !ok {
-			return CheckResponse{}, errInvalidTraceroutePolicy
+			return nil, errInvalidTraceroutePolicy
 		}
 
 		// nil is the INHERIT answer, and it has to travel as an explicit clear
@@ -2338,11 +2364,11 @@ func (s *Service) UpdateCheck(
 	}
 
 	if riErr := applyReminderIntervalUpdate(&update, req.ReminderIntervalSeconds); riErr != nil {
-		return CheckResponse{}, riErr
+		return nil, riErr
 	}
 
 	if fqErr := applyFailQuorumUpdate(&update, check, req.FailQuorum); fqErr != nil {
-		return CheckResponse{}, fqErr
+		return nil, fqErr
 	}
 
 	if req.ReopenCooldownMultiplier != nil {
@@ -2351,7 +2377,7 @@ func (s *Service) UpdateCheck(
 	if vErr := validateFlappingFields(
 		req.FlappingWindowSeconds, req.FlapBackoffFactor, req.MaxRecoveryMultiplier,
 	); vErr != nil {
-		return CheckResponse{}, vErr
+		return nil, vErr
 	}
 	if req.FlappingWindowSeconds != nil {
 		update.FlappingWindowSeconds = req.FlappingWindowSeconds
@@ -2363,17 +2389,17 @@ func (s *Service) UpdateCheck(
 		update.MaxRecoveryMultiplier = req.MaxRecoveryMultiplier
 	}
 	if vErr := applyDegradedUpdate(&update, req, check); vErr != nil {
-		return CheckResponse{}, vErr
+		return nil, vErr
 	}
 	if req.ConfirmationPeriodSeconds != nil {
 		if vErr := validateIncidentPeriod(*req.ConfirmationPeriodSeconds); vErr != nil {
-			return CheckResponse{}, fmt.Errorf("confirmationPeriodSeconds: %w", vErr)
+			return nil, fmt.Errorf("confirmationPeriodSeconds: %w", vErr)
 		}
 		update.ConfirmationPeriodSeconds = req.ConfirmationPeriodSeconds
 	}
 	if req.RecoveryPeriodSeconds != nil {
 		if vErr := validateIncidentPeriod(*req.RecoveryPeriodSeconds); vErr != nil {
-			return CheckResponse{}, fmt.Errorf("recoveryPeriodSeconds: %w", vErr)
+			return nil, fmt.Errorf("recoveryPeriodSeconds: %w", vErr)
 		}
 		update.RecoveryPeriodSeconds = req.RecoveryPeriodSeconds
 	}
@@ -2389,9 +2415,25 @@ func (s *Service) UpdateCheck(
 		}
 
 		if intervalErr := validateSMTPSendInterval(check.Type, check.Config, effectivePeriod); intervalErr != nil {
-			return CheckResponse{}, intervalErr
+			return nil, intervalErr
 		}
 	}
+
+	return &checkUpdatePlan{
+		check: check, update: update, placement: placement,
+		regionsChanged: regionsChanged, configBefore: configBefore,
+	}, nil
+}
+
+// writeCheckUpdate persists a prepared PATCH and its follow-ups: jobs,
+// incidents, labels, status page sections.
+//
+//nolint:cyclop // One follow-up per kind of change
+func (s *Service) writeCheckUpdate(
+	ctx context.Context, plan *checkUpdatePlan, req *UpdateCheckRequest,
+) (CheckResponse, error) {
+	check, update, placement := plan.check, plan.update, plan.placement
+	regionsChanged, configBefore := plan.regionsChanged, plan.configBefore
 
 	// Update check in DB. A rename carries the same optimistic-slug gap as
 	// creation — validateAndCheckSlugConflict above only proves the slug was
@@ -2422,7 +2464,7 @@ func (s *Service) UpdateCheck(
 	// changed (a regionSpread-only edit re-levels the per-region phases).
 	if regionsChanged || req.Period != nil || req.RegionSpread != nil ||
 		req.Enabled != nil || req.Config != nil {
-		updatedCheck, fetchErr := s.db.GetCheck(ctx, org.UID, check.UID)
+		updatedCheck, fetchErr := s.db.GetCheck(ctx, check.OrganizationUID, check.UID)
 		if fetchErr != nil {
 			return CheckResponse{}, fetchErr
 		}
@@ -2446,13 +2488,13 @@ func (s *Service) UpdateCheck(
 	// Handle labels if provided (nil means no change, empty map means clear all).
 	// Keys/values were validated before the update above.
 	if req.Labels != nil {
-		if labelErr := s.attachLabels(ctx, org.UID, check.UID, *req.Labels); labelErr != nil {
+		if labelErr := s.attachLabels(ctx, check.OrganizationUID, check.UID, *req.Labels); labelErr != nil {
 			return CheckResponse{}, labelErr
 		}
 	}
 
 	// Fetch updated check
-	updatedCheck, err := s.db.GetCheck(ctx, org.UID, check.UID)
+	updatedCheck, err := s.db.GetCheck(ctx, check.OrganizationUID, check.UID)
 	if err != nil {
 		return CheckResponse{}, err
 	}
@@ -2463,7 +2505,7 @@ func (s *Service) UpdateCheck(
 	// Same advisory as on create: the update is already persisted, this only
 	// tells the user what the region last reported about IPv6 / headless Chrome.
 	response.Warnings = s.regionCapabilityWarnings(
-		ctx, org.UID, updatedCheck.Type, updatedCheck.Config, updatedCheck.Regions,
+		ctx, check.OrganizationUID, updatedCheck.Type, updatedCheck.Config, updatedCheck.Regions,
 	)
 	if placement != nil {
 		response.Warnings = append(response.Warnings, placement.warnings...)
@@ -2485,7 +2527,7 @@ func (s *Service) UpdateCheck(
 	// Labels are replaced wholesale by UpdateCheck (SetCheckLabels), so this is
 	// also the label attach/detach trigger: adding `public=true` must put the
 	// check on the matching section, and removing it must take it off.
-	s.reconcileStatusPageSelectors(ctx, org.UID)
+	s.reconcileStatusPageSelectors(ctx, check.OrganizationUID)
 
 	return response, nil
 }

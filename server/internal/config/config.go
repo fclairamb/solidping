@@ -1513,6 +1513,15 @@ type AuthConfig struct {
 	AccessTokenExpiry        time.Duration `koanf:"access_token_expiry"`
 	RefreshTokenExpiry       time.Duration `koanf:"refresh_token_expiry"`
 	RegistrationEmailPattern string        `koanf:"registration_email_pattern"`
+	// RegistrationMaxPendingPerIP caps the sign-ups one client IP may have
+	// waiting for email confirmation, counting those submitted in the last 24
+	// hours. While it is on, the IP may also sign up at most once a minute.
+	// Past either, POST /auth/register answers 429. 0 turns both off. Default
+	// DefaultRegistrationMaxPendingPerIP: 10 in SaaS mode, 0 otherwise and in
+	// test run mode. Env: SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP
+	// (resolveRegistrationLimit), also the
+	// systemconfig.KeyRegistrationMaxPendingPerIP system parameter.
+	RegistrationMaxPendingPerIP int `koanf:"registration_max_pending_per_ip"`
 	// SessionMaxDuration is a hard absolute cap on session lifetime,
 	// measured from login — unlike RefreshTokenExpiry (a sliding *idle*
 	// window), this bounds total session length even under continuous
@@ -1535,6 +1544,28 @@ type AuthConfig struct {
 	// the seeded password stays the public default with must_change_password.
 	// Env: SP_ADMIN_EMAIL (or SP_AUTH_ADMIN_EMAIL), bound in applyAuthEnv.
 	AdminEmail string `koanf:"admin_email"`
+	// AutoPersonalOrg creates a personal organization for a user who signs in
+	// belonging to none, instead of sending them to /no-org (spec
+	// 2026-10-30-04). TRI-STATE: nil means the deployment-mode default (on
+	// for saas, off for self-hosted). Resolve through
+	// Config.AutoPersonalOrgEnabled, never this field. snake_case, so
+	// SP_AUTH_AUTO_PERSONAL_ORG is bound by hand in applyAuthEnv.
+	AutoPersonalOrg *bool `koanf:"auto_personal_org"`
+}
+
+// EnvAuthAutoPersonalOrg is the env override of auth.auto_personal_org.
+const EnvAuthAutoPersonalOrg = "SP_AUTH_AUTO_PERSONAL_ORG"
+
+// AutoPersonalOrgEnabled reports whether a user who signs in with no
+// organization gets a personal one created for them: the explicit
+// auth.auto_personal_org setting when set, else true on SaaS and false on
+// self-hosted.
+func (c *Config) AutoPersonalOrgEnabled() bool {
+	if c.Auth.AutoPersonalOrg != nil {
+		return *c.Auth.AutoPersonalOrg
+	}
+
+	return c.Deployment.Mode == DeploymentModeSaaS
 }
 
 // PasswordConfig selects the password-hashing algorithm and its cost
@@ -2506,6 +2537,7 @@ func Load() (*Config, error) {
 	applyCheckersEnv(&cfg.Checkers)
 	applyAgentEnv(&cfg.Agent)
 	applyAuthEnv(&cfg.Auth)
+	resolveRegistrationLimit(&cfg, fileKoanf.Exists(registrationLimitFileKey))
 	applyPasswordHashingEnv(&cfg.Auth.Password)
 	applyFileStorageEnv(&cfg.FileStorage)
 	applyWebPushEnv(&cfg.WebPush)
@@ -2916,6 +2948,14 @@ func applyAuthEnv(cfg *AuthConfig) {
 	// auth.impersonation.enabled and bind nothing.
 	if v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv("SP_AUTH_IMPERSONATION_ENABLED"))); err == nil {
 		cfg.ImpersonationEnabled = v
+	}
+	// auth.auto_personal_org: tri-state, unset keeps the mode default.
+	if raw := strings.TrimSpace(os.Getenv(EnvAuthAutoPersonalOrg)); raw != "" {
+		if v, err := strconv.ParseBool(raw); err == nil {
+			cfg.AutoPersonalOrg = &v
+		} else {
+			slog.Warn("Ignoring unparseable "+EnvAuthAutoPersonalOrg, "value", raw, "error", err)
+		}
 	}
 	// auth.admin_email: SP_ADMIN_EMAIL is the documented short name.
 	if v := strings.TrimSpace(os.Getenv("SP_AUTH_ADMIN_EMAIL")); v != "" {

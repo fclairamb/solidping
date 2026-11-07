@@ -1,0 +1,18 @@
+{{define "subject"}}{{t "account.discordLinked.subject"}}{{end}}
+{{define "preheader"}}{{t "account.discordLinked.preheader"}}{{end}}
+{{template "base.html" .}}
+{{define "content"}}
+    <h1>{{t "account.discordLinked.title"}}</h1>
+    <p>{{t "account.discordLinked.body" "date" (date .LinkedAt)}}</p>
+    <p>{{t "account.discordLinked.revoke"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .SecurityURL "Label" (t "account.discordLinked.cta") "Variant" "primary"}}</div>
+    <p class="meta">{{t "account.securityNotice.warning"}}</p>
+{{end}}
+{{define "text"}}{{t "account.discordLinked.title"}}
+
+{{t "account.discordLinked.body" "date" (date .LinkedAt)}}
+
+{{t "account.discordLinked.revoke"}} {{.SecurityURL}}
+
+{{t "account.securityNotice.warning"}}
+{{end}}

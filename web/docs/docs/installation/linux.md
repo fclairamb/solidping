@@ -50,31 +50,24 @@ so this works no matter which platform's file you fetched.
 
 ## macOS
 
-The same release publishes archives for macOS — Apple Silicon and Intel:
+See the [macOS guide](./macos.md) (Homebrew, binary download, Gatekeeper, launchd).
+
+## Checking the installed version
+
+`solidping --version` prints the version of the binary, whichever way you
+installed it. `solidping version` adds the commit and build time (`-o json`
+for a script). Neither starts the server or reads its configuration:
 
 ```bash
-# Apple Silicon
-curl -L -o solidping-darwin-arm64.gz https://github.com/fclairamb/solidping/releases/latest/download/solidping-darwin-arm64.gz
-gunzip -c solidping-darwin-arm64.gz > solidping
-
-# Intel
-curl -L -o solidping-darwin-amd64.gz https://github.com/fclairamb/solidping/releases/latest/download/solidping-darwin-amd64.gz
-gunzip -c solidping-darwin-amd64.gz > solidping
-
-chmod +x solidping
+$ solidping --version
+solidping version 0.44.0
+$ solidping version
+Version:    0.44.0
+Commit:     1a2b3c4d
+Git Time:   2026-11-01T10:00:00Z
 ```
 
-The binary is unsigned and not notarized, so macOS Gatekeeper quarantines it
-on download and refuses to run it. Clear the quarantine attribute once
-before first run:
-
-```bash
-xattr -d com.apple.quarantine solidping
-```
-
-There is no dedicated macOS page (launchd service, Homebrew tap) yet — once
-the binary is in place, the "Running" section below and the rest of this
-guide apply the same way on macOS as on Linux.
+A running server reports the same fields at `GET /api/mgmt/version`.
 
 ## Running
 

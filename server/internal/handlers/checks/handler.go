@@ -628,10 +628,22 @@ func (h *Handler) CloneCheck(writer http.ResponseWriter, req *http.Request) erro
 	return h.WriteJSON(writer, http.StatusCreated, check)
 }
 
+// autoPlacementSunset is when POST /checks/auto-placement goes away, replaced
+// by the bulk PATCH /checks with {"placement": "auto"} (spec 2026-11-05-01).
+const autoPlacementSunset = "Tue, 15 Dec 2026 00:00:00 GMT"
+
 // SwitchToAutoPlacement handles POST /api/v1/orgs/:org/checks/auto-placement,
 // the checks list's bulk "Switch to automatic placement" (spec 2026-09-25-06).
+// Superseded by BulkUpdateChecks with {"placement": "auto"} and removed after
+// autoPlacementSunset: the response carries the Deprecation (RFC 9745) and
+// Sunset (RFC 8594) headers.
 func (h *Handler) SwitchToAutoPlacement(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")
+
+	writer.Header().Set("Deprecation", "@1793836800") // 2026-11-05
+	writer.Header().Set("Sunset", autoPlacementSunset)
+
+	req.Body = http.MaxBytesReader(writer, req.Body, MaxBulkRequestBytes)
 
 	var body AutoPlacementRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
@@ -647,7 +659,44 @@ func (h *Handler) SwitchToAutoPlacement(writer http.ResponseWriter, req *http.Re
 				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 		}
 
+		if errors.Is(err, errBulkTooManyChecks) {
+			return h.WriteErrorErr(
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+		}
+
 		return h.WriteInternalError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// BulkUpdateChecks handles PATCH /api/v1/orgs/:org/checks: one set of
+// changes, shaped like a single-check PATCH, applied to every listed check
+// (spec 2026-11-05-01).
+func (h *Handler) BulkUpdateChecks(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+
+	req.Body = http.MaxBytesReader(writer, req.Body, MaxBulkRequestBytes)
+
+	var body BulkUpdateChecksRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	resp, err := h.svc.BulkUpdateChecks(req.Context(), orgSlug, &body)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrOrganizationNotFound):
+			return h.WriteErrorErr(
+				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		case IsBulkUpdateRequestError(err):
+			return h.WriteErrorErr(
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+		default:
+			return h.WriteInternalError(writer, req, err)
+		}
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)

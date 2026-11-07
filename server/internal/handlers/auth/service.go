@@ -108,8 +108,12 @@ var (
 	ErrRegistrationExpired     = errors.New("registration link has expired")
 	ErrEmailAlreadyTaken       = errors.New("email is already registered")
 	ErrInvitationNotFound      = errors.New("invitation not found")
-	ErrInvitationExpired       = errors.New("invitation has expired")
-	ErrEmailMismatch           = errors.New("email does not match invitation")
+	// ErrTooManyInvitations is returned when the org already has the maximum
+	// number of live invitations (maxLiveInvitationsPerOrg, or its seat cap
+	// when lower).
+	ErrTooManyInvitations = errors.New("too many pending invitations")
+	ErrInvitationExpired  = errors.New("invitation has expired")
+	ErrEmailMismatch      = errors.New("email does not match invitation")
 	// ErrInviteLoginRequired refuses an anonymous acceptance of an invitation
 	// addressed to an existing account: the invite token alone is not proof of
 	// being that account, since the inviter holds it (spec 2026-10-16-06).
@@ -264,6 +268,13 @@ type Claims struct {
 	// 2026-10-16-12). Empty on every other token. It lets RequireAuth tell the
 	// first-party CLI client from a third-party one; see IsMCPCredential.
 	ClientID string `json:"clientId,omitempty"`
+	// AuthTime is when (Unix seconds) the primary sign-in that opened this
+	// session happened (spec 2026-10-31-02). It survives refreshes and org
+	// switches, but never takes the time a refresh minted the token. A
+	// passwordless account may only add a sign-in factor while it is recent.
+	// 0 when unknown (sessions opened before the claim existed, impersonation,
+	// MCP and PAT credentials).
+	AuthTime int64 `json:"authTime,omitempty"`
 	// pat marks claims produced by ValidatePATToken (spec 2026-10-28-01).
 	// Unexported, so it never appears in a signed JWT: no token can claim to
 	// be, or not to be, a PAT. See IsPAT and patForbiddenRoutes.
@@ -479,6 +490,23 @@ type TwoFAClaims struct {
 type Setup2FAResponse struct {
 	URI    string `json:"uri"`
 	Secret string `json:"secret"`
+	// SetupToken binds the confirm step to this secret and to the
+	// re-authentication that produced it (spec 2026-10-31-02). It expires
+	// after 10 minutes; POST /auth/2fa/confirm requires it.
+	SetupToken string `json:"setupToken"`
+}
+
+// Setup2FARequest is the body of POST /auth/2fa/setup. CurrentPassword is
+// required when the account has a password; an account without one must
+// have signed in within the last 10 minutes instead.
+type Setup2FARequest struct {
+	CurrentPassword *string `json:"currentPassword,omitempty"`
+}
+
+// Confirm2FARequest is the body of POST /auth/2fa/confirm.
+type Confirm2FARequest struct {
+	Code       string `json:"code"`
+	SetupToken string `json:"setupToken"`
 }
 
 // Confirm2FAResponse contains the recovery codes after enabling 2FA.
@@ -823,6 +851,13 @@ func (s *Service) completeLogin(
 ) (*LoginResponse, error) {
 	now := time.Now()
 
+	// A completed login is a primary sign-in. The session minted after an org
+	// deletion is not: it keeps the caller's sign-in time.
+	authTime := now.Unix()
+	if method == methodOrgDeleted {
+		authTime = callerAuthTime(ctx)
+	}
+
 	if updateErr := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{LastActiveAt: &now}); updateErr != nil {
 		slog.ErrorContext(ctx, "Failed to update user last_active_at", "error", updateErr, "userUID", user.UID)
 	}
@@ -830,7 +865,7 @@ func (s *Service) completeLogin(
 	userInfo := newUserInfo(user, role)
 
 	if resolvedOrg == nil {
-		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "", user.Demo)
+		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "", user.Demo, authTime)
 		if tokenErr != nil {
 			return nil, tokenErr
 		}
@@ -851,6 +886,7 @@ func (s *Service) completeLogin(
 	}
 
 	refreshToken := s.newRefreshTokenRow(ctx, user, resolvedOrg, refreshTokenValue, method, now, authContext)
+	stampSignedInAt(refreshToken, authTime)
 
 	if err = s.startSession(
 		ctx, actorFromUser(user), resolvedOrg, refreshToken, role, method, authContext,
@@ -858,7 +894,8 @@ func (s *Service) completeLogin(
 		return nil, err
 	}
 
-	accessToken, err := s.generateAccessToken(user.UID, resolvedOrg.Slug, role, refreshToken.UID, user.Demo)
+	accessToken, err := s.generateAccessToken(
+		user.UID, resolvedOrg.Slug, role, refreshToken.UID, user.Demo, authTime)
 	if err != nil {
 		return nil, err
 	}
@@ -1001,6 +1038,23 @@ func (s *Service) enforceSessionCap(ctx context.Context, userUID string) {
 // Returns the resolved org (may be nil for no-org case), the user's role, the login action,
 // and the list of available organizations.
 func (s *Service) resolveOrgPreference(
+	ctx context.Context, orgSlug string, user *models.User,
+) (*models.Organization, string, LoginAction, []OrganizationSummary, error) {
+	org, role, action, summaries, err := s.resolveOrgPreferenceFromMemberships(ctx, orgSlug, user)
+	if err != nil {
+		return nil, "", "", nil, err
+	}
+
+	// No org: settle the user (invitation, pattern, personal org) before the
+	// login lands on /no-org (spec 2026-10-30-04).
+	org, role, action, summaries = s.withPersonalOrg(ctx, user, org, role, action, summaries)
+
+	return org, role, action, summaries, nil
+}
+
+// resolveOrgPreferenceFromMemberships is resolveOrgPreference on the user's
+// current memberships only.
+func (s *Service) resolveOrgPreferenceFromMemberships(
 	ctx context.Context, orgSlug string, user *models.User,
 ) (*models.Organization, string, LoginAction, []OrganizationSummary, error) {
 	// Super admins: resolve org normally (they can access any org)
@@ -1522,7 +1576,8 @@ func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*Login
 	}
 
 	// Generate new access token, bound to the refresh-token row that issued it.
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, token.UID, user.Demo)
+	// It carries the session's sign-in time, never the time of this refresh.
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, token.UID, user.Demo, signedInAtOf(token))
 	if err != nil {
 		return nil, err
 	}
@@ -2222,6 +2277,10 @@ func (s *Service) SwitchOrg(
 		keyCreatedWith: authContext.ToMap(),
 	}
 
+	// An org switch is not a sign-in: the new session keeps the caller's.
+	authTime := callerAuthTime(ctx)
+	stampSignedInAt(refreshToken, authTime)
+
 	if err = s.startSession(
 		ctx, actorFromUser(user), org, refreshToken, role, AuthMethodSwitchOrg, authContext,
 	); err != nil {
@@ -2229,7 +2288,7 @@ func (s *Service) SwitchOrg(
 	}
 
 	// Generate access token, bound to the new refresh-token row.
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo)
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo, authTime)
 	if err != nil {
 		return nil, err
 	}
@@ -2300,8 +2359,11 @@ func (s *Service) GetAllUserTokens(
 // user_tokens.uid of the refresh-token row this access token is bound to —
 // pass "" when there is no such row (no-org login, PAT validation, 2FA temp
 // tokens). demo is the owning user's users.demo flag, which the write guard
-// reads straight off the claims (spec 2026-09-06-02).
-func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string, demo bool) (string, error) {
+// reads straight off the claims (spec 2026-09-06-02). authTime is the primary
+// sign-in time of the session (Claims.AuthTime), 0 when unknown.
+func (s *Service) generateAccessToken(
+	userUID, orgSlug, role, refreshUID string, demo bool, authTime int64,
+) (string, error) {
 	now := time.Now()
 	claims := &Claims{
 		UserUID:    userUID,
@@ -2309,6 +2371,7 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string,
 		Role:       role,
 		RefreshUID: refreshUID,
 		Demo:       demo,
+		AuthTime:   authTime,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.cfg.AccessTokenExpiry)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -2444,6 +2507,7 @@ func (s *Service) GenerateTokensForOAuth(
 
 	createdWith[keyMethod] = method
 	refreshToken.Properties = models.JSONMap{keyCreatedWith: createdWith}
+	stampSignedInAt(refreshToken, now.Unix())
 
 	if err = s.startSession(
 		ctx, actorFromUser(user), org, refreshToken, role, method, authContext,
@@ -2452,7 +2516,7 @@ func (s *Service) GenerateTokensForOAuth(
 	}
 
 	// Generate access token, bound to the new refresh-token row.
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo)
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo, now.Unix())
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -2484,6 +2548,10 @@ type RegisterRequest struct {
 	// lenient: an unsupported value is dropped, never refused.
 	Locale   string `json:"locale,omitempty"`
 	Timezone string `json:"timezone,omitempty"`
+	// ClientIP is the caller's address, set by the HTTP handler with the
+	// trusted-proxy rules, never read from the body. It counts the sign-up
+	// against auth.registration_max_pending_per_ip; empty skips the per-IP limits.
+	ClientIP string `json:"-"`
 }
 
 // RegisterResponse contains the response after registration.
@@ -2492,19 +2560,35 @@ type RegisterResponse struct {
 }
 
 const (
-	registrationKeyPrefix       = "email_registration:"
-	registrationTTL             = 3 * 24 * time.Hour
-	inviteKeyPrefix             = "invite:"
+	registrationKeyPrefix = "email_registration:"
+	registrationTTL       = 3 * 24 * time.Hour
+	inviteKeyPrefix       = "invite:"
+	// inviteEmailKeyPrefix keys the global per-invitee index:
+	// invite_email:<sha256(lower(email))>:<orgUID>, value {orgUID, inviteKey}.
+	inviteEmailKeyPrefix = "invite_email:"
+	keyInviteKey         = "inviteKey"
+	// maxLiveInvitationsPerOrg caps the live invitations of one org.
+	maxLiveInvitationsPerOrg = 50
+	// registrationTokenKeyPrefix keys registration_token:<tokenHash>, value
+	// {email}: ConfirmRegistration resolves the pending entry through it.
+	registrationTokenKeyPrefix  = "registration_token:"
 	keyInviteOrgUID             = "orgUID"
 	passwordResetKeyPrefix      = "password_reset:"
 	passwordResetCountKeyPrefix = "password_reset_count:"
-	passwordResetIPKeyPrefix    = "pwd_reset_rl:"
-	passwordResetTTL            = 1 * time.Hour
-	passwordResetIPWindow       = time.Minute
-	passwordResetMaxPerUser     = 3
-	passwordResetMaxPerIP       = 5
-	minPasswordLength           = 8
-	registrationTokenSize       = 32
+	// passwordResetUserKeyPrefix indexes a user's outstanding reset entries:
+	// password_reset_user:<userUID>:<tokenHash>, same TTL as the entry, so
+	// purgePasswordResets can find and delete them all.
+	passwordResetUserKeyPrefix = "password_reset_user:"
+	// stateValueKeyEmailHash holds sha256 of the address the reset link was
+	// sent to; the reset is refused once the account's email differs.
+	stateValueKeyEmailHash   = "emailHash"
+	passwordResetIPKeyPrefix = "pwd_reset_rl:"
+	passwordResetTTL         = 1 * time.Hour
+	passwordResetIPWindow    = time.Minute
+	passwordResetMaxPerUser  = 3
+	passwordResetMaxPerIP    = 5
+	minPasswordLength        = 8
+	registrationTokenSize    = 32
 
 	// Authenticated change-password rate limit. The endpoint sits behind a
 	// valid session, but a stolen-but-unprivileged token must not become an
@@ -2578,6 +2662,13 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		return nil, fmt.Errorf("%w: password must be at least %d characters", ErrInvalidCredentials, minPasswordLength)
 	}
 
+	// Before the taken-email branch, which spends the minute like a real
+	// sign-up: an IP over a limit gets 429 whatever the address, so the limits
+	// cannot tell which ones have an account.
+	if limitErr := s.checkRegistrationPerIPLimits(ctx, req.ClientIP, req.Email); limitErr != nil {
+		return nil, limitErr
+	}
+
 	// Check if email is already taken
 	existing, err := s.db.GetUserByEmail(ctx, req.Email)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -2611,33 +2702,15 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 
 	token := hex.EncodeToString(tokenBytes)
 
-	// Store in state entries. Only sha256hex(token) is kept — a DB leak
-	// during the 3-day TTL window must not also hand out a usable
-	// confirmation token alongside the pending password hash (spec
-	// 2026-09-25-30). ConfirmRegistration hashes the presented token and
-	// compares it against keyTokenHash for each candidate entry.
-	stateValue := &models.JSONMap{
-		keyTokenHash:   hashPendingToken(token),
-		keyEmail:       req.Email,
-		keyName:        req.Name,
-		"passwordHash": hash,
-	}
-
-	// The account does not exist yet, so the attribution rides along in the
-	// pending entry and is applied at confirmation. It goes in only when there
-	// is something to keep: the common untagged signup stores nothing extra.
-	if attribution := normalizeSignupAttribution(req.Attribution); attribution != nil {
-		(*stateValue)[keyAttribution] = attribution
-	}
-
-	if prefs := signupPreferences(req.Locale, req.Timezone); prefs != nil {
-		(*stateValue)[keyPreferences] = prefs
-	}
-
+	stateValue := pendingRegistrationValue(&req, hash, token)
 	ttl := registrationTTL
 
 	if err := s.db.SetStateEntry(ctx, nil, registrationKeyPrefix+req.Email, stateValue, &ttl); err != nil {
 		return nil, fmt.Errorf("failed to store registration: %w", err)
+	}
+
+	if err := s.indexPendingRegistration(ctx, req.Email, req.ClientIP, token, ttl); err != nil {
+		return nil, err
 	}
 
 	// Send confirmation email asynchronously via the email job
@@ -2652,6 +2725,37 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 	return registerSuccessResponse, nil
 }
 
+// pendingRegistrationValue builds the state value of a pending registration.
+// Only sha256hex(token) is kept — a DB leak during the 3-day TTL window must
+// not also hand out a usable confirmation token alongside the pending password
+// hash (spec 2026-09-25-30). ConfirmRegistration hashes the presented token and
+// compares it against keyTokenHash for each candidate entry.
+func pendingRegistrationValue(req *RegisterRequest, passwordHash, token string) *models.JSONMap {
+	stateValue := &models.JSONMap{
+		keyTokenHash:   hashPendingToken(token),
+		keyEmail:       req.Email,
+		keyName:        req.Name,
+		"passwordHash": passwordHash,
+	}
+
+	// The account does not exist yet, so the attribution rides along in the
+	// pending entry and is applied at confirmation. It goes in only when there
+	// is something to keep: the common untagged signup stores nothing extra.
+	if attribution := normalizeSignupAttribution(req.Attribution); attribution != nil {
+		(*stateValue)[keyAttribution] = attribution
+	}
+
+	if prefs := signupPreferences(req.Locale, req.Timezone); prefs != nil {
+		(*stateValue)[keyPreferences] = prefs
+	}
+
+	if req.ClientIP != "" {
+		(*stateValue)[keyClientIP] = req.ClientIP
+	}
+
+	return stateValue
+}
+
 // ConfirmRegistrationRequest contains the confirmation request data.
 type ConfirmRegistrationRequest struct {
 	Token string `json:"token"`
@@ -2661,34 +2765,35 @@ type ConfirmRegistrationRequest struct {
 //
 //nolint:cyclop,funlen // Registration confirmation requires multiple steps
 func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*LoginResponse, error) {
-	// Registration entries are keyed by email, not by token, so there is no
-	// direct lookup key to hash into (unlike password reset's
-	// password_reset:<hash> key) — scan and hash-compare per candidate
-	// instead. The plaintext token itself is never stored (spec
-	// 2026-09-25-30), so this is comparing hashes, not the raw values.
+	// Registration entries are keyed by email, so a second key,
+	// registration_token:<hash>, names the email of a token: one lookup, no
+	// scan of the pending registrations of the instance. The plaintext token
+	// is never stored (spec 2026-09-25-30). Registrations pending before this
+	// key existed have none and must be re-submitted.
 	tokenHash := hashPendingToken(token)
 
-	entries, err := s.db.ListStateEntries(ctx, nil, registrationKeyPrefix)
+	tokenEntry, err := s.db.GetStateEntry(ctx, nil, registrationTokenKeyPrefix+tokenHash)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list registration entries: %w", err)
+		return nil, fmt.Errorf("failed to look up registration: %w", err)
 	}
 
-	var matchedEntry *models.StateEntry
-
-	for _, entry := range entries {
-		if entry.Value == nil {
-			continue
-		}
-
-		entryHash, ok := (*entry.Value)[keyTokenHash].(string)
-		if ok && entryHash == tokenHash {
-			matchedEntry = entry
-
-			break
-		}
+	if tokenEntry == nil || tokenEntry.Value == nil {
+		return nil, ErrRegistrationExpired
 	}
 
-	if matchedEntry == nil {
+	pendingEmail := stringFromMap(*tokenEntry.Value, keyEmail)
+
+	matchedEntry, err := s.db.GetStateEntry(ctx, nil, registrationKeyPrefix+pendingEmail)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get registration: %w", err)
+	}
+
+	if matchedEntry == nil || matchedEntry.Value == nil {
+		return nil, ErrRegistrationExpired
+	}
+
+	// A newer sign-up for the same address replaced the token.
+	if entryHash, ok := (*matchedEntry.Value)[keyTokenHash].(string); !ok || entryHash != tokenHash {
 		return nil, ErrRegistrationExpired
 	}
 
@@ -2710,7 +2815,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 
 	if existing != nil {
 		// Delete the state entry
-		_, _ = s.db.DeleteStateEntry(ctx, nil, matchedEntry.Key)
+		s.dropPendingRegistration(ctx, matchedEntry, tokenHash)
 
 		return nil, ErrEmailAlreadyTaken
 	}
@@ -2731,14 +2836,21 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		return nil, fmt.Errorf("failed to create user: %w", createErr)
 	}
 
-	// Delete the state entry
-	_, _ = s.db.DeleteStateEntry(ctx, nil, matchedEntry.Key)
+	s.dropPendingRegistration(ctx, matchedEntry, tokenHash)
 
 	// Auto-join matching orgs
 	s.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
 
 	// Try to resolve an org for login response
 	members, _ := s.db.ListMembersByUser(ctx, user.UID)
+	if len(members) == 0 {
+		// No org adopted the account: an invitation or a personal org may
+		// still give it one (spec 2026-10-30-04).
+		if member := s.ensurePersonalOrg(ctx, user); member != nil {
+			members = []*models.OrganizationMember{member}
+		}
+	}
+
 	if len(members) == 0 {
 		// No org to join yet — mint an org-less session (access token only,
 		// no refresh token) rather than a bare user payload, mirroring
@@ -2775,6 +2887,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	createdWith := authContext.ToMap()
 	createdWith[keyMethod] = AuthMethodRegistration
 	refreshToken.Properties = models.JSONMap{keyCreatedWith: createdWith}
+	stampSignedInAt(refreshToken, now.Unix())
 
 	if err = s.startSession(
 		ctx, actorFromUser(user), org, refreshToken, role, AuthMethodRegistration, authContext,
@@ -2782,7 +2895,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo)
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo, now.Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -2957,23 +3070,9 @@ func (s *Service) RequestPasswordReset(
 		return successMsg, nil
 	}
 
-	// Generate reset token
-	tokenBytes := make([]byte, registrationTokenSize)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		return nil, fmt.Errorf("failed to generate token: %w", err)
-	}
-
-	token := hex.EncodeToString(tokenBytes)
-	tokenHash := hashPendingToken(token)
-
-	// Store at password_reset:<sha256(token)> with userUid only. The
-	// plaintext token never lands on disk; a leaked DB snapshot has no
-	// way to mint a valid reset URL.
-	stateValue := &models.JSONMap{stateValueKeyUserUID: user.UID}
-	ttl := passwordResetTTL
-
-	if err := s.db.SetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash, stateValue, &ttl); err != nil {
-		return nil, fmt.Errorf("failed to store password reset: %w", err)
+	token, err := s.storePasswordReset(ctx, user)
+	if err != nil {
+		return nil, err
 	}
 
 	// Send reset email asynchronously via the email job. An SSO-only user
@@ -2995,6 +3094,79 @@ func (s *Service) RequestPasswordReset(
 	s.enqueueEmail(ctx, "", req.Email, emailTemplate, loc, templateData)
 
 	return successMsg, nil
+}
+
+// storePasswordReset mints a reset token for user and stores it at
+// password_reset:<sha256(token)>, with its per-user index entry. The
+// plaintext token never lands on disk: a leaked DB snapshot has no way to
+// mint a valid reset URL. The value carries the user UID and a hash of the
+// address the link goes to, never the address itself.
+func (s *Service) storePasswordReset(ctx context.Context, user *models.User) (string, error) {
+	tokenBytes := make([]byte, registrationTokenSize)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", fmt.Errorf("failed to generate token: %w", err)
+	}
+
+	token := hex.EncodeToString(tokenBytes)
+	tokenHash := hashPendingToken(token)
+	ttl := passwordResetTTL
+
+	stateValue := &models.JSONMap{
+		stateValueKeyUserUID:   user.UID,
+		stateValueKeyEmailHash: resetEmailHash(user.Email),
+	}
+
+	if err := s.db.SetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash, stateValue, &ttl); err != nil {
+		return "", fmt.Errorf("failed to store password reset: %w", err)
+	}
+
+	indexValue := &models.JSONMap{stateValueKeyUserUID: user.UID}
+	if err := s.db.SetStateEntry(ctx, nil, passwordResetIndexKey(user.UID, tokenHash), indexValue, &ttl); err != nil {
+		return "", fmt.Errorf("failed to index password reset: %w", err)
+	}
+
+	return token, nil
+}
+
+// passwordResetIndexKey is the per-user index key of one reset entry.
+func passwordResetIndexKey(userUID, tokenHash string) string {
+	return passwordResetUserKeyPrefix + userUID + ":" + tokenHash
+}
+
+// resetEmailHash is the at-rest form of the address a reset link was sent to.
+func resetEmailHash(address string) string {
+	return hashPendingToken(strings.ToLower(strings.TrimSpace(address)))
+}
+
+// purgePasswordResets deletes every outstanding reset link of the user, with
+// its index entry. Called whenever the password or the email changes, so a
+// link requested before cannot be used after. Best effort: errors are logged,
+// the entries age out at their TTL anyway.
+func (s *Service) purgePasswordResets(ctx context.Context, userUID string) {
+	prefix := passwordResetUserKeyPrefix + userUID + ":"
+
+	entries, err := s.db.ListStateEntries(ctx, nil, prefix)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to list password reset entries", "error", err, "userUid", userUID)
+
+		return
+	}
+
+	for _, entry := range entries {
+		// LIKE treats "_" as a wildcard: keep only exact-prefix keys.
+		tokenHash, ok := strings.CutPrefix(entry.Key, prefix)
+		if !ok || tokenHash == "" {
+			continue
+		}
+
+		if _, err := s.db.DeleteStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash); err != nil {
+			slog.ErrorContext(ctx, "Failed to delete password reset entry", "error", err, "userUid", userUID)
+		}
+
+		if _, err := s.db.DeleteStateEntry(ctx, nil, entry.Key); err != nil {
+			slog.ErrorContext(ctx, "Failed to delete password reset index entry", "error", err, "userUid", userUID)
+		}
+	}
 }
 
 // ssoFallbackLabel is the display name used for a SAML/OIDC provider with no
@@ -3099,6 +3271,42 @@ func (s *Service) bumpResetIPCounter(ctx context.Context, remoteAddr string) (bo
 		passwordResetIPKeyPrefix+remoteAddr, passwordResetMaxPerIP, passwordResetIPWindow)
 }
 
+// resolvePasswordReset loads the reset entry of token and its user. Any
+// missing, malformed or stale entry is ErrPasswordResetExpired.
+func (s *Service) resolvePasswordReset(
+	ctx context.Context, token string,
+) (*models.StateEntry, *models.User, error) {
+	tokenHash := hashPendingToken(token)
+
+	entry, err := s.db.GetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load password reset entry: %w", err)
+	}
+
+	if entry == nil || entry.Value == nil {
+		return nil, nil, ErrPasswordResetExpired
+	}
+
+	userUID, ok := (*entry.Value)[stateValueKeyUserUID].(string)
+	if !ok || userUID == "" {
+		return nil, nil, ErrPasswordResetExpired
+	}
+
+	user, err := s.db.GetUser(ctx, userUID)
+	if err != nil || user == nil {
+		return nil, nil, ErrPasswordResetExpired
+	}
+
+	// Defense in depth: the link was mailed to an address the account no
+	// longer has. Entries written before the hash existed carry none and age
+	// out within the TTL.
+	if sent, hasHash := (*entry.Value)[stateValueKeyEmailHash].(string); hasHash && sent != resetEmailHash(user.Email) {
+		return nil, nil, ErrPasswordResetExpired
+	}
+
+	return entry, user, nil
+}
+
 // ResetPassword validates a reset token and sets a new password.
 //
 // Validation order matters for the regression guarantees in this spec:
@@ -3110,25 +3318,9 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 			ErrInvalidCredentials, minPasswordLength)
 	}
 
-	tokenHash := hashPendingToken(req.Token)
-
-	entry, err := s.db.GetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash)
+	entry, user, err := s.resolvePasswordReset(ctx, req.Token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load password reset entry: %w", err)
-	}
-
-	if entry == nil || entry.Value == nil {
-		return nil, ErrPasswordResetExpired
-	}
-
-	userUID, ok := (*entry.Value)[stateValueKeyUserUID].(string)
-	if !ok || userUID == "" {
-		return nil, ErrPasswordResetExpired
-	}
-
-	user, err := s.db.GetUser(ctx, userUID)
-	if err != nil || user == nil {
-		return nil, ErrPasswordResetExpired
+		return nil, err
 	}
 
 	// The shared demo password is published, not owned (spec 2026-09-06-02).
@@ -3167,6 +3359,9 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 	if _, err := s.db.DeleteStateEntry(ctx, nil, entry.Key); err != nil {
 		slog.ErrorContext(ctx, "Failed to delete password reset entry", "error", err)
 	}
+
+	// Every other outstanding link of the user dies with this one.
+	s.purgePasswordResets(ctx, user.UID)
 
 	if _, err := s.db.DeleteStateEntry(ctx, nil, passwordResetCountKeyPrefix+user.UID); err != nil {
 		slog.DebugContext(ctx, "Failed to delete password reset counter", "error", err)
@@ -3216,6 +3411,14 @@ func (s *Service) bumpChangePasswordCounter(ctx context.Context, userUID string)
 		changePasswordCountKeyPrefix+userUID, changePasswordMaxPerUser, changePasswordWindow)
 }
 
+// resetChangePasswordCounter clears the per-user change-password counter
+// after a successful re-authentication. Best effort.
+func (s *Service) resetChangePasswordCounter(ctx context.Context, userUID string) {
+	if _, err := s.db.DeleteStateEntry(ctx, nil, changePasswordCountKeyPrefix+userUID); err != nil {
+		slog.DebugContext(ctx, "Failed to delete change-password counter", "error", err)
+	}
+}
+
 // ChangePassword rotates the password of an already-authenticated user.
 //
 // It is the authenticated twin of ResetPassword: identical post-change side
@@ -3227,6 +3430,9 @@ func (s *Service) bumpChangePasswordCounter(ctx context.Context, userUID string)
 //   - When the account has no password yet (signed up through an identity
 //     provider), currentPassword is ignored and this *sets* the initial
 //     password. Without it an SSO user is permanently locked to their IdP.
+//     A first password is a new sign-in factor, so the session must come
+//     from a sign-in within the last 10 minutes (ErrReauthenticationRequired
+//     otherwise, spec 2026-10-31-02).
 //   - currentRefreshUID (the caller's own Claims.RefreshUID) is spared by the
 //     revocation sweep. Changing your password from the settings page must not
 //     bounce you to the login screen; every *other* session still dies.
@@ -3250,7 +3456,7 @@ func (s *Service) ChangePassword(
 		return nil, ErrUserNotFound
 	}
 
-	if err = checkPasswordChange(user, req); err != nil {
+	if err = checkPasswordChange(ctx, user, req); err != nil {
 		return nil, err
 	}
 
@@ -3269,9 +3475,7 @@ func (s *Service) ChangePassword(
 
 	// Best-effort: the rotation already succeeded, so a stale counter is the
 	// worst outcome and it ages out at the window TTL anyway.
-	if _, err := s.db.DeleteStateEntry(ctx, nil, changePasswordCountKeyPrefix+user.UID); err != nil {
-		slog.DebugContext(ctx, "Failed to delete change-password counter", "error", err)
-	}
+	s.resetChangePasswordCounter(ctx, user.UID)
 
 	// Same policy as the reset flow: session refresh tokens die, PATs
 	// (TokenTypePAT) survive as separately managed credentials — except the
@@ -3299,8 +3503,16 @@ func (s *Service) ChangePassword(
 // checkPasswordChange applies the password rules of ChangePassword: the
 // current password (when the account has one), the minimum length, and "must
 // differ".
-func checkPasswordChange(user *models.User, req ChangePasswordRequest) error {
-	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
+func checkPasswordChange(ctx context.Context, user *models.User, req ChangePasswordRequest) error {
+	hasPassword := userHasPassword(user)
+
+	// Setting a first password adds a sign-in factor: without a password to
+	// check, the session must come from a recent sign-in (spec 2026-10-31-02).
+	if !hasPassword {
+		if err := requireRecentSignIn(ctx); err != nil {
+			return err
+		}
+	}
 
 	if hasPassword {
 		// Always run the verify — even for an empty currentPassword — so the
@@ -3364,6 +3576,9 @@ func (s *Service) persistPasswordChange(
 	if newEmail != "" {
 		user.Email = newEmail
 	}
+
+	// A link requested before the change must not set a password after it.
+	s.purgePasswordResets(ctx, user.UID)
 
 	return nil
 }
@@ -3484,6 +3699,41 @@ type OrgResponse struct {
 func (s *Service) CreateOrg(
 	ctx context.Context, userUID string, req CreateOrgRequest, authContext Context,
 ) (*OrgResponse, error) {
+	org, err := s.createOrgForUser(ctx, userUID, req, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Mint a session scoped to the new org, exactly like SwitchOrg: a fresh
+	// refresh-token row plus an access token whose orgSlug claim is the new
+	// org's slug. Without this, the caller's existing token (orgSlug "" for
+	// a zero-org user, or their previous org otherwise) 403s on every
+	// org-scoped call to the org they just created.
+	session, err := s.mintOrgSession(ctx, userUID, org, string(models.MemberRoleOwner), authContext)
+	if err != nil {
+		return nil, err
+	}
+
+	return &OrgResponse{
+		UID:          org.UID,
+		Slug:         org.Slug,
+		Name:         org.Name,
+		LogoURL:      org.LogoURL,
+		AccessToken:  session.AccessToken,
+		RefreshToken: session.RefreshToken,
+		ExpiresIn:    session.ExpiresIn,
+		TokenType:    session.TokenType,
+	}, nil
+}
+
+// createOrgForUser is CreateOrg without the session: it creates the org, makes
+// userUID its OWNER, records the activation milestone and seeds the default
+// alerting. autoPersonalOwner, when set, marks the org as the user's
+// auto-created personal org (spec 2026-10-30-04); the partial unique index on
+// it makes a concurrent second creation fail instead of yielding two orgs.
+func (s *Service) createOrgForUser(
+	ctx context.Context, userUID string, req CreateOrgRequest, autoPersonalOwner *string,
+) (*models.Organization, error) {
 	slug := req.Slug
 
 	if slug == "" {
@@ -3514,9 +3764,10 @@ func (s *Service) CreateOrg(
 
 	// Create organization
 	org := &models.Organization{
-		UID:  uuid.New().String(),
-		Slug: slug,
-		Name: req.Name,
+		UID:                  uuid.New().String(),
+		Slug:                 slug,
+		Name:                 req.Name,
+		AutoPersonalOwnerUID: autoPersonalOwner,
 	}
 	now := time.Now()
 	org.CreatedAt = now
@@ -3537,9 +3788,14 @@ func (s *Service) CreateOrg(
 		return nil, fmt.Errorf("failed to create membership: %w", createMemberErr)
 	}
 
+	source := activation.SourceRegularForm
+	if autoPersonalOwner != nil {
+		source = activation.SourceSystem
+	}
+
 	activation.Emit(ctx, s.db, org.UID,
 		models.EventTypeOrgActivationSignupCompleted,
-		activation.SourceRegularForm, userUID)
+		source, userUID)
 
 	// Seed default alerting so a brand-new org isn't silent by default (spec
 	// 2026-08-28-15). Best-effort: a seed failure must never fail org
@@ -3550,26 +3806,7 @@ func (s *Service) CreateOrg(
 	// a special case here.
 	s.seedOrgDefaults(ctx, org, userUID)
 
-	// Mint a session scoped to the new org, exactly like SwitchOrg: a fresh
-	// refresh-token row plus an access token whose orgSlug claim is the new
-	// org's slug. Without this, the caller's existing token (orgSlug "" for
-	// a zero-org user, or their previous org otherwise) 403s on every
-	// org-scoped call to the org they just created.
-	session, err := s.mintOrgSession(ctx, userUID, org, string(models.MemberRoleOwner), authContext)
-	if err != nil {
-		return nil, err
-	}
-
-	return &OrgResponse{
-		UID:          org.UID,
-		Slug:         org.Slug,
-		Name:         org.Name,
-		LogoURL:      org.LogoURL,
-		AccessToken:  session.AccessToken,
-		RefreshToken: session.RefreshToken,
-		ExpiresIn:    session.ExpiresIn,
-		TokenType:    session.TokenType,
-	}, nil
+	return org, nil
 }
 
 // seedOrgDefaults seeds the convenience rows that make a self-created org
@@ -3752,6 +3989,8 @@ type AcceptInviteRequest struct {
 }
 
 // CreateInvitation creates an invitation for a user to join an organization.
+//
+//nolint:funlen // Validation, storage, indexing and email form one flow
 func (s *Service) CreateInvitation(
 	ctx context.Context, orgSlug, inviterUID string, req InviteRequest,
 ) (*InviteResponse, error) {
@@ -3779,6 +4018,10 @@ func (s *Service) CreateInvitation(
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		return nil, ErrOrganizationNotFound
+	}
+
+	if capErr := s.checkInvitationCap(ctx, org.UID); capErr != nil {
+		return nil, capErr
 	}
 
 	// Generate token
@@ -3812,6 +4055,13 @@ func (s *Service) CreateInvitation(
 	indexValue := &models.JSONMap{keyInviteOrgUID: org.UID}
 	if storeErr := s.db.SetStateEntry(ctx, nil, stateKey, indexValue, &ttl); storeErr != nil {
 		return nil, fmt.Errorf("failed to index invitation: %w", storeErr)
+	}
+
+	// Per-invitee index: lets a sign-in find its pending invitations with one
+	// prefix read instead of scanning every invitation of the instance.
+	emailValue := &models.JSONMap{keyInviteOrgUID: org.UID, keyInviteKey: stateKey}
+	if storeErr := s.db.SetStateEntry(ctx, nil, inviteEmailKey(req.Email, org.UID), emailValue, &ttl); storeErr != nil {
+		return nil, fmt.Errorf("failed to index invitation by email: %w", storeErr)
 	}
 
 	// Get the state entry to return its UID
@@ -3848,6 +4098,48 @@ func (s *Service) CreateInvitation(
 		ExpiresAt: expiresAt,
 		EmailSent: emailSent,
 	}, nil
+}
+
+// inviteEmailKey is the per-invitee index key of an invitation: the email is
+// hashed (case-insensitively) so the key holds no address.
+func inviteEmailKey(email, orgUID string) string {
+	return inviteEmailKeyPrefix + hashPendingToken(strings.ToLower(strings.TrimSpace(email))) + ":" + orgUID
+}
+
+// maxInvitationsFor returns the live-invitation cap of an org: the constant,
+// or its seat cap when lower.
+func (s *Service) maxInvitationsFor(ctx context.Context, orgUID string) int {
+	limit := maxLiveInvitationsPerOrg
+
+	seats, ok := s.entitlements.(interface {
+		MaxUsers(ctx context.Context, orgUID string) (*int, error)
+	})
+	if !ok {
+		return limit
+	}
+
+	maxSeats, err := seats.MaxUsers(ctx, orgUID)
+	if err != nil || maxSeats == nil {
+		return limit
+	}
+
+	return min(limit, *maxSeats)
+}
+
+// checkInvitationCap refuses a new invitation once the org has its maximum
+// of live ones. Expired entries are not listed, revoked ones are deleted, so
+// both free their slot.
+func (s *Service) checkInvitationCap(ctx context.Context, orgUID string) error {
+	entries, err := s.db.ListStateEntries(ctx, &orgUID, inviteKeyPrefix)
+	if err != nil {
+		return fmt.Errorf("failed to count invitations: %w", err)
+	}
+
+	if len(entries) >= s.maxInvitationsFor(ctx, orgUID) {
+		return ErrTooManyInvitations
+	}
+
+	return nil
 }
 
 // ListInvitations lists pending invitations for an organization.
@@ -3964,6 +4256,19 @@ func (s *Service) findInvite(
 // deleteInvite consumes or revokes an invitation: its org-scoped entry and
 // the global index entry findInvite resolves it through share the key.
 func (s *Service) deleteInvite(ctx context.Context, orgUID, key string) error {
+	// The per-invitee index entry goes too, unless a newer invitation of the
+	// same org to the same address now owns it.
+	if entry, getErr := s.db.GetStateEntry(ctx, &orgUID, key); getErr == nil && entry != nil && entry.Value != nil {
+		if email := stringFromMap(*entry.Value, keyEmail); email != "" {
+			emailKey := inviteEmailKey(email, orgUID)
+
+			idx, idxErr := s.db.GetStateEntry(ctx, nil, emailKey)
+			if idxErr == nil && idx != nil && idx.Value != nil && stringFromMap(*idx.Value, keyInviteKey) == key {
+				_, _ = s.db.DeleteStateEntry(ctx, nil, emailKey)
+			}
+		}
+	}
+
 	if _, err := s.db.DeleteStateEntry(ctx, &orgUID, key); err != nil {
 		return err
 	}
@@ -4112,13 +4417,22 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, cal
 	createdWith[keyMethod] = AuthMethodInvitation
 	refreshToken.Properties = models.JSONMap{keyCreatedWith: createdWith}
 
+	// Accepting from a signed-in session keeps that session's sign-in time;
+	// accepting while signed out signs in.
+	authTime := now.Unix()
+	if callerUID != "" {
+		authTime = callerAuthTime(ctx)
+	}
+
+	stampSignedInAt(refreshToken, authTime)
+
 	if err = s.startSession(
 		ctx, actorFromUser(user), matchedOrg, refreshToken, role, AuthMethodInvitation, authContext,
 	); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
-	accessToken, err := s.generateAccessToken(user.UID, matchedOrg.Slug, role, refreshToken.UID, user.Demo)
+	accessToken, err := s.generateAccessToken(user.UID, matchedOrg.Slug, role, refreshToken.UID, user.Demo, authTime)
 	if err != nil {
 		return nil, err
 	}
@@ -4686,8 +5000,11 @@ func generateRecoveryCodes() ([]string, error) {
 	return codes, nil
 }
 
-// Setup2FA generates a TOTP secret for the user and stores it (not yet enabled).
-func (s *Service) Setup2FA(ctx context.Context, userUID string) (*Setup2FAResponse, error) {
+// Setup2FA generates a TOTP secret for the user and stores it (not yet
+// enabled). TOTP is a sign-in factor, so the caller re-authenticates first
+// (reauthenticateForFactor): a hijacked session must not be able to enable
+// 2FA with its own authenticator and lock the owner out.
+func (s *Service) Setup2FA(ctx context.Context, userUID string, req Setup2FARequest) (*Setup2FAResponse, error) {
 	user, err := s.db.GetUser(ctx, userUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -4699,6 +5016,10 @@ func (s *Service) Setup2FA(ctx context.Context, userUID string) (*Setup2FARespon
 
 	if user.TOTPEnabled {
 		return nil, ErrTwoFAAlreadyEnabled
+	}
+
+	if err = s.reauthenticateForFactor(ctx, user, req.CurrentPassword); err != nil {
+		return nil, err
 	}
 
 	key, err := totp.Generate(totp.GenerateOpts{
@@ -4716,14 +5037,26 @@ func (s *Service) Setup2FA(ctx context.Context, userUID string) (*Setup2FARespon
 		return nil, updateErr
 	}
 
+	setupToken, err := s.generateTOTPSetupToken(userUID, secret)
+	if err != nil {
+		return nil, err
+	}
+
+	// A successful re-authentication resets the shared counter, like a
+	// successful password change does.
+	s.resetChangePasswordCounter(ctx, userUID)
+
 	return &Setup2FAResponse{
-		URI:    key.URL(),
-		Secret: secret,
+		URI:        key.URL(),
+		Secret:     secret,
+		SetupToken: setupToken,
 	}, nil
 }
 
 // Confirm2FA validates the TOTP code, enables 2FA, and returns recovery codes.
-func (s *Service) Confirm2FA(ctx context.Context, userUID, code string) (*Confirm2FAResponse, error) {
+// setupToken must be the one Setup2FA returned with the pending secret: it is
+// what proves the re-authentication.
+func (s *Service) Confirm2FA(ctx context.Context, userUID string, req Confirm2FARequest) (*Confirm2FAResponse, error) {
 	user, err := s.db.GetUser(ctx, userUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -4741,8 +5074,12 @@ func (s *Service) Confirm2FA(ctx context.Context, userUID, code string) (*Confir
 		return nil, ErrTwoFANotEnabled
 	}
 
-	if !totp.Validate(code, *user.TOTPSecret) {
-		return nil, ErrInvalid2FACode
+	if err = s.checkTOTPSetupToken(req.SetupToken, userUID, *user.TOTPSecret); err != nil {
+		return nil, err
+	}
+
+	if err = s.consumeTOTPCode(ctx, userUID, req.Code, *user.TOTPSecret); err != nil {
+		return nil, err
 	}
 
 	recoveryCodes, err := generateRecoveryCodes()
@@ -4757,6 +5094,8 @@ func (s *Service) Confirm2FA(ctx context.Context, userUID, code string) (*Confir
 	}); updateErr != nil {
 		return nil, updateErr
 	}
+
+	s.notifyTOTPEnabled(ctx, user)
 
 	return &Confirm2FAResponse{
 		RecoveryCodes: recoveryCodes,
@@ -4816,8 +5155,10 @@ func (s *Service) Verify2FA(
 		return nil, ErrTwoFANotEnabled
 	}
 
-	if !totp.Validate(code, *user.TOTPSecret) {
-		return nil, ErrInvalid2FACode
+	// Single use: a replayed code is refused like a wrong one and, the
+	// budget being spent above, counts as a failed attempt.
+	if err = s.consumeTOTPCode(ctx, claims.UserUID, code, *user.TOTPSecret); err != nil {
+		return nil, err
 	}
 
 	s.resetTwoFAAttemptCounter(ctx, claims.UserUID)
@@ -4918,8 +5259,9 @@ func (s *Service) Disable2FA(ctx context.Context, userUID, code string) error {
 		return ErrTwoFANotEnabled
 	}
 
-	if !totp.Validate(code, *user.TOTPSecret) {
-		return ErrInvalid2FACode
+	// The code that just signed the user in cannot also remove the factor.
+	if err = s.consumeTOTPCode(ctx, userUID, code, *user.TOTPSecret); err != nil {
+		return err
 	}
 
 	emptySecret := ""
@@ -4935,6 +5277,7 @@ func (s *Service) Disable2FA(ctx context.Context, userUID, code string) error {
 	}
 
 	s.resetTwoFAAttemptCounter(ctx, userUID)
+	s.notifyTOTPDisabled(ctx, user)
 
 	return nil
 }
@@ -4978,7 +5321,7 @@ func (s *Service) completeLoginAfter2FA(
 
 	// No org case
 	if orgSlug == "" {
-		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "", user.Demo)
+		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "", user.Demo, now.Unix())
 		if tokenErr != nil {
 			return nil, tokenErr
 		}
@@ -5014,6 +5357,7 @@ func (s *Service) completeLoginAfter2FA(
 	refreshToken.Properties = models.JSONMap{
 		keyCreatedWith: authContext.ToMap(),
 	}
+	stampSignedInAt(refreshToken, now.Unix())
 
 	if createErr := s.startSession(
 		ctx, actorFromUser(user), org, refreshToken, role, method, authContext,
@@ -5021,7 +5365,7 @@ func (s *Service) completeLoginAfter2FA(
 		return nil, createErr
 	}
 
-	accessToken, err := s.generateAccessToken(user.UID, orgSlug, role, refreshToken.UID, user.Demo)
+	accessToken, err := s.generateAccessToken(user.UID, orgSlug, role, refreshToken.UID, user.Demo, now.Unix())
 	if err != nil {
 		return nil, err
 	}

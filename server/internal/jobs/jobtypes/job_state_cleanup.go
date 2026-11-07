@@ -68,6 +68,7 @@ func (r *StateCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	sweepOrphanIncidentAttachments(ctx, jctx)
 	sweepOrphanCheckAttachments(ctx, jctx)
 	sweepExpiredReportFiles(ctx, jctx)
+	sweepOrphanedPublications(ctx, jctx)
 
 	// Schedule next run in 2 hours
 	// Skip if services are not available (e.g., in tests without full service setup)
@@ -119,6 +120,16 @@ func sweepExpiredUnconfirmedSubscribers(ctx context.Context, jctx *jobdef.JobCon
 
 	if count > 0 {
 		jctx.Logger.InfoContext(ctx, "Deleted expired unconfirmed status subscribers", "count", count)
+	}
+}
+
+// sweepOrphanedPublications resolves the status-page entries of deleted checks
+// that nothing else will ever close (spec 2026-11-05-05): the boot already runs
+// it once, this catches the ones a crash between a check's soft delete and its
+// notification leaves behind. Best-effort, like the other sweeps.
+func sweepOrphanedPublications(ctx context.Context, jctx *jobdef.JobContext) {
+	if _, err := newJobPublicationService(jctx).CloseOrphanedPublications(ctx); err != nil {
+		jctx.Logger.WarnContext(ctx, "Failed to close status-page entries of deleted checks", "error", err)
 	}
 }
 
@@ -210,7 +221,8 @@ const reportSweepBatch = 500
 // (filestorage.GroupTypeReports) older than app.feedback_retention_days, row
 // and blob (spec 2026-10-29-01). Anyone can upload one through the anonymous
 // report endpoint, and the GitHub issue only links it for a while, so without
-// this the store only grows. A retention of 0 or less keeps them forever.
+// this the store only grows. It covers screenshots only: topic-bearing files in
+// the same group (website crawl reports) are never listed. A retention of 0 or less keeps them forever.
 // Best-effort, like the other sweeps.
 func sweepExpiredReportFiles(ctx context.Context, jctx *jobdef.JobContext) {
 	if jctx.AppConfig == nil || jctx.AppConfig.App.FeedbackRetentionDays <= 0 {

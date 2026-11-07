@@ -121,6 +121,8 @@ type recordingAnalytics struct {
 	events []analytics.Event
 }
 
+func (*recordingAnalytics) CaptureException(context.Context, *analytics.Exception) {}
+
 func (c *recordingAnalytics) Capture(_ context.Context, event analytics.Event) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

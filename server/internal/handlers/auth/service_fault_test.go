@@ -234,13 +234,14 @@ func faultScenarios(t *testing.T, w *faultWorld) map[string]func(arm func()) {
 		"two-factor": func(arm func()) {
 			slug, user, _ := w.member(t, owner)
 			arm()
-			setup, err := w.svc.Setup2FA(w.ctx, user.UID)
+			pw := "testpass1234"
+			setup, err := w.svc.Setup2FA(w.ctx, user.UID, Setup2FARequest{CurrentPassword: &pw})
 			if err != nil {
 				return
 			}
 			code, codeErr := totp.GenerateCode(setup.Secret, time.Now())
 			require.NoError(t, codeErr)
-			confirm, err := w.svc.Confirm2FA(w.ctx, user.UID, code)
+			confirm, err := w.svc.Confirm2FA(w.ctx, user.UID, Confirm2FARequest{Code: code, SetupToken: setup.SetupToken})
 			if err != nil {
 				return
 			}

@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -343,26 +344,38 @@ func TestHandlerTwoFactorFlow(t *testing.T) {
 	}
 
 	// Happy path: setup, wrong code, confirm, double setup, disable.
-	rec := f.do(t, coverCall{fn: h.Setup2FA, claims: f.admin})
+	setupBody := `{"currentPassword":"testpass1234"}`
+	rec := f.do(t, coverCall{fn: h.Setup2FA, claims: f.admin, body: setupBody})
 	r.Equal(http.StatusOK, rec.Code)
+
+	var setup Setup2FAResponse
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &setup))
 
 	user, err := f.svc.db.GetUser(f.ctx, f.admin.UserUID)
 	r.NoError(err)
 	r.NotNil(user.TOTPSecret)
 
 	r.Equal(http.StatusUnauthorized,
-		f.do(t, coverCall{fn: h.Confirm2FA, claims: f.admin, body: `{"code":"000000"}`}).Code)
+		f.do(t, coverCall{
+			fn: h.Confirm2FA, claims: f.admin, body: `{"code":"000000","setupToken":"` + setup.SetupToken + `"}`,
+		}).Code)
 
 	code, err := totp.GenerateCode(*user.TOTPSecret, time.Now())
 	r.NoError(err)
-	rec = f.do(t, coverCall{fn: h.Confirm2FA, claims: f.admin, body: `{"code":"` + code + `"}`})
+	rec = f.do(t, coverCall{
+		fn: h.Confirm2FA, claims: f.admin, body: `{"code":"` + code + `","setupToken":"` + setup.SetupToken + `"}`,
+	})
 	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
 
-	r.Equal(http.StatusConflict, f.do(t, coverCall{fn: h.Setup2FA, claims: f.admin}).Code)
+	r.Equal(http.StatusConflict, f.do(t, coverCall{fn: h.Setup2FA, claims: f.admin, body: setupBody}).Code)
 	r.Equal(http.StatusUnauthorized,
 		f.do(t, coverCall{fn: h.Disable2FA, claims: f.admin, body: `{"code":"000000"}`}).Code)
 
-	rec = f.do(t, coverCall{fn: h.Disable2FA, claims: f.admin, body: `{"code":"` + code + `"}`})
+	// The confirm code is spent (single use, spec 2026-11-03-03): disabling
+	// takes the next one.
+	nextCode, err := totp.GenerateCode(*user.TOTPSecret, time.Now().Add(30*time.Second))
+	r.NoError(err)
+	rec = f.do(t, coverCall{fn: h.Disable2FA, claims: f.admin, body: `{"code":"` + nextCode + `"}`})
 	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
 
 	// Unknown user.

@@ -1,0 +1,866 @@
+package checkjs
+
+import (
+	"context"
+	"fmt"
+	"reflect"
+	"runtime"
+	"testing"
+	"time"
+
+	"github.com/dop251/goja"
+	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+)
+
+// TestMemoryBudgetRefusesNativeAmplifiers: a single native call asked for a
+// result far over the budget is refused before it allocates (spec
+// 2026-10-31-01). goja's interrupt does not reach inside such a call, so
+// without the cap these ran to completion whatever the timeout. 512 MiB stays
+// harmless even when the cap is missing: the test then fails on its status
+// and its duration instead of taking the process down.
+func TestMemoryBudgetRefusesNativeAmplifiers(t *testing.T) {
+	t.Parallel()
+
+	const (
+		huge  = "512 * 1024 * 1024"
+		slots = "8 * 1024 * 1024"
+		// rope doubles a 64-character string 22 times: 256 Mi characters
+		// that cost nothing until something reads them.
+		rope = `var s = "x".repeat(64); for (var i = 0; i < 22; i++) s = s + s; `
+	)
+
+	tests := []refusalCase{
+		{"repeat", `var s = "x".repeat(` + huge + `);`},
+		{"padStart", `var s = "".padStart(` + huge + `, "ab");`},
+		{"padEnd", `var s = "a".padEnd(` + huge + `);`},
+		{"Array(n).join", `var s = Array(` + huge + `).join("x");`},
+		{"sparse join", `var a = []; a.length = ` + huge + `; var s = a.join("x");`},
+		{"sparse join empty separator", `var a = []; a.length = 4e9; var s = a.join("");`},
+		{"ArrayBuffer then fill", `var s = new Uint8Array(new ArrayBuffer(` + huge + `)).fill(1);`},
+		{"typed array then fill", `var s = new Uint8Array(` + huge + `).fill(1);`},
+		{"Float64Array", `var s = new Float64Array(` + huge + ` / 8);`},
+		{"constructor bypass", `var s = new (new ArrayBuffer(0).constructor)(` + huge + `);`},
+		{"typed array constructor bypass", `var s = new (new Uint8Array(0).constructor)(` + huge + `);`},
+		{"typed array from", `var s = Uint8Array.from({ length: ` + huge + ` });`},
+		{"typed array subclass", `class Big extends Uint8Array {} var s = new Big(` + huge + `);`},
+		{"Array.from array-like", `var s = Array.from({ length: ` + huge + ` });`},
+		{"sparse fill", `var a = []; a.length = ` + huge + `; var s = a.fill(0);`},
+		{"typed array join", `var s = new Uint8Array(1024 * 1024).join("x".repeat(64));`},
+		// Length writes cost nothing, but these builtins preallocate from
+		// length: 8 Mi slots are 128 MiB, past the budget yet harmless.
+		{"holey sort", `var a = [2, 1]; a.length = ` + slots + `; a.sort();`},
+		{"holey toSorted", `var a = [2, 1]; a.length = ` + slots + `; var s = a.toSorted();`},
+		{"array-like sort", `Array.prototype.sort.call({ length: ` + slots + ` });`},
+		{"array-like toSorted", `var s = Array.prototype.toSorted.call({ length: ` + slots + ` });`},
+		{"holey map", `var a = [1]; a.length = ` + slots + `; var s = a.map(function (x) { return x; });`},
+		{"holey with", `var a = [1]; a.length = ` + slots + `; var s = a.with(0, 2);`},
+		{"holey toReversed", `var a = [1]; a.length = ` + slots + `; var s = a.toReversed();`},
+		{"holey toSpliced", `var a = [1]; a.length = ` + slots + `; var s = a.toSpliced(0, 0, 1);`},
+		{"huge length sort", `var a = []; a.length = 4e9; a.sort();`},
+		// Spec 2026-11-01-01: dense copies, string splitting and replacing,
+		// argument lists and ropes built with + are charged too.
+		{"split empty", `var s = "x".repeat(` + slots + `).split("");`},
+		{"split regexp", `var s = "x".repeat(` + slots + `).split(/(?:)/);`},
+		{"replaceAll expanding", `var s = "a".repeat(1024 * 1024).replaceAll("a", "$&".repeat(128));`},
+		{"replace suffix per match", `var s = "a".repeat(16 * 1024).replace(/a/g, "$'");`},
+		{"replace function returning a big string", `var big = "x".repeat(1024 * 1024);
+var s = "a".repeat(100).replace(/a/g, function () { return big; });`},
+		{"apply array-like", `Math.max.apply(null, { length: ` + slots + ` });`},
+		{"Reflect.apply array-like", `Reflect.apply(Math.max, null, { length: ` + slots + ` });`},
+		{"typed array array-like", `var s = new Uint8Array({ length: ` + huge + ` });`},
+		{"rope read", rope + `s.charAt(0);`},
+		{"rope to a binding", rope + `console.log(s);`},
+		{"rope inside a binding argument", rope + `base64.encode({ nested: [s] });`},
+		{"rope in the result", rope + `return { status: "up", output: { s: s } };`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			requireRefusal(t, tt.script)
+		})
+	}
+}
+
+// TestMemoryBudgetRefusesHeavyCopies: the amplifiers whose refusal only comes
+// after goja has really copied what the budget still allowed (millions of
+// slots, 0.3 to 0.5s of CPU each on a quiet machine, several times that on a
+// loaded runner with coverage on). That copying is permitted work, so a wall
+// clock bound cannot tell it from a refusal that came too late. Each case
+// carries a baseline: the same script stopped one step short of the refused
+// allocation, which succeeds. The refusal must cost about what the permitted
+// work costs on this machine right now, not the refused allocation, which is
+// several times bigger (concat doubling would copy 16M slots, not 2M).
+//
+//nolint:paralleltest // sequential on purpose, the timings must not compete
+func TestMemoryBudgetRefusesHeavyCopies(t *testing.T) {
+	tests := []heavyCase{
+		{
+			"concat doubling", `var a = [1]; for (var i = 0; i < 24; i++) a = a.concat(a);`,
+			`var a = [1]; for (var i = 0; i < 20; i++) a = a.concat(a);`,
+		},
+		{"dense slice", `var a = Array.from({ length: 3 * 1024 * 1024 }); var s = a.slice();`, ""},
+		{"dense splice", `var a = Array.from({ length: 3 * 1024 * 1024 }); var s = a.splice(0);`, ""},
+		{"dense filter", `var a = Array.from({ length: 3 * 1024 * 1024 });
+var s = a.filter(function () { return true; });`, ""},
+		{
+			"flat of a repeated array", `var b = Array.from({ length: 1024 * 1024 }); var s = Array(16).fill(b).flat();`,
+			`var b = Array.from({ length: 1024 * 1024 }); var s = Array(1).fill(b).flat();`,
+		},
+		{
+			"flatMap to a repeated array", `var b = Array.from({ length: 1024 * 1024 });
+var s = Array(16).fill(0).flatMap(function () { return b; });`,
+			`var b = Array.from({ length: 1024 * 1024 });
+var s = Array(1).fill(0).flatMap(function () { return b; });`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.baseline == "" {
+				requireRefusal(t, tt.script)
+				return
+			}
+
+			requireRefusalAllocating(t, tt.script, tt.baseline)
+		})
+	}
+}
+
+// requireRefusal runs the script and requires the memory budget refusal, well
+// before the allocation it asks for.
+func requireRefusal(t *testing.T, script string) {
+	t.Helper()
+	requireRefusalWithin(t, script, time.Second)
+}
+
+func requireRefusalWithin(t *testing.T, script string, bound time.Duration) {
+	t.Helper()
+	r := require.New(t)
+
+	start := time.Now()
+	result, err := (&JSChecker{}).Execute(context.Background(), &JSConfig{
+		Script:  script + "\nreturn { status: \"up\" };",
+		Timeout: 10 * time.Second,
+	})
+	elapsed := time.Since(start)
+
+	r.NoError(err)
+	r.Equal(checkerdef.StatusError, result.Status, "output: %v", result.Output)
+	r.Contains(result.Output["error"], "RangeError: memory budget exceeded")
+	r.Less(elapsed, bound, "the refusal must come before the allocation")
+}
+
+// requireRefusalAllocating requires the memory budget refusal for script and
+// that the process allocated no more than about three times what the baseline
+// (the permitted part of the script, which succeeds) allocates. Allocated
+// bytes (runtime.MemStats.TotalAlloc) do not depend on CPU load, unlike a
+// wall clock, and the refused allocation is many times the permitted work.
+func requireRefusalAllocating(t *testing.T, script, baseline string) {
+	t.Helper()
+
+	var result *checkerdef.Result
+	permitted := allocatedDuring(func() {
+		result = runScript(t, baseline+"\nreturn { status: \"up\" };")
+	})
+	require.Equal(t, checkerdef.StatusUp, result.Status, "baseline must fit the budget: %v", result.Output)
+
+	const margin = 16 << 20
+	used := allocatedDuring(func() { requireRefusalWithin(t, script, 10*time.Second) })
+	require.Less(t, used, 3*permitted+margin,
+		"the refusal must come before the allocation: %d bytes allocated, the permitted work takes %d", used, permitted)
+}
+
+// allocatedDuring returns the bytes the process allocated while f ran.
+func allocatedDuring(f func()) uint64 {
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	f()
+	runtime.ReadMemStats(&after)
+
+	return after.TotalAlloc - before.TotalAlloc
+}
+
+type refusalCase struct {
+	name   string
+	script string
+}
+
+// heavyCase is a refusalCase with the permitted part of its script, timed to
+// size the bound; "" means the refusal is instant.
+type heavyCase struct {
+	name     string
+	script   string
+	baseline string
+}
+
+// TestMemoryBudgetReadsLengthOnce: an array-like whose length getter answers
+// 0 to the charge and 4e9 afterwards is read once, so goja works on the length
+// that was charged instead of preallocating from the second answer.
+func TestMemoryBudgetReadsLengthOnce(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	start := time.Now()
+	result := runScript(t, `
+function like() { var n = 0; return { get length() { return n++ ? 4e9 : 0; } }; }
+var o = like();
+Array.prototype.sort.call(o);
+return {
+  status: "up",
+  output: {
+    toSorted: Array.prototype.toSorted.call(like()).length,
+    toReversed: Array.prototype.toReversed.call(like()).length,
+    from: Array.from(like()).length,
+    sortedReads: String(o.length),
+  },
+};
+`)
+
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+	r.EqualValues(0, result.Output["toSorted"])
+	r.EqualValues(0, result.Output["toReversed"])
+	r.EqualValues(0, result.Output["from"])
+	r.Equal("4000000000", result.Output["sortedReads"], "the getter ran once inside sort")
+	r.Less(time.Since(start), time.Second)
+}
+
+// TestMemoryBudgetPinsLengthsTheGojaReadsAgain: a length getter, or a
+// Symbol.isConcatSpreadable getter, that answers one thing to the charge and
+// another to goja gets the answer that was charged (spec 2026-11-01-01).
+func TestMemoryBudgetPinsLengthsTheGojaReadsAgain(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	start := time.Now()
+	result := runScript(t, `
+function like(first, then) { var n = 0; return { get length() { return n++ ? then : first; } }; }
+var refused = "";
+try { new Uint8Array(like(512 * 1024 * 1024, 0)); } catch (e) { refused = e.message; }
+var spread = like(0, 3e8);
+spread[Symbol.isConcatSpreadable] = true;
+var flips = 0;
+var flip = { length: 3e8 };
+Object.defineProperty(flip, Symbol.isConcatSpreadable, { get: function () { return flips++ > 0; } });
+var flipped = [].concat(flip);
+return {
+  status: "up",
+  output: {
+    typed: new Uint8Array(like(0, 3e8)).length,
+    refused: refused,
+    concat: [].concat(spread).length,
+    flipped: flipped.length,
+    flippedSame: flipped[0] === flip,
+    apply: Math.max.apply(null, like(0, 3e8)),
+  },
+};
+`)
+
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+	r.EqualValues(0, result.Output["typed"])
+	r.Contains(result.Output["refused"], "memory budget exceeded")
+	r.EqualValues(0, result.Output["concat"])
+	r.EqualValues(1, result.Output["flipped"])
+	r.Equal(true, result.Output["flippedSame"])
+	r.Less(time.Since(start), time.Second)
+}
+
+// TestMemoryBudgetPositiveControlCopiesAndStrings: ordinary use of concat,
+// slice, splice, filter, flat, split, replace, replaceAll, apply, string +
+// and typed arrays from a source keeps its results.
+func TestMemoryBudgetPositiveControlCopiesAndStrings(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	result := runScript(t, `
+var a = [1, 2, 3];
+var like = { length: 2, 0: "x", 1: "y" };
+var spreadLike = { length: 2, 0: "p", 1: "q" };
+spreadLike[Symbol.isConcatSpreadable] = true;
+var b = [1, 2, 3, 4];
+var removed = b.splice(1, 2, "x", "y", "z");
+var holey = [1, , 3].concat([4]);
+var rope = "";
+for (var i = 0; i < 10; i++) rope = rope + "abcdefghij";
+var big = "";
+for (var j = 0; j < 8; j++) big = big + "x".repeat(10000);
+console.log(big);
+class List extends Array {}
+return {
+  status: "up",
+  output: {
+    concat: a.concat([4, 5], 6).join(","),
+    concatLike: [0].concat(like).length + ":" + ([0].concat(like)[1] === like),
+    concatSpread: [0].concat(spreadLike).join(","),
+    concatHoles: holey.length + ":" + (1 in holey),
+    concatSpecies: new List(1, 2).concat([3]) instanceof List,
+    slice: a.slice(1).join(",") + "/" + a.slice(-2, -1).join(",") + "/" + Array.prototype.slice.call(like).join(""),
+    splice: removed.join(",") + "/" + b.join(","),
+    filter: a.filter(function (x) { return x > 1; }).join(","),
+    flat: [1, [2, [3, [4]]]].flat().length + "/" + [1, [2, [3, [4]]]].flat(Infinity).join(",") +
+      "/" + [1, , 3].flat().length,
+    flatMap: [1, 2].flatMap(function (x) { return [x, x * 2]; }).join(","),
+    split: "a,b,c".split(",").length + "/" + "abc".split("").join("|") + "/" + "a1b22c".split(/\d+/).join(",") +
+      "/" + "a1b".split(/(\d)/).join(",") + "/" + "a,b,c".split(",", 2).join(",") + "/" + "abc".split().length,
+    replace: [
+      "hello world".replace("o", "0"),
+      "aaa".replace(/a/g, "$&$&"),
+      "John Smith".replace(/(\w+)\s(\w+)/, "$2, $1"),
+      "x-y".replace("-", "[$\x60|$']"),
+      "2026-11-01".replace(/(?<y>\d+)-(?<m>\d+)-(?<d>\d+)/, "$<d>/$<m>/$<y>"),
+      "cost".replace("cost", "$$5"),
+      "abc".replace(/b/, function (m, off) { return m.toUpperCase() + off; }),
+      "a1".replace(/(\d)/, "$2$0$1"),
+    ].join(" "),
+    replaceAll: "a.b.c".replaceAll(".", "/") + " " + "aXbX".replaceAll(/x/gi, "$&-"),
+    rope: rope.length + ":" + rope.charAt(5) + ":" + ("ab" + "cd"),
+    bigRope: big.length,
+    typed: new Uint8Array([1, 2, 3]).join(",") + "/" + new Uint8Array({ length: 2, 0: 7, 1: 8 }).join(",") +
+      "/" + new Uint8Array(new Set([4, 5])).join(",") + "/" + new Uint16Array(new Uint8Array([9, 10])).join(","),
+    apply: [
+      Math.max.apply(null, [1, 5, 3]),
+      Math.max.apply(null, { length: 2, 0: 4, 1: 9 }),
+      (function () { return Math.max.apply(null, arguments); })(2, 8),
+      Reflect.apply(Math.min, null, [3, 1]),
+    ].join(","),
+  },
+};
+`)
+
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+
+	out := result.Output
+	r.Equal("1,2,3,4,5,6", out["concat"])
+	r.Equal("2:true", out["concatLike"])
+	r.Equal("0,p,q", out["concatSpread"])
+	r.Equal("4:false", out["concatHoles"])
+	r.Equal(true, out["concatSpecies"])
+	r.Equal("2,3/2/xy", out["slice"])
+	r.Equal("2,3/1,x,y,z,4", out["splice"])
+	r.Equal("2,3", out["filter"])
+	r.Equal("3/1,2,3,4/2", out["flat"])
+	r.Equal("1,2,2,4", out["flatMap"])
+	r.Equal("3/a|b|c/a,b,c/a,1,b/a,b/1", out["split"])
+	r.Equal("hell0 world aaaaaa Smith, John x[x|y]y 01/11/2026 $5 aB1c a$2$01", out["replace"])
+	r.Equal("a/b/c aX-bX-", out["replaceAll"])
+	r.Equal("100:f:abcd", out["rope"])
+	r.EqualValues(80000, out["bigRope"])
+	r.Equal("1,2,3/7,8/4,5/9,10", out["typed"])
+	r.Equal("5,9,8,1", out["apply"])
+}
+
+// TestRopeDetection pins the goja internal the flatten guard relies on: a
+// long `a + b` is an unflattened rope until something reads its characters.
+func TestRopeDetection(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	vm := goja.New()
+	val, err := vm.RunString(`"x".repeat(70000) + "y"`)
+	r.NoError(err)
+	r.InDelta(70001, unflattenedRopeLen(val), 0)
+
+	str, ok := val.(goja.String)
+	r.True(ok)
+	r.Equal(uint16('x'), str.CharAt(0))
+	r.InDelta(0, unflattenedRopeLen(val), 0, "flattened")
+
+	small, err := vm.RunString(`"x".repeat(40) + "y"`)
+	r.NoError(err)
+	r.InDelta(0, unflattenedRopeLen(small), 0, "under ropeFreeLen")
+
+	// JSON.stringify's charge counts an ASCII string byte by byte.
+	ascii, err := vm.RunString(`"abc"`)
+	r.NoError(err)
+	r.Equal(asciiStringTypeName, reflect.TypeOf(ascii).String())
+}
+
+// TestMemoryBudgetIsCumulative: allocations each under the budget add up, so
+// a loop of medium ones is refused once their sum passes it.
+func TestMemoryBudgetIsCumulative(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	result := runScript(t, `
+var kept = [];
+var made = 0;
+var refusal = "";
+for (var i = 0; i < 40; i++) {
+  try {
+    kept.push("x".repeat(4 * 1024 * 1024));
+    made++;
+  } catch (e) {
+    refusal = e.name + ": " + e.message;
+    break;
+  }
+}
+return { status: "up", output: { made: made, refusal: refusal } };
+`)
+
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+	r.EqualValues(16, result.Output["made"], "64 MiB / 4 MiB")
+	r.Contains(result.Output["refusal"], "RangeError: memory budget exceeded")
+}
+
+// TestMemoryBudgetRefusalIgnoresReassignedRangeError: the refusal uses the
+// RangeError captured before the script ran.
+func TestMemoryBudgetRefusalIgnoresReassignedRangeError(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	result := runScript(t, `
+RangeError = function () { return {}; };
+try {
+  "x".repeat(1e12);
+} catch (e) {
+  return { status: "up", output: { isError: e instanceof Error, message: String(e.message) } };
+}
+return { status: "down" };
+`)
+
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+	r.Equal(true, result.Output["isError"])
+	r.Contains(result.Output["message"], "memory budget exceeded")
+}
+
+// TestMemoryBudgetPositiveControl: ordinary use of the capped builtins keeps
+// working, with the same results and the same object model.
+func TestMemoryBudgetPositiveControl(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	result := runScript(t, `
+var buf = new ArrayBuffer(8);
+var view = new Uint8Array(buf);
+view.set([1, 2, 3]);
+var nested = [1, [2, 3]];
+var cyclic = [1];
+cyclic.push(cyclic);
+class Bytes extends Uint8Array {}
+var b = new Bytes(4);
+var unicode = ["é", "€"].join("·");
+function sortSame() { var a = [2, 1]; return a.sort() === a; }
+function likeSort() {
+  var o = { length: 3, 0: "c", 1: "a", 2: "b" };
+  return (Array.prototype.sort.call(o) === o) + ":" + o[0] + o[1] + o[2] + ":" + o.length;
+}
+return {
+  status: "up",
+  output: {
+    repeat: "ab".repeat(3),
+    padStart: "5".padStart(3, "0"),
+    padEnd: "ab".padEnd(4),
+    join: ["a", 1, null, undefined, true].join("-"),
+    defaultJoin: [1, 2, 3].join(),
+    nested: String(nested),
+    cyclic: String(cyclic),
+    unicode: unicode,
+    typed: Array.from(view).join(","),
+    typedJoin: view.join("|"),
+    fill: new Array(3).fill(7).join(","),
+    arrayOf: Array(2).length + "/" + new Array(1, 2, 3).length,
+    from: Array.from("abc").join(""),
+    viewShared: view.buffer === buf,
+    sliceLen: view.slice(1).length,
+    subarray: view.subarray(0, 2).byteLength,
+    floats: new Float64Array([1.5, 2.5]).join(","),
+    instanceofArray: [] instanceof Array,
+    isArray: Array.isArray([1]),
+    instanceofBuffer: buf instanceof ArrayBuffer,
+    instanceofTyped: view instanceof Uint8Array,
+    subclass: b instanceof Uint8Array && b instanceof Bytes && b.length === 4,
+    bpe: Uint8Array.BYTES_PER_ELEMENT + Float64Array.BYTES_PER_ELEMENT,
+    ctorName: ArrayBuffer.name + "/" + Uint8Array.name,
+    repeatLength: "".repeat.length,
+    sorted: [3, 1, 2].sort().join(","),
+    sortSame: sortSame(),
+    likeSort: likeSort(),
+    toSorted: [3, 1, 2].toSorted(function (a, b) { return b - a; }).join(","),
+    mapped: [1, 2, 3].map(function (x) { return x * 2; }).join(","),
+    withed: [1, 2, 3].with(-1, 9).join(","),
+    reversed: [1, 2, 3].toReversed().join(","),
+    spliced: [1, 2, 3, 4].toSpliced(1, 2, "x").join(","),
+    argsSorted: (function () { return Array.prototype.toSorted.call(arguments).join(","); })(3, 1, 2),
+    fromLike: Array.from({ length: 2, 0: "a", 1: "b" }).join(""),
+    fromSet: Array.from(new Set([1, 2])).join(","),
+  },
+};
+`)
+
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+
+	out := result.Output
+	r.Equal("ababab", out["repeat"])
+	r.Equal("005", out["padStart"])
+	r.Equal("ab  ", out["padEnd"])
+	r.Equal("a-1---true", out["join"])
+	r.Equal("1,2,3", out["defaultJoin"])
+	r.Equal("1,2,3", out["nested"])
+	r.Equal("1,", out["cyclic"])
+	r.Equal("é·€", out["unicode"])
+	r.Equal("1,2,3,0,0,0,0,0", out["typed"])
+	r.Equal("1|2|3|0|0|0|0|0", out["typedJoin"])
+	r.Equal("7,7,7", out["fill"])
+	r.Equal("2/3", out["arrayOf"])
+	r.Equal("abc", out["from"])
+	r.Equal(true, out["viewShared"])
+	r.EqualValues(7, out["sliceLen"])
+	r.EqualValues(2, out["subarray"])
+	r.Equal("1.5,2.5", out["floats"])
+	r.Equal(true, out["instanceofArray"])
+	r.Equal(true, out["isArray"])
+	r.Equal(true, out["instanceofBuffer"])
+	r.Equal(true, out["instanceofTyped"])
+	r.Equal(true, out["subclass"])
+	r.EqualValues(9, out["bpe"])
+	r.Equal("ArrayBuffer/Uint8Array", out["ctorName"])
+	r.EqualValues(1, out["repeatLength"])
+	r.Equal("1,2,3", out["sorted"])
+	r.Equal(true, out["sortSame"])
+	r.Equal("true:abc:3", out["likeSort"])
+	r.Equal("3,2,1", out["toSorted"])
+	r.Equal("2,4,6", out["mapped"])
+	r.Equal("1,2,9", out["withed"])
+	r.Equal("3,2,1", out["reversed"])
+	r.Equal("1,x,4", out["spliced"])
+	r.Equal("1,2,3", out["argsSorted"])
+	r.Equal("ab", out["fromLike"])
+	r.Equal("1,2", out["fromSet"])
+}
+
+// TestMemoryBudgetKeepsOriginalErrors: arguments the builtins reject still
+// throw their own error, not a budget refusal.
+func TestMemoryBudgetKeepsOriginalErrors(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	result := runScript(t, `
+function msg(f) { try { f(); return "none"; } catch (e) { return e.name; } }
+return {
+  status: "up",
+  output: {
+    negRepeat: msg(function () { "x".repeat(-1); }),
+    infRepeat: msg(function () { "x".repeat(Infinity); }),
+    badLength: msg(function () { new Array(-1); }),
+    noNew: msg(function () { ArrayBuffer(4); }),
+    nullThis: msg(function () { String.prototype.repeat.call(null, 2); }),
+    badIndex: msg(function () { [1].with(5, 0); }),
+    badCompare: msg(function () { [1].toSorted(1); }),
+    sortNullThis: msg(function () { Array.prototype.sort.call(null); }),
+  },
+};
+`)
+
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+	r.Equal("RangeError", result.Output["negRepeat"])
+	r.Equal("RangeError", result.Output["infRepeat"])
+	r.Equal("RangeError", result.Output["badLength"])
+	r.Equal("TypeError", result.Output["noNew"])
+	r.Equal("TypeError", result.Output["nullThis"])
+	r.Equal("RangeError", result.Output["badIndex"])
+	r.Equal("TypeError", result.Output["badCompare"])
+	r.Equal("TypeError", result.Output["sortNullThis"])
+}
+
+// TestMemoryBudgetRefusesAmplifyingBuiltins: builtins that turn an input the
+// budget accepts into an output it does not are refused as they write, not
+// after (spec 2026-11-02-01). Each input stays a few hundred MB away from
+// harm when the cap is missing: the test then fails on its status or its
+// duration.
+func TestMemoryBudgetRefusesAmplifyingBuiltins(t *testing.T) {
+	t.Parallel()
+
+	const (
+		// kib is a 1 KiB string; refs is 128 Mi characters' worth of it.
+		kib  = `var kib = "x".repeat(1024); `
+		refs = kib + `var refs = Array(128 * 1024).fill(kib); `
+		// rope doubles a 64-character string 21 times: 128 Mi characters.
+		rope = `var s = "x".repeat(64); for (var i = 0; i < 21; i++) s = s + s; `
+	)
+
+	tests := []refusalCase{
+		{"JSON.stringify flat", refs + `JSON.stringify(refs);`},
+		{"JSON.stringify indented shared", kib + `var b = [kib]; for (var i = 0; i < 17; i++) b = [b, b];
+JSON.stringify(b, null, 2);`},
+		{"JSON.stringify with a replacer", refs + `JSON.stringify(refs, function (k, v) { return v; });`},
+		{"JSON.stringify with a property list", kib + `var o = { a: kib }; var a = Array(128 * 1024).fill(o);
+JSON.stringify(a, ["a"]);`},
+		{"Array toLocaleString", refs + `refs.toLocaleString();`},
+		{"normalize NFKD", `"ﷺ".repeat(4 * 1024 * 1024).normalize("NFKD");`},
+		{"normalize NFKC", `"ﷺ".repeat(4 * 1024 * 1024).normalize("NFKC");`},
+		{"String.raw array-like", `String.raw({ raw: { length: 1e7 } });`},
+		{"String.raw substitutions", kib + `var raw = Array(70 * 1024).fill("");
+String.raw.apply(null, [{ raw: raw }].concat(Array(70 * 1024).fill(kib)));`},
+		{"encodeURIComponent", `encodeURIComponent("\u4E2D".repeat(8 * 1024 * 1024));`},
+		{"encodeURI", `encodeURI("\u4E2D".repeat(8 * 1024 * 1024));`},
+		{"escape", `escape("\u4E2D".repeat(12 * 1024 * 1024));`},
+		{"JSON.parse rope", rope + `JSON.parse(s);`},
+		{"RegExp rope", rope + `new RegExp(s);`},
+		{"parseInt rope", rope + `parseInt(s);`},
+		{"decodeURIComponent rope", rope + `decodeURIComponent(s);`},
+		{"Number rope", rope + `Number(s);`},
+		{"String rope", rope + `String(s);`},
+		{"rope nested 70 levels in the result", rope + `var o = s; for (var j = 0; j < 70; j++) o = { a: o };
+return { status: "up", output: { deep: o } };`},
+		{"rope nested 70 levels in a binding argument", rope + `var o = s; for (var j = 0; j < 70; j++) o = [o];
+console.log(o);`},
+		{"thrown rope", rope + `throw s;`},
+		{"thrown Error with a rope message", rope + `throw new Error(s);`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			// goja writes up to 64 MiB of permitted output before the
+			// refusal (0.7 s on a quiet machine for JSON.stringify, 3.5 s
+			// seen on a CI runner with every parallel case competing for
+			// its cores): the bound only has to stay under the script
+			// timeout. Without the caps these do not fail on time but on
+			// their status: they return "up".
+			requireRefusalWithin(t, tt.script, 8*time.Second)
+		})
+	}
+}
+
+// TestMemoryBudgetThrownRopeErrorIsCapped: an uncaught rope ends as an error
+// result quickly, with an error text of at most 16 KiB, and so does a long
+// string the budget lets through.
+func TestMemoryBudgetThrownRopeErrorIsCapped(t *testing.T) {
+	t.Parallel()
+
+	for _, script := range []string{
+		`var s = "x".repeat(64); for (var i = 0; i < 22; i++) s = s + s; throw s;`,
+		`throw "x".repeat(8 * 1024 * 1024);`,
+		`throw new Error("y".repeat(1024 * 1024) + "z");`,
+	} {
+		r := require.New(t)
+		start := time.Now()
+		result := runScript(t, script)
+
+		r.Equal(checkerdef.StatusError, result.Status)
+
+		text, ok := result.Output["error"].(string)
+		r.True(ok, "output: %v", result.Output)
+		r.LessOrEqual(len(text), 16*1024)
+		r.Less(time.Since(start), 2*time.Second)
+	}
+}
+
+// TestMemoryBudgetPositiveControlBuiltins: the builtins wrapped for spec
+// 2026-11-02-01 keep their results on ordinary input. The JSON outputs are
+// compared as text: key order, escapes and indentation are what is tested.
+//
+//nolint:testifylint // Exact JSON text, not JSON equivalence.
+func TestMemoryBudgetPositiveControlBuiltins(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	result := runScript(t, `
+var cyclic = { a: 1 }; cyclic.self = cyclic;
+var cycleError = "";
+try { JSON.stringify(cyclic); } catch (e) { cycleError = e.name; }
+var listCycle = { a: 1 }; listCycle.a = listCycle;
+var listCycleError = "";
+try { JSON.stringify(listCycle, ["a"]); } catch (e) { listCycleError = e.name; }
+var bigintError = "";
+try { JSON.stringify({ n: 1n }); } catch (e) { bigintError = e.name; }
+var shared = { v: 1 };
+var date = { toJSON: function (key) { return "json:" + key; } };
+var inherited = Object.create({ inh: 5 });
+inherited.own = 6;
+var raw = String.raw;
+return {
+  status: "up",
+  output: {
+    json: JSON.stringify({ a: [1, "two", null, true, undefined, function () {}], b: { c: "q\"\né😀\u0001" } }),
+    jsonIndent: JSON.stringify({ a: [1, { b: 2 }], c: {}, d: [] }, null, 2),
+    jsonIndentString: JSON.stringify([1, [2]], null, "--"),
+    jsonIndentObject: JSON.stringify({ a: 1 }, null, new Number(1)),
+    jsonReplacer: JSON.stringify({ a: 1, b: "x", c: { d: 4 } }, function (k, v) {
+      if (k === "b") return undefined;
+      return typeof v === "number" ? v * 10 : v;
+    }),
+    jsonReplacerThis: JSON.stringify({ a: 1 }, function (k, v) { return k === "a" ? typeof this.a : v; }),
+    jsonList: JSON.stringify({ b: 1, 1: 2, a: 3, c: 4 }, ["b", "1", "a", "b", "missing"]),
+    jsonListInherited: JSON.stringify(inherited, ["inh", "own"]),
+    jsonListNested: JSON.stringify({ a: { a: 1, z: 2 }, z: 3, arr: [{ a: 5, q: 6 }] }, ["a", "arr"]),
+    jsonToJSON: JSON.stringify({ d: date, e: [date] }),
+    jsonWrappers: JSON.stringify([new Number(3), new String("s"), new Boolean(false), Object(1n) === 1]),
+    jsonShared: JSON.stringify([shared, shared]),
+    jsonRaw: JSON.stringify({ r: JSON.rawJSON("12345678901234567890") }),
+    jsonTop: JSON.stringify("x") + "|" + JSON.stringify(1) + "|" + String(JSON.stringify(undefined)) +
+      "|" + JSON.stringify(NaN),
+    cycleError: cycleError,
+    listCycleError: listCycleError,
+    bigintError: bigintError,
+    parse: JSON.parse('{"a":[1,2]}').a.join(","),
+    locale: [1, "a", null, undefined, [2, 3]].toLocaleString(),
+    typedLocale: new Uint8Array([1, 2]).toLocaleString(),
+    normalize: ["Å".normalize() === "Å", "ﬁ".normalize("NFKD"), "Å".normalize("NFD").length].join(","),
+    raw: raw`+"`a\\n${1}b${2}`"+` + "|" + String.raw({ raw: ["x", "y", "z"] }, 1) + "|" + String.raw({ raw: [] }),
+    encode: encodeURIComponent("a bé\u4E2D😀") + "|" + encodeURI("http://x/a b?c=d#e") + "|" + escape("aé\u4E2D"),
+    decode: decodeURIComponent("%C3%A9") + unescape("%u4E2D"),
+    ctors: [String(5), Number("12"), new RegExp("a+").test("aa"), new String("s") instanceof String,
+      "s" instanceof String, Number.isInteger(3), String.fromCharCode(65), parseInt("42px"),
+      parseFloat("1.5")].join(","),
+  },
+};
+`)
+
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+
+	out := result.Output
+	wantJSON := `{"a":[1,"two",null,true,null,null],"b":{"c":"q\"\n` + "é😀" + `\u0001"}}`
+	r.Equal(wantJSON, out["json"])
+	r.Equal("{\n  \"a\": [\n    1,\n    {\n      \"b\": 2\n    }\n  ],\n  \"c\": {},\n  \"d\": []\n}", out["jsonIndent"])
+	r.Equal("[\n--1,\n--[\n----2\n--]\n]", out["jsonIndentString"])
+	r.Equal("{\n \"a\": 1\n}", out["jsonIndentObject"])
+	r.Equal(`{"a":10,"c":{"d":40}}`, out["jsonReplacer"])
+	r.Equal(`{"a":"number"}`, out["jsonReplacerThis"])
+	r.Equal(`{"b":1,"1":2,"a":3}`, out["jsonList"])
+	r.Equal(`{"inh":5,"own":6}`, out["jsonListInherited"])
+	r.Equal(`{"a":{"a":1},"arr":[{"a":5}]}`, out["jsonListNested"])
+	r.Equal(`{"d":"json:d","e":["json:0"]}`, out["jsonToJSON"])
+	r.Equal(`[3,"s",false,false]`, out["jsonWrappers"])
+	r.Equal(`[{"v":1},{"v":1}]`, out["jsonShared"])
+	r.Equal(`{"r":12345678901234567890}`, out["jsonRaw"])
+	r.Equal(`"x"|1|undefined|null`, out["jsonTop"])
+	r.Equal("TypeError", out["cycleError"])
+	r.Equal("TypeError", out["listCycleError"])
+	r.Equal("TypeError", out["bigintError"])
+	r.Equal("1,2", out["parse"])
+	r.Equal("1,a,,,2,3", out["locale"])
+	r.Equal("1,2", out["typedLocale"])
+	r.Equal("true,fi,2", out["normalize"])
+	r.Equal(`a\n1b2|x1yz|`, out["raw"])
+	r.Equal("a%20b%C3%A9%E4%B8%AD%F0%9F%98%80|http://x/a%20b?c=d#e|a%E9%u4E2D", out["encode"])
+	r.Equal("é\u4e2d", out["decode"])
+	r.Equal("5,12,true,true,false,true,A,42,1.5", out["ctors"])
+}
+
+// TestMemoryBudgetKeepsShortThrownMessage: an uncaught Error keeps its
+// message in the result.
+func TestMemoryBudgetKeepsShortThrownMessage(t *testing.T) {
+	t.Parallel()
+
+	result := runScript(t, `throw new Error("short");`)
+
+	require.Equal(t, checkerdef.StatusError, result.Status)
+	require.Contains(t, result.Output["error"], "Error: short")
+}
+
+// TestMemoryBudgetChargesRegexpSymbolMethods: the RegExp.prototype symbol
+// methods called directly are charged like their String.prototype twins
+// (spec 2026-11-03-02). With isolation off, the `$'` replacement used to grow
+// the worker's heap to tens of GB, past the timeout.
+//
+//nolint:paralleltest // Swaps the package-level isolation settings.
+func TestMemoryBudgetChargesRegexpSymbolMethods(t *testing.T) {
+	previous := SetIsolation(IsolationSettings{Enabled: false})
+	t.Cleanup(func() { SetIsolation(previous) })
+
+	tests := []refusalCase{
+		{"replace function returning a big string", `var big = "x".repeat(1024 * 1024);
+var s = /a/g[Symbol.replace]("a".repeat(100), function () { return big; });`},
+		{"replace non-global", `var s = /x/[Symbol.replace]("x".repeat(1024 * 1024), "$'".repeat(128));`},
+		{"split empty regexp", `var s = RegExp.prototype[Symbol.split].call(/(?:)/, "x".repeat(8 * 1024 * 1024));`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requireRefusal(t, tt.script)
+		})
+	}
+
+	// The `$'` and `$`+"`"+` replacements are refused only after the matches the
+	// budget allows were processed: that work is permitted, so the bound is
+	// sized by a baseline of the same script on a shorter subject, as for the
+	// heavy copies, not by a fixed wall clock.
+	heavy := []heavyCase{
+		{
+			"replace suffix", `var s = RegExp.prototype[Symbol.replace].call(/x/g, "x".repeat(200000), "$'");`,
+			`var s = RegExp.prototype[Symbol.replace].call(/x/g, "x".repeat(10000), "$'");`,
+		},
+		{
+			"replace prefix", `var s = /x/g[Symbol.replace]("x".repeat(200000), "$` + "`" + `");`,
+			`var s = /x/g[Symbol.replace]("x".repeat(10000), "$` + "`" + `");`,
+		},
+	}
+	for _, tt := range heavy {
+		t.Run(tt.name, func(t *testing.T) {
+			requireRefusalAllocating(t, tt.script, tt.baseline)
+		})
+	}
+
+	// A global match is charged as exec finds each match, so the refusal
+	// comes after the matches the budget allows (2 Mi of them): that work
+	// is permitted, and sized by a baseline that fits, as for the heavy
+	// copies.
+	t.Run("match global empty regexp", func(t *testing.T) {
+		const match = `var s = RegExp.prototype[Symbol.match].call(/(?:)/g, "x".repeat(%d));`
+
+		requireRefusalAllocating(t, fmt.Sprintf(match, 4*1024*1024), fmt.Sprintf(match, 1024*1024))
+	})
+}
+
+// TestMemoryBudgetPositiveControlRegexpSymbolMethods: within the budget, the
+// symbol methods called directly, and the String.prototype methods that reach
+// them, give what they always gave.
+//
+//nolint:paralleltest // Swaps the package-level isolation settings.
+func TestMemoryBudgetPositiveControlRegexpSymbolMethods(t *testing.T) {
+	previous := SetIsolation(IsolationSettings{Enabled: false})
+	t.Cleanup(func() { SetIsolation(previous) })
+
+	r := require.New(t)
+
+	result := runScript(t, `
+var rp = RegExp.prototype;
+return {
+  status: "up",
+  output: {
+    suffix: rp[Symbol.replace].call(/a/g, "banana", "$'"),
+    prefix: /n/g[Symbol.replace]("banana", "[$`+"`"+`]"),
+    whole: /(an)/g[Symbol.replace]("banana", "<$&|$1>"),
+    named: /(?<v>a)/[Symbol.replace]("banana", "$<v>$<v>"),
+    dollar: /a/[Symbol.replace]("banana", "$$"),
+    fn: /a(n)?/g[Symbol.replace]("banana", function (m, g, pos) { return "(" + m + g + pos + ")"; }),
+    viaString: "banana".replace(/a/g, "$'"),
+    viaStringFn: "banana".replace(/a/g, function (m, pos) { return pos; }),
+    split: rp[Symbol.split].call(/(n)/, "banana").join("|"),
+    splitLimit: /a/[Symbol.split]("banana", 2).join("|"),
+    viaStringSplit: "a,b,,c".split(/,/).join("|"),
+    match: rp[Symbol.match].call(/a/g, "banana").join("|"),
+    matchOne: /n(a)/[Symbol.match]("banana").join("|"),
+    matchNone: String(/z/g[Symbol.match]("banana")),
+    viaStringMatch: "banana".match(/an/g).join("|"),
+    matchAll: Array.from("banana".matchAll(/a/g), function (m) { return m.index; }).join("|"),
+    search: /n/[Symbol.search]("banana"),
+    bigMatch: "ab".repeat(100000).match(/a/g).length,
+  },
+};`)
+
+	r.Equal(checkerdef.StatusUp, result.Status, result.Output)
+
+	out := result.Output
+	r.Equal("bnanannan", out["suffix"])
+	r.Equal("ba[ba]a[bana]a", out["prefix"])
+	r.Equal("b<an|an><an|an>a", out["whole"])
+	r.Equal("baanana", out["named"])
+	r.Equal("b$nana", out["dollar"])
+	r.Equal("b(ann1)(ann3)(aundefined5)", out["fn"])
+	r.Equal("bnanannan", out["viaString"])
+	r.Equal("b1n3n5", out["viaStringFn"])
+	r.Equal("ba|n|a|n|a", out["split"])
+	r.Equal("b|n", out["splitLimit"])
+	r.Equal("a|b||c", out["viaStringSplit"])
+	r.Equal("a|a|a", out["match"])
+	r.Equal("na|a", out["matchOne"])
+	r.Equal("null", out["matchNone"])
+	r.Equal("an|an", out["viaStringMatch"])
+	r.Equal("1|3|5", out["matchAll"])
+	r.EqualValues(2, out["search"])
+	r.EqualValues(100000, out["bigMatch"])
+}

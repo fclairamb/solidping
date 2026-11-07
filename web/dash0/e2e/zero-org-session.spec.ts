@@ -89,9 +89,10 @@ test.describe("Zero-org session survives", () => {
     await expect(
       page.getByRole("heading", { name: /start a new organization/i }),
     ).toBeVisible();
+    // Nothing to join: the join card stays hidden (spec 2026-10-30-04).
     await expect(
       page.getByRole("heading", { name: /join an existing organization/i }),
-    ).toBeVisible();
+    ).toHaveCount(0);
   }
 
   test("real zero-org login survives a /no-org reload (backend /auth/me fix)", async ({

@@ -1,0 +1,44 @@
+package checkjs
+
+import (
+	"strings"
+	"time"
+
+	"github.com/dlclark/regexp2/v2"
+)
+
+// maxRegexpMatchTime bounds a single regular expression match that goja runs
+// on regexp2, its backtracking engine (every pattern, on the pinned goja).
+// goja checks vm.Interrupt only between instructions, so the
+// check's timeout never reaches a running match: without this limit a nested
+// quantifier on a non-matching input backtracks for hours and leaks a goroutine
+// pinned at 100 % of a core (spec 2026-11-01-02). A monitoring regexp finishes
+// in microseconds; 2 s stays well under the 30 s check budget. A call that
+// matches many times is bounded by the run's deadline (regexp_deadline.go).
+const maxRegexpMatchTime = 2 * time.Second
+
+// regexpTimeoutMarker starts the error regexp2 returns when a match runs past
+// its MatchTimeout; goja rethrows it as a RangeError carrying that text.
+const regexpTimeoutMarker = "match timeout after"
+
+// regexpTooLongMessage replaces regexp2's message, which quotes the whole input.
+func regexpTooLongMessage() string {
+	return "regular expression took too long (over " + maxRegexpMatchTime.String() + " for one match)"
+}
+
+// regexp2.Compile copies DefaultMatchTimeout into every Regexp, and goja
+// compiles script patterns at run time, so setting it once at process start
+// covers every VM: the JS checker, the AI check runner and any other user.
+//
+// A package variable rather than an init: variables are set before any init
+// runs, and the script child (isolation_child.go) runs its script from one.
+var _ = func() bool {
+	regexp2.DefaultMatchTimeout = maxRegexpMatchTime
+
+	return true
+}()
+
+// isRegexpTimeout reports whether a script error is a regexp2 match timeout.
+func isRegexpTimeout(err error) bool {
+	return err != nil && strings.Contains(err.Error(), regexpTimeoutMarker)
+}

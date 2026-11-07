@@ -133,6 +133,11 @@ type Service interface {
 	UpdateOrganization(ctx context.Context, uid string, update models.OrganizationUpdate) error
 	DeleteOrganization(ctx context.Context, uid string) error
 
+	// GetAutoPersonalOrgByOwner returns the auto-created personal org of the
+	// user (spec 2026-10-30-04), nil when none; includeDeleted also returns a
+	// soft-deleted one.
+	GetAutoPersonalOrgByOwner(ctx context.Context, userUID string, includeDeleted bool) (*models.Organization, error)
+
 	// Organization previous-slug (rename alias) operations. See
 	// models.OrganizationPreviousSlug for the semantics; the invariant is that
 	// a live organizations.slug always wins over an alias, and that an alias
@@ -1017,6 +1022,14 @@ type Service interface {
 	// unit per call. Duplicate rows left by older code are tolerated: the
 	// largest live count wins and every row is rewritten.
 	BumpGlobalCounter(ctx context.Context, key string, limit int, ttl time.Duration) (limited bool, err error)
+	// RaiseGlobalCounter ATOMICALLY raises the global (organization_uid IS
+	// NULL) counter at key to value: raised=true, with expires_at = now+ttl,
+	// when the live value is below value (or there is none); raised=false,
+	// and no write, when it is already at or above value. It is the
+	// compare-and-set behind single-use TOTP codes (spec 2026-11-03-03): two
+	// concurrent callers raising to the same value never both succeed. Same
+	// serialization as BumpGlobalCounter.
+	RaiseGlobalCounter(ctx context.Context, key string, value int, ttl time.Duration) (raised bool, err error)
 	// SetStateEntryIfNotExists creates entry only if key doesn't exist.
 	// Returns (created, error) where created is true if entry was created.
 	SetStateEntryIfNotExists(
@@ -1455,14 +1468,15 @@ type Service interface {
 	ListOrphanAttachments(
 		ctx context.Context, entity string, before time.Time, limit int,
 	) ([]*models.File, error)
-	// SumFileSizeByGroup returns the total bytes of live (non-deleted) files
+	// SumFileSizeByGroup returns the total bytes of live (non-deleted), topic-less
+	// files (attachments such as crawl reports carry a topic and are excluded)
 	// for orgUID whose storage URI belongs to the given filestorage.GroupType
 	// (passed as a plain string — this package does not import filestorage).
 	// Matches on the "/<group>/" path segment rather than a URI prefix, since
 	// the scheme/bucket portion varies by storage backend (local vs S3). Used
 	// by the feedback-report per-org storage quota (spec 2026-09-25-26).
 	SumFileSizeByGroup(ctx context.Context, orgUID, group string) (int64, error)
-	// ListFilesByGroup returns live files across ALL organizations whose
+	// ListFilesByGroup returns live, topic-less files (never attachments) across ALL organizations whose
 	// storage URI belongs to the given filestorage.GroupType and which were
 	// created before `before`, oldest first, capped at limit. Cross-org by
 	// design: its only caller is the report-retention sweep (spec 2026-10-29-01).

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/version"
 )
 
 // findSubcommand returns the direct child of cmd with the given name, or
@@ -157,6 +159,67 @@ func TestClientMCPCommand(t *testing.T) {
 		[]string{"solidping", "--url", "https://solidping.acme.com", "client", "mcp"})
 	r.NoError(err)
 	r.Equal("https://solidping.acme.com", gotURL)
+}
+
+// TestRootVersionFlag checks `solidping --version` prints the version and
+// exits instead of falling through to the default "serve" command.
+func TestRootVersionFlag(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	served := false
+	root := buildRootCommandWithServe(t, &served)
+
+	var out bytes.Buffer
+
+	root.Writer = &out
+
+	r.NoError(root.Run(context.Background(), []string{"solidping", "--version"}))
+	r.Equal("solidping version "+version.Get().Version+"\n", out.String())
+	r.False(served, "--version must not start the server")
+
+	// Positive control: with no arguments the stub does run.
+	r.NoError(buildRootCommandWithServe(t, &served).Run(context.Background(), []string{"solidping"}))
+	r.True(served)
+}
+
+// buildRootCommandWithServe returns the real tree with "serve" swapped for a
+// stub that sets *served.
+func buildRootCommandWithServe(t *testing.T, served *bool) *cli.Command {
+	t.Helper()
+
+	root := buildRootCommand()
+	serve := findSubcommand(root, "serve")
+	require.NotNil(t, serve)
+
+	serve.Action = func(context.Context, *cli.Command) error {
+		*served = true
+		return nil
+	}
+
+	return root
+}
+
+// TestRootVersionCommand checks `solidping version` prints the build stamp of
+// the binary, with no server to talk to.
+func TestRootVersionCommand(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	root := buildRootCommand()
+
+	var out bytes.Buffer
+
+	root.Writer = &out
+
+	args := []string{"solidping", "--url", "http://127.0.0.1:1", "version", "-o", "json"}
+	r.NoError(root.Run(context.Background(), args))
+
+	var got map[string]string
+	r.NoError(json.Unmarshal(out.Bytes(), &got))
+
+	info := version.Get()
+	r.Equal(map[string]string{"version": info.Version, "commit": info.Commit, "gitTime": info.GitTime}, got)
 }
 
 // clientMCPHelperEnv switches the test binary into acting as the solidping

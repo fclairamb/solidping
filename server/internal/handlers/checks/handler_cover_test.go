@@ -17,9 +17,18 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 func newFullChecksRouter(t *testing.T) *httpx.Router {
+	t.Helper()
+
+	router, _ := newFullChecksRouterWithDB(t)
+
+	return router
+}
+
+func newFullChecksRouterWithDB(t *testing.T) (*httpx.Router, *sqlite.Service) {
 	t.Helper()
 	r := require.New(t)
 	ctx := t.Context()
@@ -43,6 +52,7 @@ func newFullChecksRouter(t *testing.T) *httpx.Router {
 	g.GET("/stats", h.GetCheckStats)
 	g.POST("/validate", h.ValidateCheck)
 	g.POST("/auto-placement", h.SwitchToAutoPlacement)
+	g.PATCH("", h.BulkUpdateChecks)
 	g.GET("/export", h.ExportChecks)
 	g.POST("/import", h.ImportChecks)
 	g.POST("/apply", h.ApplyChecks)
@@ -53,7 +63,7 @@ func newFullChecksRouter(t *testing.T) *httpx.Router {
 	g.POST("/:checkUid/clone", h.CloneCheck)
 	g.POST("/:checkUid/rotate-token", h.RotateHeartbeatToken)
 
-	return router
+	return router, dbSvc
 }
 
 func checksCall(t *testing.T, router *httpx.Router, method, path, body string) *httptest.ResponseRecorder {
@@ -216,4 +226,63 @@ func TestChecksHandlerEndpoints(t *testing.T) {
 			t.Errorf("%s: want %d got %d: %s", step.name, step.want, rec.Code, rec.Body.String())
 		}
 	}
+}
+
+func TestBulkUpdateChecksHandler(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	router, dbSvc := newFullChecksRouterWithDB(t)
+	base := "/orgs/acme/checks"
+
+	created := checksCall(t, router, http.MethodPost, base,
+		`{"name":"Site","slug":"site","type":"http","config":{"url":"https://example.com"}}`)
+	r.Equal(http.StatusCreated, created.Code, created.Body.String())
+
+	var check struct {
+		UID string `json:"uid"`
+	}
+	r.NoError(json.Unmarshal(created.Body.Bytes(), &check))
+
+	steps := []struct {
+		name, path, body string
+		want             int
+	}{
+		{"bad json", base, "{", http.StatusUnprocessableEntity},
+		{"unknown region", base, `{"checkUids":["x"],"changes":{"regions":["paris"]}}`, http.StatusBadRequest},
+		{"ghost org", "/orgs/ghost/checks", `{"checkUids":["x"],"changes":{"enabled":false}}`, http.StatusNotFound},
+		{"no checks", base, `{"changes":{"enabled":false}}`, http.StatusBadRequest},
+		{"no changes", base, `{"checkUids":["x"]}`, http.StatusBadRequest},
+		{"unsupported field", base, `{"checkUids":["x"],"changes":{"slug":"y"}}`, http.StatusBadRequest},
+	}
+
+	for _, step := range steps {
+		rec := checksCall(t, router, http.MethodPatch, step.path, step.body)
+		r.Equal(step.want, rec.Code, "%s: %s", step.name, rec.Body.String())
+	}
+
+	// With a declared region, unknown checks are skipped, not an error.
+	r.NoError(dbSvc.SetSystemParameter(t.Context(), regions.ParamRegions, []regions.RegionDefinition{
+		{Slug: "paris"},
+	}, false))
+
+	rec := checksCall(t, router, http.MethodPatch, base,
+		`{"checkUids":["`+check.UID+`","missing"],"changes":{"regions":["paris"]}}`)
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	var resp checks.BulkUpdateChecksResponse
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	r.False(resp.DryRun)
+	r.Len(resp.Data, 1)
+	r.Equal(check.UID, resp.Data[0].UID)
+	r.Len(resp.Skipped, 1)
+	r.Equal("missing", resp.Skipped[0].UID)
+	r.Equal(checks.BulkUpdateSkipNotFound, resp.Skipped[0].Reason)
+
+	// A broken regions parameter is a storage failure, not a bad request.
+	r.NoError(dbSvc.SetSystemParameter(t.Context(), regions.ParamRegions, "not-a-list", false))
+
+	rec = checksCall(t, router, http.MethodPatch, base,
+		`{"checkUids":["`+check.UID+`"],"changes":{"regions":["paris"]}}`)
+	r.Equal(http.StatusInternalServerError, rec.Code, rec.Body.String())
 }

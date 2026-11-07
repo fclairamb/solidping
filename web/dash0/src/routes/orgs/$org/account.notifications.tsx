@@ -67,6 +67,10 @@ import {
   directChannelLabel,
 } from "@/components/integrations/integration-icon";
 import { useWebPushMigration } from "@/hooks/useWebPushMigration";
+import { useQuery } from "@tanstack/react-query";
+import { ApiError, apiFetch } from "@/api/client";
+import { ReauthPasswordDialog, SignInAgainAlert } from "@/components/security/reauth";
+import { isReauthRequired } from "@/components/security/reauth-errors";
 
 export const Route = createFileRoute("/orgs/$org/account/notifications")({
   component: NotificationsPage,
@@ -694,6 +698,16 @@ function DiscordConnectRow({
   const connect = useConnectDiscord(org);
   const createLink = useCreateDiscordLink(org);
   const [error, setError] = useState<string | null>(null);
+  // Linking binds an identity that signs in, so it needs a re-authentication
+  // (spec 2026-11-01-03): the current password first when the account has
+  // one, otherwise a recent sign-in. A dedicated key: this only needs
+  // hasPassword.
+  const { data: me } = useQuery({
+    queryKey: ["discordLinkMe"],
+    queryFn: () => apiFetch<{ hasPassword: boolean }>("/api/v1/auth/me"),
+  });
+  const [showLinkReauth, setShowLinkReauth] = useState(false);
+  const [signInRequired, setSignInRequired] = useState(false);
 
   const accountPath = `/d/orgs/${org}/account/notifications`;
 
@@ -743,17 +757,43 @@ function DiscordConnectRow({
 
   const handleLink = async () => {
     setError(null);
+    setSignInRequired(false);
+
+    if (me?.hasPassword) {
+      setShowLinkReauth(true);
+      return;
+    }
 
     try {
-      const resp = await createLink.mutateAsync(accountPath);
+      const resp = await createLink.mutateAsync({ redirectUri: accountPath });
       window.location.assign(resp.url);
     } catch (err: unknown) {
+      if (isReauthRequired(err)) {
+        setSignInRequired(true);
+        return;
+      }
+      // /auth/me had not answered yet and the account has a password.
+      if (err instanceof ApiError && err.code === "INVALID_CURRENT_PASSWORD") {
+        setShowLinkReauth(true);
+        return;
+      }
       setError(
         err instanceof Error
           ? err.message
           : t("notifications.discord.linkFailed", "Could not start the Discord link"),
       );
     }
+  };
+
+  // The password dialog shows a refused password itself, so errors are
+  // rethrown to it.
+  const onLinkReauth = async (password: string) => {
+    const resp = await createLink.mutateAsync({
+      redirectUri: accountPath,
+      currentPassword: password,
+    });
+    setShowLinkReauth(false);
+    window.location.assign(resp.url);
   };
 
   const busy = connect.isPending || createLink.isPending;
@@ -802,6 +842,11 @@ function DiscordConnectRow({
                   )}
             </p>
           )}
+          {signInRequired && (
+            <div className="mt-2">
+              <SignInAgainAlert />
+            </div>
+          )}
           {error && (
             <p
               className="text-xs text-destructive mt-1 break-words"
@@ -828,6 +873,15 @@ function DiscordConnectRow({
             ? t("notifications.discord.connectButton", "Connect Discord")
             : t("notifications.discord.linkButton", "Link Discord")}
         </Button>
+      )}
+      {showLinkReauth && (
+        <ReauthPasswordDialog
+          open={showLinkReauth}
+          title={t("notifications.discord.linkButton", "Link Discord")}
+          testIdPrefix="discord-link"
+          onClose={() => setShowLinkReauth(false)}
+          onSubmit={onLinkReauth}
+        />
       )}
     </div>
   );

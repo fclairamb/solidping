@@ -6,6 +6,8 @@ import { apiFetch } from "./client";
 export interface Setup2FAResponse {
   secret: string;
   uri: string;
+  // Proof of this setup: confirm2FA must send it back (spec 2026-10-31-02).
+  setupToken: string;
 }
 
 export interface Confirm2FAResponse {
@@ -26,14 +28,29 @@ export interface Verify2FAResponse {
   loginAction?: string;
 }
 
-export async function setup2FA(): Promise<Setup2FAResponse> {
-  return apiFetch<Setup2FAResponse>("/api/v1/auth/2fa/setup", { method: "POST" });
+// Adding a sign-in factor needs a re-authentication (spec 2026-10-31-02):
+// the current password when the account has one. Without one, the session
+// must come from a sign-in within the last 10 minutes, else the server
+// answers 403 REAUTHENTICATION_REQUIRED. A wrong password answers 401
+// INVALID_CURRENT_PASSWORD, about the body and not the session, hence
+// suppress401Handling.
+export async function setup2FA(currentPassword?: string): Promise<Setup2FAResponse> {
+  return apiFetch<Setup2FAResponse>("/api/v1/auth/2fa/setup", {
+    method: "POST",
+    body: JSON.stringify(currentPassword !== undefined ? { currentPassword } : {}),
+    suppress401Handling: true,
+  });
 }
 
-export async function confirm2FA(code: string): Promise<Confirm2FAResponse> {
+// A wrong code answers 401 INVALID_2FA_CODE, about the body as well.
+export async function confirm2FA(
+  code: string,
+  setupToken: string,
+): Promise<Confirm2FAResponse> {
   return apiFetch<Confirm2FAResponse>("/api/v1/auth/2fa/confirm", {
     method: "POST",
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, setupToken }),
+    suppress401Handling: true,
   });
 }
 

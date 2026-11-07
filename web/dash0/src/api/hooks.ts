@@ -1147,53 +1147,96 @@ export function useCloneCheck(org: string) {
   });
 }
 
-/** One check switched to automatic placement (spec 2026-09-25-06). */
-export interface AutoPlacementItem {
-  uid: string;
-  slug?: string;
-  name?: string;
-  regions: string[];
-  regionCount: number;
+/** Filters of the checks list that scope a bulk action. */
+export interface BulkCheckFilters {
+  q?: string;
+  type?: string;
+  status?: string;
+  labels?: string;
+  internal?: string;
 }
 
-/** Response of POST /checks/auto-placement. */
-export interface AutoPlacementResponse {
-  dryRun: boolean;
-  data: AutoPlacementItem[];
-  skipped: { uid: string; slug?: string; reason: string }[];
-}
-
-/** Dry-runs the checks list's bulk "Switch to automatic placement": which
- * pinned checks would switch. Only fetched while the dialog is open. */
-export function useAutoPlacementPreview(org: string, enabled: boolean) {
+/** Every check matching the list's filters, all pages walked (spec
+ * 2026-11-05-01). Only fetched while a bulk dialog is open. */
+export function useChecksMatching(org: string, filters: BulkCheckFilters, enabled: boolean) {
   return useQuery({
-    queryKey: ["autoPlacementPreview", org],
-    queryFn: () =>
-      apiFetch<AutoPlacementResponse>(`/api/v1/orgs/${org}/checks/auto-placement`, {
-        method: "POST",
-        body: JSON.stringify({ dryRun: true }),
-      }),
+    queryKey: ["checksMatching", org, filters],
+    queryFn: async () => {
+      const checks: Check[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await apiFetch<ChecksListResponse>(
+          buildChecksUrl(org, { ...filters, limit: 100, cursor }),
+        );
+        checks.push(...(page.data ?? []));
+        cursor = page.pagination?.cursor;
+      } while (cursor);
+      return checks;
+    },
     enabled: !!org && enabled,
     staleTime: 0,
   });
 }
 
-/** Switches every eligible pinned check (or the named ones) to automatic
- * placement: same regions, same count, empty pool — only failover is gained. */
-export function useSwitchToAutoPlacement(org: string) {
+/** The fields of a check PATCH a bulk update accepts (spec 2026-11-05-01). */
+export interface BulkCheckChanges {
+  enabled?: boolean;
+  resolveOpenIncidents?: boolean;
+  period?: string;
+  placement?: CheckPlacement;
+  regions?: string[];
+  regionCount?: number;
+  regionPool?: string[];
+  confirmationPeriodSeconds?: number;
+  recoveryPeriodSeconds?: number;
+}
+
+/** Response of PATCH /checks: the checks updated (or that would be) and the
+ * ones left alone, with why. */
+export interface BulkUpdateChecksResponse {
+  dryRun: boolean;
+  data: { uid: string; slug?: string; name?: string }[];
+  skipped: { uid: string; slug?: string; reason: string; message?: string }[];
+  warnings?: { name: string; message: string; code?: string }[];
+}
+
+function bulkUpdateChecks(
+  org: string,
+  body: { checkUids: string[]; changes: BulkCheckChanges; dryRun?: boolean },
+) {
+  return apiFetch<BulkUpdateChecksResponse>(`/api/v1/orgs/${org}/checks`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Dry-runs a bulk update: which of the given checks the changes would apply to. */
+export function useBulkUpdateChecksPreview(
+  org: string,
+  checkUids: string[],
+  changes: BulkCheckChanges | null,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["bulkUpdateChecksPreview", org, checkUids, changes],
+    queryFn: () => bulkUpdateChecks(org, { checkUids, changes: changes ?? {}, dryRun: true }),
+    enabled: !!org && enabled && checkUids.length > 0 && changes !== null,
+    staleTime: 0,
+  });
+}
+
+/** Applies one set of changes, shaped like a check PATCH, to several checks. */
+export function useBulkUpdateChecks(org: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (checkUids?: string[]) =>
-      apiFetch<AutoPlacementResponse>(`/api/v1/orgs/${org}/checks/auto-placement`, {
-        method: "POST",
-        body: JSON.stringify(checkUids && checkUids.length > 0 ? { checkUids } : {}),
-      }),
+    mutationFn: (body: { checkUids: string[]; changes: BulkCheckChanges }) => bulkUpdateChecks(org, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
       queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
       queryClient.invalidateQueries({ queryKey: ["check", org] });
-      queryClient.invalidateQueries({ queryKey: ["autoPlacementPreview", org] });
+      queryClient.invalidateQueries({ queryKey: ["checksMatching", org] });
+      queryClient.invalidateQueries({ queryKey: ["bulkUpdateChecksPreview", org] });
     },
   });
 }
@@ -3741,7 +3784,14 @@ export function useCreateEndpointSubscriber(
   });
 }
 
-export function useStatusPageSubscribers(org: string, statusPageUid: string) {
+// The list is org-admin only on the server (it carries third parties' email
+// addresses), so callers pass `enabled: false` below admin instead of firing a
+// request that can only be refused.
+export function useStatusPageSubscribers(
+  org: string,
+  statusPageUid: string,
+  options: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: ["statusPageSubscribers", org, statusPageUid],
     queryFn: async () => {
@@ -3754,7 +3804,7 @@ export function useStatusPageSubscribers(org: string, statusPageUid: string) {
         count: response.meta?.count ?? response.data?.length ?? 0,
       };
     },
-    enabled: !!org && !!statusPageUid,
+    enabled: !!org && !!statusPageUid && (options.enabled ?? true),
   });
 }
 
@@ -7170,13 +7220,29 @@ export interface DiscordLinkResponse {
  * them here with `?discord_linked=1`; the page then calls `useConnectDiscord`.
  * That split is deliberate — the callback is a PUBLIC route, so the less it is
  * allowed to write the better.
+ *
+ * A linked Discord identity signs in, so the call needs a re-authentication:
+ * the current password, or a recent sign-in for a passwordless account.
  */
 export function useCreateDiscordLink(org: string) {
   return useMutation({
-    mutationFn: (redirectUri: string) =>
+    mutationFn: ({
+      redirectUri,
+      currentPassword,
+    }: {
+      redirectUri: string;
+      /** Required when the account has a password (spec 2026-11-01-03). */
+      currentPassword?: string;
+    }) =>
       apiFetch<DiscordLinkResponse>(
         `/api/v1/orgs/${org}/users/me/discord/link-start`,
-        { method: "POST", body: JSON.stringify({ redirectUri }) },
+        {
+          method: "POST",
+          body: JSON.stringify({ redirectUri, currentPassword }),
+          // A wrong password answers 401 INVALID_CURRENT_PASSWORD: about the
+          // body, not the session, so it must not sign the member out.
+          suppress401Handling: true,
+        },
       ),
   });
 }

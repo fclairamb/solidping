@@ -238,8 +238,11 @@ func manualReaderServerEnvVars() []string {
 		"SP_AUTH_ACCESS_TOKEN_EXPIRY",
 		"SP_AUTH_REFRESH_TOKEN_EXPIRY",
 		"SP_AUTH_IMPERSONATION_ENABLED",
+		"SP_AUTH_AUTO_PERSONAL_ORG",
 		"SP_AUTH_ADMIN_EMAIL",
 		"SP_ADMIN_EMAIL",
+		// resolveRegistrationLimit
+		"SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP",
 		// applyServerEnv
 		"SP_SERVER_DOCS_HOST",
 		"SP_DOCS_HOST",
@@ -259,7 +262,13 @@ func manualReaderServerEnvVars() []string {
 		"SP_ENCRYPTION_MASTER_KEY",
 		"SP_ENCRYPTION_MASTER_KEY_FILE",
 		"SP_ENCRYPTION_AUTO_MIGRATE",
-		// applySchedulingEnv
+	}, append(manualReaderSchedulingEnvVars(),
+		append(manualReaderWorkerPoolEnvVars(), manualReaderACMEEnvVars()...)...)...)
+}
+
+// manualReaderSchedulingEnvVars lists the names applySchedulingEnv reads.
+func manualReaderSchedulingEnvVars() []string {
+	return []string{
 		"SP_SCHEDULING_SLOW_THRESHOLD_MS",
 		"SP_SCHEDULING_CHECK_TIMEOUT_MS",
 		"SP_SCHEDULING_TIER_CREDIT_SECONDS",
@@ -271,7 +280,7 @@ func manualReaderServerEnvVars() []string {
 		"SP_SCHEDULING_FAST_LANE_RESERVED",
 		"SP_SCHEDULING_BULK_LANE_MAX",
 		"SP_SCHEDULING_BULK_SLICE_BUDGET_MS",
-	}, append(manualReaderWorkerPoolEnvVars(), manualReaderACMEEnvVars()...)...)
+	}
 }
 
 // manualReaderWorkerPoolEnvVars lists the names applyWorkerPoolEnv reads: the

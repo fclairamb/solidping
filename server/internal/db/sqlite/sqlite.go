@@ -4876,6 +4876,70 @@ func (s *Service) BumpGlobalCounter(
 	return limited, nil
 }
 
+// RaiseGlobalCounter atomically raises the global counter at key to value
+// when its live value is below it (spec 2026-11-03-03). Serialized like
+// BumpGlobalCounter.
+func (s *Service) RaiseGlobalCounter(
+	ctx context.Context, key string, value int, ttl time.Duration,
+) (bool, error) {
+	raised := false
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		now := time.Now()
+
+		var live []*models.StateEntry
+		if err := tx.NewSelect().Model(&live).
+			Where("organization_uid IS NULL").
+			Where("key = ?", key).
+			Where("deleted_at IS NULL").
+			Where("(expires_at IS NULL OR expires_at > datetime('now'))").
+			Scan(ctx); err != nil {
+			return fmt.Errorf("read counter %q: %w", key, err)
+		}
+
+		for _, entry := range live {
+			if models.CounterValue(entry) >= value {
+				return nil
+			}
+		}
+
+		raised = true
+		newValue := models.NewCounterValue(value)
+		expiresAt := now.Add(ttl)
+
+		res, err := tx.NewUpdate().Model((*models.StateEntry)(nil)).
+			Where("organization_uid IS NULL").
+			Where("key = ?", key).
+			Set("value = ?", newValue).
+			Set("expires_at = ?", expiresAt).
+			Set("updated_at = ?", now).
+			Set("deleted_at = NULL").
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("raise counter %q: %w", key, err)
+		}
+
+		if rows, _ := res.RowsAffected(); rows > 0 {
+			return nil
+		}
+
+		entry := models.NewStateEntry(nil, key)
+		entry.Value = newValue
+		entry.ExpiresAt = &expiresAt
+
+		if _, err := tx.NewInsert().Model(entry).Exec(ctx); err != nil {
+			return fmt.Errorf("seed counter %q: %w", key, err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return raised, nil
+}
+
 // AdmitFixedWindows atomically counts one event against every window, or
 // against none (spec 2026-09-25-34, "Capture now").
 //
@@ -7964,7 +8028,8 @@ func (s *Service) DeleteFilesByTopicPrefix(ctx context.Context, orgUID, prefix s
 	return int(rows), nil
 }
 
-// SumFileSizeByGroup returns the total bytes of live files for orgUID whose
+// SumFileSizeByGroup returns the total bytes of live, topic-less files (feedback
+// screenshots; attachments such as crawl reports always carry a topic) for orgUID whose
 // file_uri contains a "/<group>/" path segment — see filestorage.BuildPath
 // ("<orgUID>/<group>/<fileID>"), which every storage backend's URI embeds
 // verbatim after its own scheme/bucket prefix. organization_uid already
@@ -7982,6 +8047,7 @@ func (s *Service) SumFileSizeByGroup(ctx context.Context, orgUID, group string) 
 		ColumnExpr("COALESCE(SUM(size), 0)").
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
+		Where("topic IS NULL").
 		Where("file_uri LIKE ? ESCAPE '\\'", "%/"+escapeLikePrefix(group)+"/%").
 		Scan(ctx, &total)
 	if err != nil {
@@ -7991,7 +8057,8 @@ func (s *Service) SumFileSizeByGroup(ctx context.Context, orgUID, group string) 
 	return total.Int64, nil
 }
 
-// ListFilesByGroup returns live files of every organization under the given
+// ListFilesByGroup returns live, topic-less files (feedback screenshots, never
+// attachments such as crawl reports) of every organization under the given
 // storage group, created before `before`, oldest first, capped at limit. The
 // group is matched on its "/<group>/" URI path segment, as in
 // SumFileSizeByGroup.
@@ -8007,6 +8074,7 @@ func (s *Service) ListFilesByGroup(
 	query := s.db.NewSelect().
 		Model(&files).
 		Where("deleted_at IS NULL").
+		Where("topic IS NULL").
 		Where("file_uri LIKE ? ESCAPE '\\'", "%/"+escapeLikePrefix(group)+"/%").
 		Where("created_at < ?", before).
 		Order("created_at ASC")

@@ -72,9 +72,30 @@ func deviceTokenCreatedFixture(_ i18n.Locale) map[string]any {
 
 func passkeyAddedFixture(_ i18n.Locale) map[string]any {
 	return map[string]any{
-		"PasskeyName": "iCloud Keychain",
-		"CreatedAt":   fixtureChangedAt(),
-		"SecurityURL": fixtureDashboardURL + "/orgs/acme/account/security",
+		"PasskeyName":  "iCloud Keychain",
+		"CreatedAt":    fixtureChangedAt(),
+		keySecurityURL: fixtureDashboardURL + "/orgs/acme/account/security",
+	}
+}
+
+func totpEnabledFixture(_ i18n.Locale) map[string]any {
+	return map[string]any{
+		"EnabledAt":    fixtureChangedAt(),
+		keySecurityURL: fixtureDashboardURL + "/orgs/acme/account/security",
+	}
+}
+
+func totpDisabledFixture(_ i18n.Locale) map[string]any {
+	return map[string]any{
+		"DisabledAt":   fixtureChangedAt(),
+		keySecurityURL: fixtureDashboardURL + "/orgs/acme/account/security",
+	}
+}
+
+func discordLinkedFixture(_ i18n.Locale) map[string]any {
+	return map[string]any{
+		"LinkedAt":     fixtureChangedAt(),
+		keySecurityURL: fixtureDashboardURL + "/orgs/acme/account/security",
 	}
 }
 

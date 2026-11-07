@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
 )
@@ -54,4 +55,35 @@ func TestIncidentPublishJobRunAndScheduler(t *testing.T) {
 	// A closed database makes the enqueue fail.
 	r.NoError(dbSvc.Close())
 	r.Error(scheduler.SchedulePublish(ctx, orgUID, "inc-2", "page-1", time.Now()))
+}
+
+// A blip that resolved during the debounce is a clean no-op: the job succeeds
+// (nothing to retry) and nothing is published.
+func TestIncidentPublishJobRun_ResolvedIncidentPublishesNothing(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	jctx, dbSvc, orgUID := newAgentGCTestContext(t)
+
+	check := models.NewCheck(orgUID, "payments", "http")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	incident := models.NewIncident(orgUID, check.UID, time.Now(), "payments is down")
+	r.NoError(dbSvc.CreateIncident(ctx, incident))
+
+	state := models.IncidentStateResolved
+	now := time.Now()
+	r.NoError(dbSvc.UpdateIncident(ctx, incident.UID, &models.IncidentUpdate{State: &state, ResolvedAt: &now}))
+
+	run, err := (&jobtypes.IncidentPublishJobDefinition{}).CreateJobRun(json.RawMessage(
+		`{"organizationUid":"` + orgUID + `","incidentUid":"` + incident.UID + `","statusPageUid":"page-1"}`))
+	r.NoError(err)
+	r.NoError(run.Run(ctx, jctx))
+
+	pubs, err := dbSvc.ListIncidentPublications(ctx, &models.ListIncidentPublicationsFilter{
+		OrganizationUID: orgUID, Limit: 10,
+	})
+	r.NoError(err)
+	r.Empty(pubs)
 }

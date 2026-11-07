@@ -1239,8 +1239,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Components of a vendor status page, for the check form. Behind the same
 	// global rate limiter as /checks/validate (neither has a dedicated one).
 	orgChecks.POST("/vendor-status/components", checkTypesHandler.ListVendorStatusComponents)
+	// Bulk update: one PATCH body applied to many checks (spec 2026-11-05-01).
+	orgChecks.PATCH("", checksHandler.BulkUpdateChecks)
 	// Bulk "Switch to automatic placement" (spec 2026-09-25-06). A literal
-	// segment, registered ahead of the "/:checkUid" routes.
+	// segment, registered ahead of the "/:checkUid" routes. Deprecated by the
+	// bulk PATCH above, removed after 2026-12-15.
 	orgChecks.POST("/auto-placement", checksHandler.SwitchToAutoPlacement)
 
 	// Config-as-code surface (export/import/apply) is admin-only: import and
@@ -1691,6 +1694,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// them too — otherwise they would be the unguarded way to spend the
 		// instance's money on a premium-rate destination.
 		usernotifications.WithEntitlements(s.services.Entitlements),
+		// A Discord link binds an identity that signs in, so it asks the same
+		// re-authentication as a new TOTP or passkey (spec 2026-11-01-03).
+		usernotifications.WithFactorReauthenticator(s.authService),
 	)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender, s.services.EmailFormatter)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
@@ -2141,8 +2147,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		statussubscribers.WithConfirmBudget(s.config.StatusSubscribers))
 	statusSubscribersHandler := statussubscribers.NewHandler(
 		statusSubscribersService, s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config)
-	// Authed admin: list (count + redactable addresses) and remove.
-	orgStatusPages.GET("/:statusPageUid/subscribers", statusSubscribersHandler.ListSubscribers)
+	// The list is org ADMIN only, structurally (spec 2026-11-02-04): it carries
+	// the email addresses of third parties who subscribed on the public page,
+	// which neither a viewer nor a `user` member needs. orgGroup's write floor
+	// lets every GET through, so this route gets its own admin chain (with the
+	// slug redirect first, like every other admin group). Removal keeps the
+	// orgGroup write floor below.
+	orgStatusPagesAdmin := api.NewGroup("/orgs/:org/status-pages").
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgStatusPagesAdmin.GET("/:statusPageUid/subscribers", statusSubscribersHandler.ListSubscribers)
 	// Operator-side webhook/Slack subscriptions (spec 2026-08-21-07).
 	//
 	// The path is `/subscribers/endpoints`, NOT `/subscribers`, and that is
@@ -2513,9 +2527,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// assumption (spec 2026-09-25-26) — see reportRateLimitConfig.
 	// RateLimitRoute (not RateLimit) because the route itself is the scope
 	// here, not a path prefix. What it can STORE is bounded in
-	// feedback.Service (spec 2026-10-29-01): anonymous screenshots spend an
-	// instance-wide hourly budget (app.feedback_anon_screenshots_per_hour)
-	// and need a free GitHub issue dispatch slot, every screenshot also fits
+	// feedback.Service (spec 2026-10-29-01): screenshots from anyone but
+	// members of the named org (and super admins), anonymous or signed in
+	// (spec 2026-10-30-02), spend an instance-wide hourly budget
+	// (app.feedback_anon_screenshots_per_hour) and need a free GitHub issue
+	// dispatch slot, every screenshot also fits
 	// the per-org quota (checked atomically with the insert), and the
 	// state-cleanup job purges report files past app.feedback_retention_days.
 	reportLimiter := middleware.NewRateLimiter(reportRateLimitConfig(s.config.Server.RateLimiting), ctx)
@@ -2788,7 +2804,8 @@ func isAllowedCORSOrigin(origin string, allowed []string) bool {
 func (s *Server) corsMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) error {
 		writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-		writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
+		writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin, "+
+			"X-POSTHOG-SESSION-ID, X-POSTHOG-DISTINCT-ID")
 		writer.Header().Set("Access-Control-Max-Age", "86400")
 
 		switch origin := req.Header.Get("Origin"); {
@@ -3036,7 +3053,7 @@ func docsHostMatches(reqHost, docsHost string) bool {
 		host = h
 	}
 
-	return strings.EqualFold(host, docsHost)
+	return strings.EqualFold(strings.TrimSuffix(host, "."), strings.TrimSuffix(docsHost, "."))
 }
 
 // serveDocsRoute is the handler for /docs and /docs/*path. It strips
@@ -4636,6 +4653,31 @@ func (s *Server) ReconcileCheckJobSchedules(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// CloseOrphanedStatusPagePublications resolves, once at startup, the
+// status-page entries whose check was deleted and that nothing will ever close
+// (spec 2026-11-05-05): those of checks deleted before the check-deletion hook
+// existed. Idempotent; the state_cleanup job runs the same sweep periodically.
+// Best-effort: a stale status-page entry is a papercut, not a reason to refuse
+// to boot, so a failure is logged and not returned.
+// No subscriber notifier here: its egress guard is built later, and these
+// entries are old enough that a closure mail would only be noise.
+func (s *Server) CloseOrphanedStatusPagePublications(ctx context.Context) {
+	var (
+		clk       clock.Clock
+		publisher *realtime.Publisher
+	)
+
+	if s.services != nil {
+		clk = s.services.Clock
+		publisher = s.services.Realtime
+	}
+
+	publications := incidentpublications.NewService(s.dbService, clk, publisher)
+	if _, err := publications.CloseOrphanedPublications(ctx); err != nil {
+		slog.WarnContext(ctx, "Failed to close status-page entries of deleted checks", "error", err)
+	}
 }
 
 // maybeSplitPlaintextSecrets is the no-master-key counterpart to the encryption

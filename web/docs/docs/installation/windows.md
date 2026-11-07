@@ -7,6 +7,26 @@ title: Windows Binary
 
 SolidPing can be run on Windows systems as a standalone executable or as a Windows Service.
 
+## winget
+
+The simplest way, on Windows 10 and 11:
+
+```powershell
+winget install fclairamb.SolidPing
+```
+
+This puts a `solidping` command on your `PATH` (open a new terminal first), so
+the examples below work with `solidping` in place of `.\solidping.exe`.
+Upgrade it later with `winget upgrade fclairamb.SolidPing`.
+
+To install it for all users, which suits a Windows Service, add
+`--scope machine` from an administrator prompt. For the service commands
+below, get the binary path with:
+
+```powershell
+(Get-Command solidping).Source
+```
+
 ## Download
 
 Download the latest Windows release from GitHub:
@@ -236,6 +256,16 @@ Get-Content "C:\Program Files\SolidPing\logs\stderr.log" -Tail 100 -Wait
 ```
 
 ## Updating
+
+With winget:
+
+```powershell
+nssm stop SolidPing
+winget upgrade fclairamb.SolidPing
+nssm start SolidPing
+```
+
+With a downloaded binary:
 
 ```powershell
 # Stop the service

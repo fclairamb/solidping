@@ -164,6 +164,12 @@ func (m *mockDBService) DeleteOrganization(_ context.Context, _ string) error {
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetAutoPersonalOrgByOwner(
+	_ context.Context, _ string, _ bool,
+) (*models.Organization, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateOrganizationProvider(_ context.Context, _ *models.OrganizationProvider) error {
 	panic("not implemented")
 }
@@ -1735,6 +1741,12 @@ func (m *mockDBService) AdmitFixedWindows(
 }
 
 func (m *mockDBService) BumpGlobalCounter(
+	_ context.Context, _ string, _ int, _ time.Duration,
+) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) RaiseGlobalCounter(
 	_ context.Context, _ string, _ int, _ time.Duration,
 ) (bool, error) {
 	panic("not implemented")

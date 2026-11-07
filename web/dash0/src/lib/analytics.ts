@@ -44,7 +44,9 @@ export const KNOWN_EXCEPTION_NOISE: readonly RegExp[] = [
   // forgot-password/login links overnight, ~00:45-03:00 UTC (investigated
   // 2026-09-25, spec 2026-09-25-13): a scanner-side bug, not a SolidPing one.
   // Left uncaught it drowns real errors once exception autocapture is on.
-  /^Object Not Found Matching Id:\d+, MethodName:\w+, ParamCount:\d+$/,
+  // Not anchored at the start: posthog-js reports a non-Error rejection as
+  // "Non-Error promise rejection captured with value: <message>".
+  /(?:^|: )Object Not Found Matching Id:\d+, MethodName:\w+, ParamCount:\d+$/,
 ];
 
 /** Browser-safe PostHog settings, as returned by GET /api/v1/config. */
@@ -159,6 +161,8 @@ export interface PublicConfig {
   ai?: { enabled: boolean };
   runMode?: string;
   deploymentMode?: DeploymentMode;
+  /** Sign-ins create a personal org (auth.auto_personal_org, spec 2026-10-30-04). */
+  autoPersonalOrg?: boolean;
 }
 
 /**
@@ -192,6 +196,8 @@ interface PostHogLike {
   reset: () => void;
   capture: (event: string, properties?: Record<string, unknown>) => void;
   captureException: (error: unknown, properties?: Record<string, unknown>) => void;
+  get_session_id?: () => string;
+  get_distinct_id?: () => string;
 }
 
 let client: PostHogLike | null = null;
@@ -435,6 +441,22 @@ export function captureException(error: unknown, properties?: Record<string, unk
   if (!client) return;
   rememberExplicitException(error);
   client.captureException(error, properties ?? {});
+}
+
+/**
+ * Headers that let the server link one of its own errors (5xx, panic) to this
+ * PostHog session replay. Empty when analytics is off, so the API client works
+ * unchanged without posthog-js. Callers must only attach them to same-origin
+ * requests.
+ */
+export function getAnalyticsRequestHeaders(): Record<string, string> {
+  if (!client) return {};
+  const headers: Record<string, string> = {};
+  const sessionId = client.get_session_id?.();
+  const distinct = client.get_distinct_id?.();
+  if (sessionId) headers["X-POSTHOG-SESSION-ID"] = sessionId;
+  if (distinct) headers["X-POSTHOG-DISTINCT-ID"] = distinct;
+  return headers;
 }
 
 /** Test seam: forgets any loaded client. Used by unit tests only. */

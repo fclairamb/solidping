@@ -10,6 +10,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
+  NetworkError,
   apiFetch,
   setSession,
   clearToken,
@@ -83,6 +84,16 @@ export interface OrganizationSummary {
   role: string;
 }
 
+// The organization the session is scoped to, as every login-shaped response
+// and /auth/me carry it. Unlike `organizations` (the caller's memberships), it
+// is present for a super admin working in an org they don't belong to.
+export interface SessionOrganization {
+  uid: string;
+  slug: string;
+  name?: string;
+  logoUrl?: string | null;
+}
+
 export interface LoginResult {
   loginAction: string;
   organizations: OrganizationSummary[];
@@ -127,7 +138,7 @@ export interface DeletedOrgSession {
     // See User.preferences.
     preferences?: UserPreferences;
   };
-  organization?: { uid: string; slug: string; name?: string };
+  organization?: SessionOrganization;
   organizations?: OrganizationSummary[];
   loginAction?: string;
 }
@@ -136,6 +147,9 @@ interface AuthContextType {
   user: User | null;
   org: string | null;
   organizations: OrganizationSummary[];
+  // The org the session is scoped to (see SessionOrganization). Use
+  // useOrganizationIdentity to read an org's name and logo.
+  sessionOrganization: SessionOrganization | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (org: string, email: string, password: string) => Promise<LoginResult>;
@@ -237,11 +251,7 @@ interface AuthResponse {
     // See User.preferences.
     preferences?: UserPreferences;
   };
-  organization?: {
-    uid: string;
-    slug: string;
-    name?: string;
-  };
+  organization?: SessionOrganization;
   organizations?: OrganizationSummary[];
   loginAction?: string;
   // The password-login path may return a 2FA challenge instead of
@@ -275,11 +285,7 @@ interface MeResponse {
   // Optional — a zero-org session (a user who belongs to no organization yet)
   // gets a 200 from /auth/me with no organization. Mirrors the sibling
   // AuthResponse.organization above, which is already optional.
-  organization?: {
-    uid: string;
-    slug: string;
-    name?: string;
-  };
+  organization?: SessionOrganization;
   organizations: OrganizationSummary[];
   // Present only for a super-admin impersonation token (spec 2026-09-29-03).
   impersonation?: ImpersonationInfo;
@@ -313,6 +319,28 @@ interface SessionUser {
   preferences?: UserPreferences;
 }
 
+// Delays before retrying /auth/me on a cold page load. A returning visitor's
+// first request is the one that meets a waking network or a restarting pod,
+// and giving up on it would send a still-valid session to the login page.
+const ME_RETRY_DELAYS_MS = [1000, 3000];
+
+/** GET /auth/me, retried on a transient failure (no network, 5xx, or a
+ * refresh that could not reach a verdict). A 401/403 is a verdict and is
+ * thrown at once. */
+async function fetchMeWithRetry(): Promise<MeResponse> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await apiFetch<MeResponse>(`/api/v1/auth/me`, { suppress401Redirect: true });
+    } catch (e) {
+      const transient = e instanceof NetworkError || (e instanceof ApiError && (e.status ?? 0) >= 500);
+      if (!transient || attempt >= ME_RETRY_DELAYS_MS.length) {
+        throw e;
+      }
+      await new Promise((resolve) => setTimeout(resolve, ME_RETRY_DELAYS_MS[attempt]));
+    }
+  }
+}
+
 function toUser(user: SessionUser, impersonation?: ImpersonationInfo | null): User {
   return {
     uid: user.uid,
@@ -338,7 +366,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Organization UUID, tracked alongside the slug purely so product analytics
   // can build the same pseudonymous distinct id as the backend. Never
   // persisted, never rendered.
-  const [orgUid, setOrgUid] = useState<string | null>(null);
+  const [sessionOrganization, setSessionOrganization] = useState<SessionOrganization | null>(null);
+  const orgUid = sessionOrganization?.uid ?? null;
   const [organizations, setOrganizations] = useState<OrganizationSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -392,7 +421,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }),
     });
     if (plan.changeLanguage) {
-      void i18n.changeLanguage(plan.changeLanguage);
+      i18n.changeLanguage(plan.changeLanguage).catch(() => {
+        // Chunk failed to load: keep the current language.
+      });
     }
     // Each distinct write goes out once per page load: a refused or failed
     // PATCH (an odd browser zone the server does not know) is not retried in
@@ -476,7 +507,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // validate — the genuinely-dead case is still cleared, just by /auth/me.
     if (getExpiresAt() === null && getRefreshToken() !== null && !getImpersonation()) {
       const outcome = await refreshWithOutcome();
-      if (!outcome.accessToken && outcome.failureReason !== "network-error") {
+      if (!outcome.accessToken && outcome.failureReason !== "unavailable") {
         // escalate() inside token-refresh.ts already cleared the session
         // and redirected to login — nothing left to validate.
         setIsLoading(false);
@@ -485,10 +516,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const data = await apiFetch<MeResponse>(
-        `/api/v1/auth/me`,
-        { suppress401Redirect: true }
-      );
+      const data = await fetchMeWithRetry();
       // A stored session restored on a cold page load never saw a login
       // response, so this is where such a tab discovers it is confined to the
       // rotation screen.
@@ -500,7 +528,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // left over from an earlier session would read as "already scoped to
       // this org" and skip OrgLayout's switch-org (spec 2026-09-25-15).
       setOrg(persistSessionOrg(data.organization));
-      setOrgUid(data.organization?.uid ?? null);
+      setSessionOrganization(data.organization ?? null);
       setOrganizations(data.organizations || []);
     } catch (e) {
       // Only clear auth state on auth-failure responses (401/403). Transient
@@ -577,7 +605,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // refused) clears the stored org rather than keeping the previous
     // session's slug — see persistSessionOrg (spec 2026-09-25-15).
     setOrg(persistSessionOrg(data.organization));
-    setOrgUid(data.organization?.uid ?? null);
+    setSessionOrganization(data.organization ?? null);
 
     setUser(toUser(data.user));
 
@@ -653,7 +681,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStoredOrg(data.organization.slug);
       setOrg(data.organization.slug);
     }
-    setOrgUid(data.organization?.uid ?? null);
+    setSessionOrganization(data.organization ?? null);
     setUser(toUser(data.user));
     setOrganizations(data.organizations || []);
   };
@@ -672,7 +700,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await apiFetch<MeResponse>(
       `/api/v1/auth/me`
     );
-    setOrgUid(data.organization?.uid ?? null);
+    setSessionOrganization(data.organization ?? null);
     setUser(toUser(data.user));
     setOrganizations(data.organizations || []);
   };
@@ -691,7 +719,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const resolvedOrg = data.organization?.slug || orgSlug;
       setStoredOrg(resolvedOrg);
       setOrg(resolvedOrg);
-      setOrgUid(data.organization?.uid ?? null);
+      setSessionOrganization(data.organization ?? null);
       setUser(toUser(data.user));
       // Re-fetch organizations from /me (consistent with login)
       try {
@@ -719,7 +747,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOrg(session.slug);
 
     const data = await apiFetch<MeResponse>(`/api/v1/auth/me`);
-    setOrgUid(data.organization?.uid ?? null);
+    setSessionOrganization(data.organization ?? null);
     setOrganizations(data.organizations || []);
   };
 
@@ -744,13 +772,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (nextOrg) {
       setStoredOrg(nextOrg);
       setOrg(nextOrg);
-      setOrgUid(session.organization?.uid ?? null);
+      setSessionOrganization(session.organization ?? null);
     } else {
       // Nothing may keep pointing at the deleted slug: both routes/login.tsx
       // and redirectToExpiredLogin fall back to the stored org.
       clearStoredOrg();
       setOrg(null);
-      setOrgUid(null);
+      setSessionOrganization(null);
     }
 
     if (session.user) {
@@ -766,7 +794,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     const data = await apiFetch<MeResponse>(`/api/v1/auth/me`);
-    setOrgUid(data.organization?.uid ?? null);
+    setSessionOrganization(data.organization ?? null);
     setUser(toUser(data.user));
     setOrganizations(data.organizations || []);
   }, []);
@@ -832,7 +860,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearStoredOrg();
       setUser(null);
       setOrg(null);
-      setOrgUid(null);
+      setSessionOrganization(null);
       setOrganizations([]);
       // Drop the pseudonymous analytics identity so a subsequent login on the
       // same browser is not stitched onto the previous user. No-op when
@@ -848,6 +876,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         org,
         organizations,
+        sessionOrganization,
         isAuthenticated: !!user,
         isLoading,
         login,
@@ -875,4 +904,20 @@ export function useAuth() {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
+}
+
+// The name and logo of the organization `slug`: the caller's membership entry
+// when there is one, otherwise the org the session is scoped to. A super admin
+// working in an org they don't belong to has no membership entry, so reading
+// `organizations` alone showed an empty name and the default logo after every
+// page reload.
+export function useOrganizationIdentity(
+  slug: string,
+): Pick<OrganizationSummary, "name" | "logoUrl"> | undefined {
+  const { organizations, sessionOrganization } = useAuth();
+
+  return (
+    organizations.find((entry) => entry.slug === slug) ??
+    (sessionOrganization?.slug === slug ? sessionOrganization : undefined)
+  );
 }

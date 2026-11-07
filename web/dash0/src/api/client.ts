@@ -4,13 +4,14 @@
 // at module-evaluation time, so ESM's circular-import handling resolves it
 // safely. Keeping it static (vs. a dynamic import()) keeps the single-flight
 // behavior synchronous-enough to unit test without extra await hops.
-import { refreshAccessToken } from "@/lib/token-refresh";
+import { refreshWithOutcome } from "@/lib/token-refresh";
 import { isOrgPublicRoute } from "@/lib/org-public-routes";
 import { clearImpersonation, getImpersonationToken } from "@/lib/impersonation";
 // A refused demo write is announced, not navigated away from (see
 // announceDemoReadOnly). Static, because sonner is already in every page's
 // bundle — a dynamic import here bought nothing and split no chunk.
 import { toast } from "sonner";
+import { getAnalyticsRequestHeaders } from "@/lib/analytics";
 // i18next is usable outside React components/hooks — this module runs below
 // any component tree, so it calls the singleton directly rather than going
 // through useTranslation. Used to localize the DEMO_READ_ONLY message (see
@@ -366,8 +367,21 @@ export function redirectToPasswordChange(): void {
   window.location.href = `${basepath}${PASSWORD_CHANGE_PATH}`;
 }
 
+function isSameOrigin(url: string): boolean {
+  try {
+    return new URL(url, window.location.href).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 async function doFetch(url: string, headers: Headers, fetchOptions: RequestInit): Promise<Response> {
   noteApiActivity();
+  if (isSameOrigin(url)) {
+    for (const [name, value] of Object.entries(getAnalyticsRequestHeaders())) {
+      headers.set(name, value);
+    }
+  }
   try {
     const response = await fetch(url, { ...fetchOptions, headers });
     noteApiActivity();
@@ -449,7 +463,15 @@ async function fetchWithAuth(
     !options._isRetry &&
     (!loggingOut || options.allowRefreshDuringLogout)
   ) {
-    const newToken = await refreshAccessToken();
+    const { accessToken: newToken, failureReason } = await refreshWithOutcome();
+
+    // The refresh could not reach a verdict (network down, server error).
+    // The stored session may well be valid, so fail this request like any
+    // other network error instead of letting handleResponse clear the tokens
+    // and redirect to login?session_expired=true.
+    if (failureReason === "unavailable") {
+      throw new NetworkError("Session refresh unavailable");
+    }
 
     if (newToken) {
       const retryHeaders = new Headers(headers);

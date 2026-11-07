@@ -23,6 +23,27 @@ SP_AUTH_REGISTRATION_EMAIL_PATTERN=@yourcompany\.com$
 SP_AUTH_REGISTRATION_EMAIL_PATTERN=@(yourcompany|partner)\.com$
 ```
 
+### Limiting Unconfirmed Sign-Ups per IP
+
+Each sign-up sends a confirmation email to the address typed in the form. To stop a bot from using the form to send email to strangers, you can cap the sign-ups that come from one client IP:
+
+```bash
+# Unconfirmed sign-ups allowed per client IP over 24 hours (0 turns the limit off)
+SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP=10
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP` | `0` (`10` in SaaS mode) | Sign-ups from one client IP that may wait for email confirmation, counting those submitted in the last 24 hours. While it is on, one client IP may also sign up at most once a minute. `0` turns both limits off. |
+
+- The limit is off by default on a self-hosted instance and set to `10` in SaaS mode (`SP_DEPLOYMENT_MODE=saas`).
+- Past either limit, the sign-up answers `429 RATE_LIMITED` and sends no email. The once-a-minute refusal carries a `Retry-After: 60` header.
+- Confirming a sign-up frees its slot, so several colleagues behind one office network get through as long as they confirm.
+- Signing up again with an address that is already waiting for confirmation does not take another slot. It sends a new link, at most once a minute.
+- The limit is also the `auth.registration_max_pending_per_ip` system parameter. A stored value applies at the next start, and the environment variable wins over it.
+- The client IP follows `SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES`. Behind a reverse proxy, set it, or every visitor shares the proxy's address.
+- In test run mode (`SP_RUNMODE=test`) the limit is off unless the variable is set.
+
 ### JWT Configuration
 
 ```bash
@@ -110,6 +131,23 @@ The `bcrypt` algorithm pre-hashes passwords as `base64(sha256(password))` before
 :::warning Validation
 The server validates the hashing policy at startup and **fails fast** on a misconfiguration (unknown algorithm; bcrypt cost outside `10–31`; argon2id memory below the `8192` KiB floor). Values below the OWASP-recommended floors are allowed but warn-logged. There is never a silent fallback.
 :::
+
+## Sign-up and organizations
+
+Every check, status page and alert lives in an organization. When `auth.auto_personal_org` is on, a user who signs in and belongs to none is placed this way, in order:
+
+1. a pending invitation for their email: they join that organization;
+2. an organization whose registration email pattern matches their email: they join it;
+3. a membership request they already sent: they wait for its answer on the "no organization" page;
+4. otherwise SolidPing creates a personal organization for them ("Alice's organization", in their language) and makes them its owner. They land on its dashboard, with no form to fill.
+
+The "no organization" page then only offers to join an existing organization when the user came through a join link or has a membership request. A user gets one personal organization: if they delete it, the next sign-in shows that page.
+
+With the setting off, such a user lands on the "no organization" page, where they create an organization or ask to join one.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_AUTH_AUTO_PERSONAL_ORG` | `true` when `SP_DEPLOYMENT_MODE=saas`, `false` otherwise | Create a personal organization for a user who signs in belonging to none. Also the `auth.auto_personal_org` system parameter, applied at startup |
 
 ## Changing an email address
 
@@ -460,6 +498,8 @@ Users can secure their accounts with **TOTP** two-factor authentication (compati
 - The code is asked on every sign-in: password, LDAP, and every SSO / OAuth connector (Google, GitHub, GitLab, Microsoft, Discord, Slack, OIDC, SAML, and the Slack app install). After the identity provider sends the user back, the dashboard shows the code step, and no session exists until the code is accepted.
 - Passkeys are the only sign-in that skips it, because a passkey already is a second factor.
 - SolidPing does not rely on the identity provider's own MFA (OIDC `amr`, SAML `AuthnContextClassRef`): a user who enabled 2FA is always asked.
+- Each code works once (RFC 6238 §5.2). After a code is accepted, at sign-in or when turning 2FA on or off, that code and earlier ones are refused like a wrong code, and the refusal counts as a failed attempt. To do a second operation right away, wait for the next code.
+- Turning 2FA on or off sends a notice email to the account's address.
 
 ## Configuration File
 
@@ -467,6 +507,7 @@ Users can secure their accounts with **TOTP** two-factor authentication (compati
 auth:
   jwt_secret: your-secure-random-secret
   registration_email_pattern: "@yourcompany\\.com$"
+  registration_max_pending_per_ip: 10 # 0 turns the limit off (default: 10 in SaaS mode, else 0)
   password:
     algorithm: argon2id # or "bcrypt"
     argon2:

@@ -83,6 +83,30 @@
     "revoke": "Wenn Sie ihn nicht selbst hinzugefügt haben, entfernen Sie ihn jetzt auf der Sicherheitsseite Ihres Kontos und ändern Sie Ihr Passwort:",
     "cta": "Meine Passkeys ansehen"
   },
+  "totpEnabled": {
+    "subject": "Für Ihr SolidPing-Konto wurde die Zwei-Faktor-Authentifizierung aktiviert",
+    "preheader": "Die Anmeldung verlangt jetzt einen Code aus einer Authenticator-App.",
+    "title": "Die Zwei-Faktor-Authentifizierung wurde aktiviert",
+    "body": "Für Ihr SolidPing-Konto wurde am {date} die Zwei-Faktor-Authentifizierung aktiviert. Die Anmeldung verlangt jetzt einen Code aus der Authenticator-App, mit der sie eingerichtet wurde.",
+    "revoke": "Wenn Sie sie nicht selbst aktiviert haben, wenden Sie sich sofort an Ihren Administrator und ändern Sie Ihr Passwort:",
+    "cta": "Kontosicherheit ansehen"
+  },
+  "totpDisabled": {
+    "subject": "Für Ihr SolidPing-Konto wurde die Zwei-Faktor-Authentifizierung deaktiviert",
+    "preheader": "Die Anmeldung verlangt keinen Code aus einer Authenticator-App mehr.",
+    "title": "Die Zwei-Faktor-Authentifizierung wurde deaktiviert",
+    "body": "Für Ihr SolidPing-Konto wurde am {date} die Zwei-Faktor-Authentifizierung deaktiviert. Die Anmeldung verlangt keinen Code aus einer Authenticator-App mehr.",
+    "revoke": "Wenn Sie sie nicht selbst deaktiviert haben, wenden Sie sich sofort an Ihren Administrator, ändern Sie Ihr Passwort und aktivieren Sie sie wieder:",
+    "cta": "Kontosicherheit ansehen"
+  },
+  "discordLinked": {
+    "subject": "Mit Ihrem SolidPing-Konto wurde ein Discord-Konto verknüpft",
+    "preheader": "Damit kann man sich jetzt bei Ihrem Konto anmelden.",
+    "title": "Ein Discord-Konto wurde verknüpft",
+    "body": "Mit Ihrem SolidPing-Konto wurde am {date} ein Discord-Konto verknüpft. Die Anmeldung mit Discord öffnet jetzt Ihr Konto.",
+    "revoke": "Wenn Sie es nicht selbst verknüpft haben, wenden Sie sich sofort an Ihren Administrator, um es zu entfernen. Ihr Passwort können Sie auf der Sicherheitsseite ändern:",
+    "cta": "Passwort ändern"
+  },
   "invitation": {
     "subject": "Einladung zu {org} bei SolidPing",
     "preheader": {
@@ -155,5 +179,8 @@
       "reasonIntro": "Begründung des Admins:",
       "retry": "Nach Ablauf der Wartezeit können Sie eine neue Anfrage stellen."
     }
+  },
+  "personalOrg": {
+    "name": "Organisation von {firstName}"
   }
 }

@@ -121,3 +121,61 @@ func TestSweepExpiredReportFiles_ListError(t *testing.T) {
 		})
 	})
 }
+
+// TestSweepExpiredReportFiles_SparesTopicFiles: a website crawl report (same
+// `reports` group, but attached under a topic) older than the retention
+// survives the sweep with its blob, while a topic-less file is purged.
+func TestSweepExpiredReportFiles_SparesTopicFiles(t *testing.T) {
+	t.Parallel()
+
+	localfs.Register()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("acme-spare", "Acme")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	cfg := &config.Config{}
+	cfg.App.FeedbackRetentionDays = 90
+	cfg.FileStorage.Type = "local"
+	cfg.FileStorage.LocalRoot = t.TempDir()
+
+	filesSvc := files.NewService(dbSvc, cfg)
+	orgUUID := uuid.MustParse(org.UID)
+	topic := "checks/abc/crawl-report"
+
+	create := func(name string, opts ...files.CreateFileOption) *models.File {
+		file, createErr := filesSvc.CreateFile(ctx, orgUUID, filestorage.GroupTypeReports, name,
+			"text/html", nil, strings.NewReader("x"), 1, opts...)
+		r.NoError(createErr)
+
+		_, updErr := dbSvc.DB().NewUpdate().Model((*models.File)(nil)).
+			Set("created_at = ?", time.Now().Add(-200*24*time.Hour)).
+			Where("uid = ?", file.UID).
+			Exec(ctx)
+		r.NoError(updErr)
+
+		return file
+	}
+
+	crawl := create("crawl.html", files.WithTopic(topic))
+	shot := create("shot.png")
+
+	sweepExpiredReportFiles(ctx, &jobdef.JobContext{DBService: dbSvc, AppConfig: cfg, Logger: slog.Default()})
+
+	_, err = dbSvc.GetFile(ctx, org.UID, crawl.UID)
+	r.NoError(err, "a crawl report must survive the screenshot retention")
+
+	body, err := filesSvc.OpenContent(ctx, crawl)
+	r.NoError(err, "the crawl report blob must still be there")
+	r.NoError(body.Close())
+
+	_, err = dbSvc.GetFile(ctx, org.UID, shot.UID)
+	r.Error(err, "the topic-less screenshot is still purged")
+}

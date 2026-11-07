@@ -70,6 +70,17 @@ func assertStorageQuotaEnforced(ctx context.Context, t *testing.T, dbSvc db.Serv
 	filesSvc := files.NewService(dbSvc, cfg)
 	svc := NewService(dbSvc, filesSvc, cfg, &countingGitHubPoster{})
 
+	// A topic-bearing file (website crawl report) in the same group must not
+	// count toward the screenshot quota (spec 2026-10-30-03): it is far over
+	// the quota, yet the positive control below still gets through only
+	// because of headroom computed from screenshots alone.
+	topic := "checks/abc/crawl-report"
+	crawl := models.NewFile(orgUID, "crawl.html", "text/html",
+		fmt.Sprintf("file://%s/%s/crawl", orgUID, filestorage.GroupTypeReports),
+		quota*10, nil)
+	crawl.Topic = &topic
+	r.NoError(dbSvc.CreateFile(ctx, crawl))
+
 	_, err := svc.SubmitReport(ctx, &SubmitReportRequest{
 		URL:            "https://example.com/page",
 		OrgSlug:        orgSlug,
@@ -82,7 +93,7 @@ func assertStorageQuotaEnforced(ctx context.Context, t *testing.T, dbSvc db.Serv
 
 	total, sumErr := dbSvc.SumFileSizeByGroup(ctx, orgUID, string(filestorage.GroupTypeReports))
 	r.NoError(sumErr)
-	r.Equal(quota, total, "a quota-rejected report must not persist a new file row")
+	r.Equal(quota, total, "a quota-rejected report must not persist a new file row, and crawl reports are not counted")
 
 	// Positive control: the same request, with headroom under the quota,
 	// must succeed — proving the rejection above is the quota firing, not a

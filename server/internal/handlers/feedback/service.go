@@ -3,6 +3,7 @@ package feedback
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,6 +73,10 @@ type SubmitReportRequest struct {
 	Context     ContextPayload
 	UserUID     string
 	UserEmail   string
+	// UserSuperAdmin is the super-admin flag of the authenticated user, set
+	// by the handler (spec 2026-10-30-02). A super admin's report skips the
+	// anonymous screenshot admission whatever org it names.
+	UserSuperAdmin bool
 	// ImpersonatedBy is the email (or, failing that, the UID) of the super
 	// admin behind an impersonation token, "" otherwise (spec 2026-09-29-03).
 	// The report is attributed to the TARGET, whose screen it shows; this
@@ -230,18 +235,47 @@ func (s *Service) resolveOrg(ctx context.Context, orgSlug string) (*models.Organ
 	return org, orgUUID, nil
 }
 
-// admitAndStoreScreenshot stores the report's screenshot. An anonymous one
-// must first be admitted by admitAnonymousScreenshot.
+// admitAndStoreScreenshot stores the report's screenshot. Unless the caller
+// is a member of the report's org or a super admin, it must first be admitted
+// by admitAnonymousScreenshot (spec 2026-10-30-02): any signed-in account can
+// name any org, so a valid token alone does not exempt it from the
+// instance-wide budget.
 func (s *Service) admitAndStoreScreenshot(
 	ctx context.Context, orgUID string, orgUUID uuid.UUID, req *SubmitReportRequest, dispatch bool,
 ) (*models.File, error) {
-	if req.UserUID == "" {
+	if !s.isTrustedReporter(ctx, orgUID, req) {
 		if err := s.admitAnonymousScreenshot(ctx, dispatch); err != nil {
 			return nil, err
 		}
 	}
 
 	return s.storeScreenshot(ctx, orgUID, orgUUID, req)
+}
+
+// isTrustedReporter reports whether the report's author skips the anonymous
+// screenshot admission: a super admin, or a member of the report's org. A
+// non-member's report is treated as anonymous (still accepted, still
+// attributed). A failed membership lookup fails closed.
+func (s *Service) isTrustedReporter(ctx context.Context, orgUID string, req *SubmitReportRequest) bool {
+	if req.UserUID == "" {
+		return false
+	}
+
+	if req.UserSuperAdmin {
+		return true
+	}
+
+	member, err := s.db.GetMemberByUserAndOrg(ctx, req.UserUID, orgUID)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			s.logger.WarnContext(ctx, "bug_report: membership lookup failed",
+				"user_uid", req.UserUID, "org_uid", orgUID, "err", err.Error())
+		}
+
+		return false
+	}
+
+	return member != nil
 }
 
 // admitAnonymousScreenshot decides whether an anonymous report may store its

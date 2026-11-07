@@ -61,6 +61,15 @@ describe("resolveHandoffLanding", () => {
     ).toEqual({ to: "/no-org", search: { membershipPending: "acme" } });
   });
 
+  it("carries a pending MCP authorization to /no-org for an org-less session", () => {
+    const authorize = "/api/v1/oauth/authorize?client_id=acme-client&state=s1";
+    const returnTo = `${BASE}/orgs/acme/login?returnTo=${encodeURIComponent(authorize)}`;
+    expect(resolveHandoffLanding({ returnTo }, undefined, BASE)).toStrictEqual({
+      to: "/no-org",
+      search: { membershipPending: undefined, returnTo: authorize },
+    });
+  });
+
   it("resumes an invitation returnTo for an org-less session", () => {
     expect(
       resolveHandoffLanding({ returnTo: `${BASE}/invite/abc123` }, undefined, BASE),

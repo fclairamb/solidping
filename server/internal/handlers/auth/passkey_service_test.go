@@ -1,7 +1,9 @@
 package auth_test
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -9,7 +11,28 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
+
+// passkeyTestPassword is the password of the passkeyTestUser account.
+const passkeyTestPassword = "passkey-test-pw"
+
+// passkeyTestPasswordPtr is the re-authentication BeginRegistration needs for
+// the passkeyTestUser account.
+func passkeyTestPasswordPtr() *string {
+	pw := passkeyTestPassword
+
+	return &pw
+}
+
+// signedInCtx is the request context RequireAuth builds for a session that
+// signed in just now: an account without a password may add a passkey from
+// it (spec 2026-10-31-02).
+func signedInCtx(ctx context.Context, userUID string) context.Context {
+	return context.WithValue(ctx, base.ContextKeyClaims,
+		&auth.Claims{UserUID: userUID, OrgSlug: "acme", AuthTime: time.Now().Unix()})
+}
 
 // passkeyTestUser is a minimal helper that wires up an authenticated
 // user against an in-memory sqlite db.
@@ -27,7 +50,8 @@ func passkeyTestUser(t *testing.T) (
 
 	user := models.NewUser("alice@example.com")
 	user.Name = "Alice"
-	pwd := "$plaintext$pw"
+	pwd, err := passwords.Hash(passkeyTestPassword)
+	r.NoError(err)
 	user.PasswordHash = &pwd
 	r.NoError(dbSvc.CreateUser(ctx, user))
 
@@ -143,7 +167,7 @@ func TestPasskeyService_UsesOverlaidBaseURL(t *testing.T) {
 	pkSvc := auth.NewPasskeyService(authSvc, dbSvc)
 	r.True(pkSvc.Enabled())
 
-	resp, err := pkSvc.BeginRegistration(ctx, user.UID)
+	resp, err := pkSvc.BeginRegistration(signedInCtx(ctx, user.UID), user.UID, nil)
 	r.NoError(err)
 	r.NotNil(resp.Options)
 	r.Equal("localhost", resp.Options.Response.RelyingParty.ID)
@@ -175,7 +199,7 @@ func TestPasskeyService_BeginRegistrationWhenDisabled(t *testing.T) {
 	user := models.NewUser("a@b.com")
 	r.NoError(dbSvc.CreateUser(ctx, user))
 
-	_, err = pkSvc.BeginRegistration(ctx, user.UID)
+	_, err = pkSvc.BeginRegistration(ctx, user.UID, nil)
 	r.ErrorIs(err, auth.ErrWebAuthnNotConfigured)
 }
 
@@ -189,7 +213,7 @@ func TestPasskeyService_BeginRegistrationReturnsOptions(t *testing.T) {
 	pkSvc, _, user := passkeyTestUser(t)
 	r.True(pkSvc.Enabled())
 
-	resp, err := pkSvc.BeginRegistration(ctx, user.UID)
+	resp, err := pkSvc.BeginRegistration(ctx, user.UID, passkeyTestPasswordPtr())
 	r.NoError(err)
 	r.NotNil(resp.Options)
 	r.NotEmpty(resp.Session)

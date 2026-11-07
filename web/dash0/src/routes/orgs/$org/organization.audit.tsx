@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { useAuditEvents, useMembers, type Event } from "@/api/hooks";
 import {
   EventTypeLabel,
   getEventRowStripe,
 } from "@/components/dashboard/event-display";
+import { auditTarget } from "@/lib/audit-target";
 import { cn } from "@/lib/utils";
 import { DocsLink } from "@/components/shared/docs-link";
 import { QueryErrorView } from "@/components/shared/error-views";
@@ -169,21 +170,26 @@ function hasNamedActor(event: Event): boolean {
   return Boolean(event.actorName || event.actorEmail || event.actorUid);
 }
 
-/** targetLabel pulls the human-readable target out of the redacted payload the
- *  backend wrote (target_name / target_uid), falling back to the target type
- *  alone for events that name no specific object. */
-function targetLabel(event: Event): string {
-  const payload = event.payload ?? {};
-  const name = payload.target_name;
-  if (typeof name === "string" && name !== "") return name;
-
-  const uid = payload.target_uid;
-  if (typeof uid === "string" && uid !== "") return uid;
-
-  const type = payload.target_type;
-  if (typeof type === "string" && type !== "") return type;
-
-  return "—";
+/** AuditTargetCell shows the event's target; an incident event links to
+ *  its incident. */
+function AuditTargetCell({ event, org }: { event: Event; org: string }) {
+  const target = auditTarget(event);
+  return (
+    <div className="truncate text-sm" title={target.label} data-testid="audit-target">
+      {target.incidentUid ? (
+        <Link
+          to="/orgs/$org/incidents/$incidentUid"
+          params={{ org, incidentUid: target.incidentUid }}
+          className="hover:underline"
+          data-testid="audit-target-incident-link"
+        >
+          {target.label}
+        </Link>
+      ) : (
+        target.label
+      )}
+    </div>
+  );
 }
 
 /** changedFields renders the `changed_fields` list update events carry. It is
@@ -511,13 +517,7 @@ function AuditPage() {
                           )}
                       </TableCell>
                       <TableCell className="min-w-40 max-w-0">
-                        <div
-                          className="truncate text-sm"
-                          title={targetLabel(event)}
-                          data-testid="audit-target"
-                        >
-                          {targetLabel(event)}
-                        </div>
+                        <AuditTargetCell event={event} org={org} />
                         {changedFields(event).length > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1">
                             {changedFields(event).map((field) => (

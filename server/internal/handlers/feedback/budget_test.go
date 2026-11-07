@@ -60,12 +60,28 @@ func newBudgetService(
 	return svc, poster
 }
 
-// newMember creates a user and returns its UID, for authenticated reports.
-func newMember(t *testing.T, dbSvc db.Service) string {
+// newMember creates a user that is a member of the given orgs and returns its
+// UID, for authenticated reports.
+func newMember(t *testing.T, dbSvc db.Service, orgs ...*models.Organization) string {
 	t.Helper()
 
-	user := models.NewUser("member@acme.example")
-	require.NoError(t, dbSvc.CreateUser(t.Context(), user))
+	return newUser(t, dbSvc, "member@acme.example", false, orgs...)
+}
+
+// newUser creates a user, optionally a super admin, member of the given orgs,
+// and returns its UID.
+func newUser(t *testing.T, dbSvc db.Service, email string, superAdmin bool, orgs ...*models.Organization) string {
+	t.Helper()
+	ctx := t.Context()
+
+	user := models.NewUser(email)
+	user.SuperAdmin = superAdmin
+	require.NoError(t, dbSvc.CreateUser(ctx, user))
+
+	for _, org := range orgs {
+		require.NoError(t, dbSvc.CreateOrganizationMember(ctx,
+			models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleUser)))
+	}
 
 	return user.UID
 }
@@ -196,7 +212,7 @@ func TestSubmitReport_DispatchCapStoresNoAnonScreenshot(t *testing.T) {
 
 	svc.dispatchWindowStart = time.Now()
 	svc.dispatchCount = maxIssueDispatchesPerHour
-	member := newMember(t, dbSvc)
+	member := newMember(t, dbSvc, orgs[0])
 
 	_, err := svc.SubmitReport(ctx, screenshotReport(orgs[0].Slug, ""))
 	r.ErrorIs(err, ErrReportRateLimited)
@@ -220,7 +236,7 @@ func TestSubmitReport_MemberAndTextOnlyPastAnonBudget(t *testing.T) {
 
 	dbSvc, orgs := newBudgetSQLite(t, "acme-member")
 	svc, _ := newBudgetService(t, dbSvc, 1024, 1)
-	member := newMember(t, dbSvc)
+	member := newMember(t, dbSvc, orgs[0])
 
 	_, err := svc.SubmitReport(ctx, screenshotReport(orgs[0].Slug, ""))
 	r.NoError(err)

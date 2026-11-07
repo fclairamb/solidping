@@ -16,6 +16,8 @@ func jsAuthoringHandler(t *testing.T) (*Handler, string) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		// Pinned so two calls straddling a second boundary compare equal.
+		w.Header().Set("Date", "Mon, 02 Nov 2026 00:00:00 GMT")
 		_, _ = w.Write([]byte(`{"projects":[1]}`))
 	}))
 	t.Cleanup(srv.Close)

@@ -1088,6 +1088,13 @@ paths:
       tags: [Authentication]
       summary: Self-service account registration
       operationId: register
+      description: |
+        Stores a pending registration and emails a confirmation link. When
+        `auth.registration_max_pending_per_ip` is set (default 10 in SaaS
+        mode, off otherwise), the caller's IP may sign up at most once a
+        minute (`429` with `Retry-After`) and have at most that many sign-ups
+        waiting for confirmation from the last 24 hours (`429`). A refused
+        request sends nothing. Confirming a registration frees its slot.
       requestBody:
         required: true
         content:
@@ -1103,6 +1110,8 @@ paths:
                 $ref: "#/components/schemas/MessageResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
   /api/v1/auth/confirm-registration:
     post:
@@ -1181,7 +1190,9 @@ paths:
         Rotates the caller's password without an emailed reset token.
         `currentPassword` is required when the account already has a password;
         for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is
-        ignored and this call sets the initial password. All of the caller's
+        ignored and this call sets the initial password, provided the session
+        comes from a sign-in within the last 10 minutes (otherwise 403
+        `REAUTHENTICATION_REQUIRED`: sign in again first). All of the caller's
         *other* sessions are revoked; the calling session and any personal access
         tokens keep working. A confirmation email is sent.
         While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional
@@ -1214,12 +1225,170 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: >
+            The account has no password and the session's sign-in is more than
+            10 minutes old (error code `REAUTHENTICATION_REQUIRED`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/auth/2fa/setup:
+    post:
+      tags: [Authentication]
+      summary: Start enabling TOTP two-factor authentication
+      description: >
+        Generates a TOTP secret for the caller (stored, not yet enabled) and
+        returns it with a `setupToken` that `/api/v1/auth/2fa/confirm`
+        requires. Adding a sign-in factor needs a re-authentication:
+        `currentPassword` when the account has a password, otherwise a sign-in
+        within the last 10 minutes. Every attempt spends the per-user
+        change-password budget. Refused for personal access tokens and
+        impersonation tokens.
+      operationId: setup2FA
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Setup2FARequest"
+      responses:
+        "200":
+          description: Pending TOTP secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Setup2FAResponse"
+        "401":
+          description: >
+            Not authenticated, or `currentPassword` is missing or wrong (error
+            code `INVALID_CURRENT_PASSWORD`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: >
+            The account has no password and the session's sign-in is more than
+            10 minutes old (error code `REAUTHENTICATION_REQUIRED`), or the
+            credential may not change sign-in factors.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/auth/2fa/confirm:
+    post:
+      tags: [Authentication]
+      summary: Confirm and enable TOTP two-factor authentication
+      description: >
+        Checks a code from the authenticator against the pending secret and
+        enables two-factor authentication. Returns the recovery codes, once.
+        `setupToken` must be the one `/api/v1/auth/2fa/setup` returned with
+        that secret (it expires after 10 minutes). A notice email is sent to
+        the account's address.
+      operationId: confirm2FA
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Confirm2FARequest"
+      responses:
+        "200":
+          description: Two-factor authentication enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Confirm2FAResponse"
+        "400":
+          description: >
+            Missing code, no pending setup, or a missing, expired or mismatched
+            `setupToken` (error code `INVALID_SETUP_TOKEN`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not authenticated, or the code is wrong (error code `INVALID_2FA_CODE`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/auth/passkeys/register/begin:
+    post:
+      tags: [Authentication]
+      summary: Start registering a passkey
+      description: >
+        Returns the WebAuthn creation options and a sealed `session` to send
+        back to `/api/v1/auth/passkeys/register/finish`. Adding a sign-in
+        factor needs a re-authentication: `currentPassword` when the account
+        has a password, otherwise a sign-in within the last 10 minutes.
+      operationId: beginPasskeyRegistration
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasskeyRegisterBeginRequest"
+      responses:
+        "200":
+          description: WebAuthn creation options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  options:
+                    type: object
+                    description: PublicKeyCredentialCreationOptions, as navigator.credentials.create expects.
+                  session:
+                    type: string
+        "401":
+          description: >
+            Not authenticated, or `currentPassword` is missing or wrong (error
+            code `INVALID_CURRENT_PASSWORD`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: >
+            The account has no password and the session's sign-in is more than
+            10 minutes old (error code `REAUTHENTICATION_REQUIRED`), or the
+            credential may not change sign-in factors.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          description: WebAuthn is not configured on this server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/v1/auth/invite/{token}:
     get:
@@ -1596,6 +1765,92 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationError"
 
+    patch:
+      tags: [Checks]
+      summary: Update several checks at once
+      description: >-
+        Applies one set of `changes`, shaped like a single-check PATCH body, to
+        every check of `checkUids`, with exactly the semantics of that PATCH
+        (spec 2026-11-05-01). Only the fields of `BulkCheckChanges` are
+        accepted; any other field is a `VALIDATION_ERROR`, never silently
+        ignored. Per-check: a check the changes cannot apply to (a placement
+        change on a passive check, a value its PATCH would reject, a read-only
+        demo check, a check not in this organization) is reported in `skipped`
+        and the others are still updated. `dryRun` runs every validation and
+        writes nothing; it checks each check against the current state, so it
+        cannot see a plan limit only the earlier checks of the same batch would
+        exhaust.
+      operationId: bulkUpdateChecks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [checkUids, changes]
+              properties:
+                checkUids:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items: {type: string}
+                changes:
+                  $ref: "#/components/schemas/BulkCheckChanges"
+                dryRun: {type: boolean}
+      responses:
+        "200":
+          description: Per-check results
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, skipped, dryRun]
+                properties:
+                  dryRun: {type: boolean}
+                  data:
+                    type: array
+                    description: The checks updated (or, on a dry run, that would be).
+                    items:
+                      type: object
+                      required: [uid]
+                      properties:
+                        uid: {type: string}
+                        slug: {type: string}
+                        name: {type: string}
+                  skipped:
+                    type: array
+                    items:
+                      type: object
+                      required: [uid, reason]
+                      properties:
+                        uid: {type: string}
+                        slug: {type: string}
+                        reason:
+                          type: string
+                          enum: [not_found, read_only, rejected, error]
+                        message: {type: string}
+                  warnings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: {type: string}
+                        message: {type: string}
+                        code: {type: string}
+        "400":
+          description: >-
+            No check, more than 1000 entries in `checkUids` (counted as sent,
+            duplicates included), no change, a field a bulk update does not
+            support, or an unknown region
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/orgs/{org}/checks/stats:
     get:
       tags: [Checks]
@@ -1834,7 +2089,11 @@ paths:
     post:
       tags: [Checks]
       summary: Switch pinned checks to automatic placement
+      deprecated: true
       description: >-
+        **Deprecated, removed after 2026-12-15**: use `PATCH
+        /api/v1/orgs/{org}/checks` with `{"placement": "auto"}`. Responses carry
+        `Deprecation` and `Sunset` headers.
         The checks list's bulk action (spec 2026-09-25-06). Each eligible
         check becomes `placement: auto` with `regionCount` = its current
         region count and an empty pool; its regions and jobs are untouched, so
@@ -1856,7 +2115,10 @@ paths:
               properties:
                 checkUids:
                   type: array
-                  description: Limit the switch to these checks. Omit for every eligible check.
+                  description: >-
+                    Limit the switch to these checks, at most 1000 (more is a
+                    400). Omit for every eligible check.
+                  maxItems: 1000
                   items:
                     type: string
                 dryRun:
@@ -1902,6 +2164,12 @@ paths:
                         reason:
                           type: string
                           enum: [not_found, already_auto, passive, no_region, private_region, read_only]
+        "400":
+          description: More than 1000 entries in `checkUids`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -4156,6 +4424,65 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/users/me/discord/link-start:
+    post:
+      tags: [Notifications]
+      summary: Start linking a Discord account to the caller
+      description: |
+        Mints a single-use link token (TTL 15 minutes) and returns the Discord
+        authorization URL carrying it. Discord sends the browser back to
+        `/api/v1/auth/discord/callback`, which binds the Discord account that
+        completed the round trip to the caller and emails the account owner a
+        "Discord account linked" notice.
+
+        A linked Discord identity signs in, so this is a new sign-in factor and
+        needs a re-authentication: `currentPassword` when the account has a
+        password, otherwise a sign-in within the last 10 minutes. Every attempt
+        spends the per-user change-password budget. Refused for personal
+        access tokens and impersonation tokens. Returns `VALIDATION_ERROR` when
+        the instance has no Discord bot configured.
+      operationId: createMyDiscordLink
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiscordLinkRequest"
+      responses:
+        "201":
+          description: Link round trip started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordLinkResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          description: >
+            Not authenticated, or `currentPassword` is missing or wrong (error
+            code `INVALID_CURRENT_PASSWORD`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: >
+            The account has no password and the session's sign-in is more than
+            10 minutes old (error code `REAUTHENTICATION_REQUIRED`), or the
+            request runs under impersonation or a personal access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
   /api/v1/orgs/{org}/users/me/notification-contacts/{contactUid}:
     delete:
@@ -11296,6 +11623,60 @@ components:
             must not be the default admin address. Omit it to change only the
             password.
 
+    Setup2FARequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          description: >
+            The password currently on the account. Required unless the account
+            has no password (it then needs a sign-in within the last 10
+            minutes).
+
+    Setup2FAResponse:
+      type: object
+      required: [uri, secret, setupToken]
+      properties:
+        uri:
+          type: string
+          description: otpauth:// URI to render as a QR code.
+        secret:
+          type: string
+          description: The TOTP secret, for manual entry.
+        setupToken:
+          type: string
+          description: Proof of this setup, required by `/api/v1/auth/2fa/confirm`. Expires after 10 minutes.
+
+    Confirm2FARequest:
+      type: object
+      required: [code, setupToken]
+      properties:
+        code:
+          type: string
+          description: A current code from the authenticator.
+        setupToken:
+          type: string
+          description: The `setupToken` returned by `/api/v1/auth/2fa/setup`.
+
+    Confirm2FAResponse:
+      type: object
+      required: [recoveryCodes]
+      properties:
+        recoveryCodes:
+          type: array
+          items:
+            type: string
+
+    PasskeyRegisterBeginRequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          description: >
+            The password currently on the account. Required unless the account
+            has no password (it then needs a sign-in within the last 10
+            minutes).
+
     AcceptInviteRequest:
       type: object
       required: [token]
@@ -11404,6 +11785,11 @@ components:
         deploymentMode:
           type: string
           enum: [saas, self-hosted]
+        autoPersonalOrg:
+          type: boolean
+          description: |
+            Whether a user who signs in belonging to no organization gets a
+            personal one (`auth.auto_personal_org`, on by default in SaaS mode).
 
     PublicTelegramConfig:
       type: object
@@ -12294,6 +12680,32 @@ components:
             Cap: required recovery never exceeds this multiple of the base
             recovery period (also hard-capped at 30 minutes).
 
+    BulkCheckChanges:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: >-
+        The fields of a single-check PATCH that a bulk update accepts, with the
+        same meaning (see `UpdateCheckRequest`).
+      properties:
+        enabled: {type: boolean}
+        resolveOpenIncidents: {type: boolean}
+        period: {type: string}
+        placement:
+          type: string
+          enum: [pinned, auto]
+        regions:
+          type: array
+          items: {type: string}
+        regionCount:
+          type: integer
+          minimum: 1
+          maximum: 50
+        regionPool:
+          type: array
+          items: {type: string}
+        confirmationPeriodSeconds: {type: integer}
+        recoveryPeriodSeconds: {type: integer}
     UpdateCheckRequest:
       type: object
       properties:
@@ -14241,6 +14653,34 @@ components:
           type: string
           description: The t.me deep link to open, carrying the single-use token.
           example: https://t.me/solidping_bot?start=Zm9vYmFyYmF6
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the token stops working (15 minutes after minting).
+
+    DiscordLinkRequest:
+      type: object
+      properties:
+        redirectUri:
+          type: string
+          description: >
+            Same-origin dashboard path to return to after the round trip.
+            Anything else lands on the dashboard root.
+          example: /d/orgs/acme/account/notifications
+        currentPassword:
+          type: string
+          description: >
+            The password currently on the account. Required unless the account
+            has no password (it then needs a sign-in within the last 10
+            minutes).
+
+    DiscordLinkResponse:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url:
+          type: string
+          description: The Discord authorization URL, carrying the single-use link token.
         expiresAt:
           type: string
           format: date-time

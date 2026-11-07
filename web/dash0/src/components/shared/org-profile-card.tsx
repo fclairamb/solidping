@@ -22,7 +22,7 @@ import {
   useUploadOrgLogo,
   type OrgProfileResponse,
 } from "@/api/hooks";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, useOrganizationIdentity } from "@/contexts/AuthContext";
 
 // Mirrors the server allowlist (handlers/orglogo) so the file picker never
 // offers something the upload would reject.
@@ -57,9 +57,9 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
   const { t } = useTranslation("org");
   const { t: tc } = useTranslation("common");
   const navigate = useNavigate();
-  const { organizations, adoptRenamedOrgSession, refreshUser } = useAuth();
+  const { adoptRenamedOrgSession, refreshUser } = useAuth();
 
-  const current = organizations.find((entry) => entry.slug === org);
+  const current = useOrganizationIdentity(org);
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState(org);

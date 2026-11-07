@@ -5,6 +5,7 @@ import {
   distinctId,
   dropKnownExceptionNoise,
   fetchPublicConfig,
+  getAnalyticsRequestHeaders,
   identifyAnalytics,
   initAnalytics,
   isAnalyticsEnabled,
@@ -318,6 +319,24 @@ describe("dropKnownExceptionNoise", () => {
     expect(dropKnownExceptionNoise(event)).toBeNull();
   });
 
+  // posthog-js wraps a non-Error promise rejection and prefixes its value:
+  // the filter must match that exact form, not only the bare message.
+  it("drops the scanner noise as posthog-js wraps it for a non-Error rejection", () => {
+    const event = {
+      event: "$exception",
+      properties: {
+        $exception_list: [
+          {
+            type: "UnhandledRejection",
+            value:
+              "Non-Error promise rejection captured with value: Object Not Found Matching Id:6, MethodName:update, ParamCount:4",
+          },
+        ],
+      },
+    };
+    expect(dropKnownExceptionNoise(event)).toBeNull();
+  });
+
   // Positive control: a normal application error, which must never be
   // dropped, so the assertion above is not vacuous.
   it("passes a normal exception through unchanged", () => {
@@ -446,5 +465,33 @@ describe("fetchPublicConfig", () => {
       }),
     );
     expect(await fetchPublicConfig()).toEqual({ posthog: { enabled: false } });
+  });
+});
+
+describe("getAnalyticsRequestHeaders", () => {
+  it("is empty when analytics is off", () => {
+    expect(getAnalyticsRequestHeaders()).toEqual({});
+  });
+
+  it("carries the session and distinct ids once analytics is loaded", async () => {
+    vi.doMock("./posthog-loader", () => ({
+      default: {
+        init: () => {},
+        identify: () => {},
+        reset: () => {},
+        capture: () => {},
+        captureException: () => {},
+        get_session_id: () => "sess-1",
+        get_distinct_id: () => "dist-1",
+      },
+    }));
+
+    await initAnalytics({ posthog: { enabled: true, projectApiKey: "phc_k" } });
+
+    expect(getAnalyticsRequestHeaders()).toEqual({
+      "X-POSTHOG-SESSION-ID": "sess-1",
+      "X-POSTHOG-DISTINCT-ID": "dist-1",
+    });
+    vi.doUnmock("./posthog-loader");
   });
 });

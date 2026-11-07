@@ -11,6 +11,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/discordlink"
+	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
 // linkEnv is an already-signed-in member and the org whose account page starts a
@@ -219,7 +223,7 @@ func TestDiscordLinkModeIsIdempotent(t *testing.T) {
 	r.NoError(env.db.CreateUserProvider(ctx,
 		models.NewUserProvider(env.user.UID, models.ProviderTypeDiscord, userInfo.ID)))
 
-	r.NoError(env.svc.LinkDiscordProvider(ctx, env.user.UID, userInfo.ID))
+	r.NoError(env.svc.LinkDiscordProvider(ctx, env.user.UID, env.org.UID, userInfo.ID))
 
 	providers, err := env.db.ListUserProvidersByUser(ctx, env.user.UID)
 	r.NoError(err)
@@ -252,4 +256,93 @@ func firstQuery(t *testing.T, rec *httptest.ResponseRecorder) url.Values {
 	require.NoError(t, err)
 
 	return parsed.Query()
+}
+
+// withLinkNoticeJobs gives the env's auth service a job queue, so the link
+// notice can be enqueued and observed.
+func (e *linkEnv) withLinkNoticeJobs(t *testing.T) {
+	t.Helper()
+
+	e.svc.authService.jobsSvc = jobsvc.NewService(e.db.DB(), e.db, notifier.NewLocalEventNotifier(), nil)
+}
+
+// linkNotices returns the "Discord account linked" emails enqueued so far.
+func (e *linkEnv) linkNotices(t *testing.T) []*models.Job {
+	t.Helper()
+
+	jobs, err := e.db.ListJobs(t.Context(), nil, 0)
+	require.NoError(t, err)
+
+	var notices []*models.Job
+
+	for _, job := range jobs {
+		if job.Type == string(jobdef.JobTypeEmail) && job.Config["template"] == email.TemplateDiscordLinked {
+			notices = append(notices, job)
+		}
+	}
+
+	return notices
+}
+
+// TestDiscordLinkModeNotifiesOwner: a successful link is a new way to sign in,
+// so the owner is told, with a link to the security page of the org that
+// started it (spec 2026-11-01-03).
+func TestDiscordLinkModeNotifiesOwner(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupLinkEnv(t)
+	env.withLinkNoticeJobs(t)
+	ctx := t.Context()
+
+	userInfo := discordTestUser(env.fixture)
+	fakeDiscordEndpoints(t, env.svc, userInfo, nil)
+
+	token, err := discordlink.Mint(ctx, env.db, discordlink.Payload{
+		UserUID:     env.user.UID,
+		OrgUID:      env.org.UID,
+		RedirectURI: "/d/orgs/" + env.org.Slug + "/account/notifications",
+	})
+	r.NoError(err)
+
+	rec := env.callback(t, discordlink.StatePrefix+token)
+	r.Equal("1", firstQuery(t, rec).Get(discordLinkedParam))
+
+	notices := env.linkNotices(t)
+	r.Len(notices, 1, "exactly one link notice")
+	r.Equal([]any{env.user.Email}, notices[0].Config["to"])
+
+	data, ok := notices[0].Config["templateData"].(map[string]any)
+	r.True(ok, "template data present: %v", notices[0].Config)
+	r.Equal("http://localhost:4000/d/orgs/"+env.org.Slug+"/account/security", data["SecurityURL"])
+
+	// Re-linking the same account adds no binding, so no second notice.
+	r.NoError(env.svc.LinkDiscordProvider(ctx, env.user.UID, env.org.UID, userInfo.ID))
+	r.Len(env.linkNotices(t), 1, "an idempotent re-link sends no notice")
+}
+
+// TestDiscordLinkModeRefusedLinkSendsNoNotice: a Discord account already bound
+// to another user is refused, and the refusal emails nobody.
+func TestDiscordLinkModeRefusedLinkSendsNoNotice(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupLinkEnv(t)
+	env.withLinkNoticeJobs(t)
+	ctx := t.Context()
+
+	userInfo := discordTestUser(env.fixture)
+	fakeDiscordEndpoints(t, env.svc, userInfo, nil)
+
+	other := models.NewUser("other" + env.fixture + "@acme.example")
+	r.NoError(env.db.CreateUser(ctx, other))
+	r.NoError(env.db.CreateUserProvider(ctx,
+		models.NewUserProvider(other.UID, models.ProviderTypeDiscord, userInfo.ID)))
+
+	token, err := discordlink.Mint(ctx, env.db, discordlink.Payload{UserUID: env.user.UID, OrgUID: env.org.UID})
+	r.NoError(err)
+
+	rec := env.callback(t, discordlink.StatePrefix+token)
+	r.Equal(discordLinkErrorCode, firstQuery(t, rec).Get("error"))
+	r.Empty(env.linkNotices(t), "a refused link enqueues no notice")
 }

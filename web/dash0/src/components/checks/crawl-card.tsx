@@ -122,14 +122,23 @@ export function CrawlCard({ org, checkUid, output, canCancel }: CrawlCardProps) 
                           {t("crawl.detail.newBadge")}
                         </Badge>
                       )}
-                      <a
-                        href={finding.url}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="font-mono text-xs underline-offset-2 hover:underline"
-                      >
-                        {finding.url}
-                      </a>
+                      {/^https?:\/\//i.test(finding.url) ? (
+                        <a
+                          href={finding.url}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="font-mono text-xs underline-offset-2 hover:underline"
+                          data-testid="crawl-finding-url"
+                        >
+                          {finding.url}
+                        </a>
+                      ) : (
+                        // The URL comes from the crawled site: never make a
+                        // javascript:/data: value clickable.
+                        <span className="font-mono text-xs" data-testid="crawl-finding-url">
+                          {finding.url}
+                        </span>
+                      )}
                       {(finding.status || finding.error) && (
                         <span className="text-xs text-muted-foreground">
                           {finding.status ? finding.status : finding.error}

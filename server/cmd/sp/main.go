@@ -19,8 +19,10 @@ func main() {
 		// Not a literal: the release workflow stamps the real version in with
 		// -X internal/version.Version, and a hardcoded string here made every
 		// one of those ldflags inert — v0.28.0's published binaries and image
-		// all reported "1.0.0".
-		Version:  version.Version,
+		// all reported "1.0.0". Read through Get(), which strips the "v" the
+		// image build stamps (`git describe`), so `sp --version` prints what
+		// the server reports.
+		Version:  version.Get().Version,
 		Flags:    cli.GetGlobalFlags(),
 		Commands: cli.GetCommands(),
 	}
