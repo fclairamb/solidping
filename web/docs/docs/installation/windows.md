@@ -20,12 +20,7 @@ the examples below work with `solidping` in place of `.\solidping.exe`.
 Upgrade it later with `winget upgrade fclairamb.SolidPing`.
 
 To install it for all users, which suits a Windows Service, add
-`--scope machine` from an administrator prompt. For the service commands
-below, get the binary path with:
-
-```powershell
-(Get-Command solidping).Source
-```
+`--scope machine` from an administrator prompt.
 
 ## Download
 
@@ -97,89 +92,80 @@ $env:SP_DB_URL = "postgresql://user:password@localhost:5432/solidping"
 
 ## Windows Service
 
-### Using NSSM (Recommended)
-
-[NSSM](https://nssm.cc/) (Non-Sucking Service Manager) is the easiest way to run SolidPing as a Windows Service.
-
-1. Download NSSM from https://nssm.cc/download
-2. Extract and add to your PATH, or use the full path
-
-Install the service:
+`solidping.exe` runs as a native Windows service, with no third-party wrapper. From an administrator PowerShell prompt:
 
 ```powershell
-# Install the service
-nssm install SolidPing "C:\Program Files\SolidPing\solidping.exe" serve
+# Register the service: automatic start, restarted on failure
+solidping service install
+```
 
-# Set environment variables
-nssm set SolidPing AppEnvironmentExtra SP_DB_TYPE=postgres
-nssm set SolidPing AppEnvironmentExtra +SP_DB_URL=postgresql://user:password@localhost:5432/solidping
-nssm set SolidPing AppEnvironmentExtra +SP_SERVER_LISTEN=:4000
+This creates the data folder `C:\ProgramData\SolidPing` (pick another one with
+`--dir`, and another service name with `--name`) and registers the service to
+run as `LocalSystem` from that folder. A folder created by `install` is readable
+by `SYSTEM` and `Administrators` only, since it holds your secrets; an existing
+folder is left as is.
 
-# Set working directory
-nssm set SolidPing AppDirectory "C:\Program Files\SolidPing"
+Everything the service reads or writes lives in the data folder:
 
-# Configure logging
-nssm set SolidPing AppStdout "C:\Program Files\SolidPing\logs\stdout.log"
-nssm set SolidPing AppStderr "C:\Program Files\SolidPing\logs\stderr.log"
+```
+C:\ProgramData\SolidPing\
+├── config.yml        (your configuration)
+├── solidping.db      (the SQLite database, if you use SQLite)
+├── data\files\       (file storage)
+└── logs\
+    ├── solidping.log (rotated at 20 MB, 2 backups kept)
+    └── crash.log     (Go runtime crash output, if any)
+```
 
-# Start the service
-nssm start SolidPing
+Configure the service in `C:\ProgramData\SolidPing\config.yml` (see
+[Configuration File](#configuration-file) below), not with environment
+variables: the service registry key is readable by every local user, so
+secrets such as the database URL or the SMTP password must not go there. Then
+start it:
+
+```powershell
+solidping service start
 ```
 
 Manage the service:
 
 ```powershell
 # Check status
-nssm status SolidPing
+Get-Service SolidPing
 
-# Stop service
+# Restart after a config.yml change
+Restart-Service SolidPing
+
+# Stop it (waits until it has stopped)
+solidping service stop
+
+# Remove it (stops it first; the data folder is kept)
+solidping service uninstall
+```
+
+Agent mode works as a service too: set `node.role: agent` in `config.yml`
+(the equivalent of `SP_NODE_ROLE=agent`; see the [Configuration Guide](/configuration)).
+
+### Switching from NSSM
+
+If you set up SolidPing with NSSM before, from an administrator prompt:
+
+```powershell
 nssm stop SolidPing
-
-# Restart service
-nssm restart SolidPing
-
-# Remove service
 nssm remove SolidPing confirm
+solidping service install
 ```
 
-### Using sc.exe (Native)
-
-You can also use the native Windows Service Control Manager:
-
-```powershell
-# Create the service
-sc.exe create SolidPing binPath= "C:\Program Files\SolidPing\solidping.exe serve" start= auto
-
-# Note: Environment variables must be set system-wide or use a wrapper script
-```
-
-## Directory Structure
-
-Recommended directory structure:
-
-```
-C:\Program Files\SolidPing\
-├── solidping.exe
-├── config.yml (optional)
-├── data\
-│   └── solidping.db (if using SQLite)
-└── logs\
-    ├── stdout.log
-    └── stderr.log
-```
-
-Create the directories:
-
-```powershell
-New-Item -ItemType Directory -Path "C:\Program Files\SolidPing\data" -Force
-New-Item -ItemType Directory -Path "C:\Program Files\SolidPing\logs" -Force
-```
+Then move your `solidping.db` (and `data\files\`, if any) from the old
+working directory into `C:\ProgramData\SolidPing`, turn the environment
+variables you gave NSSM into `config.yml` entries, and run
+`solidping service start`.
 
 ## Configuration File
 
-Instead of environment variables, you can use a configuration file:
-
-Create `C:\Program Files\SolidPing\config.yml`:
+Instead of environment variables, you can use a configuration file. For the
+service, create `C:\ProgramData\SolidPing\config.yml`; when running
+`solidping serve` by hand, put it in the current directory:
 
 ```yaml
 db:
@@ -245,14 +231,14 @@ one on anyway is harmless, since a response that already carries
 
 ## Logs
 
-View logs:
+The service writes its logs to `C:\ProgramData\SolidPing\logs\`:
 
 ```powershell
-# View stdout log
-Get-Content "C:\Program Files\SolidPing\logs\stdout.log" -Tail 100 -Wait
+# Follow the server log
+Get-Content "C:\ProgramData\SolidPing\logs\solidping.log" -Tail 100 -Wait
 
-# View stderr log
-Get-Content "C:\Program Files\SolidPing\logs\stderr.log" -Tail 100 -Wait
+# Go runtime crash output (panics), if the service died unexpectedly
+Get-Content "C:\ProgramData\SolidPing\logs\crash.log"
 ```
 
 ## Updating
@@ -260,45 +246,53 @@ Get-Content "C:\Program Files\SolidPing\logs\stderr.log" -Tail 100 -Wait
 With winget:
 
 ```powershell
-nssm stop SolidPing
+solidping service stop
 winget upgrade fclairamb.SolidPing
-nssm start SolidPing
+solidping service start
 ```
 
-With a downloaded binary:
+With a downloaded binary, overwrite `solidping.exe` in place: the service
+points at its absolute path.
 
 ```powershell
 # Stop the service
-nssm stop SolidPing
+solidping service stop
 
 # Download new version
 Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/solidping-windows-amd64.zip" -OutFile "solidping-windows-amd64.zip"
 Expand-Archive -Path "solidping-windows-amd64.zip" -DestinationPath "C:\Program Files\SolidPing" -Force
 
 # Start the service
-nssm start SolidPing
+solidping service start
 ```
+
+The data folder is untouched by an upgrade.
 
 ## Troubleshooting
 
 ### Service Won't Start
 
-1. Check the logs in `C:\Program Files\SolidPing\logs\`
-2. Verify environment variables are set correctly
+1. Check `C:\ProgramData\SolidPing\logs\solidping.log` and `crash.log`
+2. Verify `C:\ProgramData\SolidPing\config.yml`
 3. Ensure the database is accessible
 4. Check port 4000 is not in use: `netstat -an | findstr :4000`
 
+`solidping service run` is what Windows launches; run by hand, it refuses to
+start. To debug in a console, stop the service and run `solidping serve` from
+the data folder instead.
+
 ### Permission Issues
 
-Run PowerShell as Administrator when installing the service or modifying Program Files.
+Run PowerShell as Administrator for `solidping service install`, `uninstall`,
+`start` and `stop`, and to edit files in `C:\ProgramData\SolidPing`.
 
 ## File Storage
 
 Alongside the database, SolidPing writes a handful of blobs — org logos,
 status-page assets, incident screenshots — under `SP_FILESTORAGE_LOCAL_ROOT`
 (default `./data/files`, relative to the working directory). With the service
-setup above, that resolves under the persistent `AppDirectory`, so there is
-nothing extra to configure here — this only matters for containerized
+setup above, that resolves under the data folder (`C:\ProgramData\SolidPing`),
+so there is nothing extra to configure here — this only matters for containerized
 deployments. See [File Storage](/configuration/file-storage) for the S3
 backend, useful once you run more than one node.
 
