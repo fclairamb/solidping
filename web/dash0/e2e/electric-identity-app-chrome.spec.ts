@@ -371,7 +371,7 @@ test.describe("dashboard KPI tiles", () => {
       // The tier word is a destructive status Badge, not a solid white chip.
       const badge = page.getByTestId("kpi-availability-badge");
       await expect(badge).toHaveAttribute("data-tier", "down");
-      await expect(badge).toContainText("Down");
+      await expect(badge).toContainText("Below 99%");
       await expect(badge).toHaveCSS("background-image", "none");
       await expect(badge).toHaveCSS("background-color", await probe(page, "bg-status-error/15"));
       await expect(badge).toHaveCSS("color", await probe(page, "text-status-error-foreground", "color"));
