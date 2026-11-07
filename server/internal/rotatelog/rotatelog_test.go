@@ -1,9 +1,7 @@
-package main
+package rotatelog
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,7 +42,7 @@ func TestRotatingWriterRotatesShiftsAndPrunes(t *testing.T) {
 
 	// 30-byte lines against a 100-byte cap: rotation lands after every 4th
 	// line (120 bytes, one line of slack past the cap).
-	writer := newRotatingWriter(path, 100, 2)
+	writer := New(path, 100, 2)
 	for i := range 41 {
 		n, err := writer.Write([]byte(testLine(i)))
 		r.NoError(err)
@@ -81,7 +79,7 @@ func TestRotatingWriterSplitsLargeWriteAtLineBoundaries(t *testing.T) {
 		input.WriteString(testLine(i))
 	}
 
-	writer := newRotatingWriter(path, 100, 2)
+	writer := New(path, 100, 2)
 	n, err := writer.Write([]byte(input.String()))
 	r.NoError(err)
 	r.Equal(300, n)
@@ -111,7 +109,7 @@ func TestRotatingWriterHardCapsNewlinelessStream(t *testing.T) {
 	// the active file bounded by the hard ceiling of 2*maxSize, and the whole
 	// family (active + backups) bounded regardless of how much is thrown at it.
 	const maxSize = 100
-	writer := newRotatingWriter(path, maxSize, 2)
+	writer := New(path, maxSize, 2)
 
 	chunk := []byte(strings.Repeat("x", 40)) // no '\n' anywhere, ever
 	for range 1000 {
@@ -145,7 +143,7 @@ func TestRotatingWriterStartsFreshAndKeepsPreviousTail(t *testing.T) {
 	r.NoError(os.WriteFile(path, []byte("previous session tail\n"), 0o644))
 	r.NoError(os.WriteFile(path+".1", []byte("older session\n"), 0o644))
 
-	writer := newRotatingWriter(path, 200, 3)
+	writer := New(path, 200, 3)
 
 	content, err := os.ReadFile(path)
 	r.NoError(err)
@@ -172,7 +170,7 @@ func TestRotatingWriterEmptyExistingFileIsNotRotated(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "backend.log")
 
 	r.NoError(os.WriteFile(path, nil, 0o644))
-	newRotatingWriter(path, 100, 2)
+	New(path, 100, 2)
 
 	_, err := os.Stat(path + ".1")
 	r.True(os.IsNotExist(err), "an empty previous file must not produce a backup")
@@ -183,7 +181,7 @@ func TestRotatingWriterOpenFailureDegradesToNoOp(t *testing.T) {
 	r := require.New(t)
 
 	// A directory path cannot be opened as a file.
-	writer := newRotatingWriter(t.TempDir(), 50, 1)
+	writer := New(t.TempDir(), 50, 1)
 	n, err := writer.Write([]byte("hello\n"))
 	r.NoError(err, "a degraded writer must never error the stream")
 	r.Equal(6, n)
@@ -194,7 +192,7 @@ func TestRotatingWriterWriteFailureDegradesToNoOp(t *testing.T) {
 	r := require.New(t)
 	path := filepath.Join(t.TempDir(), "backend.log")
 
-	writer := newRotatingWriter(path, 64, 0)
+	writer := New(path, 64, 0)
 	r.NotNil(writer.file)
 	r.NoError(writer.file.Close()) // Break the file behind the writer's back.
 
@@ -208,20 +206,11 @@ func TestRotatingWriterWriteFailureDegradesToNoOp(t *testing.T) {
 	r.Equal(6, n)
 }
 
-type failingWriter struct{}
-
-var errSinkBoom = errors.New("sink boom")
-
-func (failingWriter) Write([]byte) (int, error) { return 0, errSinkBoom }
-
-func TestMultiSinkNeverFailsAndFansOut(t *testing.T) {
+func TestNewClampsInvalidLimits(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	var buf strings.Builder
-	sink := &multiSink{writers: []io.Writer{failingWriter{}, &buf}}
-	n, err := sink.Write([]byte("hello\n"))
-	r.NoError(err, "a broken sink must not abort the stream")
-	r.Equal(6, n)
-	r.Equal("hello\n", buf.String())
+	writer := New(filepath.Join(t.TempDir(), "app.log"), 0, -1)
+	r.Equal(int64(DefaultMaxSize), writer.maxSize)
+	r.Equal(0, writer.backups)
 }
