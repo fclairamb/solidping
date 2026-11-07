@@ -33,9 +33,11 @@ func TestServiceCommandUnsupportedOffWindows(t *testing.T) {
 		t.Skip("the service commands are real on Windows")
 	}
 
-	for _, sub := range []string{"install", "uninstall", "start", "stop", "run"} {
-		err := buildRootCommand().Run(context.Background(), []string{"solidping", "service", sub})
-		require.ErrorIs(t, err, errServiceUnsupported, sub)
+	for _, args := range [][]string{
+		{"install"}, {"install", "--dir", t.TempDir()}, {"uninstall"}, {"start"}, {"stop"}, {"run"},
+	} {
+		err := buildRootCommand().Run(context.Background(), append([]string{"solidping", "service"}, args...))
+		require.ErrorIs(t, err, errServiceUnsupported, args)
 	}
 
 	service := buildRootCommand().Command("service")
