@@ -48,3 +48,8 @@ The report is right on both counts: the page contradicts itself, and the tile is
 This spec closes fclairamb/solidping-business#48. The implementing PR body **must** carry a `Closes fclairamb/solidping-business#48` line. When the spec is archived to `specs/done/`, verify the issue is closed and, if not, close it by hand:
 
     gh issue close 48 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+1. Link the tile to the incidents list, all states (`/orgs/$org/incidents`). (autopilot: recommended answer)
+2. Hide the banner SLA pill when the 24h tier is not operational. (autopilot: recommended answer)
