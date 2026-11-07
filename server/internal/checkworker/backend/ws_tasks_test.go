@@ -125,3 +125,25 @@ func TestHTTPTaskClientOldServer(t *testing.T) {
 	_, err = client.Claim(t.Context(), []string{"fake"})
 	r.ErrorIs(err, tasks.ErrNotSupported)
 }
+
+// A system agent is refused worker tasks with a 403: that is also
+// ErrNotSupported, so the claim loop stays quiet instead of warning each time.
+func TestHTTPTaskClientSystemAgent(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		http.Error(writer, `{"code":"FORBIDDEN"}`, http.StatusForbidden)
+	}))
+	t.Cleanup(server.Close)
+
+	keys, err := agents.GenerateAgentKeys()
+	r.NoError(err)
+
+	client := backend.NewWSBackend(server.URL, "", "agent",
+		&backend.Identity{AgentKeys: *keys, AgentUID: uuid.NewString()}, nil).TaskClient()
+
+	_, err = client.Claim(t.Context(), []string{"fake"})
+	r.ErrorIs(err, tasks.ErrNotSupported)
+}

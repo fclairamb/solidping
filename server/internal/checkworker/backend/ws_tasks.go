@@ -104,7 +104,8 @@ func (c *HTTPTaskClient) Fail(ctx context.Context, uid, errorCode string) error 
 }
 
 // post sends one signed POST and maps the status: 404 is ErrNotSupported (an
-// old server), 410 ErrTaskGone, 413 ErrTooLarge.
+// old server), 403 too (a system agent: the server refuses it worker tasks by
+// design, so the loop must not warn about it on every claim), 410 ErrTaskGone, 413 ErrTooLarge.
 func (c *HTTPTaskClient) post(ctx context.Context, path string, body []byte) (int, []byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, taskRequestTimeout)
 	defer cancel()
@@ -129,7 +130,7 @@ func (c *HTTPTaskClient) post(ctx context.Context, path string, body []byte) (in
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusNoContent:
 		return resp.StatusCode, respBody, nil
-	case http.StatusNotFound:
+	case http.StatusNotFound, http.StatusForbidden:
 		return resp.StatusCode, nil, tasks.ErrNotSupported
 	case http.StatusGone:
 		return resp.StatusCode, nil, workertasks.ErrTaskGone
