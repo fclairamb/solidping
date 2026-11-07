@@ -205,3 +205,12 @@ func TestRotatingWriterWriteFailureDegradesToNoOp(t *testing.T) {
 	r.NoError(err)
 	r.Equal(6, n)
 }
+
+func TestNewClampsInvalidLimits(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	writer := New(filepath.Join(t.TempDir(), "app.log"), 0, -1)
+	r.Equal(int64(DefaultMaxSize), writer.maxSize)
+	r.Equal(0, writer.backups)
+}
