@@ -743,6 +743,8 @@ func (h *Handler) runAgentConnection(
 		AgentUID:   agent.UID,
 		WorkerUID:  workerUID,
 		Region:     agent.Region,
+		// Same rule as the agenttasks routes, which answer a system agent 403.
+		NoWorkerTasks: agent.IsSystem(),
 	}); err != nil {
 		return
 	}

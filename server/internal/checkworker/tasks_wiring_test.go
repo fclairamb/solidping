@@ -3,6 +3,7 @@ package checkworker
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -84,4 +85,50 @@ func TestCloudWorkerRunsWorkerTasks(t *testing.T) {
 	worker.wg.Wait()
 
 	r.Same(worker.egressGuard, seen.Load())
+}
+
+// gatedClient is a tasks.Gated client that counts its claims.
+type gatedClient struct {
+	tasks.Client
+
+	allowed bool
+	claims  atomic.Int32
+}
+
+func (c *gatedClient) TasksAllowed() bool { return c.allowed }
+
+func (c *gatedClient) Claim(context.Context, []string) (*workertasks.Claim, error) {
+	c.claims.Add(1)
+
+	return nil, nil //nolint:nilnil // no task
+}
+
+// A gated client the server refuses tasks (a system agent) never gets a claim:
+// the loop is not started. The allowed client is the positive control.
+func TestWorkerSkipsTaskLoopWhenRefused(t *testing.T) {
+	t.Parallel()
+
+	tasks.Register(wiringExecutor{guard: &atomic.Pointer[egress.Guard]{}})
+
+	for _, allowed := range []bool{true, false} {
+		r := require.New(t)
+
+		client := &gatedClient{allowed: allowed}
+		worker := &CheckWorker{config: &config.Config{}, logger: slog.Default()}
+		worker.EnableTasks(client, 1)
+
+		runCtx, cancel := context.WithCancel(t.Context())
+		worker.startTasks(runCtx)
+
+		claimed := func() bool { return client.claims.Load() > 0 }
+		if allowed {
+			r.Eventually(claimed, 5*time.Second, 10*time.Millisecond)
+		} else {
+			// A started loop claims at once, well inside this window.
+			r.Never(claimed, 300*time.Millisecond, 10*time.Millisecond)
+		}
+
+		cancel()
+		worker.wg.Wait()
+	}
 }

@@ -30,6 +30,12 @@ type Client interface {
 	Fail(ctx context.Context, uid, errorCode string) error
 }
 
+// Gated is a Client that learns at registration whether the server serves its
+// worker any task at all. The worker does not start the loop when it does not.
+type Gated interface {
+	TasksAllowed() bool
+}
+
 // Reporter is what an executor uses to report the slice it runs. Exactly one
 // of Step, Finish and Fail ends the slice.
 type Reporter interface {

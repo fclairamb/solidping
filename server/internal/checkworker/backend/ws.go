@@ -109,10 +109,13 @@ type WSBackend struct {
 	// §18).
 	pluginsReportedFor pluginReportKey
 	workerUID          string
-	pending            map[string]chan agents.ServerFrame
-	hints              []chan string
-	lastDial           time.Time
-	supervisorStarted  bool
+	// noWorkerTasks is the identity hello's flag: the server refuses this
+	// agent worker tasks (a system agent).
+	noWorkerTasks     bool
+	pending           map[string]chan agents.ServerFrame
+	hints             []chan string
+	lastDial          time.Time
+	supervisorStarted bool
 	// reconnectSignal wakes the reconnect supervisor after a drop (buffered so a
 	// drop that races an in-progress reconnect is coalesced, never lost).
 	reconnectSignal chan struct{}
@@ -707,7 +710,7 @@ func (b *WSBackend) dialEnroll(ctx context.Context) error {
 	identityCopy := *b.identity
 	b.mu.Unlock()
 
-	b.activateConn(ctx, conn, enrolled.WorkerUID)
+	b.activateConn(ctx, conn, enrolled.WorkerUID, identityHello.NoWorkerTasks)
 
 	if b.onIdentityChange != nil {
 		b.onIdentityChange(&identityCopy)
@@ -725,11 +728,12 @@ func (b *WSBackend) dialEnroll(ctx context.Context) error {
 // and keepalive ping loop. Both loops run on WithoutCancel so a per-request ctx
 // cancellation cannot tear down the shared connection; they end when the conn
 // is retired (read error, ping failure, or an explicit drop).
-func (b *WSBackend) activateConn(ctx context.Context, conn *websocket.Conn, workerUID string) {
+func (b *WSBackend) activateConn(ctx context.Context, conn *websocket.Conn, workerUID string, noWorkerTasks bool) {
 	pumpCtx := context.WithoutCancel(ctx)
 
 	b.mu.Lock()
 	b.workerUID = workerUID
+	b.noWorkerTasks = noWorkerTasks
 	b.conn = conn
 	b.connectedAt = time.Now()
 	b.mu.Unlock()
@@ -774,7 +778,7 @@ func (b *WSBackend) dialReconnect(ctx context.Context) error {
 		return fmt.Errorf("read hello: %w", err)
 	}
 
-	b.activateConn(ctx, conn, hello.WorkerUID)
+	b.activateConn(ctx, conn, hello.WorkerUID, hello.NoWorkerTasks)
 
 	b.logger.InfoContext(ctx, "agent reconnected", "agent_uid", identity.AgentUID, "region", hello.Region)
 

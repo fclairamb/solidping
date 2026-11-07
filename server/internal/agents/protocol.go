@@ -196,6 +196,11 @@ type ServerFrame struct {
 	WorkerUID   string `json:"workerUid,omitempty"`
 	Region      string `json:"region,omitempty"`
 	Fingerprint string `json:"fingerprint,omitempty"`
+	// NoWorkerTasks, on the identity hello, tells the agent the server refuses
+	// it worker tasks (a system agent: cloud workers already run the shared
+	// regions' tasks), so it never starts its task loop. Absent from old
+	// servers, which keeps the loop on.
+	NoWorkerTasks bool `json:"noWorkerTasks,omitempty"`
 
 	// jobs
 	Jobs []AgentJob `json:"jobs,omitempty"`

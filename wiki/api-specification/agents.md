@@ -74,6 +74,7 @@ Not in `openapi.yaml`, like `/agent/attachments`.
 | `:uid/fail` | `{"errorCode": "..."}` | `200`, `410` |
 
 - `401` bad signature or revoked agent; `403` system agent (cloud workers cover cloud regions).
+- The WS identity `hello` tells a system agent `"noWorkerTasks": true`, so it never starts its task loop and never sees that `403`. An old server omits the field, and the loop runs.
 - Bodies are capped at 1 MiB (`413`). An agent holds 1 task at a time.
 - `410`: the task is not held by this agent (another holder, lease expired, cancelled, ended). The agent stops `Run`.
 - An old server answers `404`: the agent sleeps 15 s and claims again.
