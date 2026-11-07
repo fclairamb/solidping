@@ -619,3 +619,48 @@ func TestUnsealableCloudJobIsDroppedWithErrorResult(t *testing.T) {
 	r.Equal(int(models.ResultStatusError), *got.Status)
 	r.NotEmpty(got.Output)
 }
+
+// reconnectHello reconnects an enrolled agent with signed headers and returns
+// the hello frame the server greets it with.
+func (e *env) reconnectHello(keys *agentcrypto.AgentKeys, agentUID string) agentcrypto.ServerFrame {
+	e.t.Helper()
+	r := require.New(e.t)
+
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	signature, err := keys.Sign(http.MethodGet, "/api/v1/agent/ws", timestamp, "nonce-"+agentUID)
+	r.NoError(err)
+
+	headers := http.Header{}
+	headers.Set("X-Sp-Agent-Uid", agentUID)
+	headers.Set("X-Sp-Timestamp", timestamp)
+	headers.Set("X-Sp-Nonce", "nonce-"+agentUID)
+	headers.Set("X-Sp-Signature", signature)
+
+	conn, _, err := e.dial(headers)
+	r.NoError(err)
+	e.t.Cleanup(func() { _ = conn.CloseNow() })
+
+	var hello agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(e.t.Context(), conn, &hello))
+	r.Equal(agentcrypto.MsgTypeHello, hello.Type)
+	r.Equal(agentUID, hello.AgentUID)
+
+	return hello
+}
+
+// TestHelloRefusesSystemAgentWorkerTasks: the identity hello tells a system
+// agent the server refuses it worker tasks (the agenttasks routes answer it
+// 403), so it never starts its task loop. An org agent is not told so.
+func TestHelloRefusesSystemAgentWorkerTasks(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newSysEnv(t)
+
+	sysConn, sysKeys, sysEnrolled := e.enroll(e.mintSystemToken(systemRegion), "fly-machine-1")
+	_ = sysConn.Close(websocket.StatusNormalClosure, "bye")
+	r.True(e.reconnectHello(sysKeys, sysEnrolled.AgentUID).NoWorkerTasks)
+
+	orgConn, orgKeys, orgEnrolled := e.enroll(e.mintToken(), "dc1-agent")
+	_ = orgConn.Close(websocket.StatusNormalClosure, "bye")
+	r.False(e.reconnectHello(orgKeys, orgEnrolled.AgentUID).NoWorkerTasks)
+}
