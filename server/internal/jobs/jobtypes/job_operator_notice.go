@@ -166,7 +166,9 @@ func (r *OperatorNoticeJobRun) Run(ctx context.Context, jctx *jobdef.JobContext)
 	notice := enrichWithOrganization(ctx, jctx, r.cfg.Notice())
 
 	for _, userUID := range recipients {
-		opsnotify.DeliverToUser(ctx, deps, log, userUID, notice)
+		// DeliverToUser adds the event attribute itself; passing the job's
+		// logger would duplicate it.
+		opsnotify.DeliverToUser(ctx, deps, jctx.Logger, userUID, notice)
 	}
 
 	return nil

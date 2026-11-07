@@ -168,12 +168,18 @@ func (s *Server) Close() error {
 
 	var err error
 
+	// A listener already closed by the context cancellation reports
+	// net.ErrClosed; that is the expected shutdown path, not a fault.
 	if tcp != nil {
-		err = errors.Join(err, tcp.Close())
+		if closeErr := tcp.Close(); !errors.Is(closeErr, net.ErrClosed) {
+			err = errors.Join(err, closeErr)
+		}
 	}
 
 	if udp != nil {
-		err = errors.Join(err, udp.Close())
+		if closeErr := udp.Close(); !errors.Is(closeErr, net.ErrClosed) {
+			err = errors.Join(err, closeErr)
+		}
 	}
 
 	s.wg.Wait()

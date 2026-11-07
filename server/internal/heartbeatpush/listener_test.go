@@ -507,3 +507,30 @@ func TestStartFailsOnABadAddress(t *testing.T) {
 	var opErr *net.OpError
 	r.True(errors.As(err, &opErr) || err != nil)
 }
+
+// TestCloseAfterContextCancelIsClean: the context cancellation closes the
+// listeners first; Close must not report that as a failure.
+func TestCloseAfterContextCancelIsClean(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultHeartbeatConfig()
+	cfg.TCPListen = "127.0.0.1:0"
+	cfg.UDPListen = "127.0.0.1:0"
+
+	ctx, cancel := context.WithCancel(t.Context())
+	server := heartbeatpush.NewServer(&cfg, &fakeSink{})
+	require.NoError(t, server.Start(ctx))
+
+	cancel()
+	time.Sleep(100 * time.Millisecond)
+
+	require.NoError(t, server.Close())
+}
+
+// TestCloseRunningServerIsClean: a plain Close on a live server returns nil.
+func TestCloseRunningServerIsClean(t *testing.T) {
+	t.Parallel()
+
+	server := startServer(t, &fakeSink{}, nil)
+	require.NoError(t, server.Close())
+}

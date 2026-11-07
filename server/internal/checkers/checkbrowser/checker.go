@@ -514,10 +514,11 @@ var chromeStartTimeout = 20 * time.Second
 // already isolated.
 func browserContext(allocCtx context.Context, current Settings) (context.Context, context.CancelFunc) {
 	if current.Remote() {
-		return chromedp.NewContext(allocCtx, chromedp.WithNewBrowserContext())
+		return chromedp.NewContext(allocCtx,
+			append(chromedpLogOptions(slog.Default()), chromedp.WithNewBrowserContext())...)
 	}
 
-	return chromedp.NewContext(allocCtx)
+	return chromedp.NewContext(allocCtx, chromedpLogOptions(slog.Default())...)
 }
 
 // infraResult is the shape of "we could not run a browser at all". StatusError,

@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/integrations/telegram"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
+	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
 // smsMaxLen bounds the SMS rendering of a notice. A notice is a short report;
@@ -433,8 +434,21 @@ func sendWebPush(
 		return skipUnavailable(ctx, log, label, models.UserContactTypeWebPush, route)
 	}
 
-	return classifySend(ctx, log, label, models.UserContactTypeWebPush, route,
-		deps.SendWebPush(ctx, route.Contact.Value, notice.Subject, ShortBody(notice), notice.URL))
+	err := deps.SendWebPush(ctx, route.Contact.Value, notice.Subject, ShortBody(notice), notice.URL)
+	if errors.Is(err, webpush.ErrSubscriptionGone) {
+		// The push service said 404/410: this subscription will never work
+		// again, so keeping it only fails on every later notice.
+		log.InfoContext(ctx, "web push subscription gone; pruning contact", "contactUid", route.Contact.UID)
+
+		if deleteErr := deps.DB.DeleteUserContact(ctx, route.Contact.UID); deleteErr != nil {
+			log.WarnContext(ctx, "failed to prune gone web push contact",
+				"contactUid", route.Contact.UID, "error", deleteErr)
+		}
+
+		return outcomeSkipped
+	}
+
+	return classifySend(ctx, log, label, models.UserContactTypeWebPush, route, err)
 }
 
 // sendSMS texts the compact form of the notice. An unverified number is never

@@ -2319,7 +2319,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// no longer resolves. Such a link bricks both SSO and reinstall for that
 	// workspace until something trips over it and heals it (spec 2026-08-27-02),
 	// so counting them at boot is the only way an operator hears about it first.
-	s.authService.ReportDanglingProviderLinks(ctx)
+	s.reportDanglingProviderLinks(ctx)
 	// Auto-match members to workspace users right after an install so the first
 	// alert can already mention the on-call person (spec 2026-08-12-03). The
 	// dependency can only point this way — handlers/integrations imports the
@@ -4034,6 +4034,15 @@ func (s *Server) serveAPIOrWait(ctx, runnerCtx context.Context) error {
 // supervisors are built there.
 func (s *Server) SetHeadless() {
 	s.headless = true
+}
+
+// reportDanglingProviderLinks runs the startup dangling-link report only on
+// nodes that serve the API: a checks-only node would otherwise repeat the same
+// warning for the same stale link on every restart.
+func (s *Server) reportDanglingProviderLinks(ctx context.Context) {
+	if s.servesAPI() {
+		s.authService.ReportDanglingProviderLinks(ctx)
+	}
 }
 
 // servesAPI reports whether this process runs the api role's inbound
