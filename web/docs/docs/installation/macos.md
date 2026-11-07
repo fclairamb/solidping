@@ -1,6 +1,6 @@
 ---
 sidebar_position: 4.5
-title: macOS Binary
+title: MacOs Binary
 ---
 
 # macOS Installation
