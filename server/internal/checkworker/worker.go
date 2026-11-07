@@ -266,6 +266,14 @@ func (r *CheckWorker) startTasks(ctx context.Context) {
 		return
 	}
 
+	// Run calls this after registering, so a gated client already knows. Only
+	// an agent's client is gated, and its log is its only record: INFO, once.
+	if gated, ok := r.taskClient.(tasks.Gated); ok && !gated.TasksAllowed() {
+		r.logger.InfoContext(ctx, "Server serves this agent no worker tasks, task loop not started")
+
+		return
+	}
+
 	loop := &tasks.Loop{
 		Client:    r.taskClient,
 		Executors: executors,

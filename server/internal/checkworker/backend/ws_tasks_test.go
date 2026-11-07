@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
@@ -124,4 +125,46 @@ func TestHTTPTaskClientOldServer(t *testing.T) {
 
 	_, err = client.Claim(t.Context(), []string{"fake"})
 	r.ErrorIs(err, tasks.ErrNotSupported)
+}
+
+// The identity hello's NoWorkerTasks reaches TasksAllowed on both the
+// enrollment and the reconnect path, so a system agent never starts its task
+// loop. Without the flag (an org agent, an old server) tasks stay allowed.
+func TestHTTPTaskClientTasksAllowed(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name          string
+		reconnect     bool
+		noWorkerTasks bool
+	}{
+		{name: "enroll, org agent"},
+		{name: "enroll, system agent", noWorkerTasks: true},
+		{name: "reconnect, org agent", reconnect: true},
+		{name: "reconnect, system agent", reconnect: true, noWorkerTasks: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			fake := newFakeAgentServer(t, "eu-west-1")
+			fake.noWorkerTasks = tc.noWorkerTasks
+			fake.handle(func(_ int, conn *websocket.Conn) { fake.serveReads(conn) })
+
+			keys, err := agents.GenerateAgentKeys()
+			r.NoError(err)
+
+			token, identity := "spe_token", &backend.Identity{AgentKeys: *keys}
+			if tc.reconnect {
+				token, identity.AgentUID = "", "agent-1"
+			}
+
+			wsBackend := backend.NewWSBackend(fake.server.URL, token, "agent", identity, nil)
+
+			_, err = wsBackend.Register(t.Context(), nil)
+			r.NoError(err)
+			r.Equal(!tc.noWorkerTasks, wsBackend.TaskClient().TasksAllowed())
+		})
+	}
 }
