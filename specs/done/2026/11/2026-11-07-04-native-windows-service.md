@@ -85,14 +85,17 @@ switch (`nssm remove SolidPing confirm`, then `service install`; move `solidping
 
 ## Acceptance Criteria
 
-- [ ] `solidping service install|uninstall|start|stop|run` exist on Windows; on other platforms `service` is
+- [x] `solidping service install|uninstall|start|stop|run` exist on Windows; on other platforms `service` is
       hidden and each subcommand returns the "only supported on Windows" error.
-- [ ] `service run` outside the SCM fails with a message pointing at `serve`.
-- [ ] Install registers the quoted absolute exe path, automatic start, recovery actions on non-crash failures.
-- [ ] A folder created by install has the protected SYSTEM + Administrators ACL.
-- [ ] Logs rotate in `<dir>\logs`; crash output goes to `crash.log`.
-- [ ] Stop drives the same graceful shutdown as SIGTERM.
-- [ ] The rotating writer lives in `internal/rotatelog` with its tests; devloop uses it, behaviour unchanged.
-- [ ] Platform-neutral helpers (command line building, default data folder) have unit tests.
-- [ ] `GOOS=windows go build` and `GOOS=windows golangci-lint run` are clean (CI lints only on Linux).
-- [ ] The Windows install page no longer installs through NSSM; only a short migration note names it.
+- [x] `service run` outside the SCM fails with a message pointing at `serve`.
+- [x] Install registers the quoted absolute exe path, automatic start, recovery actions on non-crash failures.
+- [x] A folder created by install has the protected SYSTEM + Administrators ACL.
+- [x] Logs rotate in `<dir>\logs`; crash output goes to `crash.log`.
+- [x] Stop drives the same graceful shutdown as SIGTERM.
+- [x] The rotating writer lives in `internal/rotatelog` with its tests; devloop uses it, behaviour unchanged.
+- [x] Platform-neutral helpers (command line building, default data folder) have unit tests.
+- [x] `GOOS=windows go build` and `GOOS=windows golangci-lint run` are clean (CI lints only on Linux).
+- [x] The Windows install page no longer installs through NSSM; only a short migration note names it.
+
+The install, ACL, logs, stop and uninstall criteria are checked on a real Windows host by the
+`windows-service` CI job (`.github/workflows/ci.yml`), which gates `ci`.
