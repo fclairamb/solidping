@@ -454,7 +454,8 @@ func (i *a2aHeaderInterceptor) Before(
 	}
 
 	if i.legacy {
-		delete(req.ServiceParams, a2a.SvcParamVersion)
+		// ServiceParams keys are lower-cased by the SDK since v2.8.0.
+		delete(req.ServiceParams, strings.ToLower(a2a.SvcParamVersion))
 	}
 
 	return ctx, nil, nil
