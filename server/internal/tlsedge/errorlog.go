@@ -7,50 +7,35 @@ import (
 	"log/slog"
 	"net/netip"
 	"strings"
-	"unicode"
 )
 
-const (
-	maxLoggedText = 256
-	maxSNILen     = 253
-)
-
-// sanitize keeps printable runes only and bounds the length, so a log line can
-// never carry control characters or unbounded text from the writer.
-func sanitize(text string, limit int) string {
-	var out strings.Builder
-
-	count := 0
-
-	for _, char := range text {
-		if count >= limit {
-			break
-		}
-
-		if unicode.IsPrint(char) {
-			out.WriteRune(char)
-
-			count++
-		}
+// classify returns a constant label for a net/http error line.
+func classify(text string) string {
+	reasons := []struct{ match, label string }{
+		{ErrHostNotAllowed.Error(), "hostname not allowed"},
+		{"client sent an HTTP request to an HTTPS server", "plain HTTP request on TLS port"},
+		{"first record does not look like a TLS handshake", "not a TLS handshake"},
+		{"no cipher suite supported by both client and server", "no common cipher suite"},
+		{"client offered only unsupported versions", "unsupported TLS version"},
+		{"unsupported SSLv2 handshake received", "unsupported SSLv2 handshake"},
+		{"tls: unknown certificate", "client rejected certificate"},
+		{"tls: bad certificate", "client rejected certificate"},
+		{"certificate", "certificate error"},
+		{"i/o timeout", "i/o timeout"},
+		{"connection reset by peer", "connection reset by peer"},
+		{"EOF", "EOF"},
+		{"Accept error", "accept error"},
+		{"panic serving", "handler panic"},
+		{"superfluous response.WriteHeader", "superfluous WriteHeader"},
 	}
 
-	return out.String()
-}
-
-// validHostname reports whether name looks like a DNS name (letters, digits, dots, dashes).
-func validHostname(name string) bool {
-	if name == "" || len(name) > maxSNILen {
-		return false
-	}
-
-	for _, char := range name {
-		isAlnum := char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9'
-		if !isAlnum && char != '.' && char != '-' && char != '_' {
-			return false
+	for idx := range reasons {
+		if strings.Contains(text, reasons[idx].match) {
+			return reasons[idx].label
 		}
 	}
 
-	return true
+	return "other"
 }
 
 const handshakePrefix = "http: TLS handshake error from "
@@ -74,20 +59,16 @@ func (w *errorLogWriter) Write(line []byte) (int, error) {
 
 	rest, ok := strings.CutPrefix(text, handshakePrefix)
 	if !ok {
-		w.log.WarnContext(ctx, "HTTP server error", "error", sanitize(text, maxLoggedText))
+		w.log.WarnContext(ctx, "HTTP server error", "reason", classify(text))
 
 		return len(line), nil
 	}
 
 	remote, errText, _ := strings.Cut(rest, ": ")
-	attrs := []any{"error", sanitize(errText, maxLoggedText)}
+	attrs := []any{"reason", classify(errText)}
 
 	if addr, err := netip.ParseAddrPort(remote); err == nil {
 		attrs = append(attrs, "remote_addr", addr.String())
-	}
-
-	if _, host, found := strings.Cut(errText, ErrHostNotAllowed.Error()+": "); found && validHostname(host) {
-		attrs = append(attrs, "sni", host)
 	}
 
 	w.log.DebugContext(ctx, "TLS handshake error", attrs...)

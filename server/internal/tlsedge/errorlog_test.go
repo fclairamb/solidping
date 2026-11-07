@@ -22,7 +22,8 @@ func TestErrorLogWriter(t *testing.T) {
 	require.Contains(t, out, "level=DEBUG")
 	require.Contains(t, out, `msg="TLS handshake error"`)
 	require.Contains(t, out, "remote_addr=203.0.113.7:4242")
-	require.Contains(t, out, "sni=scanner.acme.com")
+	require.Contains(t, out, `reason="hostname not allowed"`)
+	require.NotContains(t, out, "scanner.acme.com")
 	require.NotContains(t, out, "msg=\"http:")
 
 	buf.Reset()
@@ -31,5 +32,5 @@ func TestErrorLogWriter(t *testing.T) {
 	out = buf.String()
 	require.Contains(t, out, "level=WARN")
 	require.Contains(t, out, `msg="HTTP server error"`)
-	require.Contains(t, out, `error="http: Accept error: boom; retrying in 5ms"`)
+	require.Contains(t, out, `reason="accept error"`)
 }
