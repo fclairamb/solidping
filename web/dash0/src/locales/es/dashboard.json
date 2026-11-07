@@ -117,12 +117,12 @@
     "availabilityBadge": {
       "noData": "Sin datos",
       "operational": "Operativo",
-      "degraded": "Degradado",
-      "down": "Caído"
+      "degraded": "Por debajo de 99,9 %",
+      "down": "Por debajo de 99 %"
     },
     "availabilityNoDataSub": "Sin datos aún",
     "availability": "Disponibilidad 24 h",
-    "availabilitySub": "Estado de disponibilidad de la flota",
+    "availabilitySub": "Últimas 24 h, todos los checks",
     "totalEndpoints": "{{count}} endpoints en total",
     "badgeNeedsAction": "Requiere acción"
   },

@@ -394,7 +394,17 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 }
               />
             </Link>
-            <div className="block" data-testid="kpi-tile-availability">
+            <Link
+              to="/orgs/$org/incidents"
+              params={{ org }}
+              search={{
+                state: "all" as const,
+                showSuppressed: undefined,
+                checkUid: undefined,
+              }}
+              className="block"
+              data-testid="kpi-tile-availability"
+            >
               <KpiTile
                 label={t("kpi.availability")}
                 value={
@@ -421,7 +431,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                     : t("kpi.availabilitySub")
                 }
               />
-            </div>
+            </Link>
             <Link
               to="/orgs/$org/checks"
               params={{ org }}
@@ -612,7 +622,7 @@ function OverallStatusBanner({
           {/* The "24h SLA Operational" pill asserts a real SLA figure — with
               no data yet there is nothing honest to claim, so it is
               suppressed rather than shown against a fabricated number. */}
-          {availabilityPct !== null ? (
+          {availabilityTier(availabilityPct) === "operational" ? (
             <Badge variant="success" className="gap-1.5">
               <CheckCircle className="h-3.5 w-3.5" />
               {t("banner.slaOperational")}

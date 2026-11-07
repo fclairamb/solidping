@@ -393,8 +393,8 @@ test.describe("Dashboard", () => {
 
     const cases: { pct: number; label: string }[] = [
       { pct: 99.95, label: "Operational" },
-      { pct: 99.5, label: "Degraded" },
-      { pct: 92, label: "Down" },
+      { pct: 99.5, label: "Below 99.9%" },
+      { pct: 92, label: "Below 99%" },
     ];
 
     for (const { pct, label } of cases) {
@@ -413,6 +413,33 @@ test.describe("Dashboard", () => {
       await expect(tile).toContainText(pct.toFixed(2));
       await expect(tile).toContainText(label);
     }
+  });
+
+  test("a 99.88% 24h figure with no incidents does not read Degraded, hides the SLA pill and links to incidents", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockDashboard(page, {
+      checks: [
+        { uid: "63333333-3333-3333-3333-333333333333", name: "Dip Check", status: "up" },
+      ],
+      incidents: [],
+      stats: { availability24h: 99.88 },
+    });
+
+    await page.goto("orgs/test");
+
+    const tile = page.getByTestId("kpi-tile-availability");
+    await expect(tile).toBeVisible({ timeout: 10000 });
+    await expect(tile).toContainText("99.88");
+    await expect(tile).not.toContainText("Degraded");
+    await expect(tile).toContainText("Below 99.9%");
+    await expect(page.getByTestId("overall-status-banner")).not.toContainText(
+      "SLA Operational",
+    );
+
+    await tile.click();
+    await expect(page).toHaveURL(/\/orgs\/test\/incidents/);
   });
 
   test("the all-green banner shows the real availability figure and SLA pill when data exists", async ({
