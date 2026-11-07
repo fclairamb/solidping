@@ -22,13 +22,13 @@ func sanitize(text string, limit int) string {
 
 	count := 0
 
-	for _, r := range text {
+	for _, char := range text {
 		if count >= limit {
 			break
 		}
 
-		if unicode.IsPrint(r) {
-			out.WriteRune(r)
+		if unicode.IsPrint(char) {
+			out.WriteRune(char)
 
 			count++
 		}
@@ -43,9 +43,9 @@ func validHostname(name string) bool {
 		return false
 	}
 
-	for _, r := range name {
-		isAlnum := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
-		if !isAlnum && r != '.' && r != '-' && r != '_' {
+	for _, char := range name {
+		isAlnum := char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9'
+		if !isAlnum && char != '.' && char != '-' && char != '_' {
 			return false
 		}
 	}
