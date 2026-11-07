@@ -1,3 +1,4 @@
+import type { TranslateFn } from "@/lib/i18n-types";
 import { useState, useEffect } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -180,7 +181,7 @@ const ACK_CHANNEL_KEYS = [
 // acknowledged before this attribution shipped).
 function ackAttribution(
   incident: IncidentDetail,
-  t: (key: string, opts?: Record<string, unknown>) => string,
+  t: TranslateFn,
 ): string | undefined {
   const actor = incident.acknowledgedByActor;
   if (!actor?.name) return undefined;

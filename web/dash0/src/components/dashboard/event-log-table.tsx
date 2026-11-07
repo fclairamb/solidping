@@ -1,3 +1,4 @@
+import type { TranslateFn } from "@/lib/i18n-types";
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, Cpu, User } from "lucide-react";
@@ -30,7 +31,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-type EventT = (key: string, options?: Record<string, unknown>) => string;
+type EventT = TranslateFn;
 
 interface EventLogTableProps {
   org: string;

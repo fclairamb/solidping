@@ -1,3 +1,4 @@
+import type { TranslateFn } from "@/lib/i18n-types";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +27,7 @@ export function FlappingBadge({
   className,
 }: {
   flapLevel: number;
-  t: (key: string, options?: Record<string, unknown>) => string;
+  t: TranslateFn;
   className?: string;
 }) {
   return (

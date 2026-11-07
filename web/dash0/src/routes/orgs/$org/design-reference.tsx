@@ -2,6 +2,7 @@
 // hardcoded English — do not add i18n keys for the showcase content.
 // Only the sidebar entry (nav:designReference) is translated.
 
+import { asTranslateFn } from "@/lib/i18n-types";
 import { useMemo, useState } from "react";
 import { Chip } from "@/components/ui/chip";
 import { HttpTimingCard } from "@/components/checks/http-timing-card";
@@ -2415,8 +2416,8 @@ function ButtonsBadgesSection() {
         <ExampleRow
           preview={
             <div className="flex flex-wrap items-center gap-2">
-              <FlappingBadge flapLevel={1} t={designReferenceFlappingT} />
-              <FlappingBadge flapLevel={3} t={designReferenceFlappingT} />
+              <FlappingBadge flapLevel={1} t={asTranslateFn(designReferenceFlappingT)} />
+              <FlappingBadge flapLevel={3} t={asTranslateFn(designReferenceFlappingT)} />
             </div>
           }
           importLine={`import { FlappingBadge } from "@/components/shared/flapping-badge";\n\n{(incident.flapLevel ?? 0) > 0 && (\n  <FlappingBadge flapLevel={incident.flapLevel} t={t} />\n)}`}
@@ -5653,7 +5654,7 @@ function EventToneSection() {
                 <EventTypeBadge
                   key={sample.type}
                   eventType={sample.type}
-                  t={designReferenceEventT}
+                  t={asTranslateFn(designReferenceEventT)}
                 />
               ))}
             </div>
@@ -5680,7 +5681,7 @@ function EventToneSection() {
                 <EventTypeLabel
                   key={sample.type}
                   eventType={sample.type}
-                  t={designReferenceEventT}
+                  t={asTranslateFn(designReferenceEventT)}
                 />
               ))}
             </div>
@@ -5764,7 +5765,7 @@ function EventLogTableSection() {
             <EventLogTable
               org={org}
               events={EVENT_LOG_TABLE_SAMPLES}
-              t={designReferenceEventLogT}
+              t={asTranslateFn(designReferenceEventLogT)}
             />
           }
           importLine={`import { EventLogTable } from "@/components/dashboard/event-log-table";\n\n<EventLogTable org={org} events={events} t={t} />`}
@@ -5789,7 +5790,7 @@ function EventLogTableSection() {
                 <EventLogTable
                   org={org}
                   events={EVENT_LOG_TABLE_SAMPLES}
-                  t={designReferenceEventLogT}
+                  t={asTranslateFn(designReferenceEventLogT)}
                   variant="embedded"
                 />
               </CardContent>
