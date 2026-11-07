@@ -1,3 +1,4 @@
+import type { TranslateFn } from "@/lib/i18n-types";
 import { useTranslation } from "react-i18next";
 import { Pin, Shuffle } from "lucide-react";
 
@@ -114,7 +115,7 @@ function PlacementHistory({
 function describeMove(
   event: Event,
   regions: RegionDefinition[] | undefined,
-  t: (key: string, options?: Record<string, unknown>) => string,
+  t: TranslateFn,
   language: string,
 ): string {
   const payload = event.payload ?? {};

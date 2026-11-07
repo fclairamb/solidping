@@ -1,3 +1,4 @@
+import type { TranslateFn } from "@/lib/i18n-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebounce } from "@/lib/use-debounce";
 import { useTranslation } from "react-i18next";
@@ -288,7 +289,7 @@ function newCheckSearchForGroup(slug: string) {
 // counted (enabled) members at all.
 function formatMemberSummary(
   counts: Record<string, number> | undefined,
-  t: (key: string, options?: Record<string, unknown>) => string,
+  t: TranslateFn,
 ): string | null {
   if (!counts) return null;
   const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
