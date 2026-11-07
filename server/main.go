@@ -141,6 +141,7 @@ func buildRootCommand() *cli.Command {
 				},
 				Action: encryptCredentials,
 			},
+			serviceCommand(),
 			devCommand(),
 			spCli.BinaryVersionCommand(),
 		},
@@ -156,7 +157,13 @@ func setupLogger(level slog.Level, format config.LogFormat) {
 }
 
 func serve(ctx context.Context, _ *cli.Command) error {
-	cfg, shutdownOTel, err := loadServeConfig(ctx, os.Stdout)
+	return serveTo(ctx, os.Stdout)
+}
+
+// serveTo runs the server with its logs written to logOut: stdout for `serve`,
+// a rotated file for `service run`, as a Windows service has no console.
+func serveTo(ctx context.Context, logOut io.Writer) error {
+	cfg, shutdownOTel, err := loadServeConfig(ctx, logOut)
 	if err != nil {
 		return err
 	}
@@ -674,7 +681,7 @@ func openDB(ctx context.Context, cfg *config.Config) (db.Service, error) {
 	case "postgres":
 		return postgres.New(ctx, &postgres.Config{DSN: cfg.Database.URL, Embedded: false, GuardMode: guardMode})
 	case "postgres-embedded":
-		if runtime.GOOS == "windows" {
+		if runtime.GOOS == goosWindows {
 			return nil, errPostgresEmbeddedUnsupportedOnWindows
 		}
 
@@ -708,7 +715,7 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 			GuardMode: guardMode,
 		})
 	case "postgres-embedded":
-		if runtime.GOOS == "windows" {
+		if runtime.GOOS == goosWindows {
 			return errPostgresEmbeddedUnsupportedOnWindows
 		}
 

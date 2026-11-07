@@ -9,6 +9,7 @@ import (
 	"sync"
 )
 
+// Defaults for New's maxSize and backups.
 const (
 	DefaultMaxSize = 20 << 20 // 20 MB per active log file.
 	DefaultBackups = 2
@@ -38,6 +39,8 @@ type Writer struct {
 	size    int64
 }
 
+// New opens path for writing, rotating away a non-empty previous file first.
+// A maxSize of zero or less means DefaultMaxSize.
 func New(path string, maxSize int64, backups int) *Writer {
 	if maxSize <= 0 {
 		maxSize = DefaultMaxSize

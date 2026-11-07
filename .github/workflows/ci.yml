@@ -652,6 +652,79 @@ jobs:
           path: solidping
           retention-days: 1
 
+  # The Windows service (spec 2026-11-07-04) only builds on Windows, and the
+  # Linux lint/test jobs never compile it. This job runs its tests, then a real
+  # install / start / health / stop / uninstall cycle: GitHub's Windows runners
+  # are administrators, which `service install` needs.
+  windows-service:
+    name: Windows service
+    runs-on: windows-2025
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: server
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Test
+        run: go test -run 'Service' .
+
+      - name: Install, start, stop and uninstall the service
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $env:RUNNER_TEMP 'solidping.exe'
+          $dir = Join-Path $env:RUNNER_TEMP 'solidping-data'
+          go build -o $exe .
+          if ($LASTEXITCODE) { exit 1 }
+
+          & $exe service install --dir $dir
+          if ($LASTEXITCODE) { exit 1 }
+
+          $acl = Get-Acl $dir
+          if (-not $acl.AreAccessRulesProtected) { throw 'data folder inherits the ProgramData ACL' }
+          $who = $acl.Access.IdentityReference.Value
+          $who
+          if ($who | Where-Object { $_ -notin 'NT AUTHORITY\SYSTEM', 'BUILTIN\Administrators' }) {
+            throw 'data folder grants access beyond SYSTEM and Administrators'
+          }
+
+          & $exe service start
+          if ($LASTEXITCODE) { exit 1 }
+
+          $healthy = $false
+          foreach ($i in 1..60) {
+            try {
+              Invoke-RestMethod http://localhost:4000/api/mgmt/health | Out-Null
+              $healthy = $true
+              break
+            } catch {
+              Start-Sleep -Seconds 2
+            }
+          }
+
+          & $exe service stop
+          if ($LASTEXITCODE) { exit 1 }
+
+          Get-Content (Join-Path $dir 'logs\solidping.log') -Tail 40
+          if (-not $healthy) { throw 'the service never answered /api/mgmt/health' }
+          if (-not (Test-Path (Join-Path $dir 'solidping.db'))) { throw 'no SQLite database in the data folder' }
+          if (-not (Select-String -Quiet -Path (Join-Path $dir 'logs\solidping.log') -Pattern 'Configuration loaded')) {
+            throw 'the service log has no startup line'
+          }
+
+          & $exe service uninstall
+          if ($LASTEXITCODE) { exit 1 }
+          if (Get-Service SolidPing -ErrorAction SilentlyContinue) { throw 'service still registered' }
+
   # Guards for the tag-only release jobs (server-release, cli-release, docker):
   # they prove a release would still package, build its images and
   # cross-compile, on every PR, since those jobs cannot run before a tag exists.
@@ -1227,7 +1300,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-26.04
-    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, release-guards, e2e-tests, upgrade-matrix, upgrade]
+    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, release-guards, windows-service, e2e-tests, upgrade-matrix, upgrade]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Verify no failures
