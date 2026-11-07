@@ -1,7 +1,10 @@
 package checkworker
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -270,4 +273,37 @@ func TestApplyEgressDenial(t *testing.T) {
 	applyEgressDenial(bare, denied)
 	r.Equal(checkerdef.StatusError, bare.Status)
 	r.NotEmpty(bare.Output[checkerdef.OutputKeyError])
+}
+
+// A refused check is refused on every execution: the server-side line must
+// stay below INFO, or one misconfigured check floods the INFO stream
+// (fclairamb/solidping-business#50).
+func TestApplyEgressDenialLogsAtDebug(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	var logs bytes.Buffer
+
+	worker := &CheckWorker{
+		logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo})),
+	}
+
+	ctx, rec := egress.WithRecorder(t.Context())
+	r.Error(egress.New(false).CheckAddr(ctx, "internal.acme.com", net.ParseIP("10.0.0.1")))
+
+	job := &models.CheckJob{CheckUID: uuid.NewString(), OrganizationUID: uuid.NewString()}
+	result := &checkerdef.Result{Status: checkerdef.StatusDown}
+
+	worker.applyEgressDenial(ctx, job, result, rec)
+
+	r.Equal(checkerdef.StatusError, result.Status, "positive control: the denial was applied")
+	r.Empty(logs.String(), "no INFO line per refused execution")
+
+	// At DEBUG the line is still there, with the resolved address.
+	logs.Reset()
+	worker.logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	worker.applyEgressDenial(ctx, job, &checkerdef.Result{}, rec)
+	r.Contains(logs.String(), "refused by the egress policy")
+	r.Contains(logs.String(), "10.0.0.1")
 }
