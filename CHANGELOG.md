@@ -7,10 +7,12 @@
 
 * **agent:** system agents no longer poll the worker-task routes ([#791](https://github.com/fclairamb/solidping/issues/791)) ([ca544c6](https://github.com/fclairamb/solidping/commit/ca544c6e97a26488fd1d0b1471c6dd4fb7fb1edc))
 * **api:** cap and dedup the checkUid list filter of results and incidents ([#789](https://github.com/fclairamb/solidping/issues/789)) ([737fa55](https://github.com/fclairamb/solidping/commit/737fa553fe5a82bb191f95dc64853bca7af96a74))
-* **deps:** update dependency react-i18next to v18 ([#796](https://github.com/fclairamb/solidping/issues/796)) ([f3a8201](https://github.com/fclairamb/solidping/commit/f3a82017b4bdd080c8783714805721438416f0c6))
-* **deps:** update github.com/dop251/goja digest to 7c0a2f7 ([#794](https://github.com/fclairamb/solidping/issues/794)) ([2ef4652](https://github.com/fclairamb/solidping/commit/2ef465257436e108c24e3cd5fd07e47efa32aed2))
-* **deps:** update module modernc.org/sqlite to v1.62.0 ([#795](https://github.com/fclairamb/solidping/issues/795)) ([c3af9f8](https://github.com/fclairamb/solidping/commit/c3af9f866dc60cf6d33acb525652b48816ae2563))
 * egress log level, sidebar deep link, plus specs ([#793](https://github.com/fclairamb/solidping/issues/793)) ([6150d11](https://github.com/fclairamb/solidping/commit/6150d11a6a8b91cdddad79b407956bea62f0ccc4))
+
+
+### Dependencies
+
+* **deps:** update react-i18next to v18, modernc.org/sqlite to v1.62.0 and goja to 7c0a2f7 ([#796](https://github.com/fclairamb/solidping/issues/796)) ([f3a8201](https://github.com/fclairamb/solidping/commit/f3a82017b4bdd080c8783714805721438416f0c6)), ([#795](https://github.com/fclairamb/solidping/issues/795)) ([c3af9f8](https://github.com/fclairamb/solidping/commit/c3af9f866dc60cf6d33acb525652b48816ae2563)), ([#794](https://github.com/fclairamb/solidping/issues/794)) ([2ef4652](https://github.com/fclairamb/solidping/commit/2ef465257436e108c24e3cd5fd07e47efa32aed2))
 
 ## [0.44.1](https://github.com/fclairamb/solidping/compare/v0.44.0...v0.44.1) (2026-11-07)
 
