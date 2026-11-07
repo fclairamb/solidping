@@ -95,4 +95,4 @@ switch (`nssm remove SolidPing confirm`, then `service install`; move `solidping
 - [ ] The rotating writer lives in `internal/rotatelog` with its tests; devloop uses it, behaviour unchanged.
 - [ ] Platform-neutral helpers (command line building, default data folder) have unit tests.
 - [ ] `GOOS=windows go build` and `GOOS=windows golangci-lint run` are clean (CI lints only on Linux).
-- [ ] The Windows install page no longer mentions NSSM.
+- [ ] The Windows install page no longer installs through NSSM; only a short migration note names it.
