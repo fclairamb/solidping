@@ -5,13 +5,11 @@
 
 ### Bug Fixes
 
-* **dash0:** keep valid sessions when a token refresh fails transiently ([#782](https://github.com/fclairamb/solidping/issues/782)) ([8e77846](https://github.com/fclairamb/solidping/commit/8e77846bfda81b544d2c5a9582162e2cf6877a5e))
-* **deps:** update module github.com/crewjam/saml to v0.5.2 ([#786](https://github.com/fclairamb/solidping/issues/786)) ([9d370fe](https://github.com/fclairamb/solidping/commit/9d370fe283e7b92526002fd49910bb2717da1b1c))
-* **deps:** update module github.com/posthog/posthog-go to v1.40.1 ([#775](https://github.com/fclairamb/solidping/issues/775)) ([37ada84](https://github.com/fclairamb/solidping/commit/37ada84426db955734aba7a2e0ded6c7c209a508))
-* **deps:** update module github.com/posthog/posthog-go to v1.41.1 ([#785](https://github.com/fclairamb/solidping/issues/785)) ([8684c71](https://github.com/fclairamb/solidping/commit/8684c71751bf99b0ffd6542c52c6d756408df713))
-* **docs:** plain markdown for the API reference .md pages ([#784](https://github.com/fclairamb/solidping/issues/784)) ([3270ac6](https://github.com/fclairamb/solidping/commit/3270ac6a4396946bb5a9b2c4ebd7665d8b34365c))
 * **security:** normalize trailing-dot custom status domains ([#778](https://github.com/fclairamb/solidping/issues/778)) ([8b2a7ca](https://github.com/fclairamb/solidping/commit/8b2a7ca1032536035e4432a70c448cdd0b5b87e3))
+* **dash0:** keep valid sessions when a token refresh fails transiently ([#782](https://github.com/fclairamb/solidping/issues/782)) ([8e77846](https://github.com/fclairamb/solidping/commit/8e77846bfda81b544d2c5a9582162e2cf6877a5e))
 * **slack:** resolve check and incident link unfurls ([#779](https://github.com/fclairamb/solidping/issues/779)) ([930f18e](https://github.com/fclairamb/solidping/commit/930f18e28e3b72c2ae57d1ae25ab26ae9883d5b7))
+* **docs:** plain markdown for the API reference .md pages ([#784](https://github.com/fclairamb/solidping/issues/784)) ([3270ac6](https://github.com/fclairamb/solidping/commit/3270ac6a4396946bb5a9b2c4ebd7665d8b34365c))
+* **deps:** update Go modules: crewjam/saml to v0.5.2 ([#786](https://github.com/fclairamb/solidping/issues/786)) ([9d370fe](https://github.com/fclairamb/solidping/commit/9d370fe283e7b92526002fd49910bb2717da1b1c)), posthog-go to v1.41.1 ([#775](https://github.com/fclairamb/solidping/issues/775), [#785](https://github.com/fclairamb/solidping/issues/785)) ([37ada84](https://github.com/fclairamb/solidping/commit/37ada84426db955734aba7a2e0ded6c7c209a508), [8684c71](https://github.com/fclairamb/solidping/commit/8684c71751bf99b0ffd6542c52c6d756408df713))
 
 ## [0.44.0](https://github.com/fclairamb/solidping/compare/v0.43.1...v0.44.0) (2026-11-05)
 
