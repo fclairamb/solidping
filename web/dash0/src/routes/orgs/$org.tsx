@@ -63,7 +63,7 @@ import { FeedbackButton } from "@/components/feedback/FeedbackButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { useFeedback } from "@/components/feedback/useFeedback";
 import { LiveEventsProvider } from "@/contexts/LiveEventsContext";
-import { isOrgPublicRoute } from "@/lib/org-public-routes";
+import { canRenderBareOutlet, isOrgPublicRoute } from "@/lib/org-public-routes";
 import { demoFlagFromLocation } from "@/lib/demo";
 import { readCachedDemoOrgSlug, useBugReportEnabled } from "@/api/public-config";
 import { pickAccessibleOrg } from "@/lib/accessible-org";
@@ -1008,6 +1008,11 @@ function OrgLayout() {
   // why a bare `.endsWith("/register")` is wrong, and why the org param must
   // not be interpolated into the pattern here.
   const isLoginPage = isOrgPublicRoute(location.pathname);
+  // The leaf of the COMMITTED matches: what <Outlet/> renders right now,
+  // which can lag behind `location` during a navigation.
+  const committedLeafPathname = useMatches({
+    select: (matches) => matches[matches.length - 1]?.pathname,
+  });
   // Whether the router is mid-flight between two DIFFERENT orgs, i.e. whether
   // `location` and `org` above are describing the same URL at all
   // (spec 2026-09-12-01 §B).
@@ -1167,8 +1172,17 @@ function OrgLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsAccessibleOrgRedirect, org, accessibleOrg, routerSnapshotIsTorn]);
 
-  // Login page should render without sidebar
+  // Login page should render without sidebar. The location may already be
+  // the pending /login while the outlet still renders the page being left:
+  // that page must not render bare (see canRenderBareOutlet).
   if (isLoginPage) {
+    if (!canRenderBareOutlet(location.pathname, committedLeafPathname)) {
+      return (
+        <div className="flex items-center justify-center h-screen">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      );
+    }
     return <Outlet />;
   }
 

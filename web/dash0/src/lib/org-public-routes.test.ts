@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isOrgPublicRoute } from "./org-public-routes";
+import { canRenderBareOutlet, isOrgPublicRoute } from "./org-public-routes";
 import { DASH_BASE } from "@/lib/base-path";
 
 describe("isOrgPublicRoute", () => {
@@ -29,5 +29,30 @@ describe("isOrgPublicRoute", () => {
     expect(isOrgPublicRoute(`${DASH_BASE}/orgs/test`)).toBe(false);
     expect(isOrgPublicRoute(`${DASH_BASE}/orgs/test/checks`)).toBe(false);
     expect(isOrgPublicRoute(`${DASH_BASE}/login`)).toBe(false);
+  });
+});
+
+describe("canRenderBareOutlet", () => {
+  it("is false while a sidebar page is still committed under a pending login URL", () => {
+    // An expired session on a deep link: the location already says /login,
+    // the outlet still renders the page being left. Rendering it bare threw
+    // "useSidebar must be used within a SidebarProvider".
+    expect(
+      canRenderBareOutlet(
+        `${DASH_BASE}/orgs/acmetech/login`,
+        `${DASH_BASE}/orgs/acmetech/design-reference`,
+      ),
+    ).toBe(false);
+    expect(canRenderBareOutlet("/orgs/acmetech/login", undefined)).toBe(false);
+  });
+
+  it("is true once the login match is committed, including a login to login org switch", () => {
+    expect(canRenderBareOutlet("/orgs/acmetech/login", "/orgs/acmetech/login")).toBe(true);
+    expect(canRenderBareOutlet("/orgs/test/login", "/orgs/default/login")).toBe(true);
+    expect(canRenderBareOutlet("/orgs/acmetech/register", "/orgs/acmetech/register")).toBe(true);
+  });
+
+  it("is false for any non-public pending URL", () => {
+    expect(canRenderBareOutlet("/orgs/acmetech/checks", "/orgs/acmetech/login")).toBe(false);
   });
 });

@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/opsnotify"
+	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
 // safeBuffer is a bytes.Buffer usable as a slog destination from a test that
@@ -791,5 +792,45 @@ func TestDeliverDiscordUnavailableVsFailed(t *testing.T) {
 			r.Equal(testCase.skipped, report.Skipped, "skipped")
 			r.Equal(testCase.failed, report.Failed, "failed")
 		})
+	}
+}
+
+// TestGoneWebPushSubscriptionIsPruned: a 404/410 from the push service deletes
+// the contact (it can never work again), logs INFO and no WARN, and the event
+// attribute appears once per line.
+func TestGoneWebPushSubscriptionIsPruned(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	e := newEnv(t)
+
+	alice := e.user(t, "alice@acme.com", true)
+	org := e.org(t, "acme")
+	e.join(t, org, alice)
+	e.contact(t, org, alice, models.UserContactTypeWebPush, `{"endpoint":"gone"}`, false)
+
+	routes, err := e.db.ListUserContactsWithRoutes(t.Context(), alice.UID, org.UID)
+	r.NoError(err)
+	r.Len(routes, 1)
+
+	contactUID := routes[0].Contact.UID
+
+	deps := e.deps()
+	deps.SendWebPush = func(context.Context, string, string, string, string) error {
+		return fmt.Errorf("send: %w", webpush.ErrSubscriptionGone)
+	}
+
+	report := opsnotify.DeliverToUser(t.Context(), deps, e.log, alice.UID, testNotice())
+	r.Equal(0, report.Delivered)
+
+	_, err = e.db.GetUserContact(t.Context(), contactUID)
+	r.Error(err, "the gone contact is deleted")
+
+	logs := e.logs.String()
+	r.Contains(logs, "web push subscription gone; pruning contact")
+	r.NotContains(logs, "failed to send over")
+
+	for _, line := range strings.Split(strings.TrimSpace(logs), "\n") {
+		r.LessOrEqual(strings.Count(line, "event="), 1, line)
 	}
 }

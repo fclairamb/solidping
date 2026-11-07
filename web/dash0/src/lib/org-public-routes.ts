@@ -23,3 +23,30 @@
 export function isOrgPublicRoute(pathname: string): boolean {
   return /\/orgs\/[^/]+\/(login|register)$/.test(pathname);
 }
+
+/**
+ * Whether the org layout may render its `<Outlet/>` bare, without the sidebar
+ * shell, for a public (login/register) URL.
+ *
+ * `useLocation()` flips to the PENDING destination as soon as a navigation
+ * starts, while `<Outlet/>` keeps rendering the COMMITTED match until the new
+ * one lands. On a redirect to login (an expired session, a 401 from the API),
+ * the pending path is already `/login` while the outlet still holds the page
+ * being left, e.g. one rendering sidebar primitives. Rendering that page bare
+ * throws "useSidebar must be used within a SidebarProvider". So the bare
+ * outlet needs BOTH the pending path and the committed leaf to be public;
+ * otherwise the layout shows a spinner until the login match commits.
+ *
+ * Login → login (the org picker switching org) stays bare on both sides, so
+ * the login component keeps its state.
+ */
+export function canRenderBareOutlet(
+  pendingPathname: string,
+  committedLeafPathname: string | undefined,
+): boolean {
+  return (
+    isOrgPublicRoute(pendingPathname) &&
+    committedLeafPathname !== undefined &&
+    isOrgPublicRoute(committedLeafPathname)
+  );
+}

@@ -53,6 +53,10 @@ func (r *CheckWorker) withEgress(ctx context.Context) (context.Context, *egress.
 // applyEgressDenial logs and applies the refusal an execution recorded, if
 // any. The resolved address is logged here, server-side only: the user-facing
 // message deliberately never carries it (see egress.DeniedError.Error).
+//
+// The line is DEBUG: a refused check is refused on every execution, and the
+// user already sees the refusal as an Error result, so an INFO line per run
+// turned one misconfigured check into thousands of lines a day per region.
 func (r *CheckWorker) applyEgressDenial(
 	ctx context.Context, checkJob *models.CheckJob, result *checkerdef.Result, denials *egress.Recorder,
 ) {
@@ -61,7 +65,7 @@ func (r *CheckWorker) applyEgressDenial(
 		return
 	}
 
-	r.logger.InfoContext(ctx, "Check target refused by the egress policy",
+	r.logger.DebugContext(ctx, "Check target refused by the egress policy",
 		"check_uid", checkJob.CheckUID,
 		"organization_uid", checkJob.OrganizationUID,
 		"host", denied.Host,

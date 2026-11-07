@@ -485,6 +485,7 @@ func (e *Edge) Start(ctx context.Context) error {
 	e.httpSrv = &http.Server{
 		Addr:              e.opts.ACME.ListenHTTP,
 		Handler:           e.challengeHandler(),
+		ErrorLog:          newServerErrorLog(e.log),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
@@ -492,6 +493,7 @@ func (e *Edge) Start(ctx context.Context) error {
 		Addr:              e.opts.ACME.ListenHTTPS,
 		Handler:           e.opts.Handler,
 		TLSConfig:         e.TLSConfig(ctx),
+		ErrorLog:          newServerErrorLog(e.log),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
