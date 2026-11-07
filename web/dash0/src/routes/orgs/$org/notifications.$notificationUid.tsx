@@ -1,3 +1,4 @@
+import type { TranslateFn } from "@/lib/i18n-types";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import {
@@ -170,7 +171,7 @@ function DeliverySection({
   t,
 }: {
   notif: IncidentNotification;
-  t: (key: string, options?: Record<string, unknown>) => string;
+  t: TranslateFn;
 }) {
   const d = notif.deliveryDetails;
   if (!d) return null;

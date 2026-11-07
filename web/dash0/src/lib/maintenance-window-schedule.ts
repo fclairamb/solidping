@@ -1,3 +1,4 @@
+import type { TranslateFn } from "@/lib/i18n-types";
 import type { MaintenanceOccurrence, MaintenanceWindow } from "@/api/hooks";
 import { occurrenceStartUTC } from "@/lib/maintenance-window-status";
 
@@ -17,7 +18,7 @@ import { occurrenceStartUTC } from "@/lib/maintenance-window-status";
 // to match the server.
 
 // i18n translator shape we depend on (a subset of react-i18next's TFunction).
-type Translate = (key: string, opts?: Record<string, unknown>) => string;
+type Translate = TranslateFn;
 
 const MAX_NEXT_OCCURRENCES = 100;
 

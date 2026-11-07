@@ -1,3 +1,4 @@
+import type { TranslateFn } from "@/lib/i18n-types";
 import type { ReactNode } from "react";
 import {
   AlarmClockOff,
@@ -322,7 +323,7 @@ export function EventTypeBadge({
   className,
 }: {
   eventType?: string;
-  t: (key: string, options?: Record<string, unknown>) => string;
+  t: TranslateFn;
   className?: string;
 }) {
   const emoji = getEventEmoji(eventType);
@@ -463,7 +464,7 @@ export function EventTypeLabel({
   className,
 }: {
   eventType?: string;
-  t: (key: string, options?: Record<string, unknown>) => string;
+  t: TranslateFn;
   className?: string;
 }) {
   const { icon: Icon, tone, loud } = getEventMark(eventType);
@@ -493,7 +494,7 @@ export function EventTypeLabel({
 
 export function getEventLabel(
   eventType: string | undefined,
-  t: (key: string, options?: Record<string, unknown>) => string,
+  t: TranslateFn,
 ): string {
   if (!eventType) return t("unknown");
   return t(`types.${eventType}`, { defaultValue: eventType });
@@ -504,7 +505,7 @@ export function getEventLabel(
 // description line when this returns an empty string.
 export function getEventDescription(
   eventType: string | undefined,
-  t: (key: string, options?: Record<string, unknown>) => string,
+  t: TranslateFn,
 ): string {
   if (!eventType) return "";
   return t(`descriptions.${eventType}`, { defaultValue: "" });

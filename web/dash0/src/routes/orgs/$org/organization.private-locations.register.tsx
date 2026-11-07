@@ -1,3 +1,4 @@
+import type { TranslateFn } from "@/lib/i18n-types";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -508,7 +509,7 @@ function StepMintToken({
 
 function formatExpiry(
   expiresAt: string,
-  t: (key: string, opts?: Record<string, unknown>) => string,
+  t: TranslateFn,
 ): string {
   const date = new Date(expiresAt);
   const hours = Math.max(1, Math.round((date.getTime() - Date.now()) / (60 * 60 * 1000)));
