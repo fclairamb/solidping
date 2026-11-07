@@ -5,8 +5,8 @@
 
 ### Bug Fixes
 
-* **deps:** update github.com/dop251/goja digest to 763fabc ([#799](https://github.com/fclairamb/solidping/issues/799)) ([d745721](https://github.com/fclairamb/solidping/commit/d745721bab73fb944dae6dff1e2adddf2e7908c2))
-* **notifications:** announce degraded incidents as degraded, not as outages ([#797](https://github.com/fclairamb/solidping/issues/797)) ([cf459a7](https://github.com/fclairamb/solidping/commit/cf459a739bee6cbea4bfe6b15dd73a8e32f33ae4))
+* **notifications:** degraded incidents are now announced as degraded, not as outages ([#797](https://github.com/fclairamb/solidping/issues/797)) ([cf459a7](https://github.com/fclairamb/solidping/commit/cf459a739bee6cbea4bfe6b15dd73a8e32f33ae4))
+* **deps:** dependency update (goja) ([#799](https://github.com/fclairamb/solidping/issues/799)) ([d745721](https://github.com/fclairamb/solidping/commit/d745721bab73fb944dae6dff1e2adddf2e7908c2))
 
 ## [0.44.2](https://github.com/fclairamb/solidping/compare/v0.44.1...v0.44.2) (2026-11-07)
 
