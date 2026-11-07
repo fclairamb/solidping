@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkfilter"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
@@ -89,9 +90,11 @@ func parseIncidentKinds(raw string) ([]string, error) {
 func parseListIncidentsOptions(query url.Values) (*ListIncidentsOptions, error) {
 	opts := &ListIncidentsOptions{Size: 20}
 
-	if v := query.Get("checkUid"); v != "" {
-		opts.CheckUIDs = strings.Split(v, ",")
+	checkUIDs, err := checkfilter.Split(query.Get("checkUid"))
+	if err != nil {
+		return nil, err
 	}
+	opts.CheckUIDs = checkUIDs
 
 	if v := query.Get("checkGroupUid"); v != "" {
 		opts.CheckGroupUID = v

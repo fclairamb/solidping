@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/checkfilter"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -235,7 +236,12 @@ func (s *Service) buildListFilter(
 
 	// Resolve check identifiers to UIDs
 	if len(opts.Checks) > 0 {
-		filter.CheckUIDs = s.resolveCheckIdentifiers(ctx, orgUID, opts.Checks)
+		checkUIDs, err := s.resolveCheckIdentifiers(ctx, orgUID, opts.Checks)
+		if err != nil {
+			return nil, err
+		}
+
+		filter.CheckUIDs = checkUIDs
 	}
 
 	// Map status strings to integers
@@ -323,13 +329,19 @@ func (s *Service) ListResults(
 	}, nil
 }
 
-func (s *Service) resolveCheckIdentifiers(ctx context.Context, orgUID string, identifiers []string) []string {
-	uids := make([]string, 0, len(identifiers))
+// resolveCheckIdentifiers resolves a mix of check UIDs and slugs to UIDs. The
+// list is capped, trimmed and deduped first (checkfilter.Normalize), so each
+// distinct identifier costs one lookup, and the loop stops as soon as the
+// request context is done.
+func (s *Service) resolveCheckIdentifiers(
+	ctx context.Context, orgUID string, identifiers []string,
+) ([]string, error) {
+	ids := checkfilter.Normalize(identifiers)
+	uids := make([]string, 0, len(ids))
 
-	for _, id := range identifiers {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
+	for _, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
 
 		// Look up check by UID or slug (auto-detected)
@@ -340,7 +352,7 @@ func (s *Service) resolveCheckIdentifiers(ctx context.Context, orgUID string, id
 		// Silently ignore identifiers that don't match any check
 	}
 
-	return uids
+	return uids, nil
 }
 
 func (s *Service) mapStatusStringsToInts(statuses []string) []int {
