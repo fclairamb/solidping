@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -198,7 +199,21 @@ func pushoverDefaultPriorities() map[string]int {
 	}
 }
 
-func (s *PushoverSender) getPriority(settings *pushoverSettings, eventType string) int {
+// An open degraded incident is notify-only, never a page: normal priority (no
+// bypass of quiet hours, never emergency) and Pushover's default sound rather
+// than the outage siren, whatever the outage settings are.
+const (
+	pushoverDegradedPriority = 0
+	pushoverDegradedSound    = "pushover"
+)
+
+func (s *PushoverSender) getPriority(settings *pushoverSettings, payload *Payload) int {
+	eventType := payload.EventType
+
+	if isDegradedIncident(payload.Incident) && opensIncident(eventType) {
+		return pushoverDegradedPriority
+	}
+
 	shortType := strings.TrimPrefix(eventType, "incident.")
 
 	if settings.PriorityMapping != nil {
@@ -215,9 +230,13 @@ func (s *PushoverSender) getPriority(settings *pushoverSettings, eventType strin
 	return 0
 }
 
-func (s *PushoverSender) getSound(settings *pushoverSettings, eventType string) string {
-	if eventType == eventTypeIncidentResolved {
+func (s *PushoverSender) getSound(settings *pushoverSettings, payload *Payload) string {
+	if payload.EventType == eventTypeIncidentResolved {
 		return settings.SoundUp
+	}
+
+	if isDegradedIncident(payload.Incident) && opensIncident(payload.EventType) {
+		return pushoverDegradedSound
 	}
 
 	return settings.SoundDown
@@ -227,23 +246,24 @@ func (s *PushoverSender) buildContent(
 	settings *pushoverSettings, payload *Payload,
 ) (string, string, int, string) {
 	checkName := getCheckName(payload.Check)
-	priority := s.getPriority(settings, payload.EventType)
-	sound := s.getSound(settings, payload.EventType)
+	priority := s.getPriority(settings, payload)
+	sound := s.getSound(settings, payload)
 
 	var title, body string
 
 	switch payload.EventType {
 	case eventTypeIncidentCreated:
-		title = "[DOWN] " + checkName
+		title = openedTag(payload.Incident) + checkName
 		body = s.buildDownBody(payload, checkName)
 	case eventTypeIncidentResolved:
 		title = resolvedTag(payload.Incident) + checkName
 		body = s.buildResolvedBody(payload, checkName)
 	case eventTypeIncidentEscalated:
-		title = "[ESCALATED] " + checkName
+		title = "[ESCALATED] " + degradedMark(payload.Incident) + checkName
 		body = s.buildEscalatedBody(payload, checkName)
 	case eventTypeIncidentReopened:
-		title = fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
+		title = fmt.Sprintf("[REOPENED] %s%s (relapse #%d)",
+			degradedMark(payload.Incident), checkName, payload.Incident.RelapseCount)
 		body = s.buildDownBody(payload, checkName)
 	case eventTypeIncidentComment:
 		title = commentTitle(payload)
@@ -269,8 +289,7 @@ func (s *PushoverSender) buildDownBody(payload *Payload, checkName string) strin
 	var builder strings.Builder
 
 	fmt.Fprintf(&builder, "<b>Check:</b> %s (%s)\n", checkName, payload.Check.Type)
-	fmt.Fprintf(&builder, "<b>Cause:</b> %s\n", getFailureReason(payload.Incident))
-	fmt.Fprintf(&builder, "<b>Failures:</b> %d\n", payload.Incident.FailureCount)
+	writePushoverCauseLines(&builder, payload.Incident)
 	fmt.Fprintf(&builder, "<b>Started:</b> %s", payload.Incident.StartedAt.Format(time.RFC3339))
 
 	writePushoverRegionLine(&builder, payload)
@@ -281,8 +300,8 @@ func (s *PushoverSender) buildDownBody(payload *Payload, checkName string) strin
 func (s *PushoverSender) buildResolvedBody(payload *Payload, checkName string) string {
 	var builder strings.Builder
 
-	if closedWithoutRecovery(payload.Incident) {
-		builder.WriteString(closedSentence(payload.Incident) + "\n")
+	if lead := resolvedLeadSentence(payload.Incident); lead != "" {
+		builder.WriteString(lead + "\n")
 	}
 
 	fmt.Fprintf(&builder, "<b>Check:</b> %s (%s)\n", checkName, payload.Check.Type)
@@ -301,13 +320,28 @@ func (s *PushoverSender) buildEscalatedBody(payload *Payload, checkName string) 
 	var builder strings.Builder
 
 	fmt.Fprintf(&builder, "<b>Check:</b> %s (%s)\n", checkName, payload.Check.Type)
-	fmt.Fprintf(&builder, "<b>Cause:</b> %s\n", getFailureReason(payload.Incident))
-	fmt.Fprintf(&builder, "<b>Failures:</b> %d\n", payload.Incident.FailureCount)
+	writePushoverCauseLines(&builder, payload.Incident)
 	fmt.Fprintf(&builder, "<b>Duration:</b> %s", formatDuration(time.Since(payload.Incident.StartedAt)))
 
 	writePushoverRegionLine(&builder, payload)
 
 	return builder.String()
+}
+
+// writePushoverCauseLines writes the cause rows of an open incident: cause and
+// failure count for an outage, the degraded facts for a degraded incident.
+func writePushoverCauseLines(builder *strings.Builder, incident *models.Incident) {
+	if isDegradedIncident(incident) {
+		facts := degradedFacts(incident)
+		for i := range facts {
+			fmt.Fprintf(builder, "<b>%s:</b> %s\n", facts[i].Label, facts[i].Value)
+		}
+
+		return
+	}
+
+	fmt.Fprintf(builder, "<b>Cause:</b> %s\n", getFailureReason(incident))
+	fmt.Fprintf(builder, "<b>Failures:</b> %d\n", incident.FailureCount)
 }
 
 // writePushoverRegionLine appends the region line as an HTML-formatted row.

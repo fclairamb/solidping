@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -141,7 +142,18 @@ func ntfyDefaultPriorities() map[string]string {
 	}
 }
 
-func (s *NtfySender) getPriority(settings *ntfySettings, eventType string) string {
+// ntfyDegradedPriority is the priority of an open degraded incident, whatever
+// the outage priorities are: a degradation is notify-only, never a page, and
+// an "urgent" (5) one is how a channel gets muted along with real outages.
+const ntfyDegradedPriority = "default"
+
+func (s *NtfySender) getPriority(settings *ntfySettings, payload *Payload) string {
+	eventType := payload.EventType
+
+	if isDegradedIncident(payload.Incident) && opensIncident(eventType) {
+		return ntfyDegradedPriority
+	}
+
 	// Strip "incident." prefix for lookup
 	shortType := strings.TrimPrefix(eventType, "incident.")
 
@@ -168,7 +180,7 @@ func (s *NtfySender) buildContent(
 	settings *ntfySettings, payload *Payload,
 ) (string, string, string, string) {
 	checkName := getCheckName(payload.Check)
-	priority := s.getPriority(settings, payload.EventType)
+	priority := s.getPriority(settings, payload)
 
 	if payload.EventType == eventTypeIncidentReminder {
 		return reminderTitle(payload), reminderPlainBody(payload), priority, "alarm_clock"
@@ -178,19 +190,20 @@ func (s *NtfySender) buildContent(
 
 	switch payload.EventType {
 	case eventTypeIncidentCreated:
-		title = "[DOWN] " + checkName
-		tags = "rotating_light"
+		title = openedTag(payload.Incident) + checkName
+		tags = ntfyOpenedTags(payload.Incident)
 		body = s.buildDownBody(payload, checkName)
 	case eventTypeIncidentResolved:
 		title = resolvedTag(payload.Incident) + checkName
 		tags = "white_check_mark"
 		body = s.buildResolvedBody(payload, checkName)
 	case eventTypeIncidentEscalated:
-		title = "[ESCALATED] " + checkName
-		tags = "warning"
+		title = "[ESCALATED] " + degradedMark(payload.Incident) + checkName
+		tags = ntfyTagWarning
 		body = s.buildEscalatedBody(payload, checkName)
 	case eventTypeIncidentReopened:
-		title = fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
+		title = fmt.Sprintf("[REOPENED] %s%s (relapse #%d)",
+			degradedMark(payload.Incident), checkName, payload.Incident.RelapseCount)
 		tags = "repeat"
 		body = s.buildDownBody(payload, checkName)
 	case eventTypeIncidentComment:
@@ -203,7 +216,7 @@ func (s *NtfySender) buildContent(
 		body = ackPlainBody(payload)
 	case eventTypeIncidentUnacknowledged:
 		title = unackTitle(payload)
-		tags = "warning"
+		tags = ntfyTagWarning
 		body = unackPlainBody(payload)
 	default:
 		title = "[UPDATE] " + checkName
@@ -214,12 +227,31 @@ func (s *NtfySender) buildContent(
 	return title, body, priority, tags
 }
 
+// ntfyTagWarning is the ⚠️ tag: escalations, withdrawn acks, degradations.
+const ntfyTagWarning = "warning"
+
+// ntfyOpenedTags is the tag of an incident.created: 🚨 for an outage, ⚠️ for a
+// degraded incident, whose check is usually up.
+func ntfyOpenedTags(incident *models.Incident) string {
+	if isDegradedIncident(incident) {
+		return ntfyTagWarning
+	}
+
+	return "rotating_light"
+}
+
 func (s *NtfySender) buildDownBody(payload *Payload, checkName string) string {
 	var builder strings.Builder
 
 	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)
-	fmt.Fprintf(&builder, "Cause: %s\n", getFailureReason(payload.Incident))
-	fmt.Fprintf(&builder, "Failure count: %s\n", strconv.Itoa(payload.Incident.FailureCount))
+
+	if isDegradedIncident(payload.Incident) {
+		writeDegradedLines(&builder, payload.Incident)
+	} else {
+		fmt.Fprintf(&builder, "Cause: %s\n", getFailureReason(payload.Incident))
+		fmt.Fprintf(&builder, "Failure count: %s\n", strconv.Itoa(payload.Incident.FailureCount))
+	}
+
 	fmt.Fprintf(&builder, "Started: %s", payload.Incident.StartedAt.Format(time.RFC3339))
 
 	writeRegionLine(&builder, payload)
@@ -230,8 +262,8 @@ func (s *NtfySender) buildDownBody(payload *Payload, checkName string) string {
 func (s *NtfySender) buildResolvedBody(payload *Payload, checkName string) string {
 	var builder strings.Builder
 
-	if closedWithoutRecovery(payload.Incident) {
-		builder.WriteString(closedSentence(payload.Incident) + "\n")
+	if lead := resolvedLeadSentence(payload.Incident); lead != "" {
+		builder.WriteString(lead + "\n")
 	}
 
 	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)
@@ -250,8 +282,14 @@ func (s *NtfySender) buildEscalatedBody(payload *Payload, checkName string) stri
 	var builder strings.Builder
 
 	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)
-	fmt.Fprintf(&builder, "Cause: %s\n", getFailureReason(payload.Incident))
-	fmt.Fprintf(&builder, "Failures: %d\n", payload.Incident.FailureCount)
+
+	if isDegradedIncident(payload.Incident) {
+		writeDegradedLines(&builder, payload.Incident)
+	} else {
+		fmt.Fprintf(&builder, "Cause: %s\n", getFailureReason(payload.Incident))
+		fmt.Fprintf(&builder, "Failures: %d\n", payload.Incident.FailureCount)
+	}
+
 	fmt.Fprintf(&builder, "Duration: %s", formatDuration(time.Since(payload.Incident.StartedAt)))
 
 	writeRegionLine(&builder, payload)

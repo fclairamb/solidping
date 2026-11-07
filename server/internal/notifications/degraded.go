@@ -254,3 +254,167 @@ func jsonBool(value any) bool {
 		return false
 	}
 }
+
+// Plain-text framing of a degraded incident, for the senders that build their
+// own titles and bodies rather than templates (ntfy, Gotify, Matrix, Teams...).
+// A degraded incident rides the same incident.created / incident.resolved
+// events as an outage, so the event type alone would title it "[DOWN]" and give
+// "Check failed" as its cause: these helpers let the incident's kind decide.
+const (
+	downTag              = "[DOWN] "
+	degradedTag          = "[DEGRADED] "
+	degradedClearedTag   = "[STEADY AGAIN] "
+	degradedTurnedOffTag = "[DEGRADED DETECTION OFF] "
+	degradedWindowLabel  = "Window"
+)
+
+// isDegradedIncident reports whether the incident is a degraded one. It reads
+// the kind alone, so an incident whose details are missing still reads as
+// degraded (DegradedInfoFor needs the details).
+func isDegradedIncident(incident *models.Incident) bool {
+	return incident != nil && incident.Kind == models.IncidentKindDegraded
+}
+
+// opensIncident reports whether the event announces an open problem (created,
+// escalated, reopened): the events whose priority and color an outage raises
+// and a degradation must not.
+func opensIncident(eventType string) bool {
+	return eventType == eventTypeIncidentCreated ||
+		eventType == eventTypeIncidentEscalated ||
+		eventType == eventTypeIncidentReopened
+}
+
+// openedTag is the title prefix of an incident.created event: "[DOWN] " for an
+// outage, "[DEGRADED] " for a degraded incident.
+func openedTag(incident *models.Incident) string {
+	if isDegradedIncident(incident) {
+		return degradedTag
+	}
+
+	return downTag
+}
+
+// degradedMark goes after the tag of the events that already carry one
+// ("[ESCALATED] ", "[REOPENED] "), so they still say the incident is a
+// degradation. Empty for every other kind.
+func degradedMark(incident *models.Incident) string {
+	if isDegradedIncident(incident) {
+		return degradedTag
+	}
+
+	return ""
+}
+
+// degradedCause is the cause line of a degraded incident: the rule that fired,
+// in probe counts. Without details it falls back to the incident's own title
+// ("acme is degraded: 5 failures in the last 60 probes"), which the evaluator
+// writes from the same numbers.
+func degradedCause(incident *models.Incident) string {
+	if info := DegradedInfoFor(incident); info != nil {
+		return info.Reason()
+	}
+
+	if incident != nil && incident.Title != nil && *incident.Title != "" {
+		return *incident.Title
+	}
+
+	return i18n.English.T("incident.degraded.pattern")
+}
+
+// degradedHeadline is the one-line title of an open degraded incident:
+// "acme is degraded: <reason>".
+func degradedHeadline(incident *models.Incident, checkName string) string {
+	if info := DegradedInfoFor(incident); info != nil {
+		return info.Headline(checkName)
+	}
+
+	return checkName + " is degraded"
+}
+
+// degradedFact is one labeled line of a degraded notification.
+type degradedFact struct {
+	Label string
+	Value string
+}
+
+// degradedFacts is the lines an open degraded incident shows in place of the
+// outage's "Cause / Failure count": what fired, whether the target is up right
+// now, and the window the numbers describe. Without details only the cause is
+// known.
+func degradedFacts(incident *models.Incident) []degradedFact {
+	facts := []degradedFact{{Label: mmFieldCause, Value: degradedCause(incident)}}
+
+	if info := DegradedInfoFor(incident); info != nil {
+		facts = append(facts,
+			degradedFact{Label: fieldLabelStatus, Value: info.StatusText()},
+			degradedFact{Label: degradedWindowLabel, Value: info.WindowText()},
+		)
+	}
+
+	return facts
+}
+
+// degradedPlainLines is degradedFacts as "Label: value" lines.
+func degradedPlainLines(incident *models.Incident) []string {
+	facts := degradedFacts(incident)
+	lines := make([]string, 0, len(facts))
+
+	for i := range facts {
+		lines = append(lines, facts[i].Label+": "+facts[i].Value)
+	}
+
+	return lines
+}
+
+// writeDegradedLines writes degradedPlainLines to a plain-text body, each on
+// its own line.
+func writeDegradedLines(builder *strings.Builder, incident *models.Incident) {
+	for _, line := range degradedPlainLines(incident) {
+		builder.WriteString(line + "\n")
+	}
+}
+
+// degradedTurnedOff reports whether a degraded incident was closed because
+// degraded detection was turned off on its check.
+func degradedTurnedOff(incident *models.Incident) bool {
+	info := DegradedInfoFor(incident)
+
+	return info != nil && info.TurnedOff
+}
+
+// degradedResolvedTitle is the prose title of a resolved degraded incident: it
+// was never down, so it did not "resolve" or "recover", it is steady again (or
+// nobody knows, when detection was turned off).
+func degradedResolvedTitle(incident *models.Incident, checkName string) string {
+	if degradedTurnedOff(incident) {
+		return "Degraded detection turned off for " + checkName
+	}
+
+	return checkName + " is steady again"
+}
+
+// degradedResolvedSentence is the lead line of a resolved degraded incident:
+// the pattern cleared, or detection was turned off and the check did not
+// necessarily recover. Empty for every other kind.
+func degradedResolvedSentence(incident *models.Incident) string {
+	if !isDegradedIncident(incident) {
+		return ""
+	}
+
+	if degradedTurnedOff(incident) {
+		return i18n.English.T("incident.degradedResolved.turnedOffText")
+	}
+
+	return i18n.English.T("incident.degradedResolved.textBody")
+}
+
+// resolvedLeadSentence is the line a resolved notification opens with when the
+// incident did not simply recover from an outage: the check was deleted or
+// disabled, or the incident was a degradation. Empty for an ordinary recovery.
+func resolvedLeadSentence(incident *models.Incident) string {
+	if closedWithoutRecovery(incident) {
+		return closedSentence(incident)
+	}
+
+	return degradedResolvedSentence(incident)
+}

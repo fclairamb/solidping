@@ -156,16 +156,21 @@ func (s *GoogleChatSender) buildMessage(payload *Payload) *googleChatMessage {
 
 	switch payload.EventType {
 	case eventTypeIncidentCreated:
-		title = "[DOWN] " + checkName
+		title = openedTag(payload.Incident) + checkName
 		subtitle = getFailureReason(payload.Incident)
 	case eventTypeIncidentResolved:
 		title = resolvedTag(payload.Incident) + checkName
 		subtitle = s.resolvedSubtitle(payload)
 	case eventTypeIncidentEscalated:
-		title = "[ESCALATED] " + checkName
+		title = "[ESCALATED] " + degradedMark(payload.Incident) + checkName
 		subtitle = fmt.Sprintf("%d consecutive failures", payload.Incident.FailureCount)
+
+		if isDegradedIncident(payload.Incident) {
+			subtitle = getFailureReason(payload.Incident)
+		}
 	case eventTypeIncidentReopened:
-		title = fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
+		title = fmt.Sprintf("[REOPENED] %s%s (relapse #%d)",
+			degradedMark(payload.Incident), checkName, payload.Incident.RelapseCount)
 		subtitle = getFailureReason(payload.Incident)
 	case eventTypeIncidentComment:
 		title = commentTitle(payload)
@@ -243,6 +248,17 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 			})
 		}
 	default:
+		if isDegradedIncident(payload.Incident) {
+			facts := degradedFacts(payload.Incident)
+			for i := range facts {
+				widgets = append(widgets, googleChatWidget{
+					DecoratedText: &googleChatDecoratedText{TopLabel: facts[i].Label, Text: facts[i].Value},
+				})
+			}
+
+			break
+		}
+
 		widgets = append(widgets, googleChatWidget{
 			DecoratedText: &googleChatDecoratedText{TopLabel: "Cause", Text: getFailureReason(payload.Incident)},
 		}, googleChatWidget{
@@ -263,14 +279,19 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 }
 
 func (s *GoogleChatSender) resolvedSubtitle(payload *Payload) string {
-	if closedWithoutRecovery(payload.Incident) {
-		return closedSentence(payload.Incident)
+	if closedWithoutRecovery(payload.Incident) || degradedTurnedOff(payload.Incident) {
+		return resolvedLeadSentence(payload.Incident)
 	}
 
 	if payload.Incident.ResolvedAt != nil {
-		duration := payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)
+		duration := formatDuration(payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt))
 
-		return "Recovered after " + formatDuration(duration)
+		// A degraded check was never down, so it did not "recover".
+		if isDegradedIncident(payload.Incident) {
+			return "Steady again after " + duration
+		}
+
+		return "Recovered after " + duration
 	}
 
 	return "Incident resolved"

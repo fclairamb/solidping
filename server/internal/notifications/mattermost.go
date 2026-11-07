@@ -180,15 +180,22 @@ func (s *MattermostSender) buildMessage(settings *mattermostSettings, payload *P
 }
 
 func (s *MattermostSender) eventColorAndTitle(payload *Payload, checkName string) (string, string) {
+	mark := degradedMark(payload.Incident)
+
 	switch payload.EventType {
 	case eventTypeIncidentCreated:
-		return mattermostColorRed, ":red_circle: [DOWN] " + checkName
+		// Amber, not red: a degraded check is usually up right now.
+		if isDegradedIncident(payload.Incident) {
+			return mattermostColorOrange, ":warning: " + degradedTag + checkName
+		}
+
+		return mattermostColorRed, ":red_circle: " + downTag + checkName
 	case eventTypeIncidentResolved:
 		return mattermostColorGreen, ":white_check_mark: " + resolvedTag(payload.Incident) + checkName
 	case eventTypeIncidentEscalated:
-		return mattermostColorOrange, ":warning: [ESCALATED] " + checkName
+		return mattermostColorOrange, ":warning: [ESCALATED] " + mark + checkName
 	case eventTypeIncidentReopened:
-		return mattermostColorYellow, ":repeat: [REOPENED] " + checkName
+		return mattermostColorYellow, ":repeat: [REOPENED] " + mark + checkName
 	case eventTypeIncidentComment:
 		return mattermostColorBlue, ":speech_balloon: [COMMENT] " + checkName
 	case eventTypeIncidentAcknowledged:
@@ -253,8 +260,20 @@ func (s *MattermostSender) buildEventFields(payload *Payload, checkName string) 
 	fields := []mattermostField{
 		{Short: true, Title: mmFieldCheck, Value: checkName},
 		{Short: true, Title: "Type", Value: payload.Check.Type},
-		{Short: false, Title: mmFieldCause, Value: getFailureReason(payload.Incident)},
-		{Short: true, Title: mmFieldFailureCount, Value: strconv.Itoa(payload.Incident.FailureCount)},
+	}
+
+	if isDegradedIncident(payload.Incident) {
+		facts := degradedFacts(payload.Incident)
+		for i := range facts {
+			fields = append(fields, mattermostField{
+				Short: facts[i].Label != mmFieldCause, Title: facts[i].Label, Value: facts[i].Value,
+			})
+		}
+	} else {
+		fields = append(fields,
+			mattermostField{Short: false, Title: mmFieldCause, Value: getFailureReason(payload.Incident)},
+			mattermostField{Short: true, Title: mmFieldFailureCount, Value: strconv.Itoa(payload.Incident.FailureCount)},
+		)
 	}
 
 	if payload.EventType == eventTypeIncidentReminder {
@@ -277,8 +296,8 @@ func (s *MattermostSender) buildResolvedFields(payload *Payload, checkName strin
 		{Short: true, Title: mmFieldCheck, Value: checkName},
 	}
 
-	if closedWithoutRecovery(payload.Incident) {
-		fields = append(fields, mattermostField{Short: false, Title: "Reason", Value: closedSentence(payload.Incident)})
+	if lead := resolvedLeadSentence(payload.Incident); lead != "" {
+		fields = append(fields, mattermostField{Short: false, Title: "Reason", Value: lead})
 	}
 
 	if payload.Incident.ResolvedAt != nil {

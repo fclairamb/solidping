@@ -180,6 +180,12 @@ func buildWebPushContent(payload *Payload, checkName string) (string, string) {
 func buildWebPushEventContent(payload *Payload, checkName string) (string, string) {
 	ref := incidentRefPrefix(payload.Incident)
 
+	if isDegradedIncident(payload.Incident) {
+		if title, body, ok := buildWebPushDegradedContent(payload, checkName); ok {
+			return ref + title, body
+		}
+	}
+
 	switch payload.EventType {
 	case eventTypeIncidentCreated:
 		return ref + "[DOWN] " + checkName,
@@ -208,5 +214,32 @@ func buildWebPushEventContent(payload *Payload, checkName string) (string, strin
 	default:
 		return ref + "[UPDATE] " + checkName,
 			"An incident update occurred for " + checkName
+	}
+}
+
+// buildWebPushDegradedContent is the (title, body) of a degraded incident's
+// lifecycle events, without the incident reference: it was never down, so it
+// is neither "down" nor "back up". False for the events whose wording does not
+// depend on the kind (comments, acks, a deleted or disabled check).
+func buildWebPushDegradedContent(payload *Payload, checkName string) (string, string, bool) {
+	incident := payload.Incident
+
+	switch payload.EventType {
+	case eventTypeIncidentCreated:
+		return degradedTag + checkName, degradedHeadline(incident, checkName) + ".", true
+	case eventTypeIncidentEscalated:
+		return "[ESCALATED] " + degradedTag + checkName,
+			fmt.Sprintf("Degraded incident for %s has been escalated: %s.", checkName, degradedCause(incident)), true
+	case eventTypeIncidentReopened:
+		return "[REOPENED] " + degradedTag + checkName,
+			checkName + " is degraded again: " + degradedCause(incident) + ".", true
+	case eventTypeIncidentResolved:
+		if closedWithoutRecovery(incident) {
+			return "", "", false
+		}
+
+		return resolvedTag(incident) + checkName, degradedResolvedSentence(incident), true
+	default:
+		return "", "", false
 	}
 }

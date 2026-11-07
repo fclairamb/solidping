@@ -155,10 +155,11 @@ func (s *PagerDutySender) parseSettings(payload *Payload) (*pagerdutySettings, e
 
 func (s *PagerDutySender) trigger(ctx context.Context, settings *pagerdutySettings, payload *Payload) error {
 	checkName := getCheckName(payload.Check)
-	summary := "[DOWN] " + checkName
+	summary := openedTag(payload.Incident) + checkName
 
 	if payload.EventType == eventTypeIncidentReopened {
-		summary = fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
+		summary = fmt.Sprintf("[REOPENED] %s%s (relapse #%d)",
+			degradedMark(payload.Incident), checkName, payload.Incident.RelapseCount)
 	}
 
 	details := map[string]any{
@@ -166,8 +167,13 @@ func (s *PagerDutySender) trigger(ctx context.Context, settings *pagerdutySettin
 		"checkName":    checkName,
 		"checkType":    payload.Check.Type,
 		"incidentUid":  payload.Incident.UID,
+		"incidentKind": payload.Incident.Kind,
 		"cause":        getFailureReason(payload.Incident),
 		"failureCount": payload.Incident.FailureCount,
+	}
+
+	if info := DegradedInfoFor(payload.Incident); info != nil {
+		details["status"] = info.StatusText()
 	}
 
 	if _, text := RegionLabelFor(payload); text != "" {
@@ -257,6 +263,12 @@ func pagerdutyLinks(payload *Payload) []map[string]string {
 // closest equivalent from the result that triggered or is currently failing
 // the incident.
 func pagerdutySeverity(incident *models.Incident) string {
+	// A degraded incident's snapshot holds whichever probe last failed, often a
+	// DOWN one, but the check is usually up: never page it as critical.
+	if isDegradedIncident(incident) {
+		return pagerdutySeverityWarning
+	}
+
 	switch latestFailureStatus(incident) {
 	case resultStatusStrDown:
 		return pagerdutySeverityCritical

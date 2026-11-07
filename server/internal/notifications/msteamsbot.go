@@ -368,6 +368,10 @@ func (s *MSTeamsBotSender) updateExistingCard(
 func (s *MSTeamsBotSender) followUpText(payload *Payload) string {
 	checkName := getCheckName(payload.Check)
 
+	if isDegradedIncident(payload.Incident) {
+		return s.degradedFollowUpText(payload, checkName)
+	}
+
 	if payload.EventType == eventTypeIncidentReopened {
 		return fmt.Sprintf("🔁 %s is down again (relapse #%d).", checkName, payload.Incident.RelapseCount)
 	}
@@ -378,6 +382,22 @@ func (s *MSTeamsBotSender) followUpText(payload *Payload) string {
 	}
 
 	return "🟢 " + checkName + " recovered."
+}
+
+// degradedFollowUpText is followUpText for a degraded incident: it was never
+// down, so it is "degraded again" or "steady again", never "recovered".
+func (s *MSTeamsBotSender) degradedFollowUpText(payload *Payload, checkName string) string {
+	switch {
+	case payload.EventType == eventTypeIncidentReopened:
+		return fmt.Sprintf("🔁 %s is degraded again (relapse #%d).", checkName, payload.Incident.RelapseCount)
+	case degradedTurnedOff(payload.Incident):
+		return "⚪ " + checkName + ": " + degradedResolvedSentence(payload.Incident)
+	case payload.Incident.ResolvedAt != nil:
+		return fmt.Sprintf("🟢 %s is steady again after %s.",
+			checkName, formatDuration(payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)))
+	default:
+		return "🟢 " + checkName + " is steady again."
+	}
 }
 
 // buildCardActivity renders the incident card for the current event.
@@ -414,6 +434,12 @@ func (s *MSTeamsBotSender) buildCardActivity(payload *Payload) *msteams.Activity
 // and the Telegram integration are kept aligned to: one emoji per event type,
 // product-wide. Changing one here means changing it everywhere.
 func (s *MSTeamsBotSender) titleAndColor(payload *Payload, checkName string) (string, string) {
+	if isDegradedIncident(payload.Incident) {
+		if title, color, ok := s.degradedTitleAndColor(payload, checkName); ok {
+			return title, color
+		}
+	}
+
 	switch payload.EventType {
 	case eventTypeIncidentCreated:
 		return "🔴 " + checkName + " is DOWN", msteams.CardColorAttention
@@ -437,6 +463,34 @@ func (s *MSTeamsBotSender) titleAndColor(payload *Payload, checkName string) (st
 	}
 }
 
+// degradedTitleAndColor is titleAndColor for a degraded incident: amber, and
+// never "DOWN" or "RECOVERED" for a check that was up between its failures.
+// The yellow circle matches the degraded email's subject. False for the events
+// whose title does not depend on the kind (a deleted or disabled check).
+func (s *MSTeamsBotSender) degradedTitleAndColor(payload *Payload, checkName string) (string, string, bool) {
+	switch payload.EventType {
+	case eventTypeIncidentCreated:
+		return "🟡 " + checkName + " is DEGRADED", msteams.CardColorWarning, true
+	case eventTypeIncidentEscalated:
+		return "⚠️ " + checkName + " DEGRADED, ESCALATED", msteams.CardColorWarning, true
+	case eventTypeIncidentReopened:
+		return fmt.Sprintf("🔁 %s DEGRADED again (relapse #%d)", checkName, payload.Incident.RelapseCount),
+			msteams.CardColorWarning, true
+	case eventTypeIncidentResolved:
+		if closedWithoutRecovery(payload.Incident) {
+			return "", "", false
+		}
+
+		if degradedTurnedOff(payload.Incident) {
+			return "⚪ " + checkName + ": degraded detection turned OFF", msteams.CardColorGood, true
+		}
+
+		return "🟢 " + checkName + " is STEADY AGAIN", msteams.CardColorGood, true
+	default:
+		return "", "", false
+	}
+}
+
 // buildFacts builds the card's FactSet.
 func (s *MSTeamsBotSender) buildFacts(payload *Payload, checkName string) []msteams.CardFact {
 	facts := []msteams.CardFact{{Title: "Monitor", Value: checkName}}
@@ -451,6 +505,14 @@ func (s *MSTeamsBotSender) buildFacts(payload *Payload, checkName string) []mste
 			Title: "Duration",
 			Value: formatDuration(payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)),
 		})
+	case payload.EventType != eventTypeIncidentResolved && isDegradedIncident(payload.Incident):
+		degraded := degradedFacts(payload.Incident)
+		for i := range degraded {
+			facts = append(facts, msteams.CardFact{Title: degraded[i].Label, Value: degraded[i].Value})
+		}
+
+		facts = append(facts,
+			msteams.CardFact{Title: "Started", Value: payload.Incident.StartedAt.UTC().Format(time.RFC1123)})
 	case payload.EventType != eventTypeIncidentResolved:
 		facts = append(facts,
 			msteams.CardFact{Title: mmFieldCause, Value: getFailureReason(payload.Incident)},

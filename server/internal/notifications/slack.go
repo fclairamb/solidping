@@ -337,8 +337,14 @@ func getCheckMethod(check *models.Check) string {
 // recorded no cause.
 const defaultFailureReason = "Check failed"
 
-// getFailureReason returns a human-readable failure reason from the incident details.
+// getFailureReason returns a human-readable failure reason from the incident
+// details. A degraded incident has no failed probe to name: its cause is the
+// pattern that fired, never "Check failed".
 func getFailureReason(incident *models.Incident) string {
+	if isDegradedIncident(incident) {
+		return degradedCause(incident)
+	}
+
 	if reason := incident.FailureReason(); reason != "" {
 		return reason
 	}
@@ -1079,20 +1085,29 @@ func (s *SlackSender) handleIncidentResolution(
 	return nil
 }
 
+// slackResolvedHeadline is the headline of the resolved card: why it closed when
+// the check was deleted or disabled, "steady again" for a degraded incident
+// (it was never down), an automatic resolution otherwise.
+func slackResolvedHeadline(incident *models.Incident, checkName string) string {
+	switch {
+	case ResolvedByCheckDisable(incident):
+		return fmt.Sprintf("Closed %s incident: the check was disabled", checkName)
+	case ResolvedByCheckDeletion(incident):
+		return fmt.Sprintf("Closed %s incident: the check was deleted", checkName)
+	case isDegradedIncident(incident):
+		return degradedResolvedTitle(incident, checkName)
+	default:
+		return fmt.Sprintf("Automatically resolved %s incident", checkName)
+	}
+}
+
 // buildResolvedUpdateMessage builds the message to update the original incident message
 // when the incident is resolved. It replaces the original message with a resolved status.
 func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.MessageResponse {
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
 	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
-	headline := fmt.Sprintf("Automatically resolved %s incident", checkName)
-	if ResolvedByCheckDeletion(payload.Incident) {
-		headline = fmt.Sprintf("Closed %s incident: the check was deleted", checkName)
-	}
-	if ResolvedByCheckDisable(payload.Incident) {
-		headline = fmt.Sprintf("Closed %s incident: the check was disabled", checkName)
-	}
-
+	headline := slackResolvedHeadline(payload.Incident, checkName)
 	fallbackText := headline
 
 	// Calculate duration

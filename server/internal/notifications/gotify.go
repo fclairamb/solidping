@@ -26,6 +26,11 @@ const gotifyDefaultPriority = 5
 // phone the way a page does.
 const gotifyResolvedPriority = 2
 
+// gotifyDegradedPriority caps the priority of an open degraded incident: 4 is
+// Gotify's lowest tier that still notifies, below the outage default. A
+// degradation is notify-only, never a page.
+const gotifyDegradedPriority = 4
+
 var (
 	// ErrGotifyServerURLNotConfigured is returned when the Gotify server URL is missing.
 	ErrGotifyServerURLNotConfigured = newConfigError("gotify server url not configured", "server URL")
@@ -131,36 +136,42 @@ func (s *GotifySender) parseSettings(payload *Payload) (*gotifySettings, error) 
 // getPriority returns the priority for eventType: the configured (or
 // default) priority for everything except incident.resolved, which always
 // sends gotifyResolvedPriority regardless of configuration.
-func (s *GotifySender) getPriority(settings *gotifySettings, eventType string) int {
-	if eventType == eventTypeIncidentResolved {
+func (s *GotifySender) getPriority(settings *gotifySettings, payload *Payload) int {
+	if payload.EventType == eventTypeIncidentResolved {
 		return gotifyResolvedPriority
 	}
 
+	priority := gotifyDefaultPriority
 	if settings.Priority != nil {
-		return *settings.Priority
+		priority = *settings.Priority
 	}
 
-	return gotifyDefaultPriority
+	if isDegradedIncident(payload.Incident) && opensIncident(payload.EventType) {
+		return min(priority, gotifyDegradedPriority)
+	}
+
+	return priority
 }
 
 func (s *GotifySender) buildMessage(settings *gotifySettings, payload *Payload) gotifyMessage {
 	checkName := getCheckName(payload.Check)
-	priority := s.getPriority(settings, payload.EventType)
+	priority := s.getPriority(settings, payload)
 
 	var title, body string
 
 	switch payload.EventType {
 	case eventTypeIncidentCreated:
-		title = "[DOWN] " + checkName
+		title = openedTag(payload.Incident) + checkName
 		body = s.buildDownBody(payload, checkName)
 	case eventTypeIncidentResolved:
 		title = resolvedTag(payload.Incident) + checkName
 		body = s.buildResolvedBody(payload, checkName)
 	case eventTypeIncidentEscalated:
-		title = "[ESCALATED] " + checkName
+		title = "[ESCALATED] " + degradedMark(payload.Incident) + checkName
 		body = s.buildEscalatedBody(payload, checkName)
 	case eventTypeIncidentReopened:
-		title = fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
+		title = fmt.Sprintf("[REOPENED] %s%s (relapse #%d)",
+			degradedMark(payload.Incident), checkName, payload.Incident.RelapseCount)
 		body = s.buildDownBody(payload, checkName)
 	case eventTypeIncidentComment:
 		title = commentTitle(payload)
@@ -210,8 +221,14 @@ func (s *GotifySender) buildDownBody(payload *Payload, checkName string) string 
 	var builder strings.Builder
 
 	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)
-	fmt.Fprintf(&builder, "Cause: %s\n", getFailureReason(payload.Incident))
-	fmt.Fprintf(&builder, "Failure count: %d\n", payload.Incident.FailureCount)
+
+	if isDegradedIncident(payload.Incident) {
+		writeDegradedLines(&builder, payload.Incident)
+	} else {
+		fmt.Fprintf(&builder, "Cause: %s\n", getFailureReason(payload.Incident))
+		fmt.Fprintf(&builder, "Failure count: %d\n", payload.Incident.FailureCount)
+	}
+
 	fmt.Fprintf(&builder, "Started: %s", payload.Incident.StartedAt.Format(time.RFC3339))
 
 	writeRegionLine(&builder, payload)
@@ -222,8 +239,8 @@ func (s *GotifySender) buildDownBody(payload *Payload, checkName string) string 
 func (s *GotifySender) buildResolvedBody(payload *Payload, checkName string) string {
 	var builder strings.Builder
 
-	if closedWithoutRecovery(payload.Incident) {
-		builder.WriteString(closedSentence(payload.Incident) + "\n")
+	if lead := resolvedLeadSentence(payload.Incident); lead != "" {
+		builder.WriteString(lead + "\n")
 	}
 
 	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)
@@ -242,8 +259,14 @@ func (s *GotifySender) buildEscalatedBody(payload *Payload, checkName string) st
 	var builder strings.Builder
 
 	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)
-	fmt.Fprintf(&builder, "Cause: %s\n", getFailureReason(payload.Incident))
-	fmt.Fprintf(&builder, "Failures: %d\n", payload.Incident.FailureCount)
+
+	if isDegradedIncident(payload.Incident) {
+		writeDegradedLines(&builder, payload.Incident)
+	} else {
+		fmt.Fprintf(&builder, "Cause: %s\n", getFailureReason(payload.Incident))
+		fmt.Fprintf(&builder, "Failures: %d\n", payload.Incident.FailureCount)
+	}
+
 	fmt.Fprintf(&builder, "Duration: %s", formatDuration(time.Since(payload.Incident.StartedAt)))
 
 	writeRegionLine(&builder, payload)

@@ -105,6 +105,10 @@ func (s *TwilioSender) Send(ctx context.Context, jctx *jobdef.JobContext, payloa
 func (s *TwilioSender) buildBody(
 	jctx *jobdef.JobContext, payload *Payload, settings *models.TwilioSettings,
 ) string {
+	if isDegradedIncident(payload.Incident) && !closedWithoutRecovery(payload.Incident) {
+		return s.buildDegradedBody(jctx, payload, settings)
+	}
+
 	checkName := getCheckName(payload.Check)
 	org := payload.OrgSlug
 
@@ -136,6 +140,40 @@ func (s *TwilioSender) buildBody(
 	}
 
 	msg += twilioRegionSentence(payload)
+
+	if ackURL := s.ackURL(jctx, payload, settings); ackURL != "" {
+		msg += " Ack: " + ackURL
+	}
+
+	return msg + twilio.OptOutFooter
+}
+
+// buildDegradedBody is buildBody for a degraded incident: it was never down, so
+// the SMS says DEGRADED and gives the pattern, and its end is "steady again"
+// rather than RECOVERED. No region sentence: a degraded incident has none.
+func (s *TwilioSender) buildDegradedBody(
+	jctx *jobdef.JobContext, payload *Payload, settings *models.TwilioSettings,
+) string {
+	checkName := getCheckName(payload.Check)
+	prefix := fmt.Sprintf("[%s] %s: ", productName, payload.OrgSlug)
+	cause := degradedCause(payload.Incident)
+
+	var msg string
+
+	switch payload.EventType {
+	case eventTypeIncidentResolved:
+		if degradedTurnedOff(payload.Incident) {
+			return prefix + checkName + ": degraded detection turned off, episode closed." + twilio.OptOutFooter
+		}
+
+		return prefix + checkName + " is steady again." + twilio.OptOutFooter
+	case eventTypeIncidentEscalated:
+		msg = prefix + checkName + " STILL DEGRADED (escalated): " + cause + "."
+	case eventTypeIncidentReopened:
+		msg = prefix + checkName + " DEGRADED again: " + cause + "."
+	default: // created
+		msg = prefix + checkName + " is DEGRADED: " + cause + "."
+	}
 
 	if ackURL := s.ackURL(jctx, payload, settings); ackURL != "" {
 		msg += " Ack: " + ackURL

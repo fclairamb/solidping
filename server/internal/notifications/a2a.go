@@ -648,10 +648,22 @@ func buildA2AMessage(payload *Payload, instructions string) *a2a.Message {
 
 	var text strings.Builder
 
-	fmt.Fprintf(&text, "SolidPing incident %s: %s%s\n", a2aEventLabel(payload.EventType),
+	// A degraded incident is an intermittence pattern on a check that is
+	// usually up: the agent must not investigate it as an outage.
+	noun := "incident"
+	if isDegradedIncident(incident) {
+		noun = "degraded incident"
+	}
+
+	fmt.Fprintf(&text, "SolidPing %s %s: %s%s\n", noun, a2aEventLabel(payload.EventType),
 		incidentRefPrefix(incident), checkName)
 	fmt.Fprintf(&text, "Status: %s\n", status)
 	fmt.Fprintf(&text, "Failure reason: %s\n", reason)
+
+	if info := DegradedInfoFor(incident); info != nil {
+		fmt.Fprintf(&text, "Check right now: %s\n", info.StatusText())
+	}
+
 	fmt.Fprintf(&text, "Started at: %s\n", startedAt)
 
 	if resolvedAt != "" {
@@ -685,6 +697,7 @@ func buildA2AMessage(payload *Payload, instructions string) *a2a.Message {
 
 	data := map[string]any{
 		"incidentUid":   incident.UID,
+		"incidentKind":  incident.Kind,
 		"checkUid":      check.UID,
 		"checkSlug":     checkSlug,
 		"orgSlug":       payload.OrgSlug,

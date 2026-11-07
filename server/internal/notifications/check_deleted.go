@@ -55,10 +55,20 @@ func ResolvedByCheckDeletion(incident *models.Incident) bool {
 }
 
 // resolvedTag is the title prefix of a resolved notification: "[RECOVERED] ",
-// or "[CHECK DELETED] " when the check was deleted rather than recovered.
+// "[CHECK DELETED] " when the check was deleted rather than recovered, and for
+// a degraded incident "[STEADY AGAIN] " (nothing was down, so nothing
+// "recovered") or "[DEGRADED DETECTION OFF] " when detection was turned off.
 func resolvedTag(incident *models.Incident) string {
 	if closedWithoutRecovery(incident) {
 		return closedTag(incident)
+	}
+
+	if isDegradedIncident(incident) {
+		if degradedTurnedOff(incident) {
+			return degradedTurnedOffTag
+		}
+
+		return degradedClearedTag
 	}
 
 	return recoveredTag
