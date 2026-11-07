@@ -3491,7 +3491,10 @@ paths:
         - $ref: "#/components/parameters/OrgPath"
         - name: checkUid
           in: query
-          description: Filter by check UID or slug (comma-separated for multiple)
+          description: >-
+            Filter by check UID or slug (comma-separated for multiple). At most
+            100 entries, empty and repeated ones included; more is a 400
+            VALIDATION_ERROR. Repeated identifiers are looked up once.
           schema:
             type: string
         - name: checkType
@@ -3804,7 +3807,10 @@ paths:
         - $ref: "#/components/parameters/OrgPath"
         - name: checkUid
           in: query
-          description: Filter by check UID or slug (comma-separated for multiple)
+          description: >-
+            Filter by check UID or slug (comma-separated for multiple). At most
+            100 entries, empty and repeated ones included; more is a 400
+            VALIDATION_ERROR. Repeated identifiers are looked up once.
           schema:
             type: string
         - name: state

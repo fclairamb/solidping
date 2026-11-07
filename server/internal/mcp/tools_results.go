@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkfilter"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 )
 
@@ -42,7 +43,7 @@ func listResultsDef() ToolDefinition {
 			"Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propCheckUID: stringProp(
-				"Comma-separated check UIDs or slugs to filter by, e.g. \"api-prod,db-prod\".",
+				"Comma-separated check UIDs or slugs to filter by, e.g. \"api-prod,db-prod\". At most 100 entries.",
 			),
 			"checkType": stringProp(
 				"Comma-separated check types. Allowed: " + allowedCheckTypes() + ". " +
@@ -175,6 +176,9 @@ type EffectiveResultsFilter struct {
 
 func (h *Handler) toolListResults(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult {
 	opts := buildListResultsOptions(args, time.Now())
+	if err := checkfilter.CheckCount(opts.Checks); err != nil {
+		return errorResult(err.Error())
+	}
 
 	resp, err := h.resultsSvc.ListResults(ctx, orgSlug, opts)
 	if err != nil {

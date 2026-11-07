@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkfilter"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
@@ -28,7 +29,7 @@ func listIncidentsDef() ToolDefinition {
 			"customer-facing entries on a status page. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propCheckUID: stringProp(
-				"Comma-separated check UIDs or slugs to filter by, e.g. \"api-prod,db-prod\".",
+				"Comma-separated check UIDs or slugs to filter by, e.g. \"api-prod,db-prod\". At most 100 entries.",
 			),
 			propState: stringProp(
 				"Comma-separated incident states. Allowed: active, resolved. " +
@@ -103,9 +104,11 @@ func (h *Handler) toolListIncidents(ctx context.Context, orgSlug string, args ma
 	}
 	opts.Ascending = ascending
 
-	if v := getStringArg(args, propCheckUID); v != "" {
-		opts.CheckUIDs = strings.Split(v, ",")
+	checkUIDs, splitErr := checkfilter.Split(getStringArg(args, propCheckUID))
+	if splitErr != nil {
+		return errorResult(splitErr.Error())
 	}
+	opts.CheckUIDs = checkUIDs
 	if v := getStringArg(args, propState); v != "" {
 		opts.States = strings.Split(v, ",")
 	}

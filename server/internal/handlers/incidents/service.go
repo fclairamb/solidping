@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkfilter"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
@@ -2740,7 +2741,11 @@ func (s *Service) ListIncidents(
 	// explicit empty page instead, matching the "unknown identifier -> no
 	// match" contract (no DB round trip needed).
 	if len(opts.CheckUIDs) > 0 {
-		resolvedUIDs := s.resolveCheckIdentifiers(ctx, org.UID, opts.CheckUIDs)
+		resolvedUIDs, resolveErr := s.resolveCheckIdentifiers(ctx, org.UID, opts.CheckUIDs)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+
 		if len(resolvedUIDs) == 0 {
 			return &ListIncidentsResponse{
 				Data:       []IncidentResponse{},
@@ -2814,18 +2819,18 @@ func (s *Service) ListIncidents(
 // (issue #127) — resolving through GetCheckByUidOrSlug first lets `/incidents`
 // accept a slug just like every other check-scoped endpoint. Identifiers that
 // don't match any check are silently dropped, matching `/results`: an unknown
-// identifier simply yields no match instead of a DB error.
-func (s *Service) resolveCheckIdentifiers(ctx context.Context, orgUID string, identifiers []string) []string {
-	if len(identifiers) == 0 {
-		return identifiers
-	}
+// identifier simply yields no match instead of a DB error. The list is
+// capped, trimmed and deduped first (checkfilter.Normalize), so each distinct
+// identifier costs one lookup, and the loop stops once the context is done.
+func (s *Service) resolveCheckIdentifiers(
+	ctx context.Context, orgUID string, identifiers []string,
+) ([]string, error) {
+	ids := checkfilter.Normalize(identifiers)
+	uids := make([]string, 0, len(ids))
 
-	uids := make([]string, 0, len(identifiers))
-
-	for _, id := range identifiers {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
+	for _, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
 
 		check, err := s.db.GetCheckByUidOrSlug(ctx, orgUID, id)
@@ -2835,7 +2840,7 @@ func (s *Service) resolveCheckIdentifiers(ctx context.Context, orgUID string, id
 		// Silently ignore identifiers that don't match any check.
 	}
 
-	return uids
+	return uids, nil
 }
 
 // GetIncidentOptions contains options for getting a single incident.

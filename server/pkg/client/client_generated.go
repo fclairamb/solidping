@@ -9881,7 +9881,7 @@ type AiCheckGenerateJSONBodyRepair string
 
 // SwitchChecksToAutoPlacementJSONBody defines parameters for SwitchChecksToAutoPlacement.
 type SwitchChecksToAutoPlacementJSONBody struct {
-	// CheckUids Limit the switch to these checks. Omit for every eligible check.
+	// CheckUids Limit the switch to these checks, at most 1000 (more is a 400). Omit for every eligible check.
 	CheckUids *[]string `json:"checkUids,omitempty"`
 
 	// DryRun Report what would be switched without writing anything.
@@ -10100,7 +10100,7 @@ type ListFilesParams struct {
 
 // ListIncidentsParams defines parameters for ListIncidents.
 type ListIncidentsParams struct {
-	// CheckUid Filter by check UID or slug (comma-separated for multiple)
+	// CheckUid Filter by check UID or slug (comma-separated for multiple). At most 100 entries, empty and repeated ones included; more is a 400 VALIDATION_ERROR. Repeated identifiers are looked up once.
 	CheckUid *string `form:"checkUid,omitempty" json:"checkUid,omitempty"`
 
 	// State Filter by state (comma-separated, e.g., "active,resolved")
@@ -10265,7 +10265,7 @@ type TestReportScheduleJSONBody struct {
 
 // ListOrgResultsParams defines parameters for ListOrgResults.
 type ListOrgResultsParams struct {
-	// CheckUid Filter by check UID or slug (comma-separated for multiple)
+	// CheckUid Filter by check UID or slug (comma-separated for multiple). At most 100 entries, empty and repeated ones included; more is a 400 VALIDATION_ERROR. Repeated identifiers are looked up once.
 	CheckUid *string `form:"checkUid,omitempty" json:"checkUid,omitempty"`
 
 	// CheckType Filter by check type (comma-separated for multiple)
@@ -44532,6 +44532,8 @@ type SwitchChecksToAutoPlacementResult struct {
 			Uid    *string                                                      `json:"uid,omitempty"`
 		} `json:"skipped,omitempty"`
 	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
 }
@@ -44555,6 +44557,11 @@ func (r SwitchChecksToAutoPlacementResult) GetJSON200() *struct {
 	} `json:"skipped,omitempty"`
 } {
 	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r SwitchChecksToAutoPlacementResult) GetJSON400() *Error {
+	return r.JSON400
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
@@ -67440,6 +67447,13 @@ func ParseSwitchChecksToAutoPlacementResult(rsp *http.Response) (*SwitchChecksTo
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound

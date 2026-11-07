@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkfilter"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
@@ -36,9 +37,12 @@ func (h *Handler) ListResults(writer http.ResponseWriter, req *http.Request) err
 	query := req.URL.Query()
 
 	// checkUid - comma-separated check UIDs or slugs
-	if checkParam := query.Get("checkUid"); checkParam != "" {
-		opts.Checks = strings.Split(checkParam, ",")
+	checks, checksErr := checkfilter.Split(query.Get("checkUid"))
+	if checksErr != nil {
+		return h.WriteError(
+			writer, http.StatusBadRequest, base.ErrorCodeValidationError, checksErr.Error())
 	}
+	opts.Checks = checks
 
 	// checkType - comma-separated check types
 	if checkTypeParam := query.Get("checkType"); checkTypeParam != "" {
