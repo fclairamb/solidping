@@ -269,16 +269,17 @@ func (s *MatrixSender) titleAndLines(payload *Payload) (string, []string) {
 
 	switch payload.EventType {
 	case eventTypeIncidentCreated:
-		title = "[DOWN] " + checkName
+		title = openedTag(payload.Incident) + checkName
 		lines = s.downLines(payload, checkName)
 	case eventTypeIncidentResolved:
 		title = resolvedTag(payload.Incident) + checkName
 		lines = s.resolvedLines(payload, checkName)
 	case eventTypeIncidentEscalated:
-		title = "[ESCALATED] " + checkName
+		title = "[ESCALATED] " + degradedMark(payload.Incident) + checkName
 		lines = s.escalatedLines(payload, checkName)
 	case eventTypeIncidentReopened:
-		title = fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
+		title = fmt.Sprintf("[REOPENED] %s%s (relapse #%d)",
+			degradedMark(payload.Incident), checkName, payload.Incident.RelapseCount)
 		lines = s.downLines(payload, checkName)
 	case eventTypeIncidentComment:
 		title = commentTitle(payload)
@@ -305,19 +306,28 @@ func (s *MatrixSender) titleAndLines(payload *Payload) (string, []string) {
 }
 
 func (s *MatrixSender) downLines(payload *Payload, checkName string) []string {
+	check := fmt.Sprintf("Check: %s (%s)", checkName, payload.Check.Type)
+	started := "Started: " + payload.Incident.StartedAt.Format(time.RFC3339)
+
+	if isDegradedIncident(payload.Incident) {
+		lines := append([]string{check}, degradedPlainLines(payload.Incident)...)
+
+		return append(lines, started)
+	}
+
 	return []string{
-		fmt.Sprintf("Check: %s (%s)", checkName, payload.Check.Type),
+		check,
 		"Cause: " + getFailureReason(payload.Incident),
 		"Failure count: " + strconv.Itoa(payload.Incident.FailureCount),
-		"Started: " + payload.Incident.StartedAt.Format(time.RFC3339),
+		started,
 	}
 }
 
 func (s *MatrixSender) resolvedLines(payload *Payload, checkName string) []string {
 	lines := []string{fmt.Sprintf("Check: %s (%s)", checkName, payload.Check.Type)}
 
-	if closedWithoutRecovery(payload.Incident) {
-		lines = append([]string{closedSentence(payload.Incident)}, lines...)
+	if lead := resolvedLeadSentence(payload.Incident); lead != "" {
+		lines = append([]string{lead}, lines...)
 	}
 
 	if payload.Incident.ResolvedAt != nil {
@@ -337,11 +347,20 @@ func (s *MatrixSender) reminderLines(payload *Payload) []string {
 }
 
 func (s *MatrixSender) escalatedLines(payload *Payload, checkName string) []string {
+	check := fmt.Sprintf("Check: %s (%s)", checkName, payload.Check.Type)
+	duration := "Duration: " + formatDuration(time.Since(payload.Incident.StartedAt))
+
+	if isDegradedIncident(payload.Incident) {
+		lines := append([]string{check}, degradedPlainLines(payload.Incident)...)
+
+		return append(lines, duration)
+	}
+
 	return []string{
-		fmt.Sprintf("Check: %s (%s)", checkName, payload.Check.Type),
+		check,
 		"Cause: " + getFailureReason(payload.Incident),
 		fmt.Sprintf("Failures: %d", payload.Incident.FailureCount),
-		"Duration: " + formatDuration(time.Since(payload.Incident.StartedAt)),
+		duration,
 	}
 }
 

@@ -74,7 +74,12 @@ type WebhookData struct {
 
 // WebhookIncident is the incident projection inside a webhook payload.
 type WebhookIncident struct {
-	UID                   string     `json:"uid"`
+	UID string `json:"uid"`
+	// Kind is what the incident is about: "check" (an outage), "degraded" (an
+	// intermittence pattern on a check that is usually up) or "slo_burn" (an
+	// error-budget burn alert). All three ride the same event types, so a
+	// receiver needs it to tell a degradation from an outage.
+	Kind                  string     `json:"kind,omitempty"`
 	StartedAt             time.Time  `json:"startedAt"`
 	ResolvedAt            *time.Time `json:"resolvedAt"`
 	AcknowledgedAt        *time.Time `json:"acknowledgedAt,omitempty"`
@@ -426,6 +431,7 @@ func (s *WebhookSender) buildPayload(payload *Payload) WebhookPayload {
 
 	incident := WebhookIncident{
 		UID:            payload.Incident.UID,
+		Kind:           payload.Incident.Kind,
 		StartedAt:      payload.Incident.StartedAt,
 		ResolvedAt:     payload.Incident.ResolvedAt,
 		AcknowledgedAt: payload.Incident.AcknowledgedAt,

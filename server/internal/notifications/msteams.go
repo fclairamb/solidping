@@ -21,6 +21,8 @@ const msTeamsTimeout = 30 * time.Second
 const (
 	msTeamsColorAttention = "Attention"
 	msTeamsColorGood      = "Good"
+	// Warning (amber) is a degraded incident's color: the check is usually up.
+	msTeamsColorWarning = "Warning"
 	// Accent is the Adaptive Card neutral-informational color, used for comments.
 	msTeamsColorAccent = "Accent"
 )
@@ -185,15 +187,22 @@ func (s *MSTeamsSender) buildMessage(payload *Payload) *msTeamsMessage {
 // eventTitleAndColor returns the title TextBlock text and Adaptive Card
 // semantic color for the event type, mirroring GoogleChatSender.buildMessage.
 func (s *MSTeamsSender) eventTitleAndColor(payload *Payload, checkName string) (string, string) {
+	mark := degradedMark(payload.Incident)
+
+	openColor := msTeamsColorAttention
+	if isDegradedIncident(payload.Incident) {
+		openColor = msTeamsColorWarning
+	}
+
 	switch payload.EventType {
 	case eventTypeIncidentCreated:
-		return "[DOWN] " + checkName, msTeamsColorAttention
+		return openedTag(payload.Incident) + checkName, openColor
 	case eventTypeIncidentResolved:
 		return resolvedTag(payload.Incident) + checkName, msTeamsColorGood
 	case eventTypeIncidentEscalated:
-		return "[ESCALATED] " + checkName, msTeamsColorAttention
+		return "[ESCALATED] " + mark + checkName, openColor
 	case eventTypeIncidentReopened:
-		return fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount), msTeamsColorAttention
+		return fmt.Sprintf("[REOPENED] %s%s (relapse #%d)", mark, checkName, payload.Incident.RelapseCount), openColor
 	case eventTypeIncidentComment:
 		return commentTitle(payload), msTeamsColorAccent
 	case eventTypeIncidentAcknowledged:
@@ -247,8 +256,8 @@ func (s *MSTeamsSender) buildFacts(payload *Payload, checkName string) []msTeams
 	}
 
 	if payload.EventType == eventTypeIncidentResolved {
-		if closedWithoutRecovery(payload.Incident) {
-			facts = append(facts, msTeamsFact{Title: "Reason", Value: closedSentence(payload.Incident)})
+		if lead := resolvedLeadSentence(payload.Incident); lead != "" {
+			facts = append(facts, msTeamsFact{Title: "Reason", Value: lead})
 		}
 
 		if payload.Incident.ResolvedAt != nil {
@@ -257,6 +266,15 @@ func (s *MSTeamsSender) buildFacts(payload *Payload, checkName string) []msTeams
 		}
 
 		return appendMSTeamsRegionFact(facts, payload)
+	}
+
+	if isDegradedIncident(payload.Incident) {
+		degraded := degradedFacts(payload.Incident)
+		for i := range degraded {
+			facts = append(facts, msTeamsFact{Title: degraded[i].Label, Value: degraded[i].Value})
+		}
+
+		return facts
 	}
 
 	facts = append(facts,

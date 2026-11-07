@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -527,11 +528,23 @@ func (ds *DiscordSender) buildIncidentCreatedEmbed(payload *Payload) discord.Emb
 	checkName := getCheckName(payload.Check)
 	fields := ds.buildCommonFields(payload, checkName)
 
+	title := "New incident for " + checkName
+	description := "A new incident has been detected. Please investigate."
+	color := discord.ColorRed
+
+	// Amber and "is degraded", never "new incident" in red: a degraded check is
+	// usually up right now.
+	if isDegradedIncident(payload.Incident) {
+		title = degradedHeadline(payload.Incident, checkName)
+		description = i18n.English.T("incident.degradedCreated.lead")
+		color = discord.ColorOrange
+	}
+
 	return discord.Embed{
-		Title:       incidentRefPrefix(payload.Incident) + "New incident for " + checkName,
-		Description: "A new incident has been detected. Please investigate.",
+		Title:       incidentRefPrefix(payload.Incident) + title,
+		Description: description,
 		URL:         incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident),
-		Color:       discord.ColorRed,
+		Color:       color,
 		Fields:      fields,
 		Timestamp:   payload.Incident.StartedAt.Format(time.RFC3339),
 		Footer:      &discord.Footer{Text: productMonitoring},
@@ -639,13 +652,19 @@ func (ds *DiscordSender) buildIncidentResolvedEmbed(payload *Payload) discord.Em
 
 	fields = appendDiscordRegionField(fields, payload)
 
+	title := "Incident resolved for " + checkName
 	description := "The incident has been automatically resolved."
-	if closedWithoutRecovery(payload.Incident) {
-		description = closedSentence(payload.Incident)
+
+	if lead := resolvedLeadSentence(payload.Incident); lead != "" {
+		description = lead
+	}
+
+	if isDegradedIncident(payload.Incident) && !closedWithoutRecovery(payload.Incident) {
+		title = degradedResolvedTitle(payload.Incident, checkName)
 	}
 
 	return discord.Embed{
-		Title:       incidentRefPrefix(payload.Incident) + "Incident resolved for " + checkName,
+		Title:       incidentRefPrefix(payload.Incident) + title,
 		Description: description,
 		Color:       discord.ColorGreen,
 		Fields:      fields,
@@ -665,6 +684,13 @@ func (ds *DiscordSender) buildIncidentEscalatedEmbed(payload *Payload) discord.E
 		{Name: mmFieldDuration, Value: duration, Inline: true},
 	}
 
+	title := "Incident escalated: " + checkName
+
+	if isDegradedIncident(payload.Incident) {
+		title = "Degraded incident escalated: " + checkName
+		fields[1] = discord.Field{Name: mmFieldCause, Value: degradedCause(payload.Incident), Inline: true}
+	}
+
 	if url := getCheckURL(payload.Check); url != "" {
 		method := getCheckMethod(payload.Check)
 		fields = append(fields, discord.Field{
@@ -676,7 +702,7 @@ func (ds *DiscordSender) buildIncidentEscalatedEmbed(payload *Payload) discord.E
 	fields = appendDiscordRegionField(fields, payload)
 
 	return discord.Embed{
-		Title:       incidentRefPrefix(payload.Incident) + "Incident escalated: " + checkName,
+		Title:       incidentRefPrefix(payload.Incident) + title,
 		Description: "This incident has exceeded the escalation threshold.",
 		Color:       discord.ColorOrange,
 		Fields:      fields,
@@ -718,19 +744,26 @@ func (ds *DiscordSender) buildIncidentReopenedEmbed(payload *Payload) discord.Em
 		Inline: true,
 	})
 
+	title := fmt.Sprintf("Incident reopened for %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
+	description := fmt.Sprintf(
+		"Recovery requires the check to stay up for %d seconds.",
+		payload.Check.RecoveryPeriodSeconds,
+	)
+	color := discord.ColorRed
+
+	if isDegradedIncident(payload.Incident) {
+		title = fmt.Sprintf("%s is degraded again (relapse #%d)", checkName, payload.Incident.RelapseCount)
+		description = i18n.English.T("incident.degradedCreated.lead")
+		color = discord.ColorOrange
+	}
+
 	return discord.Embed{
-		Title: fmt.Sprintf(
-			"%sIncident reopened for %s (relapse #%d)",
-			incidentRefPrefix(payload.Incident), checkName, payload.Incident.RelapseCount,
-		),
-		Description: fmt.Sprintf(
-			"Recovery requires the check to stay up for %d seconds.",
-			payload.Check.RecoveryPeriodSeconds,
-		),
-		Color:     discord.ColorRed,
-		Fields:    fields,
-		Timestamp: time.Now().Format(time.RFC3339),
-		Footer:    &discord.Footer{Text: productMonitoring},
+		Title:       incidentRefPrefix(payload.Incident) + title,
+		Description: description,
+		Color:       color,
+		Fields:      fields,
+		Timestamp:   time.Now().Format(time.RFC3339),
+		Footer:      &discord.Footer{Text: productMonitoring},
 	}
 }
 
@@ -751,7 +784,15 @@ func (ds *DiscordSender) buildDefaultEmbed(payload *Payload) discord.Embed {
 func (ds *DiscordSender) buildCommonFields(payload *Payload, checkName string) []discord.Field {
 	fields := []discord.Field{
 		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
-		{Name: mmFieldCause, Value: getFailureReason(payload.Incident), Inline: true},
+	}
+
+	if isDegradedIncident(payload.Incident) {
+		facts := degradedFacts(payload.Incident)
+		for i := range facts {
+			fields = append(fields, discord.Field{Name: facts[i].Label, Value: facts[i].Value, Inline: true})
+		}
+	} else {
+		fields = append(fields, discord.Field{Name: mmFieldCause, Value: getFailureReason(payload.Incident), Inline: true})
 	}
 
 	if url := getCheckURL(payload.Check); url != "" {
@@ -806,6 +847,9 @@ func (ds *DiscordSender) buildResolvedUpdateMessage(payload *Payload) *discord.M
 	fields = appendDiscordRegionField(fields, payload)
 
 	title := fmt.Sprintf("%sAutomatically resolved %s incident", incidentRefPrefix(payload.Incident), checkName)
+	if isDegradedIncident(payload.Incident) {
+		title = incidentRefPrefix(payload.Incident) + degradedResolvedTitle(payload.Incident, checkName)
+	}
 	if ResolvedByCheckDeletion(payload.Incident) {
 		title = fmt.Sprintf("%sClosed %s incident: the check was deleted", incidentRefPrefix(payload.Incident), checkName)
 	}

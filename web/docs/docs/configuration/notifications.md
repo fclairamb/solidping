@@ -943,6 +943,7 @@ specification, so receivers can verify it came from SolidPing.
   "data": {
     "incident": {
       "uid": "550e8400-e29b-41d4-a716-446655440001",
+      "kind": "check",
       "startedAt": "2026-01-15T10:30:00Z",
       "resolvedAt": "2026-01-15T10:42:00Z",
       "durationSeconds": 720,
@@ -966,6 +967,10 @@ specification, so receivers can verify it came from SolidPing.
 }
 ```
 
+- `kind` says what the incident is about: `check` (the check is down),
+  `degraded` (an intermittence pattern on a check that is usually up) or
+  `slo_burn` (an SLO error-budget burn alert). All three use the same event
+  types, so read `kind` before treating an `incident.created` as an outage.
 - `resolvedAt` and `durationSeconds` are `null` while the incident is active.
 - `resolutionType` (`auto`, `manual`, `expired`, `escalated`, `disabled`,
   `check_deleted`, `check_disabled`) is only present once the incident is resolved.
