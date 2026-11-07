@@ -24,6 +24,8 @@ import (
 type fakeAgentServer struct {
 	server *httptest.Server
 	region string
+	// noWorkerTasks is the identity hello's flag (a system agent).
+	noWorkerTasks bool
 
 	mu     sync.Mutex
 	conns  int
@@ -91,6 +93,7 @@ func (f *fakeAgentServer) handshake(ctx context.Context, conn *websocket.Conn, i
 	if !isEnroll {
 		return wsjson.Write(ctx, conn, agents.ServerFrame{
 			Type: agents.MsgTypeHello, AgentUID: "agent-1", WorkerUID: "worker-1", Region: f.region,
+			NoWorkerTasks: f.noWorkerTasks,
 		}) == nil
 	}
 
@@ -114,6 +117,7 @@ func (f *fakeAgentServer) handshake(ctx context.Context, conn *websocket.Conn, i
 
 	return wsjson.Write(ctx, conn, agents.ServerFrame{
 		Type: agents.MsgTypeHello, AgentUID: "agent-1", WorkerUID: "worker-1", Region: f.region,
+		NoWorkerTasks: f.noWorkerTasks,
 	}) == nil
 }
 
