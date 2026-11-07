@@ -41,6 +41,16 @@ func (b *WSBackend) TaskClient() *HTTPTaskClient {
 	return &HTTPTaskClient{backend: b}
 }
 
+// TasksAllowed implements tasks.Gated: false when the server's identity hello
+// said it refuses this agent worker tasks (a system agent). Only meaningful
+// once the backend is registered.
+func (c *HTTPTaskClient) TasksAllowed() bool {
+	c.backend.mu.Lock()
+	defer c.backend.mu.Unlock()
+
+	return !c.backend.noWorkerTasks
+}
+
 // Claim implements tasks.Client: nil on 204, tasks.ErrNotSupported on 404.
 func (c *HTTPTaskClient) Claim(ctx context.Context, kinds []string) (*workertasks.Claim, error) {
 	body, err := json.Marshal(workertasks.ClaimRequest{Kinds: kinds})
