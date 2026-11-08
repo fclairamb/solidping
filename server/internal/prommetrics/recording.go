@@ -174,11 +174,20 @@ func RecordJobLeaseLost(jobType string) {
 	JobsLeaseLost.WithLabelValues(jobType).Inc()
 }
 
+// Abandon reasons for the solidping_check_runner_abandoned_total counter.
+const (
+	AbandonReasonIgnoredContext = "ignored_context"
+	AbandonReasonConnectionLost = "connection_lost"
+)
+
 // RecordCheckRunnerAbandoned increments the abandoned-execution counter for
 // the given check type. Called once per watchdog abandonment (spec
 // 2026-07-05-05 D3).
-func RecordCheckRunnerAbandoned(checkType string) {
-	CheckRunnerAbandoned.WithLabelValues(checkType).Inc()
+//
+// reason is AbandonReasonIgnoredContext (a checker bug) or
+// AbandonReasonConnectionLost (cut off by an agent connection loss).
+func RecordCheckRunnerAbandoned(checkType, reason string) {
+	CheckRunnerAbandoned.WithLabelValues(checkType, reason).Inc()
 }
 
 // IncCheckRunnerAbandonedActive marks one more checker goroutine as

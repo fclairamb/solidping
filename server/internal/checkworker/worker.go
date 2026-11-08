@@ -155,6 +155,9 @@ type CheckWorker struct {
 	// loop, budgets, and express path run identically everywhere (spec
 	// 2026-07-16-02).
 	backend backend.WorkerBackend
+	// outage collapses an agent connection outage into one WARN plus a
+	// recovery summary instead of one ERROR per failed claim/submit.
+	outage connOutage
 	// dbService and services are the in-process conveniences (self-stats,
 	// entitlements). Both are nil in agent mode; every use is nil-guarded.
 	dbService db.Service
@@ -795,11 +798,18 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 		prommetrics.RecordClaimJobsOutcome("jobs")
 	}
 	if err != nil {
-		if !errors.Is(err, context.Canceled) {
+		switch {
+		case errors.Is(err, context.Canceled):
+			// shutdown path
+		case isConnLoss(err):
+			r.outage.noteLoss(ctx, logger, "claim", err)
+		default:
 			logger.ErrorContext(ctx, "Failed to claim jobs", "error", err)
 		}
+
 		return 0, err
 	}
+	r.outage.noteRecovered(ctx, logger)
 
 	// Account in-flight slow jobs at claim time (D4): the count must be
 	// visible before any subsequent fetch computes its slow budget, and a
@@ -944,9 +954,15 @@ func (r *CheckWorker) runnerLoop(ctx context.Context, id int) {
 
 		// Execute the job
 		if err := r.executeJob(ctx, logger, job); err != nil {
-			logger.ErrorContext(ctx, "Error executing job",
-				"error", err,
-				"check_uid", job.CheckUID)
+			if isConnLoss(err) {
+				// Expected transient state of a remote agent: the job is left
+				// for re-claim once the connection is back.
+				r.outage.noteLoss(ctx, logger, "submit", err)
+			} else {
+				logger.ErrorContext(ctx, "Error executing job",
+					"error", err,
+					"check_uid", job.CheckUID)
+			}
 		}
 
 		// A finished slow-lane job frees its reserved-budget slot (the
@@ -1462,6 +1478,7 @@ func (r *CheckWorker) executeJob(
 	); submitErr != nil {
 		return fmt.Errorf("failed to submit result: %w", submitErr)
 	}
+	r.outage.noteRecovered(ctx, logger)
 
 	// duration_ms is the actual exec duration (D4) — previously this logged
 	// time.Since(startTime), which conflated the pre-schedule sleep (wait_ms)
@@ -1689,15 +1706,33 @@ func (r *CheckWorker) abandonCheckerExecution(
 		region = *checkJob.Region
 	}
 
-	prommetrics.RecordCheckRunnerAbandoned(checkJob.Type)
+	connLost := r.outage.active()
+	reason := prommetrics.AbandonReasonIgnoredContext
+	if connLost {
+		reason = prommetrics.AbandonReasonConnectionLost
+	}
+
+	prommetrics.RecordCheckRunnerAbandoned(checkJob.Type, reason)
 	prommetrics.IncCheckRunnerAbandonedActive()
 
-	logger.ErrorContext(ctx, "Checker abandoned: did not honor context",
-		"check_uid", checkJob.CheckUID,
-		"check_type", checkJob.Type,
-		"org", checkJob.OrganizationUID,
-		"region", region,
-		"abandon_count", 1)
+	if connLost {
+		// Cut off while blocked on the dead agent connection: expected.
+		logger.WarnContext(ctx, "Checker abandoned: agent connection lost",
+			"check_uid", checkJob.CheckUID,
+			"check_type", checkJob.Type,
+			"org", checkJob.OrganizationUID,
+			"region", region,
+			"reason", reason,
+			"abandon_count", 1)
+	} else {
+		logger.ErrorContext(ctx, "Checker abandoned: did not honor context",
+			"check_uid", checkJob.CheckUID,
+			"check_type", checkJob.Type,
+			"org", checkJob.OrganizationUID,
+			"region", region,
+			"reason", reason,
+			"abandon_count", 1)
+	}
 
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusTimeout,
