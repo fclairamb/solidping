@@ -120,7 +120,6 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e // indirect
 	github.com/lunixbochs/struc v0.0.0-20241101090106-8d528fa2c543 // indirect
 	github.com/magiconair/properties v1.18.12 // indirect
-	github.com/mattermost/xml-roundtrip-validator v0.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-runewidth v0.0.24 // indirect
@@ -234,8 +233,8 @@ require (
 	github.com/chromedp/chromedp v0.16.0
 	github.com/coder/websocket v1.8.15
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/crewjam/saml v0.5.2
-	github.com/dlclark/regexp2/v2 v2.12.0
+	github.com/crewjam/saml v0.6.2
+	github.com/dlclark/regexp2/v2 v2.13.0
 	github.com/docker/go-units v0.5.0
 	github.com/dop251/goja v0.0.0-20261107161106-d6eaa50db8bc
 	github.com/dreamscached/minequery/v2 v2.5.0
