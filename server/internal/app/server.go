@@ -3867,6 +3867,14 @@ func (s *Server) closeAgentConnections(ctx context.Context) {
 	}
 }
 
+// logStarPrompt logs the one-line GitHub star invitation, once per process
+// start, unless the operator turned it off (SP_APP_STARPROMPT=false).
+func (s *Server) logStarPrompt(ctx context.Context) {
+	if s.config.App.StarPrompt {
+		slog.InfoContext(ctx, "If SolidPing is useful to you, a star helps: https://github.com/fclairamb/solidping")
+	}
+}
+
 // Start starts the HTTP server and blocks until shutdown.
 func (s *Server) Start(ctx context.Context) error {
 	// A structural database fault is terminal: arm the latch so the first one
@@ -3889,6 +3897,8 @@ func (s *Server) Start(ctx context.Context) error {
 	} else {
 		slog.InfoContext(ctx, "Starting SolidPing node", "role", s.config.Node.Role)
 	}
+
+	s.logStarPrompt(ctx)
 
 	// Create independent cancellable context for job runners
 	// This is NOT derived from ctx so that database operations can complete

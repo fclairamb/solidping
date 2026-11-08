@@ -84,6 +84,7 @@ func buildRootCommand() *cli.Command {
 	return &cli.Command{
 		Name:           "solidping",
 		Usage:          "SolidPing monitoring service",
+		Description:    spCli.StarPromptText(),
 		Version:        version.Get().Version,
 		DefaultCommand: "serve",
 		// The pkg/cli client flags (config/url/org/output/json/verbose) are

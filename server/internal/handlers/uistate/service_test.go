@@ -65,6 +65,21 @@ func TestResolveKeyRejectsForeignPrefixes(t *testing.T) {
 	}
 }
 
+func TestResolveKeyGitHubStar(t *testing.T) {
+	t.Parallel()
+
+	svc := NewService(nil)
+
+	got, err := svc.ResolveKey(t.Context(), "github-star")
+	require.NoError(t, err)
+	require.Equal(t, KeyGitHubStar, got)
+
+	for _, key := range []string{"github-star.x", "github-starX", "GitHub-Star", "github-star."} {
+		_, err := svc.ResolveKey(t.Context(), key)
+		require.ErrorIs(t, err, ErrInvalidKey, "key %q must be rejected", key)
+	}
+}
+
 // The size cap is a constant the handler enforces; pin it so a future edit
 // that loosens it is a deliberate, visible change rather than a typo.
 func TestMaxValueBytesStaysSmall(t *testing.T) {

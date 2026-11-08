@@ -320,6 +320,16 @@ nothing and the dashboard loads no analytics code whatsoever.
 
 See [Product Analytics](/configuration/analytics) for exactly what is and is not sent.
 
+### GitHub star nudges
+
+SolidPing discreetly invites users to star the GitHub repository: a link in the dashboard
+sidebar, a one-time prompt on the dashboard home, one startup log line and one CLI line after
+`sp auth login`. Nothing is rewarded.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_APP_STARPROMPT` | `true` | Set to `false` to hide the sidebar link and the prompt and silence the log and CLI lines |
+
 ### Observability
 
 | Variable | Default | Description |

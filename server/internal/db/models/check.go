@@ -213,6 +213,8 @@ type CheckStatusCount struct {
 	Status  CheckStatus `bun:"status"`
 	Enabled bool        `bun:"enabled"`
 	Count   int         `bun:"count"`
+	// OldestCreatedAt is MIN(created_at) over the rows of this group.
+	OldestCreatedAt *time.Time `bun:"oldest_created_at"`
 }
 
 // Check represents a monitoring configuration.

@@ -144,6 +144,12 @@ type BugReportPublicConfig struct {
 	Enabled bool `json:"enabled"`
 }
 
+// GitHubStarPublicConfig tells the dashboard whether to render the "star on
+// GitHub" sidebar link and one-time prompt (app.starprompt).
+type GitHubStarPublicConfig struct {
+	Enabled bool `json:"enabled"`
+}
+
 // HeartbeatPublicConfig describes the embedded TCP/UDP heartbeat transports to
 // the dashboard (spec 2026-09-01-06).
 //
@@ -181,9 +187,10 @@ type Response struct {
 	Discord  DiscordPublicConfig  `json:"discord"`
 	// BugReport and Heartbeat used to live on the authenticated
 	// GET /api/v1/features; none of it is secret.
-	BugReport BugReportPublicConfig `json:"bugReport"`
-	Heartbeat HeartbeatPublicConfig `json:"heartbeat"`
-	AI        AIPublicConfig        `json:"ai"`
+	BugReport  BugReportPublicConfig  `json:"bugReport"`
+	GitHubStar GitHubStarPublicConfig `json:"githubStar"`
+	Heartbeat  HeartbeatPublicConfig  `json:"heartbeat"`
+	AI         AIPublicConfig         `json:"ai"`
 	// RunMode ("normal", "demo" or "test") and DeploymentMode ("saas" or
 	// "self-hosted") used to ride on GET /api/mgmt/version.
 	RunMode        string `json:"runMode"`
@@ -212,7 +219,7 @@ func NewHandler(cfg *config.Config) *Handler {
 // server config. Exported so tests can assert the shape without an HTTP round
 // trip, and so future callers can embed the same document elsewhere.
 func Build(cfg *config.Config) Response {
-	resp := Response{}
+	resp := Response{GitHubStar: GitHubStarPublicConfig{Enabled: true}}
 
 	if cfg != nil && cfg.PostHog.Active() {
 		resp.PostHog = PostHogPublicConfig{
@@ -249,6 +256,7 @@ func Build(cfg *config.Config) Response {
 
 	if cfg != nil {
 		resp.BugReport = BugReportPublicConfig{Enabled: cfg.App.EnableBugReport}
+		resp.GitHubStar = GitHubStarPublicConfig{Enabled: cfg.App.StarPrompt}
 		resp.Heartbeat = heartbeatConfig(cfg)
 		resp.AI = AIPublicConfig{Enabled: cfg.AI.Enabled()}
 		resp.RunMode = cfg.RunMode

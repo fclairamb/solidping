@@ -6583,6 +6583,7 @@ func (s *Service) GetCheckStatusCounts(
 		ColumnExpr("status").
 		ColumnExpr("enabled").
 		ColumnExpr("COUNT(*) AS count").
+		ColumnExpr("MIN(created_at) AS oldest_created_at").
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
 		Where("internal = ?", false).
