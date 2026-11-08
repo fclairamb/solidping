@@ -148,5 +148,12 @@
   "errors": {
     "section": "Laden fehlgeschlagen.",
     "retry": "Erneut versuchen"
+  },
+  "githubStar": {
+    "title": "Gefällt Ihnen SolidPing?",
+    "body": "Danke, dass Sie SolidPing nutzen. Wenn es Ihnen nützt, hilft ein Stern auf GitHub anderen dabei, es zu finden.",
+    "star": "Auf GitHub mit Stern markieren",
+    "later": "Nicht jetzt",
+    "close": "Schließen"
   }
 }

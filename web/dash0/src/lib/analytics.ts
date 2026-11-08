@@ -157,6 +157,8 @@ export interface PublicConfig {
   discord?: DiscordPublicConfig;
   bugReport?: BugReportPublicConfig;
   heartbeat?: HeartbeatPublicConfig;
+  /** GitHub star link and prompt (SP_APP_STARPROMPT); a missing key means on. */
+  githubStar?: { enabled: boolean };
   /** AI-authored js checks (spec 2026-10-03-07): on when SP_AI_PROVIDER is set. */
   ai?: { enabled: boolean };
   runMode?: string;

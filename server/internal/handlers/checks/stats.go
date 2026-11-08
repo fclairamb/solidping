@@ -178,7 +178,8 @@ func foldCheckStatusCounts(rows []models.CheckStatusCount) CheckStatsResponse {
 
 	stats := CheckStatsResponse{ByStatus: byStatus}
 
-	for _, row := range rows {
+	for idx := range rows {
+		row := &rows[idx]
 		name := row.Status.String()
 		byStatus[name] += row.Count
 		stats.Total += row.Count

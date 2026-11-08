@@ -190,5 +190,8 @@
     "cycle": "cycle {{cycle}}"
   },
   "customized": "personnalisé",
-  "removeItem": "Retirer {{item}}"
+  "removeItem": "Retirer {{item}}",
+  "githubStar": {
+    "sidebar": "Mettre une étoile sur GitHub"
+  }
 }

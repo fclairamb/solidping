@@ -148,5 +148,12 @@
   "errors": {
     "section": "Failed to load.",
     "retry": "Retry"
+  },
+  "githubStar": {
+    "title": "Enjoying SolidPing?",
+    "body": "Thanks for using SolidPing. If it is useful to you, a star on GitHub helps other people find it.",
+    "star": "Star on GitHub",
+    "later": "Not now",
+    "close": "Close"
   }
 }

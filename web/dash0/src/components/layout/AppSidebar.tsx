@@ -48,6 +48,7 @@ import { LanguageSwitcher } from "@/components/shared/language-switcher";
 import { Logo } from "@/components/ui/logo";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
+import { GitHubStarLink } from "@/components/layout/github-star-link";
 import { ServerVersionIndicator } from "@/components/layout/server-version-indicator";
 
 // The sidebar is grouped into labelled sections (spec 2026-09-16-07): a flat
@@ -303,6 +304,7 @@ export function AppSidebar() {
               <ServerVersionIndicator />
             </div>
           </SidebarMenuItem>
+          <GitHubStarLink />
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

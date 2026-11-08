@@ -190,5 +190,8 @@
     "cycle": "Zyklus {{cycle}}"
   },
   "customized": "angepasst",
-  "removeItem": "{{item}} entfernen"
+  "removeItem": "{{item}} entfernen",
+  "githubStar": {
+    "sidebar": "Auf GitHub mit Stern markieren"
+  }
 }

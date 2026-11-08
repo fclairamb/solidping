@@ -3867,6 +3867,17 @@ func (s *Server) closeAgentConnections(ctx context.Context) {
 	}
 }
 
+// logNodeStart logs the node configuration, then the star invitation.
+func (s *Server) logNodeStart(ctx context.Context) {
+	if s.config.Node.Region != "" {
+		slog.InfoContext(ctx, "Starting SolidPing node", "role", s.config.Node.Role, "region", s.config.Node.Region)
+	} else {
+		slog.InfoContext(ctx, "Starting SolidPing node", "role", s.config.Node.Role)
+	}
+
+	s.logStarPrompt(ctx)
+}
+
 // logStarPrompt logs the one-line GitHub star invitation, once per process
 // start, unless the operator turned it off (SP_APP_STARPROMPT=false).
 func (s *Server) logStarPrompt(ctx context.Context) {
@@ -3891,14 +3902,7 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start profiler server: %w", err)
 	}
 
-	// Log node configuration
-	if s.config.Node.Region != "" {
-		slog.InfoContext(ctx, "Starting SolidPing node", "role", s.config.Node.Role, "region", s.config.Node.Region)
-	} else {
-		slog.InfoContext(ctx, "Starting SolidPing node", "role", s.config.Node.Role)
-	}
-
-	s.logStarPrompt(ctx)
+	s.logNodeStart(ctx)
 
 	// Create independent cancellable context for job runners
 	// This is NOT derived from ctx so that database operations can complete

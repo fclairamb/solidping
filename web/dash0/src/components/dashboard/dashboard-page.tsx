@@ -68,6 +68,7 @@ import { EventLogTable } from "@/components/dashboard/event-log-table";
 import { MyOnCallWidget } from "@/components/dashboard/my-on-call";
 import { EmptyStateOnboarding } from "@/components/dashboard/empty-state-onboarding";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
+import { GitHubStarPrompt } from "@/components/dashboard/github-star-prompt";
 import { KpiTile } from "@/components/shared/kpi-tile";
 import { PageHeader } from "@/components/shared/page-header";
 import { statusStyle } from "@/lib/status-style";
@@ -95,6 +96,7 @@ const EMPTY_CHECK_STATS: CheckStats = {
   down: 0,
   hardDown: 0,
   availability24h: null,
+  oldestEnabledCheckCreatedAt: null,
 };
 // Hours rendered by each row's 24h uptime strip.
 const UPTIME_HOURS = 24;
@@ -477,6 +479,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
           {/* Below the live status: the checklist is a one-time setup aid and
               must not push what is broken right now off the first screen. */}
           <OnboardingChecklist org={org} totalChecks={totalChecksCount} />
+          <GitHubStarPrompt org={org} stats={stats} />
 
           {incidentsCount > 0 ? (
             <ActiveIncidentsList

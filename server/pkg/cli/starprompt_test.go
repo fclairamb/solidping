@@ -48,7 +48,6 @@ func captureLogin(t *testing.T, format string) string {
 	return string(out)
 }
 
-//nolint:paralleltest // process-global stdout, HOME and env
 func TestLoginStarPrompt(t *testing.T) {
 	t.Setenv(StarPromptEnv, "")
 
@@ -62,7 +61,6 @@ func TestLoginStarPrompt(t *testing.T) {
 	require.NotContains(t, captureLogin(t, "text"), "a star helps")
 }
 
-//nolint:paralleltest // process-global env
 func TestStarPromptText(t *testing.T) {
 	t.Setenv(StarPromptEnv, "")
 	require.Equal(t, StarPromptLine, StarPromptText())
