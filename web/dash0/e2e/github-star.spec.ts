@@ -79,7 +79,7 @@ test.describe("GitHub star prompt", () => {
     await page.request.delete(`${API_BASE}/api/v1/me/ui-state/github-star`, {
       headers,
     });
-    // The prompt waits for the getting-started checklist to be out of the way.
+    // The prompt only shows once the getting-started checklist is hidden.
     await page.request.put(`${API_BASE}/api/v1/me/ui-state/onboarding.test`, {
       headers,
       data: { dismissedAt: new Date().toISOString() },

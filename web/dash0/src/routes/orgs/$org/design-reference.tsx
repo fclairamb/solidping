@@ -7579,7 +7579,7 @@ function GitHubStarPromptSection() {
 
 // Container: decides from the checks stats and the user-global \`github-star\`
 // ui-state whether to show, and writes the outcome itself.
-<GitHubStarPrompt org={org} stats={stats} />
+<GitHubStarPrompt stats={stats} onboardingVisible={false} />
 
 // Presentation only:
 <GitHubStarPromptCard onStar={star} onDismiss={dismiss} />`;

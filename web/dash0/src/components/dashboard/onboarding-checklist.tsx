@@ -33,6 +33,7 @@ import {
   allStepsComplete,
   completedStepCount,
   deriveOnboardingSteps,
+  isChecklistVisible,
   pickTestAlertIntegration,
   type OnboardingStep,
   type OnboardingStepId,
@@ -66,6 +67,8 @@ interface OnboardingChecklistProps {
   org: string;
   /** Org-wide check count from the stats endpoint. */
   totalChecks: number;
+  /** Told whenever the card's visibility is (re)decided. */
+  onVisibleChange?: (visible: boolean) => void;
 }
 
 /**
@@ -86,6 +89,7 @@ interface OnboardingChecklistProps {
 export function OnboardingChecklist({
   org,
   totalChecks,
+  onVisibleChange,
 }: OnboardingChecklistProps) {
   const { t } = useTranslation("dashboard");
   const { user } = useAuth();
@@ -166,6 +170,17 @@ export function OnboardingChecklist({
   // to land — and without being undone by the `allSet` escape hatch above.
   const [manuallyDismissed, setManuallyDismissed] = useState(false);
 
+  const visible = isChecklistVisible({
+    totalChecks,
+    dismissalLoaded,
+    dismissed,
+    manuallyDismissed,
+    allSet,
+  });
+  useEffect(() => {
+    onVisibleChange?.(visible);
+  }, [visible, onVisibleChange]);
+
   const testAlertIntegration = pickTestAlertIntegration(integrationsQuery.data);
   const testIntegration = useTestIntegration(org);
 
@@ -207,8 +222,7 @@ export function OnboardingChecklist({
   // Never before the first check (the empty-state hero owns that moment), and
   // never while we still do not know whether the user hid it — rendering
   // first and retracting would flash the card on every page load.
-  if (totalChecks < 1 || !dismissalLoaded || manuallyDismissed) return null;
-  if (dismissed && !allSet) return null;
+  if (!visible) return null;
 
   return (
     <OnboardingChecklistCard

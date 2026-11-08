@@ -3,11 +3,9 @@ import { useTranslation } from "react-i18next";
 import { Star, X } from "lucide-react";
 import {
   GITHUB_STAR_UI_STATE_KEY,
-  onboardingUiStateKey,
   useSetUiState,
   useUiState,
   type CheckStats,
-  type OnboardingUiState,
 } from "@/api/hooks";
 import { useGitHubStarEnabled } from "@/api/public-config";
 import { useAuth } from "@/contexts/AuthContext";
@@ -22,8 +20,9 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface GitHubStarPromptProps {
-  org: string;
   stats: CheckStats;
+  /** Whether the getting-started checklist is on screen; never both at once. */
+  onboardingVisible: boolean;
 }
 
 /**
@@ -32,7 +31,7 @@ interface GitHubStarPromptProps {
  * decision lives in `shouldShowGitHubStarPrompt`; the per-user state is the
  * user-global `github-star` ui-state entry. No reward, ever.
  */
-export function GitHubStarPrompt({ org, stats }: GitHubStarPromptProps) {
+export function GitHubStarPrompt({ stats, onboardingVisible }: GitHubStarPromptProps) {
   const enabled = useGitHubStarEnabled();
   const { user } = useAuth();
   const isDemo = Boolean(user?.isDemo);
@@ -42,11 +41,6 @@ export function GitHubStarPrompt({ org, stats }: GitHubStarPromptProps) {
     enabled: active,
   });
   const setState = useSetUiState<GitHubStarUiState>(GITHUB_STAR_UI_STATE_KEY);
-  // Never alongside the getting-started checklist: it must be dismissed
-  // (or have self-dismissed) before this card gets its turn.
-  const onboardingQuery = useUiState<OnboardingUiState>(onboardingUiStateKey(org), {
-    enabled: active,
-  });
 
   const [hidden, setHidden] = useState(false);
   const [now] = useState(() => new Date());
@@ -55,7 +49,7 @@ export function GitHubStarPrompt({ org, stats }: GitHubStarPromptProps) {
   const uiState = stateQuery.data;
   const visible =
     !hidden &&
-    Boolean(onboardingQuery.data?.dismissedAt) &&
+    !onboardingVisible &&
     shouldShowGitHubStarPrompt({
       enabled,
       isDemo,
