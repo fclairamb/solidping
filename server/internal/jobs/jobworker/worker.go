@@ -526,12 +526,11 @@ func (w *JobWorker) handleResult(
 	}
 
 	// Permanent failures (bad input) are logged at WARN, everything else at ERROR.
-	level := slog.LevelError
 	if jobdef.IsPermanent(err) {
-		level = slog.LevelWarn
+		logger.WarnContext(ctx, "Job failed", "job_uid", job.UID, "job_type", job.Type, "error", err)
+	} else {
+		logger.ErrorContext(ctx, "Job failed", "job_uid", job.UID, "job_type", job.Type, "error", err)
 	}
-
-	logger.Log(ctx, level, "Job failed", "job_uid", job.UID, "type", job.Type, "error", err)
 
 	if jobdef.IsRetryable(err) && job.RetryCount < jobsvc.MaxRetryCount {
 		return outcomeRetried, w.handleRetry(ctx, logger, job, err)
