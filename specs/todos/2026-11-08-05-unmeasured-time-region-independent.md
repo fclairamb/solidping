@@ -77,3 +77,8 @@ written; when the spec is archived to `specs/done/`, check it is closed and clos
 otherwise:
 
     gh issue close 52 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+1. Yes: a period is measured when any region reported (autopilot: recommended answer).
+2. Accept the rollup granularity, no per-period gap table (autopilot: recommended answer).
