@@ -259,13 +259,13 @@ Plus a `CHANGELOG.md` entry per `wiki/conventions/changelog.md`, and an update o
 3. **Keep the org-wide `required` mode?** Recommended: yes. It is a few lines on the server and it is what backs the promise "SolidPing never receives your check passwords" for a whole org.
 4. **Checks that do not comply when an org switches to `required`: block the switch, or let them run until edited?** Recommended: let them run, list them on the settings page, refuse their next secret-bearing write. Blocking the switch would force a big cleanup first.
 5. **New agent in a region: manual re-entry only in v1, peer re-wrap in phase 2?** Recommended: yes, plus the claim filter in v1 so nothing goes red while checks wait for a re-seal.
-6. **Where is the shared region key generated?** Recommended: in dash0, shown once, with `solidping agent region-key generate` as the offline alternative. dash0 is the easy path and the browser is already trusted with the passwords.
-7. **Default key mode for a new private region?** Recommended: `perAgent`, as today. A region with one agent gains nothing from a shared key, and `shared` adds a key to distribute and keep safe.
-8. **Partial secret replacement: keep one blob per check, or one blob per field?** Recommended: one blob. Most checks have one or two secret fields, and per-field blobs need an agent change.
-9. **Notification integration secrets in scope?** Recommended: no. The server must read them to send alerts. Say so in the docs and the marketing copy.
-10. **Self-hosted dash0 over plain HTTP (no secure context).** Recommended: browser mode and `required` are disabled from such a page, and the form explains why. Server mode keeps working. No fallback.
+6. **Partial secret replacement: keep one blob per check, or one blob per field?** Recommended: one blob. Most checks have one or two secret fields, and per-field blobs need an agent change.
+7. **Notification integration secrets in scope?** Recommended: no. The server must read them to send alerts. Say so in the docs and the marketing copy.
+8. **Self-hosted dash0 over plain HTTP (no secure context).** Recommended: browser mode and `required` are disabled from such a page, and the form explains why. Server mode keeps working. No fallback.
 
 ## Resolved open questions
 - **Server-side and browser encryption both stay available** (Florent, 2026-11-08). The choice is per check. An org can make browser mode mandatory with `security.browser_sealing.mode = required`.
 - **Shared region key, optional** (Florent, 2026-11-08). Each private region seals either to every agent's own key (default) or to one shared region key held by all its agents, so a region can run several agents without re-sealing. Section 2.
 - **No paid-tier gating** (Florent, 2026-11-08). Browser mode is available to every org on every plan, SaaS and self-hosted. No entitlement.
+- **The shared region key is generated in dash0**, shown once, with `solidping agent region-key generate` as the offline alternative (Florent, 2026-11-08).
+- **New private regions default to a key per agent** (`perAgent`). `shared` is opt-in per region (Florent, 2026-11-08).
