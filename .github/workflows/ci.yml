@@ -725,6 +725,60 @@ jobs:
           if ($LASTEXITCODE) { exit 1 }
           if (Get-Service SolidPing -ErrorAction SilentlyContinue) { throw 'service still registered' }
 
+  macos-service:
+    name: macOS service
+    runs-on: macos-15
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
+    defaults:
+      run:
+        working-directory: server
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Test
+        run: go test -run 'Service|Launchd' .
+
+      # The daemon path (sudo): the plist in /Library/LaunchDaemons, a root-only
+      # data folder, launchd starting and stopping the server.
+      - name: Install, start, stop and uninstall the service
+        run: |
+          set -euo pipefail
+          exe="$RUNNER_TEMP/solidping"
+          dir="$RUNNER_TEMP/solidping data"
+          go build -o "$exe" .
+
+          sudo "$exe" service install --dir "$dir"
+          sudo plutil -lint /Library/LaunchDaemons/io.solidping.plist
+          [[ "$(sudo stat -f '%Su %Lp' "$dir")" == "root 700" ]] || { sudo stat -f '%Su %Lp' "$dir"; echo 'data folder is not root-only'; exit 1; }
+
+          sudo "$exe" service start
+
+          healthy=false
+          for _ in $(seq 1 60); do
+            if curl -sf http://localhost:4000/api/mgmt/health; then healthy=true; break; fi
+            sleep 2
+          done
+
+          sudo "$exe" service stop
+          if sudo launchctl print system/io.solidping >/dev/null 2>&1; then echo 'job still loaded after stop'; exit 1; fi
+
+          sudo tail -n 40 "$dir/logs/solidping.log"
+          sudo cat "$dir/logs/launchd.log"
+          [[ "$healthy" == true ]] || { echo 'the service never answered /api/mgmt/health'; exit 1; }
+          sudo test -f "$dir/solidping.db" || { echo 'no SQLite database in the data folder'; exit 1; }
+          sudo grep -q 'Configuration loaded' "$dir/logs/solidping.log" || { echo 'the service log has no startup line'; exit 1; }
+
+          sudo "$exe" service uninstall
+          if sudo test -e /Library/LaunchDaemons/io.solidping.plist; then echo 'plist still installed'; exit 1; fi
+
   # Guards for the tag-only release jobs (server-release, cli-release, docker):
   # they prove a release would still package, build its images and
   # cross-compile, on every PR, since those jobs cannot run before a tag exists.
@@ -1300,7 +1354,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-26.04
-    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, release-guards, windows-service, e2e-tests, upgrade-matrix, upgrade]
+    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, release-guards, windows-service, macos-service, e2e-tests, upgrade-matrix, upgrade]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Verify no failures

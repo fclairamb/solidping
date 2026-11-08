@@ -12,9 +12,19 @@ func TestDefaultServiceDir(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	env := map[string]string{"ProgramData": `D:\Data`}
-	r.Equal(`D:\Data\SolidPing`, defaultServiceDir(func(key string) string { return env[key] }))
-	r.Equal(`C:\ProgramData\SolidPing`, defaultServiceDir(func(string) string { return "" }))
+	env := map[string]string{"ProgramData": `D:\Data`, "HOME": "/Users/alice"}
+	getenv := func(key string) string { return env[key] }
+	r.Equal(`D:\Data\SolidPing`, defaultServiceDir(goosWindows, false, getenv))
+	r.Equal(`C:\ProgramData\SolidPing`, defaultServiceDir(goosWindows, false, func(string) string { return "" }))
+	r.Equal("/Library/Application Support/SolidPing", defaultServiceDir(goosDarwin, true, getenv))
+	r.Equal("/Users/alice/Library/Application Support/SolidPing", defaultServiceDir(goosDarwin, false, getenv))
+}
+
+func TestDefaultServiceName(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "SolidPing", defaultServiceName(goosWindows))
+	require.Equal(t, "io.solidping", defaultServiceName(goosDarwin))
 }
 
 func TestServiceRunArgs(t *testing.T) {
@@ -26,11 +36,11 @@ func TestServiceRunArgs(t *testing.T) {
 	)
 }
 
-func TestServiceCommandUnsupportedOffWindows(t *testing.T) {
+func TestServiceCommandUnsupported(t *testing.T) {
 	t.Parallel()
 
-	if runtime.GOOS == goosWindows {
-		t.Skip("the service commands are real on Windows")
+	if serviceSupported(runtime.GOOS) {
+		t.Skip("the service commands are real on Windows and macOS")
 	}
 
 	for _, args := range [][]string{

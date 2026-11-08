@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && !darwin
 
 package main
 
@@ -12,4 +12,4 @@ func serviceStart(context.Context, string) error { return errServiceUnsupported 
 
 func serviceStop(context.Context, string) error { return errServiceUnsupported }
 
-func serviceRun(string, string) error { return errServiceUnsupported }
+func serviceRun(context.Context, string, string) error { return errServiceUnsupported }
