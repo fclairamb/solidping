@@ -3138,7 +3138,10 @@ func (s *Server) serveDocsFile(writer http.ResponseWriter, urlPath string) {
 	}
 
 	for _, candidate := range candidates {
-		if writeDocsFile(writer, candidate, http.StatusOK) == nil {
+		err := writeDocsFile(writer, candidate, http.StatusOK)
+		// A write failure means the response is already under way (the client
+		// went away): trying the next candidate would write a second one.
+		if err == nil || errors.Is(err, errEmbeddedWriteAfterHeader) {
 			return
 		}
 	}
@@ -3570,10 +3573,7 @@ func (s *Server) serveDash0Static(writer http.ResponseWriter, req *http.Request)
 	writer.Header().Add("Vary", "X-Forwarded-Proto")
 
 	if err := writeEmbeddedFile(writer, dash0Files, filePath, staticContentType(filePath), http.StatusOK); err != nil {
-		slog.ErrorContext(req.Context(), "Error reading dash0 file", "error", err)
-		http.Error(writer, "File not found", http.StatusNotFound)
-
-		return nil
+		handleEmbeddedServeError(req.Context(), writer, "dash0", err)
 	}
 
 	return nil
@@ -3648,8 +3648,7 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 		// anonymous memory the GC has to chase. See writeEmbeddedFile.
 		err := writeEmbeddedFile(writer, fsys, filePath, staticContentType(filePath), http.StatusOK)
 		if err != nil {
-			slog.ErrorContext(req.Context(), "Error reading status0 file", "error", err)
-			http.Error(writer, "File not found", http.StatusNotFound)
+			handleEmbeddedServeError(req.Context(), writer, "status0", err)
 		}
 
 		return nil

@@ -13683,10 +13683,13 @@ components:
           type: number
           nullable: true
           description: >
-            Share of the monitored time that was actually measured: received
-            probes ÷ expected probes, where expected = monitoredSeconds / period
-            × max(1, regions), clamped to [0, 1]. An 8-hour gap in a 24-hour
-            window reads 0.67. Null only when nothing was expected.
+            Share of the monitored time that some region measured, in [0, 1].
+            Each aggregate bucket (an hour, or a day or month for old data)
+            counts as measured in proportion to min(results, ceil(bucket
+            length / period)), with no region multiplier: a period is measured
+            as soon as any region reported, so a change of the check's regions
+            never rewrites the past. An 8-hour gap in a 24-hour window reads
+            0.67. Null only when nothing was expected.
         unmeasuredSeconds:
           type: integer
           format: int64
@@ -17455,8 +17458,9 @@ components:
           format: double
           nullable: true
           description: >-
-            Received ÷ expected probes over the elapsed window (expected =
-            elapsed / period × max(1, regions) per check), clamped to [0, 1].
+            Share of the elapsed window some region measured, per check and
+            per aggregate bucket with no region multiplier (as the
+            availability endpoint's coverage), summed over the scope's checks.
             A low value means the attainment describes only part of the window.
         burnRate:
           type: number

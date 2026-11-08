@@ -14,12 +14,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
@@ -134,6 +136,13 @@ func enqueueEmail(registry *services.Registry) opsnotify.EnqueueEmailFunc {
 	return func(ctx context.Context, orgUID, address string, loc i18n.Locale, subject, text string) error {
 		if registry == nil || registry.Jobs == nil {
 			return errNoJobService
+		}
+
+		if !email.ValidAddress(address) {
+			slog.WarnContext(ctx, "Operator notice email skipped: invalid recipient address",
+				"recipient", email.RedactAddress(address))
+
+			return nil
 		}
 
 		payload, err := json.Marshal(emailJobConfig{

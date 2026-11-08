@@ -17,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/slos"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 // The burn-down fixtures live in a FIXED past month with an injected `now`, so
@@ -310,4 +311,42 @@ func TestBurndownRouteWithNoResultsReportsNoData(t *testing.T) {
 		r.Equal(series.BudgetTotalSeconds, point.BudgetRemainingSeconds,
 			"an unobserved window leaves the budget untouched, not spent")
 	}
+}
+
+// Spec 2026-11-08-05: the SLO's data coverage is region-independent. A check
+// that moved from one region to two mid-window reads fully measured for every
+// hour some region reported, and a real 2-hour silence reads 2 hours short.
+// The old formula expected two results per period over the whole window
+// (today's region count) and read ~71% here.
+func TestStatusDataCoverageIsRegionIndependent(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newBurndownEnv(t)
+	ctx := t.Context()
+
+	check := models.NewCheck(env.org.UID, "moved", "http")
+	check.CreatedAt = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	check.Period = timeutils.Duration(time.Minute)
+	check.Regions = []string{"eu-west", "us-east"}
+	r.NoError(env.dbSvc.CreateCheck(ctx, check))
+
+	moved := &burndownEnv{svc: env.svc, dbSvc: env.dbSvc, org: env.org, checkUID: check.UID}
+
+	for h := range 46 {
+		perHour := 60 // one region for the first day
+		if h >= 24 {
+			perHour = 120 // two regions after the placement change
+		}
+
+		moved.seedHour(t, burndownWindowStartAt().Add(time.Duration(h)*time.Hour), perHour, perHour)
+	}
+
+	// Hours 46 and 47: no result from any region.
+	objective := moved.seedSLO(t, "moved")
+
+	status, err := env.svc.GetStatus(ctx, env.org.Slug, objective.UID, burndownNowAt())
+	r.NoError(err)
+	r.NotNil(status.Current.DataCoverage)
+	r.InDelta(46.0/48.0, *status.Current.DataCoverage, 0.0001)
 }

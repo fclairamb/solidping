@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/uptrace/bun"
 
@@ -23,6 +24,12 @@ import (
 // log; with it, it produces a steady trickle carrying a suppressed count
 // instead.
 const defaultSlowQueryThrottleInterval = time.Minute
+
+// maxLoggedStatementBytes caps the SQL text carried by a log line. Container
+// runtimes split log lines at 16 KiB, and a split JSON record is two lines no
+// parser or level filter can use; a statement past this size is truncated
+// with a "…" marker.
+const maxLoggedStatementBytes = 2048
 
 // QueryHook is a bun query hook that logs SQL queries via slog and
 // observes query latency via Prometheus.
@@ -104,7 +111,7 @@ func (h *QueryHook) AfterQuery(ctx context.Context, event *bun.QueryEvent) {
 	}
 
 	if h.Verbose {
-		attrs = append(attrs, slog.String("query", event.Query))
+		attrs = append(attrs, slog.String("query", truncateStatement(event.Query)))
 	}
 
 	switch {
@@ -158,7 +165,7 @@ func (h *QueryHook) logSlowQuery(ctx context.Context, event *bun.QueryEvent, att
 	h.mu.Unlock()
 
 	attrs = append(attrs,
-		slog.String("statement", statement),
+		slog.String("statement", truncateStatement(statement)),
 		slog.Int("suppressed", suppressed),
 	)
 	slog.LogAttrs(ctx, slog.LevelWarn, "slow SQL query", attrs...)
@@ -178,17 +185,47 @@ func (h *QueryHook) logSlowQuery(ctx context.Context, event *bun.QueryEvent, att
 var (
 	reStringLiteral = regexp.MustCompile(`'(?:[^']|'')*'`)
 	reNumberLiteral = regexp.MustCompile(`\b\d+(\.\d+)?\b`)
+
+	// rePlaceholderRun matches a list of two or more placeholders, as left by
+	// the literal stripping of an `IN ('a', 'b', …)` list or a VALUES row.
+	rePlaceholderRun = regexp.MustCompile(`\?(?:\s*,\s*\?)+`)
+	// reRowRun matches two or more collapsed rows, as left by a multi-row
+	// VALUES list once each row went through rePlaceholderRun.
+	reRowRun = regexp.MustCompile(`\(\?(?:, \.\.\.)?\)(?:\s*,\s*\(\?(?:, \.\.\.)?\))+`)
 )
 
 // normalizeStatement strips literal values from a SQL statement so the
 // result is safe to log even when the query embedded sensitive data, and so
 // occurrences of the "same" query with different argument values collapse to
-// one throttle key.
+// one throttle key. Lists of placeholders collapse to `?, ...` (and runs of
+// such rows to `(?, ...), ...`), whatever their length: a query sent with 3
+// or 5000 IDs is one shape, so one throttle key and one short log line.
 func normalizeStatement(query string) string {
 	normalized := reStringLiteral.ReplaceAllString(query, "?")
 	normalized = reNumberLiteral.ReplaceAllString(normalized, "?")
+	normalized = rePlaceholderRun.ReplaceAllString(normalized, "?, ...")
+	normalized = reRowRun.ReplaceAllStringFunc(normalized, func(run string) string {
+		end := strings.IndexByte(run, ')')
+
+		return run[:end+1] + ", ..."
+	})
 
 	return normalized
+}
+
+// truncateStatement caps a statement at maxLoggedStatementBytes, cutting on a
+// UTF-8 boundary and marking the cut with "…".
+func truncateStatement(statement string) string {
+	if len(statement) <= maxLoggedStatementBytes {
+		return statement
+	}
+
+	cut := maxLoggedStatementBytes
+	for cut > 0 && !utf8.RuneStart(statement[cut]) {
+		cut--
+	}
+
+	return statement[:cut] + "…"
 }
 
 // isContentionError returns true for SQLite SQLITE_BUSY / SQLITE_LOCKED

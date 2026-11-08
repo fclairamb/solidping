@@ -72,22 +72,23 @@ describe("bucketCoveragePct", () => {
   };
   const now = new Date("2026-09-26T00:00:00Z").getTime();
 
-  it("compares received probes to max(1, regions) / period over the bucket", () => {
-    // 1-minute period, one region: 1440 expected, 960 received → 67%.
-    expect(bucketCoveragePct(cell, probesPerSecond(60_000, 1), { now })).toBe(67);
-    // Same count over two regions → a third.
-    expect(bucketCoveragePct(cell, probesPerSecond(60_000, 2), { now })).toBe(33);
+  it("compares received results to the periods in the bucket, whatever the regions", () => {
+    // 1-minute period: 1440 periods, 960 results → 67%.
+    expect(bucketCoveragePct(cell, probesPerSecond(60_000), { now })).toBe(67);
+    // Two regions both reporting every minute: still one period each, 100%
+    // (spec 2026-11-08-05: a period is measured when any region reported).
+    expect(bucketCoveragePct({ ...cell, totalChecks: 2880 }, probesPerSecond(60_000), { now })).toBe(100);
   });
 
   it("clamps to the check's creation and to now, and caps at 100", () => {
     expect(
-      bucketCoveragePct(cell, probesPerSecond(60_000, 1), {
+      bucketCoveragePct(cell, probesPerSecond(60_000), {
         now,
         measuredFrom: "2026-09-24T08:00:00Z",
       }),
     ).toBe(100);
     expect(
-      bucketCoveragePct({ ...cell, totalChecks: 10 }, probesPerSecond(60_000, 1), {
+      bucketCoveragePct({ ...cell, totalChecks: 10 }, probesPerSecond(60_000), {
         now: new Date("2026-09-24T00:10:00Z").getTime(),
       }),
     ).toBe(100);
@@ -95,6 +96,6 @@ describe("bucketCoveragePct", () => {
 
   it("has nothing to say without a period", () => {
     expect(bucketCoveragePct(cell, undefined, { now })).toBeNull();
-    expect(probesPerSecond(undefined, 3)).toBeUndefined();
+    expect(probesPerSecond(undefined)).toBeUndefined();
   });
 });

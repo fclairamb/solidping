@@ -3132,7 +3132,7 @@ func (s *Service) enrichWithAvailability(
 				todayStart, page.HistoryDays, page.ShowAvailability, page.ShowResponseTime,
 				upThreshold, degradedThreshold,
 			)
-			applyCoverage(availData, merged, 24*time.Hour, pickChecks(memberChecks, memberUIDs), now)
+			applyCoverage(availData, bucketsByCheck, 24*time.Hour, pickChecks(memberChecks, memberUIDs), now)
 			availData.Period = period
 			availData.BucketUnit = models.PeriodTypeDay
 			resource.Availability = availData
@@ -3930,7 +3930,7 @@ func (s *Service) enrichHourly(
 				page.ShowAvailability, page.ShowResponseTime,
 				upThreshold, degradedThreshold,
 			)
-			applyCoverage(availData, merged, time.Hour, pickChecks(memberChecks, memberUIDs), now)
+			applyCoverage(availData, bucketsByCheck, time.Hour, pickChecks(memberChecks, memberUIDs), now)
 			availData.Period = string(models.StatusPagePeriod24h)
 			availData.BucketUnit = models.PeriodTypeHour
 			resource.Availability = availData
@@ -3966,12 +3966,17 @@ func pickChecks(byUID map[string]*models.Check, uids []string) []*models.Check {
 }
 
 // applyCoverage stamps every availability point with how much of its bucket
-// was actually measured (spec 2026-09-25-02): the bucket's countable probes
-// against Σ expected probes over the resource's checks. Kept out of
-// uptimebar.BucketStats on purpose — that struct is passed by value on every
+// was actually measured, by the same region-independent rule as the check's
+// Availability card and the SLO budgets (spec 2026-11-08-05): per member
+// check, the bucket is measured in proportion to min(results, ceil(bucket
+// length / period)) with no region multiplier, so a check whose region set
+// changed, or whose second region went dark, still reads fully measured as
+// long as some region reported every period. Members are tallied separately
+// and summed, so one busy member cannot hide a silent one. Kept out of
+// uptimebar.BucketStats on purpose: that struct is passed by value on every
 // read path and is size-capped.
 func applyCoverage(
-	data *ResourceAvailabilityData, byBucket map[time.Time]uptimebar.BucketStats,
+	data *ResourceAvailabilityData, bucketsByCheck map[string]map[time.Time]uptimebar.BucketStats,
 	bucketLen time.Duration, checks []*models.Check, now time.Time,
 ) {
 	if data == nil || len(checks) == 0 {
@@ -3986,12 +3991,15 @@ func applyCoverage(
 			continue
 		}
 
-		var expected float64
+		var tally models.CoverageTally
+
 		for _, check := range checks {
-			expected += check.ExpectedProbesBetween(start, start.Add(bucketLen), now)
+			periods := check.ExpectedPeriodsBetween(start, start.Add(bucketLen), now)
+			tally.AddExpected(periods)
+			tally.AddBucket(bucketsByCheck[check.UID][start.UTC()].Total, periods)
 		}
 
-		if coverage, ok := models.Coverage(byBucket[start.UTC()].Total, expected); ok {
+		if coverage, ok := tally.Coverage(); ok {
 			pct := coverage * 100
 			point.CoveragePct = &pct
 		}

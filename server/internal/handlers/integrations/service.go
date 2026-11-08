@@ -29,6 +29,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/egress"
+	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
@@ -586,6 +587,10 @@ func validateConnectionType(connType models.ConnectionType, settings models.JSON
 		return ErrInvalidConnectionType
 	}
 
+	if connType == models.ConnectionTypeEmail {
+		return validateEmailSettings(settings)
+	}
+
 	if connType == models.ConnectionTypeTwilio {
 		// A bad SID or non-E.164 number silently no-ops at send time otherwise.
 		return validateTwilioSettings(settings)
@@ -859,6 +864,32 @@ func (s *Service) AllowFreeboxTestBaseURL(rawURL string) {
 	}
 
 	s.freeboxAllowedTestBaseURLs[strings.TrimSpace(rawURL)] = true
+}
+
+// validateEmailSettings refuses a recipient list holding an address the mail
+// sender cannot parse; it would fail at every send otherwise.
+func validateEmailSettings(settings models.JSONMap) error {
+	var recipients []string
+
+	switch list := settings["to"].(type) {
+	case []any:
+		for _, item := range list {
+			addr, ok := item.(string)
+			if !ok {
+				return fmt.Errorf("%w: to entries must be email addresses", ErrInvalidSettings)
+			}
+
+			recipients = append(recipients, addr)
+		}
+	case []string:
+		recipients = list
+	}
+
+	if _, invalid := email.ValidRecipients(recipients); len(invalid) > 0 {
+		return fmt.Errorf("%w: to contains an invalid email address", ErrInvalidSettings)
+	}
+
+	return nil
 }
 
 // validateTwilioSettings enforces the Twilio connection's settings invariants:
@@ -1152,6 +1183,12 @@ func (s *Service) applyUpdateSettings(
 	// connection or changing the from-number must not trigger a live call).
 	if conn.Type == models.ConnectionTypeTwilio {
 		if vErr := s.verifyTwilioOnUpdate(ctx, existing, merged); vErr != nil {
+			return vErr
+		}
+	}
+
+	if conn.Type == models.ConnectionTypeEmail {
+		if vErr := validateEmailSettings(models.JSONMap(merged)); vErr != nil {
 			return vErr
 		}
 	}

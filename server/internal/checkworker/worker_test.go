@@ -1353,7 +1353,7 @@ func TestRunCheckerGuarded_HangingChecker_Abandoned(t *testing.T) {
 	checkJob := testCheckJob("test-hanging")
 	checkJob.Region = &region
 
-	before := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(checkJob.Type))
+	before := abandonedCount(checkJob.Type, prommetrics.AbandonReasonIgnoredContext)
 	gaugeBefore := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
 
 	execTimeout := 20 * time.Millisecond
@@ -1372,7 +1372,7 @@ func TestRunCheckerGuarded_HangingChecker_Abandoned(t *testing.T) {
 	// watchdog actually fired instead of hanging forever.
 	assert.Less(t, elapsed, execTimeout+50*time.Millisecond+500*time.Millisecond)
 
-	after := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(checkJob.Type))
+	after := abandonedCount(checkJob.Type, prommetrics.AbandonReasonIgnoredContext)
 	assert.InDelta(t, before+1, after, metricDelta, "abandoned counter must increment")
 
 	gaugeAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
@@ -1461,7 +1461,7 @@ func TestRunCheckerGuarded_WellBehavedCtxHonoringChecker_WatchdogDoesNotFire(t *
 	require.NoError(t, cfg.FromMap(map[string]any{"sleep_ms": 5000, "jitter_ms": 0}))
 
 	gaugeBefore := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
-	abandonedBefore := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(checkJob.Type))
+	abandonedBefore := abandonedCount(checkJob.Type, prommetrics.AbandonReasonIgnoredContext)
 
 	// execCtx must actually carry a deadline for the checker to observe —
 	// runCheckerGuarded passes ctx straight through to checker.Execute.
@@ -1483,7 +1483,7 @@ func TestRunCheckerGuarded_WellBehavedCtxHonoringChecker_WatchdogDoesNotFire(t *
 	gaugeAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
 	assert.InDelta(t, gaugeBefore, gaugeAfter, metricDelta, "watchdog must not fire for a ctx-honoring checker")
 
-	abandonedAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(checkJob.Type))
+	abandonedAfter := abandonedCount(checkJob.Type, prommetrics.AbandonReasonIgnoredContext)
 	assert.InDelta(t, abandonedBefore, abandonedAfter, metricDelta, "abandoned counter must not move")
 }
 
@@ -1896,7 +1896,7 @@ func TestRunnerSurvivesAbandonmentAndProcessesSubsequentJob(t *testing.T) {
 	claimJobForTest(t, dbSvc, ctx, hangJob, worker.UID)
 	useFastExecTimeout(runner, hangJob)
 
-	abandonedBefore := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(string(hangType)))
+	abandonedBefore := abandonedCount(string(hangType), prommetrics.AbandonReasonIgnoredContext)
 	gaugeBefore := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
 
 	select {
@@ -1920,7 +1920,7 @@ func TestRunnerSurvivesAbandonmentAndProcessesSubsequentJob(t *testing.T) {
 		return n == 1
 	}, 3*time.Second, 20*time.Millisecond, "watchdog must abandon the hanging job and save a timeout result")
 
-	abandonedAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(string(hangType)))
+	abandonedAfter := abandonedCount(string(hangType), prommetrics.AbandonReasonIgnoredContext)
 	assert.InDelta(t, abandonedBefore+1, abandonedAfter, metricDelta)
 	gaugeAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
 	assert.InDelta(t, gaugeBefore+1, gaugeAfter, metricDelta, "the hung goroutine is still leaked at this point")

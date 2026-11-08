@@ -436,6 +436,14 @@ type Hints struct {
 // is logged rather than absorbed silently (see BucketAvailability).
 const rawClampMargin = 2 * time.Hour
 
+// aggregationLagTolerance is how far past RetentionRaw a raw row may normally
+// be when a chart reads it. The aggregation job runs hourly and compacts raw
+// up to the start of the hour minus RetentionRaw-1 hours
+// (jobs/jobtypes/job_aggregation.go calculateAggregationBoundary), so between
+// two runs the oldest raw row legitimately ages up to one hour past
+// RetentionRaw. Only raw older than that means the job is actually behind.
+const aggregationLagTolerance = time.Hour
+
 // effectiveRetentionRawHours resolves the caller's RetentionRaw hint, falling
 // back to the documented default when it is unset/invalid.
 func effectiveRetentionRawHours(retentionRawHours int) int {
@@ -480,7 +488,9 @@ func rawTierStart(windowStart, now time.Time, retentionRawHours int) time.Time {
 }
 
 // warnIfRawLagging logs once when a returned raw bucket holds a row older than
-// RetentionRaw — i.e. it only survived the query because of rawClampMargin.
+// RetentionRaw + aggregationLagTolerance — i.e. it only survived the query
+// because of rawClampMargin, and the hourly aggregation cadence alone does not
+// explain it.
 // Raw that old should have been rolled up and deleted already, so its presence
 // means the aggregation job is behind. It is logged and the data returned
 // anyway, never dropped.
@@ -491,7 +501,8 @@ func rawTierStart(windowStart, now time.Time, retentionRawHours int) time.Time {
 func warnIfRawLagging(
 	ctx context.Context, orgUID string, buckets []models.ResultBucket, now time.Time, retentionRawHours int,
 ) {
-	threshold := now.Add(-time.Duration(effectiveRetentionRawHours(retentionRawHours)) * time.Hour)
+	threshold := now.Add(-(time.Duration(effectiveRetentionRawHours(retentionRawHours))*time.Hour +
+		aggregationLagTolerance))
 
 	for i := range buckets {
 		bucket := &buckets[i]

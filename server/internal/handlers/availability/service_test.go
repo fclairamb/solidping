@@ -235,6 +235,11 @@ func TestMonitoredDuration(t *testing.T) {
 // TestBuildPeriodRow covers the probe-ratio row assembly: null availability /
 // hasData=false for an empty window, the partial flag, and the
 // downtimeSeconds == (1 − avail) × monitoredSeconds × coverage formula.
+// tally is a coverage tally with `covered` of `expected` periods measured.
+func tally(covered, expected float64) models.CoverageTally {
+	return models.CoverageTally{Covered: covered, Expected: expected}
+}
+
 func TestBuildPeriodRow(t *testing.T) {
 	t.Parallel()
 
@@ -246,7 +251,7 @@ func TestBuildPeriodRow(t *testing.T) {
 
 		r := require.New(t)
 
-		row := buildPeriodRow(w, uptimebar.BucketStats{}, 7*24*time.Hour, now.Add(-100*24*time.Hour), 10080)
+		row := buildPeriodRow(w, uptimebar.BucketStats{}, 7*24*time.Hour, now.Add(-100*24*time.Hour), tally(0, 10080))
 		r.False(row.HasData)
 		r.Nil(row.AvailabilityPct)
 		r.Zero(row.DowntimeSeconds)
@@ -260,7 +265,8 @@ func TestBuildPeriodRow(t *testing.T) {
 
 		// 90/100 up over a 7-day window: 10% failing → 10% of 604800s = 60480s.
 		monitored := 7 * 24 * time.Hour
-		row := buildPeriodRow(w, uptimebar.BucketStats{Up: 90, Total: 100}, monitored, now.Add(-100*24*time.Hour), 100)
+		row := buildPeriodRow(w, uptimebar.BucketStats{Up: 90, Total: 100}, monitored,
+			now.Add(-100*24*time.Hour), tally(100, 100))
 		r.True(row.HasData)
 		r.NotNil(row.AvailabilityPct)
 		r.InDelta(90.0, *row.AvailabilityPct, 0.0001)
@@ -273,7 +279,7 @@ func TestBuildPeriodRow(t *testing.T) {
 
 		r := require.New(t)
 
-		row := buildPeriodRow(w, uptimebar.BucketStats{}, 7*24*time.Hour, now.Add(-100*24*time.Hour), 10080)
+		row := buildPeriodRow(w, uptimebar.BucketStats{}, 7*24*time.Hour, now.Add(-100*24*time.Hour), tally(0, 10080))
 		r.NotNil(row.Coverage)
 		r.Zero(*row.Coverage)
 		r.Equal(int64(7*24*3600), row.UnmeasuredSeconds)
@@ -288,7 +294,7 @@ func TestBuildPeriodRow(t *testing.T) {
 		// expected probes, 96 of them failed (10%).
 		monitored := 24 * time.Hour
 		row := buildPeriodRow(w, uptimebar.BucketStats{Up: 864, Total: 960}, monitored,
-			now.Add(-100*24*time.Hour), 1440)
+			now.Add(-100*24*time.Hour), tally(960, 1440))
 		r.NotNil(row.Coverage)
 		r.InDelta(2.0/3.0, *row.Coverage, 0.0001)
 		r.Equal(int64(8*3600), row.UnmeasuredSeconds)
@@ -302,7 +308,7 @@ func TestBuildPeriodRow(t *testing.T) {
 		r := require.New(t)
 
 		createdAt := now.Add(-3 * 24 * time.Hour) // younger than the 7d window
-		row := buildPeriodRow(w, uptimebar.BucketStats{Up: 100, Total: 100}, 3*24*time.Hour, createdAt, 100)
+		row := buildPeriodRow(w, uptimebar.BucketStats{Up: 100, Total: 100}, 3*24*time.Hour, createdAt, tally(100, 100))
 		r.True(row.Partial)
 	})
 }
@@ -927,4 +933,83 @@ func TestGetAvailability_GapIsUnmeasuredNotUptime(t *testing.T) {
 
 	row = resp.Data[0]
 	r.InDelta(7200, row.DowntimeSeconds, 60)
+}
+
+// TestGetAvailability_UnmeasuredIsRegionIndependent is the regression test for
+// fclairamb/solidping-business#52 (spec 2026-11-08-05): unmeasured time is
+// wall-clock time where NO region produced a result, so a check whose region
+// count changed mid-window reads 0 unmeasured when every period had a result
+// from some region, and a real 2-hour silence of every region reads 2 hours.
+// Before, the expectation was window / period × today's region count, so the
+// one-region half of the day read as half unmeasured.
+func TestGetAvailability_UnmeasuredIsRegionIndependent(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("avail-regions-org", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	now := time.Now().UTC()
+
+	// 24 hours of 10-minute periods: one region for the first 12 hours, two
+	// after the placement change. silent reports the periods no region probed.
+	newMovedCheck := func(slug string, silent func(i int) bool) *models.Check {
+		check := models.NewCheck(org.UID, slug, "udp")
+		check.Period = timeutils.Duration(10 * time.Minute)
+		check.Regions = []string{"eu-west", "us-east"}
+		check.CreatedAt = now.Add(-48 * time.Hour)
+		r.NoError(dbSvc.CreateCheck(ctx, check))
+
+		for i := range 144 {
+			if silent(i) {
+				continue
+			}
+
+			regions := check.Regions[:1]
+			if i >= 72 {
+				regions = check.Regions
+			}
+
+			for _, region := range regions {
+				res := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 10)
+				res.Region = &region
+				res.PeriodStart = now.Add(-24*time.Hour + 5*time.Minute + time.Duration(i)*10*time.Minute)
+				r.NoError(dbSvc.CreateResult(ctx, res))
+			}
+		}
+
+		return check
+	}
+
+	svc := NewService(dbSvc, &config.Config{
+		Aggregation: config.AggregationConfig{RetentionRaw: 30 * 24, RetentionHour: 7},
+	})
+
+	moved := newMovedCheck("avail-moved", func(int) bool { return false })
+
+	resp, err := svc.GetAvailability(ctx, org.Slug, moved.UID, &GetAvailabilityOptions{Periods: []string{"1d"}})
+	r.NoError(err)
+
+	row := resp.Data[0]
+	r.Equal(72+2*72, row.TotalChecks)
+	r.NotNil(row.Coverage)
+	r.InDelta(1.0, *row.Coverage, 0.01)
+	r.InDelta(0, row.UnmeasuredSeconds, 600, "every period had a result from some region")
+
+	// Periods 30 to 41: 2 hours with no result from any region.
+	gapped := newMovedCheck("avail-gapped", func(i int) bool { return i >= 30 && i < 42 })
+
+	resp, err = svc.GetAvailability(ctx, org.Slug, gapped.UID, &GetAvailabilityOptions{Periods: []string{"1d"}})
+	r.NoError(err)
+
+	row = resp.Data[0]
+	r.InDelta(2*3600, row.UnmeasuredSeconds, 600, "a 2h silence of every region is 2h unmeasured")
+	r.Zero(row.DowntimeSeconds)
 }

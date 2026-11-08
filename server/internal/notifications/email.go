@@ -360,6 +360,13 @@ func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 		return ErrNoRecipientsConfigured
 	}
 
+	valid, invalid := email.ValidRecipients(emailAddresses)
+	if len(invalid) > 0 {
+		jctx.Logger.WarnContext(ctx, "Email notification: skipping unparseable recipients",
+			"invalid", email.RedactAddresses(invalid))
+	}
+
+	emailAddresses = valid
 	if len(emailAddresses) == 0 {
 		return ErrNoValidRecipients
 	}
