@@ -173,6 +173,13 @@ func DemotedEmailData(statusPageName, domain, diagnostic, settingsURL string) ma
 func enqueueDemotedEmail(
 	ctx context.Context, deps AlertDeps, orgUID string, admin *models.User, data map[string]any,
 ) {
+	if !email.ValidAddress(admin.Email) {
+		deps.Logger.WarnContext(ctx, "Skipping the custom-domain demotion email: invalid admin address",
+			"organization_uid", orgUID, "recipient", email.RedactAddress(admin.Email))
+
+		return
+	}
+
 	loc := recipient.ForUser(admin)
 
 	raw, err := json.Marshal(emailJobConfig{

@@ -491,6 +491,13 @@ func (r *sweepRun) mailAdmins(ctx context.Context, org *models.Organization, tem
 			continue
 		}
 
+		if !email.ValidAddress(member.User.Email) {
+			r.deps.Logger.WarnContext(ctx, "Region outage notice: skipping an admin with an invalid email address",
+				"organization_uid", org.UID, "recipient", email.RedactAddress(member.User.Email))
+
+			continue
+		}
+
 		loc := recipient.ForUser(member.User)
 
 		raw, marshalErr := json.Marshal(emailJobConfig{

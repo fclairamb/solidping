@@ -1,10 +1,12 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"strconv"
 )
@@ -18,6 +20,28 @@ const sniffLen = 512
 // an embedded filesystem. Serving one would either 500 later or leak a listing;
 // callers treat it as "not found" and fall through to their own 404 path.
 var errEmbeddedIsDirectory = errors.New("embedded path is a directory")
+
+// errEmbeddedWriteAfterHeader wraps a failure to stream the body once the
+// status line is already out. It almost always means the client went away
+// mid-response (broken pipe, connection reset): nothing was read wrongly, and
+// no error status can be sent any more. Callers must not log it as a server
+// error nor answer a 404 on top of the 200 already written.
+var errEmbeddedWriteAfterHeader = errors.New("writing embedded file after header")
+
+// handleEmbeddedServeError is the shared error path of the handlers that
+// stream an embedded asset. An open/stat failure happened before any header
+// was written, so it is logged and answered with a 404. A write failure after
+// the header is a client abort: logged at DEBUG, nothing else written.
+func handleEmbeddedServeError(ctx context.Context, writer http.ResponseWriter, app string, err error) {
+	if errors.Is(err, errEmbeddedWriteAfterHeader) {
+		slog.DebugContext(ctx, "Client aborted "+app+" file response", "error", err)
+
+		return
+	}
+
+	slog.ErrorContext(ctx, "Error opening "+app+" file", "error", err)
+	http.Error(writer, "File not found", http.StatusNotFound)
+}
 
 // embeddedFileExists reports whether name is a regular file in fsys.
 //
@@ -94,11 +118,13 @@ func writeEmbeddedFile(writer http.ResponseWriter, fsys fs.FS, name, contentType
 
 	if len(head) > 0 {
 		if _, writeErr := writer.Write(head); writeErr != nil {
-			return writeErr
+			return fmt.Errorf("%w: %w", errEmbeddedWriteAfterHeader, writeErr)
 		}
 	}
 
-	_, err = io.Copy(writer, file)
+	if _, err = io.Copy(writer, file); err != nil {
+		return fmt.Errorf("%w: %w", errEmbeddedWriteAfterHeader, err)
+	}
 
-	return err
+	return nil
 }

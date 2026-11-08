@@ -6,6 +6,7 @@ import "github.com/prometheus/client_golang/prometheus"
 // Prometheus metric label names used across multiple metrics.
 const (
 	labelCheckType    = "check_type"
+	labelReason       = "reason"
 	labelStatus       = "status"
 	labelRegion       = "region"
 	labelOrganization = "organization"
@@ -190,7 +191,7 @@ var (
 			Name: "solidping_http_rate_limited_total",
 			Help: "Total requests rejected or queued by the per-IP HTTP rate or concurrency limiter",
 		},
-		[]string{"reason"},
+		[]string{labelReason},
 	)
 
 	// HTTPRequestDuration observes HTTP handler latency by route pattern.
@@ -459,9 +460,10 @@ var (
 	CheckRunnerAbandoned = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "solidping_check_runner_abandoned_total",
-			Help: "Total checker executions abandoned by the watchdog because the checker ignored its context",
+			Help: "Total checker executions abandoned by the watchdog, by reason " +
+				"(ignored_context or connection_lost)",
 		},
-		[]string{labelCheckType},
+		[]string{labelCheckType, labelReason},
 	)
 
 	// CheckRunnerAbandonedActive gauges checker goroutines currently
@@ -710,7 +712,7 @@ var (
 			Name: "solidping_agent_ws_conn_closed_total",
 			Help: "Agent WebSocket connections closed, by disconnect reason",
 		},
-		[]string{"reason"},
+		[]string{labelReason},
 	)
 
 	// AgentWSReconnects counts agent WebSocket reconnects (signed-header

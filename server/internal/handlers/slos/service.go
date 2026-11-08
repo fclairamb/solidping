@@ -144,10 +144,10 @@ type StatusRow struct {
 	BudgetConsumedSeconds      int64    `json:"budgetConsumedSeconds"`
 	BudgetRemainingSeconds     int64    `json:"budgetRemainingSeconds"`
 	ExcludedMaintenanceSeconds int64    `json:"excludedMaintenanceSeconds"`
-	// DataCoverage is measured ÷ expected probes over the elapsed window
-	// (spec 2026-09-25-02) — how much of the time the budget describes was
-	// actually measured. The dashboard flags a low value next to the
-	// percentage. Null when nothing was expected yet.
+	// DataCoverage is the share of the elapsed window some region measured,
+	// region-independently (spec 2026-11-08-05): how much of the time the
+	// budget describes was actually measured. The dashboard flags a low value
+	// next to the percentage. Null when nothing was expected yet.
 	DataCoverage          *float64   `json:"dataCoverage"`
 	BurnRate              *float64   `json:"burnRate"`
 	ProjectedExhaustionAt *time.Time `json:"projectedExhaustionAt"`
@@ -614,21 +614,9 @@ func Slugify(name string) string {
 type scope struct {
 	checkUIDs     []string
 	coverageStart time.Time
-	// checks carries each in-scope check's period, regions and creation time —
-	// what the expected-probe count (data coverage, spec 2026-09-25-02) needs.
+	// checks carries each in-scope check's period and creation time: what the
+	// region-independent data coverage (spec 2026-11-08-05) needs.
 	checks []*models.Check
-}
-
-// expectedProbes is Σ over the scope's checks of the results each should have
-// produced over the elapsed part of the window.
-func (sc scope) expectedProbes(window slo.Window, now time.Time) float64 {
-	var total float64
-
-	for _, check := range sc.checks {
-		total += check.ExpectedProbesBetween(window.Start, window.End, now)
-	}
-
-	return total
 }
 
 // resolveScope expands an SLO to the check UIDs it evaluates over, plus the
@@ -785,11 +773,14 @@ func (s *Service) ScopeCheckUIDs(ctx context.Context, orgUID string, row *models
 func (s *Service) evaluate(
 	ctx context.Context, orgUID string, row *models.SLO, scoped scope, window slo.Window, now time.Time,
 ) (StatusRow, error) {
-	var merged uptimebar.BucketStats
+	var (
+		merged   uptimebar.BucketStats
+		coverage models.CoverageTally
+	)
 
-	if len(scoped.checkUIDs) > 0 {
-		byCheck, err := uptimebar.WindowAvailability(
-			ctx, s.db, orgUID, scoped.checkUIDs, window.Start, window.End, s.uptimebarHints(ctx),
+	if len(scoped.checks) > 0 {
+		byCheck, err := uptimebar.WindowAvailabilityWithCoverage(
+			ctx, s.db, orgUID, scoped.checks, window.Start, window.End, now, s.uptimebarHints(ctx),
 		)
 		if err != nil {
 			return StatusRow{}, fmt.Errorf("window availability: %w", err)
@@ -797,7 +788,9 @@ func (s *Service) evaluate(
 
 		stats := make([]uptimebar.BucketStats, 0, len(scoped.checkUIDs))
 		for _, uid := range scoped.checkUIDs {
-			stats = append(stats, byCheck[uid])
+			folded := byCheck[uid]
+			stats = append(stats, folded.Stats)
+			coverage.Add(folded.Coverage)
 		}
 
 		merged = slo.MergeStats(stats)
@@ -810,7 +803,7 @@ func (s *Service) evaluate(
 		Now:                now,
 		CoverageStart:      scoped.coverageStart,
 		ExcludeMaintenance: row.ExcludeMaintenance,
-		ExpectedProbes:     scoped.expectedProbes(window, now),
+		Coverage:           coverage,
 	})
 
 	return StatusRow{

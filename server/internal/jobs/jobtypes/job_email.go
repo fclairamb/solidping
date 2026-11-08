@@ -20,6 +20,7 @@ var (
 	ErrEmailNoSubject        = errors.New("email job requires a subject")
 	ErrEmailNoContent        = errors.New("email job requires either content (html/text) or a template")
 	ErrEmailContentConflict  = errors.New("email job cannot have both raw content and template")
+	ErrEmailInvalidRecipient = errors.New("email job has an unparseable recipient address")
 	ErrEmailSenderMissing    = errors.New("email sender not configured")
 	ErrEmailFormatterMissing = errors.New("email formatter not configured")
 )
@@ -122,6 +123,15 @@ func (r *EmailJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 		return ErrEmailSenderMissing
 	}
 
+	if invalid := r.invalidAddresses(); len(invalid) > 0 {
+		log.WarnContext(ctx, "Email job has an unparseable address, not sending",
+			"template", r.config.Template,
+			"invalid", email.RedactAddresses(invalid),
+		)
+
+		return jobdef.NewPermanentError(fmt.Errorf("%w: %d invalid", ErrEmailInvalidRecipient, len(invalid)))
+	}
+
 	log.InfoContext(ctx, "Preparing email",
 		"to", r.config.To,
 		"subject", r.config.Subject,
@@ -171,6 +181,22 @@ func (r *EmailJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	)
 
 	return nil
+}
+
+// invalidAddresses returns the configured addresses the sender cannot parse.
+func (r *EmailJobRun) invalidAddresses() []string {
+	all := make([]string, 0, len(r.config.To)+len(r.config.CC)+len(r.config.BCC)+1)
+	all = append(all, r.config.To...)
+	all = append(all, r.config.CC...)
+	all = append(all, r.config.BCC...)
+
+	if r.config.ReplyTo != "" {
+		all = append(all, r.config.ReplyTo)
+	}
+
+	_, invalid := email.ValidRecipients(all)
+
+	return invalid
 }
 
 // buildMessage creates an email.Message from the job config.

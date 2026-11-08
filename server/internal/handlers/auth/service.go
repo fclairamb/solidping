@@ -697,6 +697,13 @@ func (s *Service) enqueueEmail(
 		return false
 	}
 
+	if !email.ValidAddress(address) {
+		slog.WarnContext(ctx, "Email job skipped: invalid recipient address",
+			"template", template, "recipient", email.RedactAddress(address))
+
+		return false
+	}
+
 	cfg := emailJobConfig{
 		To:           []string{address},
 		Template:     template,

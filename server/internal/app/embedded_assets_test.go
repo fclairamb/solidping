@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"testing/fstest"
 
@@ -89,6 +90,43 @@ func TestWriteEmbeddedFileMissingAndDirectory(t *testing.T) {
 
 	rec = httptest.NewRecorder()
 	r.ErrorIs(writeEmbeddedFile(rec, assetFS(), "docsres/assets", "", http.StatusOK), errEmbeddedIsDirectory)
+}
+
+// brokenPipeWriter accepts the status line, then fails every body write, as a
+// connection whose client went away mid-response does.
+type brokenPipeWriter struct {
+	*httptest.ResponseRecorder
+}
+
+func (w brokenPipeWriter) Write([]byte) (int, error) {
+	return 0, syscall.EPIPE
+}
+
+// TestWriteEmbeddedFileClientAbort pins that a body write failure is reported
+// as a write-after-header error, and that the shared error path neither writes
+// a 404 over the 200 already sent nor treats it as an open failure.
+func TestWriteEmbeddedFileClientAbort(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	rec := httptest.NewRecorder()
+
+	err := writeEmbeddedFile(brokenPipeWriter{rec}, assetFS(), "docsres/big.js", "", http.StatusOK)
+	r.ErrorIs(err, errEmbeddedWriteAfterHeader)
+	r.ErrorIs(err, syscall.EPIPE)
+
+	handleEmbeddedServeError(t.Context(), rec, "dash0", err)
+	r.Equal(http.StatusOK, rec.Code)
+	r.Empty(rec.Body.String())
+
+	// An open failure keeps its 404.
+	missing := httptest.NewRecorder()
+	err = writeEmbeddedFile(missing, assetFS(), "docsres/nope.js", "", http.StatusOK)
+	r.Error(err)
+	r.NotErrorIs(err, errEmbeddedWriteAfterHeader)
+
+	handleEmbeddedServeError(t.Context(), missing, "dash0", err)
+	r.Equal(http.StatusNotFound, missing.Code)
 }
 
 // TestServeDocsFileResolutionAndHeaders pins the docs handler's contract across
