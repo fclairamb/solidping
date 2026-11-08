@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -258,4 +259,81 @@ func TestErrNoRowsIsNotAFailure(t *testing.T) {
 	hook.AfterQuery(t.Context(), event)
 
 	r.NotContains(buf.String(), "SQL query failed")
+}
+
+// TestNormalizeStatementCollapsesPlaceholderLists pins that a long IN list or
+// multi-row VALUES collapses to one short shape, whatever its length.
+func TestNormalizeStatementCollapsesPlaceholderLists(t *testing.T) {
+	t.Parallel()
+
+	ids := make([]string, 5000)
+	for i := range ids {
+		ids[i] = "'id-" + strconv.Itoa(i) + "'"
+	}
+
+	tests := []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{
+			name:  "long IN list",
+			query: "SELECT * FROM results WHERE uid IN (" + strings.Join(ids, ", ") + ") AND (deleted_at IS NULL)",
+			want:  "SELECT * FROM results WHERE uid IN (?, ...) AND (deleted_at IS NULL)",
+		},
+		{
+			name:  "short IN list",
+			query: "SELECT * FROM results WHERE uid IN ('a', 'b')",
+			want:  "SELECT * FROM results WHERE uid IN (?, ...)",
+		},
+		{
+			name:  "single value untouched",
+			query: "SELECT * FROM results WHERE uid = 'a' LIMIT 1",
+			want:  "SELECT * FROM results WHERE uid = ? LIMIT ?",
+		},
+		{
+			name:  "multi-row VALUES",
+			query: "INSERT INTO t (a, b) VALUES ('x', 1), ('y', 2), ('z', 3)",
+			want:  "INSERT INTO t (a, b) VALUES (?, ...), ...",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.want, normalizeStatement(tt.query))
+		})
+	}
+}
+
+// TestSlowQueryStatementIsBounded pins that a huge statement neither yields a
+// log line past the container runtime's 16 KiB split nor a throttle key per
+// list length.
+func TestSlowQueryStatementIsBounded(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	buf := captureLogs(t)
+	hook := &QueryHook{Backend: "postgres", SlowThreshold: time.Millisecond}
+
+	for _, n := range []int{5000, 4000} {
+		ids := make([]string, n)
+		for i := range ids {
+			ids[i] = "'id-" + strconv.Itoa(i) + "'"
+		}
+
+		hook.AfterQuery(t.Context(), &bun.QueryEvent{
+			Query:     "SELECT * FROM results WHERE uid IN (" + strings.Join(ids, ", ") + ")",
+			StartTime: time.Now().Add(-time.Second),
+		})
+	}
+
+	r.Equal(1, strings.Count(buf.String(), "slow SQL query"), "both list lengths share one throttle key")
+	r.Less(buf.Len(), 1024)
+
+	long := "SELECT " + strings.Repeat("a_column_name, ", 1000) + "x FROM t"
+	r.LessOrEqual(len(truncateStatement(long)), maxLoggedStatementBytes+len("…"))
+	r.True(strings.HasSuffix(truncateStatement(long), "…"))
+	r.Equal("SELECT 1", truncateStatement("SELECT 1"))
 }
