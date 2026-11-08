@@ -593,8 +593,9 @@ func TestBucketAvailability_WarnsWhenAggregationLags(t *testing.T) {
 	currentHour := now.Truncate(time.Hour)
 	bucketStart := currentHour.Add(-47 * time.Hour)
 
-	// 25h old: past the 24h retention, inside the 2h margin.
-	stale := now.Add(-25 * time.Hour)
+	// 25h30 old: past the 24h retention plus the 1h aggregation cadence,
+	// inside the 2h margin.
+	stale := now.Add(-(25*time.Hour + 30*time.Minute))
 
 	lister := &fakeAggregator{results: []*models.Result{
 		rawRow("c1", models.ResultStatusUp, stale, 40),
@@ -641,6 +642,36 @@ func TestBucketAvailability_NoWarningWhenAggregationHealthy(t *testing.T) {
 	)
 	r.NoError(err)
 
+	r.NotContains(logBuf.String(), "aggregation is lagging")
+}
+
+// TestBucketAvailability_NoWarningWithinAggregationCadence pins that raw a few
+// minutes past RetentionRaw does not warn: the hourly aggregation job leaves
+// up to one hour of such raw between two runs, so it is not lagging.
+//
+//nolint:paralleltest // swaps the process-wide slog default (global state).
+func TestBucketAvailability_NoWarningWithinAggregationCadence(t *testing.T) {
+	r := require.New(t)
+
+	var logBuf bytes.Buffer
+
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
+
+	t.Cleanup(func() { slog.SetDefault(prevLogger) })
+
+	now := time.Now().UTC()
+	bucketStart := now.Truncate(time.Hour).Add(-47 * time.Hour)
+
+	lister := &fakeAggregator{results: []*models.Result{
+		rawRow("c1", models.ResultStatusUp, now.Add(-(24*time.Hour + 20*time.Minute)), 40),
+	}}
+
+	out, err := BucketAvailability(
+		context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 48, hints(),
+	)
+	r.NoError(err)
+	r.NotEmpty(out["c1"])
 	r.NotContains(logBuf.String(), "aggregation is lagging")
 }
 
