@@ -233,7 +233,7 @@ require (
 	github.com/chromedp/chromedp v0.16.0
 	github.com/coder/websocket v1.8.15
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/crewjam/saml v0.6.2
+	github.com/crewjam/saml v0.6.3
 	github.com/dlclark/regexp2/v2 v2.13.0
 	github.com/docker/go-units v0.5.0
 	github.com/dop251/goja v0.0.0-20261107161106-d6eaa50db8bc
