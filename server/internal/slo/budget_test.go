@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/slo"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
@@ -366,15 +367,15 @@ func TestComputeDataCoverage(t *testing.T) {
 	window := juneWindow()
 	afterWindow := window.End.Add(time.Hour)
 	monthSeconds := 30.0 * 24 * 3600
-	expected := 30.0 * 24 * 60 // one-minute probes, one region
+	expected := 30.0 * 24 * 60 // one-minute periods
 
 	// 1% failures over the fully measured month: positive control.
 	full := slo.Compute(&slo.Input{
 		TargetPct:      99.0,
-		Stats:          uptimebar.BucketStats{Up: 42768, Total: 43200},
-		Window:         window,
-		Now:            afterWindow,
-		ExpectedProbes: expected,
+		Stats:     uptimebar.BucketStats{Up: 42768, Total: 43200},
+		Window:    window,
+		Now:       afterWindow,
+		Coverage:  models.CoverageTally{Covered: 43200, Expected: expected},
 	})
 	r.NotNil(full.DataCoverage)
 	r.InDelta(1.0, *full.DataCoverage, 0.0001)
@@ -383,10 +384,10 @@ func TestComputeDataCoverage(t *testing.T) {
 	// The same 1% failure ratio, but only two thirds of the month measured.
 	gap := slo.Compute(&slo.Input{
 		TargetPct:      99.0,
-		Stats:          uptimebar.BucketStats{Up: 28512, Total: 28800},
-		Window:         window,
-		Now:            afterWindow,
-		ExpectedProbes: expected,
+		Stats:     uptimebar.BucketStats{Up: 28512, Total: 28800},
+		Window:    window,
+		Now:       afterWindow,
+		Coverage:  models.CoverageTally{Covered: 28800, Expected: expected},
 	})
 	r.NotNil(gap.DataCoverage)
 	r.InDelta(2.0/3.0, *gap.DataCoverage, 0.0001)
