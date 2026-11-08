@@ -526,10 +526,16 @@ func (w *JobWorker) handleResult(
 	}
 
 	// Permanent failures (bad input) are logged at WARN, everything else at ERROR.
-	if jobdef.IsPermanent(err) {
-		logger.WarnContext(ctx, "Job failed", "job_uid", job.UID, "job_type", job.Type, "error", err)
+	// The error text is deliberately not logged: it may embed job config values
+	// (e.g. credentials). It is persisted in the job output / retry record instead.
+	permanent := jobdef.IsPermanent(err)
+	retryable := jobdef.IsRetryable(err)
+	if permanent {
+		logger.WarnContext(ctx, "Job failed", "job_uid", job.UID, "job_type", job.Type,
+			"permanent", permanent, "retryable", retryable)
 	} else {
-		logger.ErrorContext(ctx, "Job failed", "job_uid", job.UID, "job_type", job.Type, "error", err)
+		logger.ErrorContext(ctx, "Job failed", "job_uid", job.UID, "job_type", job.Type,
+			"permanent", permanent, "retryable", retryable)
 	}
 
 	if jobdef.IsRetryable(err) && job.RetryCount < jobsvc.MaxRetryCount {
