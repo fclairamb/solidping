@@ -7,20 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
-
-	"github.com/fclairamb/solidping/server/internal/config"
-	"github.com/fclairamb/solidping/server/internal/logsetup"
-	"github.com/fclairamb/solidping/server/internal/rotatelog"
 )
 
 const (
@@ -35,8 +29,6 @@ const (
 	serviceRestartDelay   = 5 * time.Second
 	serviceRestartCount   = 3
 	serviceResetPeriodSec = 24 * 60 * 60
-
-	serviceLogDir = "logs"
 )
 
 var (
@@ -247,10 +239,8 @@ func connectServiceManager() (*mgr.Mgr, error) {
 }
 
 // serviceRun is what the Service Control Manager launches. It enters the data
-// folder, so config.yml and the SQLite database resolve there, sends the logs
-// to a rotated file (a service has no console), and runs `serve` until the
-// service is stopped.
-func serviceRun(name, dir string) error {
+// folder (see enterServiceDir) and runs `serve` until the service is stopped.
+func serviceRun(_ context.Context, name, dir string) error {
 	isService, err := svc.IsWindowsService()
 	if err != nil {
 		return fmt.Errorf("detect the service context: %w", err)
@@ -260,31 +250,10 @@ func serviceRun(name, dir string) error {
 		return errNotUnderSCM
 	}
 
-	if chdirErr := os.Chdir(dir); chdirErr != nil {
-		return fmt.Errorf("enter data folder %s: %w", dir, chdirErr)
-	}
-
-	if mkdirErr := os.MkdirAll(serviceLogDir, 0o750); mkdirErr != nil {
-		return fmt.Errorf("create log folder: %w", mkdirErr)
-	}
-
-	// Without a console, a panic would otherwise leave no trace.
-	crashLog, err := os.OpenFile(filepath.Join(serviceLogDir, "crash.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
+	logOut, err := enterServiceDir(dir)
 	if err != nil {
-		return fmt.Errorf("open crash log: %w", err)
+		return err
 	}
-
-	crashErr := debug.SetCrashOutput(crashLog, debug.CrashOptions{})
-	_ = crashLog.Close() // SetCrashOutput keeps its own duplicate.
-
-	if crashErr != nil {
-		return fmt.Errorf("set crash output: %w", crashErr)
-	}
-
-	logOut := rotatelog.New(
-		filepath.Join(serviceLogDir, "solidping.log"), rotatelog.DefaultMaxSize, rotatelog.DefaultBackups)
-	slog.SetDefault(slog.New(logsetup.NewHandler(
-		logOut, config.LogLevelFromEnv(os.Getenv), config.ParseLogFormat(os.Getenv("SP_LOG_FORMAT")))))
 
 	handler := &serviceHandler{run: func(ctx context.Context) error { return serveTo(ctx, logOut) }}
 	if err := svc.Run(name, handler); err != nil {

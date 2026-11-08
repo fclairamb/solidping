@@ -5,7 +5,8 @@ title: MacOs Binary
 
 # macOS Installation
 
-SolidPing runs natively on macOS, on Apple Silicon and Intel.
+SolidPing runs on macOS (Apple Silicon and Intel) as a standalone binary,
+and as a launchd service that starts at boot and restarts after a failure.
 
 ## Homebrew
 
@@ -15,7 +16,23 @@ The simplest way:
 brew install fclairamb/tap/solidping
 ```
 
-Upgrade it later with `brew upgrade solidping`.
+Run it as a background service with `brew services`:
+
+```bash
+brew services start solidping        # starts at login, restarted if it crashes
+sudo brew services start solidping   # or: starts at boot, runs as root
+```
+
+The service runs `solidping serve` from `$(brew --prefix)/var/solidping`, so
+put your `config.yml` there; the SQLite database lands there too. Its output
+goes to `$(brew --prefix)/var/log/solidping.log`, which is not rotated.
+
+```bash
+brew services info solidping
+brew services restart solidping      # after a config.yml change
+brew services stop solidping
+brew upgrade solidping && brew services restart solidping
+```
 
 ## Binary download
 
@@ -37,17 +54,12 @@ chmod +x solidping
 
 ### Gatekeeper
 
-The binary is unsigned and not notarized. macOS quarantines it on download
-and refuses to run it. Clear the quarantine attribute once, before the first
-run:
+The binary is unsigned and not notarized, so macOS Gatekeeper quarantines it
+on download and refuses to run it. Clear the quarantine attribute once, then
+move it to a stable location (a service runs it from there):
 
 ```bash
 xattr -d com.apple.quarantine solidping
-```
-
-Then move it to a directory on your `PATH` (optional):
-
-```bash
 sudo mv solidping /usr/local/bin/
 ```
 
@@ -76,76 +88,154 @@ reach the dashboard.
 database options work the same as on Linux, see the
 [Linux guide](./linux.md#with-postgresql).
 
-## Run at boot (launchd)
+## launchd Service
 
-macOS uses launchd instead of systemd. Create a data directory, then
-`/Library/LaunchDaemons/io.solidping.plist`:
-
-```bash
-sudo mkdir -p /usr/local/var/solidping
-```
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>io.solidping</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/usr/local/bin/solidping</string>
-    <string>serve</string>
-  </array>
-  <key>WorkingDirectory</key>
-  <string>/usr/local/var/solidping</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>SP_SERVER_LISTEN</key>
-    <string>:4000</string>
-  </dict>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>/usr/local/var/log/solidping.log</string>
-  <key>StandardErrorPath</key>
-  <string>/usr/local/var/log/solidping.log</string>
-</dict>
-</plist>
-```
-
-With Homebrew on Apple Silicon, the binary is `/opt/homebrew/bin/solidping`:
-adjust `ProgramArguments` accordingly. Add any other `SP_*` variable under
-`EnvironmentVariables`.
-
-Load and start it:
+The downloaded binary registers itself with launchd, no plist to write by
+hand:
 
 ```bash
-sudo mkdir -p /usr/local/var/log
-sudo launchctl bootstrap system /Library/LaunchDaemons/io.solidping.plist
-sudo launchctl print system/io.solidping | grep state
+sudo solidping service install
+sudo solidping service start
 ```
 
-Restart it with `sudo launchctl kickstart -k system/io.solidping`, stop and
-unload it with `sudo launchctl bootout system/io.solidping`.
+`install` writes `/Library/LaunchDaemons/io.solidping.plist`: a daemon that
+starts at boot, runs as root and is restarted 5 seconds after a failed run
+(not after you stop it). It also creates the data folder
+`/Library/Application Support/SolidPing`, readable by root only, since it
+holds your configuration and database (an existing folder is left as is). The
+service runs from that folder, so the SQLite database and the logs land there:
+
+```
+/Library/Application Support/SolidPing/
+├── config.yml        (your configuration)
+├── solidping.db      (the SQLite database, if you use SQLite)
+├── data/files/       (file storage)
+└── logs/
+    ├── solidping.log (rotated at 20 MB, 2 backups kept)
+    ├── crash.log     (Go runtime crash output, if any)
+    └── launchd.log   (errors before the server starts, if any)
+```
+
+Configure it in `config.yml` in that folder (see
+[Configuration File](#configuration-file) below), for example with
+`sudo nano "/Library/Application Support/SolidPing/config.yml"`.
+
+Manage it:
+
+```bash
+sudo launchctl print system/io.solidping | head -20    # status
+sudo solidping service stop                             # waits until it has stopped
+sudo launchctl kickstart -k system/io.solidping         # restart, after a config.yml change
+sudo solidping service uninstall                        # stops and removes it, keeps the data folder
+```
+
+A stopped service starts again at the next boot, as long as it is installed.
+
+### As a user agent
+
+Without `sudo`, the same commands install a launchd agent of the current user
+instead: `~/Library/LaunchAgents/io.solidping.plist`, data in
+`~/Library/Application Support/SolidPing`. It starts when you log in, not at
+boot, and runs as you. Use `gui/$(id -u)/io.solidping` in place of
+`system/io.solidping` in the `launchctl` commands above. Network checks,
+ICMP ping included, work the same either way.
+
+### Options
+
+`service install` takes `--dir` to use another data folder and `--name` to
+pick another launchd label (to run two instances, for example). Pass the same
+`--name` to `start`, `stop` and `uninstall`.
+
+The service runs the `solidping` that installed it, at its absolute path. If
+you move that file, run `service uninstall` and `service install` again.
+
+Agent mode works as a service too: set `node.role: agent` in `config.yml`
+(the equivalent of `SP_NODE_ROLE=agent`; see the [Configuration Guide](/configuration)).
+
+### Coming from a hand-written plist
+
+Earlier versions of this page had you write `/Library/LaunchDaemons/io.solidping.plist`
+yourself. `service install` refuses to overwrite it, so unload and remove it first:
+
+```bash
+sudo launchctl bootout system/io.solidping
+sudo rm /Library/LaunchDaemons/io.solidping.plist
+sudo solidping service install
+```
+
+Then move `solidping.db` (and `data/files/`, if any) from `/usr/local/var/solidping`
+into `/Library/Application Support/SolidPing`, turn the `EnvironmentVariables` of
+the old plist into `config.yml` entries, and run `sudo solidping service start`.
+
+## Configuration File
+
+Instead of environment variables, you can use a configuration file. For the
+service, create `config.yml` in its data folder; when running
+`solidping serve` by hand, put it in the current directory:
+
+```yaml
+db:
+  type: postgres
+  url: postgresql://user:password@localhost:5432/solidping
+
+server:
+  listen: ":4000"
+
+email:
+  enabled: true
+  host: smtp.example.com
+  port: 587
+  username: noreply@example.com
+  password: smtp-password
+  from: noreply@example.com
+```
+
+Without a `config.yml`, it uses SQLite and listens on port 4000. Every `SP_*`
+variable has a `config.yml` equivalent, see the
+[Configuration Guide](/configuration).
 
 ## Logs
 
 ```bash
-tail -f /usr/local/var/log/solidping.log
+# Follow the server log
+sudo tail -f "/Library/Application Support/SolidPing/logs/solidping.log"
+
+# Crash output and launchd errors, if any
+sudo cat "/Library/Application Support/SolidPing/logs/crash.log" \
+         "/Library/Application Support/SolidPing/logs/launchd.log"
 ```
 
 ## Updating
 
-With Homebrew, `brew upgrade solidping`. With a downloaded binary, download it
-again as above, clear the quarantine attribute, replace
-`/usr/local/bin/solidping`, then restart the service:
+Replace the binary in place: the service points at its absolute path.
 
 ```bash
-sudo launchctl kickstart -k system/io.solidping
+sudo solidping service stop
+curl -L https://github.com/fclairamb/solidping/releases/latest/download/solidping-darwin-arm64.gz | gunzip > solidping
+chmod +x solidping
+sudo mv solidping /usr/local/bin/solidping
+sudo solidping service start
 ```
+
+The data folder is untouched by an upgrade.
+
+## Troubleshooting
+
+### Service won't start
+
+1. Check `logs/solidping.log`, `logs/crash.log` and `logs/launchd.log` in the data folder
+2. Check `config.yml` in the data folder
+3. Run `sudo launchctl print system/io.solidping` and look at `last exit code`
+4. Check port 4000 is not in use: `lsof -nP -iTCP:4000 -sTCP:LISTEN`
+5. Check the binary is not quarantined: `xattr /usr/local/bin/solidping` must not list `com.apple.quarantine`
+
+`solidping service run` is what launchd launches; run from a terminal, it
+refuses to start. To debug in a terminal, stop the service and run
+`sudo solidping serve` from the data folder instead.
+
+macOS may show a "Background Items Added" notification after `install`: it
+lists the new launchd job under System Settings → General → Login Items &
+Extensions, where it can also be turned off.
 
 ## Next Steps
 
