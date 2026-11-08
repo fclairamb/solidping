@@ -253,19 +253,17 @@ Plus a `CHANGELOG.md` entry per `wiki/conventions/changelog.md`, and an update o
 - The claim `capabilities` list accepts a free-form `region-key:<fp>` entry, and old servers ignore it.
 - Where the region page lives in dash0 today (private locations), to host the key settings.
 
-## Open questions
-1. **Browser crypto: typage dependency, or a WebCrypto-only format?** Recommended: typage. It reuses the age format agents already open, so browser mode needs no agent release. A home-made envelope saves one dependency but costs a second format forever and an agent upgrade before launch.
-2. **Default mode in the form for an eligible check (all regions private, agents enrolled)?** Recommended: browser mode pre-selected for new checks. Existing checks keep their mode. Server mode stays one click away.
-3. **Keep the org-wide `required` mode?** Recommended: yes. It is a few lines on the server and it is what backs the promise "SolidPing never receives your check passwords" for a whole org.
-4. **Checks that do not comply when an org switches to `required`: block the switch, or let them run until edited?** Recommended: let them run, list them on the settings page, refuse their next secret-bearing write. Blocking the switch would force a big cleanup first.
-5. **New agent in a region: manual re-entry only in v1, peer re-wrap in phase 2?** Recommended: yes, plus the claim filter in v1 so nothing goes red while checks wait for a re-seal.
-6. **Partial secret replacement: keep one blob per check, or one blob per field?** Recommended: one blob. Most checks have one or two secret fields, and per-field blobs need an agent change.
-7. **Notification integration secrets in scope?** Recommended: no. The server must read them to send alerts. Say so in the docs and the marketing copy.
-8. **Self-hosted dash0 over plain HTTP (no secure context).** Recommended: browser mode and `required` are disabled from such a page, and the form explains why. Server mode keeps working. No fallback.
-
 ## Resolved open questions
 - **Server-side and browser encryption both stay available** (Florent, 2026-11-08). The choice is per check. An org can make browser mode mandatory with `security.browser_sealing.mode = required`.
 - **Shared region key, optional** (Florent, 2026-11-08). Each private region seals either to every agent's own key (default) or to one shared region key held by all its agents, so a region can run several agents without re-sealing. Section 2.
 - **No paid-tier gating** (Florent, 2026-11-08). Browser mode is available to every org on every plan, SaaS and self-hosted. No entitlement.
 - **The shared region key is generated in dash0**, shown once, with `solidping agent region-key generate` as the offline alternative (Florent, 2026-11-08).
 - **New private regions default to a key per agent** (`perAgent`). `shared` is opt-in per region (Florent, 2026-11-08).
+- **Browser crypto uses typage** (npm `age-encryption`), not a home-made WebCrypto format (Florent, 2026-11-08). Agents open the same age format as today, so browser mode needs no agent release.
+- **Browser mode is pre-selected for new eligible checks** (all regions private, agents enrolled) (Florent, 2026-11-08). Existing checks keep their mode. Server mode stays one click away.
+- **Keep the org-wide `required` mode** (Florent, 2026-11-08).
+- **Switching an org to `required` does not block on non-compliant checks** (Florent, 2026-11-08). They keep running, are listed on the settings page, and their next secret-bearing write is refused.
+- **New agent in a `perAgent` region: manual re-entry in v1, peer re-wrap in phase 2** (Florent, 2026-11-08). The claim filter ships in v1 so no check goes red while it waits for a re-seal.
+- **One sealed blob per check**, not one per field (Florent, 2026-11-08).
+- **Notification integration secrets are out of scope** (Florent, 2026-11-08). The server must read them to send alerts. The docs and the marketing copy say so.
+- **No browser mode from a page without a secure context** (self-hosted dash0 over plain HTTP) (Florent, 2026-11-08). Browser mode and `required` are disabled there and the form explains why. Server mode keeps working. No fallback.
