@@ -136,9 +136,11 @@ func TestWindowAvailabilityWithCoverage_DayAndMonthTiers(t *testing.T) {
 		context.Background(), &fakeAggregator{results: rows}, "org", []*models.Check{check}, monthStart, end, now, hints())
 	r.NoError(err)
 
-	tally := out["c1"].Coverage
-	r.InDelta(float64(monthDays*288+288+144), tally.Covered, 0.001)
-	r.InDelta(float64((monthDays+10)*288), tally.Expected, 0.001)
+	got := out["c1"].Coverage
+	wantCovered := float64(monthDays*288 + 288 + 144)
+	wantExpected := float64((monthDays + 10) * 288)
+	r.InDelta(wantCovered, got.Covered, 0.001)
+	r.InDelta(wantExpected, got.Expected, 0.001)
 }
 
 // The guards: no check, an empty window, and a check created after the window.

@@ -371,7 +371,7 @@ func TestComputeDataCoverage(t *testing.T) {
 
 	// 1% failures over the fully measured month: positive control.
 	full := slo.Compute(&slo.Input{
-		TargetPct:      99.0,
+		TargetPct: 99.0,
 		Stats:     uptimebar.BucketStats{Up: 42768, Total: 43200},
 		Window:    window,
 		Now:       afterWindow,
@@ -383,7 +383,7 @@ func TestComputeDataCoverage(t *testing.T) {
 
 	// The same 1% failure ratio, but only two thirds of the month measured.
 	gap := slo.Compute(&slo.Input{
-		TargetPct:      99.0,
+		TargetPct: 99.0,
 		Stats:     uptimebar.BucketStats{Up: 28512, Total: 28800},
 		Window:    window,
 		Now:       afterWindow,

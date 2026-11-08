@@ -265,7 +265,8 @@ func TestBuildPeriodRow(t *testing.T) {
 
 		// 90/100 up over a 7-day window: 10% failing → 10% of 604800s = 60480s.
 		monitored := 7 * 24 * time.Hour
-		row := buildPeriodRow(w, uptimebar.BucketStats{Up: 90, Total: 100}, monitored, now.Add(-100*24*time.Hour), tally(100, 100))
+		row := buildPeriodRow(w, uptimebar.BucketStats{Up: 90, Total: 100}, monitored,
+			now.Add(-100*24*time.Hour), tally(100, 100))
 		r.True(row.HasData)
 		r.NotNil(row.AvailabilityPct)
 		r.InDelta(90.0, *row.AvailabilityPct, 0.0001)

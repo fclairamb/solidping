@@ -37,17 +37,21 @@ func monthLength(bucketStart time.Time) time.Duration {
 // share one query: a day and a month rollup both start at midnight, so a
 // shared grid could not tell their lengths apart, and the length is what the
 // bucket's expected period count is made of.
-var rollupCoverageTiers = []coverageTier{
-	{periodTypes: []string{models.PeriodTypeHour}, bucket: time.Hour, length: fixedLength(time.Hour)},
-	{periodTypes: []string{models.PeriodTypeDay}, bucket: 24 * time.Hour, length: fixedLength(24 * time.Hour)},
-	// A month rollup starts at a UTC midnight, so the 24 h grid keeps one
-	// bucket per month row.
-	{periodTypes: []string{models.PeriodTypeMonth}, bucket: 24 * time.Hour, length: monthLength},
+func rollupCoverageTiers() []coverageTier {
+	return []coverageTier{
+		{periodTypes: []string{models.PeriodTypeHour}, bucket: time.Hour, length: fixedLength(time.Hour)},
+		{periodTypes: []string{models.PeriodTypeDay}, bucket: 24 * time.Hour, length: fixedLength(24 * time.Hour)},
+		// A month rollup starts at a UTC midnight, so the 24 h grid keeps one
+		// bucket per month row.
+		{periodTypes: []string{models.PeriodTypeMonth}, bucket: 24 * time.Hour, length: monthLength},
+	}
 }
 
 // rawCoverageTier bins raw results by the hour.
-var rawCoverageTier = coverageTier{
-	periodTypes: []string{models.PeriodTypeRaw}, bucket: time.Hour, length: fixedLength(time.Hour),
+func rawCoverageTier() coverageTier {
+	return coverageTier{
+		periodTypes: []string{models.PeriodTypeRaw}, bucket: time.Hour, length: fixedLength(time.Hour),
+	}
 }
 
 // WindowAvailabilityWithCoverage is WindowAvailability (same tiers, same
@@ -72,135 +76,161 @@ func WindowAvailabilityWithCoverage(
 	ctx context.Context, db ResultBucketAggregator, orgUID string, checks []*models.Check,
 	start, end, now time.Time, hints Hints,
 ) (map[string]WindowStats, error) {
-	out := make(map[string]WindowStats, len(checks))
-
 	if len(checks) == 0 || !end.After(start) {
-		return out, nil
+		return map[string]WindowStats{}, nil
 	}
 
-	startUTC := start.UTC()
-	endUTC := end.UTC()
-	byUID := make(map[string]*models.Check, len(checks))
-	checkUIDs := make([]string, 0, len(checks))
+	fold := newCoverageFold(checks, start.UTC(), end.UTC(), now)
+	if len(fold.checkUIDs) == 0 {
+		return fold.out, nil
+	}
+
+	rollups := rollupCoverageTiers()
+	for i := range rollups {
+		buckets, err := fold.read(ctx, db, orgUID, &rollups[i], fold.start)
+		if err != nil {
+			return nil, err
+		}
+
+		fold.add(&rollups[i], buckets)
+	}
+
+	wallNow := time.Now().UTC()
+
+	if rawStart := rawTierStart(fold.start, wallNow, hints.RetentionRawHours); rawStart.Before(fold.end) {
+		raw := rawCoverageTier()
+
+		buckets, err := fold.read(ctx, db, orgUID, &raw, rawStart)
+		if err != nil {
+			return nil, err
+		}
+
+		warnIfRawLagging(ctx, orgUID, buckets, wallNow, hints.RetentionRawHours)
+		fold.add(&raw, buckets)
+	}
+
+	fold.closeHours()
+
+	return fold.out, nil
+}
+
+// coverageFold accumulates WindowAvailabilityWithCoverage's reads.
+type coverageFold struct {
+	start, end, now time.Time
+	byUID           map[string]*models.Check
+	checkUIDs       []string
+	out             map[string]WindowStats
+	// hourly sums raw and hour-rollup counts per hour before the per-bucket
+	// cap, so an hour read half from each tier is never credited twice.
+	hourly map[string]map[time.Time]int
+}
+
+func newCoverageFold(checks []*models.Check, start, end, now time.Time) *coverageFold {
+	fold := &coverageFold{
+		start:     start,
+		end:       end,
+		now:       now,
+		byUID:     make(map[string]*models.Check, len(checks)),
+		checkUIDs: make([]string, 0, len(checks)),
+		out:       make(map[string]WindowStats, len(checks)),
+		hourly:    make(map[string]map[time.Time]int, len(checks)),
+	}
 
 	for _, check := range checks {
 		if check == nil {
 			continue
 		}
 
-		if _, seen := byUID[check.UID]; seen {
+		if _, seen := fold.byUID[check.UID]; seen {
 			continue
 		}
 
-		checkUIDs = append(checkUIDs, check.UID)
-		byUID[check.UID] = check
+		fold.checkUIDs = append(fold.checkUIDs, check.UID)
+		fold.byUID[check.UID] = check
 
 		// The denominator covers the whole monitored range, buckets or not:
-		// a bucket nobody measured is simply absent from the reads below.
+		// a bucket nobody measured is simply absent from the reads.
 		var acc WindowStats
-		acc.Coverage.AddExpected(check.ExpectedPeriodsBetween(startUTC, endUTC, now))
-		out[check.UID] = acc
+
+		acc.Coverage.AddExpected(check.ExpectedPeriodsBetween(start, end, now))
+		fold.out[check.UID] = acc
 	}
 
-	if len(checkUIDs) == 0 {
-		return out, nil
-	}
+	return fold
+}
 
-	// Raw and hour rollups share the hourly grid: their counts are summed per
-	// hour before the per-bucket cap, so an hour read half from each tier is
-	// never credited twice.
-	hourly := make(map[string]map[time.Time]int, len(checkUIDs))
+// read runs one tier's aggregate from `from` to the window end.
+func (f *coverageFold) read(
+	ctx context.Context, db ResultBucketAggregator, orgUID string, tier *coverageTier, from time.Time,
+) ([]models.ResultBucket, error) {
+	end := f.end
 
-	fold := func(tier coverageTier, buckets []models.ResultBucket) {
-		for i := range buckets {
-			bucket := &buckets[i]
+	return aggregateTier(ctx, db, &models.ResultBucketFilter{
+		OrganizationUID:   orgUID,
+		CheckUIDs:         f.checkUIDs,
+		PeriodTypes:       tier.periodTypes,
+		PeriodStartAfter:  from,
+		PeriodStartBefore: &end,
+		BucketDuration:    tier.bucket,
+	}, callsiteWindowAvailability)
+}
 
-			acc := out[bucket.CheckUID]
-			acc.Stats.Add(StatsForBucket(bucket))
+// add folds one tier's buckets into the stats and the coverage tallies.
+func (f *coverageFold) add(tier *coverageTier, buckets []models.ResultBucket) {
+	for i := range buckets {
+		bucket := &buckets[i]
+		bucketStart := bucket.BucketStart.UTC()
 
-			if tier.bucket == time.Hour {
-				byHour := hourly[bucket.CheckUID]
-				if byHour == nil {
-					byHour = make(map[time.Time]int)
-					hourly[bucket.CheckUID] = byHour
-				}
+		acc := f.out[bucket.CheckUID]
+		acc.Stats.Add(StatsForBucket(bucket))
 
-				byHour[bucket.BucketStart.UTC()] += bucket.Total
-			} else if check := byUID[bucket.CheckUID]; check != nil {
-				bucketStart := bucket.BucketStart.UTC()
-				acc.Coverage.AddBucket(bucket.Total, bucketPeriods(
-					check, bucketStart, bucketStart.Add(tier.length(bucketStart)), startUTC, endUTC, now))
+		switch check := f.byUID[bucket.CheckUID]; {
+		case tier.bucket == time.Hour:
+			byHour := f.hourly[bucket.CheckUID]
+			if byHour == nil {
+				byHour = make(map[time.Time]int)
+				f.hourly[bucket.CheckUID] = byHour
 			}
 
-			out[bucket.CheckUID] = acc
-		}
-	}
-
-	for _, tier := range rollupCoverageTiers {
-		buckets, err := aggregateTier(ctx, db, &models.ResultBucketFilter{
-			OrganizationUID:   orgUID,
-			CheckUIDs:         checkUIDs,
-			PeriodTypes:       tier.periodTypes,
-			PeriodStartAfter:  startUTC,
-			PeriodStartBefore: &endUTC,
-			BucketDuration:    tier.bucket,
-		}, callsiteWindowAvailability)
-		if err != nil {
-			return nil, err
+			byHour[bucketStart] += bucket.Total
+		case check != nil:
+			acc.Coverage.AddBucket(bucket.Total, f.bucketPeriods(
+				check, bucketStart, bucketStart.Add(tier.length(bucketStart))))
 		}
 
-		fold(tier, buckets)
+		f.out[bucket.CheckUID] = acc
 	}
+}
 
-	wallNow := time.Now().UTC()
-
-	if rawStart := rawTierStart(startUTC, wallNow, hints.RetentionRawHours); rawStart.Before(endUTC) {
-		buckets, err := aggregateTier(ctx, db, &models.ResultBucketFilter{
-			OrganizationUID:   orgUID,
-			CheckUIDs:         checkUIDs,
-			PeriodTypes:       rawCoverageTier.periodTypes,
-			PeriodStartAfter:  rawStart,
-			PeriodStartBefore: &endUTC,
-			BucketDuration:    rawCoverageTier.bucket,
-		}, callsiteWindowAvailability)
-		if err != nil {
-			return nil, err
-		}
-
-		warnIfRawLagging(ctx, orgUID, buckets, wallNow, hints.RetentionRawHours)
-		fold(rawCoverageTier, buckets)
-	}
-
-	for uid, byHour := range hourly {
-		check := byUID[uid]
+// closeHours credits the hourly buckets once raw and hour rollups are summed.
+func (f *coverageFold) closeHours() {
+	for uid, byHour := range f.hourly {
+		check := f.byUID[uid]
 		if check == nil {
 			continue
 		}
 
-		acc := out[uid]
+		acc := f.out[uid]
 
 		for hourStart, total := range byHour {
-			acc.Coverage.AddBucket(total, bucketPeriods(
-				check, hourStart, hourStart.Add(time.Hour), startUTC, endUTC, now))
+			acc.Coverage.AddBucket(total, f.bucketPeriods(check, hourStart, hourStart.Add(time.Hour)))
 		}
 
-		out[uid] = acc
+		f.out[uid] = acc
 	}
-
-	return out, nil
 }
 
 // bucketPeriods is the check's period count over [bucketStart, bucketEnd)
-// clamped to the window [start, end) — ExpectedPeriodsBetween then clamps it
-// to the check's lifetime.
-func bucketPeriods(check *models.Check, bucketStart, bucketEnd, start, end, now time.Time) float64 {
-	if bucketStart.Before(start) {
-		bucketStart = start
+// clamped to the window; ExpectedPeriodsBetween then clamps it to the check's
+// lifetime.
+func (f *coverageFold) bucketPeriods(check *models.Check, bucketStart, bucketEnd time.Time) float64 {
+	if bucketStart.Before(f.start) {
+		bucketStart = f.start
 	}
 
-	if bucketEnd.After(end) {
-		bucketEnd = end
+	if bucketEnd.After(f.end) {
+		bucketEnd = f.end
 	}
 
-	return check.ExpectedPeriodsBetween(bucketStart, bucketEnd, now)
+	return check.ExpectedPeriodsBetween(bucketStart, bucketEnd, f.now)
 }
