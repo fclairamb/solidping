@@ -171,3 +171,35 @@ func TestCheckStatsCacheTTLBoundary(t *testing.T) {
 	_, ok = cache.get("org-1", time.Hour)
 	r.False(ok, "an entry older than the TTL must be a miss")
 }
+
+func TestFoldOldestEnabledCheckCreatedAt(t *testing.T) {
+	t.Parallel()
+
+	day := func(n int) *time.Time {
+		ts := time.Date(2026, 1, n, 0, 0, 0, 0, time.UTC)
+
+		return &ts
+	}
+
+	t.Run("minimum over enabled rows only", func(t *testing.T) {
+		t.Parallel()
+
+		got := foldCheckStatusCounts([]models.CheckStatusCount{
+			{Status: models.CheckStatusUp, Enabled: true, Count: 1, OldestCreatedAt: day(10)},
+			{Status: models.CheckStatusDown, Enabled: true, Count: 1, OldestCreatedAt: day(5)},
+			{Status: models.CheckStatusUp, Enabled: false, Count: 1, OldestCreatedAt: day(1)},
+		})
+		require.NotNil(t, got.OldestEnabledCheckCreatedAt)
+		require.True(t, got.OldestEnabledCheckCreatedAt.Equal(*day(5)))
+	})
+
+	t.Run("no enabled rows gives nil", func(t *testing.T) {
+		t.Parallel()
+
+		got := foldCheckStatusCounts([]models.CheckStatusCount{
+			{Status: models.CheckStatusUp, Enabled: false, Count: 1, OldestCreatedAt: day(1)},
+		})
+		require.Nil(t, got.OldestEnabledCheckCreatedAt)
+		require.Nil(t, foldCheckStatusCounts(nil).OldestEnabledCheckCreatedAt)
+	})
+}

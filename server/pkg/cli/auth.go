@@ -98,6 +98,7 @@ func authLoginWithPassword(ctx context.Context, cliCtx *Context, email, password
 	}
 	tokenPath, _ := config.TokenPath()
 	output.PrintMessage(os.Stdout, "Token saved to: "+tokenPath)
+	printStarPrompt()
 
 	return nil
 }
@@ -190,6 +191,7 @@ func printLoginResult(cliCtx *Context, summary loginSummary) error {
 		output.PrintMessage(os.Stdout, "Token name:   "+summary.tokenName)
 	}
 	output.PrintMessage(os.Stdout, "Token saved to: "+tokenPath)
+	printStarPrompt()
 
 	return nil
 }

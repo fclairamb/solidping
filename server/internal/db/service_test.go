@@ -85,6 +85,10 @@ func testService(t *testing.T, svc db.Service) {
 		testStateEntries(ctx, t, svc)
 	})
 
+	t.Run("CheckStatusCountsOldest", func(t *testing.T) {
+		testCheckStatusCountsOldest(ctx, t, svc)
+	})
+
 	t.Run("UserStateEntries", func(t *testing.T) {
 		testUserStateEntries(ctx, t, svc)
 	})
@@ -3000,4 +3004,35 @@ func uniqueStrings(in []string) map[string]struct{} {
 	}
 
 	return out
+}
+
+// testCheckStatusCountsOldest pins that MIN(created_at) scans into a
+// *time.Time on both dialects (SQLite stores times as text).
+func testCheckStatusCountsOldest(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+	r := require.New(t)
+
+	org := models.NewOrganization("oldest-counts-org", "")
+	r.NoError(svc.CreateOrganization(ctx, org))
+
+	older := models.NewCheck(org.UID, "oldest-a", "http")
+	older.CreatedAt = time.Now().Add(-10 * 24 * time.Hour).UTC().Truncate(time.Second)
+	r.NoError(svc.CreateCheck(ctx, older))
+
+	newer := models.NewCheck(org.UID, "oldest-b", "http")
+	r.NoError(svc.CreateCheck(ctx, newer))
+
+	rows, err := svc.GetCheckStatusCounts(ctx, org.UID)
+	r.NoError(err)
+
+	var oldest *time.Time
+
+	for _, row := range rows {
+		if row.OldestCreatedAt != nil && (oldest == nil || row.OldestCreatedAt.Before(*oldest)) {
+			oldest = row.OldestCreatedAt
+		}
+	}
+
+	r.NotNil(oldest)
+	r.WithinDuration(older.CreatedAt, *oldest, time.Second)
 }

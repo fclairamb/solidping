@@ -68,6 +68,7 @@ import { EventLogTable } from "@/components/dashboard/event-log-table";
 import { MyOnCallWidget } from "@/components/dashboard/my-on-call";
 import { EmptyStateOnboarding } from "@/components/dashboard/empty-state-onboarding";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
+import { GitHubStarPrompt } from "@/components/dashboard/github-star-prompt";
 import { KpiTile } from "@/components/shared/kpi-tile";
 import { PageHeader } from "@/components/shared/page-header";
 import { statusStyle } from "@/lib/status-style";
@@ -95,6 +96,7 @@ const EMPTY_CHECK_STATS: CheckStats = {
   down: 0,
   hardDown: 0,
   availability24h: null,
+  oldestEnabledCheckCreatedAt: null,
 };
 // Hours rendered by each row's 24h uptime strip.
 const UPTIME_HOURS = 24;
@@ -189,6 +191,9 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const { t } = useTranslation("dashboard");
   const { t: tNav } = useTranslation("nav");
   const { organizations } = useAuth();
+  // Assume the checklist is up until it says otherwise, so the star prompt
+  // never flashes in before the checklist has decided.
+  const [onboardingVisible, setOnboardingVisible] = useState(true);
   const orgName = organizations.find((o) => o.slug === org)?.name || org;
   // Collection subscriptions: the dashboard shows org-wide check membership,
   // status/results (via the `checks` scope), incidents, and the activity
@@ -476,7 +481,12 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
 
           {/* Below the live status: the checklist is a one-time setup aid and
               must not push what is broken right now off the first screen. */}
-          <OnboardingChecklist org={org} totalChecks={totalChecksCount} />
+          <OnboardingChecklist
+            org={org}
+            totalChecks={totalChecksCount}
+            onVisibleChange={setOnboardingVisible}
+          />
+          <GitHubStarPrompt stats={stats} onboardingVisible={onboardingVisible} />
 
           {incidentsCount > 0 ? (
             <ActiveIncidentsList

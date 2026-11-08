@@ -48,6 +48,10 @@ const availability24hWindow = 24 * time.Hour
 type CheckStatsResponse struct {
 	// Total is Enabled + Disabled, i.e. every in-scope check.
 	Total int `json:"total"`
+	// OldestEnabledCheckCreatedAt is the creation time of the oldest enabled
+	// check, nil when there is none. Drives the dashboard's one-time GitHub
+	// star prompt.
+	OldestEnabledCheckCreatedAt *time.Time `json:"oldestEnabledCheckCreatedAt"`
 	// Enabled counts checks with enabled = true.
 	Enabled int `json:"enabled"`
 	// Disabled counts checks with enabled = false.
@@ -174,7 +178,8 @@ func foldCheckStatusCounts(rows []models.CheckStatusCount) CheckStatsResponse {
 
 	stats := CheckStatsResponse{ByStatus: byStatus}
 
-	for _, row := range rows {
+	for idx := range rows {
+		row := &rows[idx]
 		name := row.Status.String()
 		byStatus[name] += row.Count
 		stats.Total += row.Count
@@ -187,6 +192,12 @@ func foldCheckStatusCounts(rows []models.CheckStatusCount) CheckStatsResponse {
 
 		if !row.Enabled {
 			continue
+		}
+
+		if row.OldestCreatedAt != nil &&
+			(stats.OldestEnabledCheckCreatedAt == nil || row.OldestCreatedAt.Before(*stats.OldestEnabledCheckCreatedAt)) {
+			oldest := *row.OldestCreatedAt
+			stats.OldestEnabledCheckCreatedAt = &oldest
 		}
 
 		if isDownWireStatus(name) {

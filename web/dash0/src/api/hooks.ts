@@ -886,6 +886,8 @@ export interface CheckStats {
    * data", never as a fabricated 100.
    */
   availability24h: number | null;
+  /** Creation time of the oldest enabled check; null when there is none. */
+  oldestEnabledCheckCreatedAt: string | null;
 }
 
 /**
@@ -9166,6 +9168,9 @@ export function useDeleteUiState(key: string) {
     },
   });
 }
+
+/** User-global ui-state key of the one-time GitHub star prompt. */
+export const GITHUB_STAR_UI_STATE_KEY = "github-star";
 
 /** The ui-state key holding a user's getting-started checklist dismissal. */
 export function onboardingUiStateKey(org: string) {

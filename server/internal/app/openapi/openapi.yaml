@@ -11762,6 +11762,13 @@ components:
           properties:
             enabled:
               type: boolean
+        githubStar:
+          type: object
+          required: [enabled]
+          description: Whether the "star on GitHub" sidebar link and one-time prompt are shown (SP_APP_STARPROMPT, default true).
+          properties:
+            enabled:
+              type: boolean
         bugReport:
           type: object
           required: [enabled]
@@ -12432,8 +12439,13 @@ components:
 
     CheckStats:
       type: object
-      required: [total, enabled, disabled, byStatus, down, hardDown, availability24h]
+      required: [total, enabled, disabled, byStatus, down, hardDown, availability24h, oldestEnabledCheckCreatedAt]
       properties:
+        oldestEnabledCheckCreatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Creation time of the oldest enabled check, null when there is none. Drives the one-time GitHub star prompt.
         total:
           type: integer
           description: Every in-scope check — enabled plus disabled.

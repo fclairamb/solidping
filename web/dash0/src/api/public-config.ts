@@ -42,6 +42,13 @@ export function useBugReportEnabled(): boolean {
   return Boolean(data?.bugReport?.enabled);
 }
 
+/** Whether the GitHub star link and prompt are shown. Missing means on. */
+export function useGitHubStarEnabled(): boolean {
+  const { data } = usePublicConfig();
+
+  return data?.githubStar?.enabled !== false;
+}
+
 /**
  * Whether AI-authored js checks are offered (an AI provider is configured on
  * the server, spec 2026-10-03-07). Off while loading.

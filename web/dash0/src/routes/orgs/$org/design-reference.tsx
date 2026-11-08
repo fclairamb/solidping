@@ -110,6 +110,7 @@ import {
 } from "@/components/shared/section-membership";
 import { FacetedFilter } from "@/components/shared/faceted-filter";
 import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";
+import { GitHubStarPromptCard } from "@/components/dashboard/github-star-prompt";
 import { PageHeader } from "@/components/shared/page-header";
 import { KpiTile } from "@/components/shared/kpi-tile";
 import { AVAILABILITY_TIER_STYLE, type AvailabilityTier } from "@/lib/availability-tier";
@@ -340,6 +341,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "swatch-legend-chips", label: "Swatch-legend chips" },
   { id: "paging-coverage", label: "Paging coverage" },
   { id: "onboarding-checklist", label: "Onboarding checklist" },
+  { id: "github-star-prompt", label: "GitHub star prompt" },
   { id: "magic-wand", label: "Magic wand" },
   { id: "ai-generation-progress", label: "AI generation progress" },
   { id: "http-timing-card", label: "HTTP timing card" },
@@ -406,6 +408,7 @@ function DesignReferencePage() {
       <SwatchLegendChipsSection />
       <PagingCoverageSection />
       <OnboardingChecklistSection />
+      <GitHubStarPromptSection />
       <MagicWandSection />
       <AIGenerationProgressSection />
       <HttpTimingCardSection />
@@ -7567,6 +7570,34 @@ const emailOnly = useEmailOnlyUserUids(org);
         </div>
       </div>
       <CodeSnippet code={snippet} />
+    </Section>
+  );
+}
+
+function GitHubStarPromptSection() {
+  const snippet = `import { GitHubStarPrompt } from "@/components/dashboard/github-star-prompt";
+
+// Container: decides from the checks stats and the user-global \`github-star\`
+// ui-state whether to show, and writes the outcome itself.
+<GitHubStarPrompt stats={stats} onboardingVisible={false} />
+
+// Presentation only:
+<GitHubStarPromptCard onStar={star} onDismiss={dismiss} />`;
+
+  return (
+    <Section
+      id="github-star-prompt"
+      title="GitHub star prompt"
+      description="A small, dismissible card asking once to star the repository. Shown on the dashboard home only, when the org has had an enabled check for 7+ days and nothing is down, never in a demo session and never next to the onboarding checklist. Any click (Star, Not now, close) is final; an ignored card expires after 14 days. It must stay discreet and never hint at a reward."
+    >
+      <ExampleRow
+        preview={
+          <div className="max-w-2xl">
+            <GitHubStarPromptCard />
+          </div>
+        }
+        importLine={snippet}
+      />
     </Section>
   );
 }

@@ -7,7 +7,7 @@
 // way, and both are enforced here rather than in the handler so they hold for
 // every caller:
 //
-//   - the key must match a short allowlist (v1: `onboarding.<org>` only), and
+//   - the key must match a short allowlist (v1: `onboarding.<org>` and `github-star`), and
 //   - the stored value is capped at a few kilobytes.
 //
 // Rows live in the existing `state_entries` table, user-scoped
@@ -37,6 +37,10 @@ const MaxValueBytes = 4096
 // KeyPrefixOnboarding is the only key namespace v1 accepts. The suffix names
 // the organization the preference belongs to.
 const KeyPrefixOnboarding = "onboarding."
+
+// KeyGitHubStar is the user-global (not per org) key remembering the one-time
+// "star us on GitHub" prompt. It is stored as-is, with no org resolution.
+const KeyGitHubStar = "github-star"
 
 // maxOrgRefLength bounds the organization reference in a key. An org slug is
 // at most 20 characters and a UID is 36; 64 leaves room without letting an
@@ -89,7 +93,7 @@ func isOrgRefShape(s string) bool {
 
 // ResolveKey validates a client-supplied key and returns the storage key.
 //
-// v1 accepts `onboarding.<org>` only, where `<org>` is an organization slug
+// v1 accepts `github-star` (exact match) and `onboarding.<org>`, where `<org>` is an organization slug
 // or UID. The organization is resolved here and the stored key always names
 // its UID, so a later org rename does not orphan the preference while the
 // dashboard keeps passing the slug it already has in the URL.
@@ -103,6 +107,10 @@ func isOrgRefShape(s string) bool {
 // information. A key naming a foreign org only writes the caller's own
 // user-scoped row, which is capped and one-per-org.
 func (s *Service) ResolveKey(ctx context.Context, key string) (string, error) {
+	if key == KeyGitHubStar {
+		return KeyGitHubStar, nil
+	}
+
 	orgRef, found := strings.CutPrefix(key, KeyPrefixOnboarding)
 	if !found || !isOrgRefShape(orgRef) {
 		return "", ErrInvalidKey

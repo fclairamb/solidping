@@ -1225,6 +1225,10 @@ type AppConfig struct {
 	// Never read directly from config — call ComputeBugReportEnabled.
 	EnableBugReport bool            `koanf:"-"`
 	GitHub          AppGitHubConfig `koanf:"github"`
+	// StarPrompt enables every "star us on GitHub" nudge: the dashboard
+	// sidebar link and one-time prompt, the startup log line and the CLI
+	// lines. Single-word leaf so it is reachable as SP_APP_STARPROMPT.
+	StarPrompt bool `koanf:"starprompt"`
 	// FeedbackMaxStorageBytes caps the total bytes of live feedback-report
 	// screenshots (files.Service, filestorage.GroupTypeReports) an org may
 	// have stored at once (spec 2026-09-25-26). The anonymous POST
@@ -2343,6 +2347,7 @@ func Load() (*Config, error) {
 			// No token and no repo: the in-app bug report is off unless the
 			// operator sets both SP_APP_GITHUB_ISSUES_TOKEN and SP_APP_GITHUB_REPO.
 			GitHub:                         AppGitHubConfig{},
+			StarPrompt:                     true,
 			FeedbackMaxStorageBytes:        DefaultFeedbackMaxStorageBytes,
 			FeedbackAnonScreenshotsPerHour: DefaultFeedbackAnonScreenshotsPerHour,
 			FeedbackRetentionDays:          DefaultFeedbackRetentionDays,

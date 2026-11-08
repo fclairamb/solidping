@@ -148,5 +148,12 @@
   "errors": {
     "section": "Échec du chargement.",
     "retry": "Réessayer"
+  },
+  "githubStar": {
+    "title": "SolidPing vous est utile ?",
+    "body": "Merci d'utiliser SolidPing. Si l'outil vous est utile, une étoile sur GitHub aide d'autres personnes à le découvrir.",
+    "star": "Mettre une étoile sur GitHub",
+    "later": "Pas maintenant",
+    "close": "Fermer"
   }
 }

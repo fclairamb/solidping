@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Integration, ReportSchedule, StatusPage } from "@/api/hooks";
 import {
+  isChecklistVisible,
   allStepsComplete,
   completedStepCount,
   deriveOnboardingSteps,
@@ -204,5 +205,32 @@ describe("deriveOnboardingSteps", () => {
     });
     expect(allStepsComplete(complete)).toBe(true);
     expect(completedStepCount(complete)).toBe(5);
+  });
+});
+
+describe("isChecklistVisible", () => {
+  const base = {
+    totalChecks: 1,
+    dismissalLoaded: true,
+    dismissed: false,
+    manuallyDismissed: false,
+    allSet: false,
+  };
+
+  it("is visible for a loaded, undismissed org with a check", () => {
+    expect(isChecklistVisible(base)).toBe(true);
+  });
+
+  it.each([
+    ["no check yet", { totalChecks: 0 }],
+    ["dismissal not loaded", { dismissalLoaded: false }],
+    ["manually dismissed", { manuallyDismissed: true }],
+    ["dismissed and incomplete", { dismissed: true }],
+  ])("is hidden: %s", (_name, over) => {
+    expect(isChecklistVisible({ ...base, ...over })).toBe(false);
+  });
+
+  it("stays visible once complete, even if dismissed", () => {
+    expect(isChecklistVisible({ ...base, dismissed: true, allSet: true })).toBe(true);
   });
 });
