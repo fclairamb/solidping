@@ -1808,7 +1808,6 @@ function CheckDetailPage() {
           org={org}
           checkUid={checkUid}
           periodMs={periodMs}
-          regionCount={check.regions?.length}
           createdAt={check.createdAt}
           initialPeriod={graphPeriod}
           initialFullRange={graphFull}
