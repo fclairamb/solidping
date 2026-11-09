@@ -147,7 +147,7 @@ func TestSend_WaitingForSlotHonoursContext(t *testing.T) {
 	sender := NewSender(&config.EmailConfig{
 		Enabled: true, Host: "127.0.0.1", Port: 1, From: "a@acme.test",
 		Protocol: "none", AuthType: "noauth", MaxConcurrentSends: 1,
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	}, slog.New(slog.DiscardHandler))
 
 	_, err = sender.Send(ctx, &Message{
 		Recipients: Recipients{To: []string{"b@acme.test"}}, Subject: "s", Text: "t",

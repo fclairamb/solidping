@@ -21,7 +21,7 @@ import (
 
 var errChecksLookup = errors.New("checks lookup failed")
 
-// failingChecksDB makes the batch check lookup fail (optionally after cancelling
+// failingChecksDB makes the batch check lookup fail (optionally after canceling
 // the request context, to fail the later bucket query).
 type failingChecksDB struct {
 	db.Service

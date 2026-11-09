@@ -2126,7 +2126,6 @@ func TestLoad_StarPrompt(t *testing.T) {
 	require.False(t, cfg.App.StarPrompt)
 }
 
-//nolint:paralleltest // t.Setenv is incompatible with t.Parallel
 func TestApplyEmailEnv(t *testing.T) {
 	cfg := EmailConfig{MaxConcurrentSends: DefaultEmailMaxConcurrentSends}
 
