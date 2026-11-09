@@ -274,7 +274,14 @@ func (h *Handler) handleAcknowledgeIncident(
 		interaction.User.ID, interaction.User.Username, interaction.Team.ID,
 	)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to acknowledge incident",
+		// A stale button on a deleted incident is the user's click, not a
+		// server fault: keep ERROR for real failures.
+		level := slog.LevelError
+		if errors.Is(err, models.ErrIncidentNotFound) {
+			level = slog.LevelWarn
+		}
+
+		slog.Log(ctx, level, "Failed to acknowledge incident",
 			"error", err,
 			"incident_uid", incidentUID,
 		)

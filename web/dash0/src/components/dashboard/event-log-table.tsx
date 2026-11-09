@@ -14,6 +14,7 @@ import {
   getEventCheckName,
   getEventDescription,
   getEventDisconnectReason,
+  getEventFailedLogin,
   getEventIntegration,
   getEventLucideIcon,
   getEscalatedDetail,
@@ -89,6 +90,22 @@ function getEventDetail(
       reason ? t(`disconnectReasons.${reason}`) : undefined,
     ].filter(Boolean);
     return parts.length > 0 ? parts.join(" · ") : null;
+  }
+
+  // auth.login_failed: which account was tried, as typed (it may match no
+  // member — that is what credential stuffing looks like), the member's name
+  // when an admin reads it, and how many attempts the row folds.
+  const failedLogin = getEventFailedLogin(event);
+  if (failedLogin) {
+    return (
+      <span data-testid="event-detail-auth-account">
+        {failedLogin.email}
+        {failedLogin.memberName ? ` (${failedLogin.memberName})` : null}
+        {failedLogin.count > 1
+          ? ` ${t("descriptions.login_failed_count", { count: failedLogin.count })}`
+          : null}
+      </span>
+    );
   }
 
   const escalated = getEscalatedDetail(event);
