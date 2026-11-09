@@ -17,13 +17,15 @@ const keyPreferences = "preferences"
 var (
 	ErrUnsupportedLocale = errors.New("locale must be one of en, fr, de, es")
 	ErrInvalidTimezone   = errors.New("timezone must be an IANA zone name, e.g. Europe/Paris")
+	ErrInvalidWindow     = errors.New("dashboardWindow must be one of 24h, 7d, 30d")
 )
 
 // PreferencesRequest is the partial preferences update of PATCH /auth/me.
 // A nil field is left alone; an empty string clears it.
 type PreferencesRequest struct {
-	Locale   *string `json:"locale,omitempty"`
-	Timezone *string `json:"timezone,omitempty"`
+	Locale          *string `json:"locale,omitempty"`
+	Timezone        *string `json:"timezone,omitempty"`
+	DashboardWindow *string `json:"dashboardWindow,omitempty"`
 }
 
 // mergePreferences applies a partial update to the stored preferences. A
@@ -57,6 +59,15 @@ func mergePreferences(current *models.UserPreferences, req *PreferencesRequest) 
 
 			merged.Timezone = loc.String()
 		}
+	}
+
+	if req.DashboardWindow != nil {
+		window := strings.TrimSpace(*req.DashboardWindow)
+		if window != "" && !models.IsDashboardWindow(window) {
+			return nil, ErrInvalidWindow
+		}
+
+		merged.DashboardWindow = window
 	}
 
 	return &merged, nil

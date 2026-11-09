@@ -29,9 +29,14 @@ import (
 // for no real benefit.
 const defaultCheckStatsTTL = time.Minute
 
-// availability24hWindow is the trailing window Availability24h is computed
-// over (spec 2026-08-26-09) — "24h Availability" on the dashboard tile.
-const availability24hWindow = 24 * time.Hour
+// The trailing windows the availability fields are computed over: 24h for
+// Availability24h (spec 2026-08-26-09), 7d and 30d for the dashboard's window
+// selector (spec 2026-11-09-02).
+const (
+	availability24hWindow = 24 * time.Hour
+	availability7dWindow  = 7 * 24 * time.Hour
+	availability30dWindow = 30 * 24 * time.Hour
+)
 
 // CheckStatsResponse is the org-wide check aggregate served by
 // GET /api/v1/orgs/{org}/checks/stats.
@@ -73,12 +78,18 @@ type CheckStatsResponse struct {
 	// (even if arguably better) truth.
 	HardDown int `json:"hardDown"`
 	// Availability24h is 100*success/total over the trailing 24h window,
-	// combining `hour` rollup and `raw` result rows (spec 2026-08-26-09) —
-	// db.Service.GetOrgAvailability24h does the actual fold, in SQL, mirroring
+	// combining rollup and `raw` result rows (spec 2026-08-26-09) —
+	// db.Service.GetOrgAvailability does the actual fold, in SQL, mirroring
 	// models.RawAvailability's exclusion rules for the raw tier. nil when the
 	// window has no countable data (empty or brand-new org): the dashboard
 	// must render that as "no data", never as a fabricated 100%.
 	Availability24h *float64 `json:"availability24h"`
+	// Availability7d is Availability24h over the trailing 7 days, for the
+	// dashboard's window selector (spec 2026-11-09-02). Same nil rule.
+	Availability7d *float64 `json:"availability7d"`
+	// Availability30d is Availability24h over the trailing 30 days. Same nil
+	// rule.
+	Availability30d *float64 `json:"availability30d"`
 }
 
 // checkStatsEntry is one cached org snapshot.
@@ -149,19 +160,32 @@ func (s *Service) GetCheckStats(ctx context.Context, orgSlug string) (CheckStats
 
 	now := s.now()
 
-	availCounts, err := s.db.GetOrgAvailability24h(ctx, org.UID, now.Add(-availability24hWindow), now)
+	availCounts, err := s.db.GetOrgAvailability(ctx, org.UID, now, []time.Duration{
+		availability24hWindow, availability7dWindow, availability30dWindow,
+	})
 	if err != nil {
 		return CheckStatsResponse{}, err
 	}
 
 	stats := foldCheckStatusCounts(rows)
-	if pct, ok := availCounts.Pct(); ok {
-		stats.Availability24h = &pct
-	}
+	stats.Availability24h = availabilityPct(availCounts[0])
+	stats.Availability7d = availabilityPct(availCounts[1])
+	stats.Availability30d = availabilityPct(availCounts[2])
 
-	s.checkStats.put(org.UID, stats)
+	s.checkStats.put(org.UID, &stats)
 
 	return stats, nil
+}
+
+// availabilityPct is the percentage of counts, nil when the window had no
+// countable data.
+func availabilityPct(counts models.AvailabilityCounts) *float64 {
+	pct, ok := counts.Pct()
+	if !ok {
+		return nil
+	}
+
+	return &pct
 }
 
 // foldCheckStatusCounts turns the (status, enabled) histogram rows into the
@@ -237,8 +261,8 @@ func (c *checkStatsCache) get(orgUID string, ttl time.Duration) (CheckStatsRespo
 // put stores a freshly computed snapshot for the org. The ByStatus map is
 // copied on the way in as well as on the way out, so the caller that triggered
 // the miss cannot mutate the entry it just seeded.
-func (c *checkStatsCache) put(orgUID string, stats CheckStatsResponse) {
-	stored := stats
+func (c *checkStatsCache) put(orgUID string, stats *CheckStatsResponse) {
+	stored := *stats
 	stored.ByStatus = make(map[string]int, len(stats.ByStatus))
 
 	for k, v := range stats.ByStatus {
