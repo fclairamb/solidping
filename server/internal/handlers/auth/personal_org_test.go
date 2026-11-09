@@ -59,7 +59,7 @@ func (f *personalOrgFixture) passwordUser(ctx context.Context, t *testing.T, ema
 	hash, err := passwords.Hash(personalOrgTestPassword)
 	require.NoError(t, err)
 
-	user := models.NewUser(email)
+	user := newVerifiedUser(email)
 	user.Name = name
 	user.PasswordHash = &hash
 	require.NoError(t, f.db.CreateUser(ctx, user))

@@ -638,7 +638,7 @@ func TestFederatedAutoJoinRecordsMemberJoined(t *testing.T) {
 	f.user(ctx, t, "seed@acme.com")
 	r.NoError(f.db.SetOrgParameter(ctx, f.org.UID, registrationEmailPatternKey, `@acme\.com$`, false))
 
-	newcomer := models.NewUser("carol@acme.com")
+	newcomer := newVerifiedUser("carol@acme.com")
 	r.NoError(f.db.CreateUser(ctx, newcomer))
 
 	result, err := f.svc.CompleteOrgLogin(ctx, f.org, newcomer, WithLoginMethod(signupMethodSAML))

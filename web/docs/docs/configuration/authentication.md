@@ -141,6 +141,8 @@ Every check, status page and alert lives in an organization. When `auth.auto_per
 3. a membership request they already sent: they wait for its answer on the "no organization" page;
 4. otherwise SolidPing creates a personal organization for them ("Alice's organization", in their language) and makes them its owner. They land on its dashboard, with no form to fill.
 
+Steps 1 and 2 trust the email only when it is verified: a confirmed sign-up, an invitation link, or an identity provider that vouches for the address. The same holds when a sign-in through an identity provider starts from an organization's login page: an invitation or an email pattern admits the user only with a verified email.
+
 The "no organization" page then only offers to join an existing organization when the user came through a join link or has a membership request. A user gets one personal organization: if they delete it, the next sign-in shows that page.
 
 With the setting off, such a user lands on the "no organization" page, where they create an organization or ask to join one.
@@ -155,7 +157,7 @@ A user changes their sign-in email from **Account > Profile**: enter the new add
 
 When an email changes:
 
-- the new address is marked unverified,
+- the new address is marked unverified: until it is verified, it no longer matches an invitation or an organization's email pattern at sign-in (accepting an invitation through its link still works),
 - every other session of the user is signed out (the session that made the change stays signed in),
 - the previous address gets a notice, when [email sending](/configuration/notifications) is configured,
 - `auth.email_changed` is recorded in the audit log of each organization the user belongs to.
