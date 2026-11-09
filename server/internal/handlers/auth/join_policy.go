@@ -176,9 +176,11 @@ func resolveLoginOptions(opts []LoginOption) loginOptions {
 //  2. Zero-member org  → joins as OWNER (bootstrap / self-hosted onboarding);
 //     whoever brings an org into existence owns it.
 //  3. Pending invite for the email → joins with the invited role, invite consumed.
+//     Only for a verified email (see emailAdmits).
 //  4. Slack workspace attestation for the workspace THIS org is linked to →
 //     joins as user (see slackWorkspaceAdmits).
-//  5. Email matches registration.email_pattern → joins as user.
+//  5. Email matches registration.email_pattern → joins as user. Only for a
+//     verified email (see emailAdmits).
 //  6. Otherwise        → NO membership; a membership_requests row is created or
 //     re-opened and pending=true is returned.
 //
@@ -225,8 +227,9 @@ func (s *Service) JoinOrgViaLogin(
 	}
 
 	// Rule 3: an outstanding invitation for this email admits the user with
-	// the invited role, exactly like AcceptInvite would.
-	if invite := s.findOrgInvitationForEmail(ctx, org.UID, user.Email); invite != nil {
+	// the invited role, exactly like AcceptInvite would. Only for a verified
+	// email: an unverified one may be someone else's (see emailAdmits).
+	if invite := s.loginInvitation(ctx, org.UID, user); invite != nil {
 		created, createErr := s.createLoginMembership(
 			ctx, org.UID, user, models.MemberRole(invite.role), invite.inviterUID, joinSourceInvitation,
 		)
@@ -258,8 +261,8 @@ func (s *Service) JoinOrgViaLogin(
 		}
 	}
 
-	// Rule 5: the org's own auto-join pattern.
-	if pattern := s.orgAutoJoinPattern(ctx, org.UID); pattern != nil && pattern.MatchString(user.Email) {
+	// Rule 5: the org's own auto-join pattern, for a verified email.
+	if s.orgPatternAdmits(ctx, org.UID, user) {
 		created, createErr := s.createLoginMembership(
 			ctx, org.UID, user, models.MemberRoleUser, "", joinSourceEmailPattern,
 		)
@@ -359,7 +362,7 @@ func (s *Service) CompleteOrgLogin(
 	// Auto-join any *other* org whose pattern matches (unchanged behavior).
 	// It runs before the pending fallback below on purpose: an org this very
 	// login just auto-joined is a membership the session can land on.
-	s.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
+	s.autoJoinMatchingOrgs(ctx, user)
 
 	if pending {
 		return s.completePendingLogin(ctx, org, user, resolved.method)
@@ -595,6 +598,41 @@ type orgInvitation struct {
 	key        string
 	role       string
 	inviterUID string
+}
+
+// emailAdmits reports whether the user's email may admit them to an
+// organization on its own: an invitation matched by address, or an
+// email-domain auto-join pattern. That needs a verified address
+// (email_verified_at set). Sign-up confirmation, an invitation link and the
+// identity providers that attest the address set it; an email change clears
+// it, so an address the user merely typed admits nobody until it is verified.
+// Accepting an invitation through its link does not come here: the token is
+// the proof.
+func emailAdmits(user *models.User) bool {
+	return user != nil && user.Email != "" && user.EmailVerifiedAt != nil
+}
+
+// loginInvitation is the org's outstanding invitation for the user's email
+// (JoinOrgViaLogin rule 3), or nil when there is none or the email is not
+// verified.
+func (s *Service) loginInvitation(ctx context.Context, orgUID string, user *models.User) *orgInvitation {
+	if !emailAdmits(user) {
+		return nil
+	}
+
+	return s.findOrgInvitationForEmail(ctx, orgUID, user.Email)
+}
+
+// orgPatternAdmits reports whether the org's auto-join pattern admits the
+// user (JoinOrgViaLogin rule 5): a verified email that matches it.
+func (s *Service) orgPatternAdmits(ctx context.Context, orgUID string, user *models.User) bool {
+	if !emailAdmits(user) {
+		return false
+	}
+
+	pattern := s.orgAutoJoinPattern(ctx, orgUID)
+
+	return pattern != nil && pattern.MatchString(user.Email)
 }
 
 // findOrgInvitationForEmail returns the org's outstanding (non-expired)
