@@ -9,53 +9,159 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// TestBuildLinkUnfurlResolvesCheckAndIncident pins issue #769: check and
-// incident links unfurl to a one-line preview naming the entity (distinct emoji
-// per type) instead of the same generic "SolidPing Link" card, and stay generic
-// for another organization's links or unknown entities.
+// unfurlTexts flattens an unfurl's blocks (section text, then context text).
+func unfurlTexts(unfurl *Unfurl) []string {
+	texts := make([]string, 0, len(unfurl.Blocks))
+	for _, block := range unfurl.Blocks {
+		if block.Text != nil {
+			texts = append(texts, block.Text.Text)
+		}
+
+		for _, el := range block.Elements {
+			if ce, ok := el.(ContextElement); ok {
+				texts = append(texts, ce.Text)
+			}
+		}
+	}
+
+	return texts
+}
+
+// TestBuildLinkUnfurlResolvesCheckAndIncident pins issue #769 and its follow-up:
+// check and incident links unfurl to a card naming the entity with its current
+// state and details, and stay generic for another organization's links or
+// unknown entities.
 func TestBuildLinkUnfurlResolvesCheckAndIncident(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
 	h, svc, org := solidpingSetup(t)
 	ctx := t.Context()
+	now := time.Now()
 
 	chk := models.NewCheck(org.UID, "vault-2", "http")
 	name := "Vault <nonprod> vault-2"
 	chk.Name = &name
+	chk.Status = models.CheckStatusUp
+	changed := now.Add(-3 * time.Hour)
+	chk.StatusChangedAt = &changed
+	last := now.Add(-20 * time.Second)
+	chk.LastResultAt = &last
 	r.NoError(svc.db.CreateCheck(ctx, chk))
 
-	incident := models.NewIncident(org.UID, chk.UID, time.Now(), "")
+	// 3 up + 1 down in the last 24h = 75%; one older down is out of the window.
+	for i, status := range []models.ResultStatus{
+		models.ResultStatusUp, models.ResultStatusUp, models.ResultStatusUp, models.ResultStatusDown,
+	} {
+		res := models.NewResult(org.UID, chk.UID, status, 10)
+		res.PeriodStart = now.Add(-time.Duration(i+1) * time.Hour)
+		r.NoError(svc.db.CreateResult(ctx, res))
+	}
+
+	old := models.NewResult(org.UID, chk.UID, models.ResultStatusDown, 10)
+	old.PeriodStart = now.Add(-30 * time.Hour)
+	r.NoError(svc.db.CreateResult(ctx, old))
+
+	incident := models.NewIncident(org.UID, chk.UID, now.Add(-12*time.Minute), "")
 	incident.Title = nil
 	r.NoError(svc.db.CreateIncident(ctx, incident))
 	stored, err := svc.db.GetIncident(ctx, org.UID, incident.UID)
 	r.NoError(err)
+	r.NotZero(stored.Number)
 
-	text := func(u string) string {
-		unfurl := h.buildLinkUnfurl(ctx, msgTeamID, u)
+	texts := func(u string) []string {
+		unfurl := h.buildLinkUnfurlAt(ctx, msgTeamID, u, now)
 		r.NotNil(unfurl)
-		r.Len(unfurl.Blocks, 1)
 
-		return unfurl.Blocks[0].Text.Text
+		return unfurlTexts(unfurl)
 	}
 
 	base := "http://localhost:4000/d/orgs/" + org.Slug
 	checkURL := base + "/checks/" + chk.UID
-	r.Equal(":mag: <"+checkURL+"|Vault &lt;nonprod&gt; vault-2>", text(checkURL))
+	got := texts(checkURL)
+	r.Len(got, 2)
+	r.Equal(":large_green_circle: <"+checkURL+"|Vault &lt;nonprod&gt; vault-2> · *Up* for 3h", got[0])
+	r.Equal("HTTP · every 1m · 75.00% uptime (24h) · last checked just now", got[1])
 
 	incURL := base + "/incidents/" + incident.UID
-	r.Contains(text(incURL), ":rotating_light: <"+incURL+"|#")
-	r.Contains(text(incURL), "· Vault &lt;nonprod&gt; vault-2>")
-	r.NotZero(stored.Number)
+	got = texts(incURL)
+	r.Len(got, 2)
+	r.Contains(got[0], ":rotating_light: <"+incURL+"|#")
+	r.Contains(got[0], "· Vault &lt;nonprod&gt; vault-2>")
+	r.Equal("Ongoing for 12m", got[1])
 
 	generic := func(u string) {
-		r.Equal("*SolidPing Link*\n<"+u+"|View in SolidPing>", text(u))
+		r.Equal([]string{"*SolidPing Link*\n<" + u + "|View in SolidPing>"}, texts(u))
 	}
 	generic("http://localhost:4000/d/orgs/other-org/checks/" + chk.UID)
 	generic(base + "/checks/does-not-exist")
 	generic(base + "/incidents/does-not-exist")
 	generic(base + "/settings")
 	generic("http://localhost:4000/pricing")
+}
+
+func TestCheckUnfurlState(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	now := time.Now()
+	recent := now.Add(-time.Second)
+	check := func(status models.CheckStatus, enabled bool) *models.Check {
+		return &models.Check{Status: status, Enabled: enabled, LastResultAt: &recent}
+	}
+
+	cases := []struct {
+		check *models.Check
+		emoji string
+		state string
+	}{
+		{check(models.CheckStatusUp, false), ":double_vertical_bar:", "Paused"},
+		{check(models.CheckStatusStale, true), ":white_circle:", "No recent data"},
+		{check(models.CheckStatusUp, true), ":large_green_circle:", "Up"},
+		{check(models.CheckStatusDown, true), ":red_circle:", "Down"},
+		{check(models.CheckStatusDegraded, true), ":large_yellow_circle:", "Degraded"},
+		{check(models.CheckStatusWarning, true), ":large_yellow_circle:", "Warning"},
+		{check(models.CheckStatusValidating, true), ":large_orange_circle:", "Confirming failure"},
+		{check(models.CheckStatusCreated, true), ":white_circle:", "Waiting for first result"},
+	}
+
+	for _, tc := range cases {
+		emoji, state := checkUnfurlState(tc.check, now)
+		r.Equal(tc.emoji, emoji, tc.state)
+		r.Equal(tc.state, state)
+	}
+}
+
+func TestIncidentUnfurlDetails(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	now := time.Now()
+	acked := now.Add(-time.Minute)
+	resolved := now.Add(-2 * time.Hour)
+
+	active := &models.Incident{State: models.IncidentStateActive, StartedAt: now.Add(-5 * time.Minute)}
+	r.Equal(":rotating_light:", incidentUnfurlEmoji(active))
+	r.Equal("Ongoing for 5m", incidentUnfurlDetails(active, now))
+
+	active.AcknowledgedAt = &acked
+	r.Equal("Ongoing for 5m · acknowledged", incidentUnfurlDetails(active, now))
+
+	done := &models.Incident{
+		State: models.IncidentStateResolved, StartedAt: resolved.Add(-14 * time.Minute), ResolvedAt: &resolved,
+	}
+	r.Equal(":white_check_mark:", incidentUnfurlEmoji(done))
+	r.Equal("Resolved 2h ago · lasted 14m", incidentUnfurlDetails(done, now))
+}
+
+func TestFormatUnfurlUptime(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.Equal("100%", formatUnfurlUptime(100))
+	r.Equal("99.99%", formatUnfurlUptime(99.9999))
+	r.Equal("75.00%", formatUnfurlUptime(75))
+	r.Equal("0.00%", formatUnfurlUptime(0))
 }
 
 // TestBuildLinkUnfurlStaysGenericWhenUnresolvable covers the links that must
