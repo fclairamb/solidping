@@ -126,11 +126,12 @@ func parseLabelsArg(raw any) (map[string]string, string) {
 func getCheckDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolGetCheck,
-		Description: "Get a single check's metadata by UID or slug (identifier takes either); ask for extras with " +
-			"with=lastResult,lastStatusChange. For a full triage briefing (current " +
-			"status + recent results + active incidents), prefer diagnose_check; to " +
-			"search by name or label, use list_checks. Read-only: works with " +
-			"mcp:read tokens.",
+		Description: "Get one check by identifier (its UID or its slug, e.g. \"api-prod\"); an unknown " +
+			"identifier fails with not found. Returns the check object only: type, config, regions, " +
+			"labels, group, period and status, with no result history. with=lastResult adds the most " +
+			"recent result and with=lastStatusChange the time the status last changed. Use " +
+			"diagnose_check for a triage briefing (recent results and incidents), list_results for " +
+			"history, and list_checks to search by name or label. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier: stringProp(descIdentifier),
 			propWith: stringProp(
@@ -429,12 +430,12 @@ func (h *Handler) toolUpdateCheck(ctx context.Context, orgSlug string, args map[
 func deleteCheckDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolDeleteCheck,
-		Description: "Soft-delete a monitoring check by UID or slug. The check stops running " +
-			"immediately, its active incidents are resolved and its scheduling jobs " +
-			"removed; historical results are kept. A check that other checks tunnel " +
-			"through is refused. The deletion is permanent: there is no undelete, though it " +
-			"frees a slot in the MaxChecks quota. To stop a check without losing it, use " +
-			"update_check with enabled:false instead. Requires " +
+		Description: "Soft-delete one check, named by identifier (its UID or slug, as list_checks returns; " +
+			"an unknown one fails with not found and changes nothing). The check stops running " +
+			"immediately, its active incidents are resolved and its scheduling jobs removed; historical " +
+			"results are kept. A check that other checks tunnel through is refused. The deletion is " +
+			"permanent: there is no undelete, though it frees a slot in the MaxChecks quota. To stop a " +
+			"check without losing it, use update_check with enabled:false instead. Requires " +
 			"the mcp scope (mcp:read tokens are refused) and at least the user role in " +
 			"the organization.",
 		InputSchema: objectSchema(map[string]any{

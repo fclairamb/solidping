@@ -17,16 +17,14 @@ const incidentEventsCap = 50
 func listIncidentsDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolListIncidents,
-		Description: "List internal incidents (active or resolved) for the organization, filtered by " +
-			"check, state, or time range; the filters combine with AND. Returns {data, pagination} — " +
-			"total, size, and a cursor naming the last row " +
-			"(opaque, pass it back as cursor for the next page). order=asc lists " +
-			"oldest first and always returns a cursor, even on the last page, so you can store it " +
-			"and later resume with only the incidents started after it (rows younger than 5 s are " +
-			"held back). It lists new incidents only; changes to existing " +
-			"incidents are events (GET /events?type=incident&order=asc). Use diagnose_check for one check's " +
-			"incidents plus current health in one call, and get_status_page include=incidents for the " +
-			"customer-facing entries on a status page. Read-only: works with mcp:read tokens.",
+		Description: "List internal incidents (active or resolved) for the organization, newest first, " +
+			"up to 100 per page. checkUid, state, since and until combine with AND, and since/until bound " +
+			"the incident start time, so they also apply on top of a cursor. Use order=asc with the " +
+			"returned cursor to poll for new incidents: the cursor is then always returned and means " +
+			"strictly after (rows younger than 5 s are held back); changes to existing incidents are " +
+			"not listed again. Use diagnose_check for one check's incidents plus its current health, " +
+			"get_incident for one incident's timeline, and get_status_page include=incidents for the " +
+			"customer-facing entries. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propCheckUID: stringProp(
 				"Comma-separated check UIDs or slugs to filter by, e.g. \"api-prod,db-prod\". At most 100 entries.",
@@ -141,14 +139,12 @@ func (h *Handler) toolListIncidents(ctx context.Context, orgSlug string, args ma
 func getIncidentDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolGetIncident,
-		Description: "Get a single incident by UID (not by slug); an unknown UID fails with an \"incident not " +
-			"found\" error. Returns the incident object — number, state, timestamps, failure " +
-			"counts — plus the check with with=check and up to 50 timeline events with " +
-			"with=events. include=[\"notifications\"] adds the incident's notification attempts " +
-			"(one row per dispatch target with its delivery status, channel and recipient, newest " +
-			"first), filtered by status and capped by limit. Use list_incidents to search and " +
-			"filter across incidents, and diagnose_check for a check's full triage briefing. " +
-			"Read-only: works with mcp:read tokens.",
+		Description: "Get one incident by UID (incidents have no slug); an unknown UID fails with " +
+			"\"incident not found\". Returns the incident: number, state, timestamps and failure counts. " +
+			"with=check adds its check and with=events up to 50 timeline events. " +
+			"include=notifications adds its notification attempts, newest first; status and limit " +
+			"filter only that list. Use list_incidents to search across incidents, and diagnose_check " +
+			"for a check's full triage briefing. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propUID: stringProp("Incident UID returned by list_incidents or diagnose_check."),
 			propWith: stringProp(
