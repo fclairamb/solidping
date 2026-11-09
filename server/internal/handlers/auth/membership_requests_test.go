@@ -271,6 +271,9 @@ func TestAutoJoinMatchingOrgsSkipsBadStoredPattern(t *testing.T) {
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
 	user := models.NewUser("victim@example.com")
+	// Verified, so only the bad-pattern guard can keep the user out.
+	verifiedAt := time.Now()
+	user.EmailVerifiedAt = &verifiedAt
 	r.NoError(dbSvc.CreateUser(ctx, user))
 
 	// Stored pattern bypasses validation (mimics legacy data inserted before
@@ -279,7 +282,7 @@ func TestAutoJoinMatchingOrgsSkipsBadStoredPattern(t *testing.T) {
 	// must not adopt the user into the org.
 	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, "registration.email_pattern", ".*", false))
 
-	svc.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
+	svc.autoJoinMatchingOrgs(ctx, user)
 
 	_, err := dbSvc.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
 	r.Error(err) // no membership created
