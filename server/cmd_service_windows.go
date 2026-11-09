@@ -194,7 +194,7 @@ func defaultServiceDirTrust() (serviceDirTrust, error) {
 // with nothing inside that is a link or belongs to someone else.
 func checkServiceDir(dir string, trust serviceDirTrust) error {
 	if err := checkServiceDirEntry(dir, trust, true); err != nil {
-		return untrustedServiceDir(dir, err)
+		return untrustedServiceDir(err)
 	}
 
 	err := filepath.WalkDir(dir, func(path string, _ fs.DirEntry, walkErr error) error {
@@ -211,14 +211,16 @@ func checkServiceDir(dir string, trust serviceDirTrust) error {
 		return checkServiceDirEntry(path, trust, false)
 	})
 	if err != nil {
-		return untrustedServiceDir(dir, err)
+		return untrustedServiceDir(err)
 	}
 
 	return nil
 }
 
-func untrustedServiceDir(dir string, err error) error {
-	return fmt.Errorf("%w: %s: %w. Delete the folder, or choose another one with --dir", errUntrustedDataDir, dir, err)
+// untrustedServiceDir wraps an error of checkServiceDirEntry, which already
+// names the file at fault.
+func untrustedServiceDir(err error) error {
+	return fmt.Errorf("%w: %w. Delete the folder, or choose another one with --dir", errUntrustedDataDir, err)
 }
 
 // checkServiceDirEntry checks one file or folder without following it if it is
