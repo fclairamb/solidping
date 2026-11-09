@@ -364,6 +364,8 @@ func (s *Service) CreateOverride(
 		return nil, err
 	}
 
+	recordOverrideChange(ctx, s.db, input.OrganizationUID, schedule, override, overrideActionCreated)
+
 	return override, nil
 }
 
@@ -378,13 +380,25 @@ func (s *Service) ListOverrides(
 // The schedule is looked up within the organization and the override within
 // the schedule, so an override of another schedule or organization answers
 // ErrScheduleNotFound or ErrOverrideNotFound and is left untouched.
+//
+// The deletion is recorded in the audit trail with the user and the window the
+// override covered, so a removed cover can be traced to who removed it.
 func (s *Service) DeleteOverride(ctx context.Context, orgUID, scheduleUID, overrideUID string) error {
 	schedule, err := s.GetScheduleByUID(ctx, orgUID, scheduleUID)
 	if err != nil {
 		return err
 	}
 
-	if err := s.db.DeleteOnCallScheduleOverride(ctx, schedule.UID, overrideUID); err != nil {
+	override, err := s.db.GetOnCallScheduleOverride(ctx, schedule.UID, overrideUID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrOverrideNotFound
+	}
+
+	if err != nil {
+		return err
+	}
+
+	if err := s.db.DeleteOnCallScheduleOverride(ctx, schedule.UID, override.UID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrOverrideNotFound
 		}
@@ -392,7 +406,34 @@ func (s *Service) DeleteOverride(ctx context.Context, orgUID, scheduleUID, overr
 		return err
 	}
 
+	recordOverrideChange(ctx, s.db, orgUID, schedule, override, overrideActionDeleted)
+
 	return nil
+}
+
+// Values of the override_action audit payload key.
+const (
+	overrideActionCreated = "created"
+	overrideActionDeleted = "deleted"
+)
+
+// recordOverrideChange audits an override being added to or removed from a
+// schedule. Overrides are a sub-resource of the schedule, so the change is an
+// oncall_schedule.updated event on the schedule with "overrides" as the
+// changed field, like maintenance_window.updated covers its attached checks.
+// The free-text reason is deliberately left out.
+func recordOverrideChange(
+	ctx context.Context, store audit.EventStore, orgUID string,
+	schedule *models.OnCallSchedule, override *models.OnCallScheduleOverride, action string,
+) {
+	audit.Record(ctx, store, orgUID, models.EventTypeOnCallScheduleUpdated,
+		auditTarget(schedule), audit.ChangePayload(nil, nil, []string{"overrides"}, models.JSONMap{
+			"override_action":   action,
+			"override_uid":      override.UID,
+			"override_user_uid": override.UserUID,
+			"override_start_at": override.StartAt.UTC().Format(time.RFC3339),
+			"override_end_at":   override.EndAt.UTC().Format(time.RFC3339),
+		}))
 }
 
 // EnableICalFeed creates a fresh secret and stores it. Returns the secret

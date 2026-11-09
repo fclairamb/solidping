@@ -23,7 +23,7 @@ Find it in the dashboard under **Organization → Audit**. It is visible to org
 | Membership | invited, joined, removed, role changed |
 | Integrations | created, updated, deleted |
 | Escalation policies | created, updated, deleted |
-| On-call schedules | created, updated, deleted |
+| On-call schedules | created, updated, deleted; overrides added / removed (as an update of the schedule) |
 | Status pages | created, updated, deleted |
 | Maintenance windows | created, updated, deleted |
 | Config as code | apply, with created/updated/deleted counts |
