@@ -725,6 +725,24 @@ jobs:
           if ($LASTEXITCODE) { exit 1 }
           if (Get-Service SolidPing -ErrorAction SilentlyContinue) { throw 'service still registered' }
 
+          # Reinstalling reuses the folder the first install and the service
+          # (as LocalSystem) filled.
+          & $exe service install --dir $dir
+          if ($LASTEXITCODE) { throw 'reinstall refused the folder of the previous install' }
+          & $exe service uninstall
+          if ($LASTEXITCODE) { exit 1 }
+
+          # A folder created beforehand (any local user can, under ProgramData)
+          # is refused, and no service is registered.
+          $precreated = Join-Path $env:RUNNER_TEMP 'solidping-precreated'
+          New-Item -ItemType Directory $precreated | Out-Null
+          $PSNativeCommandUseErrorActionPreference = $false
+          & $exe service install --dir $precreated
+          if (-not $LASTEXITCODE) { throw 'install accepted a pre-existing folder' }
+          if (Get-Service SolidPing -ErrorAction SilentlyContinue) { throw 'service registered on a refused folder' }
+          # The runner exits with $LASTEXITCODE, still the expected failure's.
+          $global:LASTEXITCODE = 0
+
   macos-service:
     name: macOS service
     runs-on: macos-26
