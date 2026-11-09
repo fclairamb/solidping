@@ -156,6 +156,21 @@ so the bot cannot be used to probe whether an organization or an incident exists
 | `/comment your note` | Adds a comment to an incident. With **no** `#42` it comments on the single open incident, and lists the candidates when there are several. |
 | `/help` | The command list. `/start` with no token on a connected chat shows the same thing. |
 | `/stop` | Disconnects this chat (also `/unlink`). |
+| `/support your question` | Writes to the SolidPing team. Works in **any** chat, connected or not. See [Support mode](#support-mode). |
+| `/done` | Ends the support conversation. |
+
+### Support mode
+
+The bot runs commands; talking to a person is an explicit choice. `/support`
+(with or without a message) opens a conversation in the
+[support inbox](../features/support-inbox.md) and confirms it in the chat. From
+then on, everything typed in the chat goes to that conversation, so the person
+can answer the replies they get. `/done` ends it, and so does an operator
+closing the thread in the inbox.
+
+Outside support mode, plain text is not recorded: the bot answers with a short
+pointer to `/support` and `/help`. Unknown commands get the "unknown command"
+answer and are never recorded, in or out of support mode.
 
 ### `#42` — the short incident reference
 
