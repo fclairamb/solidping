@@ -49,4 +49,36 @@ func runReportSchedules(t *testing.T, fix *fixture) {
 	must.NoError(svc.DeleteReportSchedule(ctx, fix.org.UID, sched.UID))
 	_, err = svc.GetReportSchedule(ctx, fix.org.UID, sched.UID)
 	must.Error(err)
+
+	runReportSchedulesOrgDeleted(t, fix)
+}
+
+// Deleting an organization removes its schedules from the work list.
+func runReportSchedulesOrgDeleted(t *testing.T, fix *fixture) {
+	t.Helper()
+
+	ctx := t.Context()
+	must := require.New(t)
+	svc := fix.svc
+
+	enabled, err := svc.ListEnabledReportSchedules(ctx)
+	must.NoError(err)
+	must.Empty(enabled)
+
+	gone := models.NewOrganization("contract-gone-org", "Gone Org")
+	must.NoError(svc.CreateOrganization(ctx, gone))
+
+	orphan := models.NewReportSchedule(gone.UID, "Orphan", models.ReportFrequencyMonthly)
+	orphan.Recipients = []string{"ops@acme.com"}
+	must.NoError(svc.CreateReportSchedule(ctx, orphan))
+
+	enabled, err = svc.ListEnabledReportSchedules(ctx)
+	must.NoError(err)
+	must.Len(enabled, 1)
+
+	must.NoError(svc.DeleteOrganization(ctx, gone.UID))
+
+	enabled, err = svc.ListEnabledReportSchedules(ctx)
+	must.NoError(err)
+	must.Empty(enabled, "a deleted organization's schedules are not swept")
 }

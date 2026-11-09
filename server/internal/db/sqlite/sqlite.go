@@ -585,6 +585,18 @@ func (s *Service) DeleteOrganization(ctx context.Context, uid string) error {
 		Where("uid = ?", uid).
 		Set("deleted_at = ?", time.Now()).
 		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Report schedules of a deleted organization would only be orphans.
+	_, err = s.db.NewUpdate().
+		Model((*models.ReportSchedule)(nil)).
+		Where("organization_uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Set("enabled = ?", false).
+		Set("updated_at = ?", time.Now()).
+		Exec(ctx)
 
 	return err
 }
@@ -7839,9 +7851,12 @@ func (s *Service) ListEnabledReportSchedules(ctx context.Context) ([]*models.Rep
 
 	err := s.db.NewSelect().
 		Model(&schedules).
-		Where("enabled = ?", true).
-		Where("deleted_at IS NULL").
-		Order("uid ASC").
+		// Schedules of a deleted organization are orphans: skip them.
+		Join("JOIN organizations AS o ON o.uid = report_schedule.organization_uid").
+		Where("report_schedule.enabled = ?", true).
+		Where("report_schedule.deleted_at IS NULL").
+		Where("o.deleted_at IS NULL").
+		Order("report_schedule.uid ASC").
 		Scan(ctx)
 
 	return schedules, err
