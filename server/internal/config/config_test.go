@@ -2125,3 +2125,19 @@ func TestLoad_StarPrompt(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, cfg.App.StarPrompt)
 }
+
+//nolint:paralleltest // t.Setenv is incompatible with t.Parallel
+func TestApplyEmailEnv(t *testing.T) {
+	cfg := EmailConfig{MaxConcurrentSends: DefaultEmailMaxConcurrentSends}
+
+	t.Setenv("SP_EMAIL_MAX_CONCURRENT_SENDS", "7")
+	applyEmailEnv(&cfg)
+	require.Equal(t, 7, cfg.MaxConcurrentSends)
+
+	// Unparsable, zero and negative values keep the current setting.
+	for _, bad := range []string{"many", "0", "-3"} {
+		t.Setenv("SP_EMAIL_MAX_CONCURRENT_SENDS", bad)
+		applyEmailEnv(&cfg)
+		require.Equal(t, 7, cfg.MaxConcurrentSends, bad)
+	}
+}

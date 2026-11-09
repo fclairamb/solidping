@@ -3,10 +3,12 @@ package email
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/textproto"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -120,4 +122,36 @@ func TestSend_EOFLoggedAsWarnAndRetryable(t *testing.T) {
 	require.True(t, IsRetryableSendError(err), err.Error())
 	require.Contains(t, buf.String(), "level=WARN msg=\"failed to send email\"")
 	require.NotContains(t, buf.String(), "level=ERROR")
+}
+
+func TestIsRetryableSendError_Timeout(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, IsRetryableSendError(fmt.Errorf("dial: %w", os.ErrDeadlineExceeded)))
+}
+
+//nolint:paralleltest // mutates the process-wide semaphore
+func TestSend_WaitingForSlotHonoursContext(t *testing.T) {
+	resetSendSlots()
+	t.Cleanup(resetSendSlots)
+
+	// Take the only slot so the next Send has to wait for one.
+	release, err := acquireSendSlot(t.Context(), 1)
+	require.NoError(t, err)
+
+	defer release()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	sender := NewSender(&config.EmailConfig{
+		Enabled: true, Host: "127.0.0.1", Port: 1, From: "a@acme.test",
+		Protocol: "none", AuthType: "noauth", MaxConcurrentSends: 1,
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	_, err = sender.Send(ctx, &Message{
+		Recipients: Recipients{To: []string{"b@acme.test"}}, Subject: "s", Text: "t",
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorContains(t, err, "SMTP send slot")
 }

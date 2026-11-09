@@ -3,6 +3,7 @@ package jobtypes
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -581,6 +582,42 @@ func TestUptimeReportOrphanScheduleDoesNotClaim(t *testing.T) {
 
 	// The period is still unclaimed.
 	claimed, err := dbSvc.MarkReportScheduleRun(ctx, orphan.UID, time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), now)
+	r.NoError(err)
+	r.True(claimed)
+}
+
+var errOrgLookup = errors.New("org lookup failed")
+
+type failingOrgDB struct{ db.Service }
+
+func (failingOrgDB) GetOrganization(context.Context, string) (*models.Organization, error) {
+	return nil, errOrgLookup
+}
+
+// A genuine database failure while loading the org is surfaced, and the period
+// stays unclaimed so the next sweep retries it.
+func TestUptimeReportOrgLookupErrorDoesNotClaim(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 1, 3, 0, 0, 0, time.UTC)
+
+	dbSvc, org, jctx, jobs := newReportEnv(t, now)
+
+	schedule := models.NewReportSchedule(org.UID, "Monthly", models.ReportFrequencyMonthly)
+	schedule.Recipients = []string{"a@acme.com"}
+	r.NoError(dbSvc.CreateReportSchedule(ctx, schedule))
+
+	jctx.DBService = failingOrgDB{Service: dbSvc}
+
+	run := &UptimeReportJobRun{}
+	emitted, err := run.runSchedule(ctx, jctx, nil, schedule, now)
+	r.ErrorIs(err, errOrgLookup)
+	r.Zero(emitted)
+	r.Empty(jobs.recipients(t))
+
+	claimed, err := dbSvc.MarkReportScheduleRun(ctx, schedule.UID, time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), now)
 	r.NoError(err)
 	r.True(claimed)
 }

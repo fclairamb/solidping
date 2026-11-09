@@ -870,3 +870,28 @@ func TestFailedSignInNameHintIsOrgScoped(t *testing.T) {
 	r.Len(resp.Data, 1)
 	r.Nil(resp.Data[0].TargetUserName)
 }
+
+// Several failed sign-ins for the same address are resolved once and still
+// carry the member's name.
+func TestFailedSignInNameHintDedupesRepeatedEmail(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	for i := range 2 {
+		f.seedWithPayload(ctx, t, models.EventTypeAuthLoginFailed, time.Now().Add(-time.Duration(i+1)*time.Hour),
+			models.JSONMap{"email": "Admin@Acme.com", "target_name": "admin@acme.com"})
+	}
+
+	resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size: 50, Caller: events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.Len(resp.Data, 2)
+	for _, item := range resp.Data {
+		r.NotNil(item.TargetUserName)
+		r.Equal("Admin Person", *item.TargetUserName)
+	}
+}
