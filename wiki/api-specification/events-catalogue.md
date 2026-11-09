@@ -195,6 +195,10 @@ let the user in: `admin_add`, `invitation`, `org_bootstrap`,
   only) alongside `changed_fields`.
 - `maintenance_window.updated` also covers the check-attachment set, with
   `check_count` / `check_group_count`.
+- `oncall_schedule.updated` also covers overrides being added or removed:
+  `changed_fields` holds `overrides`, with `override_action` (`created` /
+  `deleted`), `override_uid`, `override_user_uid`, `override_start_at` and
+  `override_end_at` (RFC 3339, UTC). The free-text reason is not recorded.
 - `config.applied` carries `manifest`, `created`, `updated`, `deleted`,
   `unmanaged`, `pruned`, `forced`, `errors`.
 
