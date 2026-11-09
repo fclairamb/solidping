@@ -1,13 +1,26 @@
 import { supportedLanguage } from "@/lib/languages";
 
+/** The trailing windows the dashboard's availability selector offers. */
+export const DASHBOARD_WINDOWS = ["24h", "7d", "30d"] as const;
+export type DashboardWindow = (typeof DASHBOARD_WINDOWS)[number];
+
+/** The saved window when it is one the dashboard offers, else 24h. */
+export function dashboardWindowOrDefault(value: string | undefined): DashboardWindow {
+  return (DASHBOARD_WINDOWS as readonly string[]).includes(value ?? "")
+    ? (value as DashboardWindow)
+    : "24h";
+}
+
 /**
- * The language and timezone the server writes a user's emails in
- * (`user.preferences` on /auth/me and every login response, spec
- * 2026-10-21-01). An empty field means "never set".
+ * What the user picked (`user.preferences` on /auth/me and every login
+ * response): the language and timezone the server writes their emails in
+ * (spec 2026-10-21-01), and the dashboard's availability window (spec
+ * 2026-11-09-02). An empty field means "never set".
  */
 export interface UserPreferences {
   locale?: string;
   timezone?: string;
+  dashboardWindow?: DashboardWindow;
 }
 
 /** The body of `PATCH /auth/me {preferences}`: each field optional. */

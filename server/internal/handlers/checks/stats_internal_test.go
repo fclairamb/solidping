@@ -152,7 +152,7 @@ func TestCheckStatsCacheTTLBoundary(t *testing.T) {
 	r := require.New(t)
 
 	cache := &checkStatsCache{}
-	cache.put("org-1", CheckStatsResponse{Total: 5, ByStatus: map[string]int{models.WireStatusUp: 5}})
+	cache.put("org-1", &CheckStatsResponse{Total: 5, ByStatus: map[string]int{models.WireStatusUp: 5}})
 
 	got, ok := cache.get("org-1", time.Hour)
 	r.True(ok, "a fresh entry must be a hit")

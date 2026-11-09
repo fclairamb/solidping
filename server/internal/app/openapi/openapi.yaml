@@ -1015,10 +1015,12 @@ paths:
         `auth.email_changed` in each of the user's organizations.
 
         `preferences` sets the language and timezone the server writes this
-        user's emails in. Every field is optional (a preferences-only body is
-        valid); an empty string clears one. `400 VALIDATION_ERROR` for a
-        locale outside en, fr, de, es (a full tag such as `fr-FR` is accepted
-        and stored as `fr`) or a timezone the IANA database does not know.
+        user's emails in, and the dashboard's availability window. Every field
+        is optional (a preferences-only body is valid); an empty string clears
+        one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+        tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
+        IANA database does not know, or a dashboard window other than 24h, 7d,
+        30d.
         Nothing is written when any field is refused.
       security:
         - bearerAuth: []
@@ -11522,9 +11524,10 @@ components:
     UserPreferences:
       type: object
       description: >
-        What the server follows when it writes to the user: the language and
-        timezone of their emails. Present on /auth/me and every login response,
-        `{}` when nothing is set (emails then use English and UTC).
+        What the user picked: the language and timezone of their emails, and
+        dashboard settings that follow them across browsers. Present on
+        /auth/me and every login response, `{}` when nothing is set (emails then
+        use English and UTC, the dashboard its defaults).
       properties:
         locale:
           type: string
@@ -11534,6 +11537,13 @@ components:
           type: string
           description: IANA zone name (e.g. Europe/Paris) dates are shown in. Omitted when not set.
           example: Europe/Paris
+        dashboardWindow:
+          type: string
+          enum: ["24h", "7d", "30d"]
+          description: >-
+            Trailing window of the dashboard's availability figures. Omitted
+            when not set, which means 24h.
+          example: 7d
 
     UpdatePreferencesRequest:
       type: object
@@ -11547,6 +11557,10 @@ components:
           type: string
           description: IANA zone name.
           example: Europe/Paris
+        dashboardWindow:
+          type: string
+          description: 24h, 7d or 30d. Any other value is refused with 400 VALIDATION_ERROR.
+          example: 7d
 
     CreateTokenRequest:
       type: object
@@ -12527,7 +12541,7 @@ components:
 
     CheckStats:
       type: object
-      required: [total, enabled, disabled, byStatus, down, hardDown, availability24h, oldestEnabledCheckCreatedAt]
+      required: [total, enabled, disabled, byStatus, down, hardDown, availability24h, availability7d, availability30d, oldestEnabledCheckCreatedAt]
       properties:
         oldestEnabledCheckCreatedAt:
           type: string
@@ -12589,6 +12603,22 @@ components:
             countable data (an empty or brand-new org) — never a fabricated
             100.
           example: 99.97
+        availability7d:
+          type: number
+          nullable: true
+          description: >-
+            `availability24h` over the trailing 7 days, also counting `day`
+            rollup rows that start inside the window. `null` when the window has
+            no countable data.
+          example: 99.95
+        availability30d:
+          type: number
+          nullable: true
+          description: >-
+            `availability24h` over the trailing 30 days, also counting `day`
+            rollup rows that start inside the window. `null` when the window has
+            no countable data.
+          example: 99.91
 
     CreateCheckRequest:
       type: object
