@@ -48,10 +48,10 @@ func autoPublishProps(schema map[string]any) map[string]any {
 func listStatusPagesDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolListStatusPages,
-		Description: "List every status page in the organization, newest first. Use " +
-			"get_status_page for a single page by UID or " +
-			"slug (with=sections or include=sections for its contents). Read-only: " +
-			"works with mcp:read tokens.",
+		Description: "List every status page of the organization, newest first, in one unpaginated " +
+			"response: each page's UID, slug, name, default flag, enabled flag and visibility, without its " +
+			"sections. Takes no parameters. Use get_status_page with the UID or slug for one page's " +
+			"sections, resources or published incidents. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{}, nil),
 		OutputSchema: dataOutputSchema(
 			"Status pages in the organization.",
@@ -72,13 +72,12 @@ func (h *Handler) toolListStatusPages(ctx context.Context, orgSlug string, _ map
 func getStatusPageDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolGetStatusPage,
-		Description: "Get one status page by UID or slug (identifier takes either) and return it. with=sections embeds its " +
-			"sections and their resources. include adds lists next to the page fields: " +
-			"\"sections\" (section metadata, display order), \"resources\" (the resources of the " +
-			"section named by sectionIdentifier) and \"incidents\" (the customer-facing incident " +
-			"publications on the page, filtered by state and active). Use list_status_pages to " +
-			"browse every page, and manage_status_page_section / _resource / _incident to change " +
-			"them. Read-only: works with mcp:read tokens.",
+		Description: "Get one status page by identifier (UID or slug). with=sections embeds the sections " +
+			"and their resources in the page; include returns separate lists next to it instead, and " +
+			"include=resources needs sectionIdentifier to name the section. state and active filter " +
+			"only include=incidents. Use list_status_pages to browse every page, and " +
+			"manage_status_page_section / _resource / _incident to change them. " +
+			"Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propWith:       stringProp("\"sections\" to include nested sections and their resources"),
@@ -171,16 +170,13 @@ func (h *Handler) statusPageWithIncludes(
 func createStatusPageDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolCreateStatusPage,
-		Description: "Create a new status page for the organization and return the " +
-			"created page. A duplicate slug is rejected with a conflict, never " +
-			"merged. Only one page can be the default: the first page always " +
-			"becomes it, and isDefault:true demotes the previous default. Every " +
-			"new page is seeded with a default \"Services\" section and starts " +
-			"enabled and public — use manage_status_page_section to add more " +
-			"sections and update_status_page to edit the page later. Not quota-limited; " +
-			"reversible with delete_status_page. Requires the " +
-			"mcp scope (mcp:read tokens are refused) and at least the user role in " +
-			"the organization.",
+		Description: "Create a status page and return it: uid, slug, name, visibility, default and " +
+			"enabled flags. A duplicate slug fails with a conflict. The first page of an organization " +
+			"becomes its default, and isDefault:true moves the default to the new page. A new page is " +
+			"enabled, public, and seeded with one \"Services\" section: add sections with " +
+			"manage_status_page_section and pin checks with manage_status_page_resource. Not " +
+			"quota-limited; reversible with delete_status_page. Requires the mcp scope (mcp:read tokens are " +
+			"refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(autoPublishProps(map[string]any{
 			schemaKeyName:        stringProp("Status page display name (required), e.g. \"Public status\"."),
 			schemaKeySlug:        stringProp("URL-friendly slug (required, unique per org), e.g. \"public\"."),
@@ -340,13 +336,13 @@ func buildUpdateStatusPageRequest(args map[string]any) *statuspages.UpdateStatus
 func deleteStatusPageDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolDeleteStatusPage,
-		Description: "Soft-delete a status page by UID or slug: the page disappears " +
-			"from the API and the public site, taking its sections and resources " +
-			"with it, and its uploaded brand assets are deleted. There is no " +
-			"undelete (permanent, not reversible) — use update_status_page with enabled:false to take a page " +
-			"down without destroying it. Use " +
-			"delete_status_page_section or delete_status_page_resource to remove " +
-			"part of a page instead. Requires the mcp scope (mcp:read tokens are " +
+		Description: "Soft-delete one status page, named by identifier (its UID or slug, as " +
+			"list_status_pages returns; an unknown one fails with not found and changes nothing). The " +
+			"page disappears from the API and the public site with its sections and resources, and its " +
+			"uploaded brand assets are deleted. There is no undelete (permanent, not reversible): use " +
+			"update_status_page with enabled:false to take a page down without destroying it, and " +
+			"manage_status_page_section or manage_status_page_resource with action=delete to remove " +
+			"part of a page. Requires the mcp scope (mcp:read tokens are " +
 			"refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
