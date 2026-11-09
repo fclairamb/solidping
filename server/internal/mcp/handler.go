@@ -460,9 +460,7 @@ func (h *Handler) handleInitialize(
 			Prompts:   &PromptsCap{},
 		},
 		// The link-time build version (Dockerfile ldflags); "dev" locally.
-		ServerInfo: ServerInfo{
-			Name: "solidping", Title: serverCardTitle, Version: version.Version, WebsiteURL: serverCardHomepage,
-		},
+		ServerInfo:   ServerInfo{Name: "solidping", Version: version.Version},
 		Instructions: serverInstructions,
 	})
 

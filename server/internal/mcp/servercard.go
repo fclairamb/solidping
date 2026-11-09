@@ -18,8 +18,8 @@ const (
 	serverCardTitle       = "SolidPing"
 	serverCardDescription = "Uptime and incident monitoring: list, create and diagnose checks, " +
 		"read incidents and results, and manage status pages and maintenance windows."
-	serverCardHomepage      = "https://solidping.io/docs/"
-	serverCardDocumentation = "https://solidping.io/docs/"
+	serverCardHomepage      = "https://www.solidping.io"
+	serverCardDocumentation = "https://docs.solidping.io/docs"
 	serverCardRepository    = "https://github.com/fclairamb/solidping"
 	serverCardLicense       = "AGPL-3.0"
 	serverCardIconPath      = "/d/logo.png"

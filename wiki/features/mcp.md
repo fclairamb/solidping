@@ -486,9 +486,6 @@ What Glama's graders penalised on the 2026-11-07 run (server A, 4.3/5,
   `include` values the schema already lists.
 - Names in a description must be tools the default list exposes: point to
   `manage_status_page_*` with an `action`, never the legacy per-verb names.
-- The listing links are `server.json` `websiteUrl`, the server card
-  (`servercard.go`) and `serverInfo.websiteUrl`; all point at
-  `https://solidping.io/docs/`.
 
 ## Caveats
 
