@@ -780,6 +780,11 @@ export interface Event {
    */
   sourceIp?: string;
   userAgent?: string;
+  /**
+   * auth.login_failed only: the name of the org member whose account was
+   * tried. Admin/owner only; absent when the typed email matches no member.
+   */
+  targetUserName?: string;
   checkUid?: string;
   incidentUid?: string;
   payload?: Record<string, unknown>;
@@ -2172,6 +2177,8 @@ export interface AvailabilityBucket {
   totalChecks: number;
   successfulChecks: number;
   status: "up" | "degraded" | "down" | "noData";
+  /** Mean response time of the cell's probes; absent when none carried one. */
+  avgDurationMs?: number;
 }
 
 export interface CheckAvailabilityBucketsResponse {
@@ -2237,6 +2244,54 @@ export function useCheckAvailabilityBuckets(
       !!checkUid &&
       !!query.from &&
       !!query.to,
+    refetchInterval: options?.refetchInterval,
+  });
+}
+
+export interface OrgAvailabilityBucketsResponse {
+  data: Record<
+    string,
+    { buckets: AvailabilityBucket[]; latestDurationMs?: number }
+  >;
+  bucketSeconds: number;
+  windowStart: string;
+  windowEnd: string;
+}
+
+/**
+ * Bucketed availability for several checks at once (the dashboard glance
+ * strips). Server-side because the trailing day lives in raw rows that the
+ * hour-tier results query never returns.
+ */
+export function useOrgAvailabilityBuckets(
+  org: string,
+  checkUids: string[],
+  query: { from: string; to: string; bucketSeconds: number },
+  options?: { refetchInterval?: number; enabled?: boolean },
+) {
+  const uidKey = checkUids.join(",");
+  return useQuery<OrgAvailabilityBucketsResponse>({
+    queryKey: [
+      "orgAvailabilityBuckets",
+      org,
+      uidKey,
+      query.from,
+      query.to,
+      query.bucketSeconds,
+    ],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        from: query.from,
+        to: query.to,
+        bucket: String(query.bucketSeconds),
+        checks: uidKey,
+      });
+      return apiFetch<OrgAvailabilityBucketsResponse>(
+        `/api/v1/orgs/${org}/availability/buckets?${params.toString()}`,
+      );
+    },
+    enabled:
+      (options?.enabled ?? true) && !!org && checkUids.length > 0 && !!query.from,
     refetchInterval: options?.refetchInterval,
   });
 }

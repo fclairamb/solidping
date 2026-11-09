@@ -57,6 +57,7 @@ function UptimeCell({ bucket }: { bucket: UptimeBucket }) {
     <Tooltip>
       <TooltipTrigger asChild>
         <div
+          data-testid="uptime-cell"
           data-status={status}
           className={cn(
             // rounded-[2px], not rounded-sm: at this cell width the theme's

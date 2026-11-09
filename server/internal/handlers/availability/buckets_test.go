@@ -2,6 +2,7 @@ package availability
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -677,4 +678,61 @@ func TestGetAvailabilityBuckets_Validation(t *testing.T) {
 	_, err = f.svc.GetAvailabilityBuckets(ctx, f.org.Slug, "no-such-check",
 		&GetAvailabilityBucketsOptions{From: now.Add(-time.Hour), To: now, Bucket: time.Hour})
 	r.ErrorIs(err, ErrCheckNotFound)
+}
+
+// TestGetOrgAvailabilityBuckets pins the dashboard glance contract: raw-only
+// rows fill the cells (the hour-tier query this replaces returned nothing),
+// foreign UIDs are ignored and the per-request cap is enforced.
+func TestGetOrgAvailabilityBuckets(t *testing.T) {
+	t.Parallel()
+
+	f := newBucketsFixture(t, "glance")
+	ctx := t.Context()
+
+	second := models.NewCheck(f.org.UID, "glance-second", "domain")
+	require.NoError(t, f.db.CreateCheck(ctx, second))
+
+	other := models.NewOrganization("glance-other", "")
+	require.NoError(t, f.db.CreateOrganization(ctx, other))
+
+	foreign := models.NewCheck(other.UID, "foreign", "domain")
+	require.NoError(t, f.db.CreateCheck(ctx, foreign))
+
+	now := time.Now().UTC()
+	f.raw(t, now.Add(-2*time.Hour), models.ResultStatusUp, "", false)
+
+	row := models.NewResult(f.org.UID, second.UID, models.ResultStatusUp, 0.1)
+	row.PeriodStart = now.Add(-3 * time.Hour)
+	require.NoError(t, f.db.CreateResult(ctx, row))
+
+	opts := &GetOrgAvailabilityBucketsOptions{
+		From: now.Add(-24 * time.Hour), To: now, Bucket: time.Hour,
+		CheckUIDs: []string{f.check.UID, second.UID, foreign.UID},
+	}
+
+	resp, err := f.svc.GetOrgAvailabilityBuckets(ctx, f.org.Slug, opts)
+	require.NoError(t, err)
+	require.Len(t, resp.Data, 2)
+	require.NotContains(t, resp.Data, foreign.UID)
+
+	for _, uid := range []string{f.check.UID, second.UID} {
+		withData := 0
+
+		for _, cell := range resp.Data[uid].Buckets {
+			if cell.HasData {
+				withData++
+			}
+		}
+
+		require.Equal(t, 1, withData, uid)
+		require.NotNil(t, resp.Data[uid].LatestDurationMs, uid)
+	}
+
+	opts.CheckUIDs = make([]string, MaxOrgBucketChecks+1)
+	for i := range opts.CheckUIDs {
+		opts.CheckUIDs[i] = fmt.Sprintf("uid-%d", i)
+	}
+
+	_, err = f.svc.GetOrgAvailabilityBuckets(ctx, f.org.Slug, opts)
+	require.ErrorIs(t, err, ErrTooManyChecks)
 }

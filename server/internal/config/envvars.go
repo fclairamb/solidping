@@ -227,6 +227,7 @@ func manualReaderServerEnvVars() []string {
 		"SP_AUDIT_FAILED_LOGIN_FOLD_WINDOW_MINUTES",
 		"SP_AUDIT_FAILED_LOGIN_MAX_PER_ORG_PER_HOUR",
 		// applyJobsEnv
+		"SP_EMAIL_MAX_CONCURRENT_SENDS",
 		"SP_JOBS_STUCK_TIMEOUT",
 		"SP_JOBS_REAPER_INTERVAL",
 		// applyRealtimeEnv

@@ -762,3 +762,111 @@ func TestTargetSearchCannotReachAuthEventsForNonAdmins(t *testing.T) {
 	r.NoError(err)
 	r.Empty(viewerType.Data)
 }
+
+// TestMembersSeeTheirOwnFailedSignIns is solidping-business#59: a member sees
+// the failed sign-ins against their own account and none against a
+// colleague's, and no filter widens that; an admin sees them all, with the
+// name of the member whose account was tried.
+func TestMembersSeeTheirOwnFailedSignIns(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	base := time.Date(2026, time.November, 9, 9, 0, 0, 0, time.UTC)
+	failed := func(email string) models.JSONMap {
+		return models.JSONMap{
+			"email": email, "count": 3, "reason": "invalid_credentials",
+			"target_type": "user", "target_name": email,
+		}
+	}
+
+	// Typed with a different case than the stored account: still the viewer's.
+	f.seedWithPayload(ctx, t, models.EventTypeAuthLoginFailed, base, failed("Viewer@Acme.com"))
+	f.seedWithPayload(ctx, t, models.EventTypeAuthLoginFailed, base.Add(time.Minute), failed("admin@acme.com"))
+	f.seedWithPayload(ctx, t, models.EventTypeAuthLoginFailed, base.Add(2*time.Minute), failed("ghost@acme.com"))
+	f.seed(ctx, t, models.EventTypeAuthLoginSucceeded, &f.viewer.UID, base.Add(3*time.Minute), "203.0.113.7")
+	f.seed(ctx, t, models.EventTypeCheckCreated, &f.admin.UID, base.Add(4*time.Minute), "")
+
+	list := func(caller string, opts events.ListEventsOptions) *events.ListEventsResponse {
+		t.Helper()
+
+		opts.Size = 50
+		opts.Caller = events.Caller{UserUID: caller}
+		resp, err := f.svc.ListEvents(ctx, f.orgSlug, &opts)
+		r.NoError(err)
+
+		return resp
+	}
+
+	emails := func(resp *events.ListEventsResponse) []string {
+		out := []string{}
+		for _, item := range resp.Data {
+			if item.EventType == "auth.login_failed" {
+				email, _ := item.Payload["email"].(string)
+				out = append(out, email)
+			}
+		}
+
+		return out
+	}
+
+	// Member: own failed sign-in only, plus the non-auth row, never the
+	// successful sign-in nor the other attempts.
+	viewer := list(f.viewer.UID, events.ListEventsOptions{})
+	r.Equal([]string{"check.created", "auth.login_failed"}, typesOf(viewer))
+	r.Equal([]string{"Viewer@Acme.com"}, emails(viewer))
+	for _, item := range viewer.Data {
+		r.Nil(item.SourceIP)
+		r.Nil(item.TargetUserName, "the member-name hint is admin-only")
+	}
+
+	// No filter widens the member's view.
+	r.Equal([]string{"Viewer@Acme.com"},
+		emails(list(f.viewer.UID, events.ListEventsOptions{EventTypes: []string{"auth.login_failed"}})))
+	r.Equal([]string{"auth.login_failed"},
+		typesOf(list(f.viewer.UID, events.ListEventsOptions{EventTypePrefixes: []string{"auth"}})))
+	r.Empty(list(f.viewer.UID, events.ListEventsOptions{TargetSearch: strPtr("admin@acme.com")}).Data)
+	r.Empty(list(f.viewer.UID, events.ListEventsOptions{TargetSearch: strPtr("ghost@")}).Data)
+	r.Empty(list(f.viewer.UID, events.ListEventsOptions{ActorUID: &f.admin.UID, TargetSearch: strPtr("acme.com")}).Data)
+
+	// Admin: every attempt, with the tried member's name when there is one.
+	admin := list(f.admin.UID, events.ListEventsOptions{EventTypes: []string{"auth.login_failed"}})
+	r.ElementsMatch([]string{"Viewer@Acme.com", "admin@acme.com", "ghost@acme.com"}, emails(admin))
+
+	names := map[string]string{}
+	for _, item := range admin.Data {
+		email, _ := item.Payload["email"].(string)
+		if item.TargetUserName != nil {
+			names[email] = *item.TargetUserName
+		}
+	}
+
+	r.Equal(map[string]string{"Viewer@Acme.com": "Viewer Person", "admin@acme.com": "Admin Person"}, names)
+}
+
+// TestFailedSignInNameHintIsOrgScoped: a user who exists but is not a member
+// of this org gets no name hint, so the hint cannot reveal accounts of other
+// organizations.
+func TestFailedSignInNameHintIsOrgScoped(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	outsider := models.NewUser("outsider@acme.com")
+	outsider.Name = "Outsider Person"
+	r.NoError(f.db.CreateUser(ctx, outsider))
+
+	f.seedWithPayload(ctx, t, models.EventTypeAuthLoginFailed, time.Now().Add(-time.Hour),
+		models.JSONMap{"email": "outsider@acme.com", "target_name": "outsider@acme.com"})
+
+	resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size: 50, Caller: events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.Len(resp.Data, 1)
+	r.Nil(resp.Data[0].TargetUserName)
+}

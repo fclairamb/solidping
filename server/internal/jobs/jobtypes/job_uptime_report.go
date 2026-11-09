@@ -2,7 +2,9 @@ package jobtypes
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -120,6 +122,20 @@ func (r *UptimeReportJobRun) runSchedule(
 		return 0, nil
 	}
 
+	// Look the org up before claiming the period: a schedule whose org is gone
+	// must not consume a period (nor log a warning on every sweep).
+	org, err := jctx.DBService.GetOrganization(ctx, schedule.OrganizationUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			jctx.Logger.DebugContext(ctx, "Skipping uptime report for a missing organization",
+				"schedule_uid", schedule.UID, "organization_uid", schedule.OrganizationUID)
+
+			return 0, nil
+		}
+
+		return 0, fmt.Errorf("get organization: %w", err)
+	}
+
 	window, _ := uptimereport.Window(schedule, now)
 
 	// Duplicate-run suppression. Two replicas that both notice the same closed
@@ -134,11 +150,6 @@ func (r *UptimeReportJobRun) runSchedule(
 
 	if !claimed {
 		return 0, nil
-	}
-
-	org, err := jctx.DBService.GetOrganization(ctx, schedule.OrganizationUID)
-	if err != nil {
-		return 0, fmt.Errorf("get organization: %w", err)
 	}
 
 	// Guard B: a period that closed entirely before the org existed cannot

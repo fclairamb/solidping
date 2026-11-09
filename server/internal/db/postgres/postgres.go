@@ -589,6 +589,18 @@ func (s *Service) DeleteOrganization(ctx context.Context, uid string) error {
 		Where("uid = ?", uid).
 		Set("deleted_at = ?", time.Now()).
 		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Report schedules of a deleted organization would only be orphans.
+	_, err = s.db.NewUpdate().
+		Model((*models.ReportSchedule)(nil)).
+		Where("organization_uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Set("enabled = ?", false).
+		Set("updated_at = ?", time.Now()).
+		Exec(ctx)
 
 	return err
 }
@@ -4416,10 +4428,7 @@ func applyEventFilters(query *bun.SelectQuery, filter *models.ListEventsFilter) 
 	// Exclusions are ANDed on top and therefore cannot be argued away by any
 	// caller-supplied include filter — this is what makes "auth events are
 	// admin-only" hold for `?type=auth` as well as for an unfiltered listing.
-	for _, prefix := range filter.ExcludeEventTypePrefixes {
-		query = query.Where("event_type NOT LIKE ? ESCAPE ?",
-			models.EventTypeLikePattern(prefix), models.EventTypeLikeEscape)
-	}
+	query = applyEventExclusions(query, filter)
 
 	if filter.ActorType != nil {
 		query = query.Where("actor_type = ?", *filter.ActorType)
@@ -4439,6 +4448,40 @@ func applyEventFilters(query *bun.SelectQuery, filter *models.ListEventsFilter) 
 	query = applyEventTargetFilters(query, filter)
 
 	return query
+}
+
+// applyEventExclusions ANDs the hidden families onto the query. With
+// OwnFailedLoginEmail set, the exclusion becomes
+// `(NOT LIKE … AND NOT LIKE …) OR (auth.login_failed AND email = ?)`, wrapped
+// in its own AND group: the one exception a member gets (their own failed
+// sign-ins) stays an exception every other filter still narrows.
+func applyEventExclusions(query *bun.SelectQuery, filter *models.ListEventsFilter) *bun.SelectQuery {
+	if len(filter.ExcludeEventTypePrefixes) == 0 {
+		return query
+	}
+
+	exclude := func(group *bun.SelectQuery) *bun.SelectQuery {
+		for _, prefix := range filter.ExcludeEventTypePrefixes {
+			group = group.Where("event_type NOT LIKE ? ESCAPE ?",
+				models.EventTypeLikePattern(prefix), models.EventTypeLikeEscape)
+		}
+
+		return group
+	}
+
+	if filter.OwnFailedLoginEmail == "" {
+		return exclude(query)
+	}
+
+	return query.WhereGroup(" AND ", func(group *bun.SelectQuery) *bun.SelectQuery {
+		return group.
+			WhereGroup(" AND ", exclude).
+			WhereGroup(" OR ", func(own *bun.SelectQuery) *bun.SelectQuery {
+				return own.
+					Where("event_type = ?", models.EventTypeAuthLoginFailed).
+					Where("lower(payload->>'email') = lower(?)", filter.OwnFailedLoginEmail)
+			})
+	})
 }
 
 // applyEventTargetFilters folds the polymorphic target predicates onto the
@@ -7868,9 +7911,12 @@ func (s *Service) ListEnabledReportSchedules(ctx context.Context) ([]*models.Rep
 
 	err := s.db.NewSelect().
 		Model(&schedules).
-		Where("enabled = ?", true).
-		Where("deleted_at IS NULL").
-		Order("uid ASC").
+		// Schedules of a deleted organization are orphans: skip them.
+		Join("JOIN organizations AS o ON o.uid = report_schedule.organization_uid").
+		Where("report_schedule.enabled = ?", true).
+		Where("report_schedule.deleted_at IS NULL").
+		Where("o.deleted_at IS NULL").
+		Order("report_schedule.uid ASC").
 		Scan(ctx)
 
 	return schedules, err
