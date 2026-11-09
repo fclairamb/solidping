@@ -727,7 +727,7 @@ jobs:
 
   macos-service:
     name: macOS service
-    runs-on: macos-15
+    runs-on: macos-26
     needs: [changes]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     defaults:
