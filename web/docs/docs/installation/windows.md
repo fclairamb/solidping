@@ -103,8 +103,8 @@ solidping service install
 This registers a `SolidPing` service that starts with Windows and restarts
 after a failure. It also creates the data folder `C:\ProgramData\SolidPing`,
 readable only by `SYSTEM` and Administrators, since it holds your configuration
-and database (an existing folder is left as is). The service runs as
-`LocalSystem` from that folder, so the SQLite database and the logs land there:
+and database. The service runs as `LocalSystem` from that folder, so the SQLite
+database and the logs land there:
 
 ```
 C:\ProgramData\SolidPing\
@@ -142,6 +142,15 @@ solidping service uninstall    # stops and removes it, keeps C:\ProgramData\Soli
 pick another service name (to run two instances, for example). Pass the same
 `--name` to `start`, `stop` and `uninstall`.
 
+If the data folder already exists, `service install` only reuses it when it is
+still the way a previous install left it: a real folder (not a link or a
+junction), owned by `SYSTEM`, Administrators or you, readable only by `SYSTEM`
+and Administrators, with nothing inside owned by another account or opened to
+other users. Otherwise it stops with an error naming the problem. Any local
+user can create a folder under `C:\ProgramData` and would keep control of it,
+so delete the folder (after saving what you need from it) or pick another one
+with `--dir`, then run `service install` again.
+
 The service runs the `solidping.exe` that installed it. If you move that file,
 run `service uninstall` and `service install` again.
 
@@ -158,11 +167,13 @@ nssm remove SolidPing confirm
 solidping service install
 ```
 
-Then move your `config.yml` and, with SQLite, `solidping.db` (and
+Then copy your `config.yml` and, with SQLite, `solidping.db` (and
 `data\files\`, if any) from the old `AppDirectory` into
 `C:\ProgramData\SolidPing`, turn any environment variables you set with
 `AppEnvironmentExtra` into `config.yml` entries, and run
-`solidping service start`.
+`solidping service start`. Copy rather than move: a copy takes the access rules
+of the data folder, while a moved file keeps those of the old folder, which a
+later `service install` refuses if they let other users in.
 
 ## Configuration File
 
