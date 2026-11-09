@@ -102,11 +102,12 @@ type User struct {
 	// link, which is most of them. Stored as JSON so the shape can grow
 	// (another ad network's click id) without a migration.
 	SignupAttribution *SignupAttribution `bun:"signup_attribution,type:jsonb"`
-	// Preferences holds what the user picked for the server to follow when it
-	// writes to them: the language and timezone of their emails (spec
-	// 2026-10-21-01). Nil until the dashboard first reports them. Stored as
-	// JSON so a new preference does not need a migration. Validated in Go
-	// (internal/i18n), never by the database.
+	// Preferences holds what the user picked: the language and timezone the
+	// server writes their emails in (spec 2026-10-21-01), and dashboard
+	// settings that should follow them across browsers, like the availability
+	// window (spec 2026-11-09-02). Nil until the dashboard first reports them.
+	// Stored as JSON so a new preference does not need a migration. Validated
+	// in Go (internal/handlers/auth), never by the database.
 	Preferences  *UserPreferences `bun:"preferences,type:jsonb"`
 	LastActiveAt *time.Time       `bun:"last_active_at"`
 	CreatedAt    time.Time        `bun:"created_at,notnull,default:current_timestamp"`
@@ -151,12 +152,35 @@ type UserPreferences struct {
 	Locale string `json:"locale,omitempty"`
 	// Timezone is an IANA zone name, e.g. Europe/Paris.
 	Timezone string `json:"timezone,omitempty"`
+	// DashboardWindow is the trailing window of the dashboard's availability
+	// figures: one of the DashboardWindow* values. Empty means the default,
+	// DashboardWindow24h.
+	DashboardWindow string `json:"dashboardWindow,omitempty"`
+}
+
+// The windows the dashboard's availability selector offers (spec
+// 2026-11-09-02). They match the availability24h / availability7d /
+// availability30d fields of GET /checks/stats.
+const (
+	DashboardWindow24h = "24h"
+	DashboardWindow7d  = "7d"
+	DashboardWindow30d = "30d"
+)
+
+// IsDashboardWindow reports whether value is a window the dashboard offers.
+func IsDashboardWindow(value string) bool {
+	switch value {
+	case DashboardWindow24h, DashboardWindow7d, DashboardWindow30d:
+		return true
+	default:
+		return false
+	}
 }
 
 // IsEmpty reports whether no preference is set, so callers store NULL rather
 // than an empty object.
 func (p *UserPreferences) IsEmpty() bool {
-	return p == nil || (p.Locale == "" && p.Timezone == "")
+	return p == nil || (p.Locale == "" && p.Timezone == "" && p.DashboardWindow == "")
 }
 
 // IsEmpty reports whether nothing at all was captured, so callers can store a

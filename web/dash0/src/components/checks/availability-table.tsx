@@ -25,11 +25,12 @@ interface AvailabilityTableProps {
 // does no availability math.
 const PERIOD_ROWS: {
   token: string;
-  labelKey: "last1h" | "last24h" | "last30" | "last90" | "last365";
+  labelKey: "last1h" | "last24h" | "last7" | "last30" | "last90" | "last365";
   shortLabel: string;
 }[] = [
   { token: "1h", labelKey: "last1h", shortLabel: "1h" },
   { token: "24h", labelKey: "last24h", shortLabel: "24h" },
+  { token: "7d", labelKey: "last7", shortLabel: "7d" },
   { token: "30d", labelKey: "last30", shortLabel: "30d" },
   { token: "90d", labelKey: "last90", shortLabel: "90d" },
   { token: "365d", labelKey: "last365", shortLabel: "1y" },

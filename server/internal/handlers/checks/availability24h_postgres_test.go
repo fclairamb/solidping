@@ -24,7 +24,7 @@ import (
 const portAvailability24hPG = 15502
 
 // newAvailability24hPostgresDB boots a REAL embedded Postgres so the two
-// tier-aligned SQL aggregates behind GetOrgAvailability24h are exercised on
+// tier-aligned SQL aggregates behind GetOrgAvailability are exercised on
 // the production dialect — the CASE/SUM raw-tier query in particular is
 // exactly the kind of thing SQLite tolerates more loosely than Postgres.
 // Self-skips under -short (the default `make test` / CI mode) and on any
@@ -91,7 +91,7 @@ func TestGetCheckStatsAvailability24h_Postgres(t *testing.T) {
 			stats, err := svc.GetCheckStats(ctx, org.Slug)
 			r.NoError(err)
 
-			requireAvailability24hEqual(t, tc.wantPct, stats.Availability24h)
+			requireAvailabilityCase(t, tc, stats)
 		})
 	}
 }

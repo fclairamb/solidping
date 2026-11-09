@@ -94,6 +94,10 @@
     "allGreen": "Tous les systèmes opérationnels",
     "allGreenSub_one": "{{count}} sonde surveillée, {{availability}}% de disponibilité sur 24h",
     "allGreenSub_other": "{{count}} sondes surveillées, {{availability}}% de disponibilité sur 24h",
+    "allGreenSub_7d_one": "{{count}} sonde surveillée, {{availability}}% de disponibilité sur 7 jours",
+    "allGreenSub_7d_other": "{{count}} sondes surveillées, {{availability}}% de disponibilité sur 7 jours",
+    "allGreenSub_30d_one": "{{count}} sonde surveillée, {{availability}}% de disponibilité sur 30 jours",
+    "allGreenSub_30d_other": "{{count}} sondes surveillées, {{availability}}% de disponibilité sur 30 jours",
     "allGreenSubNoData_one": "{{count}} sonde surveillée, pas encore de données de disponibilité",
     "allGreenSubNoData_other": "{{count}} sondes surveillées, pas encore de données de disponibilité",
     "issues": "Problèmes détectés",
@@ -104,6 +108,8 @@
     "warning": "Sondes dégradées",
     "warningSub": "Délais d'attente détectés sur {{count}} sondes",
     "slaOperational": "SLA 24 h opérationnel",
+    "slaOperational_7d": "SLA 7 jours opérationnel",
+    "slaOperational_30d": "SLA 30 jours opérationnel",
     "activeOutage": "Panne active",
     "degradedPerformance": "Performance dégradée"
   },
@@ -122,7 +128,11 @@
     },
     "availabilityNoDataSub": "Pas encore de données",
     "availability": "Disponibilité 24 h",
+    "availability_7d": "Disponibilité 7 jours",
+    "availability_30d": "Disponibilité 30 jours",
     "availabilitySub": "Dernières 24 h, tous les checks",
+    "availabilitySub_7d": "7 derniers jours, tous les checks",
+    "availabilitySub_30d": "30 derniers jours, tous les checks",
     "totalEndpoints": "{{count}} points de contrôle au total",
     "badgeNeedsAction": "Action requise"
   },
@@ -155,5 +165,11 @@
     "star": "Mettre une étoile sur GitHub",
     "later": "Pas maintenant",
     "close": "Fermer"
+  },
+  "window": {
+    "label": "Période de disponibilité",
+    "24h": "24 h",
+    "7d": "7 jours",
+    "30d": "30 jours"
   }
 }

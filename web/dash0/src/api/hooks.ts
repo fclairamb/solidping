@@ -886,6 +886,10 @@ export interface CheckStats {
    * data", never as a fabricated 100.
    */
   availability24h: number | null;
+  /** Same as availability24h over the trailing 7 days. */
+  availability7d: number | null;
+  /** Same as availability24h over the trailing 30 days. */
+  availability30d: number | null;
   /** Creation time of the oldest enabled check; null when there is none. */
   oldestEnabledCheckCreatedAt: string | null;
 }

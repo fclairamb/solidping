@@ -28,6 +28,10 @@ type availability24hCase struct {
 	// wantPct is nil to mean "expect Availability24h == nil" (no countable
 	// data in the window) — never a fabricated percentage.
 	wantPct *float64
+	// want7d and want30d are the same expectation for Availability7d and
+	// Availability30d (spec 2026-11-09-02).
+	want7d  *float64
+	want30d *float64
 }
 
 func ptrF64(f float64) *float64 { return &f }
@@ -67,10 +71,9 @@ func seedHourResult(
 	require.NoError(t, dbSvc.CreateResult(ctx, row))
 }
 
-// seedDayResult writes one `day` rollup row — used only to prove the KPI
-// never queries the day tier (see the Proposal's reasoning: a day bucket for
-// "today" never exists, and the query must not accidentally pick one up if
-// it did).
+// seedDayResult writes one `day` rollup row. With the default retention, day
+// rows only exist past the 7-day hour retention, so they matter to the 7d and
+// 30d windows.
 func seedDayResult(
 	ctx context.Context, t *testing.T, dbSvc db.Service,
 	orgUID, checkUID string, at time.Time, total, success int,
@@ -98,6 +101,8 @@ func availability24hCases() []availability24hCase {
 			name:    "empty org has no countable data in the window -> null",
 			setup:   func(context.Context, *testing.T, db.Service, string, string, time.Time) {},
 			wantPct: nil,
+			want7d:  nil,
+			want30d: nil,
 		},
 		{
 			name: "raw-only org (young org): up/down/warning mix",
@@ -110,6 +115,8 @@ func availability24hCases() []availability24hCase {
 			},
 			// success = up(2) + warning(1) = 3; total = 4 -> 75%.
 			wantPct: ptrF64(75),
+			want7d:  ptrF64(75),
+			want30d: ptrF64(75),
 		},
 		{
 			name: "hour+raw mix combines both tiers in one figure",
@@ -121,6 +128,8 @@ func availability24hCases() []availability24hCase {
 			},
 			// success = 95+1=96; total = 100+2=102.
 			wantPct: ptrF64(96.0 / 102.0 * 100),
+			want7d:  ptrF64(96.0 / 102.0 * 100),
+			want30d: ptrF64(96.0 / 102.0 * 100),
 		},
 		{
 			// The headline proof from the spec's Testing section: an org
@@ -134,6 +143,8 @@ func availability24hCases() []availability24hCase {
 				seedRawResult(ctx, t, dbSvc, orgUID, checkUID, models.ResultStatusAbandoned, now.Add(-3*time.Hour))
 			},
 			wantPct: nil,
+			want7d:  nil,
+			want30d: nil,
 		},
 		{
 			name: "warning counts as up",
@@ -142,6 +153,8 @@ func availability24hCases() []availability24hCase {
 				seedRawResult(ctx, t, dbSvc, orgUID, checkUID, models.ResultStatusWarning, now.Add(-1*time.Hour))
 			},
 			wantPct: ptrF64(100),
+			want7d:  ptrF64(100),
+			want30d: ptrF64(100),
 		},
 		{
 			name: "multi-region hour rows are summed together, not kept separate",
@@ -152,26 +165,52 @@ func availability24hCases() []availability24hCase {
 				seedHourResult(ctx, t, dbSvc, orgUID, checkUID, now.Add(-10*time.Hour), 50, 25, &us)
 			},
 			wantPct: ptrF64(75),
+			want7d:  ptrF64(75),
+			want30d: ptrF64(75),
 		},
 		{
-			name: "rows older than the trailing 24h window are excluded",
+			name: "rows older than the trailing 24h window are excluded from it, not from 7d",
 			setup: func(ctx context.Context, t *testing.T, dbSvc db.Service, orgUID, checkUID string, now time.Time) {
 				t.Helper()
 				seedRawResult(ctx, t, dbSvc, orgUID, checkUID, models.ResultStatusDown, now.Add(-25*time.Hour))
 				seedRawResult(ctx, t, dbSvc, orgUID, checkUID, models.ResultStatusUp, now.Add(-1*time.Hour))
 			},
 			wantPct: ptrF64(100),
+			want7d:  ptrF64(50),
+			want30d: ptrF64(50),
 		},
 		{
-			name: "a day rollup inside the window is ignored: the KPI never queries the day tier",
+			name: "hour rows older than 24h count in the 7d window",
 			setup: func(ctx context.Context, t *testing.T, dbSvc db.Service, orgUID, checkUID string, now time.Time) {
 				t.Helper()
-				// If this leaked in, the (near-)0% day bucket would swamp
-				// the one good raw row.
-				seedDayResult(ctx, t, dbSvc, orgUID, checkUID, now.Add(-2*time.Hour), 1000, 0)
+				seedHourResult(ctx, t, dbSvc, orgUID, checkUID, now.Add(-3*24*time.Hour), 100, 80, nil)
 				seedRawResult(ctx, t, dbSvc, orgUID, checkUID, models.ResultStatusUp, now.Add(-1*time.Hour))
 			},
 			wantPct: ptrF64(100),
+			want7d:  ptrF64(81.0 / 101.0 * 100),
+			want30d: ptrF64(81.0 / 101.0 * 100),
+		},
+		{
+			name: "a day rollup older than 7d counts in the 30d window only",
+			setup: func(ctx context.Context, t *testing.T, dbSvc db.Service, orgUID, checkUID string, now time.Time) {
+				t.Helper()
+				seedDayResult(ctx, t, dbSvc, orgUID, checkUID, now.Add(-10*24*time.Hour), 100, 50)
+				seedRawResult(ctx, t, dbSvc, orgUID, checkUID, models.ResultStatusUp, now.Add(-1*time.Hour))
+			},
+			wantPct: ptrF64(100),
+			want7d:  ptrF64(100),
+			want30d: ptrF64(51.0 / 101.0 * 100),
+		},
+		{
+			name: "rows older than 30 days are excluded from every window",
+			setup: func(ctx context.Context, t *testing.T, dbSvc db.Service, orgUID, checkUID string, now time.Time) {
+				t.Helper()
+				seedDayResult(ctx, t, dbSvc, orgUID, checkUID, now.Add(-31*24*time.Hour), 1000, 0)
+				seedRawResult(ctx, t, dbSvc, orgUID, checkUID, models.ResultStatusUp, now.Add(-1*time.Hour))
+			},
+			wantPct: ptrF64(100),
+			want7d:  ptrF64(100),
+			want30d: ptrF64(100),
 		},
 	}
 }
@@ -181,15 +220,29 @@ func availability24hCases() []availability24hCase {
 // where "no data" was expected fails loudly rather than comparing floats.
 func requireAvailability24hEqual(t *testing.T, want *float64, got *float64) {
 	t.Helper()
+	requireAvailabilityEqual(t, "availability24h", want, got)
+}
+
+// requireAvailabilityEqual is requireAvailability24hEqual for any field.
+func requireAvailabilityEqual(t *testing.T, field string, want *float64, got *float64) {
+	t.Helper()
 	r := require.New(t)
 
 	if want == nil {
-		r.Nil(got, "expected null availability24h (no countable data), got a fabricated value: %v", got)
+		r.Nil(got, "expected null %s (no countable data), got a fabricated value: %v", field, got)
 		return
 	}
 
-	r.NotNil(got, "expected a real availability24h value, got null")
-	r.InDelta(*want, *got, 0.01)
+	r.NotNil(got, "expected a real %s value, got null", field)
+	r.InDelta(*want, *got, 0.01, field)
+}
+
+// requireAvailabilityCase checks every availability field of stats against tc.
+func requireAvailabilityCase(t *testing.T, tc availability24hCase, stats checks.CheckStatsResponse) {
+	t.Helper()
+	requireAvailability24hEqual(t, tc.wantPct, stats.Availability24h)
+	requireAvailabilityEqual(t, "availability7d", tc.want7d, stats.Availability7d)
+	requireAvailabilityEqual(t, "availability30d", tc.want30d, stats.Availability30d)
 }
 
 // TestGetCheckStatsAvailability24h_SQLite is the table-driven suite on
@@ -218,7 +271,7 @@ func TestGetCheckStatsAvailability24h_SQLite(t *testing.T) {
 			stats, err := svc.GetCheckStats(ctx, org.Slug)
 			r.NoError(err)
 
-			requireAvailability24hEqual(t, tc.wantPct, stats.Availability24h)
+			requireAvailabilityCase(t, tc, stats)
 		})
 	}
 }
@@ -237,4 +290,6 @@ func TestGetCheckStatsAvailability24hIsNullOnFreshOrg(t *testing.T) {
 	stats, err := svc.GetCheckStats(ctx, org.Slug)
 	r.NoError(err)
 	r.Nil(stats.Availability24h)
+	r.Nil(stats.Availability7d)
+	r.Nil(stats.Availability30d)
 }

@@ -99,6 +99,7 @@ test.describe("Availability Table", () => {
     await mockAvailability(page, [
       makePeriod("1h"),
       makePeriod("24h"),
+      makePeriod("7d"),
       makePeriod("30d"),
       makePeriod("90d"),
       makePeriod("365d"),
@@ -134,10 +135,11 @@ test.describe("Availability Table", () => {
     const page = authenticatedPage;
 
     // A check older than 365 days: each window is genuinely distinct, so all
-    // four rows render and nothing collapses.
+    // six rows render and nothing collapses.
     await mockAvailability(page, [
       makePeriod("1h", { partial: false, availabilityPct: 99.99, incidents: { count: 0 } }),
       makePeriod("24h", { partial: false, availabilityPct: 99.5, incidents: { count: 0 } }),
+      makePeriod("7d", { partial: false, availabilityPct: 99, incidents: { count: 0 } }),
       makePeriod("30d", { partial: false, availabilityPct: 98, incidents: { count: 0 } }),
       makePeriod("90d", { partial: false, availabilityPct: 97, incidents: { count: 0 } }),
       makePeriod("365d", { partial: false, availabilityPct: 95, incidents: { count: 0 } }),
@@ -148,10 +150,11 @@ test.describe("Availability Table", () => {
     const table = availabilityTable(page);
     await expect(table).toBeVisible({ timeout: 10000 });
 
-    await expect(table.locator("tbody tr")).toHaveCount(5);
+    await expect(table.locator("tbody tr")).toHaveCount(6);
     await expect(table.getByTestId("availability-row-label")).toHaveText([
       "Last hour",
       "Last 24 hours",
+      "Last 7 days",
       "Last 30 days",
       "Last 90 days",
       "Last 365 days",
@@ -174,6 +177,7 @@ test.describe("Availability Table", () => {
     await mockAvailability(page, [
       makePeriod("1h", { partial: false, availabilityPct: 100, downtimeSeconds: 0, incidents: { count: 0 } }),
       makePeriod("24h", { partial: false, availabilityPct: 100, downtimeSeconds: 0, incidents: { count: 0 } }),
+      makePeriod("7d", { partial: false, availabilityPct: 100, downtimeSeconds: 0, incidents: { count: 0 } }),
       makePeriod("30d", { partial: false, availabilityPct: 100, downtimeSeconds: 0, incidents: { count: 0 } }),
       makePeriod("90d", { partial: false, availabilityPct: 100, downtimeSeconds: 0, incidents: { count: 0 } }),
       makePeriod("365d", { partial: false, availabilityPct: 100, downtimeSeconds: 0, incidents: { count: 0 } }),
