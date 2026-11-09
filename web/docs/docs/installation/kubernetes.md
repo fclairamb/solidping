@@ -371,7 +371,7 @@ The SolidPing image is distroless and ships no browser. To run
             - name: SP_CHECKERS_BROWSER_CDP_URL
               value: "ws://127.0.0.1:9222"
         - name: browser
-          image: chromedp/headless-shell:157.0.8103.27
+          image: chromedp/headless-shell:158.0.8127.18
           args:
             - --remote-debugging-address=0.0.0.0
             - --remote-debugging-port=9222
