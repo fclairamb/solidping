@@ -25,7 +25,7 @@ At any moment, the schedule resolves to exactly one on-call user by walking the 
 
 ### Overrides
 
-Need someone to cover a shift? Add a time-bounded **override** that temporarily replaces the scheduled user between a start and end time, with an optional reason. Overrides take precedence over the normal rotation.
+Need someone to cover a shift? Add a time-bounded **override** that temporarily replaces the scheduled user between a start and end time, with an optional reason. Overrides take precedence over the normal rotation. Adding or removing an override is recorded in the [audit log](./audit-log.md), with who made the change.
 
 ### iCal Feed
 
