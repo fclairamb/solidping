@@ -31,13 +31,12 @@ const defaultCheckStatsTTL = time.Minute
 
 // The trailing windows the availability fields are computed over: 24h for
 // Availability24h (spec 2026-08-26-09), 7d and 30d for the dashboard's window
-// selector (spec 2026-11-09-02). One entry per field, in the order
-// GetCheckStats assigns them.
-var availabilityWindows = []time.Duration{
-	24 * time.Hour,
-	7 * 24 * time.Hour,
-	30 * 24 * time.Hour,
-}
+// selector (spec 2026-11-09-02).
+const (
+	availability24hWindow = 24 * time.Hour
+	availability7dWindow  = 7 * 24 * time.Hour
+	availability30dWindow = 30 * 24 * time.Hour
+)
 
 // CheckStatsResponse is the org-wide check aggregate served by
 // GET /api/v1/orgs/{org}/checks/stats.
@@ -161,7 +160,9 @@ func (s *Service) GetCheckStats(ctx context.Context, orgSlug string) (CheckStats
 
 	now := s.now()
 
-	availCounts, err := s.db.GetOrgAvailability(ctx, org.UID, now, availabilityWindows)
+	availCounts, err := s.db.GetOrgAvailability(ctx, org.UID, now, []time.Duration{
+		availability24hWindow, availability7dWindow, availability30dWindow,
+	})
 	if err != nil {
 		return CheckStatsResponse{}, err
 	}
@@ -171,7 +172,7 @@ func (s *Service) GetCheckStats(ctx context.Context, orgSlug string) (CheckStats
 	stats.Availability7d = availabilityPct(availCounts[1])
 	stats.Availability30d = availabilityPct(availCounts[2])
 
-	s.checkStats.put(org.UID, stats)
+	s.checkStats.put(org.UID, &stats)
 
 	return stats, nil
 }
@@ -260,8 +261,8 @@ func (c *checkStatsCache) get(orgUID string, ttl time.Duration) (CheckStatsRespo
 // put stores a freshly computed snapshot for the org. The ByStatus map is
 // copied on the way in as well as on the way out, so the caller that triggered
 // the miss cannot mutate the entry it just seeded.
-func (c *checkStatsCache) put(orgUID string, stats CheckStatsResponse) {
-	stored := stats
+func (c *checkStatsCache) put(orgUID string, stats *CheckStatsResponse) {
+	stored := *stats
 	stored.ByStatus = make(map[string]int, len(stats.ByStatus))
 
 	for k, v := range stats.ByStatus {

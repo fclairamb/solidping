@@ -164,7 +164,7 @@ test.describe("Availability Table", () => {
     await expect(table.getByTestId("availability-monitored")).toHaveCount(0);
 
     const values = table.getByTestId("availability-value");
-    await expect(values).toHaveCount(5);
+    await expect(values).toHaveCount(6);
     await expect(values.first()).toHaveText("99.99%");
     await expect(values.last()).toHaveText("95.0%");
   });
