@@ -780,6 +780,11 @@ export interface Event {
    */
   sourceIp?: string;
   userAgent?: string;
+  /**
+   * auth.login_failed only: the name of the org member whose account was
+   * tried. Admin/owner only; absent when the typed email matches no member.
+   */
+  targetUserName?: string;
   checkUid?: string;
   incidentUid?: string;
   payload?: Record<string, unknown>;
