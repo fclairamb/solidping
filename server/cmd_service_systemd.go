@@ -52,11 +52,14 @@ func checkSystemdPath(p string) error {
 	return nil
 }
 
+// systemdSystemDir is the folder of the system units, a variable for the tests.
+var systemdSystemDir = "/etc/systemd/system" //nolint:gochecknoglobals // seam replaced by the tests
+
 // systemdUnitPath is where install writes the unit: the system folder for root,
 // the user's folder ($XDG_CONFIG_HOME/systemd/user) otherwise.
 func systemdUnitPath(root bool, configHome, name string) string {
 	if root {
-		return path.Join("/etc/systemd/system", name+".service")
+		return path.Join(systemdSystemDir, name+".service")
 	}
 
 	return path.Join(configHome, "systemd/user", name+".service")

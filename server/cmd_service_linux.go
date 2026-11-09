@@ -25,6 +25,21 @@ var (
 		"use `solidping serve` to run SolidPing in a terminal")
 )
 
+// Seams for the system calls install and the lifecycle commands make, replaced
+// by the tests so they run unprivileged and without systemd.
+var (
+	geteuid        = os.Geteuid    //nolint:gochecknoglobals // seam
+	executablePath = os.Executable //nolint:gochecknoglobals // seam
+	lookupUser     = user.Lookup   //nolint:gochecknoglobals // seam
+	chownPath      = os.Chown      //nolint:gochecknoglobals // seam
+	// systemdRunPath only exists when systemd is the init system (sd_booted(3)).
+	systemdRunPath = "/run/systemd/system" //nolint:gochecknoglobals // seam
+	// runCommand runs a command and returns its combined output.
+	runCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) { //nolint:gochecknoglobals // seam
+		return exec.CommandContext(ctx, name, args...).CombinedOutput()
+	}
+)
+
 // systemdJob locates the unit of name for the current user: a system unit when
 // run as root (sudo), a user unit otherwise.
 type systemdJob struct {
@@ -38,7 +53,7 @@ func newSystemdJob(name string) (systemdJob, error) {
 		return systemdJob{}, err
 	}
 
-	root := os.Geteuid() == 0
+	root := geteuid() == 0
 
 	configHome := ""
 	if !root {
@@ -74,7 +89,7 @@ func (j systemdJob) managerArgs(args ...string) []string {
 func (j systemdJob) systemctl(ctx context.Context, args ...string) error {
 	args = j.managerArgs(args...)
 
-	out, err := exec.CommandContext(ctx, "systemctl", args...).CombinedOutput()
+	out, err := runCommand(ctx, "systemctl", args...)
 	if err != nil {
 		return fmt.Errorf("systemctl %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
@@ -94,12 +109,11 @@ func (j systemdJob) installed() error {
 }
 
 func serviceInstall(ctx context.Context, name, dir string) error {
-	// sd_booted(3): the folder only exists when systemd is the init system.
-	if _, err := os.Stat("/run/systemd/system"); err != nil {
+	if _, err := os.Stat(systemdRunPath); err != nil {
 		return errNoSystemd
 	}
 
-	exe, err := os.Executable()
+	exe, err := executablePath()
 	if err != nil {
 		return fmt.Errorf("locate solidping: %w", err)
 	}
@@ -189,16 +203,16 @@ func serviceOwner(ctx context.Context, job systemdJob, exe, absDir string) (int,
 // ensureServiceUser returns the uid of systemdServiceUser, creating it as a
 // system account (no login, no home created) when it does not exist.
 func ensureServiceUser(ctx context.Context, absDir string) (int, error) {
-	account, err := user.Lookup(systemdServiceUser)
+	account, err := lookupUser(systemdServiceUser)
 	if errors.As(err, new(user.UnknownUserError)) {
-		out, addErr := exec.CommandContext(ctx, "useradd", "--system", "--user-group", "--no-create-home",
-			"--home-dir", absDir, "--shell", "/usr/sbin/nologin", systemdServiceUser).CombinedOutput()
+		out, addErr := runCommand(ctx, "useradd", "--system", "--user-group", "--no-create-home",
+			"--home-dir", absDir, "--shell", "/usr/sbin/nologin", systemdServiceUser)
 		if addErr != nil {
 			return 0, fmt.Errorf("create user %s: %w: %s", systemdServiceUser, addErr, strings.TrimSpace(string(out)))
 		}
 
 		_, _ = fmt.Fprintf(os.Stdout, "Created system user %q.\n", systemdServiceUser)
-		account, err = user.Lookup(systemdServiceUser)
+		account, err = lookupUser(systemdServiceUser)
 	}
 
 	if err != nil {
@@ -260,7 +274,7 @@ func createSystemdServiceDir(dir string, owner int) error {
 
 	if owner != -1 {
 		// -1 keeps the group: root's, which the folder mode shuts out anyway.
-		if err := os.Chown(dir, owner, -1); err != nil {
+		if err := chownPath(dir, owner, -1); err != nil {
 			return fmt.Errorf("hand data folder %s to %s: %w", dir, systemdServiceUser, err)
 		}
 	}
