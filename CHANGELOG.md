@@ -5,30 +5,26 @@
 
 ### Features
 
-* dashboard glance strips, failed sign-in account names, log noise fixes ([#824](https://github.com/fclairamb/solidping/issues/824)) ([659c52c](https://github.com/fclairamb/solidping/commit/659c52c6c90e5e7a4b5eb483f473869fa1cb0d87))
+* **server:** run as a native service on every platform: Windows, no NSSM ([#802](https://github.com/fclairamb/solidping/issues/802)) ([c66c947](https://github.com/fclairamb/solidping/commit/c66c9474bee5ad93115a5a00b27b3f5ccfc7a2cf)), macOS launchd ([#811](https://github.com/fclairamb/solidping/issues/811)) ([c6612ea](https://github.com/fclairamb/solidping/commit/c6612eaf50c2106127581b35c2198270f03dfac8)) and Linux systemd ([#819](https://github.com/fclairamb/solidping/issues/819)) ([8a0cb2f](https://github.com/fclairamb/solidping/commit/8a0cb2fb56d474017bdb8c49a02cce98a3f77d57))
 * **dashboard:** 24h / 7d / 30d availability window, saved per user ([#821](https://github.com/fclairamb/solidping/issues/821)) ([283a28e](https://github.com/fclairamb/solidping/commit/283a28e29a1c82acf96b23b48750e24ce17a4f6b))
-* **mcp:** sharpen tool descriptions for Glama scoring ([#825](https://github.com/fclairamb/solidping/issues/825)) ([ca305f1](https://github.com/fclairamb/solidping/commit/ca305f112118a3b29e5ed675a3342e835803741e))
-* **server:** run as a native Linux systemd service ([#819](https://github.com/fclairamb/solidping/issues/819)) ([8a0cb2f](https://github.com/fclairamb/solidping/commit/8a0cb2fb56d474017bdb8c49a02cce98a3f77d57))
-* **server:** run as a native macOS launchd service ([#811](https://github.com/fclairamb/solidping/issues/811)) ([c6612ea](https://github.com/fclairamb/solidping/commit/c6612eaf50c2106127581b35c2198270f03dfac8))
-* **server:** run as a native Windows service, no NSSM ([#802](https://github.com/fclairamb/solidping/issues/802)) ([c66c947](https://github.com/fclairamb/solidping/commit/c66c9474bee5ad93115a5a00b27b3f5ccfc7a2cf))
+* **dashboard:** glance strips, failed sign-in account names and quieter logs ([#824](https://github.com/fclairamb/solidping/issues/824)) ([659c52c](https://github.com/fclairamb/solidping/commit/659c52c6c90e5e7a4b5eb483f473869fa1cb0d87))
 * **telegram:** explicit /support mode instead of capturing every message ([#820](https://github.com/fclairamb/solidping/issues/820)) ([571607e](https://github.com/fclairamb/solidping/commit/571607e68b4e3246d92c228105f317e0985ec29f))
+* **mcp:** sharper tool descriptions ([#825](https://github.com/fclairamb/solidping/issues/825)) ([ca305f1](https://github.com/fclairamb/solidping/commit/ca305f112118a3b29e5ed675a3342e835803741e))
 
 
 ### Bug Fixes
 
 * **auth:** admit by email address only when the email is verified ([#818](https://github.com/fclairamb/solidping/issues/818)) ([91992fe](https://github.com/fclairamb/solidping/commit/91992fe51818e6fdb76b3bab627acd6d99c15c68))
-* batch of production-log and Slack issues ([#808](https://github.com/fclairamb/solidping/issues/808)) ([580d09c](https://github.com/fclairamb/solidping/commit/580d09c7f1d0fe1a45b4b9b690b93ab091149d66))
-* **deps:** update github.com/dop251/goja digest to d6eaa50 ([#800](https://github.com/fclairamb/solidping/issues/800)) ([60b7443](https://github.com/fclairamb/solidping/commit/60b74435aa6704d1959efb464ad9c565779c9b35))
-* **deps:** update github.com/dop251/goja digest to d8dfb4d ([#810](https://github.com/fclairamb/solidping/issues/810)) ([e11b926](https://github.com/fclairamb/solidping/commit/e11b9262b8c03c705d0b0f36b1a9e7661e176f02))
-* **deps:** update go dependencies (non-major) ([#806](https://github.com/fclairamb/solidping/issues/806)) ([1c59927](https://github.com/fclairamb/solidping/commit/1c59927329a3d440bb00771caf11daae2a820f21))
-* **deps:** update go dependencies (non-major) ([#822](https://github.com/fclairamb/solidping/issues/822)) ([ec0aebf](https://github.com/fclairamb/solidping/commit/ec0aebf72a1a217ac271280c259331ed9837de69))
-* **deps:** update module github.com/aws/aws-sdk-go-v2/credentials to v1.20.17 ([#823](https://github.com/fclairamb/solidping/issues/823)) ([27efc51](https://github.com/fclairamb/solidping/commit/27efc515b738c2388c4143c6ae8e34a45597f17c))
-* **deps:** update module github.com/crewjam/saml to v0.6.3 ([#807](https://github.com/fclairamb/solidping/issues/807)) ([0f06336](https://github.com/fclairamb/solidping/commit/0f063365684cd121af112d8d020cb9f261b37e73))
-* **deps:** update module github.com/wneessen/go-mail to v0.8.2 ([#812](https://github.com/fclairamb/solidping/issues/812)) ([3670206](https://github.com/fclairamb/solidping/commit/367020698f91ba272c556ba4b9893ffda6f47122))
+* **server:** refuse a pre-existing Windows service data folder others control ([#817](https://github.com/fclairamb/solidping/issues/817)) ([b1832b5](https://github.com/fclairamb/solidping/commit/b1832b5aa1ef2822781d4033c7756675c6eb7161))
 * **oncall:** record on-call override changes in the audit log ([#816](https://github.com/fclairamb/solidping/issues/816)) ([4561f41](https://github.com/fclairamb/solidping/commit/4561f4126ad64c690e685affee181fc18622b442))
 * serve robots.txt, indexable on solidping.io only ([#809](https://github.com/fclairamb/solidping/issues/809)) ([3512833](https://github.com/fclairamb/solidping/commit/351283309eb448241c39313758ecb4f62833f9ed))
-* **server:** refuse a pre-existing Windows service data folder others control ([#817](https://github.com/fclairamb/solidping/issues/817)) ([b1832b5](https://github.com/fclairamb/solidping/commit/b1832b5aa1ef2822781d4033c7756675c6eb7161))
 * **vendorstatus:** drop datadog and atlassian from the catalog ([#814](https://github.com/fclairamb/solidping/issues/814)) ([d3397c5](https://github.com/fclairamb/solidping/commit/d3397c5974c178a7114438579b9b22fa6288f725))
+* batch of production-log and Slack issues ([#808](https://github.com/fclairamb/solidping/issues/808)) ([580d09c](https://github.com/fclairamb/solidping/commit/580d09c7f1d0fe1a45b4b9b690b93ab091149d66))
+
+
+### Dependencies
+
+* **deps:** Go dependency updates: goja ([#800](https://github.com/fclairamb/solidping/issues/800), [#810](https://github.com/fclairamb/solidping/issues/810)), crewjam/saml v0.6.3 ([#807](https://github.com/fclairamb/solidping/issues/807)), go-mail v0.8.2 ([#812](https://github.com/fclairamb/solidping/issues/812)), aws-sdk-go-v2/credentials v1.20.17 ([#823](https://github.com/fclairamb/solidping/issues/823)) and non-major updates ([#806](https://github.com/fclairamb/solidping/issues/806), [#822](https://github.com/fclairamb/solidping/issues/822))
 
 ## [0.44.3](https://github.com/fclairamb/solidping/compare/v0.44.2...v0.44.3) (2026-11-07)
 
