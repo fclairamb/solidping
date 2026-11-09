@@ -3742,6 +3742,92 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/availability/buckets:
+    get:
+      tags: [Results]
+      summary: Bucketed availability for several checks of an org in one call
+      description: >
+        Same engine and cell semantics as
+        /api/v1/orgs/{org}/checks/{check}/availability/buckets, for a list of
+        checks at once (the dashboard's "Checks at a glance" 24h strips). Reads
+        raw, hour and day tiers, so a trailing window is filled even though its
+        probes have not been rolled up yet. UIDs that do not belong to the
+        organization are ignored.
+      operationId: getOrgAvailabilityBuckets
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: from
+          in: query
+          required: true
+          description: Window start (inclusive), RFC3339.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          description: Window end (exclusive), RFC3339. Must be after `from`.
+          schema:
+            type: string
+            format: date-time
+        - name: bucket
+          in: query
+          required: false
+          description: >
+            Cell width, in seconds (e.g. 3600) or as a Go duration (e.g. 1h).
+            A whole positive multiple of one hour; at most 200 cells.
+          schema:
+            type: string
+          example: "3600"
+        - name: checks
+          in: query
+          required: true
+          description: Comma-separated check UIDs, at most 100.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bucketed availability keyed by check UID
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, bucketSeconds, windowStart, windowEnd]
+                properties:
+                  data:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      required: [buckets]
+                      properties:
+                        buckets:
+                          type: array
+                          items:
+                            $ref: "#/components/schemas/AvailabilityBucket"
+                        latestDurationMs:
+                          type: number
+                          description: Average response time of the newest cell that has one.
+                  bucketSeconds:
+                    type: integer
+                  windowStart:
+                    type: string
+                    format: date-time
+                  windowEnd:
+                    type: string
+                    format: date-time
+        "400":
+          description: Invalid window or bucket, or more than 100 checks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/checks/{check}/results/{uid}:
     get:
       tags: [Results]
@@ -13637,6 +13723,9 @@ components:
             public status page and the badge uptime bar use, including the
             small-bucket guard (a cell with exactly one failed sample is never
             "down").
+        avgDurationMs:
+          type: number
+          description: Mean response time of the cell's probes; omitted when none carried one.
 
     AvailabilityPeriod:
       type: object

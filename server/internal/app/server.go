@@ -1583,6 +1583,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// that one speaks trailing-window calendar tokens with a tz and no from/to at
 	// all, and is capped at 12 periods (spec 2026-08-26-10).
 	orgChecksAvail.GET("/buckets", availabilityHandler.GetAvailabilityBuckets)
+	// Org-level bucketed availability for several checks at once (the dashboard
+	// glance card's 24h strips; spec 2026-11-09-02).
+	orgGroup("/orgs/:org/availability").GET("/buckets", availabilityHandler.GetOrgAvailabilityBuckets)
 
 	// Incidents routes (authentication required)
 	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime)

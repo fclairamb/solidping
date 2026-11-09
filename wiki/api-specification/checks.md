@@ -289,6 +289,15 @@ Get one result of a check by uid, with the full payload
 ### GET /api/v1/orgs/:org/checks/:check/availability
 Availability (uptime ratio) for a check over a window. Auth: required
 
+### GET /api/v1/orgs/:org/availability/buckets
+Bucketed availability for **several checks** in one call (dashboard "Checks at a
+glance" 24h strips). Auth: required. Query: `from`, `to` (RFC3339), `bucket`
+(seconds or Go duration, whole hours), `checks` (comma-separated UIDs, max 100,
+else 400; UIDs of other orgs are ignored). Response:
+`{ data: { <checkUid>: { buckets: [cell…], latestDurationMs? } }, bucketSeconds,
+windowStart, windowEnd }`; cells are the same as the per-check route plus
+`avgDurationMs`. Reads raw + hour + day tiers, so the trailing 24 h is filled.
+
 ### GET /api/v1/orgs/:org/checks/:check/availability/buckets
 Bucketed availability over an **arbitrary** window — the data behind the check
 detail chart's availability strip. Auth: required
