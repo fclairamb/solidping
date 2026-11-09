@@ -200,3 +200,48 @@ func BuildGroupNotSupportedHTML() string {
 func BuildUnknownCommandHTML() string {
 	return "I don't know that command.\n\n" + BuildHelpHTML()
 }
+
+// BuildSupportStartedHTML confirms that the chat entered support mode. It says
+// a person answers, in this chat, and how to leave: without the last part the
+// mode would feel like a trap the person cannot get out of.
+func BuildSupportStartedHTML() string {
+	return "<b>💬 You are talking to the SolidPing team</b>\n\n" +
+		"Write your message here: a person will answer in this chat. " +
+		"Send /done when you are finished."
+}
+
+// BuildSupportAlreadyOpenHTML is the answer to a bare /support while the chat is
+// already in support mode.
+func BuildSupportAlreadyOpenHTML() string {
+	return "You are already talking to the SolidPing team: just write your message here. " +
+		"Send /done when you are finished."
+}
+
+// BuildSupportClosedHTML confirms that the chat left support mode.
+func BuildSupportClosedHTML() string {
+	return "<b>Support conversation closed</b>\n\n" +
+		"Thanks! Send /support whenever you want to write to us again."
+}
+
+// BuildNoSupportOpenHTML is the answer to /done outside support mode.
+func BuildNoSupportOpenHTML() string {
+	return "There is no open support conversation. " +
+		"Send /support followed by your question to write to the SolidPing team."
+}
+
+// BuildSupportUnavailableHTML is the answer to /support on an instance without
+// a support inbox, or when the conversation could not be opened. It never
+// claims a message was delivered when it was not.
+func BuildSupportUnavailableHTML() string {
+	return "Sorry, support messages can't be received here right now. " +
+		"Please try again later."
+}
+
+// BuildNotUnderstoodHTML is the answer to plain text outside support mode. The
+// bot runs commands; talking to a person is an explicit choice (/support), so a
+// stray message is pointed at it instead of silently opening a ticket.
+func BuildNotUnderstoodHTML() string {
+	return "I only understand commands. " +
+		"Send <code>/support your question</code> to write to the SolidPing team, " +
+		"or /help for the list of commands."
+}

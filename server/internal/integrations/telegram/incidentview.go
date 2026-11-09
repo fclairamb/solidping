@@ -550,6 +550,7 @@ func BuildHelpHTML() string {
 		"/ack #42 — acknowledge an incident (no number when only one is open)\n" +
 		"/incident #42 — the latest detail on one incident\n" +
 		"/comment your note — add a comment to an incident (prefix <code>#42</code> to pick one)\n" +
+		"/support your question — write to the SolidPing team (/done to finish)\n" +
 		"/help — this message\n" +
 		"/stop — disconnect this chat"
 }

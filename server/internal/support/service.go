@@ -1017,6 +1017,48 @@ func (s *Service) touchThreadOutbound(
 	return err
 }
 
+// LiveThread returns the live (not closed) thread for a channel identity, or
+// nil when there is none.
+//
+// Channels with an explicit support mode (Telegram's /support) use it as that
+// mode's state: a person is "in support" exactly while a live thread exists, so
+// closing the thread from the inbox ends the mode too, with nothing to keep in
+// sync.
+func (s *Service) LiveThread(
+	ctx context.Context, channel, identity string,
+) (*models.SupportThread, error) {
+	if s == nil {
+		return nil, nil //nolint:nilnil // no inbox means no live thread
+	}
+
+	return s.findLiveThread(ctx, channel, identity)
+}
+
+// CloseLiveThread closes the live thread for a channel identity, when there is
+// one. It reports whether a thread was closed.
+//
+// This is the person leaving support mode themselves (Telegram's /done). It
+// does not mark the thread read: an operator who has not seen the last messages
+// must still find them unread in the inbox.
+func (s *Service) CloseLiveThread(ctx context.Context, channel, identity string) (bool, error) {
+	thread, err := s.LiveThread(ctx, channel, identity)
+	if err != nil || thread == nil {
+		return false, err
+	}
+
+	thread.Status = models.SupportStatusClosed
+	thread.UpdatedAt = s.now()
+
+	if _, err := s.bun().NewUpdate().Model(thread).
+		Column("status", "updated_at").
+		WherePK().
+		Exec(ctx); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 // GetThread loads one thread by uid.
 func (s *Service) GetThread(ctx context.Context, uid string) (*models.SupportThread, error) {
 	thread := new(models.SupportThread)

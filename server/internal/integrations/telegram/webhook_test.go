@@ -136,6 +136,10 @@ func TestCommand(t *testing.T) {
 		// the same command would work in a DM and be ignored in a group.
 		{"/start@solidping_bot tok", "start", "tok"},
 		{"/stop@solidping_bot", "stop", ""},
+		// A line break ends the verb too, and the argument keeps its own
+		// line breaks: "/support" then a multi-line message on the next line.
+		{"/support\nmy check is red\nsince noon", "support", "my check is red\nsince noon"},
+		{"/ack\t#42", "ack", "#42"},
 		{"hello there", "", ""},
 		{"", "", ""},
 	}
