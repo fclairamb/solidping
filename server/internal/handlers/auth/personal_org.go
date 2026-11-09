@@ -22,6 +22,8 @@ import (
 //
 //  1. a pending invitation for the email: join that org (the invite is used);
 //  2. an org whose registration.email_pattern matches: join it;
+//
+// (1 and 2 only for a verified email, see emailAdmits)
 //  3. a pending membership request by this user: nothing, /no-org shows it;
 //  4. otherwise, when auth.auto_personal_org is on (the default on SaaS, off
 //     on self-hosted), create a personal org, the user its OWNER.
@@ -62,7 +64,7 @@ func (s *Service) ensurePersonalOrg(ctx context.Context, user *models.User) *mod
 		return nil
 	}
 
-	s.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
+	s.autoJoinMatchingOrgs(ctx, user)
 
 	if joined := s.fallbackMemberOrg(ctx, user.UID); joined != nil {
 		return joined
@@ -78,10 +80,11 @@ func (s *Service) ensurePersonalOrg(ctx context.Context, user *models.User) *mod
 // joinPendingInvitation joins the user to an org that has a pending
 // invitation for their email, consuming it like JoinOrgViaLogin's rule 3.
 // invited reports that such an invitation exists, even when joining failed.
+// An unverified email matches no invitation (see emailAdmits).
 func (s *Service) joinPendingInvitation(
 	ctx context.Context, user *models.User,
 ) (*models.OrganizationMember, bool) {
-	if user.Email == "" {
+	if !emailAdmits(user) {
 		return nil, false
 	}
 
