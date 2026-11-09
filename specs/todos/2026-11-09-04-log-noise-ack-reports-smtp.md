@@ -86,3 +86,7 @@ carry `Closes fclairamb/solidping-business#57`. When the spec is archived to
 it by hand:
 
     gh issue close 57 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+- Use a concurrency limit on SMTP sends, not a pooled connection. (autopilot: recommended answer)

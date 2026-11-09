@@ -74,3 +74,7 @@ carry `Closes fclairamb/solidping-business#59`. When the spec is archived to
 it by hand:
 
     gh issue close 59 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+- Show the email as typed, plus the member's name in brackets when it matches and the reader is an admin. (autopilot: recommended answer)
