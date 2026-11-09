@@ -33,7 +33,7 @@ Denied" for anyone else. Treat the URL as public knowledge.
 | Channel | Captured | Notes |
 |---|---|---|
 | WhatsApp | Every inbound message | Non-text messages record a placeholder body and the real kind. |
-| Telegram | Prose, and unrecognised commands | Known commands run as before and are **not** captured. A mistyped command still gets the "unknown command" answer *and* is recorded — it is very often a person trying to talk. |
+| Telegram | `/support` and what follows it | The sender opts in with `/support [message]`; every message after that goes to the thread until they send `/done` or the thread is closed. Outside that, prose gets a pointer to `/support` and is **not** captured, and commands (known or not) are never captured. See [Support mode](../configuration/telegram.md#support-mode). |
 | SMS | Inbound replies | `STOP`, `START`, `HELP` and the other carrier keywords are **never** captured: they carry legal meaning, Twilio's Advanced Opt-Out handles them, and filing them as tickets would bury a real opt-out. |
 | Slack | Direct messages to the bot | Requires the `im:history` scope — see the [reinstall note](../configuration/notifications.md#direct-messages-and-the-support-inbox). Channel messages and `@SolidPing` mentions are unchanged. |
 | Discord | Direct messages to the bot | Needs the `DIRECT_MESSAGES` gateway intent, which requires no re-authorisation. Discord only delivers a DM if the user can open one with the bot (shared server or prior interaction), so this is best-effort. |

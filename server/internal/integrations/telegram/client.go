@@ -475,6 +475,7 @@ var Commands = []BotCommand{
 	{Command: "ack", Description: "Acknowledge an incident: /ack #42"},
 	{Command: "incident", Description: "Incident detail: /incident #42"},
 	{Command: "comment", Description: "Comment on an incident: /comment your note"},
+	{Command: "support", Description: "Write to the SolidPing team"},
 	{Command: "help", Description: "What this bot can do"},
 	{Command: "stop", Description: "Disconnect this chat"},
 }
