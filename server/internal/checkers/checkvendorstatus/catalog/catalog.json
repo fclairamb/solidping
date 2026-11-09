@@ -12,12 +12,6 @@
     "category": "infrastructure"
   },
   {
-    "slug": "atlassian",
-    "name": "Atlassian (Jira, Confluence, Bitbucket)",
-    "url": "https://status.atlassian.com",
-    "category": "developer"
-  },
-  {
     "slug": "bitbucket",
     "name": "Bitbucket",
     "url": "https://bitbucket.status.atlassian.com",
@@ -52,12 +46,6 @@
     "name": "DigitalOcean",
     "url": "https://status.digitalocean.com",
     "category": "infrastructure"
-  },
-  {
-    "slug": "datadog",
-    "name": "Datadog",
-    "url": "https://status.datadoghq.com",
-    "category": "monitoring"
   },
   {
     "slug": "vercel",
