@@ -87,7 +87,10 @@ type PromptsCap struct{}
 // ServerInfo represents the server information.
 type ServerInfo struct {
 	Name    string `json:"name"`
+	Title   string `json:"title,omitempty"`
 	Version string `json:"version"`
+	// WebsiteURL is the 2025-11-25 Implementation field; older clients ignore it.
+	WebsiteURL string `json:"websiteUrl,omitempty"`
 }
 
 // ToolDefinition represents a tool exposed by the server. The shape follows

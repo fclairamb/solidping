@@ -22,13 +22,14 @@ const (
 func diagnoseCheckDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolDiagnoseCheck,
-		Description: "Return everything an operator would want to look at to diagnose " +
-			"a single check's current state in one call: current status, recent raw " +
-			"results across regions, any active incident, and the most recent resolved " +
-			"incident. Use this instead of chaining list_results + list_incidents " +
-			"when a human asks \"what's wrong with check X?\". freshness and regionalIssue are omitted when " +
-			"there is nothing to report, the incidents are null when there are none. " +
-			"Read-only: works with mcp:read tokens.",
+		Description: "Diagnose one check in a single call: its current status, its newest raw results " +
+			"per region, its active incident and its last resolved one. Use it instead of chaining " +
+			"list_results and list_incidents when someone asks \"what's wrong with check X?\"; use " +
+			"list_results for older history. identifier takes the UID or slug; recentResultsLimit " +
+			"(default 5, max 20) is per region, and the whole response holds at most 100 results, so it " +
+			"stays small and costs about one get_check plus one list_results. freshness and " +
+			"regionalIssue are omitted when there is nothing to report, and the incidents are null " +
+			"when there are none. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier:         stringProp("Check UID or slug (e.g. \"api-prod\" or a UUID)."),
 			propRecentResultsLimit: intProp("Recent raw results per region (1-20, default 5)."),

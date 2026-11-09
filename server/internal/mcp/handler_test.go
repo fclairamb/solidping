@@ -777,6 +777,7 @@ func TestMCPInitializeReportsBuildVersion(t *testing.T) {
 	r.Equal("solidping", resp.Result.ServerInfo.Name)
 	r.Equal(version.Version, resp.Result.ServerInfo.Version)
 	r.NotEqual("0.1.0", resp.Result.ServerInfo.Version)
+	r.Equal("https://solidping.io/docs/", resp.Result.ServerInfo.WebsiteURL)
 }
 
 func TestInitialize_ReturnsInstructionsAuthedAndAnonymous(t *testing.T) {

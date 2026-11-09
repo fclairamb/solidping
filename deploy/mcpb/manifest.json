@@ -9,8 +9,8 @@
     "name": "Florent Clairambault",
     "url": "https://github.com/fclairamb"
   },
-  "homepage": "https://solidping.io",
-  "documentation": "https://docs.solidping.io",
+  "homepage": "https://solidping.io/docs/",
+  "documentation": "https://solidping.io/docs/",
   "support": "https://github.com/fclairamb/solidping/issues",
   "repository": {
     "type": "git",

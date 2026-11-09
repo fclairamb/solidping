@@ -471,6 +471,25 @@ the input schema already documents parameter-by-parameter — that earns
 no points and costs tokens. `TestAllToolDescriptionsMeetMinimum`
 enforces the floor.
 
+What Glama's graders penalised on the 2026-11-07 run (server A, 4.3/5,
+23 tools; listing `glama.ai/mcp/connectors/io.github.fclairamb/solidping`):
+
+- **Parameters 3** whenever the text only restates the schema. Say what the
+  schema cannot: which params combine, which only apply with another one
+  (`status` only filters `include=notifications`), what an unknown
+  identifier does.
+- **Behavior** when the return shape or volume is missing: page size and
+  cap, "one unpaginated response", "no result history".
+- **Usage** when no sibling is named (`list_check_groups`, `list_regions`
+  scored 3–4 for this alone).
+- **Conciseness** for pagination mechanics in prose and for enumerating
+  `include` values the schema already lists.
+- Names in a description must be tools the default list exposes: point to
+  `manage_status_page_*` with an `action`, never the legacy per-verb names.
+- The listing links are `server.json` `websiteUrl`, the server card
+  (`servercard.go`) and `serverInfo.websiteUrl`; all point at
+  `https://solidping.io/docs/`.
+
 ## Caveats
 
 - **Org isolation is per-token**. There is no "list other orgs" tool;
