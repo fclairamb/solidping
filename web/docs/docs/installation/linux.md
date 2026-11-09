@@ -95,99 +95,139 @@ export SP_DB_URL="postgresql://user:password@localhost:5432/solidping"
 ./solidping migrate
 ```
 
-## Systemd Service
+## systemd Service
 
-Create a systemd service for automatic startup:
+The downloaded binary registers itself with systemd, no unit to write by hand.
+Put it in a system location first, since the service runs it from there:
 
 ```bash
-sudo nano /etc/systemd/system/solidping.service
+sudo mv solidping /usr/local/bin/
+sudo solidping service install
+sudo solidping service start
 ```
 
-Add the following content:
+`install` writes `/etc/systemd/system/solidping.service` and enables it, so it
+starts at boot. If needed, it creates the `solidping` system user (no login,
+no home) that runs the server. The service is restarted 5 seconds after a
+failed run (not after you stop it). `install` also creates the data folder
+`/var/lib/solidping`, owned by `solidping` and readable by it only, since it
+holds your configuration and database. An existing folder is left as is.
+The service runs from that folder, so the SQLite database lands there:
+
+```
+/var/lib/solidping/
+├── config.yml        (your configuration)
+├── solidping.db      (the SQLite database, if you use SQLite)
+└── data/files/       (file storage)
+```
+
+Logs go to the journal (see [Logs](#logs)).
+
+Configure it in `config.yml` in that folder (see
+[Configuration File](#configuration-file) below), for example with
+`sudo -u solidping nano /var/lib/solidping/config.yml`.
+
+The unit is hardened: the whole system is read-only to the server except its
+data folder, and it gets a private `/tmp`. It gets only two capabilities:
+`CAP_NET_RAW` for ICMP checks, and `CAP_NET_BIND_SERVICE` to listen on a port
+below 1024.
+
+Manage it:
+
+```bash
+systemctl status solidping                # status
+sudo solidping service stop               # waits until it has stopped
+sudo systemctl restart solidping          # restart, after a config.yml change
+sudo solidping service uninstall          # stops and removes it, keeps the data folder
+```
+
+A stopped service starts again at the next boot, as long as it is installed.
+`install` needs a host booted with systemd. On another init system (OpenRC,
+runit, a container), run `solidping serve` from it instead.
+
+### As a user unit
+
+Without `sudo`, the same commands install a systemd unit of the current user
+instead: `~/.config/systemd/user/solidping.service`, data in
+`~/.local/share/solidping`. It runs as you, without the hardening above, and
+starts when you log in. To start it at boot, run `loginctl enable-linger`.
+Add `--user` to the `systemctl` and `journalctl` commands on this page.
+
+### Options
+
+`service install` takes `--dir` to use another data folder and `--name` to
+pick another unit name (to run two instances, for example). Pass the same
+`--name` to `start`, `stop` and `uninstall`. The data folder path can't
+contain spaces, quotes or backslashes.
+
+The service runs the `solidping` that installed it, at its absolute path. If
+you move that file, run `service uninstall` and `service install` again.
+
+Agent mode works as a service too: set `node.role: agent` in `config.yml`
+(the equivalent of `SP_NODE_ROLE=agent`; see the [Configuration Guide](/configuration)).
+
+### Customizing the unit
+
+Change the unit with a drop-in, which `install` and `uninstall` leave alone:
+
+```bash
+sudo systemctl edit solidping
+```
 
 ```ini
-[Unit]
-Description=SolidPing Monitoring Platform
-After=network.target postgresql.service
-
 [Service]
-Type=simple
-User=solidping
-Group=solidping
-WorkingDirectory=/opt/solidping
-ExecStart=/usr/local/bin/solidping serve
-Restart=always
-RestartSec=5
-
-# Environment variables
-Environment=SP_DB_TYPE=postgres
-Environment=SP_DB_URL=postgresql://solidping:password@localhost:5432/solidping
-Environment=SP_SERVER_LISTEN=:4000
-
-# Security hardening
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/opt/solidping
-
-[Install]
-WantedBy=multi-user.target
+# Environment variables rather than config.yml (keep the file private: chmod 600)
+EnvironmentFile=/var/lib/solidping/.env
+# Order the start after a local service
+After=docker.service
 ```
 
-Create the user and directories:
+Then `sudo systemctl restart solidping`. Never put secrets in an
+`Environment=` line: unit files are readable by every user.
+
+### Coming from a hand-written unit
+
+Earlier versions of this page had you write `/etc/systemd/system/solidping.service`
+yourself. `service install` refuses to overwrite it, so stop and remove it first:
 
 ```bash
-# Create system user
-sudo useradd -r -s /bin/false solidping
-
-# Create working directory
-sudo mkdir -p /opt/solidping
-sudo chown solidping:solidping /opt/solidping
-```
-
-Enable and start the service:
-
-```bash
+sudo systemctl disable --now solidping
+sudo rm /etc/systemd/system/solidping.service
 sudo systemctl daemon-reload
-sudo systemctl enable solidping
-sudo systemctl start solidping
-sudo systemctl status solidping
+sudo solidping service install --dir /opt/solidping
 ```
 
-## Environment File
+`--dir /opt/solidping` keeps your existing data folder, still owned by the
+`solidping` user. Turn the `Environment=` lines of the old unit into
+`config.yml` entries (or an `EnvironmentFile=` drop-in, see above), then run
+`sudo solidping service start`.
 
-For easier configuration, use an environment file:
+## Configuration File
 
-```bash
-sudo nano /opt/solidping/.env
+Instead of environment variables, you can use a configuration file. For the
+service, create `config.yml` in its data folder; when running
+`solidping serve` by hand, put it in the current directory:
+
+```yaml
+db:
+  type: postgres
+  url: postgresql://solidping:password@localhost:5432/solidping
+
+server:
+  listen: ":4000"
+
+email:
+  enabled: true
+  host: smtp.example.com
+  port: 587
+  username: noreply@example.com
+  password: smtp-password
+  from: noreply@example.com
 ```
 
-```bash
-# Database
-SP_DB_TYPE=postgres
-SP_DB_URL=postgresql://solidping:password@localhost:5432/solidping
-
-# Server
-SP_SERVER_LISTEN=:4000
-
-# Email (optional)
-SP_EMAIL_ENABLED=true
-SP_EMAIL_HOST=smtp.example.com
-SP_EMAIL_PORT=587
-SP_EMAIL_USERNAME=noreply@example.com
-SP_EMAIL_PASSWORD=smtp-password
-SP_EMAIL_FROM=noreply@example.com
-
-# Logging
-SP_LOG_LEVEL=info
-```
-
-Update the systemd service to use the environment file:
-
-```ini
-[Service]
-EnvironmentFile=/opt/solidping/.env
-```
+Without a `config.yml`, it uses SQLite and listens on port 4000. Every `SP_*`
+variable has a `config.yml` equivalent, see the
+[Configuration Guide](/configuration).
 
 ## Nginx Reverse Proxy
 
@@ -239,7 +279,7 @@ sudo iptables -A INPUT -p tcp --dport 4000 -j ACCEPT
 
 ## Logs
 
-View logs with journalctl:
+The service logs to the journal (add `--user` for a user unit):
 
 ```bash
 # Follow logs
@@ -258,7 +298,7 @@ At the default `info` level, startup ends with a `SolidPing is ready` line that 
 
 ```bash
 # Stop the service
-sudo systemctl stop solidping
+sudo solidping service stop
 
 # Download new version
 curl -L -o /tmp/solidping.gz https://github.com/fclairamb/solidping/releases/latest/download/solidping-linux-amd64.gz
@@ -269,17 +309,21 @@ chmod +x /tmp/solidping
 sudo mv /tmp/solidping /usr/local/bin/solidping
 
 # Start the service
-sudo systemctl start solidping
+sudo solidping service start
 ```
+
+The unit keeps pointing at `/usr/local/bin/solidping`, so there is nothing to
+reinstall. The new version runs its database migrations at startup.
 
 ## File Storage
 
 Alongside the database, SolidPing writes a handful of blobs — org logos,
 status-page assets, incident screenshots — under `SP_FILESTORAGE_LOCAL_ROOT`
-(default `./data/files`, relative to the working directory). With the systemd
-setup above, that resolves under the persistent `WorkingDirectory`
-(`/opt/solidping`), which `ReadWritePaths` already covers, so there is nothing
-extra to mount here — this only matters for containerized deployments. See
+(default `./data/files`, relative to the working directory). For the systemd
+service, that resolves under its data folder (`/var/lib/solidping/data/files`),
+the one folder the unit can write to, so there is nothing to configure here.
+If you point it elsewhere, add that folder to `ReadWritePaths=` with a drop-in
+(see [Customizing the unit](#customizing-the-unit)). See
 [File Storage](/configuration/file-storage) for the S3 backend, useful once
 you run more than one node.
 
