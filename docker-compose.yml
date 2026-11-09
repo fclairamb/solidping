@@ -22,7 +22,7 @@ services:
   # with `docker compose --profile browser up -d`. The main image is distroless
   # and carries no Chrome on purpose; the checker talks CDP to this container.
   browser:
-    image: chromedp/headless-shell:157.0.8103.27
+    image: chromedp/headless-shell:158.0.8127.18
     container_name: solidping-browser
     profiles: ["browser"]
     # Loopback only, CDP is unauthenticated. `make dev` on macOS drives this
