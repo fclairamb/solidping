@@ -18,6 +18,10 @@ func TestDefaultServiceDir(t *testing.T) {
 	r.Equal(`C:\ProgramData\SolidPing`, defaultServiceDir(goosWindows, false, func(string) string { return "" }))
 	r.Equal("/Library/Application Support/SolidPing", defaultServiceDir(goosDarwin, true, getenv))
 	r.Equal("/Users/alice/Library/Application Support/SolidPing", defaultServiceDir(goosDarwin, false, getenv))
+	r.Equal("/var/lib/solidping", defaultServiceDir(goosLinux, true, getenv))
+	r.Equal("/Users/alice/.local/share/solidping", defaultServiceDir(goosLinux, false, getenv))
+	env["XDG_DATA_HOME"] = "/data/alice"
+	r.Equal("/data/alice/solidping", defaultServiceDir(goosLinux, false, getenv))
 }
 
 func TestDefaultServiceName(t *testing.T) {
@@ -25,6 +29,7 @@ func TestDefaultServiceName(t *testing.T) {
 
 	require.Equal(t, "SolidPing", defaultServiceName(goosWindows))
 	require.Equal(t, "io.solidping", defaultServiceName(goosDarwin))
+	require.Equal(t, "solidping", defaultServiceName(goosLinux))
 }
 
 func TestServiceRunArgs(t *testing.T) {
@@ -40,7 +45,7 @@ func TestServiceCommandUnsupported(t *testing.T) {
 	t.Parallel()
 
 	if serviceSupported(runtime.GOOS) {
-		t.Skip("the service commands are real on Windows and macOS")
+		t.Skip("the service commands are real on Windows, macOS and Linux")
 	}
 
 	for _, args := range [][]string{

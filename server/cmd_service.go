@@ -15,35 +15,37 @@ const (
 
 	goosWindows = "windows"
 	goosDarwin  = "darwin"
+	goosLinux   = "linux"
 )
 
-var errServiceUnsupported = errors.New("services are only supported on Windows and macOS")
+var errServiceUnsupported = errors.New("services are only supported on Windows, macOS and Linux")
 
 // serviceCommand registers SolidPing as a native Windows service (spec
-// 2026-11-07-04, no wrapper such as NSSM) or a macOS launchd job (spec
-// 2026-11-08-06). It is hidden on other platforms, where every subcommand
-// returns errServiceUnsupported.
+// 2026-11-07-04, no wrapper such as NSSM), a macOS launchd job (spec
+// 2026-11-08-06) or a systemd unit on Linux (spec 2026-11-09-01). It is hidden
+// on other platforms, where every subcommand returns errServiceUnsupported.
 func serviceCommand() *cli.Command {
 	nameFlag := &cli.StringFlag{
 		Name:  flagServiceName,
-		Usage: "Service name (the launchd label on macOS)",
+		Usage: "Service name (the launchd label on macOS, the systemd unit name on Linux)",
 		Value: defaultServiceName(runtime.GOOS),
 	}
 	dirFlag := &cli.StringFlag{
 		Name: flagServiceDir,
 		Usage: "Data folder: config.yml, the SQLite database and the logs " +
-			"(default: %ProgramData%\\SolidPing on Windows, Application Support/SolidPing on macOS)",
+			"(default: %ProgramData%\\SolidPing on Windows, Application Support/SolidPing on macOS, " +
+			"/var/lib/solidping on Linux)",
 	}
 
 	return &cli.Command{
 		Name:   "service",
-		Usage:  "Run SolidPing as a Windows service or a macOS launchd job",
+		Usage:  "Run SolidPing as a Windows service, a macOS launchd job or a systemd unit",
 		Hidden: !serviceSupported(runtime.GOOS),
 		Commands: []*cli.Command{
 			{
 				Name: "install",
 				Usage: "Register the service (start at boot, restart on failure); needs an administrator prompt " +
-					"on Windows, sudo on macOS (without sudo: a launchd agent of the current user)",
+					"on Windows, sudo on macOS and Linux (without sudo: a launchd agent or a systemd user unit)",
 				Flags: []cli.Flag{nameFlag, dirFlag},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					return serviceInstall(ctx, cmd.String(flagServiceName), serviceDir(cmd))
@@ -74,9 +76,9 @@ func serviceCommand() *cli.Command {
 				},
 			},
 			{
-				// What the Service Control Manager or launchd launches; install registers it.
+				// What the Service Control Manager, launchd or systemd launches; install registers it.
 				Name:   "run",
-				Usage:  "Run as the service (started by the Service Control Manager or launchd, not by hand)",
+				Usage:  "Run as the service (started by the Service Control Manager, launchd or systemd, not by hand)",
 				Hidden: true,
 				Flags:  []cli.Flag{nameFlag, dirFlag},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -89,17 +91,20 @@ func serviceCommand() *cli.Command {
 
 // serviceSupported reports whether `service` works on goos.
 func serviceSupported(goos string) bool {
-	return goos == goosWindows || goos == goosDarwin
+	return goos == goosWindows || goos == goosDarwin || goos == goosLinux
 }
 
-// defaultServiceName is the Windows service name, or the launchd label on
-// macOS, where labels are reverse-DNS.
+// defaultServiceName is the Windows service name, the launchd label on macOS,
+// where labels are reverse-DNS, or the systemd unit name on Linux.
 func defaultServiceName(goos string) string {
-	if goos == goosDarwin {
+	switch goos {
+	case goosDarwin:
 		return "io.solidping"
+	case goosLinux:
+		return "solidping"
+	default:
+		return "SolidPing"
 	}
-
-	return "SolidPing"
 }
 
 // serviceDir is the --dir flag, or the default data folder when unset.
@@ -116,13 +121,26 @@ func serviceDir(cmd *cli.Command) string {
 //     the fallback only covers a stripped environment.
 //   - macOS as root (a launchd daemon): /Library/Application Support/SolidPing.
 //   - macOS as a user (a launchd agent): ~/Library/Application Support/SolidPing.
+//   - Linux as root (a system unit): /var/lib/solidping.
+//   - Linux as a user (a user unit): $XDG_DATA_HOME/solidping, ~/.local/share/solidping by default.
 func defaultServiceDir(goos string, root bool, getenv func(string) string) string {
-	if goos == goosDarwin {
+	switch goos {
+	case goosDarwin:
 		if root {
 			return "/Library/Application Support/SolidPing"
 		}
 
 		return getenv("HOME") + "/Library/Application Support/SolidPing"
+	case goosLinux:
+		if root {
+			return "/var/lib/solidping"
+		}
+
+		if dataHome := getenv("XDG_DATA_HOME"); dataHome != "" {
+			return dataHome + "/solidping"
+		}
+
+		return getenv("HOME") + "/.local/share/solidping"
 	}
 
 	programData := getenv("ProgramData")
@@ -133,8 +151,8 @@ func defaultServiceDir(goos string, root bool, getenv func(string) string) strin
 	return programData + `\SolidPing`
 }
 
-// serviceRunArgs is the argument list the Service Control Manager or launchd
-// launches solidping with. absDir must be absolute, so the service never
+// serviceRunArgs is the argument list the Service Control Manager, launchd or
+// systemd launches solidping with. absDir must be absolute, so the service never
 // depends on the directory install ran from.
 func serviceRunArgs(name, absDir string) []string {
 	return []string{"service", "run", "--" + flagServiceName, name, "--" + flagServiceDir, absDir}
