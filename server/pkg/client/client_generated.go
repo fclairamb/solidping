@@ -3504,6 +3504,27 @@ func (e UpsertCheckRequestType) Valid() bool {
 	}
 }
 
+// Defines values for UserPreferencesDashboardWindow.
+const (
+	UserPreferencesDashboardWindowN24h UserPreferencesDashboardWindow = "24h"
+	UserPreferencesDashboardWindowN30d UserPreferencesDashboardWindow = "30d"
+	UserPreferencesDashboardWindowN7d  UserPreferencesDashboardWindow = "7d"
+)
+
+// Valid indicates whether the value is a known member of the UserPreferencesDashboardWindow enum.
+func (e UserPreferencesDashboardWindow) Valid() bool {
+	switch e {
+	case UserPreferencesDashboardWindowN24h:
+		return true
+	case UserPreferencesDashboardWindowN30d:
+		return true
+	case UserPreferencesDashboardWindowN7d:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UserPreferencesLocale.
 const (
 	UserPreferencesLocaleDe UserPreferencesLocale = "de"
@@ -4489,7 +4510,7 @@ type AvailabilityPeriod struct {
 	// AvailabilityPct Probe-ratio availability (successfulChecks / totalChecks × 100). Null when totalChecks == 0 — no data is not 100%.
 	AvailabilityPct *float32 `json:"availabilityPct,omitempty"`
 
-	// Coverage Share of the monitored time that was actually measured: received probes ÷ expected probes, where expected = monitoredSeconds / period × max(1, regions), clamped to [0, 1]. An 8-hour gap in a 24-hour window reads 0.67. Null only when nothing was expected.
+	// Coverage Share of the monitored time that some region measured, in [0, 1]. Each aggregate bucket (an hour, or a day or month for old data) counts as measured in proportion to min(results, ceil(bucket length / period)), with no region multiplier: a period is measured as soon as any region reported, so a change of the check's regions never rewrites the past. An 8-hour gap in a 24-hour window reads 0.67. Null only when nothing was expected.
 	Coverage *float32 `json:"coverage,omitempty"`
 
 	// DowntimeSeconds Probe-time downtime over MEASURED time only: (1 − availabilityPct/100) × monitoredSeconds × coverage.
@@ -5187,6 +5208,16 @@ type CheckStats struct {
 	// Example: 99.97
 	Availability24h *float32 `json:"availability24h"`
 
+	// Availability30d `availability24h` over the trailing 30 days, also counting `day` rollup rows that start inside the window. `null` when the window has no countable data.
+	//
+	// Example: 99.91
+	Availability30d *float32 `json:"availability30d"`
+
+	// Availability7d `availability24h` over the trailing 7 days, also counting `day` rollup rows that start inside the window. `null` when the window has no countable data.
+	//
+	// Example: 99.95
+	Availability7d *float32 `json:"availability7d"`
+
 	// ByStatus Count per check status. Every known status key (created, up, down, validating, degraded, warning, stale, unknown) is always present, with 0 when empty, so clients can index it without guards. Keys are the same tokens the list endpoint's `status` field carries.
 	//
 	// Example: {"created":2,"degraded":2,"down":6,"stale":0,"unknown":0,"up":240,"validating":0,"warning":0}
@@ -5211,6 +5242,9 @@ type CheckStats struct {
 	//
 	// Example: 6
 	HardDown int `json:"hardDown"`
+
+	// OldestEnabledCheckCreatedAt Creation time of the oldest enabled check, null when there is none. Drives the one-time GitHub star prompt.
+	OldestEnabledCheckCreatedAt *time.Time `json:"oldestEnabledCheckCreatedAt"`
 
 	// Total Every in-scope check — enabled plus disabled.
 	//
@@ -7741,6 +7775,11 @@ type PublicConfigResponse struct {
 	} `json:"bugReport,omitempty"`
 	DeploymentMode *PublicConfigResponseDeploymentMode `json:"deploymentMode,omitempty"`
 
+	// GithubStar Whether the "star on GitHub" sidebar link and one-time prompt are shown (SP_APP_STARPROMPT, default true).
+	GithubStar *struct {
+		Enabled bool `json:"enabled"`
+	} `json:"githubStar,omitempty"`
+
 	// Heartbeat Embedded TCP/UDP heartbeat push transports. Ports are 0 when the transport is off.
 	Heartbeat *struct {
 		// Host Hostname devices should send beats to (from the base URL, no port). Empty when unknown.
@@ -8308,7 +8347,7 @@ type SLOStatusRow struct {
 	// BurnRate Observed error rate divided by allowed error rate.
 	BurnRate *float64 `json:"burnRate,omitempty"`
 
-	// DataCoverage Received ÷ expected probes over the elapsed window (expected = elapsed / period × max(1, regions) per check), clamped to [0, 1]. A low value means the attainment describes only part of the window.
+	// DataCoverage Share of the elapsed window some region measured, per check and per aggregate bucket with no region multiplier (as the availability endpoint's coverage), summed over the scope's checks. A low value means the attainment describes only part of the window.
 	DataCoverage *float64 `json:"dataCoverage,omitempty"`
 
 	// ElapsedSeconds The part of monitoredSeconds already elapsed; the consumption basis.
@@ -9214,6 +9253,11 @@ type UpdateOrgSettingsRequest struct {
 
 // UpdatePreferencesRequest Partial update. An absent field is left alone; an empty string clears it.
 type UpdatePreferencesRequest struct {
+	// DashboardWindow 24h, 7d or 30d. Any other value is refused with 400 VALIDATION_ERROR.
+	//
+	// Example: 7d
+	DashboardWindow *string `json:"dashboardWindow,omitempty"`
+
 	// Locale en, fr, de or es. A full BCP 47 tag (fr-FR) is stored as its language.
 	//
 	// Example: fr
@@ -9430,8 +9474,13 @@ type UpsertCheckRequestTracerouteOnFailure string
 // UpsertCheckRequestType Check type (auto-inferred from URL if not provided). Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
 type UpsertCheckRequestType string
 
-// UserPreferences What the server follows when it writes to the user: the language and timezone of their emails. Present on /auth/me and every login response, `{}` when nothing is set (emails then use English and UTC).
+// UserPreferences What the user picked: the language and timezone of their emails, and dashboard settings that follow them across browsers. Present on /auth/me and every login response, `{}` when nothing is set (emails then use English and UTC, the dashboard its defaults).
 type UserPreferences struct {
+	// DashboardWindow Trailing window of the dashboard's availability figures. Omitted when not set, which means 24h.
+	//
+	// Example: 7d
+	DashboardWindow *UserPreferencesDashboardWindow `json:"dashboardWindow,omitempty"`
+
 	// Locale Language of the user's emails. Omitted when not set.
 	Locale *UserPreferencesLocale `json:"locale,omitempty"`
 
@@ -9440,6 +9489,11 @@ type UserPreferences struct {
 	// Example: Europe/Paris
 	Timezone *string `json:"timezone,omitempty"`
 }
+
+// UserPreferencesDashboardWindow Trailing window of the dashboard's availability figures. Omitted when not set, which means 24h.
+//
+// Example: 7d
+type UserPreferencesDashboardWindow string
 
 // UserPreferencesLocale Language of the user's emails. Omitted when not set.
 type UserPreferencesLocale string
@@ -9456,7 +9510,7 @@ type UserSummary struct {
 	MustChangePassword *bool   `json:"mustChangePassword,omitempty"`
 	Name               *string `json:"name,omitempty"`
 
-	// Preferences What the server follows when it writes to the user: the language and timezone of their emails. Present on /auth/me and every login response, `{}` when nothing is set (emails then use English and UTC).
+	// Preferences What the user picked: the language and timezone of their emails, and dashboard settings that follow them across browsers. Present on /auth/me and every login response, `{}` when nothing is set (emails then use English and UTC, the dashboard its defaults).
 	Preferences *UserPreferences    `json:"preferences,omitempty"`
 	Role        *UserSummaryRole    `json:"role,omitempty"`
 	Uid         *openapi_types.UUID `json:"uid,omitempty"`
@@ -11386,10 +11440,12 @@ type ClientInterface interface {
 	// `auth.email_changed` in each of the user's organizations.
 	//
 	// `preferences` sets the language and timezone the server writes this
-	// user's emails in. Every field is optional (a preferences-only body is
-	// valid); an empty string clears one. `400 VALIDATION_ERROR` for a
-	// locale outside en, fr, de, es (a full tag such as `fr-FR` is accepted
-	// and stored as `fr`) or a timezone the IANA database does not know.
+	// user's emails in, and the dashboard's availability window. Every field
+	// is optional (a preferences-only body is valid); an empty string clears
+	// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+	// tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
+	// IANA database does not know, or a dashboard window other than 24h, 7d,
+	// 30d.
 	// Nothing is written when any field is refused.
 	//
 	// Takes any type of body and a specified content type.
@@ -11415,10 +11471,12 @@ type ClientInterface interface {
 	// `auth.email_changed` in each of the user's organizations.
 	//
 	// `preferences` sets the language and timezone the server writes this
-	// user's emails in. Every field is optional (a preferences-only body is
-	// valid); an empty string clears one. `400 VALIDATION_ERROR` for a
-	// locale outside en, fr, de, es (a full tag such as `fr-FR` is accepted
-	// and stored as `fr`) or a timezone the IANA database does not know.
+	// user's emails in, and the dashboard's availability window. Every field
+	// is optional (a preferences-only body is valid); an empty string clears
+	// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+	// tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
+	// IANA database does not know, or a dashboard window other than 24h, 7d,
+	// 30d.
 	// Nothing is written when any field is refused.
 	//
 	// Takes a body of the `application/json` content type.
@@ -14944,10 +15002,12 @@ func (c *Client) GetCurrentUser(ctx context.Context, reqEditors ...RequestEditor
 // `auth.email_changed` in each of the user's organizations.
 //
 // `preferences` sets the language and timezone the server writes this
-// user's emails in. Every field is optional (a preferences-only body is
-// valid); an empty string clears one. `400 VALIDATION_ERROR` for a
-// locale outside en, fr, de, es (a full tag such as `fr-FR` is accepted
-// and stored as `fr`) or a timezone the IANA database does not know.
+// user's emails in, and the dashboard's availability window. Every field
+// is optional (a preferences-only body is valid); an empty string clears
+// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+// tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
+// IANA database does not know, or a dashboard window other than 24h, 7d,
+// 30d.
 // Nothing is written when any field is refused.
 //
 // Takes any type of body and a specified content type.
@@ -14983,10 +15043,12 @@ func (c *Client) UpdateMeWithBody(ctx context.Context, contentType string, body 
 // `auth.email_changed` in each of the user's organizations.
 //
 // `preferences` sets the language and timezone the server writes this
-// user's emails in. Every field is optional (a preferences-only body is
-// valid); an empty string clears one. `400 VALIDATION_ERROR` for a
-// locale outside en, fr, de, es (a full tag such as `fr-FR` is accepted
-// and stored as `fr`) or a timezone the IANA database does not know.
+// user's emails in, and the dashboard's availability window. Every field
+// is optional (a preferences-only body is valid); an empty string clears
+// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+// tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
+// IANA database does not know, or a dashboard window other than 24h, 7d,
+// 30d.
 // Nothing is written when any field is refused.
 //
 // Takes a body of the `application/json` content type.
@@ -37627,10 +37689,12 @@ type ClientWithResponsesInterface interface {
 	// `auth.email_changed` in each of the user's organizations.
 	//
 	// `preferences` sets the language and timezone the server writes this
-	// user's emails in. Every field is optional (a preferences-only body is
-	// valid); an empty string clears one. `400 VALIDATION_ERROR` for a
-	// locale outside en, fr, de, es (a full tag such as `fr-FR` is accepted
-	// and stored as `fr`) or a timezone the IANA database does not know.
+	// user's emails in, and the dashboard's availability window. Every field
+	// is optional (a preferences-only body is valid); an empty string clears
+	// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+	// tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
+	// IANA database does not know, or a dashboard window other than 24h, 7d,
+	// 30d.
 	// Nothing is written when any field is refused.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -37656,10 +37720,12 @@ type ClientWithResponsesInterface interface {
 	// `auth.email_changed` in each of the user's organizations.
 	//
 	// `preferences` sets the language and timezone the server writes this
-	// user's emails in. Every field is optional (a preferences-only body is
-	// valid); an empty string clears one. `400 VALIDATION_ERROR` for a
-	// locale outside en, fr, de, es (a full tag such as `fr-FR` is accepted
-	// and stored as `fr`) or a timezone the IANA database does not know.
+	// user's emails in, and the dashboard's availability window. Every field
+	// is optional (a preferences-only body is valid); an empty string clears
+	// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+	// tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
+	// IANA database does not know, or a dashboard window other than 24h, 7d,
+	// 30d.
 	// Nothing is written when any field is refused.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
@@ -59197,10 +59263,12 @@ func (c *ClientWithResponses) GetCurrentUserWithResponse(ctx context.Context, re
 // `auth.email_changed` in each of the user's organizations.
 //
 // `preferences` sets the language and timezone the server writes this
-// user's emails in. Every field is optional (a preferences-only body is
-// valid); an empty string clears one. `400 VALIDATION_ERROR` for a
-// locale outside en, fr, de, es (a full tag such as `fr-FR` is accepted
-// and stored as `fr`) or a timezone the IANA database does not know.
+// user's emails in, and the dashboard's availability window. Every field
+// is optional (a preferences-only body is valid); an empty string clears
+// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+// tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
+// IANA database does not know, or a dashboard window other than 24h, 7d,
+// 30d.
 // Nothing is written when any field is refused.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -59232,10 +59300,12 @@ func (c *ClientWithResponses) UpdateMeWithBodyWithResponse(ctx context.Context, 
 // `auth.email_changed` in each of the user's organizations.
 //
 // `preferences` sets the language and timezone the server writes this
-// user's emails in. Every field is optional (a preferences-only body is
-// valid); an empty string clears one. `400 VALIDATION_ERROR` for a
-// locale outside en, fr, de, es (a full tag such as `fr-FR` is accepted
-// and stored as `fr`) or a timezone the IANA database does not know.
+// user's emails in, and the dashboard's availability window. Every field
+// is optional (a preferences-only body is valid); an empty string clears
+// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+// tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
+// IANA database does not know, or a dashboard window other than 24h, 7d,
+// 30d.
 // Nothing is written when any field is refused.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).

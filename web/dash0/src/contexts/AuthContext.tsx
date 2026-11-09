@@ -190,6 +190,13 @@ interface AuthContextType {
   // session that cannot write it) it stays in this browser. Rejects when the
   // save fails; the dashboard language has changed by then.
   changeLanguage: (code: LanguageCode) => Promise<void>;
+  /**
+   * Saves preference fields that only the dashboard reads (the availability
+   * window). Applied to the user at once; written to the server only when the
+   * session may write its own preferences, so a demo or impersonating session
+   * keeps the choice for this page load without touching the account.
+   */
+  updatePreferences: (patch: PreferencesPatch) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -476,6 +483,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       await savePreferences(user.uid, { locale: code });
+    },
+    [user, savePreferences],
+  );
+
+  const updatePreferences = useCallback(
+    async (patch: PreferencesPatch) => {
+      if (!user) {
+        return;
+      }
+      setUser((prev) =>
+        prev && prev.uid === user.uid
+          ? { ...prev, preferences: { ...prev.preferences, ...patch } }
+          : prev,
+      );
+      const mode = preferencesSyncMode({
+        isDemo: user.isDemo,
+        impersonating: Boolean(user.impersonation) || getImpersonation() !== null,
+        mustChangePassword: user.mustChangePassword,
+      });
+      if (mode !== "full" || user.preferences === undefined) {
+        return;
+      }
+      await savePreferences(user.uid, patch);
     },
     [user, savePreferences],
   );
@@ -891,6 +921,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         useRecoveryCode,
         applyLoginResponse,
         changeLanguage,
+        updatePreferences,
       }}
     >
       {children}
