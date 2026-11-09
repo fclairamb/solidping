@@ -5185,7 +5185,9 @@ paths:
           description: >-
             Filter by event-type FAMILY (comma-separated prefixes, e.g.
             `auth,member`). Distinct from `eventType`, which matches exactly.
-            The `auth` family is only returned to org admins and owners.
+            The `auth` family is only returned to org admins and owners;
+            other members only get the `auth.login_failed` rows against their
+            own account.
           schema:
             type: string
         - name: actorUserUid
@@ -14480,6 +14482,13 @@ components:
             User-Agent of the originating request, truncated. Admin/owner only.
         payload:
           type: object
+        targetUserName:
+          type: string
+          description: >-
+            On an `auth.login_failed` row, the display name of the org member
+            whose account was tried. Admin/owner only; absent when the typed
+            email (`payload.email`) matches no member. Non-admin members only
+            receive the `auth.login_failed` rows against their own account.
         createdAt:
           type: string
           format: date-time

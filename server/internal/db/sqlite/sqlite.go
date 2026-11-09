@@ -4379,10 +4379,7 @@ func applyEventFilters(query *bun.SelectQuery, filter *models.ListEventsFilter) 
 	// Exclusions are ANDed on top and therefore cannot be argued away by any
 	// caller-supplied include filter — this is what makes "auth events are
 	// admin-only" hold for `?type=auth` as well as for an unfiltered listing.
-	for _, prefix := range filter.ExcludeEventTypePrefixes {
-		query = query.Where("event_type NOT LIKE ? ESCAPE ?",
-			models.EventTypeLikePattern(prefix), models.EventTypeLikeEscape)
-	}
+	query = applyEventExclusions(query, filter)
 
 	if filter.ActorType != nil {
 		query = query.Where("actor_type = ?", *filter.ActorType)
@@ -4401,6 +4398,40 @@ func applyEventFilters(query *bun.SelectQuery, filter *models.ListEventsFilter) 
 	query = applyEventTargetFilters(query, filter)
 
 	return query
+}
+
+// applyEventExclusions ANDs the hidden families onto the query. With
+// OwnFailedLoginEmail set, the exclusion becomes
+// `(NOT LIKE … AND NOT LIKE …) OR (auth.login_failed AND email = ?)`, wrapped
+// in its own AND group: the one exception a member gets (their own failed
+// sign-ins) stays an exception every other filter still narrows.
+func applyEventExclusions(query *bun.SelectQuery, filter *models.ListEventsFilter) *bun.SelectQuery {
+	if len(filter.ExcludeEventTypePrefixes) == 0 {
+		return query
+	}
+
+	exclude := func(group *bun.SelectQuery) *bun.SelectQuery {
+		for _, prefix := range filter.ExcludeEventTypePrefixes {
+			group = group.Where("event_type NOT LIKE ? ESCAPE ?",
+				models.EventTypeLikePattern(prefix), models.EventTypeLikeEscape)
+		}
+
+		return group
+	}
+
+	if filter.OwnFailedLoginEmail == "" {
+		return exclude(query)
+	}
+
+	return query.WhereGroup(" AND ", func(group *bun.SelectQuery) *bun.SelectQuery {
+		return group.
+			WhereGroup(" AND ", exclude).
+			WhereGroup(" OR ", func(own *bun.SelectQuery) *bun.SelectQuery {
+				return own.
+					Where("event_type = ?", models.EventTypeAuthLoginFailed).
+					Where("lower(json_extract(payload, '$.email')) = lower(?)", filter.OwnFailedLoginEmail)
+			})
+	})
 }
 
 // applyEventTargetFilters folds the polymorphic target predicates onto the

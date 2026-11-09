@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -29,6 +30,9 @@ var (
 //
 // This is enforced as a filter EXCLUSION rather than by rejecting `?type=auth`,
 // which is what makes it hold for an unfiltered listing too.
+//
+// One exception: a member sees the auth.login_failed rows against their own
+// account (solidping-business#59) — the attempts on them, not on colleagues.
 //
 //nolint:gochecknoglobals // static policy list, treated as a constant.
 var RestrictedEventTypePrefixes = []string{"auth"}
@@ -108,7 +112,12 @@ type EventResponse struct {
 	SourceIP  *string        `json:"sourceIp,omitempty"`
 	UserAgent *string        `json:"userAgent,omitempty"`
 	Payload   map[string]any `json:"payload,omitempty"`
-	CreatedAt time.Time      `json:"createdAt"`
+	// TargetUserName is, on an auth.login_failed row, the display name of the
+	// org member whose account was tried. Admin-only and absent when the typed
+	// email matches no member: the email as typed (payload.email) is what the
+	// UI shows, the name is a hint next to it.
+	TargetUserName *string   `json:"targetUserName,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
 // ListEventsResponse represents the response for listing events.
@@ -170,6 +179,11 @@ func (s *Service) ListEvents(
 
 	if !isAdmin {
 		filter.ExcludeEventTypePrefixes = RestrictedEventTypePrefixes
+		// The one exception: a member sees the failed sign-ins against their
+		// OWN account (solidping-business#59). The email comes from the users
+		// table, never from the request, so no query parameter can point it
+		// at somebody else.
+		filter.OwnFailedLoginEmail = s.callerEmail(ctx, opts.Caller)
 	}
 
 	// The source-IP filter is admin-only, not merely the source-IP COLUMN.
@@ -220,8 +234,18 @@ func (s *Service) ListEvents(
 
 	actors := s.resolveActors(ctx, events)
 
+	var tried map[string]*string
+	if isAdmin {
+		tried = s.resolveTriedAccounts(ctx, org.UID, events)
+	}
+
 	for _, evt := range events {
-		response.Data = append(response.Data, toResponse(evt, actors, isAdmin))
+		item := toResponse(evt, actors, isAdmin)
+		if evt.EventType == models.EventTypeAuthLoginFailed {
+			item.TargetUserName = tried[triedEmail(evt)]
+		}
+
+		response.Data = append(response.Data, item)
 	}
 
 	switch {
@@ -265,6 +289,74 @@ func toResponse(evt *models.Event, actors map[string]actorIdentity, isAdmin bool
 	}
 
 	return item
+}
+
+// callerEmail is the caller's own account email, or "" when it cannot be
+// resolved (no user, deleted user): an empty value carves out nothing.
+func (s *Service) callerEmail(ctx context.Context, caller Caller) string {
+	if caller.UserUID == "" {
+		return ""
+	}
+
+	user, err := s.db.GetUser(ctx, caller.UserUID)
+	if err != nil || user == nil {
+		return ""
+	}
+
+	return strings.TrimSpace(user.Email)
+}
+
+// triedEmail is the account a failed sign-in was against, normalized for
+// lookups: payload.email, falling back to target_name.
+func triedEmail(evt *models.Event) string {
+	email, _ := evt.Payload["email"].(string)
+	if email == "" {
+		email, _ = evt.Payload["target_name"].(string)
+	}
+
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// resolveTriedAccounts maps each distinct email tried by a failed sign-in on
+// the page to the display name of the org member it belongs to. Emails that
+// match no member of THIS org (or a member without a name) map to nothing.
+// One lookup per distinct email, bounded by the page size.
+func (s *Service) resolveTriedAccounts(
+	ctx context.Context, orgUID string, events []*models.Event,
+) map[string]*string {
+	names := make(map[string]*string)
+
+	for _, evt := range events {
+		if evt.EventType != models.EventTypeAuthLoginFailed {
+			continue
+		}
+
+		email := triedEmail(evt)
+		if email == "" {
+			continue
+		}
+
+		if _, seen := names[email]; seen {
+			continue
+		}
+
+		names[email] = nil
+
+		user, err := s.db.GetUserByEmail(ctx, email)
+		if err != nil || user == nil || user.Name == "" {
+			continue
+		}
+
+		member, err := s.db.GetMemberByUserAndOrg(ctx, user.UID, orgUID)
+		if err != nil || member == nil {
+			continue
+		}
+
+		name := user.Name
+		names[email] = &name
+	}
+
+	return names
 }
 
 type actorIdentity struct {
