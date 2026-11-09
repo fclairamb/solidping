@@ -3,11 +3,11 @@ import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
 import type * as OpenApiPlugin from "docusaurus-plugin-openapi-docs";
 
-// SolidPing documentation site — served at https://docs.solidping.io.
+// SolidPing documentation site — canonical URL https://solidping.io/docs/.
 // This is the docs-only half of the former solidping-website Docusaurus site;
 // the marketing landing, blog, and SaaS/legal pages stay on www.solidping.io.
-// Docs live at the host root (baseUrl '/', routeBasePath '/') so the URL is
-// docs.solidping.io/<page>, not docs.solidping.io/docs/<page>.
+// Docs live under baseUrl '/docs/' with routeBasePath '/', so a page is
+// solidping.io/docs/<page>. docs.solidping.io only redirects into it.
 //
 // The API reference under /api is generated at build time from the canonical
 // spec at ../../server/internal/app/openapi/openapi.yaml (relative path, same
@@ -40,7 +40,9 @@ const config: Config = {
   tagline: "Documentation for SolidPing — open-source uptime monitoring & alerting",
   favicon: "img/favicon.ico",
 
-  url: "https://docs.solidping.io",
+  // Canonical origin for sitemap, canonical links and llms.txt: link
+  // https://solidping.io/docs/..., never docs.solidping.io (a redirect only).
+  url: "https://solidping.io",
   // Docs are served at the /docs path on every host (like /d and /s),
   // so they work on the main domain (solidping.io/docs) with no extra infra.
   // docs.solidping.io redirects its root into /docs (see handlerWithDocsHost).
