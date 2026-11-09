@@ -38,6 +38,8 @@ interface MockCheckStats {
   down: number;
   hardDown: number;
   availability24h: number | null;
+  availability7d: number | null;
+  availability30d: number | null;
 }
 
 // Aggregate the mocked checks the same way the backend's GROUP BY would, so a
@@ -67,6 +69,8 @@ function statsFromChecks(checks: MockCheck[]): MockCheckStats {
     down: byStatus.down,
     hardDown: byStatus.down,
     availability24h: null,
+    availability7d: null,
+    availability30d: null,
   };
 }
 
@@ -465,6 +469,60 @@ test.describe("Dashboard", () => {
     const tile = page.getByTestId("kpi-tile-availability");
     await expect(tile).toContainText("99.97%");
     await expect(tile).toContainText("Operational");
+  });
+
+  // --- Availability window selector (spec 2026-11-09-02) --------------------
+  test("the window selector switches the tile and banner to 7 and 30 days and saves the choice", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockDashboard(page, {
+      checks: [
+        { uid: "64444444-4444-4444-4444-444444444444", name: "Window Check", status: "up" },
+      ],
+      incidents: [],
+      stats: { availability24h: 99.97, availability7d: 99.42, availability30d: 98.76 },
+    });
+
+    // The saved choice goes to PATCH /auth/me. Answered here so the shared
+    // test account never keeps a window another test does not expect.
+    const savedWindows: string[] = [];
+    await page.route("**/api/v1/auth/me", (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      const body = route.request().postDataJSON() as {
+        preferences?: { dashboardWindow?: string };
+      };
+      savedWindows.push(body.preferences?.dashboardWindow ?? "");
+      return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    });
+
+    await page.goto("orgs/test");
+
+    const tile = page.getByTestId("kpi-tile-availability");
+    const banner = page.getByTestId("overall-status-banner");
+    await expect(tile).toContainText("24h Availability", { timeout: 10000 });
+    await expect(tile).toContainText("99.97%");
+    await expect(page.getByTestId("dashboard-window-24h")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await page.getByTestId("dashboard-window-7d").click();
+    await expect(tile).toContainText("7d Availability");
+    await expect(tile).toContainText("99.42%");
+    await expect(tile).toContainText("Last 7 days, all checks");
+    await expect(banner).toContainText("99.42% uptime over 7 days");
+    await expect(page.getByTestId("dashboard-window-7d")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await page.getByTestId("dashboard-window-30d").click();
+    await expect(tile).toContainText("30d Availability");
+    await expect(tile).toContainText("98.76%");
+    await expect(banner).toContainText("98.76% uptime over 30 days");
+
+    await expect.poll(() => savedWindows).toEqual(["7d", "30d"]);
   });
 
   test("a down check sorts first with a destructive badge and a since timestamp", async ({

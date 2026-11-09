@@ -94,6 +94,10 @@
     "allGreen": "All systems operational",
     "allGreenSub_one": "{{count}} check monitored, {{availability}}% uptime over 24h",
     "allGreenSub_other": "{{count}} checks monitored, {{availability}}% uptime over 24h",
+    "allGreenSub_7d_one": "{{count}} check monitored, {{availability}}% uptime over 7 days",
+    "allGreenSub_7d_other": "{{count}} checks monitored, {{availability}}% uptime over 7 days",
+    "allGreenSub_30d_one": "{{count}} check monitored, {{availability}}% uptime over 30 days",
+    "allGreenSub_30d_other": "{{count}} checks monitored, {{availability}}% uptime over 30 days",
     "allGreenSubNoData_one": "{{count}} check monitored, no uptime data yet",
     "allGreenSubNoData_other": "{{count}} checks monitored, no uptime data yet",
     "issues": "Issues detected",
@@ -104,6 +108,8 @@
     "warning": "Some checks degraded",
     "warningSub": "Timeouts detected on {{count}} checks",
     "slaOperational": "24h SLA Operational",
+    "slaOperational_7d": "7d SLA Operational",
+    "slaOperational_30d": "30d SLA Operational",
     "activeOutage": "Active Outage",
     "degradedPerformance": "Degraded Performance"
   },
@@ -122,7 +128,11 @@
     },
     "availabilityNoDataSub": "No data yet",
     "availability": "24h Availability",
+    "availability_7d": "7d Availability",
+    "availability_30d": "30d Availability",
     "availabilitySub": "Last 24 h, all checks",
+    "availabilitySub_7d": "Last 7 days, all checks",
+    "availabilitySub_30d": "Last 30 days, all checks",
     "totalEndpoints": "{{count}} total endpoints",
     "badgeNeedsAction": "Needs action"
   },
@@ -155,5 +165,11 @@
     "star": "Star on GitHub",
     "later": "Not now",
     "close": "Close"
+  },
+  "window": {
+    "label": "Availability window",
+    "24h": "24h",
+    "7d": "7 days",
+    "30d": "30 days"
   }
 }
