@@ -226,26 +226,10 @@ func (s *Service) ListEvents(
 	}
 
 	response := &ListEventsResponse{
-		Data: make([]EventResponse, 0, len(events)),
+		Data: s.renderPage(ctx, org.UID, events, isAdmin),
 		Pagination: PaginationResponse{
 			Size: opts.Size,
 		},
-	}
-
-	actors := s.resolveActors(ctx, events)
-
-	var tried map[string]*string
-	if isAdmin {
-		tried = s.resolveTriedAccounts(ctx, org.UID, events)
-	}
-
-	for _, evt := range events {
-		item := toResponse(evt, actors, isAdmin)
-		if evt.EventType == models.EventTypeAuthLoginFailed {
-			item.TargetUserName = tried[triedEmail(evt)]
-		}
-
-		response.Data = append(response.Data, item)
 	}
 
 	switch {
@@ -260,6 +244,32 @@ func (s *Service) ListEvents(
 	}
 
 	return response, nil
+}
+
+// renderPage turns one page of events into API items, resolving the actors
+// and, for admins, the members whose accounts failed sign-ins tried.
+func (s *Service) renderPage(
+	ctx context.Context, orgUID string, events []*models.Event, isAdmin bool,
+) []EventResponse {
+	actors := s.resolveActors(ctx, events)
+
+	var tried map[string]*string
+	if isAdmin {
+		tried = s.resolveTriedAccounts(ctx, orgUID, events)
+	}
+
+	items := make([]EventResponse, 0, len(events))
+
+	for _, evt := range events {
+		item := toResponse(evt, actors, isAdmin)
+		if evt.EventType == models.EventTypeAuthLoginFailed {
+			item.TargetUserName = tried[triedEmail(evt)]
+		}
+
+		items = append(items, item)
+	}
+
+	return items
 }
 
 // toResponse renders one event, withholding the admin-only provenance fields
