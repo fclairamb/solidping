@@ -613,6 +613,44 @@ export function getEventChannelUid(event: {
   return typeof uid === "string" && uid.length > 0 ? uid : undefined;
 }
 
+// EventFailedLogin is what an auth.login_failed row says about the attempt:
+// the account as typed, how many attempts the backend folded into the row,
+// and — for admins only, when the email belongs to an org member — that
+// member's name (solidping-business#59).
+export interface EventFailedLogin {
+  email: string;
+  count: number;
+  memberName?: string;
+}
+
+// getEventFailedLogin reads the tried account from payload.email, falling
+// back to target_name. Undefined for other event types and for rows that
+// carry neither.
+export function getEventFailedLogin(event: {
+  eventType?: string;
+  payload?: Record<string, unknown>;
+  targetUserName?: string;
+}): EventFailedLogin | undefined {
+  if (event.eventType !== "auth.login_failed") return undefined;
+  const email =
+    typeof event.payload?.email === "string" && event.payload.email.length > 0
+      ? event.payload.email
+      : typeof event.payload?.target_name === "string"
+        ? event.payload.target_name
+        : "";
+  if (email.length === 0) return undefined;
+  const rawCount = event.payload?.count;
+  const count = typeof rawCount === "number" && Number.isFinite(rawCount) ? rawCount : 1;
+  return {
+    email,
+    count,
+    memberName:
+      typeof event.targetUserName === "string" && event.targetUserName.length > 0
+        ? event.targetUserName
+        : undefined,
+  };
+}
+
 // EventIntegrationRef names the integration an integration.* audit event is
 // about. `uid` is set only while the integration can still exist (never on
 // integration.deleted), so callers link only what can be opened.

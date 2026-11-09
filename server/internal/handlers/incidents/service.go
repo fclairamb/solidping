@@ -31,7 +31,7 @@ import (
 // Service errors.
 var (
 	ErrOrganizationNotFound = errors.New("organization not found")
-	ErrIncidentNotFound     = errors.New("incident not found")
+	ErrIncidentNotFound     = models.ErrIncidentNotFound
 	ErrSnoozeUntilInPast    = errors.New("snooze 'until' must be in the future")
 	ErrSnoozeTooLong        = errors.New("snooze cannot exceed 7 days")
 	ErrSnoozeMissingDur     = errors.New("snooze requires either 'until' or 'duration'")

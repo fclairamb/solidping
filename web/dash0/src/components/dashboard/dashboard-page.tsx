@@ -24,12 +24,12 @@ import {
   useChecks,
   useEvents,
   useIncidents,
-  useResults,
+  useOrgAvailabilityBuckets,
   type Check,
   type CheckStats,
   type Event,
   type IncidentDetail,
-  type OrgResult,
+  type OrgAvailabilityBucketsResponse,
 } from "@/api/hooks";
 import {
   effectiveStatus,
@@ -155,60 +155,25 @@ interface CheckUptime {
   latestDurationMs?: number;
 }
 
-// Group hourly OrgResults by checkUid into UPTIME_HOURS aligned hourly buckets
-// (oldest → newest), plus the most recent bucket's latency. One pass over the
-// single aggregated results query — no per-check work that scales with fleet.
-function groupResultsByCheck(
-  results: OrgResult[],
-  now: number,
+// Maps the server's bucketed availability (one DTO per check, oldest → newest)
+// onto the strip's cells, plus the most recent cell's latency.
+function bucketsToUptime(
+  data: OrgAvailabilityBucketsResponse["data"] | undefined,
 ): Record<string, CheckUptime> {
-  const hourMs = 60 * 60 * 1000;
-  // Align the newest bucket to the current hour start so cells stay stable.
-  const newestStart = Math.floor(now / hourMs) * hourMs;
-  const slotForStart = (iso?: string): number => {
-    if (!iso) return -1;
-    const t = new Date(iso).getTime();
-    if (Number.isNaN(t)) return -1;
-    const slot = Math.floor((t - newestStart) / hourMs) + (UPTIME_HOURS - 1);
-    return slot >= 0 && slot < UPTIME_HOURS ? slot : -1;
-  };
-
-  const byCheck: Record<string, OrgResult[]> = {};
-  for (const r of results) {
-    if (!r.checkUid) continue;
-    (byCheck[r.checkUid] ||= []).push(r);
-  }
-
   const out: Record<string, CheckUptime> = {};
-  for (const [checkUid, rs] of Object.entries(byCheck)) {
-    const cells: (OrgResult | undefined)[] = Array.from(
-      { length: UPTIME_HOURS },
-      () => undefined,
-    );
-    for (const r of rs) {
-      const slot = slotForStart(r.periodStart);
-      if (slot >= 0) cells[slot] = r;
-    }
-    const buckets: UptimeBucket[] = cells.map((cell, i) => ({
-      periodStart:
-        cell?.periodStart ??
-        new Date(newestStart - (UPTIME_HOURS - 1 - i) * hourMs).toISOString(),
-      availabilityPct: cell?.availabilityPct,
-      durationMs: cell?.durationMs,
-      // Carried so the strip can apply the shared small-bucket guard (one failed
-      // sample is never red) instead of classifying on the percentage alone.
-      totalChecks: cell?.totalChecks,
-      successfulChecks: cell?.successfulChecks,
-    }));
-    // Latest response time = durationMs of the most recent bucket that has one.
-    let latestDurationMs: number | undefined;
-    for (let i = buckets.length - 1; i >= 0; i--) {
-      if (buckets[i].durationMs !== undefined) {
-        latestDurationMs = buckets[i].durationMs;
-        break;
-      }
-    }
-    out[checkUid] = { buckets, latestDurationMs };
+  for (const [checkUid, entry] of Object.entries(data ?? {})) {
+    out[checkUid] = {
+      buckets: entry.buckets.map((b) => ({
+        periodStart: b.periodStart,
+        availabilityPct: b.availabilityPct ?? undefined,
+        durationMs: b.avgDurationMs,
+        // Carried so the strip can apply the shared small-bucket guard (one failed
+        // sample is never red) instead of classifying on the percentage alone.
+        totalChecks: b.totalChecks,
+        successfulChecks: b.successfulChecks,
+      })),
+      latestDurationMs: entry.latestDurationMs,
+    };
   }
   return out;
 }
@@ -260,24 +225,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     hideSuppressed: true,
     refetchInterval: stretchWhileLive(INCIDENT_POLL_MS, incidentsLive),
   });
-  const since24h = useMemo(
-    () => new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    [],
-  );
-  // One aggregated hourly query feeds every glance-card uptime strip — grouped
-  // client-side by checkUid, so the card costs a single HTTP call regardless
-  // of fleet size. The 24h availability KPI does NOT ride this query (or any
-  // client-side results query): hour rows only exist once raw rows age past
-  // retention_raw, so the newest hour row typically lags ~24h behind and the
-  // trailing day lives almost entirely in raw rows the dashboard must never
-  // pull fleet-wide. It comes from the server-computed
-  // stats.availability24h instead (see statsQuery below).
-  const hourlyResultsQuery = useResults(org, {
-    periodType: "hour",
-    periodStartAfter: since24h,
-    size: 1000,
-    refetchInterval: stretchWhileLive(RESULT_POLL_MS, checksLive),
-  });
   const eventsQuery = useEvents(org, {
     size: 8,
     refetchInterval: stretchWhileLive(EVENT_POLL_MS, eventsLive),
@@ -294,10 +241,40 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkTick]);
 
-  const checks = checksQuery.data || [];
+  const checks = useMemo(() => checksQuery.data ?? [], [checksQuery.data]);
   const incidents = incidentsQuery.data?.data || [];
-  const hourlyResults = hourlyResultsQuery.data?.data || [];
   const events = eventsQuery.data?.data || [];
+
+  // The glance strips ride their OWN request, enabled once the checks list has
+  // landed, so they never sit on the page's critical path. Server-side bucketed
+  // availability: hour rows only exist once raw rows age past retention_raw, so
+  // the trailing day lives in raw rows the browser must never pull fleet-wide.
+  // The window is the last UPTIME_HOURS whole hours (current hour included), so
+  // the server returns exactly that many hour-aligned cells.
+  const tickNow = useTick(1000);
+  const glanceChecks = useMemo(() => orderChecksForGlance(checks), [checks]);
+  const glanceUids = useMemo(
+    () => glanceChecks.map((c) => c.uid),
+    [glanceChecks],
+  );
+  const hourStart = Math.floor(tickNow / 3_600_000) * 3_600_000;
+  const stripFrom = useMemo(
+    () => new Date(hourStart - (UPTIME_HOURS - 1) * 3_600_000).toISOString(),
+    [hourStart],
+  );
+  const stripTo = useMemo(
+    () => new Date(hourStart + 3_600_000).toISOString(),
+    [hourStart],
+  );
+  const hourlyResultsQuery = useOrgAvailabilityBuckets(
+    org,
+    glanceUids,
+    { from: stripFrom, to: stripTo, bucketSeconds: 3600 },
+    {
+      enabled: checksQuery.isSuccess,
+      refetchInterval: stretchWhileLive(RESULT_POLL_MS, checksLive),
+    },
+  );
 
   const isInitialLoading =
     checksQuery.isPending ||
@@ -328,10 +305,9 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const availabilityPct = availabilityForWindow(stats, availabilityWindow);
   const availabilityTierValue = availabilityTier(availabilityPct);
 
-  const glanceChecks = useMemo(() => orderChecksForGlance(checks), [checks]);
   const uptimeByCheck = useMemo(
-    () => groupResultsByCheck(hourlyResults, Date.now()),
-    [hourlyResults],
+    () => bucketsToUptime(hourlyResultsQuery.data?.data),
+    [hourlyResultsQuery.data],
   );
 
   const refreshAll = () => {
@@ -356,7 +332,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     hourlyResultsQuery.dataUpdatedAt || 0,
     eventsQuery.dataUpdatedAt || 0,
   );
-  const tickNow = useTick(1000);
   const updatedLabel =
     latestUpdate > 0
       ? tickNow - latestUpdate < 5_000

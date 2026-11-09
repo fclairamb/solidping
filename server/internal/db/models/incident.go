@@ -1,10 +1,15 @@
 package models
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// ErrIncidentNotFound is returned when an incident does not exist. It lives here
+// (not in handlers/incidents) so integrations can match it without an import cycle.
+var ErrIncidentNotFound = errors.New("incident not found")
 
 // IncidentState represents the state of an incident.
 type IncidentState int

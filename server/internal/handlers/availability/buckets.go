@@ -65,6 +65,9 @@ type Bucket struct {
 	// The badge SVG deliberately keeps its own four-tier scale instead; see
 	// uptimebar.Classify's doc comment for why.
 	Status string `json:"status"`
+	// AvgDurationMs is the mean response time over the cell's contributing
+	// probes, omitted when none carried a duration.
+	AvgDurationMs *float64 `json:"avgDurationMs,omitempty"`
 }
 
 // ListAvailabilityBucketsResponse is the bucketed-availability payload. `data`
@@ -217,6 +220,10 @@ func bucketDTO(stats uptimebar.BucketStats, start, end time.Time) Bucket {
 	if pct, ok := stats.AvailabilityPct(); ok {
 		cell.HasData = true
 		cell.AvailabilityPct = &pct
+	}
+
+	if avg, ok := stats.AvgDuration(); ok {
+		cell.AvgDurationMs = &avg
 	}
 
 	return cell

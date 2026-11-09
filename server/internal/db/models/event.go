@@ -429,7 +429,17 @@ type ListEventsFilter struct {
 	// ExcludeEventTypePrefixes=["auth"], so neither an unfiltered listing nor
 	// an explicit ?type=auth can leak them.
 	ExcludeEventTypePrefixes []string
-	ActorType                *ActorType // Optional: filter by actor type
+	// OwnFailedLoginEmail carves ONE exception out of ExcludeEventTypePrefixes:
+	// the auth.login_failed rows whose payload email matches it
+	// (case-insensitively). It is how a member sees the failed sign-ins
+	// against their own account and nobody else's (solidping-business#59).
+	//
+	// It is an OR-branch of the exclusion, inside the same AND group, so every
+	// other predicate (type, actor, target…) still narrows it and none can
+	// widen it. Ignored when ExcludeEventTypePrefixes is empty: there is
+	// nothing to carve out of.
+	OwnFailedLoginEmail string
+	ActorType           *ActorType // Optional: filter by actor type
 	// ActorUID filters to the events one user caused (API: actorUserUid).
 	ActorUID *string
 	// TargetUID filters to the events about one object, matched against the

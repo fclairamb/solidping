@@ -11,6 +11,7 @@ import {
   getEventAgentName,
   getEventAgentRegion,
   getEventDisconnectReason,
+  getEventFailedLogin,
   getEventEmoji,
   getEventIntegration,
   getEventLabel,
@@ -551,5 +552,28 @@ describe("getEscalatedDetail", () => {
 
   it("ignores other event types", () => {
     expect(getEscalatedDetail({ eventType: "check.created", payload: {} })).toBeUndefined();
+  });
+});
+
+describe("getEventFailedLogin", () => {
+  it("reads the tried account, the count and the member name", () => {
+    expect(
+      getEventFailedLogin({
+        eventType: "auth.login_failed",
+        payload: { email: "Bob@acme.com", target_name: "Bob@acme.com", count: 3 },
+        targetUserName: "Bob",
+      }),
+    ).toEqual({ email: "Bob@acme.com", count: 3, memberName: "Bob" });
+  });
+
+  it("defaults the count to one and has no name for an unknown account", () => {
+    expect(
+      getEventFailedLogin({ eventType: "auth.login_failed", payload: { target_name: "x@acme.com" } }),
+    ).toEqual({ email: "x@acme.com", count: 1, memberName: undefined });
+  });
+
+  it("ignores other event types and rows without an account", () => {
+    expect(getEventFailedLogin({ eventType: "auth.login_succeeded", payload: { email: "a@acme.com" } })).toBeUndefined();
+    expect(getEventFailedLogin({ eventType: "auth.login_failed", payload: {} })).toBeUndefined();
   });
 });

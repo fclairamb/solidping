@@ -5,9 +5,13 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"net/textproto"
 	"strings"
+	"sync"
+	"syscall"
 
 	"github.com/wneessen/go-mail"
 
@@ -22,6 +26,35 @@ const defaultFromName = "SolidPing"
 
 // ErrNoRecipients is returned when no recipients are specified.
 var ErrNoRecipients = errors.New("no recipients specified")
+
+// sendSlots is the process-wide semaphore bounding concurrent SMTP sends. It is
+// sized on first use from email.max_concurrent_sends and is shared by every
+// sender, including the per-send copies a dynamic sender builds.
+//
+//nolint:gochecknoglobals // process-wide by design
+var (
+	sendSlotsOnce sync.Once
+	sendSlots     chan struct{}
+)
+
+// acquireSendSlot blocks until a send slot is free or ctx ends. The returned
+// func releases the slot.
+func acquireSendSlot(ctx context.Context, limit int) (func(), error) {
+	sendSlotsOnce.Do(func() {
+		if limit <= 0 {
+			limit = config.DefaultEmailMaxConcurrentSends
+		}
+
+		sendSlots = make(chan struct{}, limit)
+	})
+
+	select {
+	case sendSlots <- struct{}{}:
+		return func() { <-sendSlots }, nil
+	case <-ctx.Done():
+		return nil, fmt.Errorf("waiting for an SMTP send slot: %w", ctx.Err())
+	}
+}
 
 // SMTPSender implements the Sender interface using SMTP.
 type SMTPSender struct {
@@ -304,10 +337,29 @@ func (s *SMTPSender) sendMessage(ctx context.Context, mailMsg *mail.Msg, msg *Me
 		"subject", msg.Subject,
 	)
 
-	if err := client.DialAndSendWithContext(ctx, mailMsg); err != nil {
-		s.logger.ErrorContext(ctx, "failed to send email",
+	release, err := acquireSendSlot(ctx, s.config.MaxConcurrentSends)
+	if err != nil {
+		return nil, err
+	}
+
+	err = client.DialAndSendWithContext(ctx, mailMsg)
+
+	release()
+
+	if err != nil {
+		// Transient network errors are retried by the job worker, which logs
+		// its own line: keep ERROR for permanent failures.
+		retryable := IsRetryableSendError(err)
+		level := slog.LevelError
+
+		if retryable {
+			level = slog.LevelWarn
+		}
+
+		s.logger.Log(ctx, level, "failed to send email",
 			"to", msg.Recipients.To,
 			"subject", msg.Subject,
+			"retryable", retryable,
 			"error", err,
 		)
 
@@ -351,3 +403,34 @@ func describeSendError(err error) error {
 }
 
 const smtpAuthFailedCode = 535
+
+// IsRetryableSendError reports whether err is a transient failure worth a
+// retry: dropped or refused connections, timeouts and SMTP 4xx replies.
+func IsRetryableSendError(err error) bool {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.EPIPE) {
+		return true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	var tpErr *textproto.Error
+	if errors.As(err, &tpErr) {
+		return tpErr.Code >= smtpTransientMin && tpErr.Code < smtpPermanentMin
+	}
+
+	// go-mail wraps some dial failures as plain text.
+	msg := err.Error()
+
+	return strings.Contains(msg, "EOF") || strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "connection refused")
+}
+
+const (
+	smtpTransientMin = 400
+	smtpPermanentMin = 500
+)
