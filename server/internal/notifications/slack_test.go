@@ -1456,9 +1456,9 @@ func (m *mockDBService) GetCheckStatusCounts(
 	panic("not implemented")
 }
 
-func (m *mockDBService) GetOrgAvailability24h(
-	_ context.Context, _ string, _, _ time.Time,
-) (models.AvailabilityCounts, error) {
+func (m *mockDBService) GetOrgAvailability(
+	_ context.Context, _ string, _ time.Time, _ []time.Duration,
+) ([]models.AvailabilityCounts, error) {
 	panic("not implemented")
 }
 

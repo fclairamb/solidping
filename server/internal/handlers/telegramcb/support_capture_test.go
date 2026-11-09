@@ -31,121 +31,301 @@ func (e *tgEnv) capturedThreads(t *testing.T, svc *support.Service) []*models.Su
 	return threads
 }
 
-// TestSupportCapture_ProseIsCapturedAndCommandsAreNot is the central assertion
-// of spec 2026-08-22-02 for Telegram, together with its positive control.
+func (e *tgEnv) threadMessages(t *testing.T, svc *support.Service, threadUID string) []*models.SupportMessage {
+	t.Helper()
+
+	messages, err := svc.ListMessages(context.Background(), threadUID, 0)
+	require.NoError(t, err)
+
+	return messages
+}
+
+// say posts one private-chat text message from a human sender.
+func (e *tgEnv) say(t *testing.T, messageID int, text string) {
+	t.Helper()
+
+	rec := e.post(t, testWebhookSecret, fmt.Sprintf(
+		`{"update_id":%d,"message":{"message_id":%d,"chat":{"id":%s,"type":"private"},`+
+			`"from":{"id":42,"username":"alice"},"text":%q}}`,
+		messageID, messageID, testChatID, text))
+	require.Equal(t, 200, rec.Code)
+}
+
+func (e *tgEnv) lastReply(t *testing.T) string {
+	t.Helper()
+
+	sent := e.sender.messages()
+	require.NotEmpty(t, sent)
+
+	return sent[len(sent)-1]
+}
+
+// TestSupportMode_ProseOutsideSupportIsNotCaptured is the reason /support
+// exists: a stray message (an id lookup meant for another bot, a greeting) used
+// to open a ticket. It now gets a pointer to /support and records nothing.
 //
-// The negative half ("prose is no longer dropped") is worthless on its own: a
-// handler that captured EVERYTHING would pass it while quietly turning every
-// /status into a support ticket. So the parseable command is asserted in the
-// same test, over the same handler.
-func TestSupportCapture_ProseIsCapturedAndCommandsAreNot(t *testing.T) {
+// The positive control is the same sentence sent after /support, over the same
+// handler: it IS captured, so the absence above is not a broken capture path.
+func TestSupportMode_ProseOutsideSupportIsNotCaptured(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	env := setupEnv(t)
 	svc := env.withSupportInbox(t)
 
-	// 1. Prose. Previously: one INFO line, body discarded.
-	rec := env.post(t, testWebhookSecret, fmt.Sprintf(
-		`{"update_id":1,"message":{"message_id":11,"chat":{"id":%s,"type":"private"},`+
-			`"from":{"id":42,"username":"alice"},"text":"hey, are you seeing errors on the api?"}}`,
-		testChatID))
-	r.Equal(200, rec.Code)
+	env.say(t, 11, "@getidsbot")
+	r.Empty(env.capturedThreads(t, svc), "prose outside support mode must not open a thread")
+	r.Contains(env.lastReply(t), "/support", "the sender must be told how to reach a person")
+
+	// POSITIVE CONTROL.
+	env.say(t, 12, "/support")
+	env.say(t, 13, "hey, are you seeing errors on the api?")
 
 	threads := env.capturedThreads(t, svc)
-	r.Len(threads, 1, "a prose message must be captured")
+	r.Len(threads, 1)
 	r.Equal(models.SupportChannelTelegram, threads[0].Channel)
 	r.Equal(testChatID, threads[0].ChannelIdentity)
 	r.Contains(threads[0].Subject, "@alice")
 
-	messages, err := svc.ListMessages(context.Background(), threads[0].UID, 0)
-	r.NoError(err)
-	r.Len(messages, 1)
-	r.Equal("hey, are you seeing errors on the api?", messages[0].Body)
-
-	// 2. POSITIVE CONTROL: a KNOWN command still executes normally and is NOT
-	// captured. /help answers in-chat and creates no support message.
-	before := len(env.sender.messages())
-
-	rec = env.post(t, testWebhookSecret, fmt.Sprintf(
-		`{"update_id":2,"message":{"message_id":12,"chat":{"id":%s,"type":"private"},`+
-			`"from":{"id":42,"username":"alice"},"text":"/help"}}`,
-		testChatID))
-	r.Equal(200, rec.Code)
-	r.Greater(len(env.sender.messages()), before, "/help must still answer in chat")
-
-	messages, err = svc.ListMessages(context.Background(), threads[0].UID, 0)
-	r.NoError(err)
-	r.Len(messages, 1, "a parseable command must NOT be captured as a support message")
+	messages := env.threadMessages(t, svc, threads[0].UID)
+	r.Len(messages, 2)
+	r.Equal(supportOpenedBody, messages[0].Body, "a bare /support explains the thread in the inbox")
+	r.Equal("hey, are you seeing errors on the api?", messages[1].Body)
 }
 
-// TestSupportCapture_UnknownCommandBothAnswersAndCaptures pins the deliberate
-// double behavior: a mistyped command is very often a person trying to talk,
-// so the "unknown command" answer is kept AND the message is recorded.
-func TestSupportCapture_UnknownCommandBothAnswersAndCaptures(t *testing.T) {
+// TestSupportMode_SupportWithAMessage opens the thread with that message and
+// confirms it in chat; a later bare /support is a reminder, not a new thread.
+func TestSupportMode_SupportWithAMessage(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	env := setupEnv(t)
 	svc := env.withSupportInbox(t)
 
-	rec := env.post(t, testWebhookSecret, fmt.Sprintf(
-		`{"update_id":3,"message":{"message_id":13,"chat":{"id":%s,"type":"private"},`+
-			`"from":{"id":42,"username":"bob"},"text":"/stauts prod"}}`,
-		testChatID))
-	r.Equal(200, rec.Code)
-
-	sent := env.sender.messages()
-	r.NotEmpty(sent)
-	r.Contains(sent[len(sent)-1], "know that command", "the user must still be told the command is unknown")
+	env.say(t, 21, "/support my check is red\nsince noon")
+	r.Contains(env.lastReply(t), "talking to the SolidPing team")
+	r.Contains(env.lastReply(t), "/done", "entering the mode must say how to leave it")
 
 	threads := env.capturedThreads(t, svc)
 	r.Len(threads, 1)
 
-	messages, err := svc.ListMessages(context.Background(), threads[0].UID, 0)
-	r.NoError(err)
+	messages := env.threadMessages(t, svc, threads[0].UID)
 	r.Len(messages, 1)
-	r.Contains(messages[0].Body, "/stauts", "the mistyped verb is part of what the person said")
-	r.Contains(messages[0].Body, "prod")
+	r.Equal("my check is red\nsince noon", messages[0].Body)
+
+	before := len(env.sender.messages())
+
+	env.say(t, 22, "/support")
+	r.Len(env.sender.messages(), before+1)
+	r.Contains(env.lastReply(t), "already")
+	r.Len(env.capturedThreads(t, svc), 1)
+	r.Len(env.threadMessages(t, svc, threads[0].UID), 1, "a bare /support in support mode records nothing")
+
+	// /support with text while in the mode is just a message, answered by
+	// nobody but the operator.
+	env.say(t, 23, "/support also the eu region")
+	r.Len(env.sender.messages(), before+1, "a message in support mode gets no bot reply")
+	r.Len(env.threadMessages(t, svc, threads[0].UID), 2)
 }
 
-// TestSupportCapture_BotMessagesAreNotCaptured guards the self-talking-thread
-// bug: our own outbound post must never come back in as a new inbound message.
-func TestSupportCapture_BotMessagesAreNotCaptured(t *testing.T) {
+// TestSupportMode_CommandsAreNeverCaptured: a known command runs, an unknown
+// one is answered, neither is recorded — in or out of support mode.
+func TestSupportMode_CommandsAreNeverCaptured(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	env := setupEnv(t)
 	svc := env.withSupportInbox(t)
 
+	env.say(t, 31, "/getid")
+	r.Contains(env.lastReply(t), "know that command", "the user must still be told the command is unknown")
+	r.Contains(env.lastReply(t), "/support", "the command list names /support")
+	r.Empty(env.capturedThreads(t, svc), "an unknown command must not open a thread")
+
+	// In support mode, too.
+	env.say(t, 32, "/support hello")
+	env.say(t, 33, "/stauts prod")
+	r.Contains(env.lastReply(t), "know that command")
+
+	before := len(env.sender.messages())
+
+	env.say(t, 34, "/help")
+	r.Greater(len(env.sender.messages()), before, "/help must still answer in chat")
+
+	threads := env.capturedThreads(t, svc)
+	r.Len(threads, 1)
+
+	messages := env.threadMessages(t, svc, threads[0].UID)
+	r.Len(messages, 1, "only the /support message is recorded")
+	r.Equal("hello", messages[0].Body)
+}
+
+// TestSupportMode_DoneLeavesSupportMode: /done closes the thread, and the next
+// message is back to the hint. The thread keeps its unread state for the
+// operator.
+func TestSupportMode_DoneLeavesSupportMode(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupEnv(t)
+	svc := env.withSupportInbox(t)
+
+	env.say(t, 41, "/done")
+	r.Contains(env.lastReply(t), "no open support conversation")
+
+	env.say(t, 42, "/support is the api down?")
+	env.say(t, 43, "/done")
+	r.Contains(env.lastReply(t), "closed")
+
+	threads := env.capturedThreads(t, svc)
+	r.Len(threads, 1)
+	r.Equal(models.SupportStatusClosed, threads[0].Status)
+	r.Positive(threads[0].UnreadCount, "closing from the chat must not hide the message from the operator")
+
+	env.say(t, 44, "thanks")
+	r.Contains(env.lastReply(t), "/support")
+	r.Len(env.threadMessages(t, svc, threads[0].UID), 1, "after /done, prose is not captured")
+}
+
+// TestSupportMode_OperatorCloseEndsSupportMode: closing the thread in the inbox
+// ends the mode, because the mode IS the live thread.
+func TestSupportMode_OperatorCloseEndsSupportMode(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupEnv(t)
+	svc := env.withSupportInbox(t)
+
+	env.say(t, 51, "/support hello")
+
+	threads := env.capturedThreads(t, svc)
+	r.Len(threads, 1)
+
+	closed := models.SupportStatusClosed
+	_, err := svc.UpdateThread(context.Background(), threads[0].UID, &closed, nil)
+	r.NoError(err)
+
+	env.say(t, 52, "are you there?")
+	r.Contains(env.lastReply(t), "/support")
+	r.Len(env.threadMessages(t, svc, threads[0].UID), 1)
+}
+
+// TestSupportMode_BotMessagesAreNotCaptured guards the self-talking-thread
+// bug: our own outbound post must never come back in as a new inbound message,
+// even in support mode.
+func TestSupportMode_BotMessagesAreNotCaptured(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupEnv(t)
+	svc := env.withSupportInbox(t)
+
+	env.say(t, 61, "/support hello")
+
+	threads := env.capturedThreads(t, svc)
+	r.Len(threads, 1)
+
 	rec := env.post(t, testWebhookSecret, fmt.Sprintf(
-		`{"update_id":4,"message":{"message_id":14,"chat":{"id":%s,"type":"private"},`+
+		`{"update_id":62,"message":{"message_id":62,"chat":{"id":%s,"type":"private"},`+
 			`"from":{"id":7,"username":"solidping_test_bot","is_bot":true},"text":"we are on it"}}`,
 		testChatID))
 	r.Equal(200, rec.Code)
+	r.Len(env.threadMessages(t, svc, threads[0].UID), 1, "a bot-authored message must not be captured")
 
-	r.Empty(env.capturedThreads(t, svc), "a bot-authored message must not open a support thread")
-
-	// Positive control on the same handler: a human message DOES open one.
-	rec = env.post(t, testWebhookSecret, fmt.Sprintf(
-		`{"update_id":5,"message":{"message_id":15,"chat":{"id":%s,"type":"private"},`+
-			`"from":{"id":42,"username":"alice"},"text":"thanks"}}`,
-		testChatID))
-	r.Equal(200, rec.Code)
-	r.Len(env.capturedThreads(t, svc), 1)
+	// Positive control on the same handler: a human message IS captured.
+	env.say(t, 63, "thanks")
+	r.Len(env.threadMessages(t, svc, threads[0].UID), 2)
 }
 
-// TestSupportCapture_WithoutAnInboxTheWebhookStillWorks proves capture is
-// additive: an instance with no support inbox behaves exactly as before.
-func TestSupportCapture_WithoutAnInboxTheWebhookStillWorks(t *testing.T) {
+// TestSupportMode_WithoutAnInbox: /support never claims a message was received
+// when there is nowhere to put it, and prose still gets the hint.
+func TestSupportMode_WithoutAnInbox(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	env := setupEnv(t)
 
+	env.say(t, 71, "/support hello")
+	r.Contains(env.lastReply(t), "can't be received")
+	r.NotContains(env.lastReply(t), "talking to the SolidPing team")
+
+	env.say(t, 72, "hello")
+	r.Contains(env.lastReply(t), "only understand commands")
+}
+
+// TestSupportMode_InboxFailuresNeverClaimDelivery: when the inbox's storage
+// fails, /support and /done say so instead of confirming, prose is attempted
+// (fail open) and the webhook still answers 200.
+func TestSupportMode_InboxFailuresNeverClaimDelivery(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupEnv(t)
+	env.withSupportInbox(t)
+
+	// POSITIVE CONTROL first: with working storage, /support confirms.
+	env.say(t, 81, "/support hello")
+	r.Contains(env.lastReply(t), "talking to the SolidPing team")
+
+	_, err := env.db.DB().ExecContext(context.Background(), "DROP TABLE support_messages")
+	r.NoError(err)
+	_, err = env.db.DB().ExecContext(context.Background(), "DROP TABLE support_threads")
+	r.NoError(err)
+
+	env.say(t, 82, "/support is anyone there?")
+	r.Contains(env.lastReply(t), "can't be received")
+
+	before := len(env.sender.messages())
+
+	env.say(t, 83, "still there?")
+	r.Len(env.sender.messages(), before, "a failed lookup captures (and fails) silently rather than lying")
+
+	env.say(t, 84, "/done")
+	r.Contains(env.lastReply(t), "can't be received")
+}
+
+// TestSupportMode_EdgeMessages covers the shapes around the happy path: a bot
+// sending /support, /done on an instance without an inbox, a photo in support
+// mode, and a sender with no username.
+func TestSupportMode_EdgeMessages(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	withoutInbox := setupEnv(t)
+	withoutInbox.say(t, 91, "/done")
+	r.Contains(withoutInbox.lastReply(t), "no open support conversation")
+
+	env := setupEnv(t)
+	svc := env.withSupportInbox(t)
+
 	rec := env.post(t, testWebhookSecret, fmt.Sprintf(
-		`{"update_id":6,"message":{"message_id":16,"chat":{"id":%s,"type":"private"},`+
-			`"from":{"id":42},"text":"hello"}}`,
+		`{"update_id":92,"message":{"message_id":92,"chat":{"id":%s,"type":"private"},`+
+			`"from":{"id":7,"username":"solidping_test_bot","is_bot":true},"text":"/support hi"}}`,
 		testChatID))
 	r.Equal(200, rec.Code)
+	r.Empty(env.capturedThreads(t, svc), "a bot cannot enter support mode")
+
+	// A sender with no username is named by first and last name.
+	rec = env.post(t, testWebhookSecret, fmt.Sprintf(
+		`{"update_id":93,"message":{"message_id":93,"chat":{"id":%s,"type":"private"},`+
+			`"from":{"id":42,"first_name":"Alice","last_name":"Martin"},"text":"/support hi"}}`,
+		testChatID))
+	r.Equal(200, rec.Code)
+
+	threads := env.capturedThreads(t, svc)
+	r.Len(threads, 1)
+	r.Contains(threads[0].Subject, "Alice Martin")
+
+	// A photo (no text, no message id) in support mode is recorded as such.
+	rec = env.post(t, testWebhookSecret, fmt.Sprintf(
+		`{"update_id":94,"message":{"chat":{"id":%s,"type":"private"},"from":{"id":42}}}`,
+		testChatID))
+	r.Equal(200, rec.Code)
+
+	messages, err := svc.ListMessages(ctx, threads[0].UID, 0)
+	r.NoError(err)
+	r.Len(messages, 2)
+	r.Equal(models.SupportRawTypeUnsupported, messages[1].RawType)
 }

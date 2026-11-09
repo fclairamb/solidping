@@ -261,17 +261,18 @@ func (h *Handler) handleMessage(ctx context.Context, msg *telegram.IncomingMessa
 		h.handleIncidentDetail(ctx, chatID, arg)
 	case "comment":
 		h.handleComment(ctx, msg, chatID, arg)
+	case "support":
+		h.handleSupport(ctx, msg, chatID, arg)
+	case "done":
+		h.handleSupportDone(ctx, chatID)
 	case "":
-		// Prose. This is a person talking to us, and until spec 2026-08-22-02
-		// it was logged and dropped.
-		h.captureSupport(ctx, msg, chatID, "")
+		h.handleProse(ctx, msg, chatID)
 	default:
+		// An unknown command is answered and NOT captured: a command is not a
+		// conversation (people paste /getid meant for other bots), and someone
+		// who wants a person now has /support for it.
 		h.log.InfoContext(ctx, "unknown telegram command", "chatId", chatID, "command", command)
-		// The "unknown command" answer is KEPT — a user who mistyped needs to
-		// know — and the message is captured as well, because a mistyped
-		// command is very often a person trying to talk rather than to invoke.
 		h.reply(ctx, chatID, telegram.BuildUnknownCommandHTML())
-		h.captureSupport(ctx, msg, chatID, command)
 	}
 }
 
@@ -516,27 +517,140 @@ func ok(writer http.ResponseWriter) error {
 	return nil
 }
 
-// captureSupport records a Telegram message the command router could not act on.
+// handleSupport answers /support [message]: it enters support mode.
 //
-// Known commands never reach here: a parseable command executes and is not a
-// support message. Only prose (command == "") and unrecognized verbs are
-// captured.
-func (h *Handler) captureSupport(
-	ctx context.Context, msg *telegram.IncomingMessage, chatID, unknownCommand string,
+// Support mode is not a separate state: it is "this chat has a live (not
+// closed) support thread". /support opens that thread, with the message when
+// one was given; from then on plain text lands in it, until the person sends
+// /done or an operator closes the thread from the inbox.
+//
+// /support works in an unlinked chat too: someone who has not connected an
+// account yet is exactly who may need to ask something.
+func (h *Handler) handleSupport(
+	ctx context.Context, msg *telegram.IncomingMessage, chatID, text string,
 ) {
+	if isBotMessage(msg) {
+		return
+	}
+
 	if h.support == nil {
-		h.log.InfoContext(ctx, "ignoring unhandled telegram message", "chatId", chatID)
+		h.reply(ctx, chatID, telegram.BuildSupportUnavailableHTML())
 
 		return
 	}
 
-	// Our own posts must never be captured, or an outbound reply comes straight
-	// back in as a new inbound message and the thread talks to itself.
-	if msg.From != nil && msg.From.IsBot {
+	live, err := h.support.LiveThread(ctx, models.SupportChannelTelegram, chatID)
+	if err != nil {
+		h.log.WarnContext(ctx, "failed to look up the telegram support thread", "chatId", chatID, "error", err)
+	}
+
+	if live != nil {
+		// Already in support mode. A message is just a message; a bare /support
+		// gets a reminder of how this works rather than silence.
+		if text == "" {
+			h.reply(ctx, chatID, telegram.BuildSupportAlreadyOpenHTML())
+
+			return
+		}
+
+		h.captureSupport(ctx, msg, chatID, text)
+
 		return
 	}
 
-	body := msg.Text
+	if text == "" {
+		text = supportOpenedBody
+	}
+
+	if !h.captureSupport(ctx, msg, chatID, text) {
+		// Never tell someone they are talking to a person when nothing was
+		// recorded.
+		h.reply(ctx, chatID, telegram.BuildSupportUnavailableHTML())
+
+		return
+	}
+
+	h.reply(ctx, chatID, telegram.BuildSupportStartedHTML())
+}
+
+// handleSupportDone answers /done: it leaves support mode by closing the
+// chat's live thread.
+func (h *Handler) handleSupportDone(ctx context.Context, chatID string) {
+	if h.support == nil {
+		h.reply(ctx, chatID, telegram.BuildNoSupportOpenHTML())
+
+		return
+	}
+
+	closed, err := h.support.CloseLiveThread(ctx, models.SupportChannelTelegram, chatID)
+	if err != nil {
+		h.log.WarnContext(ctx, "failed to close the telegram support thread", "chatId", chatID, "error", err)
+		h.reply(ctx, chatID, telegram.BuildSupportUnavailableHTML())
+
+		return
+	}
+
+	if !closed {
+		h.reply(ctx, chatID, telegram.BuildNoSupportOpenHTML())
+
+		return
+	}
+
+	h.log.InfoContext(ctx, "telegram support conversation closed by the sender", "chatId", chatID)
+	h.reply(ctx, chatID, telegram.BuildSupportClosedHTML())
+}
+
+// handleProse routes a message that is not a command.
+//
+// In support mode (a live thread exists) it goes to the thread, silently, as
+// any chat message would. Outside it the bot says what it does understand,
+// and records nothing: talking to a person is an explicit /support, not a side
+// effect of typing.
+func (h *Handler) handleProse(ctx context.Context, msg *telegram.IncomingMessage, chatID string) {
+	if isBotMessage(msg) {
+		return
+	}
+
+	if h.support != nil {
+		live, err := h.support.LiveThread(ctx, models.SupportChannelTelegram, chatID)
+		if err != nil {
+			// Fail open: capturing a message that did not need it costs an
+			// operator a glance, dropping one from a live conversation loses it.
+			h.log.WarnContext(ctx, "failed to look up the telegram support thread", "chatId", chatID, "error", err)
+		}
+
+		if live != nil || err != nil {
+			h.captureSupport(ctx, msg, chatID, msg.Text)
+
+			return
+		}
+	}
+
+	h.log.InfoContext(ctx, "telegram message outside support mode", "chatId", chatID)
+	h.reply(ctx, chatID, telegram.BuildNotUnderstoodHTML())
+}
+
+// supportOpenedBody is the first message of a thread opened by a bare
+// /support, so the inbox shows why a thread with no question exists yet.
+const supportOpenedBody = "(started a support conversation with /support)"
+
+// isBotMessage reports whether a message was authored by a bot. Our own posts
+// must never be captured, or an outbound reply comes straight back in as a new
+// inbound message and the thread talks to itself.
+func isBotMessage(msg *telegram.IncomingMessage) bool {
+	return msg.From != nil && msg.From.IsBot
+}
+
+// captureSupport records one Telegram message in the chat's support thread,
+// opening the thread when there is none. It reports whether the message was
+// recorded.
+func (h *Handler) captureSupport(
+	ctx context.Context, msg *telegram.IncomingMessage, chatID, body string,
+) bool {
+	if h.support == nil || isBotMessage(msg) {
+		return false
+	}
+
 	rawType := models.SupportRawTypeText
 
 	if strings.TrimSpace(body) == "" {
@@ -545,18 +659,38 @@ func (h *Handler) captureSupport(
 		rawType = models.SupportRawTypeUnsupported
 	}
 
-	if unknownCommand != "" {
-		body = "/" + unknownCommand + " — " + body
-	}
-
-	h.support.CaptureSafe(ctx, &support.Inbound{
+	inbound := &support.Inbound{
 		Channel:     models.SupportChannelTelegram,
 		Identity:    chatID,
 		ExternalID:  telegramExternalID(chatID, msg.MessageID),
 		Body:        body,
 		RawType:     rawType,
 		SenderLabel: telegramSenderLabel(msg),
-	})
+	}
+
+	captured := false
+
+	// A capture failure must never break the webhook: Telegram retries a
+	// non-2xx forever. Same guarantee as support.Service.CaptureSafe, but the
+	// caller needs to know whether it worked.
+	func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				h.log.WarnContext(ctx, "telegram support capture panicked", "chatId", chatID, "panic", rec)
+			}
+		}()
+
+		thread, _, err := h.support.Capture(ctx, inbound)
+		if err != nil {
+			h.log.WarnContext(ctx, "telegram support capture failed", "chatId", chatID, "error", err)
+
+			return
+		}
+
+		captured = thread != nil
+	}()
+
+	return captured
 }
 
 // telegramExternalID builds an idempotency key. Telegram message ids are unique

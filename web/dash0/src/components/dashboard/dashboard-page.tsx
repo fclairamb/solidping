@@ -48,6 +48,12 @@ import {
 import { formatIssuesSubtitle } from "@/lib/issues-banner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  DASHBOARD_WINDOWS,
+  dashboardWindowOrDefault,
+  type DashboardWindow,
+} from "@/lib/preferences-sync";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import {
   CHECKS_LIST_POLL_MS,
   stretchWhileLive,
   useLiveSubscription,
@@ -96,10 +102,30 @@ const EMPTY_CHECK_STATS: CheckStats = {
   down: 0,
   hardDown: 0,
   availability24h: null,
+  availability7d: null,
+  availability30d: null,
   oldestEnabledCheckCreatedAt: null,
 };
 // Hours rendered by each row's 24h uptime strip.
 const UPTIME_HOURS = 24;
+
+// The stats field holding the availability over `period`.
+function availabilityForWindow(stats: CheckStats, period: DashboardWindow): number | null {
+  switch (period) {
+    case "7d":
+      return stats.availability7d ?? null;
+    case "30d":
+      return stats.availability30d ?? null;
+    default:
+      return stats.availability24h;
+  }
+}
+
+// The i18next context of a window's strings: the 24h ones are the base keys,
+// the others carry a `_7d` / `_30d` suffix.
+function windowContext(period: DashboardWindow): string | undefined {
+  return period === "24h" ? undefined : period;
+}
 
 interface OrgDashboardPageProps {
   org: string;
@@ -155,7 +181,15 @@ function bucketsToUptime(
 export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const { t } = useTranslation("dashboard");
   const { t: tNav } = useTranslation("nav");
-  const { organizations } = useAuth();
+  const { organizations, user, updatePreferences } = useAuth();
+  // The window of the availability tile and banner: the user's saved choice
+  // (users.preferences.dashboardWindow, spec 2026-11-09-02), 24h by default.
+  const availabilityWindow = dashboardWindowOrDefault(user?.preferences?.dashboardWindow);
+  const changeAvailabilityWindow = (next: DashboardWindow) => {
+    // Best effort: the choice applies at once, a failed save only means the
+    // next page load starts from the previous one.
+    updatePreferences({ dashboardWindow: next }).catch(() => {});
+  };
   // Assume the checklist is up until it says otherwise, so the star prompt
   // never flashes in before the checklist has decided.
   const [onboardingVisible, setOnboardingVisible] = useState(true);
@@ -266,8 +300,9 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   // page length — the query below caps at `size: 5` for the "needs
   // attention" list, so `incidents.length` alone silently truncates at 5.
   const incidentsCount = incidentsQuery.data?.total ?? incidents.length;
-  // Server-computed (spec 2026-08-26-09) — see CheckStats.availability24h.
-  const availabilityPct = stats.availability24h;
+  // Server-computed (specs 2026-08-26-09, 2026-11-09-02): one field per
+  // window, all in the same stats response, so switching is instant.
+  const availabilityPct = availabilityForWindow(stats, availabilityWindow);
   const availabilityTierValue = availabilityTier(availabilityPct);
 
   const uptimeByCheck = useMemo(
@@ -319,8 +354,18 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
           </>
         }
         actions={
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
             {updatedLabel ? <span>{updatedLabel}</span> : null}
+            <SegmentedControl<DashboardWindow>
+              value={availabilityWindow}
+              onValueChange={changeAvailabilityWindow}
+              aria-label={t("window.label")}
+              options={DASHBOARD_WINDOWS.map((value) => ({
+                value,
+                label: t(`window.${value}`),
+                testId: `dashboard-window-${value}`,
+              }))}
+            />
             <Button
               variant="outline"
               size="icon"
@@ -351,6 +396,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             incidentsCount={incidentsCount}
             checksCount={totalChecksCount}
             availabilityPct={availabilityPct}
+            availabilityWindow={availabilityWindow}
           />
 
           {/* Two columns on a phone: four full-width tiles pushed everything
@@ -386,7 +432,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
               data-testid="kpi-tile-availability"
             >
               <KpiTile
-                label={t("kpi.availability")}
+                label={t("kpi.availability", { context: windowContext(availabilityWindow) })}
                 value={
                   availabilityPct === null
                     ? "—"
@@ -408,7 +454,9 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 sub={
                   availabilityPct === null
                     ? t("kpi.availabilityNoDataSub")
-                    : t("kpi.availabilitySub")
+                    : t("kpi.availabilitySub", {
+                        context: windowContext(availabilityWindow),
+                      })
                 }
               />
             </Link>
@@ -521,6 +569,7 @@ interface OverallStatusBannerProps {
   incidentsCount: number;
   checksCount: number;
   availabilityPct: number | null;
+  availabilityWindow: DashboardWindow;
 }
 
 // Wraps the banner's content in the TanStack Router `<Link>` matching its
@@ -578,6 +627,7 @@ function OverallStatusBanner({
   incidentsCount,
   checksCount,
   availabilityPct,
+  availabilityWindow,
 }: OverallStatusBannerProps) {
   const { t } = useTranslation("dashboard");
 
@@ -600,6 +650,7 @@ function OverallStatusBanner({
                   : t("banner.allGreenSub", {
                       count: checksCount,
                       availability: availabilityPct.toFixed(2),
+                      context: windowContext(availabilityWindow),
                     })}
               </span>
             </div>
@@ -610,7 +661,9 @@ function OverallStatusBanner({
           {availabilityTier(availabilityPct) === "operational" ? (
             <Badge variant="success" className="gap-1.5">
               <CheckCircle className="h-3.5 w-3.5" />
-              {t("banner.slaOperational")}
+              {t("banner.slaOperational", {
+                context: windowContext(availabilityWindow),
+              })}
             </Badge>
           ) : null}
         </div>
