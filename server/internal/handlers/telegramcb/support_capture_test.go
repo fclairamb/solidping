@@ -252,3 +252,80 @@ func TestSupportMode_WithoutAnInbox(t *testing.T) {
 	env.say(t, 72, "hello")
 	r.Contains(env.lastReply(t), "only understand commands")
 }
+
+// TestSupportMode_InboxFailuresNeverClaimDelivery: when the inbox's storage
+// fails, /support and /done say so instead of confirming, prose is attempted
+// (fail open) and the webhook still answers 200.
+func TestSupportMode_InboxFailuresNeverClaimDelivery(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupEnv(t)
+	env.withSupportInbox(t)
+
+	// POSITIVE CONTROL first: with working storage, /support confirms.
+	env.say(t, 81, "/support hello")
+	r.Contains(env.lastReply(t), "talking to the SolidPing team")
+
+	_, err := env.db.DB().ExecContext(context.Background(), "DROP TABLE support_messages")
+	r.NoError(err)
+	_, err = env.db.DB().ExecContext(context.Background(), "DROP TABLE support_threads")
+	r.NoError(err)
+
+	env.say(t, 82, "/support is anyone there?")
+	r.Contains(env.lastReply(t), "can't be received")
+
+	before := len(env.sender.messages())
+
+	env.say(t, 83, "still there?")
+	r.Len(env.sender.messages(), before, "a failed lookup captures (and fails) silently rather than lying")
+
+	env.say(t, 84, "/done")
+	r.Contains(env.lastReply(t), "can't be received")
+}
+
+// TestSupportMode_EdgeMessages covers the shapes around the happy path: a bot
+// sending /support, /done on an instance without an inbox, a photo in support
+// mode, and a sender with no username.
+func TestSupportMode_EdgeMessages(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	withoutInbox := setupEnv(t)
+	withoutInbox.say(t, 91, "/done")
+	r.Contains(withoutInbox.lastReply(t), "no open support conversation")
+
+	env := setupEnv(t)
+	svc := env.withSupportInbox(t)
+
+	rec := env.post(t, testWebhookSecret, fmt.Sprintf(
+		`{"update_id":92,"message":{"message_id":92,"chat":{"id":%s,"type":"private"},`+
+			`"from":{"id":7,"username":"solidping_test_bot","is_bot":true},"text":"/support hi"}}`,
+		testChatID))
+	r.Equal(200, rec.Code)
+	r.Empty(env.capturedThreads(t, svc), "a bot cannot enter support mode")
+
+	// A sender with no username is named by first and last name.
+	rec = env.post(t, testWebhookSecret, fmt.Sprintf(
+		`{"update_id":93,"message":{"message_id":93,"chat":{"id":%s,"type":"private"},`+
+			`"from":{"id":42,"first_name":"Alice","last_name":"Martin"},"text":"/support hi"}}`,
+		testChatID))
+	r.Equal(200, rec.Code)
+
+	threads := env.capturedThreads(t, svc)
+	r.Len(threads, 1)
+	r.Contains(threads[0].Subject, "Alice Martin")
+
+	// A photo (no text, no message id) in support mode is recorded as such.
+	rec = env.post(t, testWebhookSecret, fmt.Sprintf(
+		`{"update_id":94,"message":{"chat":{"id":%s,"type":"private"},"from":{"id":42}}}`,
+		testChatID))
+	r.Equal(200, rec.Code)
+
+	messages, err := svc.ListMessages(ctx, threads[0].UID, 0)
+	r.NoError(err)
+	r.Len(messages, 2)
+	r.Equal(models.SupportRawTypeUnsupported, messages[1].RawType)
+}
