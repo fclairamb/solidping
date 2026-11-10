@@ -59,6 +59,8 @@ var sourceScanExceptions = map[string]string{
 	// Removed setting: config.go only checks it to log a deprecation warning.
 	// It must stay unrecognized so envcheck also flags it as unknown.
 	"SP_DISCORD_REDIRECT_URL": "internal/config/discord_oauth.go — removed, deprecation warning only",
+	// Client-side CLI flag source for `solidping seal`; never read by the server.
+	"SP_SERVER_URL": "pkg/cli/seal.go — CLI client flag, not server config",
 }
 
 // spLiteral is one SP_*-shaped string literal found in the source tree.
