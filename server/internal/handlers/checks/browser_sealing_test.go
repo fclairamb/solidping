@@ -427,6 +427,15 @@ func testBrowserSealedPatchReplacementRules(t *testing.T, env sealingEnv) {
 	_, err = svc.UpdateCheck(ctx, org.Slug, created.UID, &checks.UpdateCheckRequest{Regions: &shared})
 	r.ErrorIs(err, checks.ErrSealingRecipientsChanged)
 
+	// Spec §4 order on PATCH too: moving to a shared region with a malformed
+	// blob is refused for the regions, not for the blob.
+	badBlob := clientSeal(t, map[string]any{"basicAuth": "alice:new"}, keys.X25519Recipient)
+	badBlob.CT = "%%%"
+	_, err = svc.UpdateCheck(ctx, org.Slug, created.UID, &checks.UpdateCheckRequest{
+		Regions: &shared, SealedSecrets: badBlob,
+	})
+	r.ErrorIs(err, checks.ErrSealedSecretsRequirePrivateRegions)
+
 	// ...and accepted with a new blob for the new regions' recipients.
 	_, dc2Keys := enrollAgentIn(t, dbSvc, org.UID, "@dc2")
 	_, err = svc.UpdateCheck(ctx, org.Slug, created.UID, &checks.UpdateCheckRequest{

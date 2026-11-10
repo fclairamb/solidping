@@ -69,6 +69,7 @@ func TestBrowserSealing_Postgres(t *testing.T) {
 		"recipients endpoint":         testSealingRecipientsEndpoint,
 		"shared region key sealing":   testSharedRegionKeySealing,
 		"bulk region change refused":  testBulkRegionChangeSkipsBrowserSealed,
+		"reseal checks list":          testResealChecksList,
 	}
 
 	for name, run := range cases {
