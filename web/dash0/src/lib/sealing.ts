@@ -124,6 +124,26 @@ export function splitSecrets(
 }
 
 /**
+ * The config a form sends while its secret inputs are locked: every declared
+ * secret key is dropped, set or not (plus HTTP's username/password). An empty
+ * key (`secretHeaders: {}`, `password: ""`) would read as a clear on the
+ * server and silently drop the stored secrets.
+ */
+export function withoutSecretKeys(
+  type: string | undefined,
+  config: Record<string, unknown>,
+  secretFields: readonly string[],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...config };
+  if ((type === "http" || type === "health") && secretFields.includes("basicAuth")) {
+    delete out.username;
+    delete out.password;
+  }
+  for (const key of secretFields) delete out[key];
+  return out;
+}
+
+/**
  * Seals a secret map to every recipient. The plaintext is the JSON object of
  * the secrets, which the agent merges into the check config.
  */

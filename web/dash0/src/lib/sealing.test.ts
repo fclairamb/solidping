@@ -8,6 +8,7 @@ import {
   recipientFingerprint,
   sealSecrets,
   splitSecrets,
+  withoutSecretKeys,
 } from "./sealing";
 
 function fromBase64(value: string): Uint8Array {
@@ -76,5 +77,17 @@ describe("sealing", () => {
       publicConfig: { host: "h", password: "" },
       secrets: {},
     });
+  });
+
+  it("a locked form never sends a cleared secret key", () => {
+    // "add a secret header row, remove it, save" leaves secretHeaders: {}.
+    expect(
+      withoutSecretKeys(
+        "http",
+        { url: "https://acme.com", secretHeaders: {}, username: "", password: "", basicAuth: "" },
+        ["basicAuth", "secretHeaders"],
+      ),
+    ).toEqual({ url: "https://acme.com" });
+    expect(withoutSecretKeys("ssh", { host: "h", password: null }, ["password"])).toEqual({ host: "h" });
   });
 });

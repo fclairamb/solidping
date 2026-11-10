@@ -76,6 +76,7 @@ import {
   sealSecrets,
   splitSecrets,
   type SealedSecrets,
+  withoutSecretKeys,
 } from "@/lib/sealing";
 import {
   SecretEncryptionPanel,
@@ -1304,7 +1305,7 @@ export function CheckForm({
   useLayoutEffect(() => {
     const root = formRootRef.current;
     if (!root) return;
-    const inputs = root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+    const inputs = root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement>(
       'input[type="password"], [data-secret-input]',
     );
     for (const input of inputs) {
@@ -1396,7 +1397,7 @@ export function CheckForm({
       const { publicConfig, secrets } = splitSecrets(type, config, activeSecretFields ?? []);
       // Closed inputs send nothing: the stored secrets stay as they are.
       const typed = secretLock ? [] : Object.keys(secrets);
-      if (secretLock) submittedConfig = publicConfig;
+      if (secretLock) submittedConfig = withoutSecretKeys(type, config, activeSecretFields ?? []);
       const stored = initialData?.configPrivateKeys ?? [];
       if (sealingRequired && sealingBlocker && typed.length > 0) {
         setError(

@@ -138,7 +138,11 @@ test.describe("Browser-sealed check secrets", () => {
     // Replace opens them all at once.
     await expect(page.getByTestId("check-password-input")).toBeDisabled();
     await expect(page.getByTestId("check-username-input")).toBeDisabled();
+    // Secret headers too: adding then removing a row would send
+    // `secretHeaders: {}`, a clear that drops the sealed blob.
+    await expect(page.getByTestId("add-secret-header-button")).toBeDisabled();
     await page.getByTestId("sealed-secret-replace-button").click();
+    await expect(page.getByTestId("add-secret-header-button")).toBeEnabled();
     await expect(page.getByTestId("sealed-secret-replace-button")).toHaveCount(0);
     await expect(page.getByTestId("check-password-input")).toBeEnabled();
     await page.getByTestId("check-username-input").fill("alice");
