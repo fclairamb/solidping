@@ -424,7 +424,8 @@ function SecretEncryptionSection() {
 
 <SecretEncryptionPanel mode="browser" onModeChange={setMode} required={false}
   blocker={null} recipients={recipients} regions={["@dc1"]}
-  storedSealed switchedNotice={false} />`;
+  storedSealed switchedNotice={false}
+  replacing={replacing} onReplace={() => setReplacing(true)} />`;
   const recipients = [
     { kind: "agent" as const, region: "@dc1", agentName: "dc1-a", recipient: "age1…", fingerprint: "3f2a9c41aa01bb02" },
     { kind: "agent" as const, region: "@dc1", agentName: "dc1-b", recipient: "age1…", fingerprint: "9c41aa01bb023f2a" },
@@ -447,6 +448,8 @@ function SecretEncryptionSection() {
               regions={["@dc1"]}
               storedSealed
               switchedNotice={false}
+              replacing={false}
+              onReplace={() => undefined}
             />
             <SecretEncryptionPanel
               mode="server"
@@ -457,6 +460,8 @@ function SecretEncryptionSection() {
               regions={["eu-fr"]}
               storedSealed={false}
               switchedNotice
+              replacing={false}
+              onReplace={() => undefined}
             />
           </div>
         }

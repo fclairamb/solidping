@@ -9388,6 +9388,22 @@ export interface NonCompliantCheck {
   reason: "sharedRegion" | "serverEncrypted";
 }
 
+/** A check flagged `needsReseal` (spec 2026-11-08-01 §7, the Re-seal page). */
+export interface ResealCheck {
+  uid: string;
+  slug: string;
+  name: string;
+  regions: string[];
+}
+
+export function useResealChecks(org: string) {
+  return useQuery({
+    queryKey: ["sealing-reseal", org],
+    queryFn: async () =>
+      (await apiFetch<{ data?: ResealCheck[] }>(`/api/v1/orgs/${org}/sealing/reseal-checks`)).data ?? [],
+  });
+}
+
 export function useNonCompliantChecks(org: string, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["sealing-noncompliant", org],

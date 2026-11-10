@@ -1260,10 +1260,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// public keys: any org member who edits checks reads them. The list of
 	// checks a `required` org still has to fix is for admins.
 	orgGroup("/orgs/:org/sealing-recipients").GET("", checksHandler.SealingRecipients)
-	api.NewGroup("/orgs/:org/sealing").
+	orgSealingAdmin := api.NewGroup("/orgs/:org/sealing").
 		Use(orgSlugRedirect.Middleware,
-			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin).
-		GET("/noncompliant-checks", checksHandler.NonCompliantChecks)
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgSealingAdmin.GET("/noncompliant-checks", checksHandler.NonCompliantChecks)
+	orgSealingAdmin.GET("/reseal-checks", checksHandler.ResealChecks)
 	orgChecksAdmin.POST("/import", checksHandler.ImportChecks)
 	orgChecksAdmin.POST("/apply", checksHandler.ApplyChecks)
 

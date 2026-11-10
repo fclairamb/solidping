@@ -146,6 +146,7 @@ import { Route as OrgsOrgServerUsersUidRouteImport } from './routes/orgs/$org/se
 import { Route as OrgsOrgServerEntitlementsTargetOrgRouteImport } from './routes/orgs/$org/server.entitlements.$targetOrg'
 import { Route as OrgsOrgOrganizationReportSchedulesNewRouteImport } from './routes/orgs/$org/organization.report-schedules.new'
 import { Route as OrgsOrgOrganizationReportSchedulesUidRouteImport } from './routes/orgs/$org/organization.report-schedules.$uid'
+import { Route as OrgsOrgOrganizationPrivateLocationsResealRouteImport } from './routes/orgs/$org/organization.private-locations.reseal'
 import { Route as OrgsOrgOrganizationPrivateLocationsRegisterRouteImport } from './routes/orgs/$org/organization.private-locations.register'
 import { Route as OrgsOrgOrganizationDiscoveryNewRouteImport } from './routes/orgs/$org/organization.discovery.new'
 import { Route as OrgsOrgOrganizationDiscoveryJobUidRouteImport } from './routes/orgs/$org/organization.discovery.$jobUid'
@@ -896,6 +897,12 @@ const OrgsOrgOrganizationReportSchedulesUidRoute =
     path: '/$uid',
     getParentRoute: () => OrgsOrgOrganizationReportSchedulesRoute,
   } as any)
+const OrgsOrgOrganizationPrivateLocationsResealRoute =
+  OrgsOrgOrganizationPrivateLocationsResealRouteImport.update({
+    id: '/reseal',
+    path: '/reseal',
+    getParentRoute: () => OrgsOrgOrganizationPrivateLocationsRoute,
+  } as any)
 const OrgsOrgOrganizationPrivateLocationsRegisterRoute =
   OrgsOrgOrganizationPrivateLocationsRegisterRouteImport.update({
     id: '/register',
@@ -1127,6 +1134,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/organization/discovery/$jobUid': typeof OrgsOrgOrganizationDiscoveryJobUidRouteWithChildren
   '/orgs/$org/organization/discovery/new': typeof OrgsOrgOrganizationDiscoveryNewRoute
   '/orgs/$org/organization/private-locations/register': typeof OrgsOrgOrganizationPrivateLocationsRegisterRoute
+  '/orgs/$org/organization/private-locations/reseal': typeof OrgsOrgOrganizationPrivateLocationsResealRoute
   '/orgs/$org/organization/report-schedules/$uid': typeof OrgsOrgOrganizationReportSchedulesUidRoute
   '/orgs/$org/organization/report-schedules/new': typeof OrgsOrgOrganizationReportSchedulesNewRoute
   '/orgs/$org/server/entitlements/$targetOrg': typeof OrgsOrgServerEntitlementsTargetOrgRoute
@@ -1256,6 +1264,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
   '/orgs/$org/organization/discovery/new': typeof OrgsOrgOrganizationDiscoveryNewRoute
   '/orgs/$org/organization/private-locations/register': typeof OrgsOrgOrganizationPrivateLocationsRegisterRoute
+  '/orgs/$org/organization/private-locations/reseal': typeof OrgsOrgOrganizationPrivateLocationsResealRoute
   '/orgs/$org/organization/report-schedules/$uid': typeof OrgsOrgOrganizationReportSchedulesUidRoute
   '/orgs/$org/organization/report-schedules/new': typeof OrgsOrgOrganizationReportSchedulesNewRoute
   '/orgs/$org/server/entitlements/$targetOrg': typeof OrgsOrgServerEntitlementsTargetOrgRoute
@@ -1413,6 +1422,7 @@ export interface FileRoutesById {
   '/orgs/$org/organization/discovery/$jobUid': typeof OrgsOrgOrganizationDiscoveryJobUidRouteWithChildren
   '/orgs/$org/organization/discovery/new': typeof OrgsOrgOrganizationDiscoveryNewRoute
   '/orgs/$org/organization/private-locations/register': typeof OrgsOrgOrganizationPrivateLocationsRegisterRoute
+  '/orgs/$org/organization/private-locations/reseal': typeof OrgsOrgOrganizationPrivateLocationsResealRoute
   '/orgs/$org/organization/report-schedules/$uid': typeof OrgsOrgOrganizationReportSchedulesUidRoute
   '/orgs/$org/organization/report-schedules/new': typeof OrgsOrgOrganizationReportSchedulesNewRoute
   '/orgs/$org/server/entitlements/$targetOrg': typeof OrgsOrgServerEntitlementsTargetOrgRoute
@@ -1571,6 +1581,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/discovery/$jobUid'
     | '/orgs/$org/organization/discovery/new'
     | '/orgs/$org/organization/private-locations/register'
+    | '/orgs/$org/organization/private-locations/reseal'
     | '/orgs/$org/organization/report-schedules/$uid'
     | '/orgs/$org/organization/report-schedules/new'
     | '/orgs/$org/server/entitlements/$targetOrg'
@@ -1700,6 +1711,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/on-call/$uid/edit'
     | '/orgs/$org/organization/discovery/new'
     | '/orgs/$org/organization/private-locations/register'
+    | '/orgs/$org/organization/private-locations/reseal'
     | '/orgs/$org/organization/report-schedules/$uid'
     | '/orgs/$org/organization/report-schedules/new'
     | '/orgs/$org/server/entitlements/$targetOrg'
@@ -1856,6 +1868,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/discovery/$jobUid'
     | '/orgs/$org/organization/discovery/new'
     | '/orgs/$org/organization/private-locations/register'
+    | '/orgs/$org/organization/private-locations/reseal'
     | '/orgs/$org/organization/report-schedules/$uid'
     | '/orgs/$org/organization/report-schedules/new'
     | '/orgs/$org/server/entitlements/$targetOrg'
@@ -2864,6 +2877,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgOrganizationReportSchedulesUidRouteImport
       parentRoute: typeof OrgsOrgOrganizationReportSchedulesRoute
     }
+    '/orgs/$org/organization/private-locations/reseal': {
+      id: '/orgs/$org/organization/private-locations/reseal'
+      path: '/reseal'
+      fullPath: '/orgs/$org/organization/private-locations/reseal'
+      preLoaderRoute: typeof OrgsOrgOrganizationPrivateLocationsResealRouteImport
+      parentRoute: typeof OrgsOrgOrganizationPrivateLocationsRoute
+    }
     '/orgs/$org/organization/private-locations/register': {
       id: '/orgs/$org/organization/private-locations/register'
       path: '/register'
@@ -3284,6 +3304,7 @@ const OrgsOrgOrganizationDiscoveryRouteWithChildren =
 
 interface OrgsOrgOrganizationPrivateLocationsRouteChildren {
   OrgsOrgOrganizationPrivateLocationsRegisterRoute: typeof OrgsOrgOrganizationPrivateLocationsRegisterRoute
+  OrgsOrgOrganizationPrivateLocationsResealRoute: typeof OrgsOrgOrganizationPrivateLocationsResealRoute
   OrgsOrgOrganizationPrivateLocationsIndexRoute: typeof OrgsOrgOrganizationPrivateLocationsIndexRoute
 }
 
@@ -3291,6 +3312,8 @@ const OrgsOrgOrganizationPrivateLocationsRouteChildren: OrgsOrgOrganizationPriva
   {
     OrgsOrgOrganizationPrivateLocationsRegisterRoute:
       OrgsOrgOrganizationPrivateLocationsRegisterRoute,
+    OrgsOrgOrganizationPrivateLocationsResealRoute:
+      OrgsOrgOrganizationPrivateLocationsResealRoute,
     OrgsOrgOrganizationPrivateLocationsIndexRoute:
       OrgsOrgOrganizationPrivateLocationsIndexRoute,
   }

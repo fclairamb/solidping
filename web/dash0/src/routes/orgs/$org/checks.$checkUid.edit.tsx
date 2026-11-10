@@ -35,8 +35,11 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/edit")({
   // `?section=<name>` deep-link only: expand + scroll that collapsible on load.
   // Unlike /new, the edit form never pre-fills field VALUES from query params —
   // silently mutating an existing check's form state from a URL is unwanted.
-  validateSearch: (search: Record<string, unknown>): { section?: string } =>
-    typeof search.section === "string" ? { section: search.section } : {},
+  // `?replace=1` (the Re-seal page) opens the sealed secret inputs at once.
+  validateSearch: (search: Record<string, unknown>): { section?: string; replace?: boolean } => ({
+    ...(typeof search.section === "string" ? { section: search.section } : {}),
+    ...(search.replace === true || search.replace === "1" || search.replace === 1 ? { replace: true } : {}),
+  }),
   component: CheckEditPage,
 });
 
@@ -44,7 +47,7 @@ function CheckEditPage() {
   const { t } = useTranslation(["checks", "dependencies", "org"]);
   const navigate = useNavigate();
   const { org, checkUid } = Route.useParams();
-  const { section } = Route.useSearch();
+  const { section, replace } = Route.useSearch();
   const { user: authUser } = useAuth();
   const isDemoSession = useIsDemoSession();
   const cloneCheck = useCloneCheck(org);
@@ -171,6 +174,7 @@ function CheckEditPage() {
       mode="edit"
       initialData={check}
       initialSection={section}
+      replaceSecrets={replace}
       slowThresholdSuggestionMs={slowThresholdSuggestionMs ?? undefined}
       checkGroups={checkGroups}
       availableRegions={regionsData?.regions}

@@ -18,6 +18,8 @@ const base = {
   regions: ["@dc1"],
   storedSealed: false,
   switchedNotice: false,
+  replacing: false,
+  onReplace: () => undefined,
 } as const;
 
 describe("SecretEncryptionPanel", () => {
@@ -58,6 +60,24 @@ describe("SecretEncryptionPanel", () => {
     expect(screen.getByTestId("secret-encryption-blocker")).toBeTruthy();
     // Positive control: the server choice is there.
     expect(screen.getByTestId("secret-encryption-mode-server")).toBeTruthy();
+  });
+
+  it("offers Replace on a stored blob, and hides it while replacing", () => {
+    let replaced = 0;
+    const recipients = [{ kind: "region" as const, region: "@dc1", recipient: "age1r", fingerprint: "rr" }];
+    const { rerender } = render(
+      <SecretEncryptionPanel
+        {...base}
+        mode="browser"
+        recipients={recipients}
+        storedSealed
+        onReplace={() => (replaced += 1)}
+      />,
+    );
+    screen.getByTestId("sealed-secret-replace-button").click();
+    expect(replaced).toBe(1);
+    rerender(<SecretEncryptionPanel {...base} mode="browser" recipients={recipients} storedSealed replacing />);
+    expect(screen.queryByTestId("sealed-secret-replace-button")).toBeNull();
   });
 
   it("drops the server choice in a required org", () => {

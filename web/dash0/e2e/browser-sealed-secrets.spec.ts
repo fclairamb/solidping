@@ -7,7 +7,7 @@
  * the server), then an HTTP basic-auth check sealed in the browser never sends
  * its password.
  */
-import { test, expect, API_BASE, type Page } from "./fixtures";
+import { test, expect, API_BASE, uniqueStamp, type Page } from "./fixtures";
 import { choosePinnedRegions } from "./placement-helpers";
 
 async function getAuthToken(page: Page): Promise<string> {
@@ -17,8 +17,8 @@ async function getAuthToken(page: Page): Promise<string> {
   return (await resp.json()).accessToken;
 }
 
-async function createPrivateRegion(page: Page, token: string, slug: string): Promise<void> {
-  const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/private-regions`, {
+async function createPrivateRegion(page: Page, token: string, slug: string, org = "test"): Promise<void> {
+  const resp = await page.request.post(`${API_BASE}/api/v1/orgs/${org}/private-regions`, {
     headers: { Authorization: `Bearer ${token}` },
     data: { slug, name: `Sealed ${slug}` },
   });
@@ -43,9 +43,10 @@ async function openAuthSection(page: Page): Promise<void> {
   await expect(panel).toBeVisible();
 }
 
-/** Generates the region key from the private locations page and returns the
- * bodies of the region-key requests the page sent. */
-async function generateRegionKey(page: Page, slug: string): Promise<string[]> {
+/** Generates the region key from the private locations page (through the
+ * generate button, or the key mode select) and returns the bodies of the
+ * region-key requests the page sent. */
+async function generateRegionKey(page: Page, slug: string, via: "button" | "select" = "button"): Promise<string[]> {
   const bodies: string[] = [];
   page.on("request", (request) => {
     if (request.url().includes(`/private-regions/${slug}/region-key`)) {
@@ -56,7 +57,12 @@ async function generateRegionKey(page: Page, slug: string): Promise<string[]> {
   await page.goto("orgs/test/organization/private-locations");
   const cell = page.getByTestId(`region-key-${slug}`);
   await expect(cell).toBeVisible();
-  await cell.getByTestId("region-key-generate-button").click();
+  if (via === "select") {
+    await cell.getByTestId("region-key-mode-select").click();
+    await page.getByTestId("region-key-mode-shared").click();
+  } else {
+    await cell.getByTestId("region-key-generate-button").click();
+  }
 
   const secret = page.getByTestId("region-key-secret");
   await expect(secret).toContainText("AGE-SECRET-KEY-1");
@@ -83,7 +89,7 @@ test.describe("Browser-sealed check secrets", () => {
     const token = await getAuthToken(page);
     const slug = `seal-${Date.now().toString(36)}`.slice(0, 20);
     await createPrivateRegion(page, token, slug);
-    await generateRegionKey(page, slug);
+    await generateRegionKey(page, slug, "select");
 
     const password = `pw-${Date.now()}`;
     const checkBodies: string[] = [];
@@ -124,6 +130,13 @@ test.describe("Browser-sealed check secrets", () => {
     await page.goto(`${checkUrl}/edit`);
     await openAuthSection(page);
     await expect(page.getByTestId("sealed-secret-stored")).toBeVisible();
+    // The blob is replaced whole: the secret inputs stay closed until
+    // Replace opens them all at once.
+    await expect(page.getByTestId("check-password-input")).toBeDisabled();
+    await expect(page.getByTestId("check-username-input")).toBeDisabled();
+    await page.getByTestId("sealed-secret-replace-button").click();
+    await expect(page.getByTestId("sealed-secret-replace-button")).toHaveCount(0);
+    await expect(page.getByTestId("check-password-input")).toBeEnabled();
     await page.getByTestId("check-username-input").fill("alice");
     await page.getByTestId("check-password-input").fill(`${password}-2`);
     await page.getByTestId("check-submit-button").click();
@@ -149,12 +162,17 @@ test.describe("Browser-sealed check secrets", () => {
     await ensureRegionUnchecked(page, "region-option-default");
     await openAuthSection(page);
     await expect(page.getByTestId("secret-encryption-panel")).toHaveAttribute("data-mode", "browser");
+    await page.getByTestId("check-username-input").fill("bob");
+    await page.getByTestId("check-password-input").fill("typed-for-agents");
 
-    // Adding a shared region switches to server mode, with a notice.
+    // Adding a shared region switches to server mode, with a notice, and
+    // empties what was typed for the agents.
     await ensureRegionChecked(page, "region-option-default");
     await expect(page.getByTestId("secret-encryption-panel")).toHaveAttribute("data-mode", "server");
     await expect(page.getByTestId("secret-encryption-switched-notice")).toBeVisible();
     await expect(page.getByTestId("secret-encryption-mode-browser")).toBeDisabled();
+    await expect(page.getByTestId("check-password-input")).toHaveValue("");
+    await expect(page.getByTestId("check-username-input")).toHaveValue("");
 
     await page.getByTestId("check-username-input").fill("bob");
     await page.getByTestId("check-password-input").fill("server-side");
@@ -163,39 +181,84 @@ test.describe("Browser-sealed check secrets", () => {
     await expect(page.getByTestId("check-browser-sealed-badge")).toHaveCount(0);
   });
 
-  test("required org: no server choice", async ({ authenticatedPage }) => {
-    const page = authenticatedPage;
-    const token = await getAuthToken(page);
-    const auth = { Authorization: `Bearer ${token}` };
+  test("required org: no server choice, shared regions and secrets exclude each other", async ({ page }) => {
+    // A throwaway org: `required` must not leak into the shared `test` org
+    // while other specs save plaintext secrets there.
+    const stamp = uniqueStamp();
+    const email = `sealreq-${stamp}@unknown.example`;
+    const password = "Strong-Pass-123!";
+    const user = await page.request.post(`${API_BASE}/api/v1/test/users`, {
+      data: { email, password, name: "Sealing Required User" },
+    });
+    expect(user.status()).toBe(201);
+    const login = await page.request.post(`${API_BASE}/api/v1/auth/login`, { data: { email, password } });
+    const orgSlug = `sr-${stamp}`.slice(0, 30);
+    const created = await page.request.post(`${API_BASE}/api/v1/orgs`, {
+      headers: { Authorization: `Bearer ${(await login.json()).accessToken}` },
+      data: { name: `Sealing Required ${stamp}`, slug: orgSlug },
+    });
+    expect(created.status()).toBe(201);
+    const session = (await created.json()) as { accessToken: string; refreshToken?: string; expiresIn?: number };
+    const auth = { Authorization: `Bearer ${session.accessToken}` };
+    await page.addInitScript(
+      ({ accessToken, refreshToken, expiresIn, slug }) => {
+        localStorage.setItem("solidping_session_token", accessToken);
+        if (refreshToken) localStorage.setItem("solidping_refresh_token", refreshToken);
+        if (expiresIn) {
+          localStorage.setItem("solidping_expires_at", String(Date.now() + expiresIn * 1000));
+          localStorage.setItem("solidping_expires_in", String(expiresIn));
+        }
+        localStorage.setItem("solidping_org", slug);
+      },
+      {
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken ?? "",
+        expiresIn: session.expiresIn ?? 0,
+        slug: orgSlug,
+      },
+    );
+    const regionSlug = `req-${stamp}`.slice(0, 20);
+    await createPrivateRegion(page, session.accessToken, regionSlug, orgSlug);
 
-    await page.goto("orgs/test/organization/settings");
+    await page.goto(`orgs/${orgSlug}/organization/settings`);
     await expect(page.getByTestId("browser-sealing-card")).toBeVisible();
     await page.getByTestId("browser-sealing-mode-select").click();
     await page.getByTestId("browser-sealing-mode-required").click();
     await expect(page.getByTestId("browser-sealing-noncompliant")).toBeVisible();
 
-    try {
-      // Plaintext secrets are refused by the API.
-      const refused = await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
-        headers: auth,
-        data: {
-          type: "http", name: `E2E Required ${Date.now()}`, regions: ["default"],
-          config: { url: "https://example.com", username: "u", password: "p" },
-        },
-      });
-      expect(refused.status()).toBe(400);
-      expect((await refused.json()).code).toBe("SECRETS_MUST_BE_SEALED");
+    // Plaintext secrets are refused by the API.
+    const refused = await page.request.post(`${API_BASE}/api/v1/orgs/${orgSlug}/checks`, {
+      headers: auth,
+      data: {
+        type: "http", name: `E2E Required ${stamp}`, regions: ["default"],
+        config: { url: "https://acme.com", username: "u", password: "p" },
+      },
+    });
+    expect(refused.status()).toBe(400);
+    expect((await refused.json()).code).toBe("SECRETS_MUST_BE_SEALED");
 
-      await page.goto("orgs/test/checks/new");
-      await page.getByTestId("check-url-input").fill("https://example.com/required");
-      await openAuthSection(page);
-      await expect(page.getByTestId("secret-encryption-mode-server")).toHaveCount(0);
-      await expect(page.getByTestId("secret-encryption-mode-browser")).toBeVisible();
-    } finally {
-      await page.request.patch(`${API_BASE}/api/v1/orgs/test/settings`, {
-        headers: auth,
-        data: { browserSealingMode: "optional" },
-      });
-    }
+    await page.goto(`orgs/${orgSlug}/checks/new`);
+    await page.getByTestId("check-url-input").fill("https://acme.com/required");
+    await choosePinnedRegions(page);
+    await ensureRegionChecked(page, "region-option-default");
+    await openAuthSection(page);
+    await expect(page.getByTestId("secret-encryption-mode-server")).toHaveCount(0);
+    await expect(page.getByTestId("secret-encryption-mode-browser")).toBeVisible();
+
+    // A shared region picked first closes the secret inputs, with the reason.
+    await expect(page.getByTestId("check-password-input")).toBeDisabled();
+    await expect(page.getByTestId("secret-inputs-locked")).toBeVisible();
+
+    // Private regions only: the inputs open. A typed secret then disables
+    // the shared regions in the picker.
+    await ensureRegionChecked(page, `region-option-@${regionSlug}`);
+    await ensureRegionUnchecked(page, "region-option-default");
+    await expect(page.getByTestId("check-password-input")).toBeEnabled();
+    await expect(page.getByTestId("region-checkbox-default")).toBeEnabled();
+    await page.getByTestId("check-password-input").fill("sealed-only");
+    await expect(page.getByTestId("region-checkbox-default")).toBeDisabled();
+    await expect(page.getByTestId("region-option-default")).toHaveAttribute("title", /sealed in the browser/);
+    // Positive control: the private region stays selectable.
+    await expect(page.getByTestId(`region-checkbox-@${regionSlug}`)).toBeEnabled();
   });
 });

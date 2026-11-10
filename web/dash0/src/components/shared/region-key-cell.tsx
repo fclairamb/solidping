@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Check as CheckIcon, Copy, Download, KeyRound, RotateCw, Trash2 } from "lucide-react";
+import { AlertTriangle, Check as CheckIcon, Copy, Download, KeyRound, RotateCw } from "lucide-react";
 
 import { useDeleteRegionKey, useSetRegionKey, type PrivateRegion } from "@/api/hooks";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { canSealInBrowser, generateRegionKey, type GeneratedRegionKey } from "@/lib/sealing";
 
 /** The agent environment line carrying a region key (a verbatim command). */
@@ -53,6 +53,13 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
     URL.revokeObjectURL(url);
   };
 
+  // Picking `shared` generates the region key (nothing changes until it is
+  // confirmed); picking `perAgent` drops it.
+  const changeMode = (next: string) => {
+    if (next === "shared" && !shared) void generate();
+    if (next === "perAgent" && shared) deleteKey.mutate(region.slug);
+  };
+
   const confirm = async () => {
     if (!generated) return;
     await setKey.mutateAsync({ slug: region.slug, recipient: generated.recipient });
@@ -62,9 +69,29 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
   return (
     <div className="space-y-1" data-testid={`region-key-${region.slug}`}>
       <div className="flex flex-wrap items-center gap-1">
-        <Badge variant={shared ? "success" : "secondary"} data-testid={`region-key-mode-${region.slug}`}>
-          {shared ? t("privateLocations.regionKey.shared") : t("privateLocations.regionKey.perAgent")}
-        </Badge>
+        <div data-testid={`region-key-mode-${region.slug}`}>
+          <Select
+            value={shared ? "shared" : "perAgent"}
+            onValueChange={changeMode}
+            disabled={setKey.isPending || deleteKey.isPending}
+          >
+            <SelectTrigger
+              className="h-8 w-auto min-w-40"
+              aria-label={t("privateLocations.regionKey.modeLabel")}
+              data-testid="region-key-mode-select"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="perAgent" data-testid="region-key-mode-per-agent">
+                {t("privateLocations.regionKey.perAgent")}
+              </SelectItem>
+              <SelectItem value="shared" disabled={!canSealInBrowser()} data-testid="region-key-mode-shared">
+                {t("privateLocations.regionKey.shared")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         {shared && (
           <code className="text-xs text-muted-foreground" data-testid={`region-key-fingerprint-${region.slug}`}>
             {region.regionKey?.fingerprint}
@@ -93,19 +120,6 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
           {shared ? <RotateCw className="h-4 w-4" /> : <KeyRound className="h-4 w-4" />}
           {shared ? t("privateLocations.regionKey.rotate") : t("privateLocations.regionKey.generate")}
         </Button>
-        {shared && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive"
-            onClick={() => deleteKey.mutate(region.slug)}
-            disabled={deleteKey.isPending}
-            data-testid="region-key-remove-button"
-          >
-            <Trash2 className="h-4 w-4" />
-            {t("privateLocations.regionKey.remove")}
-          </Button>
-        )}
       </div>
       <Dialog open={!!generated} onOpenChange={(open) => !open && setGenerated(null)}>
         <DialogContent data-testid="region-key-dialog">

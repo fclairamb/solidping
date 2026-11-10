@@ -435,12 +435,20 @@
       "stale_other": "{{count}} checks encore scellés pour une ancienne clé",
       "generate": "Utiliser une clé de région partagée",
       "rotate": "Renouveler la clé de région",
-      "remove": "Revenir à une clé par agent",
       "dialogTitle": "Clé partagée de {{region}}",
       "dialogDescription": "Ce secret n'est affiché qu'une fois. Gardez-en une copie dans votre gestionnaire de mots de passe : si tous les agents et toutes les copies sont perdus, les secrets scellés pour elle sont perdus. Seule la clé publique est envoyée à SolidPing.",
       "distribute": "Donnez-la à chaque agent de la région avec SP_AGENT_REGION_KEYS (ou SP_AGENT_REGION_KEYS_FILE). Pendant un renouvellement, listez l'ancienne et la nouvelle clé.",
       "cancel": "Annuler",
-      "confirm": "Je l'ai sauvegardée, utiliser cette clé"
+      "confirm": "Je l'ai sauvegardée, utiliser cette clé",
+      "modeLabel": "Mode de clé"
+    },
+    "reseal": {
+      "back": "Retour aux emplacements privés",
+      "title": "Resceller les secrets des checks",
+      "description": "Ces checks ont des secrets scellés pour un autre ensemble d'agents (un agent est arrivé ou parti, ou la clé de région a changé). SolidPing ne peut pas les resceller : saisissez leurs secrets à nouveau.",
+      "empty": "Aucun check à resceller.",
+      "open": "Remplacer les secrets",
+      "link": "Resceller"
     }
   },
   "accessRedirect": {

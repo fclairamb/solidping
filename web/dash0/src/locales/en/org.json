@@ -435,12 +435,20 @@
       "stale_other": "{{count}} checks still sealed to an older key",
       "generate": "Use a shared region key",
       "rotate": "Rotate the region key",
-      "remove": "Back to a key per agent",
       "dialogTitle": "Shared key for {{region}}",
       "dialogDescription": "This secret is shown once. Keep a copy in your password manager: if every agent and every copy is lost, the secrets sealed to it are gone. Only the public key is sent to SolidPing.",
       "distribute": "Give it to every agent of the region with SP_AGENT_REGION_KEYS (or SP_AGENT_REGION_KEYS_FILE). During a rotation, list the old and the new key.",
       "cancel": "Cancel",
-      "confirm": "I saved it, use this key"
+      "confirm": "I saved it, use this key",
+      "modeLabel": "Key mode"
+    },
+    "reseal": {
+      "back": "Back to private locations",
+      "title": "Re-seal check secrets",
+      "description": "These checks have secrets sealed for another set of agents (an agent joined or left, or the region key changed). SolidPing cannot re-seal them: type their secrets again.",
+      "empty": "No check needs to be re-sealed.",
+      "open": "Replace secrets",
+      "link": "Re-seal"
     }
   },
   "accessRedirect": {

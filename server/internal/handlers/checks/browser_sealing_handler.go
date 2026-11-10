@@ -106,3 +106,19 @@ func (h *Handler) NonCompliantChecks(writer http.ResponseWriter, req *http.Reque
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": checks})
 }
+
+// ResealChecks handles GET /orgs/:org/sealing/reseal-checks: the checks
+// flagged `needsReseal`, listed by the Re-seal page.
+func (h *Handler) ResealChecks(writer http.ResponseWriter, req *http.Request) error {
+	checks, err := h.svc.ListResealChecks(req.Context(), httpx.Param(req, "org"))
+	if err != nil {
+		if errors.Is(err, ErrOrganizationNotFound) {
+			return h.WriteErrorErr(writer, req, http.StatusNotFound,
+				base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		}
+
+		return h.WriteInternalError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": checks})
+}

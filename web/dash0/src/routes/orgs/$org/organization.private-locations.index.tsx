@@ -229,6 +229,12 @@ function RegionsCard({ org }: { org: string }) {
               {t("privateLocations.regions.registerAgent", "Register an agent")}
             </Link>
           </Button>
+          <Button asChild size="sm" variant="outline" data-testid="reseal-page-button">
+            <Link to="/orgs/$org/organization/private-locations/reseal" params={{ org }} data-testid="reseal-page-button">
+              <KeyRound className="mr-2 h-4 w-4" />
+              {t("privateLocations.reseal.link")}
+            </Link>
+          </Button>
           <DocsLink href="/docs/features/private-locations" />
         </div>
       </CardHeader>

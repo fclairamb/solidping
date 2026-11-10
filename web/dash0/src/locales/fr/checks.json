@@ -1754,10 +1754,13 @@
     "badgeAgents_other": "Scellé dans votre navigateur pour {{regions}} ({{count}} agents)",
     "badgeRegionKey": "Scellé dans votre navigateur pour {{regions}} (clé de région)",
     "recipientRegion": "Clé de région de {{region}}",
-    "stored": "Scellé. Seuls vos agents peuvent le lire. Saisissez à nouveau tous les secrets pour les remplacer.",
+    "stored": "Scellé. Seuls vos agents peuvent le lire.",
     "requiredPrivateRegions": "Cette organisation exige que les secrets des checks soient scellés dans le navigateur : choisissez uniquement des emplacements privés.",
     "retypeToSwitch": "Saisissez à nouveau les secrets pour changer leur chiffrement.",
     "replaceAll": "Les secrets scellés sont remplacés ensemble : renseignez aussi {{keys}}.",
-    "detailBadge": "Scellé dans le navigateur"
+    "detailBadge": "Scellé dans le navigateur",
+    "replace": "Remplacer",
+    "replaceToEdit": "Les secrets scellés se remplacent ensemble : cliquez sur Remplacer pour tous les saisir à nouveau.",
+    "sharedRegionDisabled": "Les régions partagées sont désactivées : cette organisation exige que les secrets des checks soient scellés dans le navigateur."
   }
 }

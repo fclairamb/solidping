@@ -1754,10 +1754,13 @@
     "badgeAgents_other": "Sellado en su navegador para {{regions}} ({{count}} agentes)",
     "badgeRegionKey": "Sellado en su navegador para {{regions}} (clave de región)",
     "recipientRegion": "Clave de región de {{region}}",
-    "stored": "Sellado. Solo sus agentes pueden leerlo. Escriba de nuevo todos los secretos para reemplazarlos.",
+    "stored": "Sellado. Solo tus agentes pueden leerlo.",
     "requiredPrivateRegions": "Esta organización exige que los secretos de los checks se sellen en el navegador: elija solo ubicaciones privadas.",
     "retypeToSwitch": "Escriba de nuevo los secretos para cambiar cómo se cifran.",
     "replaceAll": "Los secretos sellados se reemplazan juntos: rellene también {{keys}}.",
-    "detailBadge": "Sellado en el navegador"
+    "detailBadge": "Sellado en el navegador",
+    "replace": "Reemplazar",
+    "replaceToEdit": "Los secretos sellados se reemplazan juntos: haz clic en Reemplazar para escribirlos todos de nuevo.",
+    "sharedRegionDisabled": "Las regiones compartidas están desactivadas: esta organización exige que los secretos de los checks se sellen en el navegador."
   }
 }

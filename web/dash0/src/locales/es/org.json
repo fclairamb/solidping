@@ -435,12 +435,20 @@
       "stale_other": "{{count}} checks aún sellados para una clave anterior",
       "generate": "Usar una clave de región compartida",
       "rotate": "Rotar la clave de región",
-      "remove": "Volver a una clave por agente",
       "dialogTitle": "Clave compartida de {{region}}",
       "dialogDescription": "Este secreto se muestra una sola vez. Guarde una copia en su gestor de contraseñas: si se pierden todos los agentes y todas las copias, los secretos sellados para ella se pierden. Solo la clave pública se envía a SolidPing.",
       "distribute": "Désela a cada agente de la región con SP_AGENT_REGION_KEYS (o SP_AGENT_REGION_KEYS_FILE). Durante una rotación, indique la clave antigua y la nueva.",
       "cancel": "Cancelar",
-      "confirm": "La he guardado, usar esta clave"
+      "confirm": "La he guardado, usar esta clave",
+      "modeLabel": "Modo de clave"
+    },
+    "reseal": {
+      "back": "Volver a ubicaciones privadas",
+      "title": "Volver a sellar los secretos de los checks",
+      "description": "Estos checks tienen secretos sellados para otro conjunto de agentes (un agente se unió o se fue, o la clave de región cambió). SolidPing no puede volver a sellarlos: escribe sus secretos de nuevo.",
+      "empty": "Ningún check necesita volver a sellarse.",
+      "open": "Reemplazar secretos",
+      "link": "Volver a sellar"
     }
   },
   "accessRedirect": {

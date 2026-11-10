@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useLayoutEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { filterCheckTypesForDemo, isDemoReadOnlyError } from "@/lib/demo";
@@ -499,6 +499,8 @@ interface CheckFormProps {
    * Undefined when there is not enough history to suggest anything.
    */
   slowThresholdSuggestionMs?: number;
+  /** `?replace=1` (the Re-seal page): open the sealed secret inputs on load. */
+  replaceSecrets?: boolean;
 }
 
 export function CheckForm({
@@ -514,6 +516,7 @@ export function CheckForm({
   onTypeChange,
   initialSection,
   slowThresholdSuggestionMs,
+  replaceSecrets,
 }: CheckFormProps) {
   const { t } = useTranslation("checks");
   // Fetch enabled check types from API; fall back to hardcoded list if unavailable
@@ -1260,13 +1263,62 @@ export function CheckForm({
     (secretModeChoice === "browser" || sealingRequired) && !sealingBlocker ? "browser" : "server";
   // A shared region picked while browser mode was in effect: say it once
   // (state derived from the previous render, no effect).
+  // The secret inputs are emptied then: what was typed for the agents must
+  // not silently go to the server instead.
   const [previousBlocker, setPreviousBlocker] = useState(sealingBlocker);
   if (previousBlocker !== sealingBlocker) {
     setPreviousBlocker(sealingBlocker);
-    setSecretModeSwitched(
-      previousBlocker === null && sealingBlocker === "sharedRegion" && secretModeChoice === "browser",
-    );
+    const switched =
+      previousBlocker === null && sealingBlocker === "sharedRegion" && secretModeChoice === "browser";
+    setSecretModeSwitched(switched);
+    if (switched && hasSecretFields) {
+      const { publicConfig } = splitSecrets(type, currentConfig, activeSecretFields ?? []);
+      setConfigState(activeModule.fromConfig(publicConfig));
+    }
   }
+  // A stored browser blob is replaced whole: its secret inputs stay closed
+  // until "Replace" opens them all at once (or the mode changes).
+  const [secretsReplacing, setSecretsReplacing] = useState(!!replaceSecrets);
+  const typedSecretKeys = useMemo(
+    () =>
+      hasSecretFields ? Object.keys(splitSecrets(type, currentConfig, activeSecretFields ?? []).secrets) : [],
+    [hasSecretFields, type, currentConfig, activeSecretFields],
+  );
+  // Why the secret inputs are closed, or null when they are open. A
+  // `required` org with a shared region (or an insecure page) cannot seal.
+  const secretLock: string | null = !hasSecretFields
+    ? null
+    : sealingRequired && sealingBlocker
+      ? sealingBlocker === "insecureContext"
+        ? t("checks:sealing.blocker.insecureContext")
+        : t("checks:sealing.requiredPrivateRegions")
+      : secretMode === "browser" && storedSealed && !secretsReplacing
+        ? t("checks:sealing.replaceToEdit")
+        : null;
+  // In a `required` org, once a secret is typed the shared regions are off.
+  const sharedRegionsLocked = sealingRequired && typedSecretKeys.length > 0;
+  // The secret inputs live in each type module: close them from here, by
+  // their DOM markers, rather than threading a prop through every module.
+  // handleSubmit drops anything typed while closed all the same.
+  const formRootRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const root = formRootRef.current;
+    if (!root) return;
+    const inputs = root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+      'input[type="password"], [data-secret-input]',
+    );
+    for (const input of inputs) {
+      if (secretLock && !input.disabled) {
+        input.disabled = true;
+        input.title = secretLock;
+        input.dataset.secretLocked = "true";
+      } else if (!secretLock && input.dataset.secretLocked) {
+        input.disabled = false;
+        input.removeAttribute("title");
+        delete input.dataset.secretLocked;
+      }
+    }
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1342,7 +1394,9 @@ export function CheckForm({
     let submittedConfig = config;
     if (hasSecretFields && !(isPassiveCheckType(type) && mode === "edit")) {
       const { publicConfig, secrets } = splitSecrets(type, config, activeSecretFields ?? []);
-      const typed = Object.keys(secrets);
+      // Closed inputs send nothing: the stored secrets stay as they are.
+      const typed = secretLock ? [] : Object.keys(secrets);
+      if (secretLock) submittedConfig = publicConfig;
       const stored = initialData?.configPrivateKeys ?? [];
       if (sealingRequired && sealingBlocker && typed.length > 0) {
         setError(
@@ -1681,7 +1735,7 @@ export function CheckForm({
         lastResultOutput: initialData?.lastResult?.output as Record<string, unknown> | undefined,
       }}
     >
-      <div className="space-y-6 max-w-2xl">
+      <div className="space-y-6 max-w-2xl" ref={formRootRef}>
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={onCancel}>
             <ArrowLeft className="h-4 w-4" />
@@ -2016,15 +2070,20 @@ export function CheckForm({
                           const crawlUnsupported =
                             type === "crawl" && !!region.private && region.capabilities?.crawl === "no";
                           const selected = selectedRegions.includes(region.slug);
+                          // A `required` org with a secret typed: a shared
+                          // region would make the check unsealable.
+                          const sealingLocked = sharedRegionsLocked && !selected && !region.slug.startsWith("@");
+                          const regionDisabled = (crawlUnsupported || sealingLocked) && !selected;
 
                           return (
                             <label
                               key={region.slug}
                               className={cn(
                                 "flex flex-wrap items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50",
-                                (deemphasised || crawlUnsupported) && "opacity-60",
-                                crawlUnsupported && !selected && "cursor-not-allowed"
+                                (deemphasised || crawlUnsupported || sealingLocked) && "opacity-60",
+                                regionDisabled && "cursor-not-allowed"
                               )}
+                              title={sealingLocked ? t("checks:sealing.sharedRegionDisabled") : undefined}
                               data-testid={`region-option-${region.slug}`}
                               data-ipv6={ipv6}
                               data-browser={browser}
@@ -2033,7 +2092,7 @@ export function CheckForm({
                             >
                               <Checkbox
                                 checked={selected}
-                                disabled={crawlUnsupported && !selected}
+                                disabled={regionDisabled}
                                 onCheckedChange={() => toggleRegion(region.slug)}
                                 data-testid={`region-checkbox-${region.slug}`}
                               />
@@ -2305,6 +2364,8 @@ export function CheckForm({
                   onModeChange={(next) => {
                     setSecretModeChoice(next);
                     setSecretModeSwitched(false);
+                    // Changing mode opens every secret input, to be typed again.
+                    if (next !== secretMode) setSecretsReplacing(true);
                   }}
                   required={sealingRequired}
                   blocker={sealingBlocker}
@@ -2312,7 +2373,14 @@ export function CheckForm({
                   regions={sealingRegions}
                   storedSealed={storedSealed}
                   switchedNotice={secretModeSwitched}
+                  replacing={secretsReplacing}
+                  onReplace={() => setSecretsReplacing(true)}
                 />
+              )}
+              {secretLock && (
+                <p className="text-xs text-muted-foreground" data-testid="secret-inputs-locked">
+                  {secretLock}
+                </p>
               )}
               <AuthFields
                 state={configState}

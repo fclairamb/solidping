@@ -432,6 +432,47 @@ func (s *Service) ListNonCompliantChecks(ctx context.Context, orgSlug string) ([
 	return out, nil
 }
 
+// ResealCheck is a check whose sealed secrets no longer match the active
+// recipients of its private regions (spec 2026-11-08-01 §7, the Re-seal page).
+type ResealCheck struct {
+	UID     string   `json:"uid"`
+	Slug    string   `json:"slug"`
+	Name    string   `json:"name"`
+	Regions []string `json:"regions"`
+}
+
+// ListResealChecks lists the org's checks flagged `needsReseal`: their secrets
+// must be typed again for the current agents (or region key).
+func (s *Service) ListResealChecks(ctx context.Context, orgSlug string) ([]ResealCheck, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	checks, _, err := s.db.ListChecks(ctx, org.UID, &models.ListChecksFilter{})
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]ResealCheck, 0)
+
+	for _, check := range checks {
+		need := s.computeNeedsReseal(ctx, check)
+		if need == nil || !*need {
+			continue
+		}
+
+		slug := ""
+		if check.Slug != nil {
+			slug = *check.Slug
+		}
+
+		out = append(out, ResealCheck{UID: check.UID, Slug: slug, Name: checkDisplayName(check), Regions: check.Regions})
+	}
+
+	return out, nil
+}
+
 // applySealedOnlyReplacement encrypts a PATCH's plaintext secrets server-side
 // and applies the replacement rules of a sealed-only row (spec 2026-11-08-01
 // §4), whichever side sealed it:

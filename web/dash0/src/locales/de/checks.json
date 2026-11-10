@@ -1754,10 +1754,13 @@
     "badgeAgents_other": "In Ihrem Browser versiegelt für {{regions}} ({{count}} Agenten)",
     "badgeRegionKey": "In Ihrem Browser versiegelt für {{regions}} (Regionsschlüssel)",
     "recipientRegion": "Regionsschlüssel von {{region}}",
-    "stored": "Versiegelt. Nur Ihre Agenten können es lesen. Geben Sie alle Geheimnisse erneut ein, um sie zu ersetzen.",
+    "stored": "Versiegelt. Nur Ihre Agenten können es lesen.",
     "requiredPrivateRegions": "Diese Organisation verlangt, dass Check-Geheimnisse im Browser versiegelt werden: Wählen Sie nur private Standorte.",
     "retypeToSwitch": "Geben Sie die Geheimnisse erneut ein, um ihre Verschlüsselung zu ändern.",
     "replaceAll": "Die versiegelten Geheimnisse werden gemeinsam ersetzt: Füllen Sie auch {{keys}} aus.",
-    "detailBadge": "Im Browser versiegelt"
+    "detailBadge": "Im Browser versiegelt",
+    "replace": "Ersetzen",
+    "replaceToEdit": "Versiegelte Geheimnisse werden gemeinsam ersetzt: Klicken Sie auf Ersetzen, um alle neu einzugeben.",
+    "sharedRegionDisabled": "Geteilte Regionen sind deaktiviert: Diese Organisation verlangt, dass Check-Geheimnisse im Browser versiegelt werden."
   }
 }

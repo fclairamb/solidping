@@ -26,6 +26,9 @@ interface SecretEncryptionPanelProps {
   storedSealed: boolean;
   /** Shown once after the form switched back to server mode by itself. */
   switchedNotice: boolean;
+  /** The stored blob is being replaced: every secret input is open. */
+  replacing: boolean;
+  onReplace: () => void;
 }
 
 /**
@@ -42,6 +45,8 @@ export function SecretEncryptionPanel({
   regions,
   storedSealed,
   switchedNotice,
+  replacing,
+  onReplace,
 }: SecretEncryptionPanelProps) {
   const { t } = useTranslation(["checks"]);
   const browserDisabled = blocker !== null;
@@ -125,10 +130,21 @@ export function SecretEncryptionPanel({
               </ul>
             </details>
           )}
-          {storedSealed && (
-            <p className="text-xs text-muted-foreground" data-testid="sealed-secret-stored">
-              {t("checks:sealing.stored")}
-            </p>
+          {storedSealed && !replacing && (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs text-muted-foreground" data-testid="sealed-secret-stored">
+                {t("checks:sealing.stored")}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={onReplace}
+                data-testid="sealed-secret-replace-button"
+              >
+                {t("checks:sealing.replace")}
+              </Button>
+            </div>
           )}
         </div>
       )}

@@ -1754,10 +1754,13 @@
     "badgeAgents_other": "Sealed in your browser for {{regions}} ({{count}} agents)",
     "badgeRegionKey": "Sealed in your browser for {{regions}} (region key)",
     "recipientRegion": "Region key of {{region}}",
-    "stored": "Sealed. Only your agents can read it. Type every secret again to replace them.",
+    "stored": "Sealed. Only your agents can read it.",
     "requiredPrivateRegions": "This organization requires check secrets to be sealed in the browser: pick private locations only.",
     "retypeToSwitch": "Type the secrets again to change how they are encrypted.",
     "replaceAll": "The sealed secrets are replaced together: also fill in {{keys}}.",
-    "detailBadge": "Browser-sealed"
+    "detailBadge": "Browser-sealed",
+    "replace": "Replace",
+    "replaceToEdit": "Sealed secrets are replaced together: click Replace to type them all again.",
+    "sharedRegionDisabled": "Shared locations are disabled: this organization requires check secrets to be sealed in the browser."
   }
 }

@@ -491,6 +491,7 @@ export function HttpAuthFields({
               id="username"
               type="text"
               placeholder="user"
+              data-secret-input
               value={state.username}
               onChange={(e) =>
                 onChange({
