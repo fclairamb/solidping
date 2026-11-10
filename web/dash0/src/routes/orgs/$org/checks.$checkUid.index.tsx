@@ -1692,9 +1692,9 @@ function CheckDetailPage() {
 
       {/* Needs-re-seal warning (spec 2026-07-16-02): this check runs in a
           private location and its sealed credentials no longer match that
-          location's active agents. Re-saving the credentials (Edit, above) is
-          the only fix — the server cannot re-seal what it cannot read. */}
-      <NeedsResealAlert needsReseal={check.needsReseal} />
+          location's active agents. An admin re-seals them on a peer agent
+          that can open them (spec 2026-11-10-03), or re-saves them (Edit). */}
+      <NeedsResealAlert needsReseal={check.needsReseal} org={org} checkUid={check.uid} canRewrap={!!authUser?.isAdmin} />
       {check.secretsEncryption === "browser" && (
         <div>
           <Badge variant="secondary" data-testid="check-browser-sealed-badge">

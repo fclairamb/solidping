@@ -6,6 +6,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "@/i18n";
 import { NeedsResealAlert } from "./needs-reseal-alert";
 
@@ -43,5 +44,21 @@ describe("NeedsResealAlert", () => {
     const alert = screen.getByTestId("needs-reseal-warning");
     // Destructive red is reserved for destructive actions (design reference).
     expect(alert.className).not.toContain("destructive");
+  });
+
+  it("offers the peer re-seal to an admin (spec 2026-11-10-03)", () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <NeedsResealAlert needsReseal org="acme" checkUid="c1" canRewrap />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByTestId("rewrap-button-check").textContent).toContain("Re-seal for the current agents");
+  });
+
+  it("does not offer it without the admin right", () => {
+    render(<NeedsResealAlert needsReseal org="acme" checkUid="c1" />);
+
+    expect(screen.queryByTestId("rewrap-button-check")).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Check as CheckIcon, Copy, Download, KeyRound, RotateCw } from "lucide-react";
+import { AlertTriangle, Check as CheckIcon, ClipboardPaste, Copy, Download, KeyRound, RotateCw } from "lucide-react";
 
 import { useDeleteRegionKey, useSetRegionKey, type PrivateRegion } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { RewrapButton } from "@/components/shared/rewrap-button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { canSealInBrowser, generateRegionKey, type GeneratedRegionKey } from "@/lib/sealing";
+import { canSealInBrowser, generateRegionKey, isAgeRecipient, type GeneratedRegionKey } from "@/lib/sealing";
+
+/** The offline region key command (a verbatim command). */
+const REGION_KEY_COMMAND = ["solidping", "agent", "region-key", "generate"].join(" ");
 
 /** The agent environment line carrying a region key (a verbatim command). */
 function agentEnvLine(identity: string): string {
@@ -24,6 +29,8 @@ function agentEnvLine(identity: string): string {
  * The sealing key mode of a private region (spec 2026-11-08-01 §2): a key per
  * agent (default) or one shared region key. The shared key is generated in
  * the browser, shown once, and only its public recipient reaches the server.
+ * The paranoid path pastes the public key of an identity generated offline
+ * (`solidping agent region-key generate`, spec 2026-11-10-03 §3).
  */
 export function RegionKeyCell({ org, region }: { org: string; region: PrivateRegion }) {
   const { t } = useTranslation(["org"]);
@@ -31,6 +38,10 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
   const deleteKey = useDeleteRegionKey(org);
   const [generated, setGenerated] = useState<GeneratedRegionKey | null>(null);
   const [copied, setCopied] = useState(false);
+  const [pasting, setPasting] = useState(false);
+  // Kept once started, so its result stays on screen after the count drops.
+  const [rewrapStarted, setRewrapStarted] = useState(false);
+  const [pasted, setPasted] = useState("");
   const shared = region.keyMode === "shared" && region.regionKey;
 
   const generate = async () => setGenerated(await generateRegionKey());
@@ -64,6 +75,13 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
     if (!generated) return;
     await setKey.mutateAsync({ slug: region.slug, recipient: generated.recipient });
     setGenerated(null);
+  };
+
+  const confirmPasted = async () => {
+    if (!isAgeRecipient(pasted)) return;
+    await setKey.mutateAsync({ slug: region.slug, recipient: pasted.trim() });
+    setPasting(false);
+    setPasted("");
   };
 
   return (
@@ -109,6 +127,14 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
           {t("privateLocations.regionKey.stale", { count: region.checksNeedingReseal })}
         </p>
       )}
+      {shared && ((region.checksNeedingReseal ?? 0) > 0 || rewrapStarted) && (
+        <RewrapButton
+          org={org}
+          region={region.region}
+          testId={region.slug}
+          onStarted={() => setRewrapStarted(true)}
+        />
+      )}
       <div className="flex flex-wrap gap-1">
         <Button
           variant="outline"
@@ -120,7 +146,54 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
           {shared ? <RotateCw className="h-4 w-4" /> : <KeyRound className="h-4 w-4" />}
           {shared ? t("privateLocations.regionKey.rotate") : t("privateLocations.regionKey.generate")}
         </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setPasting(true)}
+          disabled={setKey.isPending}
+          data-testid="region-key-paste-button"
+        >
+          <ClipboardPaste className="h-4 w-4" />
+          {t("privateLocations.regionKey.paste")}
+        </Button>
       </div>
+      <Dialog open={pasting} onOpenChange={(open) => !open && setPasting(false)}>
+        <DialogContent data-testid="region-key-paste-dialog">
+          <DialogHeader>
+            <DialogTitle>{t("privateLocations.regionKey.pasteTitle", { region: region.region })}</DialogTitle>
+            <DialogDescription>{t("privateLocations.regionKey.pasteDescription")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <pre className="max-w-full overflow-x-auto rounded bg-muted p-2 text-xs">
+              {REGION_KEY_COMMAND}
+            </pre>
+            <Input
+              value={pasted}
+              onChange={(event) => setPasted(event.target.value)}
+              placeholder="age1…"
+              aria-label={t("privateLocations.regionKey.pasteLabel")}
+              data-testid="region-key-paste-input"
+            />
+            {pasted.trim() !== "" && !isAgeRecipient(pasted) && (
+              <p className="text-xs text-status-error" data-testid="region-key-paste-invalid">
+                {t("privateLocations.regionKey.pasteInvalid")}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPasting(false)} data-testid="region-key-paste-cancel">
+              {t("privateLocations.regionKey.cancel")}
+            </Button>
+            <Button
+              onClick={confirmPasted}
+              disabled={!isAgeRecipient(pasted) || setKey.isPending}
+              data-testid="region-key-paste-confirm"
+            >
+              {t("privateLocations.regionKey.pasteConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={!!generated} onOpenChange={(open) => !open && setGenerated(null)}>
         <DialogContent data-testid="region-key-dialog">
           <DialogHeader>

@@ -440,15 +440,48 @@
       "distribute": "Geben Sie ihn jedem Agenten der Region mit SP_AGENT_REGION_KEYS (oder SP_AGENT_REGION_KEYS_FILE). Listen Sie bei einer Rotation den alten und den neuen Schlüssel auf.",
       "cancel": "Abbrechen",
       "confirm": "Gespeichert, diesen Schlüssel verwenden",
-      "modeLabel": "Schlüsselmodus"
+      "modeLabel": "Schlüsselmodus",
+      "paste": "Öffentlichen Schlüssel einfügen",
+      "pasteTitle": "Öffentlicher Schlüssel für {{region}}",
+      "pasteDescription": "Erzeugen Sie den Regionsschlüssel offline mit dem Befehl unten, geben Sie die Identität an die Agents der Region und fügen Sie nur den öffentlichen Schlüssel (age1…) ein. SolidPing sieht die Identität nie.",
+      "pasteLabel": "Öffentlicher Schlüssel",
+      "pasteInvalid": "Kein öffentlicher age-Schlüssel: Er beginnt mit age1 und hat 62 Zeichen.",
+      "pasteConfirm": "Diesen öffentlichen Schlüssel verwenden"
     },
     "reseal": {
       "back": "Zurück zu privaten Standorten",
       "title": "Check-Geheimnisse neu versiegeln",
-      "description": "Die Geheimnisse dieser Checks sind für eine andere Agentengruppe versiegelt (ein Agent kam hinzu oder ging, oder der Regionsschlüssel hat sich geändert). SolidPing kann sie nicht neu versiegeln: Geben Sie die Geheimnisse erneut ein.",
+      "description": "Diese Checks haben Secrets, die für andere Agents versiegelt sind (ein Agent kam hinzu oder ging, oder der Regionsschlüssel hat sich geändert). Ein Online-Agent, der noch einen passenden Schlüssel hält, kann sie für die aktuellen Agents neu versiegeln; sonst geben Sie die Secrets neu ein.",
       "empty": "Kein Check muss neu versiegelt werden.",
       "open": "Geheimnisse ersetzen",
       "link": "Neu versiegeln"
+    },
+    "rewrap": {
+      "button": "Für die aktuellen Agents neu versiegeln",
+      "running_one": "{{count}} Check wird auf einem Agent neu versiegelt…",
+      "running_other": "{{count}} Checks werden auf einem Agent neu versiegelt…",
+      "done_one": "{{count}} Check neu versiegelt.",
+      "done_other": "{{count}} Checks neu versiegelt.",
+      "empty": "Kein Check muss neu versiegelt werden.",
+      "error": "Das Neuversiegeln konnte nicht gestartet werden.",
+      "failed": "{{check}}: {{reason}}",
+      "reason": {
+        "no_online_recipient": "kein Online-Agent hält einen Schlüssel dieser Secrets: Starten Sie einen oder geben Sie die Secrets neu ein",
+        "timed_out": "kein Agent wurde rechtzeitig fertig",
+        "REWRAP_CANNOT_OPEN": "der Agent konnte diese Secrets nicht öffnen",
+        "REWRAP_SEAL_FAILED": "der Agent konnte nicht für die aktuellen Empfänger versiegeln",
+        "REWRAP_INVALID_INPUT": "der Agent hat die Aufgabe abgelehnt",
+        "invalid_result": "der Agent lieferte einen ungültigen Blob, der abgelehnt wurde",
+        "recipients_changed": "die Agents oder der Regionsschlüssel haben sich inzwischen geändert: erneut versuchen",
+        "check_changed": "die Secrets des Checks haben sich inzwischen geändert",
+        "already_running": "für diesen Check läuft bereits eine Aufgabe",
+        "not_sealed": "diese Secrets sind nicht versiegelt: geben Sie sie neu ein",
+        "up_to_date": "bereits für die aktuellen Agents versiegelt",
+        "no_recipients": "kein Agent und kein Regionsschlüssel zum Versiegeln",
+        "max_attempts": "kein Agent wurde rechtzeitig fertig",
+        "cancelled": "abgebrochen: der Check hat sich geändert",
+        "unknown": "fehlgeschlagen ({{code}})"
+      }
     }
   },
   "accessRedirect": {

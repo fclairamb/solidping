@@ -440,15 +440,48 @@
       "distribute": "Désela a cada agente de la región con SP_AGENT_REGION_KEYS (o SP_AGENT_REGION_KEYS_FILE). Durante una rotación, indique la clave antigua y la nueva.",
       "cancel": "Cancelar",
       "confirm": "La he guardado, usar esta clave",
-      "modeLabel": "Modo de clave"
+      "modeLabel": "Modo de clave",
+      "paste": "Pegar una clave pública",
+      "pasteTitle": "Clave pública para {{region}}",
+      "pasteDescription": "Genera la clave de región sin conexión con el comando de abajo, entrega la identidad a los agentes de la región y pega solo su clave pública (age1…). SolidPing nunca ve la identidad.",
+      "pasteLabel": "Clave pública",
+      "pasteInvalid": "No es una clave pública age: empieza por age1 y tiene 62 caracteres.",
+      "pasteConfirm": "Usar esta clave pública"
     },
     "reseal": {
       "back": "Volver a ubicaciones privadas",
       "title": "Volver a sellar los secretos de los checks",
-      "description": "Estos checks tienen secretos sellados para otro conjunto de agentes (un agente se unió o se fue, o la clave de región cambió). SolidPing no puede volver a sellarlos: escribe sus secretos de nuevo.",
+      "description": "Estos checks tienen secretos sellados para otro conjunto de agentes (un agente llegó o se fue, o la clave de región cambió). Un agente en línea que aún tenga una clave correspondiente puede volver a sellarlos para los agentes actuales; si no, vuelve a escribir sus secretos.",
       "empty": "Ningún check necesita volver a sellarse.",
       "open": "Reemplazar secretos",
       "link": "Volver a sellar"
+    },
+    "rewrap": {
+      "button": "Volver a sellar para los agentes actuales",
+      "running_one": "Volviendo a sellar {{count}} check en un agente…",
+      "running_other": "Volviendo a sellar {{count}} checks en un agente…",
+      "done_one": "{{count}} check sellado de nuevo.",
+      "done_other": "{{count}} checks sellados de nuevo.",
+      "empty": "Ningún check necesita volver a sellarse.",
+      "error": "No se pudo iniciar el nuevo sellado.",
+      "failed": "{{check}}: {{reason}}",
+      "reason": {
+        "no_online_recipient": "ningún agente en línea tiene una clave de estos secretos: inicia uno o vuelve a escribir los secretos",
+        "timed_out": "ningún agente terminó a tiempo",
+        "REWRAP_CANNOT_OPEN": "el agente no pudo abrir estos secretos",
+        "REWRAP_SEAL_FAILED": "el agente no pudo sellar para los destinatarios actuales",
+        "REWRAP_INVALID_INPUT": "el agente rechazó la tarea",
+        "invalid_result": "el agente devolvió un blob no válido, que se rechazó",
+        "recipients_changed": "los agentes o la clave de región cambiaron mientras tanto: inténtalo de nuevo",
+        "check_changed": "los secretos del check cambiaron mientras tanto",
+        "already_running": "ya hay una tarea en curso para este check",
+        "not_sealed": "estos secretos no están sellados: vuelve a escribirlos",
+        "up_to_date": "ya sellado para los agentes actuales",
+        "no_recipients": "ningún agente ni clave de región a quien sellar",
+        "max_attempts": "ningún agente terminó a tiempo",
+        "cancelled": "cancelado: el check cambió",
+        "unknown": "error ({{code}})"
+      }
     }
   },
   "accessRedirect": {

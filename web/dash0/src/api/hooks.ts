@@ -9404,6 +9404,58 @@ export function useResealChecks(org: string) {
   });
 }
 
+/** One check's peer re-wrap (spec 2026-11-10-03). */
+export interface RewrapOutcome {
+  checkUid: string;
+  checkName?: string;
+  taskUid?: string;
+  agentUid?: string;
+  agentName?: string;
+  /** pending | claimed | done | failed | cancelled, or refused when none started. */
+  status: "pending" | "claimed" | "done" | "failed" | "cancelled" | "refused";
+  errorCode?: string;
+}
+
+/** Whether a re-wrap reached its end. */
+export function isRewrapSettled(outcome: RewrapOutcome): boolean {
+  return outcome.status !== "pending" && outcome.status !== "claimed";
+}
+
+/**
+ * Sends a peer re-wrap: an online agent that can open the sealed secrets
+ * re-seals them for the current agents (or region key). Without a body, every
+ * flagged check of the org; with `region`, those of one private region.
+ */
+export function useStartRewrap(org: string) {
+  return useMutation({
+    mutationFn: async (body: { region?: string; checkUids?: string[] }) =>
+      (
+        await apiFetch<{ data?: RewrapOutcome[] }>(`/api/v1/orgs/${org}/sealing/rewrap`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        })
+      ).data ?? [],
+  });
+}
+
+/** Polls the re-wraps of the given checks until each one settled. */
+export function useRewrapStatus(org: string, checkUids: string[]) {
+  return useQuery({
+    queryKey: ["sealing-rewrap", org, checkUids],
+    queryFn: async () =>
+      (
+        await apiFetch<{ data?: RewrapOutcome[] }>(
+          `/api/v1/orgs/${org}/sealing/rewrap?check=${encodeURIComponent(checkUids.join(","))}`,
+        )
+      ).data ?? [],
+    enabled: checkUids.length > 0,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      return data && data.length >= checkUids.length && data.every(isRewrapSettled) ? false : 2000;
+    },
+  });
+}
+
 export function useNonCompliantChecks(org: string, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["sealing-noncompliant", org],

@@ -692,7 +692,7 @@
     },
     "needsReseal": {
       "title": "Las credenciales deben volver a sellarse para esta ubicación privada",
-      "description": "Esta comprobación se ejecuta en una ubicación privada y sus credenciales almacenadas están selladas para un conjunto de agentes distinto de los activos actualmente: se ha inscrito o revocado un agente desde que se guardaron, por lo que los agentes no pueden descifrarlas y la comprobación fallará. SolidPing no puede volver a sellarlas por sí mismo (tampoco puede leerlas): vuelve a introducir y guardar las credenciales para solucionarlo.",
+      "description": "Esta comprobación se ejecuta en una ubicación privada y sus credenciales almacenadas están selladas para un conjunto de agentes distinto de los activos actualmente: se ha inscrito o revocado un agente desde que se guardaron, por lo que los agentes no pueden descifrarlas y la comprobación fallará. SolidPing no puede leerlas, pero un agente en línea que aún tenga una clave correspondiente puede volver a sellarlas para los agentes actuales. Si no, vuelve a introducir y guardar las credenciales para solucionarlo.",
       "action": "Volver a guardar las credenciales"
     },
     "regionWarnings": {
