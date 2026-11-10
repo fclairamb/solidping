@@ -843,12 +843,14 @@ jobs:
       - name: Install, start, stop and uninstall the service
         run: |
           set -euo pipefail
-          # Outside /home/runner, which the service user cannot traverse.
-          exe=/usr/local/bin/solidping
+          # Outside /home/runner, which the service user cannot traverse, and not in
+          # /usr/local/bin, which the hosted runner leaves world-writable.
+          exe=/opt/solidping/bin/solidping
           dir=/var/lib/solidping
           go build -o "$RUNNER_TEMP/solidping" .
           # A binary the runner user owns would let it run code as the service.
           if sudo "$RUNNER_TEMP/solidping" service install; then echo 'install accepted a user-owned binary'; exit 1; fi
+          sudo install -d -o root -m 0755 /opt/solidping /opt/solidping/bin
           sudo install -o root -m 0755 "$RUNNER_TEMP/solidping" "$exe"
 
           sudo "$exe" service install
