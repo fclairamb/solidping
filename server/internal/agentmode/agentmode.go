@@ -31,11 +31,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 )
 
@@ -90,6 +92,13 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		}
 	}
 
+	regionIdentities, err := loadRegionIdentities(cfg)
+	if err != nil {
+		return err
+	}
+
+	logSealingFingerprints(ctx, logger, identity, regionIdentities)
+
 	persist := func(id *backend.Identity) {
 		persistIdentity(ctx, cfg, id, fromEnv, logger, os.Stdout)
 	}
@@ -99,6 +108,9 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		// The agent's OWN `${env:}` allowlist: per-region secrets resolve
 		// only for names this agent's operator listed (spec 2026-10-16-03).
 		backend.WithEnvRefAllow(cfg.EnvRefAllowed),
+		// Shared region keys (spec 2026-11-08-01): opened next to the agent's
+		// own key, advertised to the server by fingerprint only.
+		backend.WithRegionIdentities(regionIdentities),
 	)
 
 	// Wire the SSH-tunnel resolver to this agent's in-memory unsealed snapshots.
@@ -247,4 +259,52 @@ func printKeyMaterial(
 
 	// Best effort: a failed write to stdout is not worth failing the agent for.
 	_, _ = fmt.Fprintf(out, "\n%s\nSP_AGENT_KEYS=%s\n%s\n\n", keyMaterialBanner, encoded, keyMaterialBanner)
+}
+
+// loadRegionIdentities reads the shared region keys from SP_AGENT_REGION_KEYS
+// and SP_AGENT_REGION_KEYS_FILE (one identity per line, `#` comments). An
+// invalid identity fails the start: an agent that silently drops a region key
+// would claim nothing sealed to it.
+func loadRegionIdentities(cfg *config.Config) ([]string, error) {
+	identities := append([]string(nil), cfg.Agent.RegionKeys...)
+
+	if cfg.Agent.RegionKeysFile != "" {
+		raw, err := os.ReadFile(cfg.Agent.RegionKeysFile)
+		if err != nil {
+			return nil, fmt.Errorf("read SP_AGENT_REGION_KEYS_FILE: %w", err)
+		}
+
+		for _, line := range strings.Split(string(raw), "\n") {
+			if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+				identities = append(identities, line)
+			}
+		}
+	}
+
+	for i, identity := range identities {
+		if _, err := credentials.X25519RecipientOf(identity); err != nil {
+			return nil, fmt.Errorf("region key #%d is not an age X25519 identity: %w", i+1, err)
+		}
+	}
+
+	return identities, nil
+}
+
+// logSealingFingerprints logs the fingerprints of the keys sealed check
+// secrets are addressed to, so an operator can compare them with dash0 out of
+// band. Fingerprints only: never key material.
+func logSealingFingerprints(
+	ctx context.Context, logger *slog.Logger, identity *backend.Identity, regionIdentities []string,
+) {
+	if recipient, err := credentials.X25519RecipientOf(identity.X25519Identity); err == nil {
+		logger.InfoContext(ctx, "Agent sealing key",
+			"recipientFingerprint", credentials.RecipientFingerprint(recipient))
+	}
+
+	for _, regionIdentity := range regionIdentities {
+		if recipient, err := credentials.X25519RecipientOf(regionIdentity); err == nil {
+			logger.InfoContext(ctx, "Region sealing key loaded",
+				"regionKeyFingerprint", credentials.RecipientFingerprint(recipient))
+		}
+	}
 }

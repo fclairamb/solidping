@@ -2,6 +2,7 @@ package agentws_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -1072,12 +1073,24 @@ func TestWSBackendUnsealFailureReportsJobError(t *testing.T) {
 	e := newEnv(t)
 	ctx := t.Context()
 
+	keys, err := agentcrypto.GenerateAgentKeys()
+	r.NoError(err)
 	otherKeys, err := agentcrypto.GenerateAgentKeys()
 	r.NoError(err)
-	sealed, err := credentials.SealForRecipients(
+
+	// A blob that LISTS this agent (so the claim filter hands it out) but
+	// whose ciphertext only another key opens: the decrypt-failure contract.
+	foreign, err := credentials.SealForRecipients(
 		[]string{otherKeys.X25519Recipient}, map[string]any{"password": "hunter2"},
 	)
 	r.NoError(err)
+
+	var envelope map[string]any
+	r.NoError(json.Unmarshal([]byte(foreign), &envelope))
+	envelope["fingerprints"] = []string{credentials.RecipientFingerprint(keys.X25519Recipient)}
+	raw, err := json.Marshal(envelope)
+	r.NoError(err)
+	sealed := string(raw)
 
 	check := models.NewCheck(e.org.UID, "foreign-sealed", "http")
 	check.Config = models.JSONMap{"url": "https://internal.example.com"}
@@ -1085,8 +1098,6 @@ func TestWSBackendUnsealFailureReportsJobError(t *testing.T) {
 	check.ConfigSealed = &sealed
 	r.NoError(e.dbSvc.CreateCheck(ctx, check))
 
-	keys, err := agentcrypto.GenerateAgentKeys()
-	r.NoError(err)
 	wsBackend := backend.NewWSBackend(
 		e.server.URL, e.mintToken(), "client-agent",
 		&backend.Identity{AgentKeys: *keys}, nil,
@@ -1106,6 +1117,105 @@ func TestWSBackendUnsealFailureReportsJobError(t *testing.T) {
 	r.True(ok, "a decrypt failure must produce a visible error result")
 	r.Equal(int(models.ResultStatusError), *got.Status)
 	r.Contains(got.Output["error"], "re-save the check's credentials")
+}
+
+// TestClaimFilterSkipsJobsSealedForOthers (spec 2026-11-08-01 §7): a sealed
+// job whose fingerprints do not list the agent is never handed to it (so a new
+// agent in a region does not fail one run in N), while a job sealed to it is.
+func TestClaimFilterSkipsJobsSealedForOthers(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	keys, err := agentcrypto.GenerateAgentKeys()
+	r.NoError(err)
+	otherKeys, err := agentcrypto.GenerateAgentKeys()
+	r.NoError(err)
+
+	seal := func(slug, recipient string) *models.Check {
+		sealed, sealErr := credentials.SealForRecipients([]string{recipient}, map[string]any{"password": "hunter2"})
+		r.NoError(sealErr)
+
+		check := models.NewCheck(e.org.UID, slug, "http")
+		check.Config = models.JSONMap{"url": "https://internal.example.com"}
+		check.Regions = []string{testRegion}
+		check.ConfigSealed = &sealed
+		r.NoError(e.dbSvc.CreateCheck(ctx, check))
+
+		return check
+	}
+
+	foreign := seal("sealed-for-other", otherKeys.X25519Recipient)
+	own := seal("sealed-for-me", keys.X25519Recipient)
+
+	wsBackend := backend.NewWSBackend(
+		e.server.URL, e.mintToken(), "filter-agent",
+		&backend.Identity{AgentKeys: *keys}, nil,
+	)
+
+	worker, err := wsBackend.Register(ctx, nil)
+	r.NoError(err)
+
+	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
+	r.NoError(err)
+
+	claimed := map[string]*models.CheckJob{}
+	for _, job := range jobs {
+		claimed[job.CheckUID] = job
+	}
+
+	r.NotContains(claimed, foreign.UID, "a job sealed for another agent must not be handed out")
+	r.Contains(claimed, own.UID, "positive control: a job sealed for this agent is handed out")
+	r.Equal("hunter2", claimed[own.UID].Config["password"])
+
+	results, err := e.dbSvc.GetLastResultForChecks(ctx, e.org.UID, []string{foreign.UID})
+	r.NoError(err)
+	r.NotContains(results, foreign.UID, "a filtered job produces no error result")
+}
+
+// TestClaimFilterRegionKeyCapability (spec 2026-11-08-01 §2): a job sealed to a
+// shared region key goes to an agent holding that key (advertised as
+// region-key-<fp>), and not to one without it.
+func TestClaimFilterRegionKeyCapability(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	regionIdentity, regionRecipient, err := credentials.GenerateX25519Keypair()
+	r.NoError(err)
+
+	sealed, err := credentials.SealForRecipients([]string{regionRecipient}, map[string]any{"password": "s3cret"})
+	r.NoError(err)
+
+	check := models.NewCheck(e.org.UID, "sealed-region-key", "http")
+	check.Config = models.JSONMap{"url": "https://internal.example.com"}
+	check.Regions = []string{testRegion}
+	check.ConfigSealed = &sealed
+	r.NoError(e.dbSvc.CreateCheck(ctx, check))
+
+	claim := func(name string, opts ...backend.Option) []*models.CheckJob {
+		keys, keyErr := agentcrypto.GenerateAgentKeys()
+		r.NoError(keyErr)
+
+		wsBackend := backend.NewWSBackend(e.server.URL, e.mintToken(), name,
+			&backend.Identity{AgentKeys: *keys}, nil, opts...)
+
+		worker, regErr := wsBackend.Register(ctx, nil)
+		r.NoError(regErr)
+
+		jobs, _, claimErr := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
+		r.NoError(claimErr)
+
+		return jobs
+	}
+
+	r.Empty(claim("no-region-key"), "an agent without the region key claims nothing sealed to it")
+
+	jobs := claim("with-region-key", backend.WithRegionIdentities([]string{regionIdentity}))
+	r.Len(jobs, 1, "positive control: the agent holding the region key claims it")
+	r.Equal("s3cret", jobs[0].Config["password"])
 }
 
 // TestClaimCarriesNextEligibleHint (spec 2026-07-20-03): a jobs frame for an

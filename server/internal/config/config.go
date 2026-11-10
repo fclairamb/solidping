@@ -227,6 +227,14 @@ type AgentConfig struct {
 	// only to bootstrap an env-only (SP_AGENT_KEYS) deployment that has no
 	// writable volume to read the keys file from, then unset it.
 	PrintKeys bool `koanf:"print_keys"`
+	// RegionKeys are shared region keys (age X25519 identities,
+	// "AGE-SECRET-KEY-1…") the agent unseals with next to its own key —
+	// SP_AGENT_REGION_KEYS, comma-separated (spec 2026-11-08-01). A list, so a
+	// rotation can run with the old and the new key at once.
+	RegionKeys []string `koanf:"region_keys"`
+	// RegionKeysFile is a file of region identities, one per line, `#`
+	// comments allowed (the age key file format) — SP_AGENT_REGION_KEYS_FILE.
+	RegionKeysFile string `koanf:"region_keys_file"`
 	// DiscoveryEnabled lets this agent run LAN discovery chunks of its private
 	// region (spec 2026-10-22-04) — SP_AGENT_DISCOVERY_ENABLED. Off by default:
 	// only the agent's operator can authorize discovery, never the server.
@@ -2877,6 +2885,20 @@ func applyAgentEnv(cfg *AgentConfig) {
 
 	if v := os.Getenv("SP_AGENT_NAME"); v != "" {
 		cfg.Name = v
+	}
+
+	if v := os.Getenv("SP_AGENT_REGION_KEYS"); v != "" {
+		cfg.RegionKeys = nil
+
+		for _, part := range strings.Split(v, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				cfg.RegionKeys = append(cfg.RegionKeys, part)
+			}
+		}
+	}
+
+	if v := os.Getenv("SP_AGENT_REGION_KEYS_FILE"); v != "" {
+		cfg.RegionKeysFile = v
 	}
 
 	if v := os.Getenv("SP_AGENT_PRINT_KEYS"); v != "" {

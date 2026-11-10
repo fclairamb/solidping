@@ -23,6 +23,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/egress"
+	"github.com/fclairamb/solidping/server/internal/sealing"
 	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/version"
 )
@@ -95,6 +96,12 @@ type WSBackend struct {
 	// SP_CHECK_ENV_ALLOWLIST, spec 2026-10-16-03), consulted when a bastion
 	// config is materialized. Nil denies every `${env:}` reference.
 	envRefAllow secretref.EnvAllowFunc
+
+	// regionIdentities are the shared region keys (age X25519 identities) this
+	// agent holds, from SP_AGENT_REGION_KEYS(_FILE); regionKeyFingerprints are
+	// their recipient fingerprints, advertised on claim (spec 2026-11-08-01).
+	regionIdentities      []string
+	regionKeyFingerprints []string
 
 	// dialMu serializes dialing so only one connect runs at a time regardless
 	// of which path triggers it (lazy request() vs. the reconnect supervisor).
@@ -169,6 +176,21 @@ func WithPingInterval(interval time.Duration) Option {
 // WithEnvRefAllow sets the agent's `${env:}` allowlist (config.Config.EnvRefAllowed).
 func WithEnvRefAllow(allow secretref.EnvAllowFunc) Option {
 	return func(b *WSBackend) { b.envRefAllow = allow }
+}
+
+// WithRegionIdentities sets the shared region keys this agent unseals with.
+// Each must be a valid age X25519 identity (see ParseRegionIdentities).
+func WithRegionIdentities(identities []string) Option {
+	return func(b *WSBackend) {
+		b.regionIdentities = append([]string(nil), identities...)
+		b.regionKeyFingerprints = nil
+
+		for _, identity := range identities {
+			if recipient, err := credentials.X25519RecipientOf(identity); err == nil {
+				b.regionKeyFingerprints = append(b.regionKeyFingerprints, credentials.RecipientFingerprint(recipient))
+			}
+		}
+	}
 }
 
 // WithCaptureCache overrides the local capture cache (tests use tighter bounds
@@ -295,7 +317,7 @@ func (b *WSBackend) claim(
 		MaxJobs:  maxJobs,
 		CheckUID: checkUID,
 		// The worker put the plugin types its activation gate enables on ctx.
-		Capabilities: Capabilities(ctx, checkjobsvc.PluginTypesFromContext(ctx)),
+		Capabilities: b.claimCapabilities(ctx),
 		Version:      version.Get().Version,
 		Plugins:      manifests,
 	})
@@ -316,7 +338,7 @@ func (b *WSBackend) claim(
 		job := wireJob.ToCheckJob()
 
 		if job.ConfigSealed != nil && *job.ConfigSealed != "" {
-			secrets, unsealErr := credentials.UnsealWithIdentity(b.identityX25519(), *job.ConfigSealed)
+			secrets, unsealErr := credentials.UnsealWithIdentities(*job.ConfigSealed, b.unsealIdentities()...)
 			if unsealErr != nil {
 				// The spec's decrypt-failure contract: a clear job error, not a
 				// silent skip — the operator sees WHY the check failed and the
@@ -339,7 +361,7 @@ func (b *WSBackend) claim(
 		// can find it. Unseal failure is reported like a job-envelope failure —
 		// a clear error result, dropped from the batch, never run half-armed.
 		if wireJob.Tunnel != nil {
-			cfg, tunErr := buildTunnelConfig(ctx, b.identityX25519(), wireJob.Tunnel, b.envRefAllow)
+			cfg, tunErr := buildTunnelConfig(ctx, b.unsealIdentities(), wireJob.Tunnel, b.envRefAllow)
 			if tunErr != nil {
 				b.logger.WarnContext(ctx, "ssh tunnel not available on this agent",
 					"check_uid", job.CheckUID, "tunnel_check_uid", wireJob.Tunnel.CheckUID, "error", tunErr)
@@ -437,12 +459,26 @@ func (b *WSBackend) Hints() <-chan string {
 	return hintCh
 }
 
-// identityX25519 returns the agent's age identity string.
-func (b *WSBackend) identityX25519() string {
+// unsealIdentities returns every age identity this agent opens sealed blobs
+// with: its own key, then the shared region keys it holds (spec 2026-11-08-01).
+func (b *WSBackend) unsealIdentities() []string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	return b.identity.X25519Identity
+	return append([]string{b.identity.X25519Identity}, b.regionIdentities...)
+}
+
+// claimCapabilities is the capability report of a claim frame: the worker's
+// own set plus one `region-key-<fp>` per region key held, so the server hands
+// this agent the jobs sealed to those keys. Never the keys themselves.
+func (b *WSBackend) claimCapabilities(ctx context.Context) []string {
+	caps := Capabilities(ctx, checkjobsvc.PluginTypesFromContext(ctx))
+
+	for _, fp := range b.regionKeyFingerprints {
+		caps = append(caps, sealing.RegionKeyCapability(fp))
+	}
+
+	return caps
 }
 
 // request sends one frame and waits for its correlated response.

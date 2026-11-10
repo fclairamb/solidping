@@ -358,6 +358,11 @@ type AgentScope struct {
 	// NoICMP is set when the agent reported it cannot open an ICMP socket: it
 	// is not handed icmp jobs (spec 2026-10-28-06).
 	NoICMP bool
+	// SealFingerprints are the X25519 recipient fingerprints the agent can
+	// open: its own key and the region keys it advertises (spec 2026-11-08-01
+	// §7). When set, a sealed job is only handed out if its blob lists one of
+	// them, so an agent never claims a job it cannot open. Empty: no filter.
+	SealFingerprints []string
 }
 
 // ErrInvalidAgentScope is returned when a claim scope is not a scope any agent
@@ -399,7 +404,53 @@ func (s AgentScope) apply(query *bun.SelectQuery) *bun.SelectQuery {
 		query = query.Where("organization_uid = ?", s.OrgUID)
 	}
 
-	return icmpScope(pluginTypeScope(excludePassiveTypes(query.Where("region = ?", s.Region)), s.PluginTypes), s.NoICMP)
+	return sealScope(
+		icmpScope(pluginTypeScope(excludePassiveTypes(query.Where("region = ?", s.Region)), s.PluginTypes), s.NoICMP),
+		s.SealFingerprints,
+	)
+}
+
+// sealScope keeps a sealed job away from an agent that is not one of its
+// recipients. The fingerprints are matched as quoted strings inside the
+// stored envelope's `fingerprints` array; only hex fingerprints are used, so
+// no LIKE wildcard can widen the match.
+func sealScope(query *bun.SelectQuery, fingerprints []string) *bun.SelectQuery {
+	var valid []string
+
+	for _, fp := range fingerprints {
+		if isHexFingerprint(fp) {
+			valid = append(valid, fp)
+		}
+	}
+
+	if len(valid) == 0 {
+		return query
+	}
+
+	return query.WhereGroup(" AND ", func(group *bun.SelectQuery) *bun.SelectQuery {
+		group = group.WhereOr("config_sealed IS NULL").WhereOr("config_sealed = ''")
+
+		for _, fp := range valid {
+			group = group.WhereOr("config_sealed LIKE ?", `%"`+fp+`"%`)
+		}
+
+		return group
+	})
+}
+
+// isHexFingerprint reports whether fp is a lowercase hex recipient fingerprint.
+func isHexFingerprint(fp string) bool {
+	if fp == "" || len(fp) > 64 {
+		return false
+	}
+
+	for _, char := range fp {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return false
+		}
+	}
+
+	return true
 }
 
 // excludePassiveTypes keeps passive (heartbeat, email) jobs out of every check

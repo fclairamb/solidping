@@ -34,6 +34,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/orgslug"
+	"github.com/fclairamb/solidping/server/internal/sealing"
 	"github.com/fclairamb/solidping/server/internal/securityheaders"
 	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
@@ -4524,6 +4525,10 @@ type OrgSettingsResponse struct {
 	// check whose own `reminderIntervalSeconds` is null (spec 2026-10-12-16).
 	// ALWAYS PRESENT; 0 (off) when the org never set it.
 	ReminderIntervalSeconds int `json:"reminderIntervalSeconds"`
+	// BrowserSealingMode is `optional` (server or browser encryption, per
+	// check) or `required` (plaintext check secrets refused), spec
+	// 2026-11-08-01. ALWAYS PRESENT; `optional` when never set.
+	BrowserSealingMode string `json:"browserSealingMode"`
 }
 
 // GetOrgSettings returns settings for an organization.
@@ -4577,7 +4582,13 @@ func (s *Service) GetOrgSettings(ctx context.Context, orgSlug string) (*OrgSetti
 
 	reminderInterval, _ := parseParamSeconds(reminderParam)
 
+	sealingMode, err := sealing.BrowserSealingMode(ctx, s.db, org.UID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &OrgSettingsResponse{
+		BrowserSealingMode:            sealingMode,
 		ReminderIntervalSeconds:       reminderInterval,
 		RegistrationEmailPattern:      pattern,
 		SessionMaxDurationSeconds:     sessionMaxDurationSeconds,
@@ -4649,6 +4660,9 @@ type UpdateOrgSettingsRequest struct {
 	// 2026-10-12-16): 0 turns reminders off, otherwise 900..86400 seconds.
 	// Omit to leave it unchanged.
 	ReminderIntervalSeconds *int `json:"reminderIntervalSeconds"`
+	// BrowserSealingMode sets `optional` or `required` (spec 2026-11-08-01).
+	// Switching never touches stored checks. Omit to leave it unchanged.
+	BrowserSealingMode *string `json:"browserSealingMode"`
 }
 
 // UpdateOrgSettings updates settings for an organization.
@@ -4665,6 +4679,11 @@ func (s *Service) UpdateOrgSettings(
 	// above it were saved.
 	if req.ReminderIntervalSeconds != nil && !models.ValidReminderIntervalSeconds(*req.ReminderIntervalSeconds) {
 		return nil, ErrInvalidReminderInterval
+	}
+
+	if req.BrowserSealingMode != nil && *req.BrowserSealingMode != sealing.ModeOptional &&
+		*req.BrowserSealingMode != sealing.ModeRequired {
+		return nil, sealing.ErrInvalidMode
 	}
 
 	var embedOrigins []string
@@ -4738,6 +4757,10 @@ func orgSettingsChangedFields(req UpdateOrgSettingsRequest) []string {
 		changed = append(changed, "reminder_interval_seconds")
 	}
 
+	if req.BrowserSealingMode != nil {
+		changed = append(changed, "browser_sealing_mode")
+	}
+
 	return changed
 }
 
@@ -4764,6 +4787,12 @@ func (s *Service) updateOrgParameters(
 	if req.ReminderIntervalSeconds != nil {
 		if err := s.updateReminderInterval(ctx, orgUID, *req.ReminderIntervalSeconds); err != nil {
 			return err
+		}
+	}
+
+	if req.BrowserSealingMode != nil {
+		if err := sealing.SetBrowserSealingMode(ctx, s.db, orgUID, *req.BrowserSealingMode); err != nil {
+			return fmt.Errorf("set browser sealing mode: %w", err)
 		}
 	}
 

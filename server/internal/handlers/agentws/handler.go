@@ -48,6 +48,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/plugintypes"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/sealing"
 	"github.com/fclairamb/solidping/server/internal/version"
 )
 
@@ -1040,6 +1041,15 @@ func (h *Handler) handleClaim(
 	scope := agentClaimScope(state.agent)
 	scope.PluginTypes = checkjobsvc.PluginTypesFromCapabilities(frame.Capabilities)
 	scope.NoICMP = checkjobsvc.NoICMPFromCapabilities(frame.Capabilities)
+
+	// A sealed job only goes to an agent that can open it: its own X25519 key
+	// or a region key it advertises (spec 2026-11-08-01 §7). A system agent
+	// gets a per-claim re-seal instead (sealJobForSystemAgent).
+	if !state.agent.IsSystem() && state.agent.X25519PublicKey != "" {
+		scope.SealFingerprints = append(
+			[]string{credentials.RecipientFingerprint(state.agent.X25519PublicKey)},
+			sealing.RegionKeyFingerprints(frame.Capabilities)...)
+	}
 
 	jobs, nextIn, err := h.checkJobSvc.ClaimJobsForAgent(
 		ctx, state.workerUID, scope,
