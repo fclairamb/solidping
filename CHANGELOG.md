@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.0](https://github.com/fclairamb/solidping/compare/v0.45.0...v0.46.0) (2026-11-10)
+
+
+### Features
+
+* **slack:** show check state, uptime and incident status in link unfurls ([#827](https://github.com/fclairamb/solidping/issues/827)) ([2362ca9](https://github.com/fclairamb/solidping/commit/2362ca921e7cdcc0c914661580fc5af1271cdfa7))
+
 ## [0.45.0](https://github.com/fclairamb/solidping/compare/v0.44.3...v0.45.0) (2026-11-09)
 
 
