@@ -467,6 +467,7 @@
       "failed": "{{check}} : {{reason}}",
       "reason": {
         "no_online_recipient": "aucun agent en ligne ne détient une clé de ces secrets : démarrez-en un, ou saisissez à nouveau les secrets",
+        "rewrap_not_offered": "les agents qui détiennent ces secrets ne font pas le re-chiffrement (version antérieure à 0.47, ou SP_AGENT_REWRAP_ENABLED=false) : saisissez à nouveau les secrets",
         "timed_out": "aucun agent n'a terminé à temps",
         "REWRAP_CANNOT_OPEN": "l'agent n'a pas pu ouvrir ces secrets",
         "REWRAP_SEAL_FAILED": "l'agent n'a pas pu sceller pour les destinataires actuels",

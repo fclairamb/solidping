@@ -56,7 +56,7 @@ func (e *Executor) Run(ctx context.Context, claim *workertasks.Claim, rep tasks.
 	}
 
 	e.logger.InfoContext(ctx, "Sealed secrets re-wrapped", "task", claim.UID, "check", claim.CheckUID,
-		"recipient_count", len(fingerprints))
+		"recipient_count", len(fingerprints), "recipients", fingerprints)
 
 	return rep.Finish(ctx, body)
 }

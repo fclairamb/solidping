@@ -467,6 +467,7 @@
       "failed": "{{check}}: {{reason}}",
       "reason": {
         "no_online_recipient": "no online agent holds a key these secrets were sealed to: start one, or type the secrets again",
+        "rewrap_not_offered": "the agents that hold these secrets do not run the re-seal (older than 0.47, or SP_AGENT_REWRAP_ENABLED=false): type the secrets again",
         "timed_out": "no agent finished in time",
         "REWRAP_CANNOT_OPEN": "the agent could not open these secrets",
         "REWRAP_SEAL_FAILED": "the agent could not seal for the current recipients",

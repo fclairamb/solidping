@@ -1706,6 +1706,29 @@ func TestApplyAgentEnvPrintKeysDefaultsOff(t *testing.T) {
 	r.False(cfg.PrintKeys)
 }
 
+// TestApplyAgentEnvRewrap: the peer re-wrap stays on unless the operator sets
+// SP_AGENT_REWRAP_ENABLED=false; an unparseable value changes nothing
+// (spec 2026-11-10-04).
+func TestApplyAgentEnvRewrap(t *testing.T) {
+	r := require.New(t)
+
+	cfg := AgentConfig{}
+	applyAgentEnv(&cfg)
+	r.False(cfg.RewrapDisabled)
+
+	t.Setenv("SP_AGENT_REWRAP_ENABLED", "nope")
+	applyAgentEnv(&cfg)
+	r.False(cfg.RewrapDisabled)
+
+	t.Setenv("SP_AGENT_REWRAP_ENABLED", "false")
+	applyAgentEnv(&cfg)
+	r.True(cfg.RewrapDisabled)
+
+	t.Setenv("SP_AGENT_REWRAP_ENABLED", "true")
+	applyAgentEnv(&cfg)
+	r.False(cfg.RewrapDisabled)
+}
+
 // TestApplySentryEnv proves SP_SENTRY_TRACES_SAMPLE_RATE actually lands on the
 // snake_case-tagged TracesSampleRate field despite koanf's env
 // underscore→dot collapse — this MUST fail (rate stays 0.0) if applySentryEnv

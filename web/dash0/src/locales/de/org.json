@@ -467,6 +467,7 @@
       "failed": "{{check}}: {{reason}}",
       "reason": {
         "no_online_recipient": "kein Online-Agent hält einen Schlüssel dieser Secrets: Starten Sie einen oder geben Sie die Secrets neu ein",
+        "rewrap_not_offered": "die Agenten mit einem Schlüssel dieser Secrets führen keine Neuverschlüsselung aus (älter als 0.47 oder SP_AGENT_REWRAP_ENABLED=false): Geben Sie die Secrets neu ein",
         "timed_out": "kein Agent wurde rechtzeitig fertig",
         "REWRAP_CANNOT_OPEN": "der Agent konnte diese Secrets nicht öffnen",
         "REWRAP_SEAL_FAILED": "der Agent konnte nicht für die aktuellen Empfänger versiegeln",

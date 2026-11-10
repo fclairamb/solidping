@@ -163,6 +163,7 @@ func manualReaderAgentEnvVars() []string {
 		"SP_AGENT_REGION_KEYS_FILE",
 		"SP_AGENT_DISCOVERY_ENABLED",
 		"SP_AGENT_DISCOVERY_CIDRS",
+		"SP_AGENT_REWRAP_ENABLED",
 	}
 }
 

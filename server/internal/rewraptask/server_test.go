@@ -447,6 +447,32 @@ func TestRewrap_NoOnlineRecipient(t *testing.T) {
 	r.Empty(outcome.TaskUID)
 }
 
+// TestRewrap_KeyHolderWithoutRewrap names the reason when the online agent
+// that holds the key does not run the re-wrap: its operator set
+// SP_AGENT_REWRAP_ENABLED=false, or it predates 0.47 (spec 2026-11-10-04).
+func TestRewrap_KeyHolderWithoutRewrap(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHarness(t)
+	ctx := t.Context()
+
+	holder := h.enroll("holder", false)
+	check := h.sealedCheck("acme-api", map[string]any{"password": "s3cret"}, holder.keys.X25519Recipient)
+	// A new agent the blob is not sealed to, so the check needs a re-seal.
+	h.enroll("new", true)
+
+	// The holder is online, but its worker does not report the capability.
+	now := time.Now().UTC()
+	r.NoError(h.db.UpdateAgentLastSeen(ctx, holder.agent.UID, now))
+	r.NoError(h.db.CreateWorker(ctx, models.NewWorker(agentcrypto.WorkerSlug(holder.agent.UID), "holder")))
+
+	outcome := startOne(t, h, check)
+	r.Equal("refused", outcome.Status)
+	r.Equal(rewraptask.CodeRewrapNotOffered, outcome.ErrorCode)
+	r.Empty(outcome.TaskUID)
+}
+
 // TestRewrap_UpToDateAndTimeout covers a check that needs nothing, and a
 // re-wrap no agent finished within the timeout.
 func TestRewrap_UpToDateAndTimeout(t *testing.T) {
