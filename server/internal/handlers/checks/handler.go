@@ -878,18 +878,8 @@ func (h *Handler) writeInternalFieldError(writer http.ResponseWriter) error {
 
 // handleCreateError handles errors from CreateCheck.
 func (h *Handler) handleCreateError(writer http.ResponseWriter, request *http.Request, err error) error {
-	if handled, sealErr := h.writeSealingError(writer, request, err); handled {
-		return sealErr
-	}
-
-	// Check for configuration validation errors
-	if configErr := checkerdef.IsConfigError(err); configErr != nil {
-		return h.WriteValidationError(writer, "Configuration validation failed", []base.ValidationErrorField{
-			{
-				Name:    configErr.Parameter,
-				Message: configErr.Message,
-			},
-		})
+	if handled, writeErr := h.writeConfigOrSealingError(writer, request, err); handled {
+		return writeErr
 	}
 
 	switch {

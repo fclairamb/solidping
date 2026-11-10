@@ -358,11 +358,6 @@ type AgentScope struct {
 	// NoICMP is set when the agent reported it cannot open an ICMP socket: it
 	// is not handed icmp jobs (spec 2026-10-28-06).
 	NoICMP bool
-	// SealFingerprints are the X25519 recipient fingerprints the agent can
-	// open: its own key and the region keys it advertises (spec 2026-11-08-01
-	// §7). When set, a sealed job is only handed out if its blob lists one of
-	// them, so an agent never claims a job it cannot open. Empty: no filter.
-	SealFingerprints []string
 }
 
 // ErrInvalidAgentScope is returned when a claim scope is not a scope any agent
@@ -404,10 +399,26 @@ func (s AgentScope) apply(query *bun.SelectQuery) *bun.SelectQuery {
 		query = query.Where("organization_uid = ?", s.OrgUID)
 	}
 
-	return sealScope(
-		icmpScope(pluginTypeScope(excludePassiveTypes(query.Where("region = ?", s.Region)), s.PluginTypes), s.NoICMP),
-		s.SealFingerprints,
-	)
+	return icmpScope(pluginTypeScope(excludePassiveTypes(query.Where("region = ?", s.Region)), s.PluginTypes), s.NoICMP)
+}
+
+// sealFingerprintsKey carries the X25519 recipient fingerprints a claiming
+// agent can open.
+type sealFingerprintsKey struct{}
+
+// WithSealFingerprints returns a context for a claim by an agent that can open
+// blobs sealed to these fingerprints: its own key and the region keys it
+// advertises (spec 2026-11-08-01 §7). A sealed job is then only handed out if
+// its blob lists one of them, so an agent never claims a job it cannot open.
+// Without it, no filter applies.
+func WithSealFingerprints(ctx context.Context, fingerprints []string) context.Context {
+	return context.WithValue(ctx, sealFingerprintsKey{}, fingerprints)
+}
+
+func sealFingerprintsFromContext(ctx context.Context) []string {
+	fingerprints, _ := ctx.Value(sealFingerprintsKey{}).([]string)
+
+	return fingerprints
 }
 
 // sealScope keeps a sealed job away from an agent that is not one of its
@@ -689,7 +700,7 @@ func selectAvailableJobsForAgent(
 ) ([]*models.CheckJob, error) {
 	var jobs []*models.CheckJob
 
-	query := scope.apply(tx.NewSelect().Model(&jobs)).
+	query := sealScope(scope.apply(tx.NewSelect().Model(&jobs)), sealFingerprintsFromContext(ctx)).
 		// Multi-step slices never reach an agent (spec 2026-10-03-03): the
 		// state is stored and read in-process only.
 		Where("lane <> ?", scheduling.LaneBulk).

@@ -2309,18 +2309,9 @@ func (s *Service) prepareCheckUpdate(
 	// ("Accept current records", spec 2026-10-03-04) once the write landed.
 	configBefore := check.Config
 	if req.Config != nil || req.SealedSecrets != nil {
-		// sealedSecrets alone keeps the public config: a PATCH config
-		// replaces the public side wholesale.
-		patch := make(map[string]any, len(check.Config))
-		for key, value := range check.Config {
-			patch[key] = value
-		}
-
-		if req.Config != nil {
-			patch = *req.Config
-		}
-
-		if cfgErr := s.applyConfigUpdate(ctx, check, patch, req.SealedSecrets, &update); cfgErr != nil {
+		if cfgErr := s.applyConfigUpdate(
+			ctx, check, configPatchBase(check, req), req.SealedSecrets, &update,
+		); cfgErr != nil {
 			return nil, cfgErr
 		}
 

@@ -17,6 +17,9 @@ import (
 // X25519 recipient.
 var ErrInvalidRegionKey = errors.New("recipient must be an age X25519 recipient (age1…)")
 
+// auditKeyAction names the action in a region key audit payload.
+const auditKeyAction = "action"
+
 // SetRegionKeyRequest is the body of PUT /private-regions/:slug/region-key.
 // Only the public recipient is ever sent: the identity stays with the user
 // and the region's agents (spec 2026-11-08-01 §2).
@@ -76,6 +79,23 @@ func (s *Service) countChecksNotSealedTo(ctx context.Context, orgUID, region, fi
 	}
 
 	return count, nil
+}
+
+// regionKeyState reads the org's region keys and the workers' capabilities.
+func (s *Service) regionKeyState(
+	ctx context.Context, orgUID string,
+) (map[string]sealing.RegionKey, map[string][]string, error) {
+	keys, err := sealing.RegionKeys(ctx, s.db, orgUID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	caps, err := s.workerCapabilities(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return keys, caps, nil
 }
 
 // workerCapabilities maps each agent UID to its worker row's capabilities.
@@ -138,7 +158,7 @@ func (s *Service) SetRegionKey(
 
 	audit.Record(ctx, s.db, org.UID, models.EventTypeOrgSettingsUpdated,
 		audit.Target{Type: "private_region", UID: full, Name: slug},
-		models.JSONMap{"action": action, "fingerprint": key.Fingerprint})
+		models.JSONMap{auditKeyAction: action, "fingerprint": key.Fingerprint})
 
 	s.ResealRegion(ctx, org.UID, full)
 
@@ -169,7 +189,7 @@ func (s *Service) DeleteRegionKey(ctx context.Context, orgSlug, slug string) err
 
 	audit.Record(ctx, s.db, org.UID, models.EventTypeOrgSettingsUpdated,
 		audit.Target{Type: "private_region", UID: full, Name: slug},
-		models.JSONMap{"action": "region_key_removed"})
+		models.JSONMap{auditKeyAction: "region_key_removed"})
 
 	s.ResealRegion(ctx, org.UID, full)
 

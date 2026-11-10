@@ -197,13 +197,7 @@ func createCheckDef() ToolDefinition {
 				"Check type. Allowed: " + allowedCheckTypes() + ". " +
 					"Inferred from config if omitted.",
 			),
-			"sealedSecrets": objectProp(
-				"Check secrets sealed for the org's agents (private regions only): " +
-					"{\"keys\":[\"basicAuth\"],\"fingerprints\":[\"…\"],\"ct\":\"<base64 age file>\"}. " +
-					"Fetch the recipients from GET /api/v1/orgs/{org}/sealing-recipients and seal with the " +
-					"age CLI or dash0. Prefer it to plaintext secrets: an org in browser sealing mode " +
-					"`required` refuses plaintext ones.",
-			),
+			"sealedSecrets": sealedSecretsProp(),
 			schemaKeyConfig: objectProp(
 				"Check-specific config. Shape depends on type. Example for http: " +
 					"{\"url\": \"https://example.com\", \"method\": \"GET\"}. " +
@@ -324,13 +318,7 @@ func updateCheckDef() ToolDefinition {
 			schemaKeyName:   stringProp("New human-readable name, e.g. \"API production\"."),
 			schemaKeySlug:   stringProp("New URL-friendly slug, e.g. \"api-prod\"."),
 			schemaKeyConfig: objectProp("Replace check-specific config (full object — not merged)."),
-			"sealedSecrets": objectProp(
-				"Check secrets sealed for the org's agents (private regions only): " +
-					"{\"keys\":[\"basicAuth\"],\"fingerprints\":[\"…\"],\"ct\":\"<base64 age file>\"}. " +
-					"Fetch the recipients from GET /api/v1/orgs/{org}/sealing-recipients and seal with the " +
-					"age CLI or dash0. Prefer it to plaintext secrets: an org in browser sealing mode " +
-					"`required` refuses plaintext ones.",
-			),
+			"sealedSecrets": sealedSecretsProp(),
 			schemaKeyRegions: arrayOfStringsProp(
 				"Pin the check to exactly these regions, e.g. [\"eu-west-1\",\"us-east-1\"] " +
 					"(placement becomes \"pinned\"). An empty array puts the check back on the default " +
@@ -595,4 +583,16 @@ func sealedSecretsArg(args map[string]any) *checks.SealedSecretsRequest {
 	}
 
 	return &sealed
+}
+
+// sealedSecretsProp describes the sealedSecrets argument of create_check and
+// update_check.
+func sealedSecretsProp() map[string]any {
+	return objectProp(
+		"Check secrets sealed for the org's agents (private regions only): " +
+			"{\"keys\":[\"basicAuth\"],\"fingerprints\":[\"…\"],\"ct\":\"<base64 age file>\"}. " +
+			"Fetch the recipients from GET /api/v1/orgs/{org}/sealing-recipients and seal with the " +
+			"age CLI or dash0. Prefer it to plaintext secrets: an org in browser sealing mode " +
+			"`required` refuses plaintext ones.",
+	)
 }

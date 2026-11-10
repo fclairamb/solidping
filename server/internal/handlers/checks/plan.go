@@ -249,16 +249,8 @@ func (s *Service) planCreateCheck(
 	// Browser-sealed secrets (spec 2026-11-08-01): the checker validates
 	// placeholders for the keys it cannot see. Without them, a `required` org
 	// refuses plaintext secrets.
-	if req.SealedSecrets != nil {
-		if shapeErr := validateSealedSecretsShape(
-			req.SealedSecrets, s.secretFieldsForType(ctx, org.UID, req.Type), req.Config,
-		); shapeErr != nil {
-			return nil, shapeErr
-		}
-
-		spec.Config = withInjectedConfig(spec.Config, sealedPlaceholders(req.Type, req.SealedSecrets.Keys))
-	} else if modeErr := s.assertPlaintextSecretsAllowed(ctx, org.UID, req.Type, req.Config); modeErr != nil {
-		return nil, modeErr
+	if sealErr := s.planSealedSecrets(ctx, org.UID, &req, spec); sealErr != nil {
+		return nil, sealErr
 	}
 
 	if validateErr := s.validateSpecFor(ctx, org.UID, req.Type, spec); validateErr != nil {

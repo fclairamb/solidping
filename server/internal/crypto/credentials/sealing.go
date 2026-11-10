@@ -277,7 +277,7 @@ func ValidateSealedCiphertext(ct string, wantStanzas int) error {
 // BuildClientSealedEnvelope wraps a client-sealed age file into the stored v2
 // envelope, with origin SealOriginBrowser. The fingerprints are sorted so the
 // stored shape matches what SealForRecipients writes.
-func BuildClientSealedEnvelope(fingerprints []string, ct string) (string, error) {
+func BuildClientSealedEnvelope(fingerprints []string, ciphertext string) (string, error) {
 	sorted := append([]string(nil), fingerprints...)
 	sort.Strings(sorted)
 
@@ -285,7 +285,7 @@ func BuildClientSealedEnvelope(fingerprints []string, ct string) (string, error)
 		Version:      sealedEnvelopeVersion,
 		Alg:          sealedEnvelopeAlg,
 		Fingerprints: sorted,
-		CT:           ct,
+		CT:           ciphertext,
 		Origin:       SealOriginBrowser,
 	})
 	if err != nil {

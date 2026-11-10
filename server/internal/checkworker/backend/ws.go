@@ -181,13 +181,14 @@ func WithEnvRefAllow(allow secretref.EnvAllowFunc) Option {
 // WithRegionIdentities sets the shared region keys this agent unseals with.
 // Each must be a valid age X25519 identity (see ParseRegionIdentities).
 func WithRegionIdentities(identities []string) Option {
-	return func(b *WSBackend) {
-		b.regionIdentities = append([]string(nil), identities...)
-		b.regionKeyFingerprints = nil
+	return func(backend *WSBackend) {
+		backend.regionIdentities = append([]string(nil), identities...)
+		backend.regionKeyFingerprints = nil
 
 		for _, identity := range identities {
 			if recipient, err := credentials.X25519RecipientOf(identity); err == nil {
-				b.regionKeyFingerprints = append(b.regionKeyFingerprints, credentials.RecipientFingerprint(recipient))
+				backend.regionKeyFingerprints = append(
+					backend.regionKeyFingerprints, credentials.RecipientFingerprint(recipient))
 			}
 		}
 	}

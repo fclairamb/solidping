@@ -79,7 +79,9 @@ func enrollAgentIn(
 	return agent, keys
 }
 
-func sealedCheckRequest(slug string, sealed *checks.SealedSecretsRequest, regionList ...string) checks.CreateCheckRequest {
+func sealedCheckRequest(
+	slug string, sealed *checks.SealedSecretsRequest, regionList ...string,
+) checks.CreateCheckRequest {
 	return checks.CreateCheckRequest{
 		Name: slug, Slug: slug, Type: "http", Regions: regionList,
 		Config:        map[string]any{"url": "https://internal.example.com"},

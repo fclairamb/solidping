@@ -222,12 +222,7 @@ func (s *Service) ListPrivateRegions(ctx context.Context, orgSlug string) (*List
 		monitors = found
 	}
 
-	regionKeys, err := sealing.RegionKeys(ctx, s.db, org.UID)
-	if err != nil {
-		return nil, err
-	}
-
-	workerCaps, err := s.workerCapabilities(ctx)
+	regionKeys, workerCaps, err := s.regionKeyState(ctx, org.UID)
 	if err != nil {
 		return nil, err
 	}

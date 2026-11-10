@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/sealing"
@@ -145,7 +146,9 @@ func sealedPlaceholders(checkType string, keys []string) map[string]any {
 // keys are a non-empty subset of the secret fields, absent from the request
 // config, and the ciphertext is a well-formed age file with one X25519 stanza
 // per fingerprint.
-func validateSealedSecretsShape(sealed *SealedSecretsRequest, secretFields []string, requestConfig map[string]any) error {
+func validateSealedSecretsShape(
+	sealed *SealedSecretsRequest, secretFields []string, requestConfig map[string]any,
+) error {
 	if len(sealed.Keys) == 0 {
 		return invalidSealed("keys must list at least one secret field")
 	}
@@ -307,13 +310,13 @@ func secretsEncryptionOf(check *models.Check, privateKeys []string) *string {
 
 // sameRegionSet reports whether two region lists hold the same regions.
 func sameRegionSet(left, right []string) bool {
-	a := append([]string(nil), left...)
-	b := append([]string(nil), right...)
+	sortedLeft := append([]string(nil), left...)
+	sortedRight := append([]string(nil), right...)
 
-	sort.Strings(a)
-	sort.Strings(b)
+	sort.Strings(sortedLeft)
+	sort.Strings(sortedRight)
 
-	return slices.Equal(a, b)
+	return slices.Equal(sortedLeft, sortedRight)
 }
 
 // SealingRecipientsResponse is the body of GET /orgs/:org/sealing-recipients.
@@ -445,14 +448,7 @@ func (s *Service) applySealedOnlyReplacement(
 	secretFields, cleared []string, wasSealedOnly bool, oldSealed, oldPrivateKeys *string,
 ) error {
 	provided := secretKeysWithValues(merged, secretFields)
-
-	var clearedStored []string
-
-	for _, key := range cleared {
-		if slices.Contains(parseConfigPrivateKeys(oldPrivateKeys), key) {
-			clearedStored = append(clearedStored, key)
-		}
-	}
+	clearedStored := storedKeysIn(oldPrivateKeys, cleared)
 
 	if wasSealedOnly && len(provided) > 0 {
 		if err := assertCoversStoredSecrets(oldPrivateKeys, provided, cleared); err != nil {
@@ -483,6 +479,58 @@ func (s *Service) applySealedOnlyReplacement(
 	}
 
 	return nil
+}
+
+// storedKeysIn returns the keys of list that are stored secret keys.
+func storedKeysIn(storedKeys *string, list []string) []string {
+	stored := parseConfigPrivateKeys(storedKeys)
+
+	var out []string
+
+	for _, key := range list {
+		if slices.Contains(stored, key) {
+			out = append(out, key)
+		}
+	}
+
+	return out
+}
+
+// planSealedSecrets validates a create's sealedSecrets shape and puts the
+// checker's placeholders on the spec; without sealedSecrets, a `required` org
+// refuses plaintext secrets.
+func (s *Service) planSealedSecrets(
+	ctx context.Context, orgUID string, req *CreateCheckRequest, spec *checkerdef.CheckSpec,
+) error {
+	if req.SealedSecrets == nil {
+		return s.assertPlaintextSecretsAllowed(ctx, orgUID, req.Type, req.Config)
+	}
+
+	if err := validateSealedSecretsShape(
+		req.SealedSecrets, s.secretFieldsForType(ctx, orgUID, req.Type), req.Config,
+	); err != nil {
+		return err
+	}
+
+	spec.Config = withInjectedConfig(spec.Config, sealedPlaceholders(req.Type, req.SealedSecrets.Keys))
+
+	return nil
+}
+
+// configPatchBase is the config a PATCH applies: the request's, or the
+// stored public config when only sealedSecrets is sent (a PATCH config
+// replaces the public side wholesale).
+func configPatchBase(check *models.Check, req *UpdateCheckRequest) map[string]any {
+	if req.Config != nil {
+		return *req.Config
+	}
+
+	patch := make(map[string]any, len(check.Config))
+	for key, value := range check.Config {
+		patch[key] = value
+	}
+
+	return patch
 }
 
 // recipientsChangedFor builds the 409 for a region change that would strand a

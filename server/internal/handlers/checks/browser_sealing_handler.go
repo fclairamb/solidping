@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/sealing"
@@ -47,6 +48,20 @@ func (h *Handler) writeSealingError(writer http.ResponseWriter, request *http.Re
 	default:
 		return false, nil
 	}
+}
+
+// writeConfigOrSealingError translates a checker config error or a
+// browser-sealing error. The first return reports whether err was one.
+func (h *Handler) writeConfigOrSealingError(
+	writer http.ResponseWriter, request *http.Request, err error,
+) (bool, error) {
+	if configErr := checkerdef.IsConfigError(err); configErr != nil {
+		return true, h.WriteValidationError(writer, "Configuration validation failed", []base.ValidationErrorField{
+			{Name: configErr.Parameter, Message: configErr.Message},
+		})
+	}
+
+	return h.writeSealingError(writer, request, err)
 }
 
 // SealingRecipients handles GET /orgs/:org/sealing-recipients?region=@a,@b.

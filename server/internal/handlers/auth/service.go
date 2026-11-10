@@ -4677,13 +4677,8 @@ func (s *Service) UpdateOrgSettings(
 	// Validated BEFORE the first write: a refused embed origin or reminder
 	// interval must refuse the whole PATCH, not land a 400 after the fields
 	// above it were saved.
-	if req.ReminderIntervalSeconds != nil && !models.ValidReminderIntervalSeconds(*req.ReminderIntervalSeconds) {
-		return nil, ErrInvalidReminderInterval
-	}
-
-	if req.BrowserSealingMode != nil && *req.BrowserSealingMode != sealing.ModeOptional &&
-		*req.BrowserSealingMode != sealing.ModeRequired {
-		return nil, sealing.ErrInvalidMode
+	if validErr := validateOrgSettingsEnums(&req); validErr != nil {
+		return nil, validErr
 	}
 
 	var embedOrigins []string
@@ -4723,6 +4718,21 @@ func (s *Service) UpdateOrgSettings(
 	}
 
 	return s.GetOrgSettings(ctx, orgSlug)
+}
+
+// validateOrgSettingsEnums checks the range and enum fields of a settings
+// PATCH before anything is written.
+func validateOrgSettingsEnums(req *UpdateOrgSettingsRequest) error {
+	if req.ReminderIntervalSeconds != nil && !models.ValidReminderIntervalSeconds(*req.ReminderIntervalSeconds) {
+		return ErrInvalidReminderInterval
+	}
+
+	if req.BrowserSealingMode != nil && *req.BrowserSealingMode != sealing.ModeOptional &&
+		*req.BrowserSealingMode != sealing.ModeRequired {
+		return sealing.ErrInvalidMode
+	}
+
+	return nil
 }
 
 // orgSettingsChangedFields names the settings a request actually carried.

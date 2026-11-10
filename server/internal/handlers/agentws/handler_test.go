@@ -1195,11 +1195,11 @@ func TestClaimFilterRegionKeyCapability(t *testing.T) {
 	check.ConfigSealed = &sealed
 	r.NoError(e.dbSvc.CreateCheck(ctx, check))
 
-	claim := func(name string, opts ...backend.Option) []*models.CheckJob {
+	claim := func(name, token string, opts ...backend.Option) []*models.CheckJob {
 		keys, keyErr := agentcrypto.GenerateAgentKeys()
 		r.NoError(keyErr)
 
-		wsBackend := backend.NewWSBackend(e.server.URL, e.mintToken(), name,
+		wsBackend := backend.NewWSBackend(e.server.URL, token, name,
 			&backend.Identity{AgentKeys: *keys}, nil, opts...)
 
 		worker, regErr := wsBackend.Register(ctx, nil)
@@ -1211,9 +1211,9 @@ func TestClaimFilterRegionKeyCapability(t *testing.T) {
 		return jobs
 	}
 
-	r.Empty(claim("no-region-key"), "an agent without the region key claims nothing sealed to it")
+	r.Empty(claim("no-region-key", e.mintToken()), "an agent without the region key claims nothing sealed to it")
 
-	jobs := claim("with-region-key", backend.WithRegionIdentities([]string{regionIdentity}))
+	jobs := claim("with-region-key", e.mintToken(), backend.WithRegionIdentities([]string{regionIdentity}))
 	r.Len(jobs, 1, "positive control: the agent holding the region key claims it")
 	r.Equal("s3cret", jobs[0].Config["password"])
 }

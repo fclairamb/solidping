@@ -2887,19 +2887,7 @@ func applyAgentEnv(cfg *AgentConfig) {
 		cfg.Name = v
 	}
 
-	if v := os.Getenv("SP_AGENT_REGION_KEYS"); v != "" {
-		cfg.RegionKeys = nil
-
-		for _, part := range strings.Split(v, ",") {
-			if part = strings.TrimSpace(part); part != "" {
-				cfg.RegionKeys = append(cfg.RegionKeys, part)
-			}
-		}
-	}
-
-	if v := os.Getenv("SP_AGENT_REGION_KEYS_FILE"); v != "" {
-		cfg.RegionKeysFile = v
-	}
+	applyAgentRegionKeysEnv(cfg)
 
 	if v := os.Getenv("SP_AGENT_PRINT_KEYS"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
@@ -2921,6 +2909,24 @@ func applyAgentEnv(cfg *AgentConfig) {
 				cfg.DiscoveryCIDRs = append(cfg.DiscoveryCIDRs, part)
 			}
 		}
+	}
+}
+
+// applyAgentRegionKeysEnv reads SP_AGENT_REGION_KEYS (comma-separated) and
+// SP_AGENT_REGION_KEYS_FILE (spec 2026-11-08-01).
+func applyAgentRegionKeysEnv(cfg *AgentConfig) {
+	if v := os.Getenv("SP_AGENT_REGION_KEYS"); v != "" {
+		cfg.RegionKeys = nil
+
+		for _, part := range strings.Split(v, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				cfg.RegionKeys = append(cfg.RegionKeys, part)
+			}
+		}
+	}
+
+	if v := os.Getenv("SP_AGENT_REGION_KEYS_FILE"); v != "" {
+		cfg.RegionKeysFile = v
 	}
 }
 

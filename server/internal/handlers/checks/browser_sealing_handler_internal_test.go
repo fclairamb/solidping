@@ -13,6 +13,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/sealing"
 )
 
+var errOtherForTest = errors.New("other")
+
 func TestWriteSealingErrorCodes(t *testing.T) {
 	t.Parallel()
 
@@ -45,7 +47,7 @@ func TestWriteSealingErrorCodes(t *testing.T) {
 			name: "invalid", err: invalidSealed("bad"),
 			wantStatus: http.StatusBadRequest, wantCode: "VALIDATION_ERROR", handled: true,
 		},
-		{name: "other", err: errors.New("other"), handled: false},
+		{name: "other", err: errOtherForTest, handled: false},
 	}
 
 	for _, tc := range tests {
@@ -54,7 +56,7 @@ func TestWriteSealingErrorCodes(t *testing.T) {
 			r := require.New(t)
 
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, "/", nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", nil)
 
 			handled, err := h.writeSealingError(rec, req, tc.err)
 			r.NoError(err)

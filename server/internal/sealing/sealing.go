@@ -132,8 +132,8 @@ func RegionKeys(ctx context.Context, store Store, orgUID string) (map[string]Reg
 		return map[string]RegionKey{}, nil //nolint:nilerr // same
 	}
 
-	for region, key := range out {
-		if key.Recipient == "" || credentials.ValidateRecipient(key.Recipient) != nil {
+	for region := range out {
+		if recipient := out[region].Recipient; recipient == "" || credentials.ValidateRecipient(recipient) != nil {
 			delete(out, region)
 		}
 	}
@@ -220,8 +220,8 @@ func RecipientsForRegions(
 // RecipientKeys returns the age recipient strings of a recipient list.
 func RecipientKeys(recipients []Recipient) []string {
 	out := make([]string, 0, len(recipients))
-	for _, recipient := range recipients {
-		out = append(out, recipient.Recipient)
+	for i := range recipients {
+		out = append(out, recipients[i].Recipient)
 	}
 
 	return out
@@ -230,8 +230,8 @@ func RecipientKeys(recipients []Recipient) []string {
 // SortedFingerprints returns the sorted fingerprints of a recipient list.
 func SortedFingerprints(recipients []Recipient) []string {
 	out := make([]string, 0, len(recipients))
-	for _, recipient := range recipients {
-		out = append(out, recipient.Fingerprint)
+	for i := range recipients {
+		out = append(out, recipients[i].Fingerprint)
 	}
 
 	sort.Strings(out)
