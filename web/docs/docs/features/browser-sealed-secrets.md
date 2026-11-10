@@ -88,6 +88,8 @@ When an agent joins a location, or the region key changes, the checks sealed bef
 
 The server relays ciphertext only; the recipient list comes from the server, the same trust the browser already gives it. A check stays flagged, with the reason shown, when no online agent can open it, when no agent finishes within 5 minutes, or when the returned ciphertext is refused. Then type its secrets again.
 
+**Turning it off.** The agent seals to the recipient list the server sends. A compromised server could add its own key to that list and read the secrets on the next re-seal. To rule that out, set `SP_AGENT_REWRAP_ENABLED=false` on every agent of the location: the agent then never re-seals, and only the agent's operator can change that, not the server. Flagged checks show "the agents that hold these secrets do not run the re-seal", and you type their secrets again. Each re-seal an agent does is logged on the agent (`Sealed secrets re-wrapped`) with the fingerprints it sealed to, so an unknown key stands out.
+
 API: `POST /api/v1/orgs/:org/sealing/rewrap` with `{"region":"@dc1"}` or `{"checkUids":["…"]}` (every flagged check without a body), then `GET /api/v1/orgs/:org/sealing/rewrap?check=<uid>,<uid>` until each status is `done` or `failed`. Admins only. Agents need version 0.47 or later.
 
 ## Adding, revoking and losing agents

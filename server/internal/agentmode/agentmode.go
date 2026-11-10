@@ -130,7 +130,14 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	// Peer re-wrap of sealed secrets (spec 2026-11-10-03): this agent opens a
 	// blob with its keys and seals it to the list the server sends. Registered
 	// before the worker, so the "rewrap" capability is reported from the start.
-	tasks.Register(rewraptask.NewExecutor(wsBackend.UnsealIdentities))
+	// SP_AGENT_REWRAP_ENABLED=false keeps it off (spec 2026-11-10-04): the
+	// agent then never re-seals for a list the server chose.
+	if cfg.Agent.RewrapDisabled {
+		logger.InfoContext(ctx, "Peer re-wrap of sealed secrets disabled (SP_AGENT_REWRAP_ENABLED=false)")
+	} else {
+		tasks.Register(rewraptask.NewExecutor(wsBackend.UnsealIdentities))
+		logger.InfoContext(ctx, "Peer re-wrap of sealed secrets enabled")
+	}
 
 	worker := checkworker.NewAgentCheckWorker(cfg, wsBackend)
 	wsBackend.SetEgressGuard(worker.EgressGuard())

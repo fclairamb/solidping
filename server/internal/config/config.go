@@ -243,6 +243,13 @@ type AgentConfig struct {
 	// — SP_AGENT_DISCOVERY_CIDRS, comma-separated. Required when discovery is
 	// enabled.
 	DiscoveryCIDRs []string `koanf:"discovery_cidrs"`
+	// RewrapDisabled turns the peer re-wrap of sealed secrets off on this
+	// agent (spec 2026-11-10-04) — SP_AGENT_REWRAP_ENABLED=false. The agent
+	// then neither runs the executor nor reports the "rewrap" capability, so
+	// the server never sends it a blob to re-seal. Only the agent's operator
+	// can refuse it: a server-side setting would not survive a compromised
+	// server. Stored inverted so the zero value keeps the re-wrap on.
+	RewrapDisabled bool `koanf:"rewrap_disabled"`
 }
 
 // OTelConfig contains OpenTelemetry configuration.
@@ -2898,6 +2905,12 @@ func applyAgentEnv(cfg *AgentConfig) {
 	if v := os.Getenv("SP_AGENT_DISCOVERY_ENABLED"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			cfg.DiscoveryEnabled = b
+		}
+	}
+
+	if v := os.Getenv("SP_AGENT_REWRAP_ENABLED"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.RewrapDisabled = !b
 		}
 	}
 

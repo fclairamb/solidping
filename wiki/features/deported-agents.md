@@ -622,7 +622,10 @@ packages.
    swaps it compare-and-set (payload `envelopeSha256`), keeps `origin`, and
    copies it to the jobs. One task per check keeps a claim under 100 KiB, so
    nothing is chunked. A task still active after 5 min reads as `failed` /
-   `timed_out`. Also `solidping seal`, `solidping agent region-key generate`
+   `timed_out`. The agent's operator can refuse re-wraps with
+   `SP_AGENT_REWRAP_ENABLED=false` (spec 2026-11-10-04): no executor, no
+   `rewrap` capability, and the server reports `rewrap_not_offered` when the
+   key holders are online but none re-wraps. Also `solidping seal`, `solidping agent region-key generate`
    and `sealedSecrets` in config-as-code. Agent auto-update stays out of scope.
 
 Open bug: [`2026-07-20-02-private-locations-token-dialog-dirty-rendering`](../../specs/todos/2026-07-20-02-private-locations-token-dialog-dirty-rendering.md)

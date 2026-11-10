@@ -303,9 +303,15 @@ func (s *Server) startOne(ctx context.Context, orgUID string, check *models.Chec
 		return refused(CodeNotSealed), nil //nolint:nilerr // as above
 	}
 
-	agent, err := s.pickAgent(ctx, orgUID, privateRegionsOf(check), sealedTo)
+	pick, err := s.pickAgent(ctx, orgUID, privateRegionsOf(check), sealedTo)
 	if err != nil {
 		return Outcome{}, err
+	}
+
+	agent := pick.agent
+
+	if agent == nil && pick.keyHolderWithoutRewrap {
+		return refused(CodeRewrapNotOffered), nil
 	}
 
 	if agent == nil {
@@ -332,20 +338,31 @@ func (s *Server) startOne(ctx context.Context, orgUID string, check *models.Chec
 	}, nil
 }
 
+// agentPick is what pickAgent found: the agent to send the re-wrap to (nil
+// when none fits), and whether an online agent holds a key of the blob but does
+// not run the re-wrap.
+type agentPick struct {
+	agent                  *models.Agent
+	keyHolderWithoutRewrap bool
+}
+
 // pickAgent returns the online agent of the regions, most recently seen
 // first, that runs the re-wrap executor and holds a key the blob was sealed
-// to (its own, or a region key it advertises). Nil when there is none.
+// to (its own, or a region key it advertises). When there is none,
+// keyHolderWithoutRewrap says whether an online agent holds such a key but
+// does not run the re-wrap (older than 0.47, or SP_AGENT_REWRAP_ENABLED=false,
+// spec 2026-11-10-04).
 func (s *Server) pickAgent(
 	ctx context.Context, orgUID string, privateRegions, sealedTo []string,
-) (*models.Agent, error) {
+) (agentPick, error) {
 	cutoff := regions.LivenessCutoff(s.now())
 
-	var best *models.Agent
+	var pick agentPick
 
 	for _, region := range privateRegions {
-		agents, err := s.db.ListActiveAgentsByRegion(ctx, orgUID, region)
-		if err != nil {
-			return nil, fmt.Errorf("list agents of %s: %w", region, err)
+		agents, listErr := s.db.ListActiveAgentsByRegion(ctx, orgUID, region)
+		if listErr != nil {
+			return agentPick{}, fmt.Errorf("list agents of %s: %w", region, listErr)
 		}
 
 		for _, agent := range agents {
@@ -353,38 +370,56 @@ func (s *Server) pickAgent(
 				continue
 			}
 
-			if !s.agentCanOpen(ctx, agent, sealedTo) {
+			access := s.agentCanOpen(ctx, agent, sealedTo)
+			if access.holdsKey && !access.runsRewrap {
+				pick.keyHolderWithoutRewrap = true
+			}
+
+			if !access.holdsKey || !access.runsRewrap {
 				continue
 			}
 
-			if best == nil || agent.LastSeenAt.After(*best.LastSeenAt) {
-				best = agent
+			if pick.agent == nil || agent.LastSeenAt.After(*pick.agent.LastSeenAt) {
+				pick.agent = agent
 			}
 		}
 	}
 
-	return best, nil
+	return pick, nil
 }
 
-// agentCanOpen reports whether an agent runs the executor and holds one of
-// the keys a blob was sealed to.
-func (s *Server) agentCanOpen(ctx context.Context, agent *models.Agent, sealedTo []string) bool {
-	worker, err := s.db.GetWorkerBySlug(ctx, agentcrypto.WorkerSlug(agent.UID))
-	if err != nil || worker == nil || !slices.Contains(worker.Capabilities, Capability) {
-		return false
-	}
+// keyAccess says whether an agent holds a key a blob was sealed to, and
+// whether it runs the re-wrap executor.
+type keyAccess struct {
+	holdsKey   bool
+	runsRewrap bool
+}
+
+// agentCanOpen reports whether an agent holds one of the keys a blob was
+// sealed to, and whether it runs the re-wrap executor.
+func (s *Server) agentCanOpen(
+	ctx context.Context, agent *models.Agent, sealedTo []string,
+) keyAccess {
+	var access keyAccess
 
 	if agent.X25519PublicKey != "" && slices.Contains(sealedTo, credentials.RecipientFingerprint(agent.X25519PublicKey)) {
-		return true
+		access.holdsKey = true
+	}
+
+	worker, err := s.db.GetWorkerBySlug(ctx, agentcrypto.WorkerSlug(agent.UID))
+	if err != nil || worker == nil {
+		return access
 	}
 
 	for _, fp := range sealing.RegionKeyFingerprints(worker.Capabilities) {
 		if slices.Contains(sealedTo, fp) {
-			return true
+			access.holdsKey = true
 		}
 	}
 
-	return false
+	access.runsRewrap = slices.Contains(worker.Capabilities, Capability)
+
+	return access
 }
 
 // expire fails the org's re-wraps that no agent finished within Timeout.
