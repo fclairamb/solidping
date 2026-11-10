@@ -197,6 +197,13 @@ func createCheckDef() ToolDefinition {
 				"Check type. Allowed: " + allowedCheckTypes() + ". " +
 					"Inferred from config if omitted.",
 			),
+			"sealedSecrets": objectProp(
+				"Check secrets sealed for the org's agents (private regions only): " +
+					"{\"keys\":[\"basicAuth\"],\"fingerprints\":[\"…\"],\"ct\":\"<base64 age file>\"}. " +
+					"Fetch the recipients from GET /api/v1/orgs/{org}/sealing-recipients and seal with the " +
+					"age CLI or dash0. Prefer it to plaintext secrets: an org in browser sealing mode " +
+					"`required` refuses plaintext ones.",
+			),
 			schemaKeyConfig: objectProp(
 				"Check-specific config. Shape depends on type. Example for http: " +
 					"{\"url\": \"https://example.com\", \"method\": \"GET\"}. " +
@@ -281,6 +288,7 @@ func (h *Handler) toolCreateCheck(ctx context.Context, orgSlug string, args map[
 
 	req.Placement, req.RegionCount = placementArgs(args)
 	req.RegionPool = getStringSliceArg(args, "regionPool")
+	req.SealedSecrets = sealedSecretsArg(args)
 
 	if _, ok := args["confirmationPeriodSeconds"]; ok {
 		v := getIntArg(args, "confirmationPeriodSeconds", 0)
@@ -316,6 +324,13 @@ func updateCheckDef() ToolDefinition {
 			schemaKeyName:   stringProp("New human-readable name, e.g. \"API production\"."),
 			schemaKeySlug:   stringProp("New URL-friendly slug, e.g. \"api-prod\"."),
 			schemaKeyConfig: objectProp("Replace check-specific config (full object — not merged)."),
+			"sealedSecrets": objectProp(
+				"Check secrets sealed for the org's agents (private regions only): " +
+					"{\"keys\":[\"basicAuth\"],\"fingerprints\":[\"…\"],\"ct\":\"<base64 age file>\"}. " +
+					"Fetch the recipients from GET /api/v1/orgs/{org}/sealing-recipients and seal with the " +
+					"age CLI or dash0. Prefer it to plaintext secrets: an org in browser sealing mode " +
+					"`required` refuses plaintext ones.",
+			),
 			schemaKeyRegions: arrayOfStringsProp(
 				"Pin the check to exactly these regions, e.g. [\"eu-west-1\",\"us-east-1\"] " +
 					"(placement becomes \"pinned\"). An empty array puts the check back on the default " +
@@ -388,6 +403,7 @@ func (h *Handler) toolUpdateCheck(ctx context.Context, orgSlug string, args map[
 	if v := getMapArg(args, "config"); v != nil {
 		req.Config = &v
 	}
+	req.SealedSecrets = sealedSecretsArg(args)
 	if v := getStringSliceArg(args, schemaKeyRegions); v != nil {
 		req.Regions = &v
 	}
@@ -558,4 +574,25 @@ func placementArgs(args map[string]any) (*string, *int) {
 	}
 
 	return placement, count
+}
+
+// sealedSecretsArg decodes the optional sealedSecrets object as is (spec
+// 2026-11-08-01 §9). A malformed one is left for the service to refuse.
+func sealedSecretsArg(args map[string]any) *checks.SealedSecretsRequest {
+	raw, ok := args["sealedSecrets"]
+	if !ok || raw == nil {
+		return nil
+	}
+
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return &checks.SealedSecretsRequest{}
+	}
+
+	var sealed checks.SealedSecretsRequest
+	if err := json.Unmarshal(encoded, &sealed); err != nil {
+		return &checks.SealedSecretsRequest{}
+	}
+
+	return &sealed
 }
