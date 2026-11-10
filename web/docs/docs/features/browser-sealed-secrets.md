@@ -44,6 +44,7 @@ Switching to *Browser only* does not touch stored checks. The settings card list
 ## What changes for a browser-sealed check
 
 - Secrets are write-only, as before. There is never a reveal.
+- The secrets are write-only. The form keeps them closed until you click **Replace**, which opens every secret input at once.
 - The secrets are replaced together: a save with new secrets must include all of them (or explicitly clear the ones you drop).
 - Private locations only. Changing the regions of a browser-sealed check requires typing the secrets again (`409 SEALING_RECIPIENTS_CHANGED`). Bulk region changes skip these checks and report them.
 - The check page shows a **Browser-sealed** badge.
@@ -52,7 +53,7 @@ Switching to *Browser only* does not touch stored checks. The settings card list
 
 Each private location seals either:
 
-- **Key per agent** (default): to every active agent's own key. A new agent cannot open the existing blobs. It is not handed those jobs (the other agents keep running them) and the checks are flagged *needs re-seal* until you save their secrets again.
+- **Key per agent** (default): to every active agent's own key. A new agent cannot open the existing blobs. It is not handed those jobs (the other agents keep running them) and the checks are flagged *needs re-seal* until you save their secrets again. **Private locations > Re-seal** lists those checks, each opening its form ready to type the secrets again.
 - **Shared region key**: to one region key that every agent of the location holds. Scale out, replace a host or restart from a fresh volume without re-sealing anything.
 
 To use a shared key: **Organization → Private locations → Use a shared region key**. The browser generates the key, shows the secret `AGE-SECRET-KEY-1…` once (copy or download it, and keep a copy in your password manager) and sends only the public `age1…` half to SolidPing. Give the secret to every agent of the location:
