@@ -89,10 +89,22 @@ func sealedCheckRequest(
 	}
 }
 
-func setupBrowserSealing(t *testing.T) (*checks.Service, db.Service, *models.Organization, *agentcrypto.AgentKeys) {
+// sealingEnv builds the checks service, its database and a fresh org: SQLite
+// for the plain tests, a shared embedded Postgres for TestBrowserSealing_Postgres.
+type sealingEnv func(t *testing.T) (*checks.Service, db.Service, *models.Organization)
+
+func sqliteSealingEnv(t *testing.T) (*checks.Service, db.Service, *models.Organization) {
 	t.Helper()
 
-	svc, dbSvc, org := setupEncryptedChecksService(t)
+	return setupEncryptedChecksService(t)
+}
+
+func setupBrowserSealing(
+	t *testing.T, env sealingEnv,
+) (*checks.Service, db.Service, *models.Organization, *agentcrypto.AgentKeys) {
+	t.Helper()
+
+	svc, dbSvc, org := env(t)
 	defineSealRegions(t, dbSvc, org.UID)
 	keys := enrollSealAgent(t, dbSvc, org.UID, "dc1-agent")
 
@@ -101,8 +113,14 @@ func setupBrowserSealing(t *testing.T) (*checks.Service, db.Service, *models.Org
 
 func TestBrowserSealedCreateStoresClientBlob(t *testing.T) {
 	t.Parallel()
+	testBrowserSealedCreateStoresClientBlob(t, sqliteSealingEnv)
+}
+
+func testBrowserSealedCreateStoresClientBlob(t *testing.T, env sealingEnv) {
+	t.Helper()
+
 	r := require.New(t)
-	svc, dbSvc, org, keys := setupBrowserSealing(t)
+	svc, dbSvc, org, keys := setupBrowserSealing(t, env)
 	ctx := t.Context()
 
 	sealed := clientSeal(t, map[string]any{"basicAuth": "alice:hunter2"}, keys.X25519Recipient)
@@ -134,7 +152,13 @@ func TestBrowserSealedCreateStoresClientBlob(t *testing.T) {
 
 func TestBrowserSealedCreateRefusals(t *testing.T) {
 	t.Parallel()
-	svc, _, org, keys := setupBrowserSealing(t)
+	testBrowserSealedCreateRefusals(t, sqliteSealingEnv)
+}
+
+func testBrowserSealedCreateRefusals(t *testing.T, env sealingEnv) {
+	t.Helper()
+
+	svc, _, org, keys := setupBrowserSealing(t, env)
 
 	good := func() *checks.SealedSecretsRequest {
 		return clientSeal(t, map[string]any{"basicAuth": "alice:hunter2"}, keys.X25519Recipient)
@@ -157,6 +181,15 @@ func TestBrowserSealedCreateRefusals(t *testing.T) {
 		{
 			name:    "mixed regions",
 			mutate:  func(req *checks.CreateCheckRequest) { req.Regions = []string{sealTestRegion, "default"} },
+			wantErr: checks.ErrSealedSecretsRequirePrivateRegions,
+		},
+		{
+			// Spec §4 order: the regions are checked before the blob.
+			name: "shared region and a bad blob",
+			mutate: func(req *checks.CreateCheckRequest) {
+				req.Regions = []string{"default"}
+				req.SealedSecrets.CT = "%%%"
+			},
 			wantErr: checks.ErrSealedSecretsRequirePrivateRegions,
 		},
 		{
@@ -226,8 +259,14 @@ func TestBrowserSealedCreateRefusals(t *testing.T) {
 
 func TestBrowserSealedStaleFingerprintsCarryCurrentRecipients(t *testing.T) {
 	t.Parallel()
+	testBrowserSealedStaleFingerprintsCarryCurrentRecipients(t, sqliteSealingEnv)
+}
+
+func testBrowserSealedStaleFingerprintsCarryCurrentRecipients(t *testing.T, env sealingEnv) {
+	t.Helper()
+
 	r := require.New(t)
-	svc, _, org, keys := setupBrowserSealing(t)
+	svc, _, org, keys := setupBrowserSealing(t, env)
 
 	_, otherRecipient, err := credentials.GenerateX25519Keypair()
 	r.NoError(err)
@@ -244,8 +283,14 @@ func TestBrowserSealedStaleFingerprintsCarryCurrentRecipients(t *testing.T) {
 
 func TestBrowserSealedModeSwitches(t *testing.T) {
 	t.Parallel()
+	testBrowserSealedModeSwitches(t, sqliteSealingEnv)
+}
+
+func testBrowserSealedModeSwitches(t *testing.T, env sealingEnv) {
+	t.Helper()
+
 	r := require.New(t)
-	svc, dbSvc, org, keys := setupBrowserSealing(t)
+	svc, dbSvc, org, keys := setupBrowserSealing(t, env)
 	ctx := t.Context()
 
 	// Server-side and browser-mode checks coexist.
@@ -286,8 +331,14 @@ func TestBrowserSealedModeSwitches(t *testing.T) {
 
 func TestBrowserSealingRequiredMode(t *testing.T) {
 	t.Parallel()
+	testBrowserSealingRequiredMode(t, sqliteSealingEnv)
+}
+
+func testBrowserSealingRequiredMode(t *testing.T, env sealingEnv) {
+	t.Helper()
+
 	r := require.New(t)
-	svc, dbSvc, org, keys := setupBrowserSealing(t)
+	svc, dbSvc, org, keys := setupBrowserSealing(t, env)
 	ctx := t.Context()
 
 	r.NoError(sealing.SetBrowserSealingMode(ctx, dbSvc, org.UID, sealing.ModeRequired))
@@ -336,8 +387,14 @@ func TestBrowserSealingRequiredMode(t *testing.T) {
 
 func TestBrowserSealedPatchReplacementRules(t *testing.T) {
 	t.Parallel()
+	testBrowserSealedPatchReplacementRules(t, sqliteSealingEnv)
+}
+
+func testBrowserSealedPatchReplacementRules(t *testing.T, env sealingEnv) {
+	t.Helper()
+
 	r := require.New(t)
-	svc, dbSvc, org, keys := setupBrowserSealing(t)
+	svc, dbSvc, org, keys := setupBrowserSealing(t, env)
 	ctx := t.Context()
 
 	created, err := svc.CreateCheck(ctx, org.Slug, sealedCheckRequest("replace",
@@ -390,8 +447,14 @@ func TestBrowserSealedPatchReplacementRules(t *testing.T) {
 // drop the others silently.
 func TestServerSealedOnlyPartialPatchRefused(t *testing.T) {
 	t.Parallel()
+	testServerSealedOnlyPartialPatchRefused(t, sqliteSealingEnv)
+}
+
+func testServerSealedOnlyPartialPatchRefused(t *testing.T, env sealingEnv) {
+	t.Helper()
+
 	r := require.New(t)
-	svc, dbSvc, org, keys := setupBrowserSealing(t)
+	svc, dbSvc, org, keys := setupBrowserSealing(t, env)
 	ctx := t.Context()
 
 	created, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
@@ -425,8 +488,14 @@ func TestServerSealedOnlyPartialPatchRefused(t *testing.T) {
 
 func TestSealingRecipientsEndpoint(t *testing.T) {
 	t.Parallel()
+	testSealingRecipientsEndpoint(t, sqliteSealingEnv)
+}
+
+func testSealingRecipientsEndpoint(t *testing.T, env sealingEnv) {
+	t.Helper()
+
 	r := require.New(t)
-	svc, dbSvc, org, keys := setupBrowserSealing(t)
+	svc, dbSvc, org, keys := setupBrowserSealing(t, env)
 	ctx := t.Context()
 
 	revoked, _ := enrollAgentIn(t, dbSvc, org.UID, sealTestRegion)
@@ -474,8 +543,14 @@ func TestSealingRecipientsEndpoint(t *testing.T) {
 
 func TestSharedRegionKeySealing(t *testing.T) {
 	t.Parallel()
+	testSharedRegionKeySealing(t, sqliteSealingEnv)
+}
+
+func testSharedRegionKeySealing(t *testing.T, env sealingEnv) {
+	t.Helper()
+
 	r := require.New(t)
-	svc, dbSvc, org, keys := setupBrowserSealing(t)
+	svc, dbSvc, org, keys := setupBrowserSealing(t, env)
 	ctx := t.Context()
 
 	// A per-agent check exists before the region switches to a shared key.
@@ -528,4 +603,44 @@ func TestSharedRegionKeySealing(t *testing.T) {
 	got, err = svc.GetCheck(ctx, org.Slug, server.UID, checks.GetCheckOptions{})
 	r.NoError(err)
 	r.True(*got.NeedsReseal)
+}
+
+func TestResealChecksList(t *testing.T) {
+	t.Parallel()
+	testResealChecksList(t, sqliteSealingEnv)
+}
+
+// testResealChecksList: the Re-seal page lists a check once a new agent joins
+// its `perAgent` region, and not before (spec 2026-11-08-01 §7).
+func testResealChecksList(t *testing.T, env sealingEnv) {
+	t.Helper()
+
+	r := require.New(t)
+	svc, dbSvc, org, keys := setupBrowserSealing(t, env)
+	ctx := t.Context()
+
+	sealed, err := svc.CreateCheck(ctx, org.Slug, sealedCheckRequest("reseal-me",
+		clientSeal(t, map[string]any{"basicAuth": "alice:hunter2"}, keys.X25519Recipient), sealTestRegion))
+	r.NoError(err)
+
+	_, err = svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Name: "no-secrets", Slug: "no-secrets", Type: "http", Regions: []string{sealTestRegion},
+		Config: map[string]any{"url": "https://internal.example.com"},
+	})
+	r.NoError(err)
+
+	before, err := svc.ListResealChecks(ctx, org.Slug)
+	r.NoError(err)
+	r.Empty(before, "sealed for the current agents: nothing to re-seal")
+
+	enrollAgentIn(t, dbSvc, org.UID, sealTestRegion)
+
+	after, err := svc.ListResealChecks(ctx, org.Slug)
+	r.NoError(err)
+	r.Len(after, 1)
+	r.Equal(sealed.UID, after[0].UID)
+	r.Equal([]string{sealTestRegion}, after[0].Regions)
+
+	_, err = svc.ListResealChecks(ctx, "no-such-org")
+	r.ErrorIs(err, checks.ErrOrganizationNotFound)
 }

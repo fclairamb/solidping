@@ -191,6 +191,12 @@ func validateSealedSecretsShape(
 	return nil
 }
 
+// allPrivateRegions reports whether a non-empty region list holds private
+// regions only: the first rule of spec §4, checked before the blob itself.
+func allPrivateRegions(regionList []string) bool {
+	return len(regionList) > 0 && len(filterPrivateRegions(regionList)) == len(regionList)
+}
+
 // applyClientSealing stores a client-sealed secret map on the check (spec
 // §4): every region must be a private region of the org, the shape must be
 // valid, and the fingerprints must equal the current recipients. effective is
@@ -199,10 +205,11 @@ func validateSealedSecretsShape(
 func (s *Service) applyClientSealing(
 	ctx context.Context, check *models.Check, effective, requestConfig map[string]any, sealed *SealedSecretsRequest,
 ) error {
-	privateRegions := filterPrivateRegions(check.Regions)
-	if len(privateRegions) == 0 || len(privateRegions) != len(check.Regions) {
+	if !allPrivateRegions(check.Regions) {
 		return ErrSealedSecretsRequirePrivateRegions
 	}
+
+	privateRegions := filterPrivateRegions(check.Regions)
 
 	for _, region := range privateRegions {
 		owned, err := s.regions.OwnsPrivateRegion(ctx, check.OrganizationUID, region)
@@ -545,6 +552,12 @@ func (s *Service) planSealedSecrets(
 ) error {
 	if req.SealedSecrets == nil {
 		return s.assertPlaintextSecretsAllowed(ctx, orgUID, req.Type, req.Config)
+	}
+
+	// Regions first (spec §4 order). Without explicit regions the placement
+	// picks them later and applyClientSealing checks them then.
+	if len(req.Regions) > 0 && !allPrivateRegions(req.Regions) {
+		return ErrSealedSecretsRequirePrivateRegions
 	}
 
 	if err := validateSealedSecretsShape(

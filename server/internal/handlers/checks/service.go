@@ -5568,6 +5568,12 @@ func (s *Service) applyConfigUpdate(
 	secretFields := s.secretFieldsForType(ctx, check.OrganizationUID, check.Type)
 
 	if sealed != nil {
+		// Regions first (spec 2026-11-08-01 §4 order): check.Regions already
+		// holds the regions this PATCH leaves the check on.
+		if !allPrivateRegions(check.Regions) {
+			return ErrSealedSecretsRequirePrivateRegions
+		}
+
 		if shapeErr := validateSealedSecretsShape(sealed, secretFields, patch); shapeErr != nil {
 			return shapeErr
 		}
