@@ -73,7 +73,21 @@
     },
     "defaultEscalationBlastRadius_one": "{{count}} check currently inherits and will start using this policy.",
     "defaultEscalationBlastRadius_other": "{{count}} checks currently inherit and will start using this policy.",
-    "defaultEscalationSilent": "silent"
+    "defaultEscalationSilent": "silent",
+    "browserSealing": {
+      "title": "Check secret encryption",
+      "description": "Check secrets can be encrypted in the browser, for keys only your private agents hold. SolidPing then stores ciphertext it cannot open.",
+      "mode": "Mode",
+      "optional": "Server or browser, per check",
+      "required": "Browser only",
+      "insecure": "Browser only needs this page over HTTPS.",
+      "saved": "Encryption mode saved",
+      "failed": "Could not save the encryption mode",
+      "toFix_one": "{{count}} check to fix",
+      "toFix_other": "{{count}} checks to fix",
+      "reasonSharedRegion": "secrets on a shared region",
+      "reasonServer": "secrets encrypted by SolidPing"
+    }
   },
   "usage": {
     "title": "Usage",
@@ -399,7 +413,10 @@
       "removeConfirm": "Remove",
       "revokeConfirm": "Revoke",
       "online": "Online",
-      "offline": "Offline"
+      "offline": "Offline",
+      "identityKey": "Identity:",
+      "sealingKey": "Sealing:",
+      "regionKeys": "Region keys:"
     },
     "tokens": {
       "title": "Pending enrollment tokens",
@@ -408,6 +425,22 @@
       "expires": "Expires",
       "actions": "Actions",
       "cancel": "Cancel token"
+    },
+    "regionKey": {
+      "column": "Sealing key",
+      "perAgent": "Key per agent",
+      "shared": "Shared region key",
+      "noAgent": "No active agent holds this key: its checks cannot run.",
+      "stale_one": "{{count}} check still sealed to an older key",
+      "stale_other": "{{count}} checks still sealed to an older key",
+      "generate": "Use a shared region key",
+      "rotate": "Rotate the region key",
+      "remove": "Back to a key per agent",
+      "dialogTitle": "Shared key for {{region}}",
+      "dialogDescription": "This secret is shown once. Keep a copy in your password manager: if every agent and every copy is lost, the secrets sealed to it are gone. Only the public key is sent to SolidPing.",
+      "distribute": "Give it to every agent of the region with SP_AGENT_REGION_KEYS (or SP_AGENT_REGION_KEYS_FILE). During a rotation, list the old and the new key.",
+      "cancel": "Cancel",
+      "confirm": "I saved it, use this key"
     }
   },
   "accessRedirect": {

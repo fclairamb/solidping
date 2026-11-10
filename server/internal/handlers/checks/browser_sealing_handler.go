@@ -59,7 +59,7 @@ func (h *Handler) SealingRecipients(writer http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	recipients, err := h.svc.SealingRecipients(req.Context(), httpx.Param(req, "org"), regionList)
+	resp, err := h.svc.SealingRecipients(req.Context(), httpx.Param(req, "org"), regionList)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrOrganizationNotFound):
@@ -73,7 +73,7 @@ func (h *Handler) SealingRecipients(writer http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": recipients})
+	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
 // NonCompliantChecks handles GET /orgs/:org/sealing/noncompliant-checks: the

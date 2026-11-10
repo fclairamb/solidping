@@ -73,7 +73,21 @@
     },
     "defaultEscalationBlastRadius_one": "{{count}} Prüfung erbt derzeit die Standardrichtlinie und wird diese Richtlinie verwenden.",
     "defaultEscalationBlastRadius_other": "{{count}} Prüfungen erben derzeit die Standardrichtlinie und werden diese Richtlinie verwenden.",
-    "defaultEscalationSilent": "stumm"
+    "defaultEscalationSilent": "stumm",
+    "browserSealing": {
+      "title": "Verschlüsselung der Check-Geheimnisse",
+      "description": "Check-Geheimnisse können im Browser verschlüsselt werden, für Schlüssel, die nur Ihre privaten Agenten besitzen. SolidPing speichert dann Chiffretext, den es nicht öffnen kann.",
+      "mode": "Modus",
+      "optional": "Server oder Browser, pro Check",
+      "required": "Nur Browser",
+      "insecure": "Nur Browser erfordert diese Seite über HTTPS.",
+      "saved": "Verschlüsselungsmodus gespeichert",
+      "failed": "Verschlüsselungsmodus konnte nicht gespeichert werden",
+      "toFix_one": "{{count}} Check zu korrigieren",
+      "toFix_other": "{{count}} Checks zu korrigieren",
+      "reasonSharedRegion": "Geheimnisse in einer geteilten Region",
+      "reasonServer": "von SolidPing verschlüsselte Geheimnisse"
+    }
   },
   "usage": {
     "title": "Nutzung",
@@ -399,7 +413,10 @@
       "removeConfirm": "Entfernen",
       "revokeConfirm": "Widerrufen",
       "online": "Verbunden",
-      "offline": "Getrennt"
+      "offline": "Getrennt",
+      "identityKey": "Identität:",
+      "sealingKey": "Versiegelung:",
+      "regionKeys": "Regionsschlüssel:"
     },
     "tokens": {
       "title": "Ausstehende Registrierungstoken",
@@ -408,6 +425,22 @@
       "expires": "Läuft ab",
       "actions": "Aktionen",
       "cancel": "Token abbrechen"
+    },
+    "regionKey": {
+      "column": "Versiegelungsschlüssel",
+      "perAgent": "Schlüssel pro Agent",
+      "shared": "Geteilter Regionsschlüssel",
+      "noAgent": "Kein aktiver Agent hat diesen Schlüssel: Seine Checks können nicht laufen.",
+      "stale_one": "{{count}} Check noch für einen älteren Schlüssel versiegelt",
+      "stale_other": "{{count}} Checks noch für einen älteren Schlüssel versiegelt",
+      "generate": "Geteilten Regionsschlüssel verwenden",
+      "rotate": "Regionsschlüssel rotieren",
+      "remove": "Zurück zu einem Schlüssel pro Agent",
+      "dialogTitle": "Geteilter Schlüssel für {{region}}",
+      "dialogDescription": "Dieses Geheimnis wird nur einmal angezeigt. Bewahren Sie eine Kopie in Ihrem Passwortmanager auf: Gehen alle Agenten und alle Kopien verloren, sind die dafür versiegelten Geheimnisse verloren. Nur der öffentliche Schlüssel wird an SolidPing gesendet.",
+      "distribute": "Geben Sie ihn jedem Agenten der Region mit SP_AGENT_REGION_KEYS (oder SP_AGENT_REGION_KEYS_FILE). Listen Sie bei einer Rotation den alten und den neuen Schlüssel auf.",
+      "cancel": "Abbrechen",
+      "confirm": "Gespeichert, diesen Schlüssel verwenden"
     }
   },
   "accessRedirect": {

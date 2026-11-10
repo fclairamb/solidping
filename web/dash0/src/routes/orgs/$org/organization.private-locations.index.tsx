@@ -66,6 +66,7 @@ import {
 import { AgentVersionCell } from "@/components/shared/agent-version";
 import { LiveDurationAgo } from "@/components/shared/relative-time";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { RegionKeyCell } from "@/components/shared/region-key-cell";
 
 export const Route = createFileRoute("/orgs/$org/organization/private-locations/")({
   component: PrivateLocationsPage,
@@ -260,6 +261,7 @@ function RegionsCard({ org }: { org: string }) {
                   <TableHead>{t("privateLocations.regions.agents", "Agents")}</TableHead>
                   <TableHead>{t("privateLocations.regions.monitor", "Liveness monitor")}</TableHead>
                   <TableHead>{t("privateLocations.regions.ipv6", "IPv6")}</TableHead>
+                  <TableHead>{t("privateLocations.regionKey.column")}</TableHead>
                   <TableHead className="w-24 text-right">
                     {t("privateLocations.regions.actions", "Actions")}
                   </TableHead>
@@ -314,6 +316,9 @@ function RegionsCard({ org }: { org: string }) {
                           </Badge>
                         )}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <RegionKeyCell org={org} region={region} />
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
@@ -555,7 +560,24 @@ function AgentsCard({ org }: { org: string }) {
                       <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{agent.region}</code>
                     </TableCell>
                     <TableCell>
-                      <code className="text-xs text-muted-foreground">{agent.fingerprint}</code>
+                      <div className="space-y-0.5 text-xs text-muted-foreground">
+                        <div>
+                          {t("privateLocations.agents.identityKey")}{" "}
+                          <code>{agent.fingerprint}</code>
+                        </div>
+                        {agent.recipientFingerprint && (
+                          <div data-testid={`agent-recipient-fingerprint-${agent.uid}`}>
+                            {t("privateLocations.agents.sealingKey")}{" "}
+                            <code>{agent.recipientFingerprint}</code>
+                          </div>
+                        )}
+                        {(agent.regionKeyFingerprints?.length ?? 0) > 0 && (
+                          <div data-testid={`agent-region-keys-${agent.uid}`}>
+                            {t("privateLocations.agents.regionKeys")}{" "}
+                            <code>{agent.regionKeyFingerprints?.join(", ")}</code>
+                          </div>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <AgentVersionCell

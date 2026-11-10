@@ -1739,5 +1739,25 @@
     "updated_one": "Régions définies sur {{count}} check",
     "updated_other": "Régions définies sur {{count}} checks",
     "failed": "Impossible de définir les régions"
+  },
+  "sealing": {
+    "label": "Chiffrement des secrets",
+    "modeServer": "Chiffré par SolidPing",
+    "modeBrowser": "Chiffré dans mon navigateur (seuls vos agents peuvent le lire)",
+    "blocker": {
+      "sharedRegion": "Le chiffrement dans le navigateur exige que toutes les régions du check soient vos emplacements privés.",
+      "insecureContext": "Le chiffrement dans le navigateur exige cette page en HTTPS (ou localhost)."
+    },
+    "switchedToServer": "Une région partagée est sélectionnée : les secrets seront chiffrés par SolidPing. Saisissez-les à nouveau si vous les aviez saisis pour vos agents.",
+    "noRecipient": "Enrôlez d'abord un agent dans {{regions}}.",
+    "badgeAgents_one": "Scellé dans votre navigateur pour {{regions}} ({{count}} agent)",
+    "badgeAgents_other": "Scellé dans votre navigateur pour {{regions}} ({{count}} agents)",
+    "badgeRegionKey": "Scellé dans votre navigateur pour {{regions}} (clé de région)",
+    "recipientRegion": "Clé de région de {{region}}",
+    "stored": "Scellé. Seuls vos agents peuvent le lire. Saisissez à nouveau tous les secrets pour les remplacer.",
+    "requiredPrivateRegions": "Cette organisation exige que les secrets des checks soient scellés dans le navigateur : choisissez uniquement des emplacements privés.",
+    "retypeToSwitch": "Saisissez à nouveau les secrets pour changer leur chiffrement.",
+    "replaceAll": "Les secrets scellés sont remplacés ensemble : renseignez aussi {{keys}}.",
+    "detailBadge": "Scellé dans le navigateur"
   }
 }

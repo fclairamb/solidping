@@ -7,6 +7,7 @@ import {
   isBrowserSealingEligible,
   recipientFingerprint,
   sealSecrets,
+  splitSecrets,
 } from "./sealing";
 
 function fromBase64(value: string): Uint8Array {
@@ -58,5 +59,22 @@ describe("sealing", () => {
     expect(isBrowserSealingEligible(["@dc1", "@dc2"])).toBe(true);
     expect(isBrowserSealingEligible(["@dc1", "eu-fr"])).toBe(false);
     expect(isBrowserSealingEligible([])).toBe(false);
+  });
+
+  it("splits secrets out of the config and folds http basic auth", () => {
+    expect(
+      splitSecrets(
+        "http",
+        { url: "u", username: "alice", password: "pw", secretHeaders: { "X-T": "t" } },
+        ["basicAuth", "password", "secretHeaders"],
+      ),
+    ).toEqual({
+      publicConfig: { url: "u" },
+      secrets: { basicAuth: "alice:pw", secretHeaders: { "X-T": "t" } },
+    });
+    expect(splitSecrets("ssh", { host: "h", password: "" }, ["password"])).toEqual({
+      publicConfig: { host: "h", password: "" },
+      secrets: {},
+    });
   });
 });

@@ -73,7 +73,21 @@
     },
     "defaultEscalationBlastRadius_one": "{{count}} comprobación hereda actualmente la política predeterminada y empezará a usar esta.",
     "defaultEscalationBlastRadius_other": "{{count}} comprobaciones heredan actualmente la política predeterminada y empezarán a usar esta.",
-    "defaultEscalationSilent": "silenciosa"
+    "defaultEscalationSilent": "silenciosa",
+    "browserSealing": {
+      "title": "Cifrado de los secretos de los checks",
+      "description": "Los secretos de los checks pueden cifrarse en el navegador, para claves que solo sus agentes privados poseen. SolidPing guarda entonces un texto cifrado que no puede abrir.",
+      "mode": "Modo",
+      "optional": "Servidor o navegador, por check",
+      "required": "Solo navegador",
+      "insecure": "Solo navegador requiere esta página en HTTPS.",
+      "saved": "Modo de cifrado guardado",
+      "failed": "No se pudo guardar el modo de cifrado",
+      "toFix_one": "{{count}} check por corregir",
+      "toFix_other": "{{count}} checks por corregir",
+      "reasonSharedRegion": "secretos en una región compartida",
+      "reasonServer": "secretos cifrados por SolidPing"
+    }
   },
   "usage": {
     "title": "Uso",
@@ -399,7 +413,10 @@
       "removeConfirm": "Eliminar",
       "revokeConfirm": "Revocar",
       "online": "En línea",
-      "offline": "Sin conexión"
+      "offline": "Sin conexión",
+      "identityKey": "Identidad:",
+      "sealingKey": "Sellado:",
+      "regionKeys": "Claves de región:"
     },
     "tokens": {
       "title": "Tokens de inscripción pendientes",
@@ -408,6 +425,22 @@
       "expires": "Caduca",
       "actions": "Acciones",
       "cancel": "Cancelar token"
+    },
+    "regionKey": {
+      "column": "Clave de sellado",
+      "perAgent": "Una clave por agente",
+      "shared": "Clave de región compartida",
+      "noAgent": "Ningún agente activo tiene esta clave: sus checks no pueden ejecutarse.",
+      "stale_one": "{{count}} check aún sellado para una clave anterior",
+      "stale_other": "{{count}} checks aún sellados para una clave anterior",
+      "generate": "Usar una clave de región compartida",
+      "rotate": "Rotar la clave de región",
+      "remove": "Volver a una clave por agente",
+      "dialogTitle": "Clave compartida de {{region}}",
+      "dialogDescription": "Este secreto se muestra una sola vez. Guarde una copia en su gestor de contraseñas: si se pierden todos los agentes y todas las copias, los secretos sellados para ella se pierden. Solo la clave pública se envía a SolidPing.",
+      "distribute": "Désela a cada agente de la región con SP_AGENT_REGION_KEYS (o SP_AGENT_REGION_KEYS_FILE). Durante una rotación, indique la clave antigua y la nueva.",
+      "cancel": "Cancelar",
+      "confirm": "La he guardado, usar esta clave"
     }
   },
   "accessRedirect": {

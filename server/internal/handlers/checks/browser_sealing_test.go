@@ -430,8 +430,10 @@ func TestSealingRecipientsEndpoint(t *testing.T) {
 	revoked, _ := enrollAgentIn(t, dbSvc, org.UID, sealTestRegion)
 	r.NoError(dbSvc.RevokeAgent(ctx, org.UID, revoked.UID))
 
-	got, err := svc.SealingRecipients(ctx, org.Slug, []string{sealTestRegion})
+	resp, err := svc.SealingRecipients(ctx, org.Slug, []string{sealTestRegion})
 	r.NoError(err)
+	r.Equal(sealing.ModeOptional, resp.BrowserSealingMode)
+	got := resp.Data
 	r.Len(got, 1, "active agents only")
 	r.Equal(sealing.RecipientKindAgent, got[0].Kind)
 	r.Equal(credentials.RecipientFingerprint(keys.X25519Recipient), got[0].Fingerprint)
@@ -442,8 +444,9 @@ func TestSealingRecipientsEndpoint(t *testing.T) {
 	r.NoError(err)
 	r.NoError(sealing.SetRegionKeys(ctx, dbSvc, org.UID, map[string]sealing.RegionKey{sealTestRegion: key}))
 
-	got, err = svc.SealingRecipients(ctx, org.Slug, []string{sealTestRegion})
+	resp, err = svc.SealingRecipients(ctx, org.Slug, []string{sealTestRegion})
 	r.NoError(err)
+	got = resp.Data
 	r.Len(got, 1, "the region key only for a shared region")
 	r.Equal(sealing.RecipientKindRegion, got[0].Kind)
 	r.Equal(regionRecipient, got[0].Recipient)
@@ -460,6 +463,11 @@ func TestSealingRecipientsEndpoint(t *testing.T) {
 
 	_, err = svc.SealingRecipients(ctx, org.Slug, []string{"default"})
 	r.ErrorIs(err, checks.ErrSealedSecretsRequirePrivateRegions)
+
+	// No region: the mode only.
+	resp, err = svc.SealingRecipients(ctx, org.Slug, nil)
+	r.NoError(err)
+	r.Empty(resp.Data)
 }
 
 func TestSharedRegionKeySealing(t *testing.T) {

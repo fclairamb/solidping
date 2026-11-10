@@ -316,20 +316,31 @@ func sameRegionSet(left, right []string) bool {
 	return slices.Equal(a, b)
 }
 
+// SealingRecipientsResponse is the body of GET /orgs/:org/sealing-recipients.
+type SealingRecipientsResponse struct {
+	Data []sealing.Recipient `json:"data"`
+	// BrowserSealingMode is the org's mode, so any member's check form knows
+	// whether server-side encryption is still offered.
+	BrowserSealingMode string `json:"browserSealingMode"`
+}
+
 // SealingRecipients answers GET /orgs/:org/sealing-recipients: what a blob for
 // those private regions must be sealed to. A region that is not a private
-// region of the org is refused.
+// region of the org is refused; no region lists none (the mode only).
 func (s *Service) SealingRecipients(
 	ctx context.Context, orgSlug string, regionList []string,
-) ([]sealing.Recipient, error) {
+) (*SealingRecipientsResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		return nil, ErrOrganizationNotFound
 	}
 
-	if len(regionList) == 0 {
-		return nil, ErrSealedSecretsRequirePrivateRegions
+	mode, err := sealing.BrowserSealingMode(ctx, s.db, org.UID)
+	if err != nil {
+		return nil, err
 	}
+
+	out := &SealingRecipientsResponse{Data: []sealing.Recipient{}, BrowserSealingMode: mode}
 
 	for _, region := range regionList {
 		owned, ownErr := s.regions.OwnsPrivateRegion(ctx, org.UID, region)
@@ -342,7 +353,18 @@ func (s *Service) SealingRecipients(
 		}
 	}
 
-	return sealing.RecipientsForRegions(ctx, s.db, org.UID, regionList)
+	if len(regionList) == 0 {
+		return out, nil
+	}
+
+	recipients, err := sealing.RecipientsForRegions(ctx, s.db, org.UID, regionList)
+	if err != nil {
+		return nil, err
+	}
+
+	out.Data = recipients
+
+	return out, nil
 }
 
 // NonCompliantCheck is a check that does not meet the `required` mode: it has

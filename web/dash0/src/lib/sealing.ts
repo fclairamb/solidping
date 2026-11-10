@@ -66,16 +66,61 @@ export async function recipientFingerprint(recipient: string): Promise<string> {
   return toHex(new Uint8Array(digest).slice(0, 8));
 }
 
-/** Fetches what a blob for these private regions must be sealed to. */
+/** The org's browser sealing mode (spec 2026-11-08-01 §1). */
+export type BrowserSealingMode = "optional" | "required";
+
+/** Fetches what a blob for these private regions must be sealed to, and the
+ * org's mode. No region returns the mode only. */
 export async function fetchRecipients(
   org: string,
   regions: string[],
-): Promise<SealingRecipient[]> {
-  const query = encodeURIComponent(regions.join(","));
-  const response = await apiFetch<{ data?: SealingRecipient[] }>(
-    `/api/v1/orgs/${org}/sealing-recipients?region=${query}`,
-  );
-  return response.data ?? [];
+): Promise<{ recipients: SealingRecipient[]; mode: BrowserSealingMode }> {
+  const query = regions.length ? `?region=${encodeURIComponent(regions.join(","))}` : "";
+  const response = await apiFetch<{
+    data?: SealingRecipient[];
+    browserSealingMode?: BrowserSealingMode;
+  }>(`/api/v1/orgs/${org}/sealing-recipients${query}`);
+  return {
+    recipients: response.data ?? [],
+    mode: response.browserSealingMode === "required" ? "required" : "optional",
+  };
+}
+
+/**
+ * Splits the browser-sealed secrets out of a check config: every declared
+ * secret field carrying a value. HTTP's username/password are folded into
+ * `basicAuth`, as the server does, so the username never leaves in plaintext
+ * next to a sealed password.
+ */
+export function splitSecrets(
+  type: string | undefined,
+  config: Record<string, unknown>,
+  secretFields: readonly string[],
+): { publicConfig: Record<string, unknown>; secrets: Record<string, unknown> } {
+  const publicConfig: Record<string, unknown> = { ...config };
+  const secrets: Record<string, unknown> = {};
+  const hasValue = (v: unknown) =>
+    v !== undefined &&
+    v !== null &&
+    v !== "" &&
+    !(typeof v === "object" && !Array.isArray(v) && Object.keys(v as object).length === 0);
+
+  if ((type === "http" || type === "health") && secretFields.includes("basicAuth")) {
+    const username = publicConfig.username;
+    const password = publicConfig.password;
+    if (hasValue(username) || hasValue(password)) {
+      secrets.basicAuth = `${(username as string) ?? ""}:${(password as string) ?? ""}`;
+    }
+    delete publicConfig.username;
+    delete publicConfig.password;
+  }
+
+  for (const key of secretFields) {
+    if (key in secrets) continue;
+    if (hasValue(publicConfig[key])) secrets[key] = publicConfig[key];
+    if (key in publicConfig && hasValue(publicConfig[key])) delete publicConfig[key];
+  }
+  return { publicConfig, secrets };
 }
 
 /**

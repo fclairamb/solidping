@@ -39,6 +39,7 @@ import {
 } from "@/components/shared/danger-zone";
 import { OrgProfileCard } from "@/components/shared/org-profile-card";
 import { DocsLink } from "@/components/shared/docs-link";
+import { BrowserSealingCard } from "@/components/shared/browser-sealing-card";
 
 // Sentinel Select value for "no org default" (Radix needs a non-empty value).
 const NO_DEFAULT = "__none__";
@@ -477,6 +478,8 @@ function SettingsPage() {
           </form>
         </CardContent>
       </Card>
+
+      <BrowserSealingCard org={org} settings={settings} />
 
       <Card className="mt-6">
         <CardHeader>

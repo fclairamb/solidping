@@ -73,7 +73,21 @@
     },
     "defaultEscalationBlastRadius_one": "{{count}} contrôle hérite actuellement de la politique par défaut et utilisera celle-ci.",
     "defaultEscalationBlastRadius_other": "{{count}} contrôles héritent actuellement de la politique par défaut et utiliseront celle-ci.",
-    "defaultEscalationSilent": "silencieuse"
+    "defaultEscalationSilent": "silencieuse",
+    "browserSealing": {
+      "title": "Chiffrement des secrets des checks",
+      "description": "Les secrets des checks peuvent être chiffrés dans le navigateur, pour des clés que seuls vos agents privés détiennent. SolidPing stocke alors un chiffré qu'il ne peut pas ouvrir.",
+      "mode": "Mode de chiffrement",
+      "optional": "Serveur ou navigateur, par check",
+      "required": "Navigateur uniquement",
+      "insecure": "Le mode navigateur uniquement exige cette page en HTTPS.",
+      "saved": "Mode de chiffrement enregistré",
+      "failed": "Impossible d'enregistrer le mode de chiffrement",
+      "toFix_one": "{{count}} check à corriger",
+      "toFix_other": "{{count}} checks à corriger",
+      "reasonSharedRegion": "secrets sur une région partagée",
+      "reasonServer": "secrets chiffrés par SolidPing"
+    }
   },
   "usage": {
     "title": "Utilisation",
@@ -399,7 +413,10 @@
       "removeConfirm": "Retirer",
       "revokeConfirm": "Révoquer",
       "online": "En ligne",
-      "offline": "Hors ligne"
+      "offline": "Hors ligne",
+      "identityKey": "Identité :",
+      "sealingKey": "Scellement :",
+      "regionKeys": "Clés de région :"
     },
     "tokens": {
       "title": "Jetons d'inscription en attente",
@@ -408,6 +425,22 @@
       "expires": "Expire",
       "actions": "Actions",
       "cancel": "Annuler le jeton"
+    },
+    "regionKey": {
+      "column": "Clé de scellement",
+      "perAgent": "Une clé par agent",
+      "shared": "Clé de région partagée",
+      "noAgent": "Aucun agent actif ne détient cette clé : ses checks ne peuvent pas tourner.",
+      "stale_one": "{{count}} check encore scellé pour une ancienne clé",
+      "stale_other": "{{count}} checks encore scellés pour une ancienne clé",
+      "generate": "Utiliser une clé de région partagée",
+      "rotate": "Renouveler la clé de région",
+      "remove": "Revenir à une clé par agent",
+      "dialogTitle": "Clé partagée de {{region}}",
+      "dialogDescription": "Ce secret n'est affiché qu'une fois. Gardez-en une copie dans votre gestionnaire de mots de passe : si tous les agents et toutes les copies sont perdus, les secrets scellés pour elle sont perdus. Seule la clé publique est envoyée à SolidPing.",
+      "distribute": "Donnez-la à chaque agent de la région avec SP_AGENT_REGION_KEYS (ou SP_AGENT_REGION_KEYS_FILE). Pendant un renouvellement, listez l'ancienne et la nouvelle clé.",
+      "cancel": "Annuler",
+      "confirm": "Je l'ai sauvegardée, utiliser cette clé"
     }
   },
   "accessRedirect": {
