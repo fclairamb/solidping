@@ -766,3 +766,60 @@ func TestSlowBurnFiresWhereFastDoesNot(t *testing.T) {
 	r.Equal(policy.UID, *still[0].SLOAlertPolicyUID)
 	r.NotEqual(fast.UID, *still[0].SLOAlertPolicyUID)
 }
+
+// TestDeletedOrgPoliciesAreNotEvaluated: a deleted organization's burn-rate
+// policies leave the instance-wide queue, so they stop taking batch slots from
+// live orgs, while a live org's policy keeps being evaluated.
+func TestDeletedOrgPoliciesAreNotEvaluated(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	e := newEnv(t)
+	objective := e.seedSLO()
+	live := e.enablePolicy(objective.UID, "fast")
+
+	gone := models.NewOrganization("acme-gone", "acme gone")
+	r.NoError(e.db.CreateOrganization(ctx, gone))
+
+	goneCheck := models.NewCheck(gone.UID, "api", "http")
+	r.NoError(e.db.CreateCheck(ctx, goneCheck))
+
+	goneSLO := models.NewSLO(gone.UID, "api", "api", 99.9)
+	goneSLO.CheckUID = &goneCheck.UID
+	r.NoError(e.db.CreateSLO(ctx, goneSLO))
+
+	gonePolicies, err := e.slos.EnsureAlertPolicies(ctx, gone.UID, goneSLO.UID)
+	r.NoError(err)
+
+	enabled := true
+	for _, policy := range gonePolicies {
+		r.NoError(e.db.UpdateSLOAlertPolicy(ctx, policy.UID, &models.SLOAlertPolicyUpdate{Enabled: &enabled}))
+	}
+
+	now := time.Now()
+
+	evaluated, err := e.svc.EvaluateBurnRates(ctx, now)
+	r.NoError(err)
+	r.Equal(1+len(gonePolicies), evaluated, "positive control: both orgs are evaluated while live")
+
+	r.NoError(e.db.DeleteOrganization(ctx, gone.UID))
+
+	later := now.Add(time.Minute)
+
+	evaluated, err = e.svc.EvaluateBurnRates(ctx, later)
+	r.NoError(err)
+	r.Equal(1, evaluated, "only the live org's policy is evaluated")
+
+	reloaded := e.reloadPolicy(live.UID)
+	r.NotNil(reloaded.LastEvaluatedAt)
+	r.WithinDuration(later, *reloaded.LastEvaluatedAt, time.Second)
+
+	for _, policy := range gonePolicies {
+		orphan, getErr := e.db.GetSLOAlertPolicy(ctx, gone.UID, policy.UID)
+		r.NoError(getErr)
+		r.False(orphan.Enabled)
+		r.NotNil(orphan.LastEvaluatedAt)
+		r.WithinDuration(now, *orphan.LastEvaluatedAt, time.Second, "not evaluated after the delete")
+	}
+}

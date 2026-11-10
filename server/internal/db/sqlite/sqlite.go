@@ -597,6 +597,19 @@ func (s *Service) DeleteOrganization(ctx context.Context, uid string) error {
 		Set("enabled = ?", false).
 		Set("updated_at = ?", time.Now()).
 		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	// SLO burn-rate policies of a deleted organization would stay in the
+	// instance-wide evaluation queue forever, taking batch slots from live orgs.
+	_, err = s.db.NewUpdate().
+		Model((*models.SLOAlertPolicy)(nil)).
+		Where("organization_uid = ?", uid).
+		Where("enabled = ?", true).
+		Set("enabled = ?", false).
+		Set("updated_at = ?", time.Now()).
+		Exec(ctx)
 
 	return err
 }
@@ -4195,11 +4208,15 @@ func (s *Service) ListExpiredSnoozedIncidents(ctx context.Context, now time.Time
 
 	err := s.db.NewSelect().
 		Model(&incidents).
-		Where("state = ?", models.IncidentStateActive).
-		Where("snoozed_until IS NOT NULL").
-		Where("snoozed_until <= ?", now).
-		Where("deleted_at IS NULL").
-		Order("snoozed_until ASC").
+		// Unsnoozing schedules a reminder, which notifies: an incident of a
+		// deleted organization must not be woken up.
+		Join("JOIN organizations AS o ON o.uid = incident.organization_uid").
+		Where("incident.state = ?", models.IncidentStateActive).
+		Where("incident.snoozed_until IS NOT NULL").
+		Where("incident.snoozed_until <= ?", now).
+		Where("incident.deleted_at IS NULL").
+		Where("o.deleted_at IS NULL").
+		Order("incident.snoozed_until ASC").
 		Scan(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list expired snoozed incidents: %w", err)
@@ -7707,9 +7724,13 @@ func (s *Service) ListEnabledSLOAlertPolicies(ctx context.Context, limit int) ([
 	query := s.db.NewSelect().
 		Model(&policies).
 		Join("JOIN slos ON slos.uid = slo_alert_policies.slo_uid").
+		// Policies of a deleted organization are orphans: skip them, even
+		// those left enabled by a deletion that predates disabling them.
+		Join("JOIN organizations AS o ON o.uid = slo_alert_policies.organization_uid").
 		Where("slo_alert_policies.enabled = ?", true).
 		Where("slos.enabled = ?", true).
 		Where("slos.deleted_at IS NULL").
+		Where("o.deleted_at IS NULL").
 		Order("slo_alert_policies.last_evaluated_at ASC NULLS FIRST")
 
 	if limit > 0 {
