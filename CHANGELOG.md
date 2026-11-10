@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.47.0](https://github.com/fclairamb/solidping/compare/v0.46.0...v0.47.0) (2026-11-10)
+
+
+### Features
+
+* **sealing:** browser-sealed check secrets for private agents ([#834](https://github.com/fclairamb/solidping/issues/834)) ([00c376c](https://github.com/fclairamb/solidping/commit/00c376cbbbd8656664db5c2b4b16ae045932490a))
+* **sealing:** peer re-wrap, solidping seal and sealed config-as-code ([#835](https://github.com/fclairamb/solidping/issues/835)) ([91c656a](https://github.com/fclairamb/solidping/commit/91c656a8d80c7ab29f6ccb922922226788a6f3a9))
+
+
+### Bug Fixes
+
+* **security:** trusted service binary and data folder paths, skip deleted orgs' SLO burn policies ([#833](https://github.com/fclairamb/solidping/issues/833)) ([5315038](https://github.com/fclairamb/solidping/commit/53150381bdb6895bcc2264e83cc68f1ae4b04509))
+* **status:** mobile header truncation and dotted response-time chart ([#831](https://github.com/fclairamb/solidping/issues/831)) ([0c974de](https://github.com/fclairamb/solidping/commit/0c974de7bffc94ed0197b198606c34ab140c09b2))
+* **ci:** leave the tag on HEAD out of the upgrade matrix ([#830](https://github.com/fclairamb/solidping/issues/830)) ([d333957](https://github.com/fclairamb/solidping/commit/d333957cc761c7ba04771a09826043231ecc054e))
+* **deps:** update goja and posthog-go ([#836](https://github.com/fclairamb/solidping/issues/836), [#837](https://github.com/fclairamb/solidping/issues/837))
+
 ## [0.46.0](https://github.com/fclairamb/solidping/compare/v0.45.0...v0.46.0) (2026-11-10)
 
 
