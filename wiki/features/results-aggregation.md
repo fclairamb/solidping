@@ -233,6 +233,25 @@ and returns partial data instead of erroring (`bucketing.go`).
 `WindowAvailability` (`window.go`) is the same union folded to one number per
 check.
 
+**Data coverage** (`coverage.go`, `models.CoverageTally`) says how much of a
+window was actually measured; the check's Availability card (`coverage`,
+`unmeasuredSeconds`), the SLO budgets (`dataCoverage`) and the status page day
+and hour bars all use the same rule. Unmeasured time is wall-clock time where
+**no region** produced a result (spec `2026-11-08-05`; spec `2026-09-25-02`
+multiplied the expectation by the check's *current* region count, so a region
+change or an auto-placement move rewrote the past). Each bucket the tiers
+return — raw and hour rollups by the hour, day and month rollups by their own
+length — counts as measured in proportion to
+`min(results, ceil(bucket length / period))`, and the sum is divided by
+`monitored / period`, clamped to the check's lifetime. A silent second region
+is a region-health concern ("Region went dark", the per-region chart), not
+unmeasured time. A gap inside a day or month rollup is only seen
+proportionally: no per-period gap table. `WindowAvailabilityWithCoverage`
+reads the four tiers separately (a day and a month rollup both start at
+midnight, so one grid could not tell their lengths apart), and its `Stats` is
+the same fold as `WindowAvailability`'s. `models.ExpectedProbes` keeps its
+region multiplier as a capacity figure only.
+
 **Status pages** (`handlers/statuspages/service.go`) — hourly view builds 24
 buckets (newest = the in-progress hour, filled from raw); daily view and group
 components merge member checks per bucket.

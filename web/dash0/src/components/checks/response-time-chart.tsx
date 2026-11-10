@@ -61,12 +61,11 @@ interface ResponseTimeChartProps {
   org: string;
   checkUid: string;
   /**
-   * How many regions the check runs in, and when it was created: with
-   * periodMs they give the expected probe count per strip cell, so a cell
-   * over a silent gap can say "measured 67% of the interval" (spec
-   * 2026-09-25-02).
+   * When the check was created: with periodMs it gives the expected result
+   * count per strip cell, so a cell over a silent gap can say "measured 67%
+   * of the interval" (spec 2026-09-25-02). Region-independent (spec
+   * 2026-11-08-05): a period is measured when any region reported.
    */
-  regionCount?: number;
   createdAt?: string;
   refetchInterval?: number;
   // Check period in ms — drives raw-vs-hour tier choice on the "day" range so
@@ -433,7 +432,6 @@ function buildGradientStops(
 export function ResponseTimeChart({
   org,
   checkUid,
-  regionCount,
   createdAt,
   refetchInterval,
   periodMs,
@@ -1607,12 +1605,9 @@ export function ResponseTimeChart({
                 cells={availability.data}
                 testIdPrefix="response-time-chart-availability-strip"
                 height="sm"
-                // A region filter narrows the cells to one region's probes,
-                // so the expectation narrows to one region too.
-                probesPerSecond={probesPerSecond(
-                  periodMs,
-                  effectiveRegion ? 1 : regionCount,
-                )}
+                // One result per period, whatever the regions or the region
+                // filter (spec 2026-11-08-05).
+                probesPerSecond={probesPerSecond(periodMs)}
                 measuredFrom={createdAt}
               />
             ) : null}

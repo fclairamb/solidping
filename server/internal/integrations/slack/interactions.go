@@ -15,25 +15,32 @@ var ErrMissingViewState = errors.New("missing view state")
 
 // handleInteraction routes interactions to their specific handlers (HTTP transport entry point).
 func (h *Handler) handleInteraction(ctx context.Context, interaction *Interaction) (*MessageResponse, error) {
-	return DispatchInteraction(ctx, h.svc, interaction)
+	return dispatchInteraction(ctx, &Handler{svc: h.svc, responseURLClient: h.responseURLClient}, interaction)
 }
 
 // DispatchInteraction is the transport-agnostic dispatch entry for Slack
 // interactive payloads (shortcuts, block actions, view submissions).
 func DispatchInteraction(ctx context.Context, svc *Service, interaction *Interaction) (*MessageResponse, error) {
+	return dispatchInteraction(ctx, &Handler{svc: svc}, interaction)
+}
+
+func dispatchInteraction(ctx context.Context, dispatcher *Handler, interaction *Interaction) (*MessageResponse, error) {
 	slog.InfoContext(ctx, "Handling Slack interaction",
 		"type", interaction.Type,
 		"callback_id", interaction.CallbackID,
 		"team_id", interaction.Team.ID,
 	)
 
-	dispatcher := &Handler{svc: svc}
-
 	switch interaction.Type {
 	case "shortcut":
 		return dispatcher.handleShortcut(ctx, interaction)
 	case "block_actions":
-		return dispatcher.handleBlockActions(ctx, interaction)
+		response, err := dispatcher.handleBlockActions(ctx, interaction)
+		if err == nil {
+			dispatcher.deliverBlockActionResponse(ctx, interaction, response)
+		}
+
+		return response, err
 	case "view_submission":
 		return dispatcher.handleViewSubmission(ctx, interaction)
 	case "view_closed":
@@ -43,6 +50,27 @@ func DispatchInteraction(ctx context.Context, svc *Service, interaction *Interac
 		slog.DebugContext(ctx, "Unhandled interaction type", "type", interaction.Type)
 
 		return &MessageResponse{}, nil
+	}
+}
+
+// deliverBlockActionResponse posts a block action's reply to the
+// interaction's response_url. Slack ignores the body of the HTTP response
+// (and the Socket Mode ack payload) for block_actions: a button's reply,
+// whether it replaces the original message (Acknowledged by …) or is an
+// ephemeral error, only shows when sent there. An empty response (a URL
+// button, an unhandled action) sends nothing.
+func (h *Handler) deliverBlockActionResponse(
+	ctx context.Context, interaction *Interaction, response *MessageResponse,
+) {
+	if response == nil || interaction.ResponseURL == "" ||
+		(response.Text == "" && len(response.Blocks) == 0 && len(response.Attachments) == 0 &&
+			!response.DeleteOriginal) {
+		return
+	}
+
+	if err := postResponseURLWith(ctx, h.responseClient(), interaction.ResponseURL, response); err != nil {
+		slog.WarnContext(ctx, "Failed to deliver Slack block action response",
+			"error", err, "team_id", interaction.Team.ID)
 	}
 }
 
@@ -246,7 +274,14 @@ func (h *Handler) handleAcknowledgeIncident(
 		interaction.User.ID, interaction.User.Username, interaction.Team.ID,
 	)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to acknowledge incident",
+		// A stale button on a deleted incident is the user's click, not a
+		// server fault: keep ERROR for real failures.
+		level := slog.LevelError
+		if errors.Is(err, models.ErrIncidentNotFound) {
+			level = slog.LevelWarn
+		}
+
+		slog.Log(ctx, level, "Failed to acknowledge incident",
 			"error", err,
 			"incident_uid", incidentUID,
 		)

@@ -554,3 +554,33 @@ func TestUptimeReportSecondSweepAfterSuppressionEnqueuesNothing(t *testing.T) {
 	r.Equal(first.LastPeriodStart.UTC(), second.LastPeriodStart.UTC(),
 		"the second sweep must not re-claim or advance the period")
 }
+
+// A schedule whose organization is gone must not claim its period nor error.
+func TestUptimeReportOrphanScheduleDoesNotClaim(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 1, 3, 0, 0, 0, time.UTC)
+
+	dbSvc, org, jctx, jobs := newReportEnv(t, now)
+
+	orphan := models.NewReportSchedule(org.UID, "Orphan", models.ReportFrequencyMonthly)
+	orphan.Recipients = []string{"ghost@acme.com"}
+	r.NoError(dbSvc.CreateReportSchedule(ctx, orphan))
+
+	// Point the schedule at an organization that does not exist.
+	stale := *orphan
+	stale.OrganizationUID = uuid.New().String()
+
+	run := &UptimeReportJobRun{}
+	emitted, err := run.runSchedule(ctx, jctx, nil, &stale, now)
+	r.NoError(err)
+	r.Zero(emitted)
+	r.Empty(jobs.recipients(t))
+
+	// The period is still unclaimed.
+	claimed, err := dbSvc.MarkReportScheduleRun(ctx, orphan.UID, time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), now)
+	r.NoError(err)
+	r.True(claimed)
+}

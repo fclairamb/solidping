@@ -90,6 +90,47 @@ func incidentSnooze(t *testing.T, fix *fixture, incident *models.Incident) {
 	}
 
 	must.True(found, "the snoozed incident is listed once its snooze has passed")
+
+	incidentSnoozeOrgDeleted(t, fix)
+}
+
+// An expired snooze of a deleted organization's incident is not swept: waking
+// it up would schedule a reminder that notifies.
+func incidentSnoozeOrgDeleted(t *testing.T, fix *fixture) {
+	t.Helper()
+
+	ctx := t.Context()
+	must := require.New(t)
+	svc := fix.svc
+
+	gone := models.NewOrganization("snooze-gone-org", "Snooze Gone Org")
+	must.NoError(svc.CreateOrganization(ctx, gone))
+
+	check := models.NewCheck(gone.UID, "snooze-gone-check", "http")
+	must.NoError(svc.CreateCheck(ctx, check))
+
+	incident := models.NewIncident(gone.UID, check.UID, time.Now(), "orphan incident")
+	must.NoError(svc.CreateIncident(ctx, incident))
+
+	snoozedUntil := time.Now().Add(-time.Minute)
+	must.NoError(svc.UpdateIncident(ctx, incident.UID, &models.IncidentUpdate{SnoozedUntil: &snoozedUntil}))
+
+	listed := func() bool {
+		expired, err := svc.ListExpiredSnoozedIncidents(ctx, time.Now())
+		must.NoError(err)
+
+		for _, inc := range expired {
+			if inc.UID == incident.UID {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	must.True(listed(), "listed while the org is live")
+	must.NoError(svc.DeleteOrganization(ctx, gone.UID))
+	must.False(listed(), "a deleted org's snoozed incident is not swept")
 }
 
 func runEventsAndLabels(t *testing.T, fix *fixture) {

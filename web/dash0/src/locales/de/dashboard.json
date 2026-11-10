@@ -94,6 +94,10 @@
     "allGreen": "Alle Systeme betriebsbereit",
     "allGreenSub_one": "{{count}} Prüfung überwacht, {{availability}}% Verfügbarkeit über 24 Std.",
     "allGreenSub_other": "{{count}} Prüfungen überwacht, {{availability}}% Verfügbarkeit über 24 Std.",
+    "allGreenSub_7d_one": "{{count}} Prüfung überwacht, {{availability}}% Verfügbarkeit über 7 Tage",
+    "allGreenSub_7d_other": "{{count}} Prüfungen überwacht, {{availability}}% Verfügbarkeit über 7 Tage",
+    "allGreenSub_30d_one": "{{count}} Prüfung überwacht, {{availability}}% Verfügbarkeit über 30 Tage",
+    "allGreenSub_30d_other": "{{count}} Prüfungen überwacht, {{availability}}% Verfügbarkeit über 30 Tage",
     "allGreenSubNoData_one": "{{count}} Prüfung überwacht, noch keine Verfügbarkeitsdaten",
     "allGreenSubNoData_other": "{{count}} Prüfungen überwacht, noch keine Verfügbarkeitsdaten",
     "issues": "Probleme erkannt",
@@ -104,6 +108,8 @@
     "warning": "Einige Prüfungen beeinträchtigt",
     "warningSub": "Zeitüberschreitungen bei {{count}} Prüfungen erkannt",
     "slaOperational": "SLA 24 Std. betriebsbereit",
+    "slaOperational_7d": "SLA 7 Tage betriebsbereit",
+    "slaOperational_30d": "SLA 30 Tage betriebsbereit",
     "activeOutage": "Aktiver Ausfall",
     "degradedPerformance": "Beeinträchtigte Leistung"
   },
@@ -122,7 +128,11 @@
     },
     "availabilityNoDataSub": "Noch keine Daten",
     "availability": "Verfügbarkeit 24 Std.",
+    "availability_7d": "Verfügbarkeit 7 Tage",
+    "availability_30d": "Verfügbarkeit 30 Tage",
     "availabilitySub": "Letzte 24 Std., alle Checks",
+    "availabilitySub_7d": "Letzte 7 Tage, alle Checks",
+    "availabilitySub_30d": "Letzte 30 Tage, alle Checks",
     "totalEndpoints": "{{count}} Endpunkte insgesamt",
     "badgeNeedsAction": "Handlungsbedarf"
   },
@@ -148,5 +158,18 @@
   "errors": {
     "section": "Laden fehlgeschlagen.",
     "retry": "Erneut versuchen"
+  },
+  "githubStar": {
+    "title": "Gefällt Ihnen SolidPing?",
+    "body": "Danke, dass Sie SolidPing nutzen. Wenn es Ihnen nützt, hilft ein Stern auf GitHub anderen dabei, es zu finden.",
+    "star": "Auf GitHub mit Stern markieren",
+    "later": "Nicht jetzt",
+    "close": "Schließen"
+  },
+  "window": {
+    "label": "Verfügbarkeitszeitraum",
+    "24h": "24 Std.",
+    "7d": "7 Tage",
+    "30d": "30 Tage"
   }
 }

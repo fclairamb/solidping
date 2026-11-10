@@ -18,11 +18,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
-func testConfig(values map[string]any) *Config {
-	cfg := &Config{}
-	_ = cfg.FromMap(values)
-
-	return cfg
+// helperEnvFor is the environment of a helper process in the given mode.
+func helperEnvFor(dir, mode string) []string {
+	return append(baseEnv(dir), helperEnv+"="+mode)
 }
 
 func newHelperExec(t *testing.T, mode string, extraEnv ...string) *execTransport {

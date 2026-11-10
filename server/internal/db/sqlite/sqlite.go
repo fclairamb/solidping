@@ -585,6 +585,31 @@ func (s *Service) DeleteOrganization(ctx context.Context, uid string) error {
 		Where("uid = ?", uid).
 		Set("deleted_at = ?", time.Now()).
 		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Report schedules of a deleted organization would only be orphans.
+	_, err = s.db.NewUpdate().
+		Model((*models.ReportSchedule)(nil)).
+		Where("organization_uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Set("enabled = ?", false).
+		Set("updated_at = ?", time.Now()).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	// SLO burn-rate policies of a deleted organization would stay in the
+	// instance-wide evaluation queue forever, taking batch slots from live orgs.
+	_, err = s.db.NewUpdate().
+		Model((*models.SLOAlertPolicy)(nil)).
+		Where("organization_uid = ?", uid).
+		Where("enabled = ?", true).
+		Set("enabled = ?", false).
+		Set("updated_at = ?", time.Now()).
+		Exec(ctx)
 
 	return err
 }
@@ -4183,11 +4208,15 @@ func (s *Service) ListExpiredSnoozedIncidents(ctx context.Context, now time.Time
 
 	err := s.db.NewSelect().
 		Model(&incidents).
-		Where("state = ?", models.IncidentStateActive).
-		Where("snoozed_until IS NOT NULL").
-		Where("snoozed_until <= ?", now).
-		Where("deleted_at IS NULL").
-		Order("snoozed_until ASC").
+		// Unsnoozing schedules a reminder, which notifies: an incident of a
+		// deleted organization must not be woken up.
+		Join("JOIN organizations AS o ON o.uid = incident.organization_uid").
+		Where("incident.state = ?", models.IncidentStateActive).
+		Where("incident.snoozed_until IS NOT NULL").
+		Where("incident.snoozed_until <= ?", now).
+		Where("incident.deleted_at IS NULL").
+		Where("o.deleted_at IS NULL").
+		Order("incident.snoozed_until ASC").
 		Scan(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list expired snoozed incidents: %w", err)
@@ -4379,10 +4408,7 @@ func applyEventFilters(query *bun.SelectQuery, filter *models.ListEventsFilter) 
 	// Exclusions are ANDed on top and therefore cannot be argued away by any
 	// caller-supplied include filter — this is what makes "auth events are
 	// admin-only" hold for `?type=auth` as well as for an unfiltered listing.
-	for _, prefix := range filter.ExcludeEventTypePrefixes {
-		query = query.Where("event_type NOT LIKE ? ESCAPE ?",
-			models.EventTypeLikePattern(prefix), models.EventTypeLikeEscape)
-	}
+	query = applyEventExclusions(query, filter)
 
 	if filter.ActorType != nil {
 		query = query.Where("actor_type = ?", *filter.ActorType)
@@ -4401,6 +4427,40 @@ func applyEventFilters(query *bun.SelectQuery, filter *models.ListEventsFilter) 
 	query = applyEventTargetFilters(query, filter)
 
 	return query
+}
+
+// applyEventExclusions ANDs the hidden families onto the query. With
+// OwnFailedLoginEmail set, the exclusion becomes
+// `(NOT LIKE … AND NOT LIKE …) OR (auth.login_failed AND email = ?)`, wrapped
+// in its own AND group: the one exception a member gets (their own failed
+// sign-ins) stays an exception every other filter still narrows.
+func applyEventExclusions(query *bun.SelectQuery, filter *models.ListEventsFilter) *bun.SelectQuery {
+	if len(filter.ExcludeEventTypePrefixes) == 0 {
+		return query
+	}
+
+	exclude := func(group *bun.SelectQuery) *bun.SelectQuery {
+		for _, prefix := range filter.ExcludeEventTypePrefixes {
+			group = group.Where("event_type NOT LIKE ? ESCAPE ?",
+				models.EventTypeLikePattern(prefix), models.EventTypeLikeEscape)
+		}
+
+		return group
+	}
+
+	if filter.OwnFailedLoginEmail == "" {
+		return exclude(query)
+	}
+
+	return query.WhereGroup(" AND ", func(group *bun.SelectQuery) *bun.SelectQuery {
+		return group.
+			WhereGroup(" AND ", exclude).
+			WhereGroup(" OR ", func(own *bun.SelectQuery) *bun.SelectQuery {
+				return own.
+					Where("event_type = ?", models.EventTypeAuthLoginFailed).
+					Where("lower(json_extract(payload, '$.email')) = lower(?)", filter.OwnFailedLoginEmail)
+			})
+	})
 }
 
 // applyEventTargetFilters folds the polymorphic target predicates onto the
@@ -6583,6 +6643,7 @@ func (s *Service) GetCheckStatusCounts(
 		ColumnExpr("status").
 		ColumnExpr("enabled").
 		ColumnExpr("COUNT(*) AS count").
+		ColumnExpr("MIN(created_at) AS oldest_created_at").
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
 		Where("internal = ?", false).
@@ -6595,87 +6656,106 @@ func (s *Service) GetCheckStatusCounts(
 	return rows, nil
 }
 
-// availabilityAgg is the (success, total) shape both GetOrgAvailability24h
-// tier queries scan into.
-type availabilityAgg struct {
-	Success int64 `bun:"success"`
-	Total   int64 `bun:"total"`
-}
-
-// GetOrgAvailability24h returns the org's combined (success, countable-total)
-// tally over [since, now) (spec 2026-08-26-09) — the query behind the
-// dashboard's "24h Availability" KPI, which the old client-side computation
-// could never produce a real number for (the day bucket it queried never
-// exists for "today").
+// GetOrgAvailability returns the org's combined (success, countable-total)
+// tally over each trailing window [now-window, now), in the order of windows
+// (spec 2026-08-26-09, extended by 2026-11-09-02 for the dashboard's 24h / 7d /
+// 30d selector). It is the query behind the dashboard's availability KPI.
 //
 // TWO tier-aligned SQL aggregates, mirroring uptimebar's split
 // (uptimebar/window.go) and for the same reason: `results` has exactly two
 // useful indexes and both are PARTIAL (period_type = 'raw' vs. <> 'raw'), so a
 // predicate straddling both tiers forces a full scan. Each half rides its own
-// partial index:
+// partial index and computes every window at once with one conditional SUM per
+// window, so asking for three windows still costs two queries:
 //
-//   - `hour` rollup rows already encode CountsAsUp into
+//   - rollup rows (hour, day, month) already encode CountsAsUp into
 //     successful_checks/total_checks (the aggregation job folds warning into
-//     "up" when it writes the bucket), so this tier is a plain SUM.
+//     "up" when it writes the bucket), so this tier is a plain SUM. With the
+//     default retention a 24h window only meets hour rows, a 7d one hour rows
+//     and possibly the newest day rows, a 30d one day rows as well.
 //   - `raw` rows are folded with the same predicate as models.RawAvailability
 //     (ExcludedFromAvailability excludes lifecycle markers + abandoned;
 //     CountsAsUp counts up + warning) — done in SQL, not by loading rows into
-//     Go, because an org's trailing 24h of raw data can be the bulk of
+//     Go, because an org's trailing day of raw data can be the bulk of
 //     everything it has.
 //
-// day/month rollups are deliberately excluded: their period_start granularity
-// (UTC midnight / month start) means a bucket can only start inside a
-// trailing-24h window on the day it is created, and the aggregation job never
-// creates a day row for "today" — it only compacts once the hour-retention
-// window has passed (job_aggregation.go). So day/month rows never carry data
-// for this window; including that tier would only cost a query for nothing.
+// A rollup row counts iff its period_start falls inside the window, the same
+// edge rule as uptimebar.WindowAvailability: a day row straddling the left
+// edge of a 7d or 30d window is left out.
 //
-// Raw and hour rows in the window are disjoint by construction — the
-// aggregation job deletes the raw rows it rolls up in the same transaction —
-// so summing both tiers never double-counts.
-func (s *Service) GetOrgAvailability24h(
-	ctx context.Context, orgUID string, since, now time.Time,
-) (models.AvailabilityCounts, error) {
-	var hourAgg availabilityAgg
-
-	err := s.db.NewSelect().
-		TableExpr("results").
-		ColumnExpr("COALESCE(SUM(successful_checks), 0) AS success").
-		ColumnExpr("COALESCE(SUM(total_checks), 0) AS total").
-		Where("organization_uid = ?", orgUID).
-		Where("period_type = ?", models.PeriodTypeHour).
-		Where("period_start >= ?", since).
-		Where("period_start < ?", now).
-		Scan(ctx, &hourAgg)
-	if err != nil {
-		return models.AvailabilityCounts{}, fmt.Errorf("get org hour availability: %w", err)
+// The tiers are disjoint by construction — the aggregation job deletes the
+// rows it rolls up in the same transaction — so summing them never
+// double-counts.
+func (s *Service) GetOrgAvailability(
+	ctx context.Context, orgUID string, now time.Time, windows []time.Duration,
+) ([]models.AvailabilityCounts, error) {
+	out := make([]models.AvailabilityCounts, len(windows))
+	if len(windows) == 0 {
+		return out, nil
 	}
 
-	var rawAgg availabilityAgg
+	widest := windows[0]
+	for _, window := range windows[1:] {
+		widest = max(widest, window)
+	}
 
-	err = s.db.NewSelect().
+	rollup := s.db.NewSelect().
 		TableExpr("results").
-		ColumnExpr(
-			"COALESCE(SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END), 0) AS success",
-			int(models.ResultStatusUp), int(models.ResultStatusWarning),
-		).
-		ColumnExpr(
-			"COALESCE(SUM(CASE WHEN status NOT IN (?, ?, ?) THEN 1 ELSE 0 END), 0) AS total",
-			int(models.ResultStatusCreated), int(models.ResultStatusRunning), int(models.ResultStatusAbandoned),
-		).
+		Where("organization_uid = ?", orgUID).
+		Where("period_type != ?", models.PeriodTypeRaw).
+		Where("period_start >= ?", now.Add(-widest)).
+		Where("period_start < ?", now)
+
+	raw := s.db.NewSelect().
+		TableExpr("results").
 		Where("organization_uid = ?", orgUID).
 		Where("period_type = ?", models.PeriodTypeRaw).
-		Where("period_start >= ?", since).
-		Where("period_start < ?", now).
-		Scan(ctx, &rawAgg)
-	if err != nil {
-		return models.AvailabilityCounts{}, fmt.Errorf("get org raw availability: %w", err)
+		Where("period_start >= ?", now.Add(-widest)).
+		Where("period_start < ?", now)
+
+	rollupDest := make([]any, 0, 2*len(windows))
+	rawDest := make([]any, 0, 2*len(windows))
+	rollupSums := make([]int64, 2*len(windows))
+	rawSums := make([]int64, 2*len(windows))
+
+	for idx, window := range windows {
+		since := now.Add(-window)
+
+		rollup = rollup.
+			ColumnExpr("COALESCE(SUM(CASE WHEN period_start >= ? THEN successful_checks ELSE 0 END), 0)", since).
+			ColumnExpr("COALESCE(SUM(CASE WHEN period_start >= ? THEN total_checks ELSE 0 END), 0)", since)
+
+		raw = raw.
+			ColumnExpr(
+				"COALESCE(SUM(CASE WHEN period_start >= ? AND status IN (?, ?) THEN 1 ELSE 0 END), 0)",
+				since, int(models.ResultStatusUp), int(models.ResultStatusWarning),
+			).
+			ColumnExpr(
+				"COALESCE(SUM(CASE WHEN period_start >= ? AND status NOT IN (?, ?, ?) THEN 1 ELSE 0 END), 0)",
+				since, int(models.ResultStatusCreated), int(models.ResultStatusRunning),
+				int(models.ResultStatusAbandoned),
+			)
+
+		rollupDest = append(rollupDest, &rollupSums[2*idx], &rollupSums[2*idx+1])
+		rawDest = append(rawDest, &rawSums[2*idx], &rawSums[2*idx+1])
 	}
 
-	return models.AvailabilityCounts{
-		Success: hourAgg.Success + rawAgg.Success,
-		Total:   hourAgg.Total + rawAgg.Total,
-	}, nil
+	if err := rollup.Scan(ctx, rollupDest...); err != nil {
+		return nil, fmt.Errorf("get org rollup availability: %w", err)
+	}
+
+	if err := raw.Scan(ctx, rawDest...); err != nil {
+		return nil, fmt.Errorf("get org raw availability: %w", err)
+	}
+
+	for idx := range windows {
+		out[idx] = models.AvailabilityCounts{
+			Success: rollupSums[2*idx] + rawSums[2*idx],
+			Total:   rollupSums[2*idx+1] + rawSums[2*idx+1],
+		}
+	}
+
+	return out, nil
 }
 
 // ListCheckUIDsByGroup returns the UIDs of the group's enabled, non-deleted
@@ -7644,9 +7724,13 @@ func (s *Service) ListEnabledSLOAlertPolicies(ctx context.Context, limit int) ([
 	query := s.db.NewSelect().
 		Model(&policies).
 		Join("JOIN slos ON slos.uid = slo_alert_policies.slo_uid").
+		// Policies of a deleted organization are orphans: skip them, even
+		// those left enabled by a deletion that predates disabling them.
+		Join("JOIN organizations AS o ON o.uid = slo_alert_policies.organization_uid").
 		Where("slo_alert_policies.enabled = ?", true).
 		Where("slos.enabled = ?", true).
 		Where("slos.deleted_at IS NULL").
+		Where("o.deleted_at IS NULL").
 		Order("slo_alert_policies.last_evaluated_at ASC NULLS FIRST")
 
 	if limit > 0 {
@@ -7807,9 +7891,12 @@ func (s *Service) ListEnabledReportSchedules(ctx context.Context) ([]*models.Rep
 
 	err := s.db.NewSelect().
 		Model(&schedules).
-		Where("enabled = ?", true).
-		Where("deleted_at IS NULL").
-		Order("uid ASC").
+		// Schedules of a deleted organization are orphans: skip them.
+		Join("JOIN organizations AS o ON o.uid = report_schedule.organization_uid").
+		Where("report_schedule.enabled = ?", true).
+		Where("report_schedule.deleted_at IS NULL").
+		Where("o.deleted_at IS NULL").
+		Order("report_schedule.uid ASC").
 		Scan(ctx)
 
 	return schedules, err

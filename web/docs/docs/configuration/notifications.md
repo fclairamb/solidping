@@ -210,6 +210,20 @@ the channel instead:
 3. Otherwise you get an ephemeral error listing the candidates — SolidPing never
    guesses which incident a note belongs to.
 
+### Link previews
+
+When someone pastes a dashboard link to a check or an incident in a workspace
+connected to the same organization, the Slack app unfurls it into a short card:
+
+- **Check**: its state (up, down, degraded, paused, no recent data) and for how
+  long, then its type, period, uptime over the last 24 hours and when it last ran.
+- **Incident**: its number and title, then whether it is ongoing (and
+  acknowledged) or when it was resolved and how long it lasted.
+
+Slack fetches this through the app, not as an anonymous visitor, so nothing
+becomes public. A link to another organization, or one that does not resolve,
+keeps the generic "SolidPing Link" preview.
+
 ### Capturing thread replies (`comment_ingestion`)
 
 Each Slack integration has a **"Capture every thread reply as a comment"**

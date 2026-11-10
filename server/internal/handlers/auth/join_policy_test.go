@@ -42,10 +42,21 @@ func joinTestOrg(ctx context.Context, t *testing.T, dbSvc db.Service, slug strin
 	return org
 }
 
+// newVerifiedUser is an account whose email was verified, like every account
+// created by a sign-up confirmation, an invitation or an identity provider
+// that attests the address. Email-based admission only trusts those.
+func newVerifiedUser(email string) *models.User {
+	user := models.NewUser(email)
+	verifiedAt := time.Now()
+	user.EmailVerifiedAt = &verifiedAt
+
+	return user
+}
+
 func joinTestUser(ctx context.Context, t *testing.T, dbSvc db.Service, email string) *models.User {
 	t.Helper()
 
-	user := models.NewUser(email)
+	user := newVerifiedUser(email)
 	require.NoError(t, dbSvc.CreateUser(ctx, user))
 
 	return user

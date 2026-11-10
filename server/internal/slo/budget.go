@@ -44,11 +44,12 @@ type Input struct {
 	// ExcludeMaintenance subtracts probes recorded under an active maintenance
 	// window from both the numerator and the denominator.
 	ExcludeMaintenance bool
-	// ExpectedProbes is how many results the scope should have produced over
-	// the elapsed part of the window: Σ elapsed / period × max(1, regions) per
-	// check (models.Check.ExpectedProbesBetween). Zero means "unknown", and
-	// then no coverage is applied — the pre-2026-09-25-02 behavior.
-	ExpectedProbes float64
+	// Coverage is the scope's region-independent data coverage over the
+	// elapsed part of the window: Σ per check of
+	// uptimebar.WindowAvailabilityWithCoverage's tally (spec 2026-11-08-05).
+	// A zero Expected means "unknown", and then no coverage is applied — the
+	// pre-2026-09-25-02 behavior.
+	Coverage models.CoverageTally
 }
 
 // Status is the computed objective state for one window.
@@ -158,7 +159,7 @@ func Compute(input *Input) Status {
 	budgetTotal := allowedFraction * monitored
 	out.BudgetTotalSeconds = int64(math.Round(budgetTotal))
 
-	if coverage, covered := models.Coverage(raw.Total, input.ExpectedProbes); covered {
+	if coverage, covered := input.Coverage.Coverage(); covered {
 		out.DataCoverage = &coverage
 	}
 

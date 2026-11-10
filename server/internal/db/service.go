@@ -1185,17 +1185,17 @@ type Service interface {
 	// predicate mirrors the list endpoint's `internal=false` default so the
 	// counters describe exactly the checks the operator can see in the list.
 	GetCheckStatusCounts(ctx context.Context, orgUID string) ([]models.CheckStatusCount, error)
-	// GetOrgAvailability24h returns the combined (success, countable-total)
-	// tally for the org over [since, now) — the trailing-24h window behind the
-	// dashboard's availability KPI (spec 2026-08-26-09). Folds two SQL
-	// aggregates: `hour` rollup rows (which already encode CountsAsUp into
-	// successful_checks/total_checks) and `raw` rows (folded in SQL with the
-	// same ExcludedFromAvailability/CountsAsUp predicate as
-	// models.RawAvailability, rather than loaded into Go — an org's trailing
-	// 24h of raw data can be the bulk of everything it has). day/month rollups
-	// never carry data for this window (see the implementation doc) and are
-	// deliberately excluded.
-	GetOrgAvailability24h(ctx context.Context, orgUID string, since, now time.Time) (models.AvailabilityCounts, error)
+	// GetOrgAvailability returns the combined (success, countable-total)
+	// tally for the org over each trailing window [now-window, now), in the
+	// order given — the windows behind the dashboard's availability KPI and its
+	// 24h / 7d / 30d selector (specs 2026-08-26-09, 2026-11-09-02). Folds two
+	// SQL aggregates whatever the number of windows: rollup rows (which already
+	// encode CountsAsUp into successful_checks/total_checks) and `raw` rows
+	// (folded in SQL with the same ExcludedFromAvailability/CountsAsUp
+	// predicate as models.RawAvailability, rather than loaded into Go).
+	GetOrgAvailability(
+		ctx context.Context, orgUID string, now time.Time, windows []time.Duration,
+	) ([]models.AvailabilityCounts, error)
 	// ListCheckUIDsByGroup returns the UIDs of the group's enabled, non-deleted
 	// member checks — the same member set GetCheckGroupStatusCounts rolls up, so
 	// a group's public status and its aggregated availability always describe
@@ -1385,7 +1385,7 @@ type Service interface {
 	ListSLOAlertPolicies(ctx context.Context, sloUID string) ([]*models.SLOAlertPolicy, error)
 	UpdateSLOAlertPolicy(ctx context.Context, uid string, update *models.SLOAlertPolicyUpdate) error
 	// ListEnabledSLOAlertPolicies is the burn evaluator's work queue: every
-	// enabled policy across every org whose SLO is itself live and enabled,
+	// enabled policy across every live org whose SLO is itself live and enabled,
 	// oldest-evaluated first so a large install still makes progress under a
 	// bounded per-sweep limit.
 	ListEnabledSLOAlertPolicies(ctx context.Context, limit int) ([]*models.SLOAlertPolicy, error)

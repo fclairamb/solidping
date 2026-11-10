@@ -81,8 +81,16 @@ func testService(t *testing.T, svc db.Service) {
 		testEventsTargetPayloadFilters(ctx, t, svc)
 	})
 
+	t.Run("EventsOwnFailedLoginException", func(t *testing.T) {
+		testEventsOwnFailedLoginException(ctx, t, svc)
+	})
+
 	t.Run("StateEntries", func(t *testing.T) {
 		testStateEntries(ctx, t, svc)
+	})
+
+	t.Run("CheckStatusCountsOldest", func(t *testing.T) {
+		testCheckStatusCountsOldest(ctx, t, svc)
 	})
 
 	t.Run("UserStateEntries", func(t *testing.T) {
@@ -2900,6 +2908,70 @@ func testEventsTargetPayloadFilters(ctx context.Context, t *testing.T, svc db.Se
 	r.Len(all, 3)
 }
 
+// testEventsOwnFailedLoginException runs the member carve-out of the auth
+// exclusion against BOTH engines (solidping-business#59): with
+// OwnFailedLoginEmail set, the auth.login_failed rows against that email come
+// back (case-insensitively), and nothing else of the auth family does; every
+// caller-supplied predicate still narrows the result.
+func testEventsOwnFailedLoginException(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	org := models.NewOrganization("evown-"+uuid.New().String()[:8], "Acme")
+	r.NoError(svc.CreateOrganization(ctx, org))
+
+	seed := func(eventType models.EventType, email string) string {
+		event := models.NewEvent(org.UID, eventType, models.ActorTypeSystem)
+		event.Payload = models.JSONMap{"email": email, "target_type": "user", "target_name": email}
+		r.NoError(svc.CreateEvent(ctx, event))
+
+		return event.UID
+	}
+
+	own := seed(models.EventTypeAuthLoginFailed, "Bob@Acme.com")
+	seed(models.EventTypeAuthLoginFailed, "alice@acme.com")
+	seed(models.EventTypeAuthLoginSucceeded, "bob@acme.com")
+	check := seed(models.EventTypeCheckCreated, "bob@acme.com")
+
+	list := func(filter models.ListEventsFilter) []string {
+		filter.OrganizationUID = org.UID
+		filter.Limit = 50
+		rows, err := svc.ListEvents(ctx, &filter)
+		r.NoError(err)
+
+		uids := make([]string, 0, len(rows))
+		for _, row := range rows {
+			uids = append(uids, row.UID)
+		}
+
+		return uids
+	}
+
+	member := models.ListEventsFilter{
+		ExcludeEventTypePrefixes: []string{"auth"},
+		OwnFailedLoginEmail:      "bob@acme.com",
+	}
+
+	r.ElementsMatch([]string{own, check}, list(member))
+
+	// A family filter narrows to the exception, never past it.
+	asking := member
+	asking.EventTypePrefixes = []string{"auth"}
+	r.Equal([]string{own}, list(asking))
+
+	// A target search for a colleague finds nothing.
+	other := member
+	other.TargetSearch = strPtrTest("alice@acme.com")
+	r.Empty(list(other))
+
+	// Without the carve-out, the exclusion is total.
+	r.Equal([]string{check}, list(models.ListEventsFilter{ExcludeEventTypePrefixes: []string{"auth"}}))
+
+	// Positive control: unfiltered, all four come back.
+	r.Len(list(models.ListEventsFilter{}), 4)
+}
+
 // strPtrTest is a local pointer helper for the filter structs above.
 func strPtrTest(value string) *string { return &value }
 
@@ -3000,4 +3072,35 @@ func uniqueStrings(in []string) map[string]struct{} {
 	}
 
 	return out
+}
+
+// testCheckStatusCountsOldest pins that MIN(created_at) scans into a
+// *time.Time on both dialects (SQLite stores times as text).
+func testCheckStatusCountsOldest(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+	r := require.New(t)
+
+	org := models.NewOrganization("oldest-counts-org", "")
+	r.NoError(svc.CreateOrganization(ctx, org))
+
+	older := models.NewCheck(org.UID, "oldest-a", "http")
+	older.CreatedAt = time.Now().Add(-10 * 24 * time.Hour).UTC().Truncate(time.Second)
+	r.NoError(svc.CreateCheck(ctx, older))
+
+	newer := models.NewCheck(org.UID, "oldest-b", "http")
+	r.NoError(svc.CreateCheck(ctx, newer))
+
+	rows, err := svc.GetCheckStatusCounts(ctx, org.UID)
+	r.NoError(err)
+
+	var oldest *time.Time
+
+	for _, row := range rows {
+		if row.OldestCreatedAt != nil && (oldest == nil || row.OldestCreatedAt.Before(*oldest)) {
+			oldest = row.OldestCreatedAt
+		}
+	}
+
+	r.NotNil(oldest)
+	r.WithinDuration(older.CreatedAt, *oldest, time.Second)
 }

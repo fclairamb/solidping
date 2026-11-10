@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/uptimereport"
@@ -31,6 +33,13 @@ func EnqueueUptimeReportEmail(
 ) error {
 	if registry == nil || registry.Jobs == nil {
 		return errJobsUnavailable
+	}
+
+	if !email.ValidAddress(address) {
+		slog.WarnContext(ctx, "Uptime report email skipped: invalid recipient address",
+			"organization_uid", orgUID, "recipient", email.RedactAddress(address))
+
+		return nil
 	}
 
 	// Written in the recipient's language (their account's, else hint's, else

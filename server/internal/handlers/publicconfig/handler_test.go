@@ -534,3 +534,21 @@ func TestBuildAIFlag(t *testing.T) {
 	r.NotContains(string(raw), "sk-should-not-leak")
 	r.Contains(string(raw), `"ai":{"enabled":true}`)
 }
+
+func TestGetConfigGitHubStar(t *testing.T) {
+	t.Parallel()
+
+	star := func(body map[string]any) bool {
+		block, ok := body["githubStar"].(map[string]any)
+		require.True(t, ok)
+		enabled, _ := block["enabled"].(bool)
+
+		return enabled
+	}
+
+	on := &config.Config{App: config.AppConfig{StarPrompt: true}}
+	require.True(t, star(serve(t, on)))
+
+	off := &config.Config{App: config.AppConfig{StarPrompt: false}}
+	require.False(t, star(serve(t, off)))
+}

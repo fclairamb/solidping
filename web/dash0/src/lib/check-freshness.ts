@@ -70,11 +70,12 @@ export const LOW_BUCKET_COVERAGE = 0.9;
 
 /**
  * How much of one availability bucket was actually measured, as a whole
- * percentage: probes received ÷ probes expected, where expected is the
- * bucket's elapsed length (clamped to the check's creation and to now) times
- * `probesPerSecond` = max(1, regions) / period (spec 2026-09-25-02). Kept out
- * of the server's size-capped bucket struct on purpose — the client already
- * knows the period and the regions. null when nothing was expected.
+ * percentage: results received ÷ periods in the bucket's elapsed length
+ * (clamped to the check's creation and to now), with `probesPerSecond` =
+ * 1 / period and NO region multiplier (spec 2026-11-08-05): a period counts as
+ * measured when any region reported, as on the Availability card. Kept out of
+ * the server's size-capped bucket struct on purpose: the client already knows
+ * the period. null when nothing was expected.
  */
 export function bucketCoveragePct(
   cell: { periodStart: string; periodEnd: string; totalChecks: number },
@@ -92,8 +93,8 @@ export function bucketCoveragePct(
   return Math.round(Math.min(1, cell.totalChecks / expected) * 100);
 }
 
-/** max(1, regions) / period — how many results a check should produce per second. */
-export function probesPerSecond(periodMs: number | undefined, regionCount: number | undefined): number | undefined {
+/** 1 / period: how many periods a check covers per second, whatever its regions. */
+export function probesPerSecond(periodMs: number | undefined): number | undefined {
   if (!periodMs || periodMs <= 0) return undefined;
-  return Math.max(1, regionCount ?? 0) / (periodMs / 1000);
+  return 1 / (periodMs / 1000);
 }

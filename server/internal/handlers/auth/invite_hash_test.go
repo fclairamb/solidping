@@ -397,7 +397,7 @@ func runInviteHashContract(t *testing.T, svc *Service, dbSvc db.Service) {
 
 		resp := createHashTestInvite(t, svc, org.Slug, inviter.UID, "fedjoin@acme.com")
 
-		user := models.NewUser("fedjoin@acme.com")
+		user := newVerifiedUser("fedjoin@acme.com")
 		r.NoError(dbSvc.CreateUser(ctx, user))
 
 		member, pending, err := svc.JoinOrgViaLogin(ctx, org, user)

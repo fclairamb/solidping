@@ -4,8 +4,8 @@ import { test, expect, type Page, API_BASE } from "./fixtures";
 // These tests mock the dashboard's data endpoints so the glance card is
 // deterministic regardless of seeded data or background polling. The 24h
 // availability KPI comes from GET /checks/stats (availability24h), not from a
-// /results query (spec 2026-08-26-09) — the one /results query left is
-// periodType=hour, which feeds the glance-card uptime strips only.
+// /results query (spec 2026-08-26-09). The glance-card uptime strips ride
+// GET /availability/buckets (spec 2026-11-09-02), mocked below.
 
 interface MockCheck {
   uid: string;
@@ -15,19 +15,22 @@ interface MockCheck {
   lastStatusChangeTime?: string;
 }
 
-function hourlyResultsFor(checkUid: string, availabilityPct: number) {
-  // 24 hourly buckets ending now, all with the same availability + latency.
-  return Array.from({ length: 24 }, (_, i) => ({
-    uid: `${checkUid}-h${i}`,
-    checkUid,
-    periodType: "hour",
-    periodStart: new Date(Date.now() - (23 - i) * 3600_000).toISOString(),
-    status: availabilityPct >= 100 ? "up" : "down",
-    availabilityPct,
-    durationMs: 142,
-    totalChecks: 60,
-    successfulChecks: Math.round((availabilityPct / 100) * 60),
-  }));
+function bucketsFor(checkUid: string, availabilityPct: number) {
+  // 24 hourly cells ending now, all with the same availability + latency.
+  const cells = Array.from({ length: 24 }, (_, i) => {
+    const start = new Date(Date.now() - (23 - i) * 3600_000);
+    return {
+      periodStart: start.toISOString(),
+      periodEnd: new Date(start.getTime() + 3600_000).toISOString(),
+      hasData: true,
+      availabilityPct,
+      totalChecks: 60,
+      successfulChecks: Math.round((availabilityPct / 100) * 60),
+      status: availabilityPct >= 100 ? "up" : "down",
+      avgDurationMs: 142,
+    };
+  });
+  return { [checkUid]: { buckets: cells, latestDurationMs: 142 } };
 }
 
 interface MockCheckStats {
@@ -38,6 +41,8 @@ interface MockCheckStats {
   down: number;
   hardDown: number;
   availability24h: number | null;
+  availability7d: number | null;
+  availability30d: number | null;
 }
 
 // Aggregate the mocked checks the same way the backend's GROUP BY would, so a
@@ -67,6 +72,8 @@ function statsFromChecks(checks: MockCheck[]): MockCheckStats {
     down: byStatus.down,
     hardDown: byStatus.down,
     availability24h: null,
+    availability7d: null,
+    availability30d: null,
   };
 }
 
@@ -139,16 +146,20 @@ async function mockDashboard(
     }),
   );
 
-  await page.route("**/api/v1/orgs/*/results*", (route) => {
-    const url = route.request().url();
-    if (!url.includes("/results")) return route.continue();
-    const data = opts.checks.flatMap((c) =>
-      hourlyResultsFor(c.uid, c.status === "up" ? 100 : 0),
+  await page.route("**/api/v1/orgs/*/availability/buckets*", (route) => {
+    const data = Object.assign(
+      {},
+      ...opts.checks.map((c) => bucketsFor(c.uid, c.status === "up" ? 100 : 0)),
     );
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ data, pagination: { total: data.length } }),
+      body: JSON.stringify({
+        data,
+        bucketSeconds: 3600,
+        windowStart: new Date(Date.now() - 24 * 3600_000).toISOString(),
+        windowEnd: new Date().toISOString(),
+      }),
     });
   });
 
@@ -291,6 +302,29 @@ test.describe("Dashboard", () => {
     await footer.click();
     await page.waitForLoadState("networkidle");
     expect(page.url()).toMatch(/\/orgs\/test\/checks\/?$/);
+  });
+
+  test("glance strips are filled from the org-level buckets endpoint (non-noData cells)", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const requests: string[] = [];
+    page.on("request", (r) => {
+      if (r.url().includes("/availability/buckets")) requests.push(r.url());
+    });
+    await mockDashboard(page, {
+      checks: [{ uid: "chk-alpha", name: "Alpha API", status: "up" }],
+    });
+    await page.goto("orgs/test");
+
+    const row = page.locator(
+      '[data-testid="glance-row"][data-check-name="Alpha API"]',
+    );
+    await expect(row).toBeVisible({ timeout: 10000 });
+    const cells = row.getByTestId("uptime-cell");
+    await expect(cells).toHaveCount(24);
+    await expect(row.locator('[data-testid="uptime-cell"]:not([data-status="noData"])').first()).toBeVisible();
+    expect(requests.some((u) => u.includes("checks=chk-alpha"))).toBe(true);
   });
 
   test("KPI counters come from /checks/stats, not from the clamped checks page", async ({
@@ -465,6 +499,60 @@ test.describe("Dashboard", () => {
     const tile = page.getByTestId("kpi-tile-availability");
     await expect(tile).toContainText("99.97%");
     await expect(tile).toContainText("Operational");
+  });
+
+  // --- Availability window selector (spec 2026-11-09-02) --------------------
+  test("the window selector switches the tile and banner to 7 and 30 days and saves the choice", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockDashboard(page, {
+      checks: [
+        { uid: "64444444-4444-4444-4444-444444444444", name: "Window Check", status: "up" },
+      ],
+      incidents: [],
+      stats: { availability24h: 99.97, availability7d: 99.42, availability30d: 98.76 },
+    });
+
+    // The saved choice goes to PATCH /auth/me. Answered here so the shared
+    // test account never keeps a window another test does not expect.
+    const savedWindows: string[] = [];
+    await page.route("**/api/v1/auth/me", (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      const body = route.request().postDataJSON() as {
+        preferences?: { dashboardWindow?: string };
+      };
+      savedWindows.push(body.preferences?.dashboardWindow ?? "");
+      return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    });
+
+    await page.goto("orgs/test");
+
+    const tile = page.getByTestId("kpi-tile-availability");
+    const banner = page.getByTestId("overall-status-banner");
+    await expect(tile).toContainText("24h Availability", { timeout: 10000 });
+    await expect(tile).toContainText("99.97%");
+    await expect(page.getByTestId("dashboard-window-24h")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await page.getByTestId("dashboard-window-7d").click();
+    await expect(tile).toContainText("7d Availability");
+    await expect(tile).toContainText("99.42%");
+    await expect(tile).toContainText("Last 7 days, all checks");
+    await expect(banner).toContainText("99.42% uptime over 7 days");
+    await expect(page.getByTestId("dashboard-window-7d")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await page.getByTestId("dashboard-window-30d").click();
+    await expect(tile).toContainText("30d Availability");
+    await expect(tile).toContainText("98.76%");
+    await expect(banner).toContainText("98.76% uptime over 30 days");
+
+    await expect.poll(() => savedWindows).toEqual(["7d", "30d"]);
   });
 
   test("a down check sorts first with a destructive badge and a since timestamp", async ({

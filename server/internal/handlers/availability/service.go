@@ -110,10 +110,12 @@ type Period struct {
 	// AvailabilityPct is null (and HasData false) when TotalChecks == 0 — no data
 	// is not 100%. The UI renders "-".
 	AvailabilityPct *float64 `json:"availabilityPct"`
-	// Coverage is measured probes ÷ expected probes over the monitored time,
-	// clamped to [0, 1], where expected = monitored / period × max(1, regions)
-	// (spec 2026-09-25-02). An 8-hour gap in a 24-hour window reads 0.67.
-	// Null only when nothing was expected (a zero-length window).
+	// Coverage is the share of the monitored time some region measured,
+	// in [0, 1]: per bucket min(results, ceil(bucket length / period)), summed
+	// and divided by monitored / period, with NO region multiplier (spec
+	// 2026-11-08-05; it was x max(1, current regions) in 2026-09-25-02, which
+	// rewrote history whenever the region set changed). An 8-hour gap in a
+	// 24-hour window reads 0.67. Null only when nothing was expected.
 	Coverage *float64 `json:"coverage"`
 	// UnmeasuredSeconds is the part of MonitoredSeconds nobody measured:
 	// (1 − coverage) × monitoredSeconds.
@@ -213,16 +215,16 @@ func (s *Service) computePeriod(
 ) (Period, error) {
 	monitored := monitoredDuration(window, check.CreatedAt.UTC(), now)
 
-	stats, err := uptimebar.WindowAvailability(
-		ctx, s.db, orgUID, []string{check.UID}, window.start, window.end,
+	stats, err := uptimebar.WindowAvailabilityWithCoverage(
+		ctx, s.db, orgUID, []*models.Check{check}, window.start, window.end, now,
 		hints)
 	if err != nil {
 		return Period{}, err
 	}
 
-	bucket := stats[check.UID]
+	folded := stats[check.UID]
 
-	row := buildPeriodRow(window, bucket, monitored, check.CreatedAt.UTC(), check.ExpectedProbes(monitored))
+	row := buildPeriodRow(window, folded.Stats, monitored, check.CreatedAt.UTC(), folded.Coverage)
 
 	incidents, err := s.fetchIncidents(ctx, orgUID, check.UID, window)
 	if err != nil {
@@ -254,12 +256,12 @@ func monitoredDuration(window periodWindow, createdAt, now time.Time) time.Durat
 
 // buildPeriodRow assembles the probe-ratio part of the DTO from the window's
 // folded BucketStats. availabilityPct is nil (hasData false) when the window has
-// no countable checks — no data ≠ 100%. expectedProbes is how many results the
-// window should have held; it turns the wall-clock monitored time into the
-// time actually measured.
+// no countable checks: no data is not 100%. tally is the window's
+// region-independent coverage (spec 2026-11-08-05); it turns the wall-clock
+// monitored time into the time actually measured.
 func buildPeriodRow(
 	window periodWindow, bucket uptimebar.BucketStats, monitored time.Duration, createdAt time.Time,
-	expectedProbes float64,
+	tally models.CoverageTally,
 ) Period {
 	row := Period{
 		Period:           window.token,
@@ -276,7 +278,7 @@ func buildPeriodRow(
 	// measured, which changes nothing since it has no seconds either.
 	measured := monitored.Seconds()
 
-	if coverage, ok := models.Coverage(bucket.Total, expectedProbes); ok {
+	if coverage, ok := tally.Coverage(); ok {
 		row.Coverage = &coverage
 		measured = coverage * monitored.Seconds()
 		row.UnmeasuredSeconds = int64(math.Round(monitored.Seconds() - measured))

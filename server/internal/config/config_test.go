@@ -2110,3 +2110,18 @@ func TestAuditRetentionYAMLZeroSurvives(t *testing.T) {
 	require.NoError(t, k.Unmarshal("", &cfg))
 	require.Equal(t, 0, cfg.Audit.RetentionDays)
 }
+
+func TestLoad_StarPrompt(t *testing.T) {
+	t.Setenv("SP_APP_STARPROMPT", "x") // registers restore on cleanup
+	require.NoError(t, os.Unsetenv("SP_APP_STARPROMPT"))
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.App.StarPrompt)
+
+	t.Setenv("SP_APP_STARPROMPT", "false")
+
+	cfg, err = Load()
+	require.NoError(t, err)
+	require.False(t, cfg.App.StarPrompt)
+}

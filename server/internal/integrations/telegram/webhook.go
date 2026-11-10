@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/fclairamb/solidping/server/internal/orgslug"
 )
@@ -180,7 +181,13 @@ func Command(text string) (string, string) {
 		return "", ""
 	}
 
-	command, arg, _ := strings.Cut(trimmed, " ")
+	// Any whitespace ends the verb, not only a space: "/support" followed by a
+	// line break and a multi-line message is how people actually type it.
+	command, arg := trimmed, ""
+	if end := strings.IndexFunc(trimmed, unicode.IsSpace); end >= 0 {
+		command, arg = trimmed[:end], trimmed[end:]
+	}
+
 	command = strings.TrimPrefix(command, "/")
 
 	if at := strings.IndexByte(command, '@'); at >= 0 {

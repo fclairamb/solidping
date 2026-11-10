@@ -190,5 +190,8 @@
     "cycle": "ciclo {{cycle}}"
   },
   "customized": "personalizado",
-  "removeItem": "Quitar {{item}}"
+  "removeItem": "Quitar {{item}}",
+  "githubStar": {
+    "sidebar": "Dar una estrella en GitHub"
+  }
 }

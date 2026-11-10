@@ -32,15 +32,13 @@ const (
 func listResultsDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolListResults,
-		Description: "Query monitoring results (raw or aggregated) with filtering by check, " +
-			"type, status, region, period type, and time range. Use this for trend " +
-			"analysis or to inspect a specific window. For investigating a single " +
-			"check's current state, use diagnose_check instead.\n" +
-			"Defaults: " +
-			"if periodType is omitted it falls back to \"hour\"; if " +
-			"periodStartAfter is omitted it falls back to a window matched to the " +
-			"finest periodType requested (raw=1h, hour=24h, day=30d, month=365d). " +
-			"Read-only: works with mcp:read tokens.",
+		Description: "Query monitoring results for trend analysis or a specific time window. " +
+			"periodType picks the rows: raw returns single executions, hour, day and month return " +
+			"rollups, and the bucket-only with fields (availabilityPct, durationMinMs, durationMaxMs) " +
+			"apply to rollups only. All filters combine with AND. Pages hold 20 rows by default, 100 " +
+			"at most; pass pagination.cursor back as cursor for the next one, and read window and " +
+			"effectiveFilter to see what the server actually queried after defaulting. For one " +
+			"check's current state, use diagnose_check instead. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propCheckUID: stringProp(
 				"Comma-separated check UIDs or slugs to filter by, e.g. \"api-prod,db-prod\". At most 100 entries.",

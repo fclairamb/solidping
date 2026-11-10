@@ -3,6 +3,7 @@ package discord
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -281,7 +282,14 @@ func acknowledgeFromInteraction(
 		ctx, orgUID, incidentUID, userID, userName, interaction.GuildID,
 	)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to acknowledge incident from Discord",
+		// A stale button on a deleted incident is the user's click, not a
+		// server fault: keep ERROR for real failures.
+		level := slog.LevelError
+		if errors.Is(err, models.ErrIncidentNotFound) {
+			level = slog.LevelWarn
+		}
+
+		slog.Log(ctx, level, "Failed to acknowledge incident from Discord",
 			"incident_uid", incidentUID, "error", err)
 
 		return ephemeralResponse("Could not acknowledge that incident."), nil

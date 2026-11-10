@@ -1015,10 +1015,12 @@ paths:
         `auth.email_changed` in each of the user's organizations.
 
         `preferences` sets the language and timezone the server writes this
-        user's emails in. Every field is optional (a preferences-only body is
-        valid); an empty string clears one. `400 VALIDATION_ERROR` for a
-        locale outside en, fr, de, es (a full tag such as `fr-FR` is accepted
-        and stored as `fr`) or a timezone the IANA database does not know.
+        user's emails in, and the dashboard's availability window. Every field
+        is optional (a preferences-only body is valid); an empty string clears
+        one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+        tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
+        IANA database does not know, or a dashboard window other than 24h, 7d,
+        30d.
         Nothing is written when any field is refused.
       security:
         - bearerAuth: []
@@ -3742,6 +3744,92 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/availability/buckets:
+    get:
+      tags: [Results]
+      summary: Bucketed availability for several checks of an org in one call
+      description: >
+        Same engine and cell semantics as
+        /api/v1/orgs/{org}/checks/{check}/availability/buckets, for a list of
+        checks at once (the dashboard's "Checks at a glance" 24h strips). Reads
+        raw, hour and day tiers, so a trailing window is filled even though its
+        probes have not been rolled up yet. UIDs that do not belong to the
+        organization are ignored.
+      operationId: getOrgAvailabilityBuckets
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: from
+          in: query
+          required: true
+          description: Window start (inclusive), RFC3339.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          description: Window end (exclusive), RFC3339. Must be after `from`.
+          schema:
+            type: string
+            format: date-time
+        - name: bucket
+          in: query
+          required: false
+          description: >
+            Cell width, in seconds (e.g. 3600) or as a Go duration (e.g. 1h).
+            A whole positive multiple of one hour; at most 200 cells.
+          schema:
+            type: string
+          example: "3600"
+        - name: checks
+          in: query
+          required: true
+          description: Comma-separated check UIDs, at most 100.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bucketed availability keyed by check UID
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, bucketSeconds, windowStart, windowEnd]
+                properties:
+                  data:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      required: [buckets]
+                      properties:
+                        buckets:
+                          type: array
+                          items:
+                            $ref: "#/components/schemas/AvailabilityBucket"
+                        latestDurationMs:
+                          type: number
+                          description: Average response time of the newest cell that has one.
+                  bucketSeconds:
+                    type: integer
+                  windowStart:
+                    type: string
+                    format: date-time
+                  windowEnd:
+                    type: string
+                    format: date-time
+        "400":
+          description: Invalid window or bucket, or more than 100 checks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/checks/{check}/results/{uid}:
     get:
       tags: [Results]
@@ -5099,7 +5187,9 @@ paths:
           description: >-
             Filter by event-type FAMILY (comma-separated prefixes, e.g.
             `auth,member`). Distinct from `eventType`, which matches exactly.
-            The `auth` family is only returned to org admins and owners.
+            The `auth` family is only returned to org admins and owners;
+            other members only get the `auth.login_failed` rows against their
+            own account.
           schema:
             type: string
         - name: actorUserUid
@@ -11434,9 +11524,10 @@ components:
     UserPreferences:
       type: object
       description: >
-        What the server follows when it writes to the user: the language and
-        timezone of their emails. Present on /auth/me and every login response,
-        `{}` when nothing is set (emails then use English and UTC).
+        What the user picked: the language and timezone of their emails, and
+        dashboard settings that follow them across browsers. Present on
+        /auth/me and every login response, `{}` when nothing is set (emails then
+        use English and UTC, the dashboard its defaults).
       properties:
         locale:
           type: string
@@ -11446,6 +11537,13 @@ components:
           type: string
           description: IANA zone name (e.g. Europe/Paris) dates are shown in. Omitted when not set.
           example: Europe/Paris
+        dashboardWindow:
+          type: string
+          enum: ["24h", "7d", "30d"]
+          description: >-
+            Trailing window of the dashboard's availability figures. Omitted
+            when not set, which means 24h.
+          example: 7d
 
     UpdatePreferencesRequest:
       type: object
@@ -11459,6 +11557,10 @@ components:
           type: string
           description: IANA zone name.
           example: Europe/Paris
+        dashboardWindow:
+          type: string
+          description: 24h, 7d or 30d. Any other value is refused with 400 VALIDATION_ERROR.
+          example: 7d
 
     CreateTokenRequest:
       type: object
@@ -11759,6 +11861,13 @@ components:
           type: object
           required: [enabled]
           description: Whether AI-authored js checks are offered (an AI provider is configured, SP_AI_PROVIDER).
+          properties:
+            enabled:
+              type: boolean
+        githubStar:
+          type: object
+          required: [enabled]
+          description: Whether the "star on GitHub" sidebar link and one-time prompt are shown (SP_APP_STARPROMPT, default true).
           properties:
             enabled:
               type: boolean
@@ -12432,8 +12541,13 @@ components:
 
     CheckStats:
       type: object
-      required: [total, enabled, disabled, byStatus, down, hardDown, availability24h]
+      required: [total, enabled, disabled, byStatus, down, hardDown, availability24h, availability7d, availability30d, oldestEnabledCheckCreatedAt]
       properties:
+        oldestEnabledCheckCreatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Creation time of the oldest enabled check, null when there is none. Drives the one-time GitHub star prompt.
         total:
           type: integer
           description: Every in-scope check — enabled plus disabled.
@@ -12489,6 +12603,22 @@ components:
             countable data (an empty or brand-new org) — never a fabricated
             100.
           example: 99.97
+        availability7d:
+          type: number
+          nullable: true
+          description: >-
+            `availability24h` over the trailing 7 days, also counting `day`
+            rollup rows that start inside the window. `null` when the window has
+            no countable data.
+          example: 99.95
+        availability30d:
+          type: number
+          nullable: true
+          description: >-
+            `availability24h` over the trailing 30 days, also counting `day`
+            rollup rows that start inside the window. `null` when the window has
+            no countable data.
+          example: 99.91
 
     CreateCheckRequest:
       type: object
@@ -13625,6 +13755,9 @@ components:
             public status page and the badge uptime bar use, including the
             small-bucket guard (a cell with exactly one failed sample is never
             "down").
+        avgDurationMs:
+          type: number
+          description: Mean response time of the cell's probes; omitted when none carried one.
 
     AvailabilityPeriod:
       type: object
@@ -13671,10 +13804,13 @@ components:
           type: number
           nullable: true
           description: >
-            Share of the monitored time that was actually measured: received
-            probes ÷ expected probes, where expected = monitoredSeconds / period
-            × max(1, regions), clamped to [0, 1]. An 8-hour gap in a 24-hour
-            window reads 0.67. Null only when nothing was expected.
+            Share of the monitored time that some region measured, in [0, 1].
+            Each aggregate bucket (an hour, or a day or month for old data)
+            counts as measured in proportion to min(results, ceil(bucket
+            length / period)), with no region multiplier: a period is measured
+            as soon as any region reported, so a change of the check's regions
+            never rewrites the past. An 8-hour gap in a 24-hour window reads
+            0.67. Null only when nothing was expected.
         unmeasuredSeconds:
           type: integer
           format: int64
@@ -14376,6 +14512,13 @@ components:
             User-Agent of the originating request, truncated. Admin/owner only.
         payload:
           type: object
+        targetUserName:
+          type: string
+          description: >-
+            On an `auth.login_failed` row, the display name of the org member
+            whose account was tried. Admin/owner only; absent when the typed
+            email (`payload.email`) matches no member. Non-admin members only
+            receive the `auth.login_failed` rows against their own account.
         createdAt:
           type: string
           format: date-time
@@ -17443,8 +17586,9 @@ components:
           format: double
           nullable: true
           description: >-
-            Received ÷ expected probes over the elapsed window (expected =
-            elapsed / period × max(1, regions) per check), clamped to [0, 1].
+            Share of the elapsed window some region measured, per check and
+            per aggregate bucket with no region multiplier (as the
+            availability endpoint's coverage), summed over the scope's checks.
             A low value means the attainment describes only part of the window.
         burnRate:
           type: number

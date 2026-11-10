@@ -305,7 +305,8 @@ func (h *Handler) UpdateMe(writer http.ResponseWriter, req *http.Request) error 
 
 	resp, err := h.svc.UpdateProfile(req.Context(), claims, updateReq)
 	if err != nil {
-		if errors.Is(err, ErrUnsupportedLocale) || errors.Is(err, ErrInvalidTimezone) {
+		if errors.Is(err, ErrUnsupportedLocale) || errors.Is(err, ErrInvalidTimezone) ||
+			errors.Is(err, ErrInvalidWindow) {
 			return h.WriteErrorErr(writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 		}
 

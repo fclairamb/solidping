@@ -51,6 +51,17 @@ func TestMergePreferences(t *testing.T) {
 		{"unsupported locale", stored, PreferencesRequest{Locale: ptr("it")}, nil, ErrUnsupportedLocale},
 		{"unknown timezone", stored, PreferencesRequest{Timezone: ptr("Europe/Atlantis")}, nil, ErrInvalidTimezone},
 		{"the server's Local zone", stored, PreferencesRequest{Timezone: ptr("Local")}, nil, ErrInvalidTimezone},
+		{
+			"dashboard window keeps the rest", stored,
+			PreferencesRequest{DashboardWindow: ptr("7d")},
+			&models.UserPreferences{Locale: "fr", Timezone: "Europe/Paris", DashboardWindow: "7d"}, nil,
+		},
+		{
+			"dashboard window cleared", &models.UserPreferences{Locale: "fr", DashboardWindow: "30d"},
+			PreferencesRequest{DashboardWindow: ptr("")},
+			&models.UserPreferences{Locale: "fr"}, nil,
+		},
+		{"unknown dashboard window", stored, PreferencesRequest{DashboardWindow: ptr("90d")}, nil, ErrInvalidWindow},
 	}
 
 	for _, tc := range cases {

@@ -977,3 +977,59 @@ func TestCapture_AttributesDiscordDMToTheMember(t *testing.T) {
 	r.NotNil(attributed.OrganizationUID)
 	r.Equal(org.UID, *attributed.OrganizationUID)
 }
+
+// TestLiveThread_AndCloseLiveThread pins the two lookups behind Telegram's
+// support mode: the live thread IS the mode, and closing it ends the mode
+// without marking the thread read.
+func TestLiveThread_AndCloseLiveThread(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHarness(t, "")
+	ctx := t.Context()
+
+	// A nil service (no inbox wired) has no live thread, and says so.
+	var nilSvc *support.Service
+
+	live, err := nilSvc.LiveThread(ctx, models.SupportChannelTelegram, "100")
+	r.NoError(err)
+	r.Nil(live)
+
+	live, err = h.svc.LiveThread(ctx, models.SupportChannelTelegram, "100")
+	r.NoError(err)
+	r.Nil(live)
+
+	closed, err := h.svc.CloseLiveThread(ctx, models.SupportChannelTelegram, "100")
+	r.NoError(err)
+	r.False(closed, "nothing to close is not an error")
+
+	thread, _, err := h.svc.Capture(ctx, &support.Inbound{
+		Channel:  models.SupportChannelTelegram,
+		Identity: "100",
+		Body:     "hello",
+	})
+	r.NoError(err)
+
+	live, err = h.svc.LiveThread(ctx, models.SupportChannelTelegram, "100")
+	r.NoError(err)
+	r.NotNil(live)
+	r.Equal(thread.UID, live.UID)
+
+	// Positive control for the identity filter: another chat has none.
+	other, err := h.svc.LiveThread(ctx, models.SupportChannelTelegram, "200")
+	r.NoError(err)
+	r.Nil(other)
+
+	closed, err = h.svc.CloseLiveThread(ctx, models.SupportChannelTelegram, "100")
+	r.NoError(err)
+	r.True(closed)
+
+	reloaded, err := h.svc.GetThread(ctx, thread.UID)
+	r.NoError(err)
+	r.Equal(models.SupportStatusClosed, reloaded.Status)
+	r.Equal(1, reloaded.UnreadCount, "closing from the chat must not mark the thread read")
+
+	live, err = h.svc.LiveThread(ctx, models.SupportChannelTelegram, "100")
+	r.NoError(err)
+	r.Nil(live)
+}

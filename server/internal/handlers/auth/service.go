@@ -697,6 +697,13 @@ func (s *Service) enqueueEmail(
 		return false
 	}
 
+	if !email.ValidAddress(address) {
+		slog.WarnContext(ctx, "Email job skipped: invalid recipient address",
+			"template", template, "recipient", email.RedactAddress(address))
+
+		return false
+	}
+
 	cfg := emailJobConfig{
 		To:           []string{address},
 		Template:     template,
@@ -2839,7 +2846,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	s.dropPendingRegistration(ctx, matchedEntry, tokenHash)
 
 	// Auto-join matching orgs
-	s.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
+	s.autoJoinMatchingOrgs(ctx, user)
 
 	// Try to resolve an org for login response
 	members, _ := s.db.ListMembersByUser(ctx, user.UID)
@@ -2911,7 +2918,14 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 }
 
 // autoJoinMatchingOrgs checks org-scoped registration email patterns and auto-joins matching orgs.
-func (s *Service) autoJoinMatchingOrgs(ctx context.Context, userUID, userEmail string) {
+// A user whose email is not verified joins nothing (see emailAdmits).
+func (s *Service) autoJoinMatchingOrgs(ctx context.Context, user *models.User) {
+	if !emailAdmits(user) {
+		return
+	}
+
+	userUID, userEmail := user.UID, user.Email
+
 	params, err := s.db.ListOrgParametersByKey(ctx, "registration.email_pattern")
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to list org email patterns", "error", err)
@@ -4391,7 +4405,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, cal
 	}
 
 	// Auto-join matching orgs for new users
-	s.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
+	s.autoJoinMatchingOrgs(ctx, user)
 
 	// Get the actual membership role (might differ if already existed)
 	membership, err := s.db.GetMemberByUserAndOrg(ctx, user.UID, matchedOrg.UID)

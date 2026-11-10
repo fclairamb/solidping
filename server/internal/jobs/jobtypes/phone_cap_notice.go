@@ -141,6 +141,13 @@ func enqueueCapNotice(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, orgUID string, admin *models.User,
 	data map[string]any,
 ) {
+	if !email.ValidAddress(admin.Email) {
+		log.WarnContext(ctx, "monthly cap notice: skipping an admin with an invalid email address",
+			"orgUID", orgUID, "recipient", email.RedactAddress(admin.Email))
+
+		return
+	}
+
 	loc := recipient.ForUser(admin)
 
 	raw, err := json.Marshal(EmailJobConfig{

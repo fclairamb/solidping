@@ -11,6 +11,13 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
+func testConfig(values map[string]any) *Config {
+	cfg := &Config{}
+	_ = cfg.FromMap(values)
+
+	return cfg
+}
+
 func runScript(t *testing.T, script string, config map[string]any) *checkerdef.Result {
 	t.Helper()
 

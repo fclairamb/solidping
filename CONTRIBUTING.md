@@ -78,7 +78,7 @@ for the full rule and why.
 ## Docs & wiki
 
 [`web/docs/`](web/docs/) is the published documentation site
-(docs.solidping.io); [`wiki/`](wiki/) is internal engineering notes. Competitor
+(solidping.io/docs); [`wiki/`](wiki/) is internal engineering notes. Competitor
 comparisons never go in `web/docs/` — they belong in `wiki/competitors/`. The
 only competitor-facing pages `web/docs/` carries are the `migrate-from-*`
 import guides.

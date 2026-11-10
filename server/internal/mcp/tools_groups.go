@@ -31,11 +31,13 @@ func checkGroupOutputProps() map[string]any {
 func listCheckGroupsDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolListCheckGroups,
-		Description: "List all check groups for the organization. Check groups bundle related " +
-			"checks together for shared incident handling and dashboard organization, and " +
-			"each entry carries its slug, rolled-up status and check count. " +
-			"Takes no parameters and returns every group in one unpaginated response. " +
-			"Read-only: works with mcp:read tokens.",
+		Description: "List every check group of the organization in one unpaginated response: " +
+			"slug, rolled-up status and check count per group. A group bundles related checks for " +
+			"shared incident handling and dashboard layout. Use it to find the checkGroupUid that " +
+			"create_check and update_check take, or the group a status page resource pins; use " +
+			"list_checks with checkGroupUid for the checks inside a group, and list_check_types for " +
+			"the kinds of check you can create. Groups are created and edited in the dashboard, not " +
+			"through MCP. Read-only: works with mcp:read tokens.",
 		InputSchema:  objectSchema(map[string]any{}, nil),
 		OutputSchema: dataOutputSchema("Check groups on this page.", checkGroupOutputProps()),
 		Annotations:  readOnlyAnnotations("List check groups"),

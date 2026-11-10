@@ -29,6 +29,8 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+
+	"github.com/fclairamb/solidping/server/internal/rotatelog"
 )
 
 const (
@@ -84,8 +86,8 @@ func main() {
 func parseFlags() (config, error) {
 	var procs stringList
 	logDir := flag.String("log-dir", "", "directory for size-rotated log files; empty disables file logging")
-	logMaxSize := flag.Int64("log-max-size", defaultLogMaxSize, "max active log file size in bytes before rotation")
-	logBackups := flag.Int("log-backups", defaultLogBackups, "rotated backup files to keep per log")
+	logMaxSize := flag.Int64("log-max-size", rotatelog.DefaultMaxSize, "max active log file size in bytes before rotation")
+	logBackups := flag.Int("log-backups", rotatelog.DefaultBackups, "rotated backup files to keep per log")
 	flag.Var(&procs, "proc", "auxiliary process to supervise, as name:dir:command (repeatable)")
 	flag.Parse()
 

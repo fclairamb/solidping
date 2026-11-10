@@ -94,6 +94,10 @@
     "allGreen": "Todos los sistemas operativos",
     "allGreenSub_one": "{{count}} comprobación monitoreada, {{availability}}% de disponibilidad en 24h",
     "allGreenSub_other": "{{count}} comprobaciones monitoreadas, {{availability}}% de disponibilidad en 24h",
+    "allGreenSub_7d_one": "{{count}} comprobación monitoreada, {{availability}}% de disponibilidad en 7 días",
+    "allGreenSub_7d_other": "{{count}} comprobaciones monitoreadas, {{availability}}% de disponibilidad en 7 días",
+    "allGreenSub_30d_one": "{{count}} comprobación monitoreada, {{availability}}% de disponibilidad en 30 días",
+    "allGreenSub_30d_other": "{{count}} comprobaciones monitoreadas, {{availability}}% de disponibilidad en 30 días",
     "allGreenSubNoData_one": "{{count}} comprobación monitoreada, aún sin datos de disponibilidad",
     "allGreenSubNoData_other": "{{count}} comprobaciones monitoreadas, aún sin datos de disponibilidad",
     "issues": "Problemas detectados",
@@ -104,6 +108,8 @@
     "warning": "Algunas comprobaciones degradadas",
     "warningSub": "Tiempos de espera detectados en {{count}} comprobaciones",
     "slaOperational": "SLA de 24 h operativo",
+    "slaOperational_7d": "SLA de 7 días operativo",
+    "slaOperational_30d": "SLA de 30 días operativo",
     "activeOutage": "Interrupción activa",
     "degradedPerformance": "Rendimiento degradado"
   },
@@ -122,7 +128,11 @@
     },
     "availabilityNoDataSub": "Sin datos aún",
     "availability": "Disponibilidad 24 h",
+    "availability_7d": "Disponibilidad 7 días",
+    "availability_30d": "Disponibilidad 30 días",
     "availabilitySub": "Últimas 24 h, todos los checks",
+    "availabilitySub_7d": "Últimos 7 días, todos los checks",
+    "availabilitySub_30d": "Últimos 30 días, todos los checks",
     "totalEndpoints": "{{count}} endpoints en total",
     "badgeNeedsAction": "Requiere acción"
   },
@@ -148,5 +158,18 @@
   "errors": {
     "section": "Error al cargar.",
     "retry": "Reintentar"
+  },
+  "githubStar": {
+    "title": "¿Le gusta SolidPing?",
+    "body": "Gracias por usar SolidPing. Si le resulta útil, una estrella en GitHub ayuda a que otras personas lo encuentren.",
+    "star": "Dar una estrella en GitHub",
+    "later": "Ahora no",
+    "close": "Cerrar"
+  },
+  "window": {
+    "label": "Periodo de disponibilidad",
+    "24h": "24 h",
+    "7d": "7 días",
+    "30d": "30 días"
   }
 }

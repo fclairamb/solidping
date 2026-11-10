@@ -16,6 +16,8 @@ func main() {
 	app := &clilib.Command{
 		Name:  "sp",
 		Usage: "solidping CLI - manage and monitor solidping instances",
+		// Static in urfave/cli, so built through the env helper at construction.
+		Description: cli.StarPromptText(),
 		// Not a literal: the release workflow stamps the real version in with
 		// -X internal/version.Version, and a hardcoded string here made every
 		// one of those ldflags inert — v0.28.0's published binaries and image

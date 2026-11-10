@@ -112,3 +112,22 @@ export function completedStepCount(steps: OnboardingStep[]): number {
 export function allStepsComplete(steps: OnboardingStep[]): boolean {
   return steps.length > 0 && steps.every((step) => step.done);
 }
+
+export interface ChecklistVisibilityInput {
+  totalChecks: number;
+  dismissalLoaded: boolean;
+  dismissed: boolean;
+  manuallyDismissed: boolean;
+  allSet: boolean;
+}
+
+/**
+ * Whether the getting-started checklist renders. Shared with the GitHub star
+ * prompt so the two cards are never on screen together.
+ */
+export function isChecklistVisible(input: ChecklistVisibilityInput): boolean {
+  const { totalChecks, dismissalLoaded, dismissed, manuallyDismissed, allSet } = input;
+  if (totalChecks < 1 || !dismissalLoaded || manuallyDismissed) return false;
+  if (dismissed && !allSet) return false;
+  return true;
+}

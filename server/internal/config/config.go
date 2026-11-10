@@ -1174,6 +1174,9 @@ func (c *Config) CustomDomainCNAMEMode() domainverify.Mode {
 	return mode
 }
 
+// DefaultEmailMaxConcurrentSends is the default process-wide SMTP send concurrency.
+const DefaultEmailMaxConcurrentSends = 2
+
 // EmailConfig contains SMTP email configuration.
 type EmailConfig struct {
 	Host               string `koanf:"host"`               // SMTP server hostname
@@ -1196,6 +1199,11 @@ type EmailConfig struct {
 	// changed, registration, invitation, subscriber confirm) never carries it.
 	// See email.SupportReplyable and spec 2026-08-22-02.
 	ReplyTo string `koanf:"replyto"`
+	// MaxConcurrentSends bounds the SMTP connections opened at once, process
+	// wide (config email.max_concurrent_sends, env SP_EMAIL_MAX_CONCURRENT_SENDS).
+	// Default 2; a weekly report batch otherwise dials dozens of connections at
+	// once and the server drops them.
+	MaxConcurrentSends int `koanf:"max_concurrent_sends"`
 }
 
 // FileStorageConfig controls where File blobs are persisted. The bytes live
@@ -1225,6 +1233,10 @@ type AppConfig struct {
 	// Never read directly from config — call ComputeBugReportEnabled.
 	EnableBugReport bool            `koanf:"-"`
 	GitHub          AppGitHubConfig `koanf:"github"`
+	// StarPrompt enables every "star us on GitHub" nudge: the dashboard
+	// sidebar link and one-time prompt, the startup log line and the CLI
+	// lines. Single-word leaf so it is reachable as SP_APP_STARPROMPT.
+	StarPrompt bool `koanf:"starprompt"`
 	// FeedbackMaxStorageBytes caps the total bytes of live feedback-report
 	// screenshots (files.Service, filestorage.GroupTypeReports) an org may
 	// have stored at once (spec 2026-09-25-26). The anonymous POST
@@ -2311,6 +2323,8 @@ func Load() (*Config, error) {
 			Port:     587,
 			Protocol: "starttls",
 			Enabled:  false,
+
+			MaxConcurrentSends: DefaultEmailMaxConcurrentSends,
 		},
 		Aggregation: AggregationConfig{
 			RetentionRaw:  24,
@@ -2343,6 +2357,7 @@ func Load() (*Config, error) {
 			// No token and no repo: the in-app bug report is off unless the
 			// operator sets both SP_APP_GITHUB_ISSUES_TOKEN and SP_APP_GITHUB_REPO.
 			GitHub:                         AppGitHubConfig{},
+			StarPrompt:                     true,
 			FeedbackMaxStorageBytes:        DefaultFeedbackMaxStorageBytes,
 			FeedbackAnonScreenshotsPerHour: DefaultFeedbackAnonScreenshotsPerHour,
 			FeedbackRetentionDays:          DefaultFeedbackRetentionDays,
@@ -2548,6 +2563,7 @@ func Load() (*Config, error) {
 	applySMSEnv(&cfg.SMS)
 	applyVoiceEnv(&cfg.Voice)
 	applyJobsEnv(&cfg.Jobs)
+	applyEmailEnv(&cfg.Email)
 	applyServerEnv(&cfg.Server)
 	applySchedulingEnv(&cfg.Server.Scheduling)
 	applyWorkerPoolEnv(&cfg)
@@ -2784,6 +2800,16 @@ func applyPasswordHashingEnv(cfg *PasswordConfig) {
 // jobs.stuck.timeout / jobs.reaper.interval and miss the snake_case koanf tags
 // ("stuck_timeout", "reaper_interval"). Reading them here keeps the reaper
 // timeout/interval env-configurable per project_koanf_env_quirk.
+// applyEmailEnv reads SP_EMAIL_MAX_CONCURRENT_SENDS (koanf's env loader cannot
+// reach the snake_case tag).
+func applyEmailEnv(cfg *EmailConfig) {
+	if v := os.Getenv("SP_EMAIL_MAX_CONCURRENT_SENDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.MaxConcurrentSends = n
+		}
+	}
+}
+
 func applyJobsEnv(cfg *JobsConfig) {
 	if v := os.Getenv("SP_JOBS_STUCK_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {

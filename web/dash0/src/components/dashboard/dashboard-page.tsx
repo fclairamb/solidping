@@ -24,12 +24,12 @@ import {
   useChecks,
   useEvents,
   useIncidents,
-  useResults,
+  useOrgAvailabilityBuckets,
   type Check,
   type CheckStats,
   type Event,
   type IncidentDetail,
-  type OrgResult,
+  type OrgAvailabilityBucketsResponse,
 } from "@/api/hooks";
 import {
   effectiveStatus,
@@ -47,6 +47,12 @@ import {
 } from "@/lib/incident-grouping";
 import { formatIssuesSubtitle } from "@/lib/issues-banner";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  DASHBOARD_WINDOWS,
+  dashboardWindowOrDefault,
+  type DashboardWindow,
+} from "@/lib/preferences-sync";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
   CHECKS_LIST_POLL_MS,
   stretchWhileLive,
@@ -68,6 +74,7 @@ import { EventLogTable } from "@/components/dashboard/event-log-table";
 import { MyOnCallWidget } from "@/components/dashboard/my-on-call";
 import { EmptyStateOnboarding } from "@/components/dashboard/empty-state-onboarding";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
+import { GitHubStarPrompt } from "@/components/dashboard/github-star-prompt";
 import { KpiTile } from "@/components/shared/kpi-tile";
 import { PageHeader } from "@/components/shared/page-header";
 import { statusStyle } from "@/lib/status-style";
@@ -95,9 +102,30 @@ const EMPTY_CHECK_STATS: CheckStats = {
   down: 0,
   hardDown: 0,
   availability24h: null,
+  availability7d: null,
+  availability30d: null,
+  oldestEnabledCheckCreatedAt: null,
 };
 // Hours rendered by each row's 24h uptime strip.
 const UPTIME_HOURS = 24;
+
+// The stats field holding the availability over `period`.
+function availabilityForWindow(stats: CheckStats, period: DashboardWindow): number | null {
+  switch (period) {
+    case "7d":
+      return stats.availability7d ?? null;
+    case "30d":
+      return stats.availability30d ?? null;
+    default:
+      return stats.availability24h;
+  }
+}
+
+// The i18next context of a window's strings: the 24h ones are the base keys,
+// the others carry a `_7d` / `_30d` suffix.
+function windowContext(period: DashboardWindow): string | undefined {
+  return period === "24h" ? undefined : period;
+}
 
 interface OrgDashboardPageProps {
   org: string;
@@ -127,60 +155,25 @@ interface CheckUptime {
   latestDurationMs?: number;
 }
 
-// Group hourly OrgResults by checkUid into UPTIME_HOURS aligned hourly buckets
-// (oldest → newest), plus the most recent bucket's latency. One pass over the
-// single aggregated results query — no per-check work that scales with fleet.
-function groupResultsByCheck(
-  results: OrgResult[],
-  now: number,
+// Maps the server's bucketed availability (one DTO per check, oldest → newest)
+// onto the strip's cells, plus the most recent cell's latency.
+function bucketsToUptime(
+  data: OrgAvailabilityBucketsResponse["data"] | undefined,
 ): Record<string, CheckUptime> {
-  const hourMs = 60 * 60 * 1000;
-  // Align the newest bucket to the current hour start so cells stay stable.
-  const newestStart = Math.floor(now / hourMs) * hourMs;
-  const slotForStart = (iso?: string): number => {
-    if (!iso) return -1;
-    const t = new Date(iso).getTime();
-    if (Number.isNaN(t)) return -1;
-    const slot = Math.floor((t - newestStart) / hourMs) + (UPTIME_HOURS - 1);
-    return slot >= 0 && slot < UPTIME_HOURS ? slot : -1;
-  };
-
-  const byCheck: Record<string, OrgResult[]> = {};
-  for (const r of results) {
-    if (!r.checkUid) continue;
-    (byCheck[r.checkUid] ||= []).push(r);
-  }
-
   const out: Record<string, CheckUptime> = {};
-  for (const [checkUid, rs] of Object.entries(byCheck)) {
-    const cells: (OrgResult | undefined)[] = Array.from(
-      { length: UPTIME_HOURS },
-      () => undefined,
-    );
-    for (const r of rs) {
-      const slot = slotForStart(r.periodStart);
-      if (slot >= 0) cells[slot] = r;
-    }
-    const buckets: UptimeBucket[] = cells.map((cell, i) => ({
-      periodStart:
-        cell?.periodStart ??
-        new Date(newestStart - (UPTIME_HOURS - 1 - i) * hourMs).toISOString(),
-      availabilityPct: cell?.availabilityPct,
-      durationMs: cell?.durationMs,
-      // Carried so the strip can apply the shared small-bucket guard (one failed
-      // sample is never red) instead of classifying on the percentage alone.
-      totalChecks: cell?.totalChecks,
-      successfulChecks: cell?.successfulChecks,
-    }));
-    // Latest response time = durationMs of the most recent bucket that has one.
-    let latestDurationMs: number | undefined;
-    for (let i = buckets.length - 1; i >= 0; i--) {
-      if (buckets[i].durationMs !== undefined) {
-        latestDurationMs = buckets[i].durationMs;
-        break;
-      }
-    }
-    out[checkUid] = { buckets, latestDurationMs };
+  for (const [checkUid, entry] of Object.entries(data ?? {})) {
+    out[checkUid] = {
+      buckets: entry.buckets.map((b) => ({
+        periodStart: b.periodStart,
+        availabilityPct: b.availabilityPct ?? undefined,
+        durationMs: b.avgDurationMs,
+        // Carried so the strip can apply the shared small-bucket guard (one failed
+        // sample is never red) instead of classifying on the percentage alone.
+        totalChecks: b.totalChecks,
+        successfulChecks: b.successfulChecks,
+      })),
+      latestDurationMs: entry.latestDurationMs,
+    };
   }
   return out;
 }
@@ -188,7 +181,18 @@ function groupResultsByCheck(
 export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const { t } = useTranslation("dashboard");
   const { t: tNav } = useTranslation("nav");
-  const { organizations } = useAuth();
+  const { organizations, user, updatePreferences } = useAuth();
+  // The window of the availability tile and banner: the user's saved choice
+  // (users.preferences.dashboardWindow, spec 2026-11-09-02), 24h by default.
+  const availabilityWindow = dashboardWindowOrDefault(user?.preferences?.dashboardWindow);
+  const changeAvailabilityWindow = (next: DashboardWindow) => {
+    // Best effort: the choice applies at once, a failed save only means the
+    // next page load starts from the previous one.
+    updatePreferences({ dashboardWindow: next }).catch(() => {});
+  };
+  // Assume the checklist is up until it says otherwise, so the star prompt
+  // never flashes in before the checklist has decided.
+  const [onboardingVisible, setOnboardingVisible] = useState(true);
   const orgName = organizations.find((o) => o.slug === org)?.name || org;
   // Collection subscriptions: the dashboard shows org-wide check membership,
   // status/results (via the `checks` scope), incidents, and the activity
@@ -221,24 +225,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     hideSuppressed: true,
     refetchInterval: stretchWhileLive(INCIDENT_POLL_MS, incidentsLive),
   });
-  const since24h = useMemo(
-    () => new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    [],
-  );
-  // One aggregated hourly query feeds every glance-card uptime strip — grouped
-  // client-side by checkUid, so the card costs a single HTTP call regardless
-  // of fleet size. The 24h availability KPI does NOT ride this query (or any
-  // client-side results query): hour rows only exist once raw rows age past
-  // retention_raw, so the newest hour row typically lags ~24h behind and the
-  // trailing day lives almost entirely in raw rows the dashboard must never
-  // pull fleet-wide. It comes from the server-computed
-  // stats.availability24h instead (see statsQuery below).
-  const hourlyResultsQuery = useResults(org, {
-    periodType: "hour",
-    periodStartAfter: since24h,
-    size: 1000,
-    refetchInterval: stretchWhileLive(RESULT_POLL_MS, checksLive),
-  });
   const eventsQuery = useEvents(org, {
     size: 8,
     refetchInterval: stretchWhileLive(EVENT_POLL_MS, eventsLive),
@@ -255,10 +241,40 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkTick]);
 
-  const checks = checksQuery.data || [];
+  const checks = useMemo(() => checksQuery.data ?? [], [checksQuery.data]);
   const incidents = incidentsQuery.data?.data || [];
-  const hourlyResults = hourlyResultsQuery.data?.data || [];
   const events = eventsQuery.data?.data || [];
+
+  // The glance strips ride their OWN request, enabled once the checks list has
+  // landed, so they never sit on the page's critical path. Server-side bucketed
+  // availability: hour rows only exist once raw rows age past retention_raw, so
+  // the trailing day lives in raw rows the browser must never pull fleet-wide.
+  // The window is the last UPTIME_HOURS whole hours (current hour included), so
+  // the server returns exactly that many hour-aligned cells.
+  const tickNow = useTick(1000);
+  const glanceChecks = useMemo(() => orderChecksForGlance(checks), [checks]);
+  const glanceUids = useMemo(
+    () => glanceChecks.map((c) => c.uid),
+    [glanceChecks],
+  );
+  const hourStart = Math.floor(tickNow / 3_600_000) * 3_600_000;
+  const stripFrom = useMemo(
+    () => new Date(hourStart - (UPTIME_HOURS - 1) * 3_600_000).toISOString(),
+    [hourStart],
+  );
+  const stripTo = useMemo(
+    () => new Date(hourStart + 3_600_000).toISOString(),
+    [hourStart],
+  );
+  const hourlyResultsQuery = useOrgAvailabilityBuckets(
+    org,
+    glanceUids,
+    { from: stripFrom, to: stripTo, bucketSeconds: 3600 },
+    {
+      enabled: checksQuery.isSuccess,
+      refetchInterval: stretchWhileLive(RESULT_POLL_MS, checksLive),
+    },
+  );
 
   const isInitialLoading =
     checksQuery.isPending ||
@@ -284,14 +300,14 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   // page length — the query below caps at `size: 5` for the "needs
   // attention" list, so `incidents.length` alone silently truncates at 5.
   const incidentsCount = incidentsQuery.data?.total ?? incidents.length;
-  // Server-computed (spec 2026-08-26-09) — see CheckStats.availability24h.
-  const availabilityPct = stats.availability24h;
+  // Server-computed (specs 2026-08-26-09, 2026-11-09-02): one field per
+  // window, all in the same stats response, so switching is instant.
+  const availabilityPct = availabilityForWindow(stats, availabilityWindow);
   const availabilityTierValue = availabilityTier(availabilityPct);
 
-  const glanceChecks = useMemo(() => orderChecksForGlance(checks), [checks]);
   const uptimeByCheck = useMemo(
-    () => groupResultsByCheck(hourlyResults, Date.now()),
-    [hourlyResults],
+    () => bucketsToUptime(hourlyResultsQuery.data?.data),
+    [hourlyResultsQuery.data],
   );
 
   const refreshAll = () => {
@@ -316,7 +332,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     hourlyResultsQuery.dataUpdatedAt || 0,
     eventsQuery.dataUpdatedAt || 0,
   );
-  const tickNow = useTick(1000);
   const updatedLabel =
     latestUpdate > 0
       ? tickNow - latestUpdate < 5_000
@@ -339,8 +354,18 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
           </>
         }
         actions={
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
             {updatedLabel ? <span>{updatedLabel}</span> : null}
+            <SegmentedControl<DashboardWindow>
+              value={availabilityWindow}
+              onValueChange={changeAvailabilityWindow}
+              aria-label={t("window.label")}
+              options={DASHBOARD_WINDOWS.map((value) => ({
+                value,
+                label: t(`window.${value}`),
+                testId: `dashboard-window-${value}`,
+              }))}
+            />
             <Button
               variant="outline"
               size="icon"
@@ -371,6 +396,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             incidentsCount={incidentsCount}
             checksCount={totalChecksCount}
             availabilityPct={availabilityPct}
+            availabilityWindow={availabilityWindow}
           />
 
           {/* Two columns on a phone: four full-width tiles pushed everything
@@ -406,7 +432,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
               data-testid="kpi-tile-availability"
             >
               <KpiTile
-                label={t("kpi.availability")}
+                label={t("kpi.availability", { context: windowContext(availabilityWindow) })}
                 value={
                   availabilityPct === null
                     ? "—"
@@ -428,7 +454,9 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 sub={
                   availabilityPct === null
                     ? t("kpi.availabilityNoDataSub")
-                    : t("kpi.availabilitySub")
+                    : t("kpi.availabilitySub", {
+                        context: windowContext(availabilityWindow),
+                      })
                 }
               />
             </Link>
@@ -476,7 +504,12 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
 
           {/* Below the live status: the checklist is a one-time setup aid and
               must not push what is broken right now off the first screen. */}
-          <OnboardingChecklist org={org} totalChecks={totalChecksCount} />
+          <OnboardingChecklist
+            org={org}
+            totalChecks={totalChecksCount}
+            onVisibleChange={setOnboardingVisible}
+          />
+          <GitHubStarPrompt stats={stats} onboardingVisible={onboardingVisible} />
 
           {incidentsCount > 0 ? (
             <ActiveIncidentsList
@@ -536,6 +569,7 @@ interface OverallStatusBannerProps {
   incidentsCount: number;
   checksCount: number;
   availabilityPct: number | null;
+  availabilityWindow: DashboardWindow;
 }
 
 // Wraps the banner's content in the TanStack Router `<Link>` matching its
@@ -593,6 +627,7 @@ function OverallStatusBanner({
   incidentsCount,
   checksCount,
   availabilityPct,
+  availabilityWindow,
 }: OverallStatusBannerProps) {
   const { t } = useTranslation("dashboard");
 
@@ -615,6 +650,7 @@ function OverallStatusBanner({
                   : t("banner.allGreenSub", {
                       count: checksCount,
                       availability: availabilityPct.toFixed(2),
+                      context: windowContext(availabilityWindow),
                     })}
               </span>
             </div>
@@ -625,7 +661,9 @@ function OverallStatusBanner({
           {availabilityTier(availabilityPct) === "operational" ? (
             <Badge variant="success" className="gap-1.5">
               <CheckCircle className="h-3.5 w-3.5" />
-              {t("banner.slaOperational")}
+              {t("banner.slaOperational", {
+                context: windowContext(availabilityWindow),
+              })}
             </Badge>
           ) : null}
         </div>

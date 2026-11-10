@@ -243,8 +243,8 @@ func (h *Handler) toolProbe(ctx context.Context, orgSlug string, args map[string
 
 // manageDescriptionSuffix closes every manage_* description: the tool is
 // annotated for its worst action.
-const manageDescriptionSuffix = " Annotated destructive and non-idempotent because delete is one of " +
-	"its actions. Every action requires the mcp scope (mcp:read tokens are refused) and at least " +
+const manageDescriptionSuffix = " Annotated destructive and non-idempotent because one of its actions " +
+	"removes data. Every action requires the mcp scope (mcp:read tokens are refused) and at least " +
 	"the user role in the organization."
 
 func manageStatusPageSectionDef() ToolDefinition {
@@ -254,8 +254,8 @@ func manageStatusPageSectionDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolManageStatusPageSection,
 		Description: "Create, update or delete a section of a status page. action=create adds a " +
-			"section (name and slug required) and returns it. action=update edits one " +
-			"(sectionIdentifier required; omitted fields are kept) and returns it. action=delete " +
+			"section (name and slug required); action=update edits one (sectionIdentifier required; " +
+			"omitted fields are kept); both return the section. action=delete " +
 			"permanently removes a section and every resource pinned in it, returning {deleted, " +
 			"identifier}. Read a page's sections with get_status_page include=sections." +
 			manageDescriptionSuffix,

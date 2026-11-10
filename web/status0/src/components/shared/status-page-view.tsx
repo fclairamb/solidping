@@ -172,7 +172,10 @@ function ResourceCard({
       data-resource-affected={isAffected ? "true" : "false"}
     >
       {/* Header row */}
-      <div className="flex items-center justify-between gap-3">
+      {/* Wraps on narrow screens: the percentage and status badge are
+          shrink-0, so on a phone they used to squeeze the name down to
+          "Application ...". The name keeps its own line instead. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <div className="flex items-center gap-3 min-w-0">
           <Tooltip>
             <TooltipTrigger>
@@ -185,7 +188,9 @@ function ResourceCard({
               {t(getStatusLabelKey(status))}
             </TooltipContent>
           </Tooltip>
-          <span className="text-sm font-medium truncate">{name}</span>
+          <span className="text-sm font-medium break-words sm:truncate">
+            {name}
+          </span>
           {resource.check?.type && (
             // Monospace + uppercase, matching how dash0's check list renders a
             // protocol tag — it reads as machine metadata, not a status.

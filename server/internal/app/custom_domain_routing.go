@@ -384,6 +384,10 @@ func (s *Server) serveCustomHost(writer http.ResponseWriter, req *http.Request, 
 	reqPath := req.URL.Path
 
 	switch {
+	case reqPath == "/robots.txt":
+		// Not the status SPA: a custom domain is never solidping.io, so this
+		// is the Disallow-all robots.txt (see serveRobotsTxt).
+		_ = s.serveRobotsTxt(writer, req)
 	case reqPath == routeLegacyStatus0 || strings.HasPrefix(reqPath, routeLegacyStatus0+"/"):
 		// The retired prefix, on the customer's own host: a permanent redirect
 		// to the same path under /s, on the SAME host, query preserved. There

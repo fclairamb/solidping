@@ -40,11 +40,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// helperEnvFor is the environment of a helper process in the given mode.
-func helperEnvFor(dir, mode string) []string {
-	return append(baseEnv(dir), helperEnv+"="+mode)
-}
-
 //nolint:forbidigo // the helper process talks over stdout on purpose
 func runHelper(mode string) int {
 	switch {

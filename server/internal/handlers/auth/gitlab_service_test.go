@@ -266,7 +266,7 @@ func TestGitLabHandleCallback(t *testing.T) {
 		require.NoError(t, svc.db.SetOrgParameter(
 			ctx, org.UID, "registration.email_pattern", `@example\.com$`, false))
 
-		secondUser := models.NewUser("second-gl@example.com")
+		secondUser := newVerifiedUser("second-gl@example.com")
 		require.NoError(t, svc.db.CreateUser(ctx, secondUser))
 
 		member, pending, err := svc.authService.JoinOrgViaLogin(ctx, org, secondUser)

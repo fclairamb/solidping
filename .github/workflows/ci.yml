@@ -652,6 +652,235 @@ jobs:
           path: solidping
           retention-days: 1
 
+  # The Windows service (spec 2026-11-07-04) only builds on Windows, and the
+  # Linux lint/test jobs never compile it. This job runs its tests, then a real
+  # install / start / health / stop / uninstall cycle: GitHub's Windows runners
+  # are administrators, which `service install` needs.
+  windows-service:
+    name: Windows service
+    runs-on: windows-2025
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: server
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Test
+        run: go test -run 'Service' .
+
+      - name: Install, start, stop and uninstall the service
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The service runs the binary as LocalSystem: install refuses one
+          # that a non-administrator could replace, so it goes where the docs
+          # put it. The data folder's parent must be safe too.
+          $bin = Join-Path $env:ProgramFiles 'SolidPing'
+          New-Item -ItemType Directory -Force $bin | Out-Null
+          $exe = Join-Path $bin 'solidping.exe'
+          $dir = Join-Path $env:ProgramData 'SolidPing-ci'
+          go build -o $exe .
+          if ($LASTEXITCODE) { exit 1 }
+
+          & $exe service install --dir $dir
+          if ($LASTEXITCODE) { exit 1 }
+
+          $acl = Get-Acl $dir
+          if (-not $acl.AreAccessRulesProtected) { throw 'data folder inherits the ProgramData ACL' }
+          $who = $acl.Access.IdentityReference.Value
+          $who
+          if ($who | Where-Object { $_ -notin 'NT AUTHORITY\SYSTEM', 'BUILTIN\Administrators' }) {
+            throw 'data folder grants access beyond SYSTEM and Administrators'
+          }
+
+          & $exe service start
+          if ($LASTEXITCODE) { exit 1 }
+
+          $healthy = $false
+          foreach ($i in 1..60) {
+            try {
+              Invoke-RestMethod http://localhost:4000/api/mgmt/health | Out-Null
+              $healthy = $true
+              break
+            } catch {
+              Start-Sleep -Seconds 2
+            }
+          }
+
+          & $exe service stop
+          if ($LASTEXITCODE) { exit 1 }
+
+          Get-Content (Join-Path $dir 'logs\solidping.log') -Tail 40
+          if (-not $healthy) { throw 'the service never answered /api/mgmt/health' }
+          if (-not (Test-Path (Join-Path $dir 'solidping.db'))) { throw 'no SQLite database in the data folder' }
+          if (-not (Select-String -Quiet -Path (Join-Path $dir 'logs\solidping.log') -Pattern 'Configuration loaded')) {
+            throw 'the service log has no startup line'
+          }
+
+          & $exe service uninstall
+          if ($LASTEXITCODE) { exit 1 }
+          if (Get-Service SolidPing -ErrorAction SilentlyContinue) { throw 'service still registered' }
+
+          # Reinstalling reuses the folder the first install and the service
+          # (as LocalSystem) filled.
+          & $exe service install --dir $dir
+          if ($LASTEXITCODE) { throw 'reinstall refused the folder of the previous install' }
+          & $exe service uninstall
+          if ($LASTEXITCODE) { exit 1 }
+
+          # A folder created beforehand (any local user can, under ProgramData)
+          # is refused, and no service is registered.
+          $precreated = Join-Path $env:ProgramData 'solidping-precreated'
+          New-Item -ItemType Directory $precreated | Out-Null
+          $PSNativeCommandUseErrorActionPreference = $false
+          & $exe service install --dir $precreated
+          if (-not $LASTEXITCODE) { throw 'install accepted a pre-existing folder' }
+          if (Get-Service SolidPing -ErrorAction SilentlyContinue) { throw 'service registered on a refused folder' }
+
+          # A binary in a folder created under C:\, which every local user
+          # can modify, is refused.
+          $open = Join-Path $env:SystemDrive 'solidping-ci'
+          New-Item -ItemType Directory -Force $open | Out-Null
+          Copy-Item $exe $open
+          & (Join-Path $open 'solidping.exe') service install --dir (Join-Path $env:ProgramData 'SolidPing-open')
+          if (-not $LASTEXITCODE) { throw 'install accepted a binary every user can replace' }
+          if (Get-Service SolidPing -ErrorAction SilentlyContinue) { throw 'service registered on a refused binary' }
+          # The runner exits with $LASTEXITCODE, still the expected failure's.
+          $global:LASTEXITCODE = 0
+
+  macos-service:
+    name: macOS service
+    runs-on: macos-26
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
+    defaults:
+      run:
+        working-directory: server
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Test
+        run: go test -run 'Service|Launchd' .
+
+      # The daemon path (sudo): the plist in /Library/LaunchDaemons, a root-only
+      # data folder, launchd starting and stopping the server.
+      - name: Install, start, stop and uninstall the service
+        run: |
+          set -euo pipefail
+          # The daemon runs as root: install refuses a binary or a data folder
+          # parent that the runner user owns, such as anything in $RUNNER_TEMP.
+          go build -o "$RUNNER_TEMP/solidping" .
+          if sudo "$RUNNER_TEMP/solidping" service install; then echo 'install accepted a user-owned binary'; exit 1; fi
+          sudo install -d -o root -g wheel -m 0755 /Library/SolidPingCI
+          exe=/Library/SolidPingCI/solidping
+          sudo install -o root -g wheel -m 0755 "$RUNNER_TEMP/solidping" "$exe"
+          dir="/Library/Application Support/SolidPing CI"
+          if sudo "$exe" service install --dir "$RUNNER_TEMP/solidping data"; then echo 'install accepted a user-owned parent'; exit 1; fi
+
+          sudo "$exe" service install --dir "$dir"
+          sudo plutil -lint /Library/LaunchDaemons/io.solidping.plist
+          [[ "$(sudo stat -f '%Su %Lp' "$dir")" == "root 700" ]] || { sudo stat -f '%Su %Lp' "$dir"; echo 'data folder is not root-only'; exit 1; }
+
+          sudo "$exe" service start
+
+          healthy=false
+          for _ in $(seq 1 60); do
+            if curl -sf http://localhost:4000/api/mgmt/health; then healthy=true; break; fi
+            sleep 2
+          done
+
+          sudo "$exe" service stop
+          if sudo launchctl print system/io.solidping >/dev/null 2>&1; then echo 'job still loaded after stop'; exit 1; fi
+
+          sudo tail -n 40 "$dir/logs/solidping.log"
+          sudo cat "$dir/logs/launchd.log"
+          [[ "$healthy" == true ]] || { echo 'the service never answered /api/mgmt/health'; exit 1; }
+          sudo test -f "$dir/solidping.db" || { echo 'no SQLite database in the data folder'; exit 1; }
+          sudo grep -q 'Configuration loaded' "$dir/logs/solidping.log" || { echo 'the service log has no startup line'; exit 1; }
+
+          sudo "$exe" service uninstall
+          if sudo test -e /Library/LaunchDaemons/io.solidping.plist; then echo 'plist still installed'; exit 1; fi
+
+  # The system unit path (sudo): a `solidping` system user, a data folder only it
+  # can read, systemd starting and stopping the server under the unit's hardening.
+  linux-service:
+    name: Linux service
+    runs-on: ubuntu-26.04
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
+    defaults:
+      run:
+        working-directory: server
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Test
+        run: go test -run 'Service|Systemd|OthersCanExecute' .
+
+      - name: Install, start, stop and uninstall the service
+        run: |
+          set -euo pipefail
+          # Outside /home/runner, which the service user cannot traverse. The hosted
+          # runner leaves /opt and /usr/local/bin world-writable, which the install
+          # refuses, so close /opt first.
+          sudo chmod go-w /opt
+          exe=/opt/solidping/bin/solidping
+          dir=/var/lib/solidping
+          go build -o "$RUNNER_TEMP/solidping" .
+          # A binary the runner user owns would let it run code as the service.
+          if sudo "$RUNNER_TEMP/solidping" service install; then echo 'install accepted a user-owned binary'; exit 1; fi
+          sudo install -d -o root -m 0755 /opt/solidping /opt/solidping/bin
+          sudo install -o root -m 0755 "$RUNNER_TEMP/solidping" "$exe"
+
+          sudo "$exe" service install
+          sudo systemd-analyze verify /etc/systemd/system/solidping.service
+          [[ "$(systemctl is-enabled solidping)" == enabled ]] || { echo 'unit not enabled'; exit 1; }
+          [[ "$(sudo stat -c '%U %a' "$dir")" == "solidping 700" ]] || { sudo stat -c '%U %a' "$dir"; echo 'data folder is not private to the service user'; exit 1; }
+
+          sudo "$exe" service start
+
+          healthy=false
+          for _ in $(seq 1 60); do
+            if curl -sf http://localhost:4000/api/mgmt/health; then healthy=true; break; fi
+            sleep 2
+          done
+
+          [[ "$(systemctl show solidping -p User --value)" == solidping ]] || { echo 'not running as the solidping user'; exit 1; }
+          sudo "$exe" service stop
+          if systemctl is-active --quiet solidping; then echo 'unit still active after stop'; exit 1; fi
+
+          journal="$(sudo journalctl -u solidping --no-pager)"
+          tail -n 40 <<<"$journal"
+          [[ "$healthy" == true ]] || { echo 'the service never answered /api/mgmt/health'; exit 1; }
+          sudo test -f "$dir/solidping.db" || { echo 'no SQLite database in the data folder'; exit 1; }
+          grep -q 'Configuration loaded' <<<"$journal" || { echo 'the journal has no startup line'; exit 1; }
+
+          sudo "$exe" service uninstall
+          if test -e /etc/systemd/system/solidping.service; then echo 'unit still installed'; exit 1; fi
+
   # Guards for the tag-only release jobs (server-release, cli-release, docker):
   # they prove a release would still package, build its images and
   # cross-compile, on every PR, since those jobs cannot run before a tag exists.
@@ -1227,7 +1456,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-26.04
-    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, release-guards, e2e-tests, upgrade-matrix, upgrade]
+    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, release-guards, windows-service, macos-service, linux-service, e2e-tests, upgrade-matrix, upgrade]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Verify no failures

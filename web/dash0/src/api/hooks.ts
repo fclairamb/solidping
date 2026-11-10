@@ -780,6 +780,11 @@ export interface Event {
    */
   sourceIp?: string;
   userAgent?: string;
+  /**
+   * auth.login_failed only: the name of the org member whose account was
+   * tried. Admin/owner only; absent when the typed email matches no member.
+   */
+  targetUserName?: string;
   checkUid?: string;
   incidentUid?: string;
   payload?: Record<string, unknown>;
@@ -886,6 +891,12 @@ export interface CheckStats {
    * data", never as a fabricated 100.
    */
   availability24h: number | null;
+  /** Same as availability24h over the trailing 7 days. */
+  availability7d: number | null;
+  /** Same as availability24h over the trailing 30 days. */
+  availability30d: number | null;
+  /** Creation time of the oldest enabled check; null when there is none. */
+  oldestEnabledCheckCreatedAt: string | null;
 }
 
 /**
@@ -2108,8 +2119,9 @@ export interface CheckAvailabilityPeriod {
   successfulChecks: number;
   availabilityPct: number | null;
   /**
-   * Received ÷ expected probes over the monitored time, in [0, 1] (spec
-   * 2026-09-25-02). null when nothing was expected; absent on older servers.
+   * Share of the monitored time some region measured, in [0, 1], with no
+   * region multiplier (specs 2026-09-25-02, 2026-11-08-05). null when nothing
+   * was expected; absent on older servers.
    */
   coverage?: number | null;
   /** The part of monitoredSeconds nobody measured — neither up nor down. */
@@ -2165,6 +2177,8 @@ export interface AvailabilityBucket {
   totalChecks: number;
   successfulChecks: number;
   status: "up" | "degraded" | "down" | "noData";
+  /** Mean response time of the cell's probes; absent when none carried one. */
+  avgDurationMs?: number;
 }
 
 export interface CheckAvailabilityBucketsResponse {
@@ -2230,6 +2244,54 @@ export function useCheckAvailabilityBuckets(
       !!checkUid &&
       !!query.from &&
       !!query.to,
+    refetchInterval: options?.refetchInterval,
+  });
+}
+
+export interface OrgAvailabilityBucketsResponse {
+  data: Record<
+    string,
+    { buckets: AvailabilityBucket[]; latestDurationMs?: number }
+  >;
+  bucketSeconds: number;
+  windowStart: string;
+  windowEnd: string;
+}
+
+/**
+ * Bucketed availability for several checks at once (the dashboard glance
+ * strips). Server-side because the trailing day lives in raw rows that the
+ * hour-tier results query never returns.
+ */
+export function useOrgAvailabilityBuckets(
+  org: string,
+  checkUids: string[],
+  query: { from: string; to: string; bucketSeconds: number },
+  options?: { refetchInterval?: number; enabled?: boolean },
+) {
+  const uidKey = checkUids.join(",");
+  return useQuery<OrgAvailabilityBucketsResponse>({
+    queryKey: [
+      "orgAvailabilityBuckets",
+      org,
+      uidKey,
+      query.from,
+      query.to,
+      query.bucketSeconds,
+    ],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        from: query.from,
+        to: query.to,
+        bucket: String(query.bucketSeconds),
+        checks: uidKey,
+      });
+      return apiFetch<OrgAvailabilityBucketsResponse>(
+        `/api/v1/orgs/${org}/availability/buckets?${params.toString()}`,
+      );
+    },
+    enabled:
+      (options?.enabled ?? true) && !!org && checkUids.length > 0 && !!query.from,
     refetchInterval: options?.refetchInterval,
   });
 }
@@ -8729,8 +8791,8 @@ export interface SloStatusRow {
   budgetRemainingSeconds: number;
   excludedMaintenanceSeconds: number;
   /**
-   * Received ÷ expected probes over the elapsed window, in [0, 1] (spec
-   * 2026-09-25-02). A low value means the attainment describes only part of
+   * Share of the elapsed window some region measured, in [0, 1] (specs
+   * 2026-09-25-02, 2026-11-08-05). A low value means the attainment describes only part of
    * the window — the rest was never measured. null/absent when unknown.
    */
   dataCoverage?: number | null;
@@ -9166,6 +9228,9 @@ export function useDeleteUiState(key: string) {
     },
   });
 }
+
+/** User-global ui-state key of the one-time GitHub star prompt. */
+export const GITHUB_STAR_UI_STATE_KEY = "github-star";
 
 /** The ui-state key holding a user's getting-started checklist dismissal. */
 export function onboardingUiStateKey(org: string) {

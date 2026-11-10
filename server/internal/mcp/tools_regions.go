@@ -29,11 +29,11 @@ func regionOutputProps() map[string]any {
 func listRegionsDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolListRegions,
-		Description: "List monitoring regions available to the organization (e.g. eu-west-1, " +
-			"us-east-1). Returns {data: [...]} — each region's slug, label and per-region " +
-			"metadata — plus defaultRegions, the org's default placement set. Use these " +
-			"slugs in the regions array of create_check or update_check. Read-only: works " +
-			"with mcp:read tokens.",
+		Description: "List the monitoring regions this organization can run checks from, and its " +
+			"default placement set. Call it before create_check or update_check to pick the regions " +
+			"array; a check with no regions runs in defaultRegions. Use run_check to execute a check " +
+			"in its regions now, and list_results with region to read one region's history. Takes no " +
+			"parameters. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{}, nil),
 		OutputSchema: objectSchema(map[string]any{
 			schemaKeyData: arrayOfObjectsProp(

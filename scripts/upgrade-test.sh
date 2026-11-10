@@ -40,6 +40,11 @@ matrix() {
     for tag in "${skip_tags[@]}"; do
         tags=$(grep -vxF "$tag" <<<"$tags" || true)
     done
+    # The tag on HEAD is the release being built right now: its image is pushed by this very CI run,
+    # so upgrading from it fails with "not found" (v0.46.0, 2026-11-10) and would be HEAD to HEAD anyway.
+    for tag in $(git -C "$root" tag --points-at HEAD 2>/dev/null); do
+        tags=$(grep -vxF "$tag" <<<"$tags" || true)
+    done
     [[ -n "$tags" ]] || { echo "upgrade-test: no tag (shallow clone? fetch tags first)" >&2; exit 2; }
 
     local picked
