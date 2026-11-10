@@ -24,6 +24,8 @@ Key properties:
   private location are encrypted (with [age](https://age-encryption.org)
   X25519) to your agents' public keys **at write time**. The server cannot
   decrypt them afterwards.
+  To keep the server from ever seeing them, seal them in your browser:
+  [browser-sealed secrets](./browser-sealed-secrets.md).
 
 ## 1. Create a private location
 

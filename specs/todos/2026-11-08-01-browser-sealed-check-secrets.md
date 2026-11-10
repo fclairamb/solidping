@@ -6,8 +6,6 @@ pr: own
 
 # Browser-sealed check secrets for private agents
 
-> Feasibility study. Florent reviews the design and answers the open questions before anything is implemented.
-
 ## Problem
 An org that runs checks on its own private agents still types its check passwords into dash0, and the SolidPing server receives them in plaintext.
 
@@ -216,7 +214,7 @@ Plus a `CHANGELOG.md` entry per `wiki/conventions/changelog.md`, and an update o
 ## Phasing
 1. Recipients endpoint, `sealedSecrets` on the write API, `origin`, the per-check mode and the org setting, dash0 sealing, claim filter, docs. Shippable alone.
 2. Shared region key: region setting, generation in dash0, agent env vars and multi-identity unseal, `region-key:` capability, rotation. Needs an agent release.
-3. Peer re-wrap, `solidping seal` and `solidping agent region-key generate`, `sealedSecrets` in config-as-code.
+3. Peer re-wrap, `solidping seal` and `solidping agent region-key generate`, `sealedSecrets` in config-as-code. Moved to [2026-11-10-03](2026-11-10-03-sealed-secrets-peer-rewrap-and-cli.md).
 
 ## Tests
 - Go, `credentials`: a blob produced by the dash0 sealing code (fixture committed from a dash0 unit test) opens with `UnsealWithIdentity`. Fingerprints computed in the browser equal `RecipientFingerprint`.
