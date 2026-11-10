@@ -63,6 +63,15 @@ What this does NOT mean: a secret you want under version control belongs in a
 `${param:…}` reference (below). The reference is stored verbatim and travels in
 the file; only the value stays out.
 
+A check of a private location can also carry its secrets **sealed** for the
+location's agents: a `sealedSecrets` object (`keys`, `fingerprints`, `ct`), as
+printed by `solidping seal --region @dc1 < secrets.json` (spec 2026-11-10-03).
+Import and apply validate it exactly like the check write API; fingerprints
+that are not the current recipients are an item error with
+`code: SEALING_RECIPIENTS_CHANGED` and the current `recipients`, in the dry run
+and the real run. Such an entry always plans as an update (ciphertexts cannot
+be compared). Export never writes `sealedSecrets`.
+
 ## Validating a file, without a write token
 
 `POST /api/v1/orgs/:org/checks/validate` takes a whole document (JSON or YAML)

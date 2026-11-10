@@ -612,9 +612,18 @@ packages.
    API, `GET /orgs/:org/sealing-recipients`, `origin` on sealed envelopes,
    org setting `security.browser_sealing.mode`, the claim filter on sealed
    fingerprints, and shared region keys (`sealing.region_keys`,
-   `SP_AGENT_REGION_KEYS`, `region-key-<fp>` capability). Peer re-wrap,
-   `solidping seal` and `sealedSecrets` in config-as-code are the follow-up
-   spec 2026-11-10-03. Agent auto-update stays out of scope.
+   `SP_AGENT_REGION_KEYS`, `region-key-<fp>` capability). Spec 2026-11-10-03
+   added the peer re-wrap: `POST/GET /orgs/:org/sealing/rewrap` creates one
+   `rewrap` worker task per flagged check (package `internal/rewraptask`),
+   targeted with `worker_tasks.target_worker_uid` at one live agent that
+   reports the `rewrap` capability and holds a key the blob lists. The agent
+   opens the blob (`UnsealWithIdentities`) and seals it to the recipients the
+   claim carries; the server validates it like a `sealedSecrets` write,
+   swaps it compare-and-set (payload `envelopeSha256`), keeps `origin`, and
+   copies it to the jobs. One task per check keeps a claim under 100 KiB, so
+   nothing is chunked. A task still active after 5 min reads as `failed` /
+   `timed_out`. Also `solidping seal`, `solidping agent region-key generate`
+   and `sealedSecrets` in config-as-code. Agent auto-update stays out of scope.
 
 Open bug: [`2026-07-20-02-private-locations-token-dialog-dirty-rendering`](../../specs/todos/2026-07-20-02-private-locations-token-dialog-dirty-rendering.md)
 — enrollment-token dialog renders fragments outside the dialog on the dev deploy.
