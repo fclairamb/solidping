@@ -28,17 +28,25 @@ Download the latest Windows release from GitHub:
 
 1. Go to the [SolidPing Releases](https://github.com/fclairamb/solidping/releases) page
 2. Download `solidping-windows-amd64.zip`
-3. Extract it — the archive contains a single, already-named `solidping.exe`
+3. Extract it into `C:\Program Files\SolidPing` — the archive contains a single,
+   already-named `solidping.exe`
 
-Or use PowerShell:
+Or use PowerShell, from an administrator prompt:
 
 ```powershell
 # Download the latest release
 Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/solidping-windows-amd64.zip" -OutFile "solidping-windows-amd64.zip"
 
-# Extract it (produces solidping.exe in the current directory)
-Expand-Archive -Path "solidping-windows-amd64.zip" -DestinationPath "."
+# Extract it (produces C:\Program Files\SolidPing\solidping.exe)
+Expand-Archive -Path "solidping-windows-amd64.zip" -DestinationPath "C:\Program Files\SolidPing"
 ```
+
+Put `solidping.exe` in `C:\Program Files\SolidPing` (or another folder only
+administrators can write) if you plan to run it as a [service](#windows-service):
+the service runs it as `LocalSystem`, so anyone who can replace the file gets
+full control of the machine. A folder created directly under `C:\`, such as
+`C:\solidping`, lets every local user change what it holds, and
+`solidping service install` refuses a binary there.
 
 ### Verify the checksum (recommended)
 
@@ -152,7 +160,15 @@ so delete the folder (after saving what you need from it) or pick another one
 with `--dir`, then run `service install` again.
 
 The service runs the `solidping.exe` that installed it. If you move that file,
-run `service uninstall` and `service install` again.
+run `service uninstall` and `service install` again. `service install` refuses
+a `solidping.exe` that another account could replace: the file and every folder
+above it must be owned by `SYSTEM`, Administrators, `TrustedInstaller` or you,
+and none of them may let another account write it (reading and running it is
+fine, as in `C:\Program Files`). It checks the parents of the data folder the
+same way, since whoever can replace `C:\ProgramData\acme` can swap the
+`SolidPing` folder in it for their own. The service checks all of this again
+each time it starts, and if a check fails it writes the reason to the
+Application event log and does not start.
 
 Agent mode works as a service too: set `node.role: agent` in `config.yml`
 (the equivalent of `SP_NODE_ROLE=agent`; see the [Configuration Guide](/configuration)).
