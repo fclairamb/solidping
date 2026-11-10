@@ -843,8 +843,10 @@ jobs:
       - name: Install, start, stop and uninstall the service
         run: |
           set -euo pipefail
-          # Outside /home/runner, which the service user cannot traverse, and not in
-          # /usr/local/bin, which the hosted runner leaves world-writable.
+          # Outside /home/runner, which the service user cannot traverse. The hosted
+          # runner leaves /opt and /usr/local/bin world-writable, which the install
+          # refuses, so close /opt first.
+          sudo chmod go-w /opt
           exe=/opt/solidping/bin/solidping
           dir=/var/lib/solidping
           go build -o "$RUNNER_TEMP/solidping" .
