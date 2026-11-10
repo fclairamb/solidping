@@ -70,6 +70,9 @@ func TestBrowserSealing_Postgres(t *testing.T) {
 		"shared region key sealing":   testSharedRegionKeySealing,
 		"bulk region change refused":  testBulkRegionChangeSkipsBrowserSealed,
 		"reseal checks list":          testResealChecksList,
+		"import sealed secrets":       testImportSealedSecretsStoresBrowserBlob,
+		"import stale fingerprints":   testImportSealedSecretsStaleFingerprintsAreItemErrors,
+		"peer re-wrap":                testStartRewrapClearsNeedsReseal,
 	}
 
 	for name, run := range cases {

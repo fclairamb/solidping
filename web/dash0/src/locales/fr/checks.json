@@ -736,7 +736,7 @@
     },
     "needsReseal": {
       "title": "Les identifiants doivent être re-scellés pour cet emplacement privé",
-      "description": "Cette vérification s'exécute dans un emplacement privé et ses identifiants sont scellés pour un ensemble d'agents différent de ceux actuellement actifs — un agent a été enrôlé ou révoqué depuis leur enregistrement, les agents ne peuvent donc pas les déchiffrer et la vérification échouera. SolidPing ne peut pas les re-sceller lui-même (il ne peut pas les lire non plus) : ressaisissez et enregistrez les identifiants pour corriger cela.",
+      "description": "Cette vérification s'exécute dans un emplacement privé et ses identifiants sont scellés pour un ensemble d'agents différent de ceux actuellement actifs — un agent a été enrôlé ou révoqué depuis leur enregistrement, les agents ne peuvent donc pas les déchiffrer et la vérification échouera. SolidPing ne peut pas les lire, mais un agent en ligne qui détient encore une clé correspondante peut les re-sceller pour les agents actuels. Sinon, ressaisissez et enregistrez les identifiants pour corriger cela.",
       "action": "Ré-enregistrer les identifiants"
     },
     "regionWarnings": {

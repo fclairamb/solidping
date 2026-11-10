@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, KeyRound } from "lucide-react";
@@ -8,10 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { RewrapButton } from "@/components/shared/rewrap-button";
 
 // The Re-seal page (spec 2026-11-08-01 §7): the checks whose sealed secrets
-// no longer match their regions' agents (or region key). The server cannot
-// re-wrap them, so each opens its form in Replace mode to type them again.
+// no longer match their regions' agents (or region key). An online agent that
+// can open them re-seals them all (peer re-wrap, spec 2026-11-10-03); a check
+// it cannot reach opens its form in Replace mode to type them again.
 export const Route = createFileRoute("/orgs/$org/organization/private-locations/reseal")({
   component: ResealPage,
 });
@@ -20,6 +23,8 @@ function ResealPage() {
   const { t } = useTranslation(["org"]);
   const { org } = Route.useParams();
   const { data: checks, isLoading, error, refetch } = useResealChecks(org);
+  // Kept once started, so its result stays on screen after the list empties.
+  const [rewrapStarted, setRewrapStarted] = useState(false);
 
   if (error) {
     return (
@@ -47,7 +52,10 @@ function ResealPage() {
           <CardTitle>{t("privateLocations.reseal.title")}</CardTitle>
           <CardDescription>{t("privateLocations.reseal.description")}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          {!isLoading && ((checks?.length ?? 0) > 0 || rewrapStarted) && (
+            <RewrapButton org={org} testId="all" onStarted={() => setRewrapStarted(true)} />
+          )}
           {isLoading ? (
             <Skeleton className="h-16 w-full" />
           ) : (checks?.length ?? 0) === 0 ? (

@@ -608,6 +608,8 @@ type Service struct {
 	// tasks cancels a crawl's run in progress (SetTaskCanceler). Nil = not
 	// wired: the run is canceled at its next claim.
 	tasks TaskCanceler
+	// rewrap sends peer re-wraps of sealed secrets (spec 2026-11-10-03).
+	rewrap Rewrapper
 	// now is the injectable clock RegionHealth reads "now" through (spec
 	// 2026-08-24-09), so tests can pin it and assert the exact liveness
 	// boundary instead of racing a live wall clock. Defaults to time.Now in
@@ -2146,6 +2148,9 @@ type UpsertCheckRequest struct {
 	DegradedEnabled        *bool `json:"degradedEnabled,omitempty"`
 
 	DependsOn *[]ExportedDependency `json:"dependsOn,omitempty"`
+
+	// SealedSecrets is a client-sealed secret map (spec 2026-11-10-03 §4).
+	SealedSecrets *SealedSecretsRequest `json:"sealedSecrets,omitempty"`
 }
 
 // UpdateCheck updates an existing check by UID or slug.
@@ -2656,6 +2661,7 @@ func (s *Service) UpsertCheck(
 			DegradedSlowWindow:        req.DegradedSlowWindow,
 			SlowThresholdMs:           req.SlowThresholdMs,
 			DegradedEnabled:           req.DegradedEnabled,
+			SealedSecrets:             req.SealedSecrets,
 		}
 		if len(req.Regions) > 0 {
 			updateReq.Regions = &req.Regions
@@ -4045,6 +4051,11 @@ type ExportCheck struct {
 	Type         string         `json:"type"`
 	Config       map[string]any `json:"config"`
 	Regions      []string       `json:"regions,omitempty"`
+	// SealedSecrets carries client-sealed secrets in a config-as-code
+	// document (spec 2026-11-10-03 §4), e.g. the output of `solidping seal`.
+	// Import and apply validate it exactly like the write API. Export never
+	// writes it: secrets are stripped.
+	SealedSecrets *SealedSecretsRequest `json:"sealedSecrets,omitempty"`
 	// Placement / RegionCount / RegionPool (spec 2026-09-25-06). Placement is
 	// "auto" for an automatically placed check; absent reads as pinned when
 	// regions are listed, and as "no opinion" otherwise. An auto check's
@@ -4180,6 +4191,25 @@ type ImportError struct {
 	// finishing it failed, and the compensating delete failed too — so the row
 	// really is on disk. Absent means nothing was written for this item.
 	State string `json:"state,omitempty"`
+	// Code is the machine code of the refusal when it has one, e.g.
+	// SEALING_RECIPIENTS_CHANGED for sealedSecrets sealed to a stale
+	// recipient set (spec 2026-11-10-03 §4).
+	Code string `json:"code,omitempty"`
+	// Recipients are the current recipients, with SEALING_RECIPIENTS_CHANGED.
+	Recipients []sealing.Recipient `json:"recipients,omitempty"`
+}
+
+// importErrorFor builds the item error of a failed plan or write.
+func importErrorFor(index int, slug string, err error) *ImportError {
+	importErr := &ImportError{Index: index, Slug: slug, Error: err.Error()}
+
+	var changed *SealingRecipientsChangedError
+	if errors.As(err, &changed) {
+		importErr.Code = string(errorCodeSealingRecipientsChanged)
+		importErr.Recipients = changed.Recipients
+	}
+
+	return importErr
 }
 
 // ImportStateCreatedIncomplete is the ImportError.State value for a check that
@@ -4931,7 +4961,7 @@ func (s *Service) importSingleCheck(
 		created, planErr := s.PlanUpsert(
 			ctx, org, exportedCheck.Slug, &upsertReq, item.pendingCreates, item.caveats)
 		if planErr != nil {
-			return "", nil, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: planErr.Error()}
+			return "", nil, importErrorFor(index, exportedCheck.Slug, planErr)
 		}
 
 		resolved, resolvedChanges := resolveImportAction(created, action, changes)
@@ -4941,7 +4971,7 @@ func (s *Service) importSingleCheck(
 
 	_, created, upsertErr := s.UpsertCheck(ctx, orgSlug, exportedCheck.Slug, &upsertReq)
 	if upsertErr != nil {
-		importErr := &ImportError{Index: index, Slug: exportedCheck.Slug, Error: upsertErr.Error()}
+		importErr := importErrorFor(index, exportedCheck.Slug, upsertErr)
 
 		// The one case where a failed item still left a row on disk: the
 		// check was inserted and neither completed nor removed. Reported so
@@ -5093,6 +5123,7 @@ func buildImportUpsertRequest(exportedCheck *ExportCheck, checkGroupUID *string)
 		// unlike the five numerics above — always forwarded explicitly, the
 		// same way Enabled is a few lines up.
 		DegradedEnabled: &exportedCheck.DegradedEnabled,
+		SealedSecrets:   exportedCheck.SealedSecrets,
 	}
 	if exportedCheck.Period != "" {
 		upsertReq.Period = &exportedCheck.Period

@@ -64,7 +64,6 @@ func TestMemoryBudgetRefusesNativeAmplifiers(t *testing.T) {
 		{"split empty", `var s = "x".repeat(` + slots + `).split("");`},
 		{"split regexp", `var s = "x".repeat(` + slots + `).split(/(?:)/);`},
 		{"replaceAll expanding", `var s = "a".repeat(1024 * 1024).replaceAll("a", "$&".repeat(128));`},
-		{"replace suffix per match", `var s = "a".repeat(16 * 1024).replace(/a/g, "$'");`},
 		{"replace function returning a big string", `var big = "x".repeat(1024 * 1024);
 var s = "a".repeat(100).replace(/a/g, function () { return big; });`},
 		{"apply array-like", `Math.max.apply(null, { length: ` + slots + ` });`},
@@ -82,6 +81,17 @@ var s = "a".repeat(100).replace(/a/g, function () { return big; });`},
 			requireRefusal(t, tt.script)
 		})
 	}
+
+	// goja finds the 16 Ki matches of a global regexp before it expands any
+	// replacement, so even the refusal costs that matching: under the race
+	// detector or a loaded runner it alone exceeds a fixed second (1.007s on
+	// CI). The bound follows what the matching costs right now instead.
+	t.Run("replace suffix per match", func(t *testing.T) {
+		t.Parallel()
+		requireRefusalNear(t,
+			`var s = "a".repeat(16 * 1024).replace(/a/g, "$'");`,
+			`var s = "a".repeat(16 * 1024).replace(/a/g, "");`)
+	})
 }
 
 // TestMemoryBudgetRefusesHeavyCopies: the amplifiers whose refusal only comes
@@ -134,6 +144,22 @@ var s = Array(1).fill(0).flatMap(function () { return b; });`,
 func requireRefusal(t *testing.T, script string) {
 	t.Helper()
 	requireRefusalWithin(t, script, time.Second)
+}
+
+// requireRefusalNear runs baseline (the same matching work with nothing to
+// refuse, which succeeds), then requires the refusal of script within a second
+// plus a few times what the baseline took on this machine right now.
+func requireRefusalNear(t *testing.T, script, baseline string) {
+	t.Helper()
+
+	const factor = 5
+
+	start := time.Now()
+	result := runScript(t, baseline+"\nreturn { status: \"up\" };")
+	permitted := time.Since(start)
+
+	require.Equal(t, checkerdef.StatusUp, result.Status, "baseline must fit the budget: %v", result.Output)
+	requireRefusalWithin(t, script, time.Second+factor*permitted)
 }
 
 func requireRefusalWithin(t *testing.T, script string, bound time.Duration) {

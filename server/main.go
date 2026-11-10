@@ -131,6 +131,8 @@ func buildRootCommand() *cli.Command {
 				Commands: spCli.GetCommands(),
 			},
 			mcpCommand(),
+			sealCommand(),
+			spCli.AgentCommand(),
 			{
 				Name:  "encrypt-credentials",
 				Usage: "Encrypt plaintext secret fields in checks and connections (idempotent)",
@@ -761,4 +763,13 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 	slog.InfoContext(ctx, "Migrations completed successfully", "type", cfg.Database.Type)
 
 	return nil
+}
+
+// sealCommand is `solidping seal` (spec 2026-11-10-03): its logs go to stderr,
+// stdout carries the sealedSecrets object.
+func sealCommand() *cli.Command {
+	cmd := spCli.SealCommand()
+	cmd.Before = logToStderr
+
+	return cmd
 }

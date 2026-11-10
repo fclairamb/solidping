@@ -65,7 +65,32 @@ SP_AGENT_REGION_KEYS_FILE=/run/secrets/region-keys   # one key per line, # comme
 
 The agent logs the fingerprint of each key it loads and advertises it to the server (never the key). The location page warns when no active agent holds the current key.
 
-**Rotation:** *Rotate the region key*, add the new key to every agent next to the old one, save the location's checks again, then remove the old key from the agents. The page counts the checks still sealed to an older key.
+**Offline key:** to keep the region key away from the browser, generate it on a machine you trust and paste only its public key with *Paste a public key*:
+
+```bash
+solidping agent region-key generate > region-keys.txt
+# public key: age1…
+# fingerprint: 3f2a…
+# AGE-SECRET-KEY-1…  (give this line to the agents)
+```
+
+The output is a valid `SP_AGENT_REGION_KEYS_FILE`.
+
+**Rotation:** *Rotate the region key*, add the new key to every agent next to the old one, click *Re-seal for the current agents* (or save the location's checks again), then remove the old key from the agents. The page counts the checks still sealed to an older key.
+
+## Re-sealing on an agent
+
+When an agent joins a location, or the region key changes, the checks sealed before are flagged. *Re-seal for the current agents* (on the location page, the Re-seal page, and the warning of a flagged check) fixes them without typing the secrets again:
+
+1. The server picks an online agent that holds a key the secrets were sealed to (its own key, or a region key it loaded).
+2. The agent opens the secrets, seals them for the current agents (or the current region key), and returns only the new ciphertext.
+3. The server checks it like a sealed write (one key slot per recipient, the current fingerprints, the size limit) and stores it. The check keeps its *Encrypted in the browser* status.
+
+The server relays ciphertext only; the recipient list comes from the server, the same trust the browser already gives it. A check stays flagged, with the reason shown, when no online agent can open it, when no agent finishes within 5 minutes, or when the returned ciphertext is refused. Then type its secrets again.
+
+**Turning it off.** The agent seals to the recipient list the server sends. A compromised server could add its own key to that list and read the secrets on the next re-seal. To rule that out, set `SP_AGENT_REWRAP_ENABLED=false` on every agent of the location: the agent then never re-seals, and only the agent's operator can change that, not the server. Flagged checks show "the agents that hold these secrets do not run the re-seal", and you type their secrets again. Each re-seal an agent does is logged on the agent (`Sealed secrets re-wrapped`) with the fingerprints it sealed to, so an unknown key stands out.
+
+API: `POST /api/v1/orgs/:org/sealing/rewrap` with `{"region":"@dc1"}` or `{"checkUids":["…"]}` (every flagged check without a body), then `GET /api/v1/orgs/:org/sealing/rewrap?check=<uid>,<uid>` until each status is `done` or `failed`. Admins only. Agents need version 0.47 or later.
 
 ## Adding, revoking and losing agents
 
@@ -75,6 +100,16 @@ The agent logs the fingerprint of each key it loads and advertises it to the ser
 - If every agent of a location is lost (and, with a shared key, every copy of it), the secrets are gone. Type them again.
 
 ## Sealing from the API or a script
+
+With the `solidping` binary and a Personal Access Token:
+
+```bash
+echo '{"basicAuth":"alice:hunter2"}' | SP_TOKEN=… \
+  solidping seal --server https://solidping.example.com --org acme --region @dc1
+# {"keys":["basicAuth"],"fingerprints":["3f2a…"],"ct":"<base64 age file>"}
+```
+
+Or with the `age` CLI:
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" \
@@ -90,7 +125,7 @@ Then send it next to `config` on the check create or PATCH:
 "sealedSecrets": { "keys": ["basicAuth"], "fingerprints": ["3f2a…"], "ct": "<base64 age file>" }
 ```
 
-`fingerprints` must be the current recipients, else `409 SEALING_RECIPIENTS_CHANGED` with the current list. The MCP tools `create_check` and `update_check` accept the same object. Compare the fingerprints with the ones your agents log at startup (`Agent sealing key`).
+`fingerprints` must be the current recipients, else `409 SEALING_RECIPIENTS_CHANGED` with the current list. A config-as-code document (`/checks/import`, `/checks/apply`, `sp checks apply`) takes the same `sealedSecrets` object on each check; a stale one is an item error with code `SEALING_RECIPIENTS_CHANGED`, in the dry run too. Exports never contain secrets. The MCP tools `create_check` and `update_check` accept the same object. Compare the fingerprints with the ones your agents log at startup (`Agent sealing key`).
 
 ## What the server still sees
 

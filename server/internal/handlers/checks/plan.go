@@ -459,7 +459,12 @@ func (s *Service) planUpdateCheck(
 		caveats.add(DryRunCaveatSecretMerge)
 	}
 
-	if cfgErr := s.planUpdateConfig(ctx, org, existing, req.Config, regionsForCheck, period); cfgErr != nil {
+	planConfig, sealErr := s.planSealedUpdate(ctx, org.UID, existing.Type, regionsForCheck, req)
+	if sealErr != nil {
+		return sealErr
+	}
+
+	if cfgErr := s.planUpdateConfig(ctx, org, existing, planConfig, regionsForCheck, period); cfgErr != nil {
 		return cfgErr
 	}
 
@@ -628,5 +633,26 @@ func upsertToCreateRequest(slug string, req *UpsertCheckRequest) CreateCheckRequ
 		DegradedSlowWindow:        req.DegradedSlowWindow,
 		SlowThresholdMs:           req.SlowThresholdMs,
 		DegradedEnabled:           req.DegradedEnabled,
+		SealedSecrets:             req.SealedSecrets,
 	}
+}
+
+// planSealedUpdate validates a document's client-sealed secrets for an update
+// like the write API, recipients included (spec 2026-11-10-03 §4), and returns
+// the config the checker validates: with placeholders for the keys it cannot
+// see. Without sealedSecrets it returns the request's config.
+func (s *Service) planSealedUpdate(
+	ctx context.Context, orgUID, checkType string, regionsForCheck []string, req *UpsertCheckRequest,
+) (map[string]any, error) {
+	if req.SealedSecrets == nil {
+		return req.Config, nil
+	}
+
+	if _, err := s.validateClientSealing(
+		ctx, orgUID, checkType, regionsForCheck, req.Config, req.SealedSecrets,
+	); err != nil {
+		return nil, err
+	}
+
+	return withInjectedConfig(req.Config, sealedPlaceholders(checkType, req.SealedSecrets.Keys)), nil
 }

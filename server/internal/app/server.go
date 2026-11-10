@@ -146,6 +146,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/rewraptask"
 	"github.com/fclairamb/solidping/server/internal/securityheaders"
 	"github.com/fclairamb/solidping/server/internal/statuspagecache"
 	"github.com/fclairamb/solidping/server/internal/statuspagekiosk"
@@ -1265,6 +1266,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
 	orgSealingAdmin.GET("/noncompliant-checks", checksHandler.NonCompliantChecks)
 	orgSealingAdmin.GET("/reseal-checks", checksHandler.ResealChecks)
+	// Peer re-wrap (spec 2026-11-10-03): an agent that can open a flagged
+	// blob re-seals it for the current recipients; the server relays
+	// ciphertext only.
+	orgSealingAdmin.POST("/rewrap", checksHandler.StartRewrap)
+	orgSealingAdmin.GET("/rewrap", checksHandler.RewrapStatus)
 	orgChecksAdmin.POST("/import", checksHandler.ImportChecks)
 	orgChecksAdmin.POST("/apply", checksHandler.ApplyChecks)
 
@@ -1323,6 +1329,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	discoverySvc.SetWorkerTasks(s.services.WorkerTasks)
 	discoverySvc.SetEntitlements(s.services.Entitlements)
 	discoverytask.Register(discoverytask.Deps{DB: s.dbService, Tasks: s.services.WorkerTasks})
+	checksService.SetRewrapper(rewraptask.Register(rewraptask.Deps{DB: s.dbService, Tasks: s.services.WorkerTasks}))
 
 	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
 	orgDiscovery := orgGroup("/orgs/:org/discovery")

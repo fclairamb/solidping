@@ -146,6 +146,7 @@ drain.
 | `SP_EGRESS_ALLOW_PRIVATE` | `true` on an agent | Whether checks may reach non-public addresses. An agent exists to reach your private network, so it allows them unless you set `false`. See [Egress policy](/configuration/egress-policy) |
 | `SP_AGENT_DISCOVERY_ENABLED` | `false` | Lets this agent run [network discovery](#scan-the-locations-network) scans. Never set it on a system agent |
 | `SP_AGENT_DISCOVERY_CIDRS` | — | Comma-separated IPv4 prefixes discovery may probe, e.g. `10.0.0.0/8,192.168.0.0/16`. Required when discovery is enabled |
+| `SP_AGENT_REWRAP_ENABLED` | `true` | Lets this agent [re-seal sealed secrets](./browser-sealed-secrets.md#re-sealing-on-an-agent) for the recipients the server sends. Set `false` on every agent of a location to keep the server out of that loop entirely |
 | `SP_AGENT_PRINT_KEYS` | `false` | Prints the agent's **private key material** to stdout — opt-in bootstrap only (honoured on every start); unset it again afterwards |
 
 **Version reporting needs no configuration.** Every agent automatically

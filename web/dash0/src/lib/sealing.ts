@@ -196,3 +196,8 @@ export async function generateRegionKey(): Promise<GeneratedRegionKey> {
 export function isBrowserSealingEligible(regions: string[]): boolean {
   return regions.length > 0 && regions.every((region) => region.startsWith("@"));
 }
+
+/** A pasted age X25519 recipient: `age1` and 58 bech32 characters (spec 2026-11-10-03 §3). */
+export function isAgeRecipient(value: string): boolean {
+  return /^age1[02-9ac-hj-np-z]{58}$/.test(value.trim());
+}

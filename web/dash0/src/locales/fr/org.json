@@ -440,15 +440,49 @@
       "distribute": "Donnez-la à chaque agent de la région avec SP_AGENT_REGION_KEYS (ou SP_AGENT_REGION_KEYS_FILE). Pendant un renouvellement, listez l'ancienne et la nouvelle clé.",
       "cancel": "Annuler",
       "confirm": "Je l'ai sauvegardée, utiliser cette clé",
-      "modeLabel": "Mode de clé"
+      "modeLabel": "Mode de clé",
+      "paste": "Coller une clé publique",
+      "pasteTitle": "Clé publique pour {{region}}",
+      "pasteDescription": "Générez la clé de région hors ligne avec la commande ci-dessous, donnez l'identité aux agents de la région et collez seulement sa clé publique (age1…). SolidPing ne voit jamais l'identité.",
+      "pasteLabel": "Clé publique",
+      "pasteInvalid": "Ce n'est pas une clé publique age : elle commence par age1 et compte 62 caractères.",
+      "pasteConfirm": "Utiliser cette clé publique"
     },
     "reseal": {
       "back": "Retour aux emplacements privés",
       "title": "Resceller les secrets des checks",
-      "description": "Ces checks ont des secrets scellés pour un autre ensemble d'agents (un agent est arrivé ou parti, ou la clé de région a changé). SolidPing ne peut pas les resceller : saisissez leurs secrets à nouveau.",
+      "description": "Ces checks ont des secrets scellés pour un autre ensemble d'agents (un agent est arrivé ou parti, ou la clé de région a changé). Un agent en ligne qui détient encore une clé correspondante peut les re-sceller pour les agents actuels ; sinon, saisissez à nouveau leurs secrets.",
       "empty": "Aucun check à resceller.",
       "open": "Remplacer les secrets",
       "link": "Resceller"
+    },
+    "rewrap": {
+      "button": "Re-sceller pour les agents actuels",
+      "running_one": "Re-scellement de {{count}} check sur un agent…",
+      "running_other": "Re-scellement de {{count}} checks sur un agent…",
+      "done_one": "{{count}} check re-scellé.",
+      "done_other": "{{count}} checks re-scellés.",
+      "empty": "Aucun check à re-sceller.",
+      "error": "Le re-scellement n'a pas pu démarrer.",
+      "failed": "{{check}} : {{reason}}",
+      "reason": {
+        "no_online_recipient": "aucun agent en ligne ne détient une clé de ces secrets : démarrez-en un, ou saisissez à nouveau les secrets",
+        "rewrap_not_offered": "les agents qui détiennent ces secrets ne font pas le re-chiffrement (version antérieure à 0.47, ou SP_AGENT_REWRAP_ENABLED=false) : saisissez à nouveau les secrets",
+        "timed_out": "aucun agent n'a terminé à temps",
+        "REWRAP_CANNOT_OPEN": "l'agent n'a pas pu ouvrir ces secrets",
+        "REWRAP_SEAL_FAILED": "l'agent n'a pas pu sceller pour les destinataires actuels",
+        "REWRAP_INVALID_INPUT": "l'agent a refusé la tâche",
+        "invalid_result": "l'agent a renvoyé un blob invalide, refusé",
+        "recipients_changed": "les agents ou la clé de région ont changé entre-temps : réessayez",
+        "check_changed": "les secrets du check ont changé entre-temps",
+        "already_running": "une tâche tourne déjà pour ce check",
+        "not_sealed": "ces secrets ne sont pas scellés : saisissez-les à nouveau",
+        "up_to_date": "déjà scellé pour les agents actuels",
+        "no_recipients": "aucun agent ni clé de région vers qui sceller",
+        "max_attempts": "aucun agent n'a terminé à temps",
+        "cancelled": "annulé : le check a changé",
+        "unknown": "échec ({{code}})"
+      }
     }
   },
   "accessRedirect": {

@@ -295,6 +295,62 @@ func BuildClientSealedEnvelope(fingerprints []string, ciphertext string) (string
 	return string(out), nil
 }
 
+// SealedCiphertext returns the age file (base64) and the sorted fingerprints
+// of a sealed envelope: what a client sends as sealedSecrets.ct and
+// .fingerprints (spec 2026-11-10-03).
+func SealedCiphertext(envelope string) (string, []string, error) {
+	env, err := parseSealedEnvelope(envelope)
+	if err != nil {
+		return "", nil, err
+	}
+
+	fps := append([]string(nil), env.Fingerprints...)
+	sort.Strings(fps)
+
+	return env.CT, fps, nil
+}
+
+// SealForClient seals a secret map to recipients the way a client does and
+// returns the parts of a sealedSecrets object: the sorted fingerprints and
+// the base64 age file. Used by `solidping seal` and the agent's re-wrap.
+func SealForClient(recipients []string, secrets map[string]any) ([]string, string, error) {
+	envelope, err := SealForRecipients(recipients, secrets)
+	if err != nil {
+		return nil, "", err
+	}
+
+	ct, fps, err := SealedCiphertext(envelope)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return fps, ct, nil
+}
+
+// RewrapSealedEnvelope replaces the ciphertext and fingerprints of a stored
+// sealed envelope and keeps everything else, its origin included (peer
+// re-wrap, spec 2026-11-10-03): a blob re-sealed by an agent stays a browser
+// blob when the browser sealed it.
+func RewrapSealedEnvelope(envelope string, fingerprints []string, ciphertext string) (string, error) {
+	env, err := parseSealedEnvelope(envelope)
+	if err != nil {
+		return "", err
+	}
+
+	sorted := append([]string(nil), fingerprints...)
+	sort.Strings(sorted)
+
+	env.Fingerprints = sorted
+	env.CT = ciphertext
+
+	out, err := json.Marshal(env)
+	if err != nil {
+		return "", fmt.Errorf("marshal sealed envelope: %w", err)
+	}
+
+	return string(out), nil
+}
+
 // SealedOrigin returns who sealed a stored envelope: SealOriginBrowser,
 // SealOriginServer (also for a legacy blob without the field), or "" when the
 // envelope is not a sealed blob.

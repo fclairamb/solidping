@@ -440,15 +440,49 @@
       "distribute": "Give it to every agent of the region with SP_AGENT_REGION_KEYS (or SP_AGENT_REGION_KEYS_FILE). During a rotation, list the old and the new key.",
       "cancel": "Cancel",
       "confirm": "I saved it, use this key",
-      "modeLabel": "Key mode"
+      "modeLabel": "Key mode",
+      "paste": "Paste a public key",
+      "pasteTitle": "Public key for {{region}}",
+      "pasteDescription": "Generate the region key offline with the command below, give the identity to the region's agents, and paste only its public key (age1…). SolidPing never sees the identity.",
+      "pasteLabel": "Public key",
+      "pasteInvalid": "Not an age public key: it starts with age1 and has 62 characters.",
+      "pasteConfirm": "Use this public key"
     },
     "reseal": {
       "back": "Back to private locations",
       "title": "Re-seal check secrets",
-      "description": "These checks have secrets sealed for another set of agents (an agent joined or left, or the region key changed). SolidPing cannot re-seal them: type their secrets again.",
+      "description": "These checks have secrets sealed for another set of agents (an agent joined or left, or the region key changed). An online agent that still holds a matching key can re-seal them for the current agents; otherwise, type their secrets again.",
       "empty": "No check needs to be re-sealed.",
       "open": "Replace secrets",
       "link": "Re-seal"
+    },
+    "rewrap": {
+      "button": "Re-seal for the current agents",
+      "running_one": "Re-sealing {{count}} check on an agent…",
+      "running_other": "Re-sealing {{count}} checks on an agent…",
+      "done_one": "{{count}} check re-sealed.",
+      "done_other": "{{count}} checks re-sealed.",
+      "empty": "No check needs to be re-sealed.",
+      "error": "The re-seal could not be started.",
+      "failed": "{{check}}: {{reason}}",
+      "reason": {
+        "no_online_recipient": "no online agent holds a key these secrets were sealed to: start one, or type the secrets again",
+        "rewrap_not_offered": "the agents that hold these secrets do not run the re-seal (older than 0.47, or SP_AGENT_REWRAP_ENABLED=false): type the secrets again",
+        "timed_out": "no agent finished in time",
+        "REWRAP_CANNOT_OPEN": "the agent could not open these secrets",
+        "REWRAP_SEAL_FAILED": "the agent could not seal for the current recipients",
+        "REWRAP_INVALID_INPUT": "the agent refused the task",
+        "invalid_result": "the agent returned an invalid blob, which was refused",
+        "recipients_changed": "the agents or the region key changed meanwhile: try again",
+        "check_changed": "the check's secrets changed meanwhile",
+        "already_running": "a task already runs for this check",
+        "not_sealed": "these secrets are not sealed: type them again",
+        "up_to_date": "already sealed for the current agents",
+        "no_recipients": "no agent or region key to seal to",
+        "max_attempts": "no agent finished in time",
+        "cancelled": "cancelled: the check changed",
+        "unknown": "failed ({{code}})"
+      }
     }
   },
   "accessRedirect": {
