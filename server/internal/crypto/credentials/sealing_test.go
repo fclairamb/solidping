@@ -147,3 +147,64 @@ func TestNeedsReseal(t *testing.T) {
 	r.NoError(err)
 	r.True(need)
 }
+
+func TestSealedCiphertextAndClientSeal(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	id, rec := newAgentKeypair(t)
+
+	fps, ct, err := credentials.SealForClient([]string{rec}, map[string]any{"password": "hunter2"})
+	r.NoError(err)
+	r.Equal([]string{credentials.RecipientFingerprint(rec)}, fps)
+	r.NoError(credentials.ValidateSealedCiphertext(ct, 1))
+
+	env, err := credentials.SealForRecipients([]string{rec}, map[string]any{"password": "x"})
+	r.NoError(err)
+
+	envCT, envFps, err := credentials.SealedCiphertext(env)
+	r.NoError(err)
+	r.Equal(fps, envFps)
+	r.NotEmpty(envCT)
+
+	// A client seal opens with the matching identity once wrapped in an envelope.
+	rewrapped, err := credentials.RewrapSealedEnvelope(env, fps, ct)
+	r.NoError(err)
+
+	got, err := credentials.UnsealWithIdentity(id, rewrapped)
+	r.NoError(err)
+	r.Equal("hunter2", got["password"])
+}
+
+func TestSealedCiphertextRejectsBadInput(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	_, _, err := credentials.SealedCiphertext("not an envelope")
+	r.Error(err)
+
+	_, _, err = credentials.SealForClient(nil, map[string]any{"a": "b"})
+	r.Error(err)
+
+	_, err = credentials.RewrapSealedEnvelope("not an envelope", nil, "ct")
+	r.Error(err)
+}
+
+func TestRewrapSealedEnvelopeSortsFingerprints(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	_, rec := newAgentKeypair(t)
+
+	env, err := credentials.SealForRecipients([]string{rec}, map[string]any{"a": "b"})
+	r.NoError(err)
+
+	out, err := credentials.RewrapSealedEnvelope(env, []string{"zzz", "aaa"}, "new-ct")
+	r.NoError(err)
+
+	ct, fps, err := credentials.SealedCiphertext(out)
+	r.NoError(err)
+	r.Equal("new-ct", ct)
+	r.Equal([]string{"aaa", "zzz"}, fps)
+}

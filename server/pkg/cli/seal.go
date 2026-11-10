@@ -247,12 +247,9 @@ func AgentCommand() *cli.Command {
 
 // writeRegionKey prints a fresh identity in the region keys file format.
 func writeRegionKey(out io.Writer) error {
-	identity, recipient, err := credentials.GenerateX25519Keypair()
-	if err != nil {
-		return err
-	}
+	identity, recipient, _ := credentials.GenerateX25519Keypair() // age key generation does not fail
 
-	_, err = fmt.Fprintf(out, "# public key: %s\n# fingerprint: %s\n%s\n",
+	_, err := fmt.Fprintf(out, "# public key: %s\n# fingerprint: %s\n%s\n",
 		recipient, credentials.RecipientFingerprint(recipient), identity)
 
 	return err

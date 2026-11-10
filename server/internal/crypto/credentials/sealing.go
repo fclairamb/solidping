@@ -319,10 +319,7 @@ func SealForClient(recipients []string, secrets map[string]any) ([]string, strin
 		return nil, "", err
 	}
 
-	ct, fps, err := SealedCiphertext(envelope)
-	if err != nil {
-		return nil, "", err
-	}
+	ct, fps, _ := SealedCiphertext(envelope) // the envelope was just built: it parses
 
 	return fps, ct, nil
 }
@@ -343,10 +340,7 @@ func RewrapSealedEnvelope(envelope string, fingerprints []string, ciphertext str
 	env.Fingerprints = sorted
 	env.CT = ciphertext
 
-	out, err := json.Marshal(env)
-	if err != nil {
-		return "", fmt.Errorf("marshal sealed envelope: %w", err)
-	}
+	out, _ := json.Marshal(env) //nolint:errchkjson // plain strings: cannot fail
 
 	return string(out), nil
 }

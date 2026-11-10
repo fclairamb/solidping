@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -150,4 +151,156 @@ func TestRegionKeyGenerate_PrintsMatchingRecipientAndFingerprint(t *testing.T) {
 	var again bytes.Buffer
 	r.NoError(writeRegionKey(&again))
 	r.NotEqual(out.String(), again.String())
+}
+
+func recipientServer(t *testing.T, recipients ...string) *httptest.Server {
+	t.Helper()
+
+	entries := make([]map[string]string, 0, len(recipients))
+	for _, recipient := range recipients {
+		entries = append(entries, map[string]string{"recipient": recipient})
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(writer).Encode(map[string]any{"data": entries})
+	}))
+	t.Cleanup(server.Close)
+
+	return server
+}
+
+func TestSealSecrets_Refusals(t *testing.T) {
+	t.Parallel()
+
+	_, err := SealSecrets([]string{"age1x"}, nil)
+	require.ErrorIs(t, err, ErrSealNoSecrets)
+
+	_, err = SealSecrets([]string{"not-a-recipient"}, map[string]any{"password": "x"})
+	require.Error(t, err)
+}
+
+func TestSealCommand_ActionWithoutRegion(t *testing.T) {
+	t.Parallel()
+
+	root := &cli.Command{Name: "solidping", Flags: GetGlobalFlags(), Commands: []*cli.Command{SealCommand()}}
+	err := root.Run(t.Context(), []string{"solidping", "seal"})
+	require.ErrorIs(t, err, ErrSealNoRegion)
+}
+
+func TestSealCommand_ServerFromTheGlobalURL(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	_, recipient, err := credentials.GenerateX25519Keypair()
+	r.NoError(err)
+
+	server := recipientServer(t, recipient)
+
+	out, err := runSealCommand(t, `{"password":"x"}`, "--url", server.URL, "--region", "@dc1", "--token", "p")
+	r.NoError(err)
+	r.Contains(out, `"fingerprints"`)
+}
+
+func TestSealCommand_NoToken(t *testing.T) {
+	// Not parallel: the saved login lives under $HOME.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("SP_TOKEN", "")
+
+	denied := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(denied.Close)
+
+	_, err := runSealCommand(t, `{"password":"x"}`, "--url", denied.URL, "--region", "@dc1")
+	require.ErrorIs(t, err, ErrSealNoToken)
+}
+
+func TestSealCommand_SealFailsOnBadRecipient(t *testing.T) {
+	t.Parallel()
+
+	server := recipientServer(t, "not-a-recipient")
+
+	out, err := runSealCommand(t, `{"password":"x"}`, "--server", server.URL, "--region", "@dc1", "--token", "p")
+	require.Error(t, err)
+	require.Empty(t, out)
+}
+
+type failingReader struct{}
+
+var errReadFailed = errors.New("read failed")
+
+func (failingReader) Read([]byte) (int, error) { return 0, errReadFailed }
+
+func TestReadSecrets_Errors(t *testing.T) {
+	t.Parallel()
+
+	_, err := readSecrets(failingReader{})
+	require.ErrorIs(t, err, errReadFailed)
+
+	_, err = readSecrets(strings.NewReader(`{"a":"` + strings.Repeat("x", maxSealInputBytes) + `"}`))
+	require.ErrorIs(t, err, ErrSealNoSecrets)
+	require.Contains(t, err.Error(), "64 KiB")
+}
+
+func TestFetchRecipients_TransportErrors(t *testing.T) {
+	t.Parallel()
+
+	// A URL that cannot be built.
+	_, err := fetchRecipients(t.Context(), "http://bad host", "acme", "p", []string{"@dc1"})
+	require.ErrorContains(t, err, "build recipients request")
+
+	// A server that is gone.
+	gone := httptest.NewServer(http.NotFoundHandler())
+	gone.Close()
+
+	_, err = fetchRecipients(t.Context(), gone.URL, "acme", "p", []string{"@dc1"})
+	require.ErrorContains(t, err, "fetch recipients")
+
+	// A body that stops before its announced length.
+	truncated := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Length", "100")
+		_, _ = writer.Write([]byte(`{"data":`))
+
+		hijacker, ok := writer.(http.Hijacker)
+		if !ok {
+			return
+		}
+
+		if conn, _, hijackErr := hijacker.Hijack(); hijackErr == nil {
+			_ = conn.Close()
+		}
+	}))
+	t.Cleanup(truncated.Close)
+
+	_, err = fetchRecipients(t.Context(), truncated.URL, "acme", "p", []string{"@dc1"})
+	require.ErrorContains(t, err, "read recipients")
+
+	// A body that is not the expected JSON.
+	garbage := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte(`<html>`))
+	}))
+	t.Cleanup(garbage.Close)
+
+	_, err = fetchRecipients(t.Context(), garbage.URL, "acme", "p", []string{"@dc1"})
+	require.ErrorContains(t, err, "decode recipients")
+}
+
+func TestAgentCommand_RegionKeyGenerate(t *testing.T) {
+	t.Parallel()
+
+	cmd := AgentCommand()
+	require.Equal(t, "agent", cmd.Name)
+
+	generate := cmd.Commands[0].Commands[0]
+	require.Equal(t, "generate", generate.Name)
+	require.NoError(t, generate.Action(t.Context(), generate))
+}
+
+func TestSealCommand_NoHomeDirectory(t *testing.T) {
+	// Not parallel: it unsets $HOME, where the token file lives.
+	t.Setenv("HOME", "")
+
+	_, err := runSealCommand(t, `{"password":"x"}`, "--server", "http://127.0.0.1:1", "--region", "@dc1")
+	require.ErrorContains(t, err, "token path")
 }

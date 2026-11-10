@@ -339,7 +339,7 @@ func (b *WSBackend) claim(
 		job := wireJob.ToCheckJob()
 
 		if job.ConfigSealed != nil && *job.ConfigSealed != "" {
-			secrets, unsealErr := credentials.UnsealWithIdentities(*job.ConfigSealed, b.unsealIdentities()...)
+			secrets, unsealErr := credentials.UnsealWithIdentities(*job.ConfigSealed, b.UnsealIdentities()...)
 			if unsealErr != nil {
 				// The spec's decrypt-failure contract: a clear job error, not a
 				// silent skip — the operator sees WHY the check failed and the
@@ -362,7 +362,7 @@ func (b *WSBackend) claim(
 		// can find it. Unseal failure is reported like a job-envelope failure —
 		// a clear error result, dropped from the batch, never run half-armed.
 		if wireJob.Tunnel != nil {
-			cfg, tunErr := buildTunnelConfig(ctx, b.unsealIdentities(), wireJob.Tunnel, b.envRefAllow)
+			cfg, tunErr := buildTunnelConfig(ctx, b.UnsealIdentities(), wireJob.Tunnel, b.envRefAllow)
 			if tunErr != nil {
 				b.logger.WarnContext(ctx, "ssh tunnel not available on this agent",
 					"check_uid", job.CheckUID, "tunnel_check_uid", wireJob.Tunnel.CheckUID, "error", tunErr)
@@ -464,11 +464,6 @@ func (b *WSBackend) Hints() <-chan string {
 // with: its own key, then the shared region keys it holds (spec 2026-11-08-01).
 // The peer re-wrap executor opens blobs with them (spec 2026-11-10-03).
 func (b *WSBackend) UnsealIdentities() []string {
-	return b.unsealIdentities()
-}
-
-// unsealIdentities is UnsealIdentities.
-func (b *WSBackend) unsealIdentities() []string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 

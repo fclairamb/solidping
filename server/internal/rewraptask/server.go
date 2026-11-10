@@ -131,10 +131,8 @@ func (s *Server) prepareClaim(
 		return nil, workertasks.ErrCancelTask
 	}
 
-	input, err := json.Marshal(Input{Envelope: *check.ConfigSealed, Recipients: sealing.RecipientKeys(recipients)})
-	if err != nil {
-		return nil, fmt.Errorf("encode re-wrap input: %w", err)
-	}
+	input, _ := json.Marshal( //nolint:errchkjson // plain strings: cannot fail
+		Input{Envelope: *check.ConfigSealed, Recipients: sealing.RecipientKeys(recipients)})
 
 	return &workertasks.Prepared{Input: input, Final: true}, nil
 }
@@ -276,8 +274,13 @@ func (s *Server) startOne(ctx context.Context, orgUID string, check *models.Chec
 		return Outcome{CheckUID: check.UID, Status: statusRefused, ErrorCode: code}
 	}
 
-	if check.ConfigSealed == nil || !credentials.IsSealedEnvelope(*check.ConfigSealed) {
+	if check.ConfigSealed == nil {
 		return refused(CodeNotSealed), nil
+	}
+
+	sealedTo, err := credentials.SealedRecipientFingerprints(*check.ConfigSealed)
+	if err != nil {
+		return refused(CodeNotSealed), nil //nolint:nilerr // an unreadable blob is reported, not an error
 	}
 
 	recipients, err := s.currentRecipients(ctx, check)
@@ -289,18 +292,9 @@ func (s *Server) startOne(ctx context.Context, orgUID string, check *models.Chec
 		return refused(CodeNoRecipients), nil
 	}
 
-	need, err := credentials.NeedsReseal(*check.ConfigSealed, sealing.SortedFingerprints(recipients))
-	if err != nil {
-		return refused(CodeNotSealed), nil //nolint:nilerr // an unreadable blob is reported, not an error
-	}
-
+	need, _ := credentials.NeedsReseal(*check.ConfigSealed, sealing.SortedFingerprints(recipients)) // parsed above
 	if !need {
 		return refused(CodeUpToDate), nil
-	}
-
-	sealedTo, err := credentials.SealedRecipientFingerprints(*check.ConfigSealed)
-	if err != nil {
-		return refused(CodeNotSealed), nil //nolint:nilerr // as above
 	}
 
 	pick, err := s.pickAgent(ctx, orgUID, privateRegionsOf(check), sealedTo)

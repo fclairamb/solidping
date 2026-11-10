@@ -3,6 +3,7 @@ package rewraptask
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -16,6 +17,9 @@ type Executor struct {
 	identities func() []string
 	logger     *slog.Logger
 }
+
+// errEmptyInput is an input without a blob or without recipients.
+var errEmptyInput = errors.New("no blob or no recipients")
 
 var _ tasks.Executor = (*Executor)(nil)
 
@@ -36,7 +40,13 @@ func (*Executor) Capability() string { return Capability }
 // CodeCannotOpen: the server reports it, retrying cannot help.
 func (e *Executor) Run(ctx context.Context, claim *workertasks.Claim, rep tasks.Reporter) error {
 	var input Input
-	if err := json.Unmarshal(claim.Input, &input); err != nil || input.Envelope == "" || len(input.Recipients) == 0 {
+
+	err := json.Unmarshal(claim.Input, &input)
+	if err == nil && (input.Envelope == "" || len(input.Recipients) == 0) {
+		err = errEmptyInput
+	}
+
+	if err != nil {
 		return e.refuse(ctx, claim, rep, CodeInvalidInput, fmt.Errorf("decode re-wrap input: %w", err))
 	}
 
@@ -50,10 +60,7 @@ func (e *Executor) Run(ctx context.Context, claim *workertasks.Claim, rep tasks.
 		return e.refuse(ctx, claim, rep, CodeSealFailed, err)
 	}
 
-	body, err := json.Marshal(Result{CT: ct, Fingerprints: fingerprints})
-	if err != nil {
-		return fmt.Errorf("encode re-wrap result: %w", err)
-	}
+	body, _ := json.Marshal(Result{CT: ct, Fingerprints: fingerprints}) //nolint:errchkjson // plain strings: cannot fail
 
 	e.logger.InfoContext(ctx, "Sealed secrets re-wrapped", "task", claim.UID, "check", claim.CheckUID,
 		"recipient_count", len(fingerprints), "recipients", fingerprints)
@@ -69,10 +76,7 @@ func (e *Executor) refuse(
 	e.logger.WarnContext(ctx, "Re-wrap refused", "task", claim.UID, "check", claim.CheckUID,
 		"code", code, "error", cause)
 
-	body, err := json.Marshal(Result{ErrorCode: code})
-	if err != nil {
-		return fmt.Errorf("encode re-wrap refusal: %w", err)
-	}
+	body, _ := json.Marshal(Result{ErrorCode: code}) //nolint:errchkjson // plain strings: cannot fail
 
 	return rep.Finish(ctx, body)
 }
