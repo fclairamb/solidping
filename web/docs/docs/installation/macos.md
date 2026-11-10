@@ -155,7 +155,10 @@ owned by root, and none of them may be writable by its group or by others.
 `sudo install -o root -m 0755 solidping /usr/local/bin/` puts it right; `sudo
 mv` keeps your ownership. A Homebrew binary is owned by the user who installed
 Homebrew, so it cannot back a root daemon: install a root-owned copy of the
-downloaded binary instead. A user agent also accepts files you own.
+downloaded binary instead. A user agent also accepts files you own. Some tools hand
+`/usr/local/bin` itself to your user: if `stat -f %Su /usr/local/bin` does not
+print `root`, install the binary in another root-owned folder, for example
+`sudo install -d -o root -m 0755 /Library/SolidPing`.
 
 If the data folder already exists, `service install` only reuses it when it is
 still the way a previous install left it: a real folder (not a link), owned by

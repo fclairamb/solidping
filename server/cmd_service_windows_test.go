@@ -290,7 +290,11 @@ func TestServiceBinaryAcceptsProtectedFolder(t *testing.T) {
 
 	resolved, err := checkServiceBinary(exe, trust)
 	r.NoError(err)
-	r.Equal(exe, resolved)
+
+	// The temporary folder may be given by its short (8.3) name.
+	want, err := filepath.EvalSymlinks(exe)
+	r.NoError(err)
+	r.Equal(want, resolved)
 }
 
 func TestServiceDirRefusesUntrustedParent(t *testing.T) {

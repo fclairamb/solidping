@@ -16,7 +16,7 @@ func init() { //nolint:gochecknoinits // test seam
 	trustAnchor = os.TempDir()
 }
 
-func TestCheckTrustedPathRootChain(t *testing.T) {
+func TestServiceTrustedPathRootChain(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
@@ -29,7 +29,7 @@ func TestCheckTrustedPathRootChain(t *testing.T) {
 	r.NoError(checkTrustedPath("/usr/solidping-absent/data", []int{0}))
 }
 
-func TestCheckTrustedPathRefusesSharedFolders(t *testing.T) {
+func TestServiceTrustedPathRefusesSharedFolders(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	me := trustedUIDs(os.Geteuid())
@@ -51,7 +51,7 @@ func TestCheckTrustedPathRefusesSharedFolders(t *testing.T) {
 	r.ErrorIs(checkTrustedPath(private, []int{os.Geteuid() + 1}), errDataDirOwner)
 }
 
-func TestCheckTrustedPathFollowsLinks(t *testing.T) {
+func TestServiceTrustedPathFollowsLinks(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	me := trustedUIDs(os.Geteuid())
