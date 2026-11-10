@@ -115,21 +115,37 @@ export function expandTimeGaps<T extends { time: string }>(
 
   if (interval == null || interval <= 0) return [...rows];
 
-  const threshold = interval * GAP_RATIO;
-
+  // The reference spacing is LOCAL: a series is rarely uniform (recent days
+  // are sampled finely, older ones come from coarser rollups), so comparing
+  // every step to one global median turned each coarse step into a "gap" and
+  // left the older stretch as isolated dots. A step is a hole only when it is
+  // GAP_RATIO times wider than the median of the steps around it; the global interval
+  // is the fallback when there are no neighbours.
+  const delta = (i: number): number => times[i + 1] - times[i];
   const out: T[] = [];
   for (let i = 0; i < rows.length; i++) {
     out.push(rows[i]);
 
     if (i + 1 >= rows.length) break;
 
-    const delta = times[i + 1] - times[i];
-    if (!Number.isFinite(delta) || delta <= threshold) continue;
+    const step = delta(i);
+    if (!Number.isFinite(step)) continue;
+    // Median of up to two steps on each side, self excluded: robust to one
+    // wide neighbour (a lone sample after a silence), and stable across the
+    // coarse-to-fine boundary where a single neighbour would not be.
+    const around = [i - 2, i - 1, i + 1, i + 2]
+      .filter((j) => j >= 0 && j + 1 < rows.length)
+      .map(delta)
+      .filter((d) => Number.isFinite(d) && d > 0)
+      .sort((x, y) => x - y);
+    const reference =
+      around.length > 0 ? around[Math.floor(around.length / 2)] : interval;
+    if (step <= reference * GAP_RATIO) continue;
 
     // The midpoint, labelled with its own timestamp like every real slot, so
     // the axis never prints a time the data never reported near.
     out.push(
-      makeGapRow(new Date(times[i] + delta / 2).toISOString()),
+      makeGapRow(new Date(times[i] + step / 2).toISOString()),
     );
   }
 
