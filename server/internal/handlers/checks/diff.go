@@ -246,6 +246,11 @@ func (s *Service) diffCheck(
 	add("description", current.Description, desired.Description)
 	add(fieldType, current.Type, desired.Type)
 	add("enabled", strconv.FormatBool(current.Enabled), strconv.FormatBool(desired.Enabled))
+	// sealedSecrets (spec 2026-11-10-03 §4) always replaces the stored blob:
+	// the export never carries one, and the server cannot compare ciphertexts.
+	if desired.SealedSecrets != nil {
+		add("sealedSecrets", "", "replaced")
+	}
 	add("tracerouteOnFailure",
 		traceroutePolicyOrInherit(current.TracerouteOnFailure),
 		traceroutePolicyOrInherit(desired.TracerouteOnFailure))

@@ -459,7 +459,22 @@ func (s *Service) planUpdateCheck(
 		caveats.add(DryRunCaveatSecretMerge)
 	}
 
-	if cfgErr := s.planUpdateConfig(ctx, org, existing, req.Config, regionsForCheck, period); cfgErr != nil {
+	planConfig := req.Config
+
+	// Client-sealed secrets in a document (spec 2026-11-10-03 §4) are
+	// validated like the write API, recipients included; the checker then
+	// validates placeholders for the keys it cannot see.
+	if req.SealedSecrets != nil {
+		if _, sealErr := s.validateClientSealing(
+			ctx, org.UID, existing.Type, regionsForCheck, req.Config, req.SealedSecrets,
+		); sealErr != nil {
+			return sealErr
+		}
+
+		planConfig = withInjectedConfig(req.Config, sealedPlaceholders(existing.Type, req.SealedSecrets.Keys))
+	}
+
+	if cfgErr := s.planUpdateConfig(ctx, org, existing, planConfig, regionsForCheck, period); cfgErr != nil {
 		return cfgErr
 	}
 
@@ -628,5 +643,6 @@ func upsertToCreateRequest(slug string, req *UpsertCheckRequest) CreateCheckRequ
 		DegradedSlowWindow:        req.DegradedSlowWindow,
 		SlowThresholdMs:           req.SlowThresholdMs,
 		DegradedEnabled:           req.DegradedEnabled,
+		SealedSecrets:             req.SealedSecrets,
 	}
 }

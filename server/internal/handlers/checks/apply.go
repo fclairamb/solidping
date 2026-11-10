@@ -439,6 +439,10 @@ func (s *Service) ApplyChecks(
 	}
 
 	if opts.DryRun {
+		// The dry run validates sealedSecrets like the write API, recipients
+		// included (spec 2026-11-10-03 §4), and stores nothing.
+		result.Errors = append(result.Errors, s.sealedSecretsErrors(ctx, org, snapshot, doc)...)
+
 		// On dry-run, report what would be deleted so the count is meaningful.
 		if opts.Prune {
 			result.Deleted = len(deletes)
@@ -576,4 +580,35 @@ func yamlToJSON(body []byte) ([]byte, error) {
 	}
 
 	return jsonBytes, nil
+}
+
+// sealedSecretsErrors validates every document entry carrying sealedSecrets
+// against the regions it would have: its own, or the stored check's when the
+// entry names none.
+func (s *Service) sealedSecretsErrors(
+	ctx context.Context, org *models.Organization, snapshot *orgCheckSnapshot, doc *ExportDocument,
+) []ImportError {
+	var out []ImportError
+
+	for i := range doc.Checks {
+		entry := &doc.Checks[i]
+		if entry.SealedSecrets == nil {
+			continue
+		}
+
+		regionList := entry.Regions
+		if len(regionList) == 0 {
+			if _, existing := snapshot.lookup(entry.Slug); existing != nil {
+				regionList = existing.Regions
+			}
+		}
+
+		if _, err := s.validateClientSealing(
+			ctx, org.UID, entry.Type, regionList, entry.Config, entry.SealedSecrets,
+		); err != nil {
+			out = append(out, *importErrorFor(i, entry.Slug, err))
+		}
+	}
+
+	return out
 }

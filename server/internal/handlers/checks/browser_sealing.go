@@ -197,44 +197,43 @@ func allPrivateRegions(regionList []string) bool {
 	return len(regionList) > 0 && len(filterPrivateRegions(regionList)) == len(regionList)
 }
 
-// applyClientSealing stores a client-sealed secret map on the check (spec
-// §4): every region must be a private region of the org, the shape must be
-// valid, and the fingerprints must equal the current recipients. effective is
-// the public config; any secret field in it is dropped (the blob replaces
-// them). check.Regions must already be the regions the check will have.
-func (s *Service) applyClientSealing(
-	ctx context.Context, check *models.Check, effective, requestConfig map[string]any, sealed *SealedSecretsRequest,
-) error {
-	if !allPrivateRegions(check.Regions) {
-		return ErrSealedSecretsRequirePrivateRegions
+// validateClientSealing runs every check of spec §4 on a client-sealed secret
+// map for a check of checkType in regionList, without storing anything: every
+// region must be a private region of the org, the shape must be valid, and the
+// fingerprints must equal the current recipients. It returns the sorted
+// fingerprints. The write path and the config-as-code dry run share it.
+func (s *Service) validateClientSealing(
+	ctx context.Context, orgUID, checkType string, regionList []string,
+	requestConfig map[string]any, sealed *SealedSecretsRequest,
+) ([]string, error) {
+	if !allPrivateRegions(regionList) {
+		return nil, ErrSealedSecretsRequirePrivateRegions
 	}
 
-	privateRegions := filterPrivateRegions(check.Regions)
+	privateRegions := filterPrivateRegions(regionList)
 
 	for _, region := range privateRegions {
-		owned, err := s.regions.OwnsPrivateRegion(ctx, check.OrganizationUID, region)
+		owned, err := s.regions.OwnsPrivateRegion(ctx, orgUID, region)
 		if err != nil {
-			return fmt.Errorf("check private region %s: %w", region, err)
+			return nil, fmt.Errorf("check private region %s: %w", region, err)
 		}
 
 		if !owned {
-			return ErrSealedSecretsRequirePrivateRegions
+			return nil, ErrSealedSecretsRequirePrivateRegions
 		}
 	}
 
-	secretFields := s.secretFieldsForType(ctx, check.OrganizationUID, check.Type)
-
-	if err := validateSealedSecretsShape(sealed, secretFields, requestConfig); err != nil {
-		return err
+	if err := validateSealedSecretsShape(sealed, s.secretFieldsForType(ctx, orgUID, checkType), requestConfig); err != nil {
+		return nil, err
 	}
 
-	recipients, err := sealing.RecipientsForRegions(ctx, s.db, check.OrganizationUID, privateRegions)
+	recipients, err := sealing.RecipientsForRegions(ctx, s.db, orgUID, privateRegions)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if len(recipients) == 0 {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"%w: enroll an agent in %s before saving credentials for a check that runs only there",
 			ErrNoAgentsToSealTo, strings.Join(privateRegions, ", "))
 	}
@@ -244,8 +243,25 @@ func (s *Service) applyClientSealing(
 	sort.Strings(got)
 
 	if !slices.Equal(want, got) {
-		return &SealingRecipientsChangedError{Recipients: recipients}
+		return nil, &SealingRecipientsChangedError{Recipients: recipients}
 	}
+
+	return got, nil
+}
+
+// applyClientSealing stores a client-sealed secret map on the check (spec
+// §4), after validateClientSealing. effective is the public config; any
+// secret field in it is dropped (the blob replaces them). check.Regions must
+// already be the regions the check will have.
+func (s *Service) applyClientSealing(
+	ctx context.Context, check *models.Check, effective, requestConfig map[string]any, sealed *SealedSecretsRequest,
+) error {
+	got, err := s.validateClientSealing(ctx, check.OrganizationUID, check.Type, check.Regions, requestConfig, sealed)
+	if err != nil {
+		return err
+	}
+
+	secretFields := s.secretFieldsForType(ctx, check.OrganizationUID, check.Type)
 
 	envelope, err := credentials.BuildClientSealedEnvelope(got, sealed.CT)
 	if err != nil {
@@ -564,6 +580,16 @@ func (s *Service) planSealedSecrets(
 		req.SealedSecrets, s.secretFieldsForType(ctx, orgUID, req.Type), req.Config,
 	); err != nil {
 		return err
+	}
+
+	// Explicit regions: the recipients can be checked now, so a dry run
+	// (config-as-code, spec 2026-11-10-03 §4) reports a stale set too.
+	if len(req.Regions) > 0 {
+		if _, err := s.validateClientSealing(
+			ctx, orgUID, req.Type, req.Regions, req.Config, req.SealedSecrets,
+		); err != nil {
+			return err
+		}
 	}
 
 	spec.Config = withInjectedConfig(spec.Config, sealedPlaceholders(req.Type, req.SealedSecrets.Keys))
