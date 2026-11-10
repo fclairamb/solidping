@@ -608,9 +608,13 @@ packages.
    only reaps a silent system agent after 7 days. Revoking a system agent from
    this view is still out of scope — that stays the
    `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS` removal path.
-6. Out of scope so far, no spec yet: client-side (browser) sealing, **peer
-   re-wrap** (asking an online agent to add a recipient to a sealed-only blob),
-   agent auto-update.
+6. Browser sealing (spec 2026-11-08-01): `sealedSecrets` on the check write
+   API, `GET /orgs/:org/sealing-recipients`, `origin` on sealed envelopes,
+   org setting `security.browser_sealing.mode`, the claim filter on sealed
+   fingerprints, and shared region keys (`sealing.region_keys`,
+   `SP_AGENT_REGION_KEYS`, `region-key-<fp>` capability). Peer re-wrap,
+   `solidping seal` and `sealedSecrets` in config-as-code are the follow-up
+   spec 2026-11-10-03. Agent auto-update stays out of scope.
 
 Open bug: [`2026-07-20-02-private-locations-token-dialog-dirty-rendering`](../../specs/todos/2026-07-20-02-private-locations-token-dialog-dirty-rendering.md)
 — enrollment-token dialog renders fragments outside the dialog on the dev deploy.

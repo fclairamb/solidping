@@ -1695,6 +1695,13 @@ function CheckDetailPage() {
           location's active agents. Re-saving the credentials (Edit, above) is
           the only fix — the server cannot re-seal what it cannot read. */}
       <NeedsResealAlert needsReseal={check.needsReseal} />
+      {check.secretsEncryption === "browser" && (
+        <div>
+          <Badge variant="secondary" data-testid="check-browser-sealed-badge">
+            {t("checks:sealing.detailBadge")}
+          </Badge>
+        </div>
+      )}
       <RegionWarningsAlert warnings={check.regionWarnings} />
 
       {/* Region outage (spec 2026-09-25-03): a region this check runs from is

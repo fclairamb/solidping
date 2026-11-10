@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/sealing"
 	"github.com/fclairamb/solidping/server/internal/securityheaders"
 )
 
@@ -1257,6 +1258,16 @@ func (h *Handler) writeUpdateOrgSettingsError(writer http.ResponseWriter, req *h
 			base.ErrorCodeValidationError,
 			"Escalation policy not found in this organization", err,
 		)
+	}
+
+	if errors.Is(err, sealing.ErrInvalidMode) {
+		return h.WriteJSON(writer, http.StatusBadRequest, base.ValidationError{
+			Title: "Invalid browser sealing mode",
+			Code:  string(base.ErrorCodeValidationError),
+			Fields: []base.ValidationErrorField{
+				{Name: "browserSealingMode", Message: err.Error()},
+			},
+		})
 	}
 
 	if errors.Is(err, ErrInvalidReminderInterval) {

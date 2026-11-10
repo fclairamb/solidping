@@ -442,6 +442,7 @@ function SshFields({
           onChange={(e) => onChange({ ...state, privateKey: e.target.value })}
           placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
           className="font-mono text-xs"
+          data-secret-input
           data-testid="check-private-key-input"
         />
         {hasStoredKey && !state.privateKey && (
@@ -557,6 +558,7 @@ function SftpFields({
           onChange={(e) => onChange({ ...state, privateKey: e.target.value })}
           placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
           className="font-mono text-xs"
+          data-secret-input
           data-testid="check-private-key-input"
         />
         {hasStoredKey && !state.privateKey && (

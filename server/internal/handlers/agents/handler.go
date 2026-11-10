@@ -171,6 +171,8 @@ func (h *Handler) writeServiceError(writer http.ResponseWriter, request *http.Re
 		return h.WriteErrorErr(writer, request, http.StatusNotFound, base.ErrorCodeNotFound, "Private region not found", err)
 	case errors.Is(err, ErrAgentNotFound):
 		return h.WriteErrorErr(writer, request, http.StatusNotFound, base.ErrorCodeNotFound, "Agent not found", err)
+	case errors.Is(err, ErrInvalidRegionKey):
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	case errors.Is(err, ErrRegionExists):
 		return h.WriteErrorErr(writer, request, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
 	case errors.Is(err, ErrRegionHasAgents):
@@ -180,4 +182,28 @@ func (h *Handler) writeServiceError(writer http.ResponseWriter, request *http.Re
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
+}
+
+// SetRegionKey handles PUT /api/v1/orgs/:org/private-regions/:slug/region-key.
+func (h *Handler) SetRegionKey(writer http.ResponseWriter, req *http.Request) error {
+	var body SetRegionKeyRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid request body")
+	}
+
+	key, err := h.svc.SetRegionKey(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "slug"), &body)
+	if err != nil {
+		return h.writeServiceError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, key)
+}
+
+// DeleteRegionKey handles DELETE /api/v1/orgs/:org/private-regions/:slug/region-key.
+func (h *Handler) DeleteRegionKey(writer http.ResponseWriter, req *http.Request) error {
+	if err := h.svc.DeleteRegionKey(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "slug")); err != nil {
+		return h.writeServiceError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, statusBody("deleted"))
 }

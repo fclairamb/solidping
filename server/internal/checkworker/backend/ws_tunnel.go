@@ -24,12 +24,12 @@ import (
 // allowEnv is this agent's own `${env:}` allowlist (its SP_CHECK_ENV_ALLOWLIST);
 // nil denies every `${env:}` reference.
 func buildTunnelConfig(
-	ctx context.Context, identity string, tunnel *agents.AgentJobTunnel, allowEnv secretref.EnvAllowFunc,
+	ctx context.Context, identities []string, tunnel *agents.AgentJobTunnel, allowEnv secretref.EnvAllowFunc,
 ) (*checkssh.SSHConfig, error) {
 	merged := tunnel.Config
 
 	if tunnel.ConfigSealed != nil && *tunnel.ConfigSealed != "" {
-		secrets, err := credentials.UnsealWithIdentity(identity, *tunnel.ConfigSealed)
+		secrets, err := credentials.UnsealWithIdentities(*tunnel.ConfigSealed, identities...)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrTunnelSealedForOthers, err)
 		}

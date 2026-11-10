@@ -402,6 +402,68 @@ func (s AgentScope) apply(query *bun.SelectQuery) *bun.SelectQuery {
 	return icmpScope(pluginTypeScope(excludePassiveTypes(query.Where("region = ?", s.Region)), s.PluginTypes), s.NoICMP)
 }
 
+// sealFingerprintsKey carries the X25519 recipient fingerprints a claiming
+// agent can open.
+type sealFingerprintsKey struct{}
+
+// WithSealFingerprints returns a context for a claim by an agent that can open
+// blobs sealed to these fingerprints: its own key and the region keys it
+// advertises (spec 2026-11-08-01 §7). A sealed job is then only handed out if
+// its blob lists one of them, so an agent never claims a job it cannot open.
+// Without it, no filter applies.
+func WithSealFingerprints(ctx context.Context, fingerprints []string) context.Context {
+	return context.WithValue(ctx, sealFingerprintsKey{}, fingerprints)
+}
+
+func sealFingerprintsFromContext(ctx context.Context) []string {
+	fingerprints, _ := ctx.Value(sealFingerprintsKey{}).([]string)
+
+	return fingerprints
+}
+
+// sealScope keeps a sealed job away from an agent that is not one of its
+// recipients. The fingerprints are matched as quoted strings inside the
+// stored envelope's `fingerprints` array; only hex fingerprints are used, so
+// no LIKE wildcard can widen the match.
+func sealScope(query *bun.SelectQuery, fingerprints []string) *bun.SelectQuery {
+	var valid []string
+
+	for _, fp := range fingerprints {
+		if isHexFingerprint(fp) {
+			valid = append(valid, fp)
+		}
+	}
+
+	if len(valid) == 0 {
+		return query
+	}
+
+	return query.WhereGroup(" AND ", func(group *bun.SelectQuery) *bun.SelectQuery {
+		group = group.WhereOr("config_sealed IS NULL").WhereOr("config_sealed = ''")
+
+		for _, fp := range valid {
+			group = group.WhereOr("config_sealed LIKE ?", `%"`+fp+`"%`)
+		}
+
+		return group
+	})
+}
+
+// isHexFingerprint reports whether fp is a lowercase hex recipient fingerprint.
+func isHexFingerprint(fp string) bool {
+	if fp == "" || len(fp) > 64 {
+		return false
+	}
+
+	for _, char := range fp {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return false
+		}
+	}
+
+	return true
+}
+
 // excludePassiveTypes keeps passive (heartbeat, email) jobs out of every check
 // worker and agent claim (spec 2026-09-25-04). They are evaluated on the jobs
 // node only (ClaimPassiveJobs). Two failures motivated it:
@@ -638,7 +700,7 @@ func selectAvailableJobsForAgent(
 ) ([]*models.CheckJob, error) {
 	var jobs []*models.CheckJob
 
-	query := scope.apply(tx.NewSelect().Model(&jobs)).
+	query := sealScope(scope.apply(tx.NewSelect().Model(&jobs)), sealFingerprintsFromContext(ctx)).
 		// Multi-step slices never reach an agent (spec 2026-10-03-03): the
 		// state is stored and read in-process only.
 		Where("lane <> ?", scheduling.LaneBulk).

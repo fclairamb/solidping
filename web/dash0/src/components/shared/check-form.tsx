@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useLayoutEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { filterCheckTypesForDemo, isDemoReadOnlyError } from "@/lib/demo";
 import { DemoReadOnlyNote } from "@/components/shared/demo-read-only-note";
@@ -67,6 +68,21 @@ import { CheckTypeIcon } from "@/components/shared/check-type-identity";
 import { Link } from "@tanstack/react-router";
 import { useAIChecksEnabled } from "@/api/public-config";
 import { ApiError } from "@/api/client";
+import {
+  SEALING_RECIPIENTS_CHANGED,
+  canSealInBrowser,
+  fetchRecipients,
+  isBrowserSealingEligible,
+  sealSecrets,
+  splitSecrets,
+  type SealedSecrets,
+  withoutSecretKeys,
+} from "@/lib/sealing";
+import {
+  SecretEncryptionPanel,
+  type BrowserSealingBlocker,
+  type SecretEncryptionMode,
+} from "@/components/checks/secret-encryption";
 import type {
   Check as CheckModel,
   CheckGroup,
@@ -459,6 +475,8 @@ export interface CheckFormData {
   initialDependsOn?: DependencyDraft[];
   /** "" = inherit (group → org default → none); a UID assigns that policy. */
   escalationPolicyUid?: string;
+  /** Secrets sealed in the browser for the agents (spec 2026-11-08-01). */
+  sealedSecrets?: SealedSecrets;
 }
 
 interface CheckFormProps {
@@ -482,6 +500,8 @@ interface CheckFormProps {
    * Undefined when there is not enough history to suggest anything.
    */
   slowThresholdSuggestionMs?: number;
+  /** `?replace=1` (the Re-seal page): open the sealed secret inputs on load. */
+  replaceSecrets?: boolean;
 }
 
 export function CheckForm({
@@ -497,6 +517,7 @@ export function CheckForm({
   onTypeChange,
   initialSection,
   slowThresholdSuggestionMs,
+  replaceSecrets,
 }: CheckFormProps) {
   const { t } = useTranslation("checks");
   // Fetch enabled check types from API; fall back to hardcoded list if unavailable
@@ -1214,6 +1235,92 @@ export function CheckForm({
     setIpVersion(getConfigField(sample.config, "ipVersion") || IP_VERSION_AUTO);
   }
 
+  // Browser-sealed secrets (spec 2026-11-08-01). Browser encryption needs
+  // every region to be private (pinned) and a secure context; it is
+  // pre-selected for a new check, an existing one keeps its mode.
+  const hasSecretFields = (activeSecretFields?.length ?? 0) > 0 && !isPassiveCheckType(type);
+  const sealingRegions = useMemo(
+    () => (showRegions && isAutoPlacement ? [] : [...selectedRegions].sort()),
+    [showRegions, isAutoPlacement, selectedRegions],
+  );
+  const sealingBlocker: BrowserSealingBlocker = !canSealInBrowser()
+    ? "insecureContext"
+    : !isBrowserSealingEligible(sealingRegions)
+      ? "sharedRegion"
+      : null;
+  const storedSealed = initialData?.secretsEncryption === "browser";
+  const initialSecretMode: SecretEncryptionMode =
+    initialData?.secretsEncryption === "server" ? "server" : "browser";
+  const [secretModeChoice, setSecretModeChoice] = useState<SecretEncryptionMode>(initialSecretMode);
+  const [secretModeSwitched, setSecretModeSwitched] = useState(false);
+  const { data: sealingInfo } = useQuery({
+    queryKey: ["sealing-recipients", org, sealingBlocker ? "" : sealingRegions.join(",")],
+    queryFn: () => fetchRecipients(org, sealingBlocker ? [] : sealingRegions),
+    enabled: hasSecretFields && !!org,
+  });
+  const sealingRequired = sealingInfo?.mode === "required";
+  // The mode in effect: browser when chosen (or required) and possible.
+  const secretMode: SecretEncryptionMode =
+    (secretModeChoice === "browser" || sealingRequired) && !sealingBlocker ? "browser" : "server";
+  // A shared region picked while browser mode was in effect: say it once
+  // (state derived from the previous render, no effect).
+  // The secret inputs are emptied then: what was typed for the agents must
+  // not silently go to the server instead.
+  const [previousBlocker, setPreviousBlocker] = useState(sealingBlocker);
+  if (previousBlocker !== sealingBlocker) {
+    setPreviousBlocker(sealingBlocker);
+    const switched =
+      previousBlocker === null && sealingBlocker === "sharedRegion" && secretModeChoice === "browser";
+    setSecretModeSwitched(switched);
+    if (switched && hasSecretFields) {
+      const { publicConfig } = splitSecrets(type, currentConfig, activeSecretFields ?? []);
+      setConfigState(activeModule.fromConfig(publicConfig));
+    }
+  }
+  // A stored browser blob is replaced whole: its secret inputs stay closed
+  // until "Replace" opens them all at once (or the mode changes).
+  const [secretsReplacing, setSecretsReplacing] = useState(!!replaceSecrets);
+  const typedSecretKeys = useMemo(
+    () =>
+      hasSecretFields ? Object.keys(splitSecrets(type, currentConfig, activeSecretFields ?? []).secrets) : [],
+    [hasSecretFields, type, currentConfig, activeSecretFields],
+  );
+  // Why the secret inputs are closed, or null when they are open. A
+  // `required` org with a shared region (or an insecure page) cannot seal.
+  const secretLock: string | null = !hasSecretFields
+    ? null
+    : sealingRequired && sealingBlocker
+      ? sealingBlocker === "insecureContext"
+        ? t("checks:sealing.blocker.insecureContext")
+        : t("checks:sealing.requiredPrivateRegions")
+      : secretMode === "browser" && storedSealed && !secretsReplacing
+        ? t("checks:sealing.replaceToEdit")
+        : null;
+  // In a `required` org, once a secret is typed the shared regions are off.
+  const sharedRegionsLocked = sealingRequired && typedSecretKeys.length > 0;
+  // The secret inputs live in each type module: close them from here, by
+  // their DOM markers, rather than threading a prop through every module.
+  // handleSubmit drops anything typed while closed all the same.
+  const formRootRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const root = formRootRef.current;
+    if (!root) return;
+    const inputs = root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement>(
+      'input[type="password"], [data-secret-input]',
+    );
+    for (const input of inputs) {
+      if (secretLock && !input.disabled) {
+        input.disabled = true;
+        input.title = secretLock;
+        input.dataset.secretLocked = "true";
+      } else if (!secretLock && input.dataset.secretLocked) {
+        input.disabled = false;
+        input.removeAttribute("title");
+        delete input.dataset.secretLocked;
+      }
+    }
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -1282,8 +1389,62 @@ export function CheckForm({
       return;
     }
 
+    // Browser mode: the secrets leave the form only as an age file sealed
+    // for the regions' recipients. Never sent in plaintext.
+    let secretsToSeal: Record<string, unknown> | null = null;
+    let submittedConfig = config;
+    if (hasSecretFields && !(isPassiveCheckType(type) && mode === "edit")) {
+      const { publicConfig, secrets } = splitSecrets(type, config, activeSecretFields ?? []);
+      // Closed inputs send nothing: the stored secrets stay as they are.
+      const typed = secretLock ? [] : Object.keys(secrets);
+      if (secretLock) submittedConfig = withoutSecretKeys(type, config, activeSecretFields ?? []);
+      const stored = initialData?.configPrivateKeys ?? [];
+      if (sealingRequired && sealingBlocker && typed.length > 0) {
+        setError(
+          sealingBlocker === "insecureContext"
+            ? t("checks:sealing.blocker.insecureContext")
+            : t("checks:sealing.requiredPrivateRegions"),
+        );
+        return;
+      }
+      const modeChanged =
+        mode === "edit" && stored.length > 0 && (storedSealed ? "browser" : "server") !== secretMode;
+      if (modeChanged && typed.length === 0) {
+        setError(t("checks:sealing.retypeToSwitch"));
+        return;
+      }
+      if (secretMode === "browser" && typed.length > 0) {
+        const cleared = Object.keys(publicConfig).filter(
+          (k) => publicConfig[k] === null || publicConfig[k] === "",
+        );
+        const missing = storedSealed
+          ? stored.filter((k) => !typed.includes(k) && !cleared.includes(k))
+          : [];
+        if (missing.length > 0) {
+          setError(t("checks:sealing.replaceAll", { keys: missing.join(", ") }));
+          return;
+        }
+        secretsToSeal = secrets;
+        submittedConfig = publicConfig;
+      }
+    }
+
+    const sealFresh = async (): Promise<SealedSecrets | null> => {
+      if (!secretsToSeal) return null;
+      const { recipients } = await fetchRecipients(org, sealingRegions);
+      if (recipients.length === 0) {
+        throw new ApiError(
+          t("checks:sealing.noRecipient", { regions: sealingRegions.join(", ") }),
+          "NO_RECIPIENT",
+        );
+      }
+      return sealSecrets(recipients, secretsToSeal);
+    };
+
     try {
-      await onSubmit({
+      let sealed = await sealFresh();
+      const submitWith = (sealedSecrets: SealedSecrets | null) => onSubmit({
+        ...(sealedSecrets ? { sealedSecrets } : {}),
         type: mode === "create" ? type : undefined,
         enabled,
         name: mode === "edit" ? name : (name || undefined),
@@ -1295,7 +1456,7 @@ export function CheckForm({
           escalationPolicyUid || (mode === "edit" ? "" : undefined),
         period: isPassiveCheckType(type) ? formatPeriod(periodValue, periodUnit) : period,
         // Don't send config for passive edits — the token is managed by the backend
-        ...(isPassiveCheckType(type) && mode === "edit" ? {} : { config }),
+        ...(isPassiveCheckType(type) && mode === "edit" ? {} : { config: submittedConfig }),
         // Automatic placement sends the count and lets the server choose the
         // regions; pinned sends the explicit list (spec 2026-09-25-06). When
         // the picker is hidden (fewer than two eligible regions), a NEW check
@@ -1374,6 +1535,15 @@ export function CheckForm({
             }
           : {}),
       });
+      try {
+        await submitWith(sealed);
+      } catch (err) {
+        // The agent set changed between the seal and the save: seal again
+        // from the values still in the form and retry once.
+        if (!(sealed && err instanceof ApiError && err.code === SEALING_RECIPIENTS_CHANGED)) throw err;
+        sealed = await sealFresh();
+        await submitWith(sealed);
+      }
     } catch (err) {
       // One surface, one variant (spec 2026-09-07-02 §B.2): a refused demo
       // write already gets the deduplicated toast from api/client.ts. Setting
@@ -1566,7 +1736,7 @@ export function CheckForm({
         lastResultOutput: initialData?.lastResult?.output as Record<string, unknown> | undefined,
       }}
     >
-      <div className="space-y-6 max-w-2xl">
+      <div className="space-y-6 max-w-2xl" ref={formRootRef}>
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={onCancel}>
             <ArrowLeft className="h-4 w-4" />
@@ -1901,15 +2071,20 @@ export function CheckForm({
                           const crawlUnsupported =
                             type === "crawl" && !!region.private && region.capabilities?.crawl === "no";
                           const selected = selectedRegions.includes(region.slug);
+                          // A `required` org with a secret typed: a shared
+                          // region would make the check unsealable.
+                          const sealingLocked = sharedRegionsLocked && !selected && !region.slug.startsWith("@");
+                          const regionDisabled = (crawlUnsupported || sealingLocked) && !selected;
 
                           return (
                             <label
                               key={region.slug}
                               className={cn(
                                 "flex flex-wrap items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50",
-                                (deemphasised || crawlUnsupported) && "opacity-60",
-                                crawlUnsupported && !selected && "cursor-not-allowed"
+                                (deemphasised || crawlUnsupported || sealingLocked) && "opacity-60",
+                                regionDisabled && "cursor-not-allowed"
                               )}
+                              title={sealingLocked ? t("checks:sealing.sharedRegionDisabled") : undefined}
                               data-testid={`region-option-${region.slug}`}
                               data-ipv6={ipv6}
                               data-browser={browser}
@@ -1918,7 +2093,7 @@ export function CheckForm({
                             >
                               <Checkbox
                                 checked={selected}
-                                disabled={crawlUnsupported && !selected}
+                                disabled={regionDisabled}
                                 onCheckedChange={() => toggleRegion(region.slug)}
                                 data-testid={`region-checkbox-${region.slug}`}
                               />
@@ -2184,6 +2359,30 @@ export function CheckForm({
               customized={authSummary.customized}
               defaultOpen={sectionOpen("authentication", authSummary.customized)}
             >
+              {hasSecretFields && (
+                <SecretEncryptionPanel
+                  mode={secretMode}
+                  onModeChange={(next) => {
+                    setSecretModeChoice(next);
+                    setSecretModeSwitched(false);
+                    // Changing mode opens every secret input, to be typed again.
+                    if (next !== secretMode) setSecretsReplacing(true);
+                  }}
+                  required={sealingRequired}
+                  blocker={sealingBlocker}
+                  recipients={sealingInfo?.recipients ?? []}
+                  regions={sealingRegions}
+                  storedSealed={storedSealed}
+                  switchedNotice={secretModeSwitched}
+                  replacing={secretsReplacing}
+                  onReplace={() => setSecretsReplacing(true)}
+                />
+              )}
+              {secretLock && (
+                <p className="text-xs text-muted-foreground" data-testid="secret-inputs-locked">
+                  {secretLock}
+                </p>
+              )}
               <AuthFields
                 state={configState}
                 onChange={handleConfigChange}

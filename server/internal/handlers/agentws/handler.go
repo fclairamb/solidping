@@ -48,6 +48,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/plugintypes"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/sealing"
 	"github.com/fclairamb/solidping/server/internal/version"
 )
 
@@ -1042,7 +1043,7 @@ func (h *Handler) handleClaim(
 	scope.NoICMP = checkjobsvc.NoICMPFromCapabilities(frame.Capabilities)
 
 	jobs, nextIn, err := h.checkJobSvc.ClaimJobsForAgent(
-		ctx, state.workerUID, scope,
+		withAgentSealFingerprints(ctx, state.agent, frame.Capabilities), state.workerUID, scope,
 		frame.CheckUID, maxJobs, claimMaxAhead,
 	)
 	if err != nil {
@@ -1470,4 +1471,17 @@ func oversized(payload map[string]any) bool {
 	raw, err := json.Marshal(payload)
 
 	return err != nil || len(raw) > maxPayloadBytes
+}
+
+// withAgentSealFingerprints scopes a claim to the sealed jobs an org agent can
+// open: its own X25519 key or a region key it advertises (spec 2026-11-08-01
+// §7). A system agent gets a per-claim re-seal instead (sealJobForSystemAgent).
+func withAgentSealFingerprints(ctx context.Context, agent *models.Agent, capabilities []string) context.Context {
+	if agent.IsSystem() || agent.X25519PublicKey == "" {
+		return ctx
+	}
+
+	return checkjobsvc.WithSealFingerprints(ctx, append(
+		[]string{credentials.RecipientFingerprint(agent.X25519PublicKey)},
+		sealing.RegionKeyFingerprints(capabilities)...))
 }

@@ -1739,5 +1739,28 @@
     "updated_one": "Regions set on {{count}} check",
     "updated_other": "Regions set on {{count}} checks",
     "failed": "Could not set the regions"
+  },
+  "sealing": {
+    "label": "Secret encryption",
+    "modeServer": "Encrypted by SolidPing",
+    "modeBrowser": "Encrypted in my browser (only your agents can read it)",
+    "blocker": {
+      "sharedRegion": "Browser encryption needs every region of the check to be one of your private locations.",
+      "insecureContext": "Browser encryption needs this page over HTTPS (or localhost)."
+    },
+    "switchedToServer": "A shared region is selected: the secrets will be encrypted by SolidPing. Type them again if you entered them for your agents.",
+    "noRecipient": "Enroll an agent in {{regions}} first.",
+    "badgeAgents_one": "Sealed in your browser for {{regions}} ({{count}} agent)",
+    "badgeAgents_other": "Sealed in your browser for {{regions}} ({{count}} agents)",
+    "badgeRegionKey": "Sealed in your browser for {{regions}} (region key)",
+    "recipientRegion": "Region key of {{region}}",
+    "stored": "Sealed. Only your agents can read it.",
+    "requiredPrivateRegions": "This organization requires check secrets to be sealed in the browser: pick private locations only.",
+    "retypeToSwitch": "Type the secrets again to change how they are encrypted.",
+    "replaceAll": "The sealed secrets are replaced together: also fill in {{keys}}.",
+    "detailBadge": "Browser-sealed",
+    "replace": "Replace",
+    "replaceToEdit": "Sealed secrets are replaced together: click Replace to type them all again.",
+    "sharedRegionDisabled": "Shared locations are disabled: this organization requires check secrets to be sealed in the browser."
   }
 }

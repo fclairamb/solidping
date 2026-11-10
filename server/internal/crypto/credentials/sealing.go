@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 
 	"filippo.io/age"
 )
@@ -43,7 +44,33 @@ type sealedEnvelopeJSON struct {
 	Alg          string   `json:"alg"`
 	Fingerprints []string `json:"fingerprints"`
 	CT           string   `json:"ct"`
+	// Origin records who produced the ciphertext: SealOriginServer or
+	// SealOriginBrowser (spec 2026-11-08-01). Written by the server, never
+	// taken from a request. Absent on legacy server-sealed blobs. The agent's
+	// decoder ignores it.
+	Origin string `json:"origin,omitempty"`
 }
+
+// Seal origins (spec 2026-11-08-01).
+const (
+	// SealOriginServer marks a blob the server sealed from plaintext it
+	// received.
+	SealOriginServer = "server"
+	// SealOriginBrowser marks a blob sealed by the client (dash0 or any API
+	// client) for the agents' public keys: the server never saw the plaintext.
+	SealOriginBrowser = "browser"
+)
+
+// MaxSealedCiphertextBytes caps a client-sealed age file (decoded).
+const MaxSealedCiphertextBytes = 64 * 1024
+
+// Client-sealed ciphertext validation errors.
+var (
+	ErrSealedCiphertextEncoding = errors.New("ct is not valid base64")
+	ErrSealedCiphertextTooLarge = errors.New("ct is larger than 64 KiB")
+	ErrSealedCiphertextHeader   = errors.New("ct is not an age file sealed only to X25519 recipients")
+	ErrSealedStanzaCount        = errors.New("ct does not hold one X25519 stanza per fingerprint")
+)
 
 // RecipientFingerprint returns a short, stable, non-secret fingerprint of an age
 // X25519 recipient string (public key). Used to record who a sealed blob was
@@ -116,6 +143,7 @@ func SealForRecipients(recipients []string, secrets map[string]any) (string, err
 		Alg:          sealedEnvelopeAlg,
 		Fingerprints: fingerprints,
 		CT:           base64.StdEncoding.EncodeToString(buf.Bytes()),
+		Origin:       SealOriginServer,
 	}
 
 	out, err := json.Marshal(envelope)
@@ -132,14 +160,31 @@ func SealForRecipients(recipients []string, secrets map[string]any) (string, err
 // symmetric path. A wrong/removed identity yields a decrypt error — the agent
 // surfaces this as a clear "credentials not sealed for this agent" job error.
 func UnsealWithIdentity(identity, envelope string) (map[string]any, error) {
+	return UnsealWithIdentities(envelope, identity)
+}
+
+// UnsealWithIdentities unseals a region-sealed envelope with any of several age
+// X25519 identities: the agent's own key and the shared region keys it holds
+// (spec 2026-11-08-01 §2). age tries each identity against each stanza.
+func UnsealWithIdentities(envelope string, identities ...string) (map[string]any, error) {
 	env, err := parseSealedEnvelope(envelope)
 	if err != nil {
 		return nil, err
 	}
 
-	id, err := age.ParseX25519Identity(identity)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidIdentity, err)
+	parsed := make([]age.Identity, 0, len(identities))
+
+	for _, identity := range identities {
+		id, parseErr := age.ParseX25519Identity(identity)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidIdentity, parseErr)
+		}
+
+		parsed = append(parsed, id)
+	}
+
+	if len(parsed) == 0 {
+		return nil, ErrInvalidIdentity
 	}
 
 	ct, err := base64.StdEncoding.DecodeString(env.CT)
@@ -147,7 +192,7 @@ func UnsealWithIdentity(identity, envelope string) (map[string]any, error) {
 		return nil, fmt.Errorf("decode sealed ciphertext: %w", err)
 	}
 
-	rdr, err := age.Decrypt(bytes.NewReader(ct), id)
+	rdr, err := age.Decrypt(bytes.NewReader(ct), parsed...)
 	if err != nil {
 		return nil, fmt.Errorf("age decrypt: %w", err)
 	}
@@ -163,6 +208,107 @@ func UnsealWithIdentity(identity, envelope string) (map[string]any, error) {
 	}
 
 	return out, nil
+}
+
+// X25519RecipientOf returns the public recipient ("age1…") of an age X25519
+// identity string.
+func X25519RecipientOf(identity string) (string, error) {
+	id, err := age.ParseX25519Identity(identity)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrInvalidIdentity, err)
+	}
+
+	return id.Recipient().String(), nil
+}
+
+// ValidateRecipient reports whether recipient is a valid age X25519 recipient.
+func ValidateRecipient(recipient string) error {
+	if _, err := age.ParseX25519Recipient(recipient); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidRecipient, err)
+	}
+
+	return nil
+}
+
+// ValidateSealedCiphertext sanity-checks a client-sealed age file before it is
+// stored (spec 2026-11-08-01 §4.3): valid base64, at most 64 KiB, and an age
+// header holding exactly wantStanzas X25519 stanzas and nothing else. age hides
+// who a stanza is for, so this is a sanity check, not proof of the recipients.
+func ValidateSealedCiphertext(ct string, wantStanzas int) error {
+	if base64.StdEncoding.DecodedLen(len(ct)) > MaxSealedCiphertextBytes+3 {
+		return ErrSealedCiphertextTooLarge
+	}
+
+	raw, err := base64.StdEncoding.DecodeString(ct)
+	if err != nil {
+		return ErrSealedCiphertextEncoding
+	}
+
+	if len(raw) > MaxSealedCiphertextBytes {
+		return ErrSealedCiphertextTooLarge
+	}
+
+	header, err := age.ExtractHeader(bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrSealedCiphertextHeader, err)
+	}
+
+	x25519 := 0
+
+	for _, line := range strings.Split(string(header), "\n") {
+		if !strings.HasPrefix(line, "-> ") {
+			continue
+		}
+
+		if !strings.HasPrefix(line, "-> X25519 ") {
+			return ErrSealedCiphertextHeader
+		}
+
+		x25519++
+	}
+
+	if x25519 != wantStanzas {
+		return fmt.Errorf("%w: header has %d, fingerprints list %d", ErrSealedStanzaCount, x25519, wantStanzas)
+	}
+
+	return nil
+}
+
+// BuildClientSealedEnvelope wraps a client-sealed age file into the stored v2
+// envelope, with origin SealOriginBrowser. The fingerprints are sorted so the
+// stored shape matches what SealForRecipients writes.
+func BuildClientSealedEnvelope(fingerprints []string, ciphertext string) (string, error) {
+	sorted := append([]string(nil), fingerprints...)
+	sort.Strings(sorted)
+
+	out, err := json.Marshal(sealedEnvelopeJSON{
+		Version:      sealedEnvelopeVersion,
+		Alg:          sealedEnvelopeAlg,
+		Fingerprints: sorted,
+		CT:           ciphertext,
+		Origin:       SealOriginBrowser,
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshal sealed envelope: %w", err)
+	}
+
+	return string(out), nil
+}
+
+// SealedOrigin returns who sealed a stored envelope: SealOriginBrowser,
+// SealOriginServer (also for a legacy blob without the field), or "" when the
+// envelope is not a sealed blob.
+func SealedOrigin(envelope string) string {
+	env, err := parseSealedEnvelope(envelope)
+	if err != nil {
+		return ""
+	}
+
+	if env.Origin == SealOriginBrowser {
+		return SealOriginBrowser
+	}
+
+	return SealOriginServer
 }
 
 // IsSealedEnvelope reports whether a stored envelope string is a v2 age-x25519

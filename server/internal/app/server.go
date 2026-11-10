@@ -1255,6 +1255,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		Use(orgSlugRedirect.Middleware,
 			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
 	orgChecksAdmin.GET("/export", checksHandler.ExportChecks)
+
+	// Browser-sealed check secrets (spec 2026-11-08-01). The recipients are
+	// public keys: any org member who edits checks reads them. The list of
+	// checks a `required` org still has to fix is for admins.
+	orgGroup("/orgs/:org/sealing-recipients").GET("", checksHandler.SealingRecipients)
+	orgSealingAdmin := api.NewGroup("/orgs/:org/sealing").
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgSealingAdmin.GET("/noncompliant-checks", checksHandler.NonCompliantChecks)
+	orgSealingAdmin.GET("/reseal-checks", checksHandler.ResealChecks)
 	orgChecksAdmin.POST("/import", checksHandler.ImportChecks)
 	orgChecksAdmin.POST("/apply", checksHandler.ApplyChecks)
 
@@ -1439,6 +1449,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgAgentsAdmin.POST("/private-regions", agentsAdminHandler.CreatePrivateRegion)
 	orgAgentsAdmin.DELETE("/private-regions/:slug", agentsAdminHandler.DeletePrivateRegion)
 	orgAgentsAdmin.POST("/private-regions/:slug/liveness-monitor", agentsAdminHandler.EnableLivenessMonitor)
+	// Shared region key (spec 2026-11-08-01 §2): only the public recipient.
+	orgAgentsAdmin.PUT("/private-regions/:slug/region-key", agentsAdminHandler.SetRegionKey)
+	orgAgentsAdmin.DELETE("/private-regions/:slug/region-key", agentsAdminHandler.DeleteRegionKey)
 	orgAgentsAdmin.GET("/agent-enrollment-tokens", agentsAdminHandler.ListEnrollmentTokens)
 	orgAgentsAdmin.POST("/agent-enrollment-tokens", agentsAdminHandler.MintEnrollmentToken)
 	orgAgentsAdmin.DELETE("/agent-enrollment-tokens/:uid", agentsAdminHandler.DeleteEnrollmentToken)
