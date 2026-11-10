@@ -1739,5 +1739,28 @@
     "updated_one": "Regiones definidas en {{count}} check",
     "updated_other": "Regiones definidas en {{count}} checks",
     "failed": "No se pudieron definir las regiones"
+  },
+  "sealing": {
+    "label": "Cifrado de secretos",
+    "modeServer": "Cifrado por SolidPing",
+    "modeBrowser": "Cifrado en mi navegador (solo sus agentes pueden leerlo)",
+    "blocker": {
+      "sharedRegion": "El cifrado en el navegador requiere que todas las regiones del check sean ubicaciones privadas suyas.",
+      "insecureContext": "El cifrado en el navegador requiere esta página en HTTPS (o localhost)."
+    },
+    "switchedToServer": "Hay una región compartida seleccionada: SolidPing cifrará los secretos. Escríbalos de nuevo si los introdujo para sus agentes.",
+    "noRecipient": "Primero inscriba un agente en {{regions}}.",
+    "badgeAgents_one": "Sellado en su navegador para {{regions}} ({{count}} agente)",
+    "badgeAgents_other": "Sellado en su navegador para {{regions}} ({{count}} agentes)",
+    "badgeRegionKey": "Sellado en su navegador para {{regions}} (clave de región)",
+    "recipientRegion": "Clave de región de {{region}}",
+    "stored": "Sellado. Solo tus agentes pueden leerlo.",
+    "requiredPrivateRegions": "Esta organización exige que los secretos de los checks se sellen en el navegador: elija solo ubicaciones privadas.",
+    "retypeToSwitch": "Escriba de nuevo los secretos para cambiar cómo se cifran.",
+    "replaceAll": "Los secretos sellados se reemplazan juntos: rellene también {{keys}}.",
+    "detailBadge": "Sellado en el navegador",
+    "replace": "Reemplazar",
+    "replaceToEdit": "Los secretos sellados se reemplazan juntos: haz clic en Reemplazar para escribirlos todos de nuevo.",
+    "sharedRegionDisabled": "Las regiones compartidas están desactivadas: esta organización exige que los secretos de los checks se sellen en el navegador."
   }
 }

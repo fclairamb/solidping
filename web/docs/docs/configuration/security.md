@@ -5,6 +5,8 @@ title: Security & Encryption
 
 # Security & Encryption
 
+Check secrets for private locations can be sealed in the browser, so the server never receives them: see [browser-sealed secrets](../features/browser-sealed-secrets.md).
+
 SolidPing stores sensitive data two ways, depending on whether the server ever needs to read it back:
 
 - **Encrypted at rest** — notification connection secrets, check credentials, integration tokens: AES-256-GCM under an out-of-band master key you provide.

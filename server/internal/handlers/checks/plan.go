@@ -246,6 +246,13 @@ func (s *Service) planCreateCheck(
 		Config: withInjectedConfig(req.Config, derivedConfig),
 	}
 
+	// Browser-sealed secrets (spec 2026-11-08-01): the checker validates
+	// placeholders for the keys it cannot see. Without them, a `required` org
+	// refuses plaintext secrets.
+	if sealErr := s.planSealedSecrets(ctx, org.UID, &req, spec); sealErr != nil {
+		return nil, sealErr
+	}
+
 	if validateErr := s.validateSpecFor(ctx, org.UID, req.Type, spec); validateErr != nil {
 		return nil, validateErr
 	}

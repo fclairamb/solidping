@@ -491,6 +491,7 @@ export function HttpAuthFields({
               id="username"
               type="text"
               placeholder="user"
+              data-secret-input
               value={state.username}
               onChange={(e) =>
                 onChange({
@@ -561,6 +562,7 @@ export function HttpAuthFields({
                 });
               }}
               className="flex-1"
+              data-secret-input
               data-testid={`secret-header-key-${idx}`}
             />
             <Input
@@ -591,6 +593,7 @@ export function HttpAuthFields({
                   headersDirty: true,
                 })
               }
+              data-secret-input
               data-testid={`secret-header-remove-${idx}`}
             >
               <Trash2 className="h-4 w-4" />
@@ -610,6 +613,7 @@ export function HttpAuthFields({
               secretHeaders: [...secretHeaders, { key: "", value: "" }],
             })
           }
+          data-secret-input
           data-testid="add-secret-header-button"
         >
           <Plus className="h-4 w-4 mr-1" />

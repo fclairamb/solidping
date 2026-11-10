@@ -1,3 +1,4 @@
+import type { SealedSecrets } from "@/lib/sealing";
 import { useMemo } from "react";
 import {
   useQueries,
@@ -207,6 +208,10 @@ export interface Check {
    * Undefined when the check targets no private location.
    */
   needsReseal?: boolean;
+  /** Who encrypted the check's secrets (spec 2026-11-08-01): "browser" when
+   * sealed in the browser for the agents' keys, "server" otherwise; absent
+   * when the check has no secret. */
+  secretsEncryption?: "browser" | "server";
   /**
    * Detail responses only, recomputed on every read: why the check does not
    * run in some of its regions right now. Today REGION_NO_PLUGIN, a plugin
@@ -357,6 +362,8 @@ export interface RegionDefinition {
 }
 
 export interface CreateCheckRequest {
+  /** Secrets sealed in the browser (spec 2026-11-08-01). */
+  sealedSecrets?: SealedSecrets;
   /** Per-check path-trace policy: `inherit`, `on` or `off` (spec
    * 2026-08-21-10). `inherit` is what puts a check back under the org default;
    * omitting the field leaves it unchanged. */
@@ -455,6 +462,8 @@ export interface CreateCheckRequest {
 }
 
 export interface UpdateCheckRequest {
+  /** Replaces every stored secret with a browser-sealed blob. */
+  sealedSecrets?: SealedSecrets;
   /** With `enabled: false`, also close the check's open incidents (spec
    * 2026-10-23-01). */
   resolveOpenIncidents?: boolean;
@@ -4781,6 +4790,9 @@ export interface OrgSettings {
   // for every check whose own value is null. Always present; 0 (off) when
   // the org never set it.
   reminderIntervalSeconds?: number;
+  // `optional` or `required` browser sealing of check secrets (spec
+  // 2026-11-08-01). Always present.
+  browserSealingMode?: "optional" | "required";
 }
 
 export function useOrgSettings(org: string, options: { enabled?: boolean } = {}) {
@@ -4809,6 +4821,7 @@ export interface UpdateOrgSettingsRequest {
   // Org default reminder interval: 0 is off, otherwise 900..86400 seconds;
   // omit to leave it untouched.
   reminderIntervalSeconds?: number;
+  browserSealingMode?: "optional" | "required";
 }
 
 export function useUpdateOrgSettings(org: string) {
@@ -8188,6 +8201,13 @@ export function useSetMaintenanceWindowChecks(org: string, uid: string) {
 // ---------------------------------------------------------------------------
 
 export interface PrivateRegion {
+  /** `perAgent` or `shared` (one region key), spec 2026-11-08-01 §2. */
+  keyMode?: "perAgent" | "shared";
+  regionKey?: { recipient: string; fingerprint: string; createdAt: string };
+  /** Active agents advertising the current region key. */
+  agentsWithRegionKey?: number;
+  /** Sealed checks of the region not sealed to the current region key. */
+  checksNeedingReseal?: number;
   slug: string;
   name: string;
   emoji: string;
@@ -8229,6 +8249,10 @@ export interface AgentInfo {
   org?: string | null;
   region: string;
   fingerprint: string;
+  /** Fingerprint of the agent's X25519 sealing key (spec 2026-11-08-01). */
+  recipientFingerprint?: string;
+  /** Shared region keys the agent reports holding, by fingerprint. */
+  regionKeyFingerprints?: string[];
   status: "active" | "revoked";
   lastSeenAt?: string;
   enrolledAt: string;
@@ -9320,5 +9344,72 @@ export function useRunCheckNow(org: string, checkUid: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["check-run", org, checkUid] });
     },
+  });
+}
+
+/** Sets or rotates a private region's shared key: only the public recipient
+ * is sent (spec 2026-11-08-01 §2). */
+export function useSetRegionKey(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ slug, recipient }: { slug: string; recipient: string }) =>
+      apiFetch<{ recipient: string; fingerprint: string }>(
+        `/api/v1/orgs/${org}/private-regions/${slug}/region-key`,
+        { method: "PUT", body: JSON.stringify({ recipient }) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["private-regions", org] });
+    },
+  });
+}
+
+/** Puts a private region back on a key per agent. */
+export function useDeleteRegionKey(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (slug: string) =>
+      apiFetch<{ status: string }>(`/api/v1/orgs/${org}/private-regions/${slug}/region-key`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["private-regions", org] });
+    },
+  });
+}
+
+/** A check a `required` org still has to fix (spec 2026-11-08-01 §1). */
+export interface NonCompliantCheck {
+  uid: string;
+  slug: string;
+  name: string;
+  regions: string[];
+  reason: "sharedRegion" | "serverEncrypted";
+}
+
+/** A check flagged `needsReseal` (spec 2026-11-08-01 §7, the Re-seal page). */
+export interface ResealCheck {
+  uid: string;
+  slug: string;
+  name: string;
+  regions: string[];
+}
+
+export function useResealChecks(org: string) {
+  return useQuery({
+    queryKey: ["sealing-reseal", org],
+    queryFn: async () =>
+      (await apiFetch<{ data?: ResealCheck[] }>(`/api/v1/orgs/${org}/sealing/reseal-checks`)).data ?? [],
+  });
+}
+
+export function useNonCompliantChecks(org: string, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["sealing-noncompliant", org],
+    queryFn: async () =>
+      (await apiFetch<{ data?: NonCompliantCheck[] }>(`/api/v1/orgs/${org}/sealing/noncompliant-checks`))
+        .data ?? [],
+    enabled: options.enabled ?? true,
   });
 }

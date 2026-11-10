@@ -1739,5 +1739,28 @@
     "updated_one": "Regionen für {{count}} Check festgelegt",
     "updated_other": "Regionen für {{count}} Checks festgelegt",
     "failed": "Regionen konnten nicht festgelegt werden"
+  },
+  "sealing": {
+    "label": "Verschlüsselung der Geheimnisse",
+    "modeServer": "Von SolidPing verschlüsselt",
+    "modeBrowser": "In meinem Browser verschlüsselt (nur Ihre Agenten können es lesen)",
+    "blocker": {
+      "sharedRegion": "Die Browser-Verschlüsselung erfordert, dass jede Region des Checks einer Ihrer privaten Standorte ist.",
+      "insecureContext": "Die Browser-Verschlüsselung erfordert diese Seite über HTTPS (oder localhost)."
+    },
+    "switchedToServer": "Eine geteilte Region ist ausgewählt: Die Geheimnisse werden von SolidPing verschlüsselt. Geben Sie sie erneut ein, wenn Sie sie für Ihre Agenten eingegeben haben.",
+    "noRecipient": "Registrieren Sie zuerst einen Agenten in {{regions}}.",
+    "badgeAgents_one": "In Ihrem Browser versiegelt für {{regions}} ({{count}} Agent)",
+    "badgeAgents_other": "In Ihrem Browser versiegelt für {{regions}} ({{count}} Agenten)",
+    "badgeRegionKey": "In Ihrem Browser versiegelt für {{regions}} (Regionsschlüssel)",
+    "recipientRegion": "Regionsschlüssel von {{region}}",
+    "stored": "Versiegelt. Nur Ihre Agenten können es lesen.",
+    "requiredPrivateRegions": "Diese Organisation verlangt, dass Check-Geheimnisse im Browser versiegelt werden: Wählen Sie nur private Standorte.",
+    "retypeToSwitch": "Geben Sie die Geheimnisse erneut ein, um ihre Verschlüsselung zu ändern.",
+    "replaceAll": "Die versiegelten Geheimnisse werden gemeinsam ersetzt: Füllen Sie auch {{keys}} aus.",
+    "detailBadge": "Im Browser versiegelt",
+    "replace": "Ersetzen",
+    "replaceToEdit": "Versiegelte Geheimnisse werden gemeinsam ersetzt: Klicken Sie auf Ersetzen, um alle neu einzugeben.",
+    "sharedRegionDisabled": "Geteilte Regionen sind deaktiviert: Diese Organisation verlangt, dass Check-Geheimnisse im Browser versiegelt werden."
   }
 }

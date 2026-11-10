@@ -77,9 +77,19 @@ test.describe("Organization settings — session length override", () => {
         resp.url().includes("/api/v1/orgs/test/settings") &&
         resp.request().method() === "PATCH",
     );
+    // Saving invalidates the settings query; the refetch result re-syncs every
+    // field of the form. Wait for it, or it can land after the clear below
+    // and put "6" back in the field.
+    const refetchPromise = page.waitForResponse(
+      (resp) =>
+        resp.url().includes("/api/v1/orgs/test/settings") &&
+        resp.request().method() === "GET",
+    );
     await page.getByTestId("session-duration-save").click();
     await setPatchPromise;
+    await refetchPromise;
     await expect(page.getByTestId("session-settings-saved")).toBeVisible();
+    await expect(hoursInput).toHaveValue("6");
 
     // Now clear it — an empty field means "inherit the platform default"
     // (sessionMaxDurationSeconds <= 0 clears the override server-side).

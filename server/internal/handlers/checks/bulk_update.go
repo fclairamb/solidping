@@ -381,6 +381,12 @@ func isCheckUpdateRejection(err error) bool {
 		isDemoFieldError(err) ||
 		errors.Is(err, ErrTunnelRegionNarrowed) ||
 		errors.Is(err, ErrNoAgentsToSealTo) ||
+		// A browser-sealed check cannot be moved in bulk: the server cannot
+		// re-seal its blob (spec 2026-11-08-01 §4).
+		errors.Is(err, ErrSealingRecipientsChanged) ||
+		errors.Is(err, ErrSealedSecretsRequirePrivateRegions) ||
+		errors.Is(err, ErrSecretsMustBeSealed) ||
+		errors.Is(err, ErrSealedSecretsInvalid) ||
 		isCheckFieldValidationError(err)
 }
 

@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/sealing"
 )
 
 // auditKeyTokenKind names the audit payload field that says WHICH kind of
@@ -117,6 +118,17 @@ type PrivateRegionResponse struct {
 	// actually FIX a missing family, by enabling IPv6 on the host they own
 	// (spec 2026-08-15-11).
 	Capabilities map[string]string `json:"capabilities,omitempty"`
+	// KeyMode is how the region's credentials are sealed (spec 2026-11-08-01
+	// §2): `perAgent` (every agent's own key) or `shared` (one region key).
+	KeyMode string `json:"keyMode"`
+	// RegionKey is the region's current shared key (public half only).
+	RegionKey *sealing.RegionKey `json:"regionKey,omitempty"`
+	// AgentsWithRegionKey counts the active agents advertising the current
+	// region key. Zero on a shared region: nothing can open its blobs.
+	AgentsWithRegionKey int `json:"agentsWithRegionKey"`
+	// ChecksNeedingReseal counts the region's sealed checks not sealed to the
+	// current region key (an older key, or agent keys).
+	ChecksNeedingReseal int `json:"checksNeedingReseal"`
 }
 
 // LivenessMonitorResponse is the part of a location's liveness monitor the
@@ -210,6 +222,11 @@ func (s *Service) ListPrivateRegions(ctx context.Context, orgSlug string) (*List
 		monitors = found
 	}
 
+	regionKeys, workerCaps, err := s.regionKeyState(ctx, org.UID)
+	if err != nil {
+		return nil, err
+	}
+
 	cutoff := regions.LivenessCutoff(s.now())
 	data := make([]PrivateRegionResponse, 0, len(defs))
 
@@ -244,6 +261,15 @@ func (s *Service) ListPrivateRegions(ctx context.Context, orgSlug string) (*List
 		if monitor := monitors[defs[i].Slug]; monitor != nil {
 			row.LivenessMonitor = livenessMonitorResponse(monitor)
 			row.LivenessMonitorOff = row.LivenessMonitorOff || !monitor.Enabled
+		}
+
+		var key *sealing.RegionKey
+		if found, ok := regionKeys[full]; ok {
+			key = &found
+		}
+
+		if keyErr := s.regionKeyRow(ctx, org.UID, &row, key, active, capsByAgent(active, workerCaps)); keyErr != nil {
+			return nil, keyErr
 		}
 
 		data = append(data, row)
@@ -623,13 +649,20 @@ type AgentResponse struct {
 	Kind string `json:"kind,omitempty"`
 	// Org is the owning org slug, populated only on the fleet-wide view. Null
 	// for system agents, which have no owning organization.
-	Org         *string    `json:"org,omitempty"`
-	Region      string     `json:"region"`
-	Fingerprint string     `json:"fingerprint"`
-	Status      string     `json:"status"`
-	LastSeenAt  *time.Time `json:"lastSeenAt,omitempty"`
-	EnrolledAt  time.Time  `json:"enrolledAt"`
-	RevokedAt   *time.Time `json:"revokedAt,omitempty"`
+	Org         *string `json:"org,omitempty"`
+	Region      string  `json:"region"`
+	Fingerprint string  `json:"fingerprint"`
+	// RecipientFingerprint is the fingerprint of the agent's X25519 sealing
+	// key (credentials.RecipientFingerprint), the one sealed blobs list and
+	// the agent prints at startup. Fingerprint above is its Ed25519 identity.
+	RecipientFingerprint string `json:"recipientFingerprint,omitempty"`
+	// RegionKeyFingerprints are the shared region keys the agent reports
+	// holding (spec 2026-11-08-01 §2). Never the keys themselves.
+	RegionKeyFingerprints []string   `json:"regionKeyFingerprints,omitempty"`
+	Status                string     `json:"status"`
+	LastSeenAt            *time.Time `json:"lastSeenAt,omitempty"`
+	EnrolledAt            time.Time  `json:"enrolledAt"`
+	RevokedAt             *time.Time `json:"revokedAt,omitempty"`
 	// Version is the agent's self-reported build version (spec 2026-08-19-07),
 	// resolved from its workers row — the single source of truth, never
 	// duplicated onto the agents table. NO omitempty: the dashboard's
@@ -666,21 +699,34 @@ func (s *Service) ListAgents(ctx context.Context, orgSlug string) (*ListAgentsRe
 		return nil, err
 	}
 
+	workerCaps, err := s.workerCapabilities(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	caps := capsByAgent(rows, workerCaps)
 	cutoff := regions.LivenessCutoff(s.now())
 	data := make([]AgentResponse, 0, len(rows))
 
 	for _, row := range rows {
+		recipientFP := ""
+		if row.X25519PublicKey != "" {
+			recipientFP = credentials.RecipientFingerprint(row.X25519PublicKey)
+		}
+
 		data = append(data, AgentResponse{
-			UID:         row.UID,
-			Name:        row.Name,
-			Region:      row.Region,
-			Fingerprint: row.Fingerprint,
-			Status:      row.Status,
-			LastSeenAt:  row.LastSeenAt,
-			EnrolledAt:  row.EnrolledAt,
-			RevokedAt:   row.RevokedAt,
-			Version:     versions[row.UID],
-			Online:      regions.IsAgentLive(row.Status, row.LastSeenAt, cutoff),
+			UID:                   row.UID,
+			Name:                  row.Name,
+			Region:                row.Region,
+			RecipientFingerprint:  recipientFP,
+			RegionKeyFingerprints: sealing.RegionKeyFingerprints(caps[row.UID]),
+			Fingerprint:           row.Fingerprint,
+			Status:                row.Status,
+			LastSeenAt:            row.LastSeenAt,
+			EnrolledAt:            row.EnrolledAt,
+			RevokedAt:             row.RevokedAt,
+			Version:               versions[row.UID],
+			Online:                regions.IsAgentLive(row.Status, row.LastSeenAt, cutoff),
 		})
 	}
 
@@ -883,30 +929,14 @@ func (s *Service) resealCheck(ctx context.Context, check *models.Check) {
 		return
 	}
 
-	recipients := make([]string, 0, 4)
-	seen := make(map[string]struct{})
+	found, err := sealing.RecipientsForRegions(ctx, s.db, check.OrganizationUID, filterPrivate(check.Regions))
+	if err != nil {
+		slog.WarnContext(ctx, "reseal: cannot list recipients", "checkUid", check.UID, "error", err)
 
-	for _, region := range check.Regions {
-		if !regions.IsPrivateRegion(region) {
-			continue
-		}
-
-		agents, listErr := s.db.ListActiveAgentsByRegion(ctx, check.OrganizationUID, region)
-		if listErr != nil {
-			slog.WarnContext(ctx, "reseal: cannot list agents", "region", region, "error", listErr)
-
-			return
-		}
-
-		for _, agent := range agents {
-			if _, dup := seen[agent.X25519PublicKey]; dup {
-				continue
-			}
-
-			seen[agent.X25519PublicKey] = struct{}{}
-			recipients = append(recipients, agent.X25519PublicKey)
-		}
+		return
 	}
+
+	recipients := sealing.RecipientKeys(found)
 
 	update := &models.CheckUpdate{}
 
@@ -952,4 +982,16 @@ func regionTargeted(regionSlugs []string, region string) bool {
 	}
 
 	return false
+}
+
+// filterPrivate returns the private regions of a region list.
+func filterPrivate(regionList []string) []string {
+	out := make([]string, 0, len(regionList))
+	for _, region := range regionList {
+		if regions.IsPrivateRegion(region) {
+			out = append(out, region)
+		}
+	}
+
+	return out
 }

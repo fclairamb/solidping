@@ -6,6 +6,7 @@ import { asTranslateFn } from "@/lib/i18n-types";
 import { useMemo, useState } from "react";
 import { Chip } from "@/components/ui/chip";
 import { HttpTimingCard } from "@/components/checks/http-timing-card";
+import { SecretEncryptionPanel } from "@/components/checks/secret-encryption";
 import { PortInput, PortChips } from "@/components/checks/form/port-input";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import type { AIGenerationFailed } from "@/api/hooks";
@@ -345,6 +346,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "magic-wand", label: "Magic wand" },
   { id: "ai-generation-progress", label: "AI generation progress" },
   { id: "http-timing-card", label: "HTTP timing card" },
+  { id: "secret-encryption", label: "Secret encryption" },
 ];
 
 function DesignReferencePage() {
@@ -412,7 +414,60 @@ function DesignReferencePage() {
       <MagicWandSection />
       <AIGenerationProgressSection />
       <HttpTimingCardSection />
+      <SecretEncryptionSection />
     </div>
+  );
+}
+
+function SecretEncryptionSection() {
+  const importLine = `import { SecretEncryptionPanel } from "@/components/checks/secret-encryption";
+
+<SecretEncryptionPanel mode="browser" onModeChange={setMode} required={false}
+  blocker={null} recipients={recipients} regions={["@dc1"]}
+  storedSealed switchedNotice={false}
+  replacing={replacing} onReplace={() => setReplacing(true)} />`;
+  const recipients = [
+    { kind: "agent" as const, region: "@dc1", agentName: "dc1-a", recipient: "age1…", fingerprint: "3f2a9c41aa01bb02" },
+    { kind: "agent" as const, region: "@dc1", agentName: "dc1-b", recipient: "age1…", fingerprint: "9c41aa01bb023f2a" },
+  ];
+  return (
+    <Section
+      id="secret-encryption"
+      title="Secret encryption"
+      description="The choice above a check's secret inputs (spec 2026-11-08-01): encrypted by SolidPing, or sealed in the browser for the private agents' keys. The sealed secret input state shows the lock badge with its recipients and the stored-blob notice; the browser choice is disabled with its reason when a shared region is picked."
+    >
+      <ExampleRow
+        preview={
+          <div className="w-full max-w-xl space-y-6">
+            <SecretEncryptionPanel
+              mode="browser"
+              onModeChange={() => undefined}
+              required={false}
+              blocker={null}
+              recipients={recipients}
+              regions={["@dc1"]}
+              storedSealed
+              switchedNotice={false}
+              replacing={false}
+              onReplace={() => undefined}
+            />
+            <SecretEncryptionPanel
+              mode="server"
+              onModeChange={() => undefined}
+              required={false}
+              blocker="sharedRegion"
+              recipients={[]}
+              regions={["eu-fr"]}
+              storedSealed={false}
+              switchedNotice
+              replacing={false}
+              onReplace={() => undefined}
+            />
+          </div>
+        }
+        importLine={importLine}
+      />
+    </Section>
   );
 }
 

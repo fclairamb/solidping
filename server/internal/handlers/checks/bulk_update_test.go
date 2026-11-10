@@ -397,3 +397,47 @@ func TestBulkUpdateReportsAServerFaultPerCheck(t *testing.T) {
 	r.Equal(checks.BulkUpdateSkipError, resp.Skipped[0].Reason)
 	r.Equal("internal error", resp.Skipped[0].Message)
 }
+
+// TestBulkRegionChangeSkipsBrowserSealed: a bulk region change cannot re-seal a
+// browser-sealed blob, so the check is reported as a failed item with the
+// reason, and the others move (spec 2026-11-08-01 §4).
+func TestBulkRegionChangeSkipsBrowserSealed(t *testing.T) {
+	t.Parallel()
+	testBulkRegionChangeSkipsBrowserSealed(t, sqliteSealingEnv)
+}
+
+func testBulkRegionChangeSkipsBrowserSealed(t *testing.T, env sealingEnv) {
+	t.Helper()
+
+	r := require.New(t)
+	svc, _, org, keys := setupBrowserSealing(t, env)
+	ctx := t.Context()
+
+	sealed, err := svc.CreateCheck(ctx, org.Slug, sealedCheckRequest("bulk-sealed",
+		clientSeal(t, map[string]any{"basicAuth": "alice:hunter2"}, keys.X25519Recipient), sealTestRegion))
+	r.NoError(err)
+
+	// Positive control: a check without secrets on the same region moves.
+	plain, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Name: "bulk-plain", Slug: "bulk-plain", Type: "http", Regions: []string{sealTestRegion},
+		Config: map[string]any{"url": "https://internal.example.com"},
+	})
+	r.NoError(err)
+
+	resp, err := svc.BulkUpdateChecks(ctx, org.Slug, bulkRequest(
+		[]string{sealed.UID, plain.UID}, `{"regions": ["@dc2"]}`, false))
+	r.NoError(err)
+	r.Len(resp.Data, 1)
+	r.Equal(plain.UID, resp.Data[0].UID)
+	r.Len(resp.Skipped, 1)
+
+	skipped := resp.Skipped[0]
+	r.Equal(sealed.UID, skipped.UID)
+	r.Equal(checks.BulkUpdateSkipRejected, skipped.Reason)
+	r.Contains(skipped.Message, "recipients", "the failed item says why")
+
+	got, err := svc.GetCheck(ctx, org.Slug, sealed.UID, checks.GetCheckOptions{})
+	r.NoError(err)
+	r.Equal([]string{sealTestRegion}, got.Regions, "the sealed check keeps its regions")
+	r.Equal("browser", *got.SecretsEncryption)
+}

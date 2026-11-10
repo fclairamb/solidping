@@ -37,6 +37,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/regionquorum"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/sealing"
 	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 	"github.com/fclairamb/solidping/server/internal/workertasks"
@@ -954,6 +955,10 @@ type CheckResponse struct {
 	// at write time. Fix: re-save the check's credentials. Nil when the check
 	// targets no private region.
 	NeedsReseal *bool `json:"needsReseal,omitempty"`
+	// SecretsEncryption is "browser" when the check's secrets were sealed by
+	// the client for the agents' keys (spec 2026-11-08-01), "server" when the
+	// server encrypted them, absent when the check has no secret.
+	SecretsEncryption *string `json:"secretsEncryption,omitempty"`
 	// Warnings are advisory notes attached to a successful create/update — the
 	// check WAS written and will run. Today the only one is "you pinned IPv6 in
 	// a region whose live workers report no IPv6 egress" (spec 2026-08-15-11).
@@ -1546,7 +1551,10 @@ type CreateCheckRequest struct {
 	CheckGroupUID *string        `json:"checkGroupUid"`
 	Type          string         `json:"type"`
 	Config        map[string]any `json:"config"`
-	Regions       []string       `json:"regions"`
+	// SealedSecrets is a client-sealed secret map (spec 2026-11-08-01): the
+	// server never receives those secrets in plaintext. Private regions only.
+	SealedSecrets *SealedSecretsRequest `json:"sealedSecrets,omitempty"`
+	Regions       []string              `json:"regions"`
 	// Placement is `pinned` or `auto` (spec 2026-09-25-06). Absent: an
 	// explicit regions list means pinned; otherwise the check is placed
 	// automatically (unless the org's default_regions names a private
@@ -1691,7 +1699,12 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	// encrypt them under the org DEK — and/or seal them to the private
 	// region's agents — before persisting. Plaintext fallback when no master
 	// key is configured.
-	if req.Config != nil {
+	switch {
+	case req.SealedSecrets != nil:
+		if sealErr := s.applyClientSealing(ctx, check, effective, req.Config, req.SealedSecrets); sealErr != nil {
+			return CheckResponse{}, sealErr
+		}
+	case req.Config != nil:
 		if encErr := s.applyEncryption(ctx, check, effective); encErr != nil {
 			return CheckResponse{}, encErr
 		}
@@ -1997,6 +2010,9 @@ type UpdateCheckRequest struct {
 	Description   *string         `json:"description,omitempty"`
 	CheckGroupUID *string         `json:"checkGroupUid"`
 	Config        *map[string]any `json:"config,omitempty"`
+	// SealedSecrets replaces the check's secrets with a client-sealed blob
+	// (spec 2026-11-08-01). It must cover every stored secret key.
+	SealedSecrets *SealedSecretsRequest `json:"sealedSecrets,omitempty"`
 	// Regions set to a non-empty list pins the check to it; an empty list
 	// puts the check back on the default placement (spec 2026-09-25-06).
 	Regions *[]string `json:"regions,omitempty"`
@@ -2263,6 +2279,15 @@ func (s *Service) prepareCheckUpdate(
 
 	regionsChanged := placement != nil
 	if regionsChanged {
+		// A browser-sealed blob is sealed to the recipients of the current
+		// regions, and the server cannot re-seal it: a region change must
+		// bring a new blob or plaintext secrets (spec 2026-11-08-01 §4).
+		if isBrowserSealed(check) && req.SealedSecrets == nil && !sameRegionSet(check.Regions, placement.regions) &&
+			(req.Config == nil || len(secretKeysWithValues(*req.Config,
+				s.secretFieldsForType(ctx, check.OrganizationUID, check.Type))) == 0) {
+			return nil, s.recipientsChangedFor(ctx, check.OrganizationUID, placement.regions)
+		}
+
 		check.Regions = placement.regions
 		placement.applyToUpdate(&update)
 
@@ -2283,8 +2308,10 @@ func (s *Service) prepareCheckUpdate(
 	// The stored config before this PATCH, to spot a dns baseline reset
 	// ("Accept current records", spec 2026-10-03-04) once the write landed.
 	configBefore := check.Config
-	if req.Config != nil {
-		if cfgErr := s.applyConfigUpdate(ctx, check, *req.Config, &update); cfgErr != nil {
+	if req.Config != nil || req.SealedSecrets != nil {
+		if cfgErr := s.applyConfigUpdate(
+			ctx, check, configPatchBase(check, req), req.SealedSecrets, &update,
+		); cfgErr != nil {
 			return nil, cfgErr
 		}
 
@@ -3754,6 +3781,7 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		Config:                    publicConfig,
 		TargetHost:                checkerdef.ExtractTargetHost(publicConfig),
 		ConfigPrivateKeys:         privateKeys,
+		SecretsEncryption:         secretsEncryptionOf(check, privateKeys),
 		Regions:                   check.Regions,
 		Placement:                 check.EffectivePlacement(),
 		RegionCount:               autoOnlyCount(check),
@@ -5519,8 +5547,11 @@ func (s *Service) applyEncryption(ctx context.Context, check *models.Check, effe
 // server cannot re-seal what it cannot read — the previous sealed blob is kept
 // AS-IS; secrets provided → a fresh blob replaces it). Fills the update
 // struct's config columns.
+//
+//nolint:cyclop,funlen // one linear gate per rule
 func (s *Service) applyConfigUpdate(
-	ctx context.Context, check *models.Check, patch map[string]any, update *models.CheckUpdate,
+	ctx context.Context, check *models.Check, patch map[string]any, sealed *SealedSecretsRequest,
+	update *models.CheckUpdate,
 ) error {
 	// PATCH-merge rule: read the existing effective config (decrypting
 	// the private side) and apply the spec's preserve-absent-secrets
@@ -5534,6 +5565,26 @@ func (s *Service) applyConfigUpdate(
 	// `merged` will lack them too. Captured now, before applyEncryption
 	// changes check.ConfigPrivate — see validatePatchedConfig.
 	wasSealedOnly := oldSealed != nil && check.ConfigPrivate == nil
+	secretFields := s.secretFieldsForType(ctx, check.OrganizationUID, check.Type)
+
+	if sealed != nil {
+		// Regions first (spec 2026-11-08-01 §4 order): check.Regions already
+		// holds the regions this PATCH leaves the check on.
+		if !allPrivateRegions(check.Regions) {
+			return ErrSealedSecretsRequirePrivateRegions
+		}
+
+		if shapeErr := validateSealedSecretsShape(sealed, secretFields, patch); shapeErr != nil {
+			return shapeErr
+		}
+	}
+
+	// A `required` org refuses plaintext secrets (spec 2026-11-08-01 §1).
+	if sealed == nil {
+		if modeErr := s.assertPlaintextSecretsAllowed(ctx, check.OrganizationUID, check.Type, patch); modeErr != nil {
+			return modeErr
+		}
+	}
 
 	merged, mergeErr := s.applyConfigPatch(ctx, check, patch)
 	if mergeErr != nil {
@@ -5565,8 +5616,16 @@ func (s *Service) applyConfigUpdate(
 	// expectedStatusCodes must be strings, method must be a known verb).
 	// Runs first so a malformed type never reaches the shared validators
 	// below. See validatePatchedConfig for the sealed-only handling.
+	// A client-sealed blob replaces every secret: the merged config keeps
+	// none of the stored ones, and the checker validates placeholders.
+	validated := merged
+	if sealed != nil {
+		merged, _ = credentials.SplitConfig(merged, secretFields)
+		validated = withInjectedConfig(merged, sealedPlaceholders(check.Type, sealed.Keys))
+	}
+
 	if cfgErr := s.validatePatchedConfig(
-		ctx, check.OrganizationUID, check.Type, merged, wasSealedOnly, oldPrivateKeys,
+		ctx, check.OrganizationUID, check.Type, validated, wasSealedOnly, oldPrivateKeys,
 	); cfgErr != nil {
 		return cfgErr
 	}
@@ -5577,21 +5636,25 @@ func (s *Service) applyConfigUpdate(
 	// past the gate. Same list the create path and the dry-run validate
 	// endpoint read.
 	if cfgErr := s.firstConfigValidationError(
-		ctx, check.OrganizationUID, check.Type, merged, check.Regions,
+		ctx, check.OrganizationUID, check.Type, validated, check.Regions,
 	); cfgErr != nil {
 		return cfgErr
 	}
 
-	if encErr := s.applyEncryption(ctx, check, merged); encErr != nil {
-		return encErr
-	}
+	cleared := explicitlyClearedKeys(patch, secretFields)
 
-	if check.ConfigSealed == nil && oldSealed != nil {
-		check.ConfigSealed = oldSealed
-
-		if check.ConfigPrivateKeys == nil {
-			check.ConfigPrivateKeys = oldPrivateKeys
+	if sealed != nil {
+		if coverErr := assertCoversStoredSecrets(oldPrivateKeys, sealed.Keys, cleared); coverErr != nil {
+			return coverErr
 		}
+
+		if sealErr := s.applyClientSealing(ctx, check, merged, patch, sealed); sealErr != nil {
+			return sealErr
+		}
+	} else if encErr := s.applySealedOnlyReplacement(
+		ctx, check, merged, secretFields, cleared, wasSealedOnly, oldSealed, oldPrivateKeys,
+	); encErr != nil {
+		return encErr
 	}
 
 	configMap := check.Config
@@ -5909,31 +5972,18 @@ func (s *Service) computeNeedsReseal(ctx context.Context, check *models.Check) *
 }
 
 // activeRecipientsForRegions collects the X25519 recipients (age public keys)
-// of every active agent across the given private regions — the recipient set a
-// credential blob is sealed to at write time.
+// a credential blob for the given private regions is sealed to at write time:
+// the shared region key of a `shared` region, every active agent's key of a
+// `perAgent` one (spec 2026-11-08-01 §2).
 func (s *Service) activeRecipientsForRegions(
 	ctx context.Context, orgUID string, privateRegions []string,
 ) ([]string, error) {
-	recipients := make([]string, 0, 4)
-	seen := make(map[string]struct{})
-
-	for _, region := range privateRegions {
-		agents, err := s.db.ListActiveAgentsByRegion(ctx, orgUID, region)
-		if err != nil {
-			return nil, fmt.Errorf("list active agents for %s: %w", region, err)
-		}
-
-		for _, agent := range agents {
-			if _, dup := seen[agent.X25519PublicKey]; dup {
-				continue
-			}
-
-			seen[agent.X25519PublicKey] = struct{}{}
-			recipients = append(recipients, agent.X25519PublicKey)
-		}
+	recipients, err := sealing.RecipientsForRegions(ctx, s.db, orgUID, privateRegions)
+	if err != nil {
+		return nil, err
 	}
 
-	return recipients, nil
+	return sealing.RecipientKeys(recipients), nil
 }
 
 // loadDecryptedConfig returns the merged plaintext effective config of a

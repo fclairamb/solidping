@@ -878,14 +878,8 @@ func (h *Handler) writeInternalFieldError(writer http.ResponseWriter) error {
 
 // handleCreateError handles errors from CreateCheck.
 func (h *Handler) handleCreateError(writer http.ResponseWriter, request *http.Request, err error) error {
-	// Check for configuration validation errors
-	if configErr := checkerdef.IsConfigError(err); configErr != nil {
-		return h.WriteValidationError(writer, "Configuration validation failed", []base.ValidationErrorField{
-			{
-				Name:    configErr.Parameter,
-				Message: configErr.Message,
-			},
-		})
+	if handled, writeErr := h.writeConfigOrSealingError(writer, request, err); handled {
+		return writeErr
 	}
 
 	switch {
@@ -958,6 +952,10 @@ func (h *Handler) handleGetError(writer http.ResponseWriter, request *http.Reque
 
 // handleUpdateError handles errors from UpdateCheck.
 func (h *Handler) handleUpdateError(writer http.ResponseWriter, request *http.Request, err error) error {
+	if handled, sealErr := h.writeSealingError(writer, request, err); handled {
+		return sealErr
+	}
+
 	// Configuration validation errors (e.g. the uniform per-check timeout
 	// cap) surface as field-level VALIDATION_ERRORs, same as on create.
 	if configErr := checkerdef.IsConfigError(err); configErr != nil {
@@ -1046,6 +1044,10 @@ func isCheckFieldValidationError(err error) bool {
 
 // handleUpsertError handles errors from UpsertCheck.
 func (h *Handler) handleUpsertError(writer http.ResponseWriter, request *http.Request, err error) error {
+	if handled, sealErr := h.writeSealingError(writer, request, err); handled {
+		return sealErr
+	}
+
 	if configErr := checkerdef.IsConfigError(err); configErr != nil {
 		return h.WriteValidationError(writer, "Configuration validation failed", []base.ValidationErrorField{
 			{
