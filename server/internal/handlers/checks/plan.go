@@ -250,6 +250,12 @@ func (s *Service) planCreateCheck(
 	// placeholders for the keys it cannot see. Without them, a `required` org
 	// refuses plaintext secrets.
 	if req.SealedSecrets != nil {
+		if shapeErr := validateSealedSecretsShape(
+			req.SealedSecrets, s.secretFieldsForType(ctx, org.UID, req.Type), req.Config,
+		); shapeErr != nil {
+			return nil, shapeErr
+		}
+
 		spec.Config = withInjectedConfig(spec.Config, sealedPlaceholders(req.Type, req.SealedSecrets.Keys))
 	} else if modeErr := s.assertPlaintextSecretsAllowed(ctx, org.UID, req.Type, req.Config); modeErr != nil {
 		return nil, modeErr

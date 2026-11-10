@@ -2309,7 +2309,13 @@ func (s *Service) prepareCheckUpdate(
 	// ("Accept current records", spec 2026-10-03-04) once the write landed.
 	configBefore := check.Config
 	if req.Config != nil || req.SealedSecrets != nil {
-		patch := map[string]any{}
+		// sealedSecrets alone keeps the public config: a PATCH config
+		// replaces the public side wholesale.
+		patch := make(map[string]any, len(check.Config))
+		for key, value := range check.Config {
+			patch[key] = value
+		}
+
 		if req.Config != nil {
 			patch = *req.Config
 		}
@@ -5569,6 +5575,12 @@ func (s *Service) applyConfigUpdate(
 	// changes check.ConfigPrivate — see validatePatchedConfig.
 	wasSealedOnly := oldSealed != nil && check.ConfigPrivate == nil
 	secretFields := s.secretFieldsForType(ctx, check.OrganizationUID, check.Type)
+
+	if sealed != nil {
+		if shapeErr := validateSealedSecretsShape(sealed, secretFields, patch); shapeErr != nil {
+			return shapeErr
+		}
+	}
 
 	// A `required` org refuses plaintext secrets (spec 2026-11-08-01 §1).
 	if sealed == nil {
