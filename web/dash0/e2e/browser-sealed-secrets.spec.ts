@@ -39,6 +39,9 @@ async function ensureRegionUnchecked(page: Page, regionTestId: string): Promise<
 /** Opens the authentication section unless it already is. */
 async function openAuthSection(page: Page): Promise<void> {
   const panel = page.getByTestId("check-username-input");
+  // Wait for the form itself: the edit page shows a skeleton first, and the
+  // section of a check with stored credentials opens on its own.
+  await expect(page.getByTestId("section-authentication-trigger")).toBeVisible();
   if (!(await panel.isVisible())) await page.getByTestId("section-authentication-trigger").click();
   await expect(panel).toBeVisible();
 }
@@ -126,8 +129,9 @@ test.describe("Browser-sealed check secrets", () => {
     }
 
     // Reopen, replace every secret at once, save: still browser-sealed.
-    const checkUrl = page.url();
-    await page.goto(`${checkUrl}/edit`);
+    // The detail URL may carry a query string: rebuild the edit URL from the path.
+    const detail = new URL(page.url());
+    await page.goto(`${detail.origin}${detail.pathname}/edit`);
     await openAuthSection(page);
     await expect(page.getByTestId("sealed-secret-stored")).toBeVisible();
     // The blob is replaced whole: the secret inputs stay closed until
