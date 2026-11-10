@@ -113,7 +113,7 @@ export const DEMO_CHECKS = [
   {
     name: "Docs site",
     type: "http",
-    config: { url: "https://docs.solidping.io/" },
+    config: { url: "https://solidping.io/docs/" },
   },
   {
     name: "Checkout API",

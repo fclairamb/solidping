@@ -146,9 +146,9 @@ func TestCheckTypeCountFailureMessage(t *testing.T) {
 }
 
 // readmeCheckTypesRe matches a row of the README's "## Check types" table,
-// shaped `| [Name](https://docs.solidping.io/features/<page>#<anchor>) | type | ... |`.
+// shaped `| [Name](https://solidping.io/docs/features/<page>#<anchor>) | type | ... |`.
 var readmeCheckTypesRe = regexp.MustCompile(
-	"^\\| \\[[^]]+\\]\\(https://docs\\.solidping\\.io/features/([a-z-]+)(?:#([a-z0-9-]+))?\\) \\| `([a-z0-9_-]+)` \\|")
+	"^\\| \\[[^]]+\\]\\(https://solidping\\.io/docs/features/([a-z-]+)(?:#([a-z0-9-]+))?\\) \\| `([a-z0-9_-]+)` \\|")
 
 // readmeCheckTypeRow is one row of the README's check types table.
 type readmeCheckTypeRow struct {
@@ -214,11 +214,11 @@ func TestReadmeCheckTypeRows(t *testing.T) {
 		"## Check types",
 		"| Check | Type | What it checks |",
 		"|---|---|---|",
-		"| [TCP](https://docs.solidping.io/features/check-types#tcp) | `tcp` | Port |",
-		"| [JavaScript](https://docs.solidping.io/features/javascript-checks) | `js` | Scripts |",
+		"| [TCP](https://solidping.io/docs/features/check-types#tcp) | `tcp` | Port |",
+		"| [JavaScript](https://solidping.io/docs/features/javascript-checks) | `js` | Scripts |",
 		"| TCP without a docs link | `udp` | not matched |",
 		"## Inspiration",
-		"| [TCP](https://docs.solidping.io/features/check-types#tcp) | `ssh` | outside the section |",
+		"| [TCP](https://solidping.io/docs/features/check-types#tcp) | `ssh` | outside the section |",
 	}, "\n")
 
 	require.Equal(t, []readmeCheckTypeRow{
