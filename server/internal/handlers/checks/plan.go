@@ -459,19 +459,9 @@ func (s *Service) planUpdateCheck(
 		caveats.add(DryRunCaveatSecretMerge)
 	}
 
-	planConfig := req.Config
-
-	// Client-sealed secrets in a document (spec 2026-11-10-03 §4) are
-	// validated like the write API, recipients included; the checker then
-	// validates placeholders for the keys it cannot see.
-	if req.SealedSecrets != nil {
-		if _, sealErr := s.validateClientSealing(
-			ctx, org.UID, existing.Type, regionsForCheck, req.Config, req.SealedSecrets,
-		); sealErr != nil {
-			return sealErr
-		}
-
-		planConfig = withInjectedConfig(req.Config, sealedPlaceholders(existing.Type, req.SealedSecrets.Keys))
+	planConfig, sealErr := s.planSealedUpdate(ctx, org.UID, existing.Type, regionsForCheck, req)
+	if sealErr != nil {
+		return sealErr
 	}
 
 	if cfgErr := s.planUpdateConfig(ctx, org, existing, planConfig, regionsForCheck, period); cfgErr != nil {
@@ -645,4 +635,24 @@ func upsertToCreateRequest(slug string, req *UpsertCheckRequest) CreateCheckRequ
 		DegradedEnabled:           req.DegradedEnabled,
 		SealedSecrets:             req.SealedSecrets,
 	}
+}
+
+// planSealedUpdate validates a document's client-sealed secrets for an update
+// like the write API, recipients included (spec 2026-11-10-03 §4), and returns
+// the config the checker validates: with placeholders for the keys it cannot
+// see. Without sealedSecrets it returns the request's config.
+func (s *Service) planSealedUpdate(
+	ctx context.Context, orgUID, checkType string, regionsForCheck []string, req *UpsertCheckRequest,
+) (map[string]any, error) {
+	if req.SealedSecrets == nil {
+		return req.Config, nil
+	}
+
+	if _, err := s.validateClientSealing(
+		ctx, orgUID, checkType, regionsForCheck, req.Config, req.SealedSecrets,
+	); err != nil {
+		return nil, err
+	}
+
+	return withInjectedConfig(req.Config, sealedPlaceholders(checkType, req.SealedSecrets.Keys)), nil
 }

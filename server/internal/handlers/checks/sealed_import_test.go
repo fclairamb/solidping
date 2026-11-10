@@ -129,7 +129,8 @@ func testImportSealedSecretsStaleFingerprintsAreItemErrors(t *testing.T, env sea
 	}
 
 	// Apply's dry run reports it too.
-	applied, err := svc.ApplyChecks(ctx, org.Slug, sealedDoc(org.Slug, "doc-apply", sealed), checks.ApplyOptions{DryRun: true})
+	applied, err := svc.ApplyChecks(ctx, org.Slug, sealedDoc(org.Slug, "doc-apply", sealed),
+		checks.ApplyOptions{DryRun: true})
 	r.NoError(err)
 	r.Len(applied.Errors, 1)
 	r.Equal("SEALING_RECIPIENTS_CHANGED", applied.Errors[0].Code)

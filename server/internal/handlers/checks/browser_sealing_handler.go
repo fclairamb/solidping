@@ -105,7 +105,7 @@ func (h *Handler) NonCompliantChecks(writer http.ResponseWriter, req *http.Reque
 		return h.WriteInternalError(writer, req, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": checks})
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseDataKey: checks})
 }
 
 // ResealChecks handles GET /orgs/:org/sealing/reseal-checks: the checks
@@ -121,8 +121,11 @@ func (h *Handler) ResealChecks(writer http.ResponseWriter, req *http.Request) er
 		return h.WriteInternalError(writer, req, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": checks})
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseDataKey: checks})
 }
+
+// responseDataKey is the key of a list response's items.
+const responseDataKey = "data"
 
 // errorCodeRewrapUnavailable is a server without the peer re-wrap kind.
 const errorCodeRewrapUnavailable base.ErrorCode = "REWRAP_UNAVAILABLE"
@@ -163,7 +166,7 @@ func (h *Handler) StartRewrap(writer http.ResponseWriter, req *http.Request) err
 		return h.writeRewrapError(writer, req, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": outcomes})
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseDataKey: outcomes})
 }
 
 // RewrapStatus handles GET /orgs/:org/sealing/rewrap?check=<uid>,<uid>: the
@@ -184,5 +187,5 @@ func (h *Handler) RewrapStatus(writer http.ResponseWriter, req *http.Request) er
 		return h.writeRewrapError(writer, req, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": outcomes})
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseDataKey: outcomes})
 }

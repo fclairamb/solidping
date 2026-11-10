@@ -97,22 +97,7 @@ func (s *Service) RewrapStatus(ctx context.Context, orgSlug string, checkUIDs []
 // rewrapCandidates resolves the checks a re-wrap request names.
 func (s *Service) rewrapCandidates(ctx context.Context, orgUID string, req *RewrapRequest) ([]*models.Check, error) {
 	if len(req.CheckUIDs) > 0 {
-		out := make([]*models.Check, 0, len(req.CheckUIDs))
-
-		for _, ref := range req.CheckUIDs {
-			check, err := s.db.GetCheckByUidOrSlug(ctx, orgUID, ref)
-			if errors.Is(err, sql.ErrNoRows) || (err == nil && check == nil) {
-				return nil, ErrCheckNotFound
-			}
-
-			if err != nil {
-				return nil, err
-			}
-
-			out = append(out, check)
-		}
-
-		return out, nil
+		return s.checksByRef(ctx, orgUID, req.CheckUIDs)
 	}
 
 	if req.Region != "" {
@@ -126,6 +111,32 @@ func (s *Service) rewrapCandidates(ctx context.Context, orgUID string, req *Rewr
 		}
 	}
 
+	return s.flaggedChecks(ctx, orgUID, req.Region)
+}
+
+// checksByRef loads checks by UID or slug; an unknown one is ErrCheckNotFound.
+func (s *Service) checksByRef(ctx context.Context, orgUID string, refs []string) ([]*models.Check, error) {
+	out := make([]*models.Check, 0, len(refs))
+
+	for _, ref := range refs {
+		check, err := s.db.GetCheckByUidOrSlug(ctx, orgUID, ref)
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && check == nil) {
+			return nil, ErrCheckNotFound
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, check)
+	}
+
+	return out, nil
+}
+
+// flaggedChecks lists the org's sealed checks flagged needsReseal, of one
+// region when region is set.
+func (s *Service) flaggedChecks(ctx context.Context, orgUID, region string) ([]*models.Check, error) {
 	checks, _, err := s.db.ListChecks(ctx, orgUID, &models.ListChecksFilter{})
 	if err != nil {
 		return nil, err
@@ -134,11 +145,7 @@ func (s *Service) rewrapCandidates(ctx context.Context, orgUID string, req *Rewr
 	out := make([]*models.Check, 0)
 
 	for _, check := range checks {
-		if req.Region != "" && !slices.Contains(check.Regions, req.Region) {
-			continue
-		}
-
-		if check.ConfigSealed == nil {
+		if check.ConfigSealed == nil || (region != "" && !slices.Contains(check.Regions, region)) {
 			continue
 		}
 

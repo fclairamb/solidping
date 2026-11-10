@@ -29,9 +29,10 @@ func runSealCommand(t *testing.T, stdin string, args ...string) (string, error) 
 	}
 
 	root := &cli.Command{Name: "solidping", Flags: GetGlobalFlags(), Commands: []*cli.Command{seal}}
-	base := []string{"solidping", "--config", filepath.Join(t.TempDir(), "settings.json"), "--org", "acme", "seal"}
+	argv := make([]string, 0, 6+len(args))
+	argv = append(argv, "solidping", "--config", filepath.Join(t.TempDir(), "settings.json"), "--org", "acme", "seal")
 
-	err := root.Run(t.Context(), append(base, args...))
+	err := root.Run(t.Context(), append(argv, args...))
 
 	return out.String(), err
 }
@@ -98,10 +99,16 @@ func TestSealCommand_Refusals(t *testing.T) {
 		{"no region", `{"password":"x"}`, []string{"--server", empty.URL, "--token", "p"}, ErrSealNoRegion},
 		{"not an object", `"x"`, []string{"--server", empty.URL, "--token", "p", "--region", "@dc1"}, ErrSealNoSecrets},
 		{"empty object", `{}`, []string{"--server", empty.URL, "--token", "p", "--region", "@dc1"}, ErrSealNoSecrets},
-		{"no recipients", `{"password":"x"}`, []string{"--server", empty.URL, "--token", "p", "--region", "@dc1"},
-			ErrSealNoRecipients},
-		{"server refusal", `{"password":"x"}`, []string{"--server", refused.URL, "--token", "p", "--region", "@x"},
-			ErrSealServerRefused},
+		{
+			"no recipients", `{"password":"x"}`,
+			[]string{"--server", empty.URL, "--token", "p", "--region", "@dc1"},
+			ErrSealNoRecipients,
+		},
+		{
+			"server refusal", `{"password":"x"}`,
+			[]string{"--server", refused.URL, "--token", "p", "--region", "@x"},
+			ErrSealServerRefused,
+		},
 	}
 
 	for _, tc := range cases {

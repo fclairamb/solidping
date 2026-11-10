@@ -246,11 +246,7 @@ func (s *Service) diffCheck(
 	add("description", current.Description, desired.Description)
 	add(fieldType, current.Type, desired.Type)
 	add("enabled", strconv.FormatBool(current.Enabled), strconv.FormatBool(desired.Enabled))
-	// sealedSecrets (spec 2026-11-10-03 §4) always replaces the stored blob:
-	// the export never carries one, and the server cannot compare ciphertexts.
-	if desired.SealedSecrets != nil {
-		add("sealedSecrets", "", "replaced")
-	}
+	addSealedSecretsChange(add, desired)
 	add("tracerouteOnFailure",
 		traceroutePolicyOrInherit(current.TracerouteOnFailure),
 		traceroutePolicyOrInherit(desired.TracerouteOnFailure))
@@ -606,4 +602,13 @@ func diffDependsOn(current, desired []ExportedDependency) []CheckFieldChange {
 	sort.SliceStable(changes, func(i, j int) bool { return changes[i].Field < changes[j].Field })
 
 	return changes
+}
+
+// addSealedSecretsChange reports a document's sealedSecrets (spec 2026-11-10-03
+// §4) as a change: it always replaces the stored blob, the export never
+// carries one, and the server cannot compare ciphertexts.
+func addSealedSecretsChange(add func(field, from, to string), desired *ExportCheck) {
+	if desired.SealedSecrets != nil {
+		add("sealedSecrets", "", "replaced")
+	}
 }

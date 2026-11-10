@@ -223,7 +223,8 @@ func (s *Service) validateClientSealing(
 		}
 	}
 
-	if err := validateSealedSecretsShape(sealed, s.secretFieldsForType(ctx, orgUID, checkType), requestConfig); err != nil {
+	secretFields := s.secretFieldsForType(ctx, orgUID, checkType)
+	if err := validateSealedSecretsShape(sealed, secretFields, requestConfig); err != nil {
 		return nil, err
 	}
 

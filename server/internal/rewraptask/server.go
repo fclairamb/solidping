@@ -46,8 +46,8 @@ type Outcome struct {
 	TaskUID   string `json:"taskUid,omitempty"`
 	AgentUID  string `json:"agentUid,omitempty"`
 	AgentName string `json:"agentName,omitempty"`
-	// Status is the worker task's status (pending, claimed, done, failed,
-	// cancelled), or "refused" when no re-wrap could be started.
+	// Status is the worker task's status (models.WorkerTaskStatus), or
+	// "refused" when no re-wrap could be started.
 	Status    string `json:"status"`
 	ErrorCode string `json:"errorCode,omitempty"`
 }
@@ -146,7 +146,7 @@ func (s *Server) prepareClaim(
 func (s *Server) complete(ctx context.Context, task *models.WorkerTask, body json.RawMessage) (string, error) {
 	var result Result
 	if err := json.Unmarshal(body, &result); err != nil {
-		return CodeInvalidResult, nil
+		return CodeInvalidResult, nil //nolint:nilerr // a malformed body is a task outcome, not an error
 	}
 
 	if result.ErrorCode != "" {
@@ -199,8 +199,8 @@ func (s *Server) validateResult(
 		return CodeRecipientsChanged, "", nil
 	}
 
-	if err := credentials.ValidateSealedCiphertext(result.CT, len(want)); err != nil {
-		return CodeInvalidResult, "", nil
+	if ctErr := credentials.ValidateSealedCiphertext(result.CT, len(want)); ctErr != nil {
+		return CodeInvalidResult, "", nil //nolint:nilerr // a refused blob is a task outcome, not an error
 	}
 
 	envelope, err := credentials.RewrapSealedEnvelope(*check.ConfigSealed, got, result.CT)
@@ -429,7 +429,7 @@ func (s *Server) Status(ctx context.Context, orgUID string, checkUIDs []string) 
 		Order("created_at DESC")
 
 	if len(checkUIDs) > 0 {
-		query = query.Where("check_uid IN (?)", bun.In(checkUIDs))
+		query = query.Where("check_uid IN (?)", bun.List(checkUIDs))
 	}
 
 	if err := query.Scan(ctx); err != nil {

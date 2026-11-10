@@ -21,8 +21,8 @@ import (
 // Sealed secrets from the command line (spec 2026-11-10-03 §2 and §3).
 
 const (
-	flagServer        = "server"
-	flagRegion        = "region"
+	flagServer         = "server"
+	flagRegion         = "region"
 	sealRequestTimeout = 30 * time.Second
 	// maxSealInputBytes bounds the secrets read on stdin: a sealed age file
 	// is capped at 64 KiB, so a larger plaintext could never be stored.
@@ -54,7 +54,7 @@ func SealSecrets(recipients []string, secrets map[string]any) (*SealedSecrets, e
 		return nil, ErrSealNoSecrets
 	}
 
-	fingerprints, ct, err := credentials.SealForClient(recipients, secrets)
+	fingerprints, ciphertext, err := credentials.SealForClient(recipients, secrets)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func SealSecrets(recipients []string, secrets map[string]any) (*SealedSecrets, e
 
 	sort.Strings(keys)
 
-	return &SealedSecrets{Keys: keys, Fingerprints: fingerprints, CT: ct}, nil
+	return &SealedSecrets{Keys: keys, Fingerprints: fingerprints, CT: ciphertext}, nil
 }
 
 // SealCommand is `solidping seal`: read a JSON object of secret fields on
