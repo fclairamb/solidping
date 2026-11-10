@@ -19,8 +19,8 @@ curl -L -o solidping-linux-amd64.gz https://github.com/fclairamb/solidping/relea
 gunzip -c solidping-linux-amd64.gz > solidping
 chmod +x solidping
 
-# Move to a system location (optional)
-sudo mv solidping /usr/local/bin/
+# Install it root-owned in a system location (needed for a service)
+sudo install -o root -m 0755 solidping /usr/local/bin/
 ```
 
 For ARM64 systems:
@@ -98,10 +98,11 @@ export SP_DB_URL="postgresql://user:password@localhost:5432/solidping"
 ## systemd Service
 
 The downloaded binary registers itself with systemd, no unit to write by hand.
-Put it in a system location first, since the service runs it from there:
+Put it in a system location first, owned by root, since the service runs it
+from there:
 
 ```bash
-sudo mv solidping /usr/local/bin/
+sudo install -o root -m 0755 solidping /usr/local/bin/
 sudo solidping service install
 sudo solidping service start
 ```
@@ -111,8 +112,7 @@ starts at boot. If needed, it creates the `solidping` system user (no login,
 no home) that runs the server. The service is restarted 5 seconds after a
 failed run (not after you stop it). `install` also creates the data folder
 `/var/lib/solidping`, owned by `solidping` and readable by it only, since it
-holds your configuration and database. An existing folder is left as is.
-The service runs from that folder, so the SQLite database lands there:
+holds your configuration and database. The service runs from that folder, so the SQLite database lands there:
 
 ```
 /var/lib/solidping/
@@ -162,6 +162,23 @@ contain spaces, quotes or backslashes.
 
 The service runs the `solidping` that installed it, at its absolute path. If
 you move that file, run `service uninstall` and `service install` again.
+
+`service install` refuses a binary that another account could replace: the
+file and every folder above it must be owned by root, and none of them may be
+writable by its group or by others. A binary in your home folder, in `/tmp` or
+in a group-writable folder would let that user or group run code as the
+service. `sudo install -o root -m 0755 solidping /usr/local/bin/` puts it
+right; `sudo mv` keeps your ownership. A user unit also accepts files you own.
+
+If the data folder already exists, `service install` only reuses it when it is
+still the way a previous install left it: a real folder (not a link), owned by
+`solidping` or root (you, for a user unit), not writable by its group or by
+others, with no link inside and nothing owned by another account. Its parents
+must be owned by root (or you) and not writable by others. Otherwise it stops
+with an error naming the problem: delete the folder (after saving what you need
+from it) or pick another one with `--dir`. The service checks the binary, the
+data folder and its parents again each time it starts, and logs the reason to
+the journal if a check fails.
 
 Agent mode works as a service too: set `node.role: agent` in `config.yml`
 (the equivalent of `SP_NODE_ROLE=agent`; see the [Configuration Guide](/configuration)).

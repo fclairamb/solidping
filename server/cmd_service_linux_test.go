@@ -16,7 +16,7 @@ import (
 func TestServiceRunOutsideSystemd(t *testing.T) {
 	t.Setenv("INVOCATION_ID", "")
 
-	require.ErrorIs(t, serviceRun(context.Background(), "solidping", t.TempDir()), errNotUnderSystemd)
+	require.ErrorIs(t, serviceRun(context.Background(), "solidping", t.TempDir(), ""), errNotUnderSystemd)
 }
 
 func TestCreateSystemdServiceDir(t *testing.T) {
@@ -98,15 +98,19 @@ func newFakeHost(t *testing.T, root bool) *fakeHost {
 
 	oldEuid, oldExe, oldLookup, oldChown := geteuid, executablePath, lookupUser, chownPath
 	oldRun, oldRunPath, oldSystemDir := runCommand, systemdRunPath, systemdSystemDir
+	oldSuperUsers := superUserIDs
 
 	t.Cleanup(func() {
 		geteuid, executablePath, lookupUser, chownPath = oldEuid, oldExe, oldLookup, oldChown
 		runCommand, systemdRunPath, systemdSystemDir = oldRun, oldRunPath, oldSystemDir
+		superUserIDs = oldSuperUsers
 	})
 
 	euid := 1000
 	if root {
 		euid = 0
+		// The temporary files the test creates stand for root's.
+		superUserIDs = trustedUIDs(os.Getuid())
 	}
 
 	geteuid = func() int { return euid }
@@ -371,9 +375,20 @@ func TestCreateSystemdServiceDirOwner(t *testing.T) { //nolint:paralleltest // s
 	r.NoError(createSystemdServiceDir(dir, 4242))
 	r.Equal([]int{4242}, chowned)
 
-	// An existing folder owned by someone else is kept, with a warning only.
-	r.NoError(createSystemdServiceDir(dir, os.Getuid()+1))
+	// A reinstall finds the folder of the previous one and keeps it.
+	r.NoError(createSystemdServiceDir(dir, 4242))
 	r.Equal([]int{4242}, chowned)
+
+	// An existing folder owned by someone else is refused.
+	superUserIDs = []int{0}
+	if os.Getuid() == 0 {
+		r.NoError(os.Chown(dir, 4343, -1))
+	}
+
+	err := checkServiceDir(dir, trustedUIDs(4242))
+	r.ErrorIs(err, errUntrustedDataDir)
+	r.ErrorIs(err, errDataDirOwner)
+	superUserIDs = trustedUIDs(os.Getuid())
 
 	chownPath = func(string, int, int) error { return errFakeCommand }
 	r.ErrorIs(createSystemdServiceDir(filepath.Join(t.TempDir(), "other"), 4242), errFakeCommand)
@@ -470,6 +485,136 @@ func TestServiceUninstallRemoveFails(t *testing.T) { //nolint:paralleltest // sy
 func TestServiceRunMissingDataFolder(t *testing.T) {
 	t.Setenv("INVOCATION_ID", "abc")
 
-	err := serviceRun(context.Background(), "solidping", filepath.Join(t.TempDir(), "absent"))
-	require.ErrorContains(t, err, "enter data folder")
+	err := serviceRun(context.Background(), "solidping", filepath.Join(t.TempDir(), "absent"), "")
+	require.ErrorContains(t, err, "data folder")
+}
+
+func TestServiceInstallRefusesWritableBinary(t *testing.T) { //nolint:paralleltest // system seams
+	r := require.New(t)
+	newFakeHost(t, false)
+
+	// A folder anyone can write: the binary in it can be replaced.
+	shared := filepath.Join(t.TempDir(), "shared")
+	r.NoError(os.Mkdir(shared, 0o755))
+	r.NoError(os.Chmod(shared, 0o777))
+
+	exe := filepath.Join(shared, "solidping")
+	r.NoError(os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755))
+	executablePath = func() (string, error) { return exe, nil }
+
+	err := serviceInstall(context.Background(), "solidping", filepath.Join(t.TempDir(), "data"))
+	r.ErrorIs(err, errUntrustedBinary)
+	r.ErrorIs(err, errPathWritable)
+	r.ErrorContains(err, "/usr/local/bin")
+	r.NoFileExists(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "systemd/user/solidping.service"))
+}
+
+func TestServiceInstallRefusesBinaryOfAnotherUser(t *testing.T) { //nolint:paralleltest // system seams
+	r := require.New(t)
+	host := newFakeHost(t, true)
+
+	exe := filepath.Join(t.TempDir(), "solidping")
+	r.NoError(os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755))
+	executablePath = func() (string, error) { return exe, nil }
+
+	// A system unit trusts root only: the test's own files stand for another
+	// user's, or are handed to one when the test runs as root.
+	superUserIDs = []int{0}
+	if os.Getuid() == 0 {
+		r.NoError(os.Chown(exe, 4343, -1))
+	}
+
+	err := serviceInstall(context.Background(), "solidping", filepath.Join(t.TempDir(), "data"))
+	r.ErrorIs(err, errUntrustedBinary)
+	r.ErrorIs(err, errDataDirOwner)
+	r.Empty(host.calls)
+}
+
+func TestServiceInstallRegistersResolvedBinary(t *testing.T) { //nolint:paralleltest // system seams
+	r := require.New(t)
+	newFakeHost(t, true)
+
+	resolved, err := filepath.EvalSymlinks("/bin/sh")
+	r.NoError(err)
+
+	r.NoError(serviceInstall(context.Background(), "solidping", filepath.Join(t.TempDir(), "data")))
+
+	unit, err := os.ReadFile(filepath.Join(systemdSystemDir, "solidping.service"))
+	r.NoError(err)
+	r.Contains(string(unit), `ExecStart="`+resolved+`" `)
+}
+
+func TestServiceInstallRefusesExistingDataDir(t *testing.T) { //nolint:paralleltest // system seams
+	tests := []struct {
+		name    string
+		prepare func(r *require.Assertions, dir string)
+		want    error
+	}{
+		{
+			name: "is a link",
+			prepare: func(r *require.Assertions, dir string) {
+				target := dir + ".target"
+				r.NoError(os.Mkdir(target, 0o700))
+				r.NoError(os.Symlink(target, dir))
+			},
+			want: errDataDirReparse,
+		},
+		{
+			name: "can be written by its group",
+			prepare: func(r *require.Assertions, dir string) {
+				r.NoError(os.Mkdir(dir, 0o700))
+				r.NoError(os.Chmod(dir, 0o770))
+			},
+			want: errPathWritable,
+		},
+		{
+			name: "can be written by anyone",
+			prepare: func(r *require.Assertions, dir string) {
+				r.NoError(os.Mkdir(dir, 0o700))
+				r.NoError(os.Chmod(dir, 0o777))
+			},
+			want: errPathWritable,
+		},
+	}
+
+	for _, tt := range tests { //nolint:paralleltest // system seams
+		t.Run(tt.name, func(t *testing.T) {
+			r := require.New(t)
+			host := newFakeHost(t, false)
+
+			dir := filepath.Join(t.TempDir(), "data")
+			tt.prepare(r, dir)
+
+			err := serviceInstall(context.Background(), "solidping", dir)
+			r.ErrorIs(err, errUntrustedDataDir)
+			r.ErrorIs(err, tt.want)
+			r.ErrorContains(err, "--dir")
+			r.Empty(host.calls)
+		})
+	}
+}
+
+func TestServiceInstallReusesDataDir(t *testing.T) { //nolint:paralleltest // system seams
+	r := require.New(t)
+	newFakeHost(t, false)
+
+	// What a previous install leaves behind, after uninstall.
+	dir := filepath.Join(t.TempDir(), "data")
+	r.NoError(os.Mkdir(dir, 0o700))
+	r.NoError(os.WriteFile(filepath.Join(dir, "config.yml"), nil, 0o600))
+
+	r.NoError(serviceInstall(context.Background(), "solidping", dir))
+}
+
+func TestServiceRunRefusesDataDirOpenedAfterInstall(t *testing.T) {
+	t.Setenv("INVOCATION_ID", "abc")
+	r := require.New(t)
+
+	dir := filepath.Join(t.TempDir(), "data")
+	r.NoError(createSystemdServiceDir(dir, -1))
+	r.NoError(os.Chmod(dir, 0o777))
+
+	err := serviceRun(context.Background(), "solidping", dir, "")
+	r.ErrorIs(err, errUntrustedDataDir)
+	r.ErrorIs(err, errPathWritable)
 }

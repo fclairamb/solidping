@@ -12,6 +12,9 @@ import (
 const (
 	flagServiceName = "name"
 	flagServiceDir  = "dir"
+	// flagServiceInstaller is the Windows account that installed the service,
+	// which `service run` trusts like an administrator (see serviceInstall).
+	flagServiceInstaller = "installer-sid"
 
 	goosWindows = "windows"
 	goosDarwin  = "darwin"
@@ -80,9 +83,9 @@ func serviceCommand() *cli.Command {
 				Name:   "run",
 				Usage:  "Run as the service (started by the Service Control Manager, launchd or systemd, not by hand)",
 				Hidden: true,
-				Flags:  []cli.Flag{nameFlag, dirFlag},
+				Flags:  []cli.Flag{nameFlag, dirFlag, &cli.StringFlag{Name: flagServiceInstaller, Hidden: true}},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return serviceRun(ctx, cmd.String(flagServiceName), serviceDir(cmd))
+					return serviceRun(ctx, cmd.String(flagServiceName), serviceDir(cmd), cmd.String(flagServiceInstaller))
 				},
 			},
 		},

@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 var (
@@ -132,6 +131,12 @@ func serviceInstall(ctx context.Context, name, dir string) error {
 		return err
 	}
 
+	// A system unit runs the binary as systemdServiceUser, so only root may be
+	// able to replace it; a user unit already runs as the user who owns it.
+	if exe, err = checkServiceBinary(exe, installTrustedUIDs(job)); err != nil {
+		return err
+	}
+
 	if _, statErr := os.Stat(job.unitPath); statErr == nil {
 		return fmt.Errorf("%w: %s; remove it first with `solidping service uninstall`", errServiceExists, job.unitPath)
 	}
@@ -178,6 +183,16 @@ func printSystemdInstalled(job systemdJob, absDir string) {
 	if !job.root {
 		_, _ = fmt.Fprintln(os.Stdout, "To start it at boot rather than at login: loginctl enable-linger")
 	}
+}
+
+// installTrustedUIDs are the accounts that may control the binary and the
+// parents of the data folder: root, plus the user for a user unit.
+func installTrustedUIDs(job systemdJob) []int {
+	if job.root {
+		return trustedUIDs()
+	}
+
+	return trustedUIDs(os.Geteuid())
 }
 
 // serviceOwner is the uid a system unit runs as, systemdServiceUser, or -1 for
@@ -249,17 +264,21 @@ func othersCanExecute(exe string) bool {
 
 // createSystemdServiceDir creates the data folder readable by its owner only:
 // config.yml and the database hold secrets. owner, when not -1, is the uid the
-// service runs as; the folder is handed to it. An existing folder is left as
-// is, with a warning when the service user does not own it.
+// service runs as; the folder is handed to it. -1 is a user unit, which runs as
+// the current user. A folder that already exists must pass checkServiceDir,
+// and the parents of the folder must pass checkServiceDirParents.
 func createSystemdServiceDir(dir string, owner int) error {
-	info, statErr := os.Stat(dir)
-	if statErr == nil {
-		if stat, ok := info.Sys().(*syscall.Stat_t); ok && owner != -1 && int(stat.Uid) != owner {
-			_, _ = fmt.Fprintf(os.Stderr, "Warning: %s is not owned by user %s, which may not be able to write to it. "+
-				"Hand it over with: sudo chown -R %s: %s\n", dir, systemdServiceUser, systemdServiceUser, dir)
-		}
+	parentOwners, dirOwners := trustedUIDs(), trustedUIDs(owner)
+	if owner == -1 {
+		parentOwners, dirOwners = trustedUIDs(os.Geteuid()), trustedUIDs(os.Geteuid())
+	}
 
-		return nil
+	if err := checkServiceDirParents(dir, parentOwners); err != nil {
+		return err
+	}
+
+	if _, statErr := os.Lstat(dir); statErr == nil {
+		return checkServiceDir(dir, dirOwners)
 	} else if !errors.Is(statErr, fs.ErrNotExist) {
 		return fmt.Errorf("check data folder %s: %w", dir, statErr)
 	}
@@ -268,6 +287,7 @@ func createSystemdServiceDir(dir string, owner int) error {
 		return fmt.Errorf("create parent of data folder %s: %w", dir, err)
 	}
 
+	// Fails if the folder appeared since the Lstat above, rather than adopting it.
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		return fmt.Errorf("create data folder %s: %w", dir, err)
 	}
@@ -356,10 +376,15 @@ func serviceStop(ctx context.Context, name string) error {
 // stops gracefully on the SIGTERM systemd sends. Logs and crash output go to
 // stdout and stderr, which systemd sends to the journal. A failed run exits
 // non-zero, so systemd restarts it.
-func serviceRun(ctx context.Context, _, dir string) error {
+func serviceRun(ctx context.Context, _, dir, _ string) error {
 	// systemd sets INVOCATION_ID for every unit it starts.
 	if os.Getenv("INVOCATION_ID") == "" {
 		return errNotUnderSystemd
+	}
+
+	// What install checked may have changed since.
+	if err := checkServiceRunPaths(dir); err != nil {
+		return err
 	}
 
 	if err := os.Chdir(dir); err != nil {

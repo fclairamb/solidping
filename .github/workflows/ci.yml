@@ -681,8 +681,13 @@ jobs:
       - name: Install, start, stop and uninstall the service
         run: |
           $ErrorActionPreference = 'Stop'
-          $exe = Join-Path $env:RUNNER_TEMP 'solidping.exe'
-          $dir = Join-Path $env:RUNNER_TEMP 'solidping-data'
+          # The service runs the binary as LocalSystem: install refuses one
+          # that a non-administrator could replace, so it goes where the docs
+          # put it. The data folder's parent must be safe too.
+          $bin = Join-Path $env:ProgramFiles 'SolidPing'
+          New-Item -ItemType Directory -Force $bin | Out-Null
+          $exe = Join-Path $bin 'solidping.exe'
+          $dir = Join-Path $env:ProgramData 'SolidPing-ci'
           go build -o $exe .
           if ($LASTEXITCODE) { exit 1 }
 
@@ -734,12 +739,21 @@ jobs:
 
           # A folder created beforehand (any local user can, under ProgramData)
           # is refused, and no service is registered.
-          $precreated = Join-Path $env:RUNNER_TEMP 'solidping-precreated'
+          $precreated = Join-Path $env:ProgramData 'solidping-precreated'
           New-Item -ItemType Directory $precreated | Out-Null
           $PSNativeCommandUseErrorActionPreference = $false
           & $exe service install --dir $precreated
           if (-not $LASTEXITCODE) { throw 'install accepted a pre-existing folder' }
           if (Get-Service SolidPing -ErrorAction SilentlyContinue) { throw 'service registered on a refused folder' }
+
+          # A binary in a folder created under C:\, which every local user
+          # can modify, is refused.
+          $open = Join-Path $env:SystemDrive 'solidping-ci'
+          New-Item -ItemType Directory -Force $open | Out-Null
+          Copy-Item $exe $open
+          & (Join-Path $open 'solidping.exe') service install --dir (Join-Path $env:ProgramData 'SolidPing-open')
+          if (-not $LASTEXITCODE) { throw 'install accepted a binary every user can replace' }
+          if (Get-Service SolidPing -ErrorAction SilentlyContinue) { throw 'service registered on a refused binary' }
           # The runner exits with $LASTEXITCODE, still the expected failure's.
           $global:LASTEXITCODE = 0
 
@@ -769,9 +783,15 @@ jobs:
       - name: Install, start, stop and uninstall the service
         run: |
           set -euo pipefail
-          exe="$RUNNER_TEMP/solidping"
-          dir="$RUNNER_TEMP/solidping data"
-          go build -o "$exe" .
+          # The daemon runs as root: install refuses a binary or a data folder
+          # parent that the runner user owns, such as anything in $RUNNER_TEMP.
+          go build -o "$RUNNER_TEMP/solidping" .
+          if sudo "$RUNNER_TEMP/solidping" service install; then echo 'install accepted a user-owned binary'; exit 1; fi
+          sudo install -d -o root -g wheel -m 0755 /Library/SolidPingCI
+          exe=/Library/SolidPingCI/solidping
+          sudo install -o root -g wheel -m 0755 "$RUNNER_TEMP/solidping" "$exe"
+          dir="/Library/Application Support/SolidPing CI"
+          if sudo "$exe" service install --dir "$RUNNER_TEMP/solidping data"; then echo 'install accepted a user-owned parent'; exit 1; fi
 
           sudo "$exe" service install --dir "$dir"
           sudo plutil -lint /Library/LaunchDaemons/io.solidping.plist
@@ -823,11 +843,17 @@ jobs:
       - name: Install, start, stop and uninstall the service
         run: |
           set -euo pipefail
-          # Outside /home/runner, which the service user cannot traverse.
-          exe=/usr/local/bin/solidping
+          # Outside /home/runner, which the service user cannot traverse. The hosted
+          # runner leaves /opt and /usr/local/bin world-writable, which the install
+          # refuses, so close /opt first.
+          sudo chmod go-w /opt
+          exe=/opt/solidping/bin/solidping
           dir=/var/lib/solidping
           go build -o "$RUNNER_TEMP/solidping" .
-          sudo install -m 0755 "$RUNNER_TEMP/solidping" "$exe"
+          # A binary the runner user owns would let it run code as the service.
+          if sudo "$RUNNER_TEMP/solidping" service install; then echo 'install accepted a user-owned binary'; exit 1; fi
+          sudo install -d -o root -m 0755 /opt/solidping /opt/solidping/bin
+          sudo install -o root -m 0755 "$RUNNER_TEMP/solidping" "$exe"
 
           sudo "$exe" service install
           sudo systemd-analyze verify /etc/systemd/system/solidping.service

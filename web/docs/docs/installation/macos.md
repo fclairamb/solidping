@@ -56,11 +56,11 @@ chmod +x solidping
 
 The binary is unsigned and not notarized, so macOS Gatekeeper quarantines it
 on download and refuses to run it. Clear the quarantine attribute once, then
-move it to a stable location (a service runs it from there):
+install it root-owned in a stable location (a service runs it from there):
 
 ```bash
 xattr -d com.apple.quarantine solidping
-sudo mv solidping /usr/local/bin/
+sudo install -o root -m 0755 solidping /usr/local/bin/
 ```
 
 ### Verify the checksum (recommended)
@@ -102,7 +102,7 @@ sudo solidping service start
 starts at boot, runs as root and is restarted 5 seconds after a failed run
 (not after you stop it). It also creates the data folder
 `/Library/Application Support/SolidPing`, readable by root only, since it
-holds your configuration and database (an existing folder is left as is). The
+holds your configuration and database. The
 service runs from that folder, so the SQLite database and the logs land there:
 
 ```
@@ -148,6 +148,27 @@ pick another launchd label (to run two instances, for example). Pass the same
 
 The service runs the `solidping` that installed it, at its absolute path. If
 you move that file, run `service uninstall` and `service install` again.
+
+A daemon runs as root, so `sudo solidping service install` refuses a binary
+that another account could replace: the file and every folder above it must be
+owned by root, and none of them may be writable by its group or by others.
+`sudo install -o root -m 0755 solidping /usr/local/bin/` puts it right; `sudo
+mv` keeps your ownership. A Homebrew binary is owned by the user who installed
+Homebrew, so it cannot back a root daemon: install a root-owned copy of the
+downloaded binary instead. A user agent also accepts files you own. Some tools hand
+`/usr/local/bin` itself to your user: if `stat -f %Su /usr/local/bin` does not
+print `root`, install the binary in another root-owned folder, for example
+`sudo install -d -o root -m 0755 /Library/SolidPing`.
+
+If the data folder already exists, `service install` only reuses it when it is
+still the way a previous install left it: a real folder (not a link), owned by
+root (you, for an agent), not writable by its group or by others, with no link
+inside and nothing owned by another account. Its parents must be owned by root
+(or you) and not writable by others. Otherwise it stops with an error naming
+the problem: delete the folder (after saving what you need from it) or pick
+another one with `--dir`. The service checks the binary, the data folder and
+its parents again each time it starts; the reason of a failed check goes to
+`logs/launchd.log` in the data folder.
 
 Agent mode works as a service too: set `node.role: agent` in `config.yml`
 (the equivalent of `SP_NODE_ROLE=agent`; see the [Configuration Guide](/configuration)).
@@ -213,7 +234,7 @@ Replace the binary in place: the service points at its absolute path.
 sudo solidping service stop
 curl -L https://github.com/fclairamb/solidping/releases/latest/download/solidping-darwin-arm64.gz | gunzip > solidping
 chmod +x solidping
-sudo mv solidping /usr/local/bin/solidping
+sudo install -o root -m 0755 solidping /usr/local/bin/solidping
 sudo solidping service start
 ```
 

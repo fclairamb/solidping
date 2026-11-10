@@ -109,13 +109,21 @@ func serviceInstall(_ context.Context, name, dir string) error {
 		return fmt.Errorf("%w: %s; remove it first with `solidping service uninstall`", errServiceExists, job.plistPath)
 	}
 
+	// A daemon runs as root: only root may be able to change what it runs. An
+	// agent already runs as the user who owns its files.
+	owners := launchdTrustedUIDs(os.Geteuid())
+
+	if exe, err = checkServiceBinary(exe, owners); err != nil {
+		return err
+	}
+
 	// launchd runs a quarantined binary no better than Gatekeeper does.
 	if _, xattrErr := unix.Getxattr(exe, quarantineAttr, nil); xattrErr == nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Warning: %s is quarantined and launchd may refuse to start it. "+
 			"Clear it with: xattr -d %s %s\n", exe, quarantineAttr, exe)
 	}
 
-	if dirErr := createServiceDir(absDir); dirErr != nil {
+	if dirErr := createServiceDir(absDir, owners); dirErr != nil {
 		return dirErr
 	}
 
@@ -138,25 +146,57 @@ func serviceInstall(_ context.Context, name, dir string) error {
 	return nil
 }
 
+// launchdTrustedUIDs are the accounts that may control the binary, the data
+// folder and its parents for a job installed by euid: root, plus the user for
+// an agent.
+func launchdTrustedUIDs(euid int) []int {
+	if euid == 0 {
+		return trustedUIDs()
+	}
+
+	return trustedUIDs(euid)
+}
+
 // createServiceDir creates the data folder readable by its owner only (root
 // for a daemon): config.yml and the database hold secrets. A folder that
-// already exists is left as is. The log folder is created either way, as
+// already exists must pass checkServiceDir, and its parents
+// checkServiceDirParents, for owners. The log folder is created either way, as
 // launchd opens launchd.log in it before solidping starts.
-func createServiceDir(dir string) error {
-	if _, statErr := os.Stat(dir); errors.Is(statErr, fs.ErrNotExist) {
-		if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-			return fmt.Errorf("create parent of data folder %s: %w", dir, err)
-		}
+func createServiceDir(dir string, owners []int) error {
+	if err := checkServiceDirParents(dir, owners); err != nil {
+		return err
+	}
 
-		if err := os.Mkdir(dir, 0o700); err != nil {
-			return fmt.Errorf("create data folder %s: %w", dir, err)
-		}
-	} else if statErr != nil {
-		return fmt.Errorf("check data folder %s: %w", dir, statErr)
+	if err := ensureServiceDir(dir, owners); err != nil {
+		return err
 	}
 
 	if err := os.MkdirAll(filepath.Join(dir, serviceLogDir), 0o750); err != nil {
 		return fmt.Errorf("create log folder: %w", err)
+	}
+
+	return nil
+}
+
+// ensureServiceDir checks the data folder if it exists, and creates it
+// otherwise.
+func ensureServiceDir(dir string, owners []int) error {
+	_, statErr := os.Lstat(dir)
+	if statErr == nil {
+		return checkServiceDir(dir, owners)
+	}
+
+	if !errors.Is(statErr, fs.ErrNotExist) {
+		return fmt.Errorf("check data folder %s: %w", dir, statErr)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		return fmt.Errorf("create parent of data folder %s: %w", dir, err)
+	}
+
+	// Fails if the folder appeared since the Lstat above, rather than adopting it.
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		return fmt.Errorf("create data folder %s: %w", dir, err)
 	}
 
 	return nil
@@ -261,10 +301,15 @@ func stopService(ctx context.Context, job launchdJobRef) error {
 // serviceRun is what launchd launches. It enters the data folder (see
 // enterServiceDir) and runs `serve`, which stops gracefully on the SIGTERM
 // launchd sends. A failed run exits non-zero, so launchd restarts it.
-func serviceRun(ctx context.Context, _, dir string) error {
+func serviceRun(ctx context.Context, _, dir, _ string) error {
 	// launchd is PID 1 and the parent of every job it starts.
 	if os.Getppid() != 1 {
 		return errNotUnderLaunchd
+	}
+
+	// What install checked may have changed since.
+	if err := checkServiceRunPaths(dir); err != nil {
+		return err
 	}
 
 	logOut, err := enterServiceDir(dir)
