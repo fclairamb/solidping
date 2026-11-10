@@ -22,9 +22,14 @@ func sealedDoc(org, slug string, sealed *checks.SealedSecretsRequest) *checks.Ex
 
 func TestImportSealedSecretsStoresBrowserBlob(t *testing.T) {
 	t.Parallel()
+	testImportSealedSecretsStoresBrowserBlob(t, sqliteSealingEnv)
+}
+
+func testImportSealedSecretsStoresBrowserBlob(t *testing.T, env sealingEnv) {
+	t.Helper()
 
 	r := require.New(t)
-	svc, dbSvc, org, keys := setupBrowserSealing(t, sqliteSealingEnv)
+	svc, dbSvc, org, keys := setupBrowserSealing(t, env)
 	ctx := t.Context()
 
 	sealed := clientSeal(t, map[string]any{"basicAuth": "alice:hunter2"}, keys.X25519Recipient)
@@ -82,9 +87,14 @@ func TestImportSealedSecretsStoresBrowserBlob(t *testing.T) {
 
 func TestImportSealedSecretsStaleFingerprintsAreItemErrors(t *testing.T) {
 	t.Parallel()
+	testImportSealedSecretsStaleFingerprintsAreItemErrors(t, sqliteSealingEnv)
+}
+
+func testImportSealedSecretsStaleFingerprintsAreItemErrors(t *testing.T, env sealingEnv) {
+	t.Helper()
 
 	r := require.New(t)
-	svc, dbSvc, org, keys := setupBrowserSealing(t, sqliteSealingEnv)
+	svc, dbSvc, org, keys := setupBrowserSealing(t, env)
 	ctx := t.Context()
 
 	sealed := clientSeal(t, map[string]any{"basicAuth": "alice:hunter2"}, keys.X25519Recipient)

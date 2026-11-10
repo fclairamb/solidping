@@ -4048,14 +4048,14 @@ type ExportCheck struct {
 	// import; only the apply reconcile path consults it.
 	PreviousSlug string         `json:"previousSlug,omitempty"`
 	Description  string         `json:"description,omitempty"`
+	Type         string         `json:"type"`
+	Config       map[string]any `json:"config"`
+	Regions      []string       `json:"regions,omitempty"`
 	// SealedSecrets carries client-sealed secrets in a config-as-code
 	// document (spec 2026-11-10-03 §4), e.g. the output of `solidping seal`.
 	// Import and apply validate it exactly like the write API. Export never
 	// writes it: secrets are stripped.
 	SealedSecrets *SealedSecretsRequest `json:"sealedSecrets,omitempty"`
-	Type         string         `json:"type"`
-	Config       map[string]any `json:"config"`
-	Regions      []string       `json:"regions,omitempty"`
 	// Placement / RegionCount / RegionPool (spec 2026-09-25-06). Placement is
 	// "auto" for an automatically placed check; absent reads as pinned when
 	// regions are listed, and as "no opinion" otherwise. An auto check's

@@ -47,7 +47,17 @@ func newHarness(t *testing.T) *harness {
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	org := models.NewOrganization("acme", "Acme")
+	return newHarnessOn(t, dbSvc, "acme")
+}
+
+// newHarnessOn builds the harness on a given database, with its own org.
+func newHarnessOn(t *testing.T, dbSvc db.Service, slug string) *harness {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	org := models.NewOrganization(slug, slug)
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
 	creds, err := credentials.NewService(nil, credentials.ParamStore{})
@@ -230,8 +240,13 @@ func needsReseal(t *testing.T, h *harness, check *models.Check, recipients ...st
 func TestRewrap_NewAgentGetsTheBlob(t *testing.T) {
 	t.Parallel()
 
+	runNewAgentGetsTheBlob(t, newHarness(t))
+}
+
+func runNewAgentGetsTheBlob(t *testing.T, h *harness) {
+	t.Helper()
+
 	r := require.New(t)
-	h := newHarness(t)
 
 	oldAgent := h.enroll("old", true)
 	check := h.sealedCheck("acme-api", map[string]any{"password": "s3cret"}, oldAgent.keys.X25519Recipient)

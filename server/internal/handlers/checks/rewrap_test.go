@@ -68,10 +68,15 @@ func TestSealCommandOutputAcceptedByWriteAPI(t *testing.T) {
 // service: a new agent flags the check, a re-wrap on the old agent clears it.
 func TestStartRewrapClearsNeedsReseal(t *testing.T) {
 	t.Parallel()
+	testStartRewrapClearsNeedsReseal(t, sqliteSealingEnv)
+}
+
+func testStartRewrapClearsNeedsReseal(t *testing.T, env sealingEnv) {
+	t.Helper()
 
 	r := require.New(t)
 	ctx := t.Context()
-	svc, dbSvc, org := sqliteSealingEnv(t)
+	svc, dbSvc, org := env(t)
 	defineSealRegions(t, dbSvc, org.UID)
 
 	_, err := svc.StartRewrap(ctx, org.Slug, &checks.RewrapRequest{})
