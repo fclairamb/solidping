@@ -469,6 +469,21 @@ describe("expandTimeGaps", () => {
     expect(expanded[5].durationP95).toBe(41);
   });
 
+  test("a coarse older stretch followed by fine recent sampling stays connected", () => {
+    // Older days come from coarse rollups (1 h), recent ones are sampled every
+    // minute: the global median is 1 minute, which used to make every coarse
+    // step a "gap" and leave the older stretch as isolated dots.
+    const HOUR = 60 * MIN;
+    const rows = [
+      ...Array.from({ length: 6 }, (_, i) => ({ ...at(base + i * HOUR), durationP95: 40 })),
+      ...Array.from({ length: 40 }, (_, i) => ({ ...at(base + 6 * HOUR + i * MIN), durationP95: 40 })),
+    ];
+
+    const expanded = expandTimeGaps(rows, (time) => ({ ...at(Date.parse(time)), durationP95: null }));
+
+    expect(expanded).toHaveLength(rows.length);
+  });
+
   test("two regions covering disjoint time ranges (the 39-day fixture)", () => {
     // Region A: day rollups ending 13 Aug. Region B: raw points from the
     // last minutes. Merged rows jump 39 days mid-array; the expansion must
