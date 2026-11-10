@@ -218,8 +218,7 @@ func TestServiceDirRefusesUntrustedOwner(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "data")
 	r.NoError(createServiceDir(dir))
 
-	trust, err := defaultServiceDirTrust()
-	r.NoError(err)
+	trust := currentServiceTrust(t).dir
 	r.NoError(checkServiceDir(dir, trust))
 
 	// The folder's owner (the test's user, or Administrators) is not
@@ -231,4 +230,120 @@ func TestServiceDirRefusesUntrustedOwner(t *testing.T) {
 	err = checkServiceDir(dir, trust)
 	r.ErrorIs(err, errUntrustedDataDir)
 	r.ErrorIs(err, errDataDirOwner)
+}
+
+// currentServiceTrust is what install trusts when the test's user runs it.
+func currentServiceTrust(t *testing.T) serviceTrust {
+	t.Helper()
+	r := require.New(t)
+
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	r.NoError(err)
+
+	trust, err := newServiceTrust(user.User.Sid)
+	r.NoError(err)
+
+	return trust
+}
+
+// writeFileIn creates a file in a new folder with the access rules of sddl.
+func writeFileIn(t *testing.T, sddl string) string {
+	t.Helper()
+
+	folder := filepath.Join(t.TempDir(), "bin")
+	mkdirWithSDDL(t, folder, sddl)
+
+	exe := filepath.Join(folder, "solidping.exe")
+	require.NoError(t, os.WriteFile(exe, []byte("MZ"), 0o600))
+
+	return exe
+}
+
+// TestServiceBinaryRefusesWritableFolder is the C:\solidping case: a folder
+// created under C:\ inherits a Modify right for Authenticated Users, so any
+// local user could replace the binary the LocalSystem service runs.
+func TestServiceBinaryRefusesWritableFolder(t *testing.T) {
+	t.Parallel()
+	requireElevated(t)
+	r := require.New(t)
+	trust := currentServiceTrust(t).path
+
+	exe := writeFileIn(t, "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1301bf;;;AU)")
+
+	_, err := checkServiceBinary(exe, trust)
+	r.ErrorIs(err, errUntrustedBinary)
+	r.ErrorIs(err, errPathChangeableBy)
+	r.ErrorContains(err, `C:\Program Files\SolidPing`)
+}
+
+// TestServiceBinaryAcceptsProtectedFolder is the positive control: a folder
+// only SYSTEM and Administrators can write, which users may read and run, as
+// C:\Program Files\SolidPing. The inherit-only rule for CREATOR OWNER is
+// ignored, as on Program Files.
+func TestServiceBinaryAcceptsProtectedFolder(t *testing.T) {
+	t.Parallel()
+	requireElevated(t)
+	r := require.New(t)
+	trust := currentServiceTrust(t).path
+
+	exe := writeFileIn(t, "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)(A;CIIO;GA;;;CO)")
+
+	resolved, err := checkServiceBinary(exe, trust)
+	r.NoError(err)
+	r.Equal(exe, resolved)
+}
+
+func TestServiceDirRefusesUntrustedParent(t *testing.T) {
+	t.Parallel()
+	requireElevated(t)
+	r := require.New(t)
+
+	// A parent that lets Users delete what it holds: the C:\acme a user
+	// created, or the folder install creates under C:\.
+	parent := filepath.Join(t.TempDir(), "acme")
+	mkdirWithSDDL(t, parent, "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;BU)")
+
+	err := createServiceDir(filepath.Join(parent, "SolidPing"))
+	r.ErrorIs(err, errUntrustedParent)
+	r.ErrorIs(err, errPathChangeableBy)
+	r.NoDirExists(filepath.Join(parent, "SolidPing"))
+
+	// A parent owned by someone else: its owner can always rewrite its access
+	// rules. Trusting LocalService only stands for a folder another user owns.
+	localService, err := windows.CreateWellKnownSid(windows.WinLocalServiceSid)
+	r.NoError(err)
+
+	trust := currentServiceTrust(t).path
+	trust.owners = []*windows.SID{localService}
+	err = checkServiceDirParents(filepath.Join(t.TempDir(), "SolidPing"), trust)
+	r.ErrorIs(err, errUntrustedParent)
+	r.ErrorIs(err, errDataDirOwner)
+}
+
+// TestServiceRunRechecksDataDir: a data folder whose access rules were opened
+// after the install is refused when the service starts.
+func TestServiceRunRechecksDataDir(t *testing.T) {
+	t.Parallel()
+	requireElevated(t)
+	r := require.New(t)
+
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	r.NoError(err)
+
+	dir := filepath.Join(t.TempDir(), "data")
+	r.NoError(createServiceDir(dir))
+	r.NoError(checkServiceRunPaths(dir, user.User.Sid.String()))
+
+	descriptor, err := windows.SecurityDescriptorFromString(serviceDirSDDL + "(A;OICI;FA;;;BU)")
+	r.NoError(err)
+	dacl, _, err := descriptor.DACL()
+	r.NoError(err)
+	r.NoError(windows.SetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil))
+
+	err = checkServiceRunPaths(dir, user.User.Sid.String())
+	r.ErrorIs(err, errUntrustedDataDir)
+	r.ErrorIs(err, errDataDirGrant)
+
+	r.ErrorContains(checkServiceRunPaths(dir, "not-a-sid"), "--"+flagServiceInstaller)
 }
