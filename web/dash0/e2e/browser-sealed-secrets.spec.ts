@@ -17,12 +17,18 @@ async function getAuthToken(page: Page): Promise<string> {
   return (await resp.json()).accessToken;
 }
 
+// Private regions created in the shared `test` org. They are deleted after each
+// test: a leftover one makes the org multi-region for every other spec (the
+// check form's region picker, check-placement's single-region assertions).
+const createdTestOrgRegions: string[] = [];
+
 async function createPrivateRegion(page: Page, token: string, slug: string, org = "test"): Promise<void> {
   const resp = await page.request.post(`${API_BASE}/api/v1/orgs/${org}/private-regions`, {
     headers: { Authorization: `Bearer ${token}` },
     data: { slug, name: `Sealed ${slug}` },
   });
   expect(resp.ok()).toBeTruthy();
+  if (org === "test") createdTestOrgRegions.push(slug);
 }
 
 async function ensureRegionChecked(page: Page, regionTestId: string): Promise<void> {
@@ -87,6 +93,15 @@ async function generateRegionKey(page: Page, slug: string, via: "button" | "sele
 }
 
 test.describe("Browser-sealed check secrets", () => {
+  test.afterEach(async ({ authenticatedPage }) => {
+    const token = await getAuthToken(authenticatedPage);
+    for (const slug of createdTestOrgRegions.splice(0)) {
+      await authenticatedPage.request.delete(`${API_BASE}/api/v1/orgs/test/private-regions/${slug}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
+  });
+
   test("seals an HTTP basic-auth password in the browser", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
     const token = await getAuthToken(page);
