@@ -290,6 +290,8 @@ func (s *Service) claimRowIn(
 				WhereOr("(cand.status = ? AND cand.lease_until < ?)", models.WorkerTaskStatusClaimed, current)
 		}).
 		Where("(?) < ?", held, slots).
+		// A targeted task (spec 2026-11-10-03) goes to its worker only.
+		Where("(cand.target_worker_uid IS NULL OR cand.target_worker_uid = ?)", identity.UID).
 		OrderExpr("cand.not_before ASC, cand.created_at ASC").
 		Limit(1)
 

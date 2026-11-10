@@ -46,17 +46,20 @@ type WorkerTask struct {
 	Progress        JSONMap          `bun:"progress,type:jsonb"`
 	Status          WorkerTaskStatus `bun:"status,notnull"`
 	WorkerUID       *string          `bun:"worker_uid"`
-	LeaseUntil      *time.Time       `bun:"lease_until"`
-	Attempts        int              `bun:"attempts,notnull"`
-	SliceCount      int              `bun:"slice_count,notnull"`
-	SliceFailures   int              `bun:"slice_failures,notnull"`
-	StateFileUID    *string          `bun:"state_file_uid"`
-	UnitsGranted    int              `bun:"units_granted,notnull"`
-	NotBefore       time.Time        `bun:"not_before,notnull"`
-	RunStartedAt    *time.Time       `bun:"run_started_at"`
-	ErrorCode       *string          `bun:"error_code"`
-	CreatedAt       time.Time        `bun:"created_at,notnull"`
-	UpdatedAt       time.Time        `bun:"updated_at,notnull"`
+	// TargetWorkerUID, when set, is the only worker that may claim the task
+	// (a sealed-secrets re-wrap goes to a recipient agent, spec 2026-11-10-03).
+	TargetWorkerUID *string    `bun:"target_worker_uid"`
+	LeaseUntil      *time.Time `bun:"lease_until"`
+	Attempts        int        `bun:"attempts,notnull"`
+	SliceCount      int        `bun:"slice_count,notnull"`
+	SliceFailures   int        `bun:"slice_failures,notnull"`
+	StateFileUID    *string    `bun:"state_file_uid"`
+	UnitsGranted    int        `bun:"units_granted,notnull"`
+	NotBefore       time.Time  `bun:"not_before,notnull"`
+	RunStartedAt    *time.Time `bun:"run_started_at"`
+	ErrorCode       *string    `bun:"error_code"`
+	CreatedAt       time.Time  `bun:"created_at,notnull"`
+	UpdatedAt       time.Time  `bun:"updated_at,notnull"`
 }
 
 // NewWorkerTask builds a pending task of a check. Use JobUID instead of

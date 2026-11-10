@@ -36,9 +36,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
+	"github.com/fclairamb/solidping/server/internal/checkworker/tasks"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
+	"github.com/fclairamb/solidping/server/internal/rewraptask"
 )
 
 // ErrNoIdentityNoToken is returned when the agent has no persisted identity
@@ -124,6 +126,11 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		"server", cfg.Agent.ServerURL,
 		"enrolled", identity.AgentUID != "",
 		"region", identity.Region)
+
+	// Peer re-wrap of sealed secrets (spec 2026-11-10-03): this agent opens a
+	// blob with its keys and seals it to the list the server sends. Registered
+	// before the worker, so the "rewrap" capability is reported from the start.
+	tasks.Register(rewraptask.NewExecutor(wsBackend.UnsealIdentities))
 
 	worker := checkworker.NewAgentCheckWorker(cfg, wsBackend)
 	wsBackend.SetEgressGuard(worker.EgressGuard())

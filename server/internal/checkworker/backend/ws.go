@@ -460,8 +460,14 @@ func (b *WSBackend) Hints() <-chan string {
 	return hintCh
 }
 
-// unsealIdentities returns every age identity this agent opens sealed blobs
+// UnsealIdentities returns every age identity this agent opens sealed blobs
 // with: its own key, then the shared region keys it holds (spec 2026-11-08-01).
+// The peer re-wrap executor opens blobs with them (spec 2026-11-10-03).
+func (b *WSBackend) UnsealIdentities() []string {
+	return b.unsealIdentities()
+}
+
+// unsealIdentities is UnsealIdentities.
 func (b *WSBackend) unsealIdentities() []string {
 	b.mu.Lock()
 	defer b.mu.Unlock()

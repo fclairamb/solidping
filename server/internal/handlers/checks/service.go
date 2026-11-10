@@ -608,6 +608,8 @@ type Service struct {
 	// tasks cancels a crawl's run in progress (SetTaskCanceler). Nil = not
 	// wired: the run is canceled at its next claim.
 	tasks TaskCanceler
+	// rewrap sends peer re-wraps of sealed secrets (spec 2026-11-10-03).
+	rewrap Rewrapper
 	// now is the injectable clock RegionHealth reads "now" through (spec
 	// 2026-08-24-09), so tests can pin it and assert the exact liveness
 	// boundary instead of racing a live wall clock. Defaults to time.Now in

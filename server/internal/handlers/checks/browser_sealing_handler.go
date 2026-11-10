@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -121,4 +122,67 @@ func (h *Handler) ResealChecks(writer http.ResponseWriter, req *http.Request) er
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": checks})
+}
+
+// errorCodeRewrapUnavailable is a server without the peer re-wrap kind.
+const errorCodeRewrapUnavailable base.ErrorCode = "REWRAP_UNAVAILABLE"
+
+// writeRewrapError translates the errors of the peer re-wrap endpoints.
+func (h *Handler) writeRewrapError(writer http.ResponseWriter, req *http.Request, err error) error {
+	switch {
+	case errors.Is(err, ErrOrganizationNotFound):
+		return h.WriteErrorErr(writer, req, http.StatusNotFound,
+			base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+	case errors.Is(err, ErrCheckNotFound):
+		return h.WriteErrorErr(writer, req, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+	case errors.Is(err, ErrSealedSecretsRequirePrivateRegions):
+		return h.WriteErrorErr(writer, req, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"region must be a private region of this organization", err)
+	case errors.Is(err, ErrRewrapUnavailable):
+		return h.WriteErrorErr(writer, req, http.StatusServiceUnavailable, errorCodeRewrapUnavailable, err.Error(), err)
+	default:
+		return h.WriteInternalError(writer, req, err)
+	}
+}
+
+// StartRewrap handles POST /orgs/:org/sealing/rewrap (spec 2026-11-10-03):
+// re-seal the flagged checks of a region (or the given checks) on an online
+// agent that can open them. Each check is reported: started, or why not.
+func (h *Handler) StartRewrap(writer http.ResponseWriter, req *http.Request) error {
+	var body RewrapRequest
+	if req.ContentLength != 0 {
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+				{Name: fieldBody, Message: msgInvalidJSON},
+			})
+		}
+	}
+
+	outcomes, err := h.svc.StartRewrap(req.Context(), httpx.Param(req, "org"), &body)
+	if err != nil {
+		return h.writeRewrapError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": outcomes})
+}
+
+// RewrapStatus handles GET /orgs/:org/sealing/rewrap?check=<uid>,<uid>: the
+// latest re-wrap of each check (of every check with a recent one without
+// `check`). A re-wrap left unfinished for rewraptask.Timeout reads as failed
+// with `timed_out`.
+func (h *Handler) RewrapStatus(writer http.ResponseWriter, req *http.Request) error {
+	var checkUIDs []string
+
+	for _, uid := range strings.Split(req.URL.Query().Get("check"), ",") {
+		if uid = strings.TrimSpace(uid); uid != "" {
+			checkUIDs = append(checkUIDs, uid)
+		}
+	}
+
+	outcomes, err := h.svc.RewrapStatus(req.Context(), httpx.Param(req, "org"), checkUIDs)
+	if err != nil {
+		return h.writeRewrapError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": outcomes})
 }
