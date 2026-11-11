@@ -26,7 +26,24 @@ export interface UptimeBucket {
 
 interface UptimeStripProps {
   buckets: UptimeBucket[];
+  /** Width of one cell in seconds (default: one hour). Wider cells label their
+   * tooltip with the date, not only the time of day. */
+  bucketSeconds?: number;
   className?: string;
+}
+
+/** The tooltip label of a cell starting at `periodStart`: the time of day for
+ * hourly cells, the date and time for sub-day cells, the date for daily ones. */
+function uptimeCellLabel(periodStart: string, bucketSeconds = 3600): string {
+  const date = new Date(periodStart);
+  if (bucketSeconds >= 86400) {
+    return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  }
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (bucketSeconds > 3600) {
+    return `${date.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
+  }
+  return time;
 }
 
 /** Failures for the shared guard, or undefined when the bucket did not carry
@@ -37,13 +54,9 @@ function failuresOf(bucket: UptimeBucket): number | undefined {
   return Math.max(0, bucket.totalChecks - bucket.successfulChecks);
 }
 
-function UptimeCell({ bucket }: { bucket: UptimeBucket }) {
+function UptimeCell({ bucket, bucketSeconds }: { bucket: UptimeBucket; bucketSeconds?: number }) {
   const { t } = useTranslation("common");
-  const date = new Date(bucket.periodStart);
-  const hourStr = date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const hourStr = uptimeCellLabel(bucket.periodStart, bucketSeconds);
   // The SHARED classification (mirrors the server's uptimebar.Classify), not a
   // local 100/0/else mapping — this strip used to carry its own green/amber/red
   // rule that disagreed with the status page.
@@ -95,7 +108,7 @@ function UptimeCell({ bucket }: { bucket: UptimeBucket }) {
 }
 
 /**
- * UptimeStrip renders one hourly cell per provided bucket, oldest → newest.
+ * UptimeStrip renders one cell per provided bucket, oldest → newest.
  * Pure presentational component: pass already-grouped buckets in, no fetching.
  *
  * Cell colour comes from the shared `classifyAvailability` mapping in
@@ -104,11 +117,15 @@ function UptimeCell({ bucket }: { bucket: UptimeBucket }) {
  * public status page all paint the same numbers the same way. The badge SVG is
  * the deliberate exception (its own four-tier scale); see `uptimebar.Classify`.
  */
-export function UptimeStrip({ buckets, className }: UptimeStripProps) {
+export function UptimeStrip({ buckets, bucketSeconds, className }: UptimeStripProps) {
   return (
     <div className={cn("flex items-center gap-0.5", className)}>
       {buckets.map((bucket, index) => (
-        <UptimeCell key={bucket.periodStart || index} bucket={bucket} />
+        <UptimeCell
+          key={bucket.periodStart || index}
+          bucket={bucket}
+          bucketSeconds={bucketSeconds}
+        />
       ))}
     </div>
   );

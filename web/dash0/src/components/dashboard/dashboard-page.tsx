@@ -36,6 +36,7 @@ import {
   isAttentionStatus,
   orderChecksForGlance,
 } from "@/components/dashboard/glance-order";
+import { glanceStripWindow } from "@/components/dashboard/glance-strip-window";
 import {
   AVAILABILITY_TIER_STYLE,
   availabilityTier,
@@ -106,9 +107,6 @@ const EMPTY_CHECK_STATS: CheckStats = {
   availability30d: null,
   oldestEnabledCheckCreatedAt: null,
 };
-// Hours rendered by each row's 24h uptime strip.
-const UPTIME_HOURS = 24;
-
 // The stats field holding the availability over `period`.
 function availabilityForWindow(stats: CheckStats, period: DashboardWindow): number | null {
   switch (period) {
@@ -249,27 +247,26 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   // landed, so they never sit on the page's critical path. Server-side bucketed
   // availability: hour rows only exist once raw rows age past retention_raw, so
   // the trailing day lives in raw rows the browser must never pull fleet-wide.
-  // The window is the last UPTIME_HOURS whole hours (current hour included), so
-  // the server returns exactly that many hour-aligned cells.
+  // The strips follow the dashboard window (24h: hourly cells, 7d: 6-hour
+  // cells, 30d: daily cells), ending with the current cell, so the server
+  // returns exactly that many aligned cells.
   const tickNow = useTick(1000);
   const glanceChecks = useMemo(() => orderChecksForGlance(checks), [checks]);
   const glanceUids = useMemo(
     () => glanceChecks.map((c) => c.uid),
     [glanceChecks],
   );
+  // Recomputed once per hour (every width is a whole number of hours), not on
+  // each 1s tick, so the query key stays stable within a cell.
   const hourStart = Math.floor(tickNow / 3_600_000) * 3_600_000;
-  const stripFrom = useMemo(
-    () => new Date(hourStart - (UPTIME_HOURS - 1) * 3_600_000).toISOString(),
-    [hourStart],
-  );
-  const stripTo = useMemo(
-    () => new Date(hourStart + 3_600_000).toISOString(),
-    [hourStart],
+  const stripWindow = useMemo(
+    () => glanceStripWindow(availabilityWindow, hourStart),
+    [availabilityWindow, hourStart],
   );
   const hourlyResultsQuery = useOrgAvailabilityBuckets(
     org,
     glanceUids,
-    { from: stripFrom, to: stripTo, bucketSeconds: 3600 },
+    stripWindow,
     {
       enabled: checksQuery.isSuccess,
       refetchInterval: stretchWhileLive(RESULT_POLL_MS, checksLive),
@@ -527,6 +524,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             checks={glanceChecks}
             totalCount={totalChecksCount}
             uptimeByCheck={uptimeByCheck}
+            bucketSeconds={stripWindow.bucketSeconds}
             isError={!!checksQuery.error}
             onRetry={() => checksQuery.refetch()}
             tickNow={tickNow}
@@ -760,6 +758,8 @@ interface ChecksGlanceListProps {
   checks: Check[];
   totalCount: number;
   uptimeByCheck: Record<string, CheckUptime>;
+  /** Width of one strip cell, for the cells' tooltip labels. */
+  bucketSeconds: number;
   isError: boolean;
   onRetry: () => void;
   tickNow: number;
@@ -770,6 +770,7 @@ function ChecksGlanceList({
   checks,
   totalCount,
   uptimeByCheck,
+  bucketSeconds,
   isError,
   onRetry,
   tickNow,
@@ -857,10 +858,11 @@ function ChecksGlanceList({
                       {uptime?.buckets && uptime.buckets.length > 0 ? (
                         <UptimeStrip
                           buckets={uptime.buckets}
+                          bucketSeconds={bucketSeconds}
                           className="w-full"
                         />
                       ) : (
-                        // No 24h buckets yet: an empty track, so the column
+                        // No buckets yet: an empty track, so the column
                         // keeps its shape until the first results land.
                         <div className="h-4 w-full rounded-sm bg-muted/60" />
                       )}
