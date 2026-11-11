@@ -1,3 +1,4 @@
+import { NO_CAPTURE_CLASS } from "@/lib/no-capture";
 import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -143,6 +144,7 @@ function WebSettingsPage() {
                 <div className="relative flex-1">
                   <Input
                     id="jwtSecret"
+                    className={NO_CAPTURE_CLASS}
                     data-testid="server-web-jwt-secret-input"
                     type={showJwt ? "text" : "password"}
                     placeholder={t("server:web.jwtSecretPlaceholder")}

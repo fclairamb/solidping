@@ -76,6 +76,8 @@ import { useDiscordBotEnabled } from "@/api/public-config";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { WebPushEnableButton } from "@/components/notifications/WebPushEnableButton";
 import { deriveDeviceLabel } from "@/lib/browser-detection";
+import { SecretText } from "@/components/ui/secret-text";
+import { NO_CAPTURE_CLASS } from "@/lib/no-capture";
 
 export interface IntegrationFormState {
   name: string;
@@ -1203,7 +1205,7 @@ function WebhookSigningPanel({ settings, org, channelUid }: WebhookSigningPanelP
               id="ch-signing-secret"
               readOnly
               value={secret}
-              className="font-mono text-xs"
+              className={`font-mono text-xs ${NO_CAPTURE_CLASS}`}
               data-testid="webhook-signing-secret"
               onFocus={(e) => e.currentTarget.select()}
             />
@@ -3302,12 +3304,12 @@ function MSTeamsBotPanel({ settings, onChange, org, channelUid }: MSTeamsBotPane
                   "In a Teams channel where SolidPing was added, send this message. The code can be used once and expires in 30 minutes.",
                 )}
               </p>
-              <code
+              <SecretText
                 className="block break-all rounded bg-background px-2 py-1 text-sm"
                 data-testid="msteams-bot-link-code"
               >
                 @SolidPing link {linkCode}
-              </code>
+              </SecretText>
             </div>
           )}
         </div>

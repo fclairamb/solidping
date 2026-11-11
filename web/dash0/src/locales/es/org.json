@@ -446,7 +446,10 @@
       "pasteDescription": "Genera la clave de región sin conexión con el comando de abajo, entrega la identidad a los agentes de la región y pega solo su clave pública (age1…). SolidPing nunca ve la identidad.",
       "pasteLabel": "Clave pública",
       "pasteInvalid": "No es una clave pública age: empieza por age1 y tiene 62 caracteres.",
-      "pasteConfirm": "Usar esta clave pública"
+      "pasteConfirm": "Usar esta clave pública",
+      "advisoryTitle": "Renueva esta clave de región",
+      "advisoryBody": "Esta clave se creó antes de la corrección del aviso GHSA-c9qq-4m99-c7f6. Si se generó en el panel mientras la grabación de sesiones de PostHog estaba activa (SolidPing SaaS, o SP_POSTHOG_PROJECT_API_KEY definido), la grabación puede contenerla. Renuévala: genera una clave nueva, entrégala a los agentes, vuelve a sellar y elimina la clave antigua.",
+      "advisoryDismiss": "Ocultar"
     },
     "reseal": {
       "back": "Volver a ubicaciones privadas",

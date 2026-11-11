@@ -78,6 +78,8 @@ The output is a valid `SP_AGENT_REGION_KEYS_FILE`.
 
 **Rotation:** *Rotate the region key*, add the new key to every agent next to the old one, click *Re-seal for the current agents* (or save the location's checks again), then remove the old key from the agents. The page counts the checks still sealed to an older key.
 
+**Region keys generated in the dashboard on v0.47.0 must be rotated** (advisory GHSA-c9qq-4m99-c7f6). On v0.47.0 the region key dialog was recorded by PostHog session replay, so on SolidPing SaaS, and on any instance with `SP_POSTHOG_PROJECT_API_KEY` set, the `AGE-SECRET-KEY-1…` secret may sit in the PostHog project. Generate a new key, give it to the agents, re-seal (*Re-seal for the current agents*), then remove the old key from the agents. Keys pasted with *Paste a public key* never reached the browser and are not affected. The private locations page shows a notice on every shared key created before the fix until you dismiss it. Since the fix, the dashboard keeps every secret it shows (region keys, tokens, signing secrets, recovery codes) out of session replay and autocapture, and pauses the recording while the region key dialog is open.
+
 ## Re-sealing on an agent
 
 When an agent joins a location, or the region key changes, the checks sealed before are flagged. *Re-seal for the current agents* (on the location page, the Re-seal page, and the warning of a flagged check) fixes them without typing the secrets again:

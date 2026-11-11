@@ -20,6 +20,7 @@ import { ApiError } from "@/api/client";
 import { RecoveryCodesDialog } from "./RecoveryCodesDialog";
 import { ReauthPasswordForm, SignInAgainAlert } from "./reauth";
 import { isReauthRequired } from "./reauth-errors";
+import { NO_CAPTURE_CLASS } from "@/lib/no-capture";
 
 interface TOTPSetupDialogProps {
   open: boolean;
@@ -208,7 +209,8 @@ export function TOTPSetupDialog({ open, hasPassword, onClose, onComplete }: TOTP
         {!loading && step === "setup" && secret && (
           <div className="space-y-4">
             {qrDataUrl && (
-              <div className="flex justify-center">
+              // The QR code encodes the seed: blocked like the text secret.
+              <div className={`flex justify-center ${NO_CAPTURE_CLASS}`}>
                 {/* Rendered fully client-side from the otpauth:// URI (the
                     `qrcode` package) — no network request ever carries the
                     TOTP seed off the page. */}
@@ -227,7 +229,7 @@ export function TOTPSetupDialog({ open, hasPassword, onClose, onComplete }: TOTP
                   data-testid="2fa-manual-secret"
                   readOnly
                   value={secret}
-                  className="font-mono text-xs"
+                  className={`font-mono text-xs ${NO_CAPTURE_CLASS}`}
                 />
                 <Button
                   variant="ghost"

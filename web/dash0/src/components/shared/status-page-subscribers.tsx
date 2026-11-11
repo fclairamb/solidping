@@ -48,6 +48,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { SecretText } from "@/components/ui/secret-text";
+import { NO_CAPTURE_CLASS } from "@/lib/no-capture";
 
 interface StatusPageSubscribersProps {
   org: string;
@@ -299,6 +301,7 @@ export function StatusPageSubscribers({
                 value={secret}
                 onChange={(e) => setSecret(e.target.value)}
                 placeholder={t("subscribers.signingSecretPlaceholder")}
+                className={NO_CAPTURE_CLASS}
                 data-testid="subscriber-secret-input"
               />
               <p className="text-xs text-muted-foreground">
@@ -313,9 +316,12 @@ export function StatusPageSubscribers({
             <Alert data-testid="subscriber-issued-secret">
               <AlertDescription className="space-y-2">
                 <p>{t("subscribers.signingSecretIssued")}</p>
-                <code className="block break-all rounded bg-muted px-2 py-1 font-mono text-xs">
+                <SecretText
+                  className="block break-all rounded bg-muted px-2 py-1 font-mono text-xs"
+                  data-testid="subscriber-issued-secret-value"
+                >
                   {issuedSecret}
-                </code>
+                </SecretText>
                 <Button
                   type="button"
                   variant="outline"

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Check, ChevronRight, Copy } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { NO_CAPTURE_CLASS } from "@/lib/no-capture";
 
 /** Shared "copied" reset delay for the copy-to-clipboard affordance below. */
 const COPIED_RESET_MS = 1500;
@@ -21,12 +22,18 @@ async function copyToClipboard(value: string, onCopied: () => void) {
  * always be visible without an extra click. For longer/optional payloads
  * (raw JSON, request bodies) that should default to collapsed, use
  * `CollapsibleCode` instead.
+ *
+ * Set `secret` when the code embeds a credential (a shown-once token in a
+ * command): the block is then kept out of session replay and autocapture,
+ * like `SecretText` (spec 2026-11-11-05).
  */
 export function CopyableCode({
   code,
+  secret = false,
   "data-testid": testId,
 }: {
   code: string;
+  secret?: boolean;
   "data-testid"?: string;
 }) {
   const { t } = useTranslation("common");
@@ -39,7 +46,11 @@ export function CopyableCode({
     });
 
   return (
-    <div className="relative" data-testid={testId}>
+    <div
+      className={secret ? `relative ${NO_CAPTURE_CLASS}` : "relative"}
+      data-secret-text={secret ? "" : undefined}
+      data-testid={testId}
+    >
       <pre className="overflow-x-auto rounded-md border bg-muted/40 px-3 py-2 pr-12 text-xs leading-relaxed">
         <code>{code}</code>
       </pre>
@@ -64,17 +75,22 @@ export function CopyableCode({
  * `<pre>` error block) and only the bare button is needed. For a boxed,
  * always-visible block use `CopyableCode`; for a collapsible block use
  * `CollapsibleCode`.
+ *
+ * Set `secret` when the value is a credential: the row is then kept out of
+ * session replay and autocapture (spec 2026-11-11-05).
  */
 export function CopyableInline({
   value,
   label,
   inline = true,
   size = "sm",
+  secret = false,
 }: {
   value: string;
   label?: string;
   inline?: boolean;
   size?: "sm" | "md";
+  secret?: boolean;
 }) {
   const { t } = useTranslation("common");
   const [copied, setCopied] = useState(false);
@@ -108,7 +124,10 @@ export function CopyableInline({
   if (!inline) return button;
 
   return (
-    <div className="flex items-start gap-2">
+    <div
+      className={secret ? `flex items-start gap-2 ${NO_CAPTURE_CLASS}` : "flex items-start gap-2"}
+      data-secret-text={secret ? "" : undefined}
+    >
       <code className="min-w-0 break-all font-mono text-sm">{value}</code>
       {button}
     </div>

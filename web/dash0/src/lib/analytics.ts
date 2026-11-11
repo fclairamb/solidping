@@ -23,7 +23,12 @@
  * tokens, one-time codes and single-use links in URLs are replaced with
  * `REDACTED` by the hooks in `./analytics-redaction` (spec 2026-09-25-11),
  * and network header/body capture is pinned off, both wired in
- * `initAnalytics` below. Credentials rendered as page text are NOT masked.
+ * `initAnalytics` below. Credentials rendered as page text are blocked
+ * element by element instead: every shown-once secret goes through
+ * `SecretText` (`components/ui/secret-text`), whose `ph-no-capture` class
+ * posthog-js keeps out of both session replay and autocapture, and the
+ * region key dialog also pauses the recording while it is open
+ * ({@link pauseSessionRecording}, spec 2026-11-11-05).
  * The distinct id is still pseudonymous
  * and built from UUIDs only (see `distinctId` below) — it must match
  * `analytics.DistinctID` in `server/internal/analytics/analytics.go` exactly
@@ -200,6 +205,9 @@ interface PostHogLike {
   captureException: (error: unknown, properties?: Record<string, unknown>) => void;
   get_session_id?: () => string;
   get_distinct_id?: () => string;
+  sessionRecordingStarted?: () => boolean;
+  stopSessionRecording?: () => void;
+  startSessionRecording?: () => void;
 }
 
 let client: PostHogLike | null = null;
@@ -461,8 +469,46 @@ export function getAnalyticsRequestHeaders(): Record<string, string> {
   return headers;
 }
 
+// Nesting depth of pauseSessionRecording calls, and whether the outermost
+// one actually stopped a running recording (so resume never starts a
+// recording the session did not have).
+let recordingPauseDepth = 0;
+let recordingStoppedByPause = false;
+
+/**
+ * Stops session replay while a screen that shows a secret is open — defence
+ * in depth behind `SecretText`'s `ph-no-capture`, in case a later edit moves
+ * the secret out of the blocked element. Calls nest: only the outermost pause
+ * stops the recording, and only if it was recording. A no-op when analytics
+ * is off. Always pair it with {@link resumeSessionRecording}.
+ */
+export function pauseSessionRecording(): void {
+  recordingPauseDepth++;
+  if (recordingPauseDepth !== 1 || !client) return;
+  if (client.sessionRecordingStarted?.()) {
+    client.stopSessionRecording?.();
+    recordingStoppedByPause = true;
+  }
+}
+
+/**
+ * Ends a {@link pauseSessionRecording}. Restarts the recording when the last
+ * pause ends, and only when that pause is the one that stopped it.
+ */
+export function resumeSessionRecording(): void {
+  if (recordingPauseDepth === 0) return;
+  recordingPauseDepth--;
+  if (recordingPauseDepth !== 0) return;
+  if (recordingStoppedByPause) {
+    recordingStoppedByPause = false;
+    client?.startSessionRecording?.();
+  }
+}
+
 /** Test seam: forgets any loaded client. Used by unit tests only. */
 export function __resetAnalyticsForTests(): void {
+  recordingPauseDepth = 0;
+  recordingStoppedByPause = false;
   client = null;
   loading = null;
   pendingIdentity = null;

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Check as CheckIcon, ClipboardPaste, Copy, Download, KeyRound, RotateCw } from "lucide-react";
+import { AlertTriangle, Check as CheckIcon, ClipboardPaste, Copy, Download, KeyRound, RotateCw, X } from "lucide-react";
 
 import { useDeleteRegionKey, useSetRegionKey, type PrivateRegion } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { RewrapButton } from "@/components/shared/rewrap-button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SecretText } from "@/components/ui/secret-text";
+import { NO_CAPTURE_CLASS } from "@/lib/no-capture";
+import { useSessionRecordingPaused } from "@/hooks/use-session-recording-paused";
+import {
+  dismissRegionKeyAdvisory,
+  isRegionKeyAdvisoryDismissed,
+  regionKeyPredatesFix,
+} from "@/lib/region-key-advisory";
 import { canSealInBrowser, generateRegionKey, isAgeRecipient, type GeneratedRegionKey } from "@/lib/sealing";
 
 /** The offline region key command (a verbatim command). */
@@ -43,6 +51,21 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
   const [rewrapStarted, setRewrapStarted] = useState(false);
   const [pasted, setPasted] = useState("");
   const shared = region.keyMode === "shared" && region.regionKey;
+  // The identity is on screen only while the dialog is open: replay stays
+  // paused for that time (GHSA-c9qq-4m99-c7f6).
+  useSessionRecordingPaused(!!generated);
+  // GHSA-c9qq-4m99-c7f6: a shared key created before the fix may sit in a
+  // session replay. One notice per key and browser, until dismissed.
+  const keyFingerprint = region.regionKey?.fingerprint ?? "";
+  const [advisoryDismissed, setAdvisoryDismissed] = useState(() =>
+    keyFingerprint ? isRegionKeyAdvisoryDismissed(keyFingerprint) : true,
+  );
+  const showAdvisory =
+    !!shared && regionKeyPredatesFix(region.regionKey?.createdAt) && !advisoryDismissed;
+  const dismissAdvisory = () => {
+    dismissRegionKeyAdvisory(keyFingerprint);
+    setAdvisoryDismissed(true);
+  };
 
   const generate = async () => setGenerated(await generateRegionKey());
 
@@ -116,6 +139,28 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
           </code>
         )}
       </div>
+      {showAdvisory && (
+        <div
+          className="flex max-w-md items-start gap-1 rounded border border-status-warning/40 p-2 text-xs"
+          data-testid={`region-key-advisory-${region.slug}`}
+        >
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-status-warning" />
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <p className="font-medium">{t("privateLocations.regionKey.advisoryTitle")}</p>
+            <p className="text-muted-foreground">{t("privateLocations.regionKey.advisoryBody")}</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5 shrink-0"
+            onClick={dismissAdvisory}
+            aria-label={t("privateLocations.regionKey.advisoryDismiss")}
+            data-testid={`region-key-advisory-dismiss-${region.slug}`}
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
       {shared && (region.agentsWithRegionKey ?? 0) === 0 && (
         <p className="flex items-center gap-1 text-xs text-status-warning" data-testid={`region-key-no-agent-${region.slug}`}>
           <AlertTriangle className="h-3 w-3" />
@@ -195,7 +240,9 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
         </DialogContent>
       </Dialog>
       <Dialog open={!!generated} onOpenChange={(open) => !open && setGenerated(null)}>
-        <DialogContent data-testid="region-key-dialog">
+        {/* The whole dialog is blocked from replay and autocapture, so the
+            copy and download buttons record nothing either. */}
+        <DialogContent className={NO_CAPTURE_CLASS} data-testid="region-key-dialog">
           <DialogHeader>
             <DialogTitle>{t("privateLocations.regionKey.dialogTitle", { region: region.region })}</DialogTitle>
             <DialogDescription>{t("privateLocations.regionKey.dialogDescription")}</DialogDescription>
@@ -203,12 +250,12 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
           {generated && (
             <div className="min-w-0 space-y-3">
               <div className="flex min-w-0 items-center gap-2">
-                <code
+                <SecretText
                   className="min-w-0 flex-1 overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs"
                   data-testid="region-key-secret"
                 >
                   {generated.identity}
-                </code>
+                </SecretText>
                 <Button variant="outline" size="icon" onClick={copy} data-testid="region-key-copy">
                   {copied ? <CheckIcon className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 </Button>
@@ -217,9 +264,13 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">{t("privateLocations.regionKey.distribute")}</p>
-              <pre className="max-w-full overflow-x-auto rounded bg-muted p-2 text-xs">
+              <SecretText
+                as="pre"
+                className="max-w-full overflow-x-auto rounded bg-muted p-2 text-xs"
+                data-testid="region-key-env-line"
+              >
                 {agentEnvLine(generated.identity)}
-              </pre>
+              </SecretText>
             </div>
           )}
           <DialogFooter>
