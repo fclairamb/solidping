@@ -410,7 +410,10 @@ func (g *Guard) DialContext(ctx context.Context, network, addr string) (net.Conn
 // Non-enforcing: exactly base.DialContext(ctx, network, addr).
 //
 // Enforcing: the host is resolved ONCE, non-public answers are dropped, and
-// the remaining pinned IPs are dialed in order until one connects. The
+// the remaining pinned IPs are dialed Happy-Eyeballs style (RFC 8305, like
+// net.Dialer does for a name): the first answer's family in order, the other
+// family raced in after the dialer's FallbackDelay, so a dual-stack target
+// whose IPv6 path drops packets is still reached over IPv4. The
 // dialer's Control hook re-checks the address the socket connects to. The
 // network's family is honored (tcp4 / udp6 only consider that family).
 func (g *Guard) DialContextWith(
@@ -442,22 +445,7 @@ func (g *Guard) DialContextWith(
 	dialer := *base
 	dialer.Control = g.controlFor(recorderFrom(ctx), host, base.Control)
 
-	var lastErr error
-
-	for _, ip := range ips {
-		conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
-		if dialErr == nil {
-			return conn, nil
-		}
-
-		lastErr = dialErr
-
-		if errors.Is(dialErr, ErrDenied) || ctx.Err() != nil {
-			break
-		}
-	}
-
-	return nil, lastErr
+	return dialHappyEyeballs(ctx, &dialer, network, port, ips)
 }
 
 // ControlContext is Control recording refusals on ctx's Recorder. Hand it to
