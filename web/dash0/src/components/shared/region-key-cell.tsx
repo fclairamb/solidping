@@ -15,6 +15,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { RewrapButton } from "@/components/shared/rewrap-button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { NO_CAPTURE_CLASS, SecretText } from "@/components/ui/secret-text";
+import { useSessionRecordingPaused } from "@/hooks/use-session-recording-paused";
 import { canSealInBrowser, generateRegionKey, isAgeRecipient, type GeneratedRegionKey } from "@/lib/sealing";
 
 /** The offline region key command (a verbatim command). */
@@ -43,6 +45,9 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
   const [rewrapStarted, setRewrapStarted] = useState(false);
   const [pasted, setPasted] = useState("");
   const shared = region.keyMode === "shared" && region.regionKey;
+  // The identity is on screen only while the dialog is open: replay stays
+  // paused for that time (GHSA-c9qq-4m99-c7f6).
+  useSessionRecordingPaused(!!generated);
 
   const generate = async () => setGenerated(await generateRegionKey());
 
@@ -195,7 +200,9 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
         </DialogContent>
       </Dialog>
       <Dialog open={!!generated} onOpenChange={(open) => !open && setGenerated(null)}>
-        <DialogContent data-testid="region-key-dialog">
+        {/* The whole dialog is blocked from replay and autocapture, so the
+            copy and download buttons record nothing either. */}
+        <DialogContent className={NO_CAPTURE_CLASS} data-testid="region-key-dialog">
           <DialogHeader>
             <DialogTitle>{t("privateLocations.regionKey.dialogTitle", { region: region.region })}</DialogTitle>
             <DialogDescription>{t("privateLocations.regionKey.dialogDescription")}</DialogDescription>
@@ -203,12 +210,12 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
           {generated && (
             <div className="min-w-0 space-y-3">
               <div className="flex min-w-0 items-center gap-2">
-                <code
+                <SecretText
                   className="min-w-0 flex-1 overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs"
                   data-testid="region-key-secret"
                 >
                   {generated.identity}
-                </code>
+                </SecretText>
                 <Button variant="outline" size="icon" onClick={copy} data-testid="region-key-copy">
                   {copied ? <CheckIcon className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 </Button>
@@ -217,9 +224,13 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">{t("privateLocations.regionKey.distribute")}</p>
-              <pre className="max-w-full overflow-x-auto rounded bg-muted p-2 text-xs">
+              <SecretText
+                as="pre"
+                className="max-w-full overflow-x-auto rounded bg-muted p-2 text-xs"
+                data-testid="region-key-env-line"
+              >
                 {agentEnvLine(generated.identity)}
-              </pre>
+              </SecretText>
             </div>
           )}
           <DialogFooter>
