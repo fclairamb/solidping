@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 )
 
@@ -21,7 +21,7 @@ func openBoundSecrets(
 	ctx context.Context, logger *slog.Logger, checkUID, checkType, envelope string, config, plain map[string]any,
 ) (map[string]any, error) {
 	secrets, legacyUnbound, err := credentials.OpenSealedPlaintext(
-		envelope, plain, registry.BindingCheckFor(checkType, config))
+		envelope, plain, configregistry.BindingCheckFor(checkType, config))
 	if err != nil {
 		return nil, err
 	}

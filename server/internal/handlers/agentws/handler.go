@@ -331,7 +331,7 @@ func (h *Handler) awaitEnroll(
 		return nil, false, enrollErr
 	}
 
-	if keyErr := h.refuseDuplicateKey(ctx, conn, token, frame); keyErr != nil {
+	if keyErr := h.refuseDuplicateKey(ctx, conn, token, &frame); keyErr != nil {
 		return nil, false, keyErr
 	}
 
@@ -386,7 +386,7 @@ var ErrDuplicateAgentKey = errors.New(
 // picked for blobs it cannot open. Checked before the token is consumed, so
 // the operator can retry with a fresh identity.
 func (h *Handler) refuseDuplicateKey(
-	ctx context.Context, conn *websocket.Conn, token *models.AgentEnrollmentToken, frame agentcrypto.ClientFrame,
+	ctx context.Context, conn *websocket.Conn, token *models.AgentEnrollmentToken, frame *agentcrypto.ClientFrame,
 ) error {
 	duplicate, err := h.isDuplicateKey(ctx, token, frame.X25519PublicKey)
 	if err != nil {
@@ -405,7 +405,9 @@ func (h *Handler) refuseDuplicateKey(
 	return ErrDuplicateAgentKey
 }
 
-func (h *Handler) isDuplicateKey(ctx context.Context, token *models.AgentEnrollmentToken, recipient string) (bool, error) {
+func (h *Handler) isDuplicateKey(
+	ctx context.Context, token *models.AgentEnrollmentToken, recipient string,
+) (bool, error) {
 	agents, err := h.dbService.ListAllAgents(ctx)
 	if err != nil {
 		return false, fmt.Errorf("list agents: %w", err)

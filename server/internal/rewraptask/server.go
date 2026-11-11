@@ -330,16 +330,16 @@ func (s *Server) startOne(ctx context.Context, orgUID string, check *models.Chec
 		return Outcome{}, err
 	}
 
-	agent := pick.agent
-
-	switch {
-	case agent == nil && pick.keyHolderWithoutRewrap:
-		return refused(CodeRewrapNotOffered), nil
-	case agent == nil && pick.keyHolderUnprovable:
-		return refused(CodeNoProvableKey), nil
-	case agent == nil:
-		return refused(CodeNoOnlineRecipient), nil
+	if pick.agent == nil {
+		return refused(pick.refusal()), nil
 	}
+
+	return s.send(ctx, orgUID, check, pick)
+}
+
+// send creates the re-wrap of a check for the picked agent.
+func (s *Server) send(ctx context.Context, orgUID string, check *models.Check, pick agentPick) (Outcome, error) {
+	agent := pick.agent
 
 	// The possession challenge, sealed to the key the agent was picked for
 	// and to nothing else (spec 2026-11-11-02).
@@ -363,7 +363,7 @@ func (s *Server) startOne(ctx context.Context, orgUID string, check *models.Chec
 	}
 
 	if !created {
-		return refused(CodeAlreadyRunning), nil
+		return Outcome{CheckUID: check.UID, Status: statusRefused, ErrorCode: CodeAlreadyRunning}, nil
 	}
 
 	return Outcome{
@@ -386,6 +386,18 @@ type agentPick struct {
 	// keyHolderUnprovable: an online agent advertises a region key the
 	// server has no public key for, so it cannot be challenged.
 	keyHolderUnprovable bool
+}
+
+// refusal is why no agent was picked.
+func (p *agentPick) refusal() string {
+	switch {
+	case p.keyHolderWithoutRewrap:
+		return CodeRewrapNotOffered
+	case p.keyHolderUnprovable:
+		return CodeNoProvableKey
+	default:
+		return CodeNoOnlineRecipient
+	}
 }
 
 // pickAgent returns the online agent of the regions, most recently seen
@@ -469,15 +481,15 @@ func (s *Server) agentKey(
 		return access
 	}
 
-	for _, fp := range sealing.RegionKeyFingerprints(worker.Capabilities) {
-		if !slices.Contains(keyFingerprints, fp) {
+	for _, fingerprint := range sealing.RegionKeyFingerprints(worker.Capabilities) {
+		if !slices.Contains(keyFingerprints, fingerprint) {
 			continue
 		}
 
 		access.holdsKey = true
 
 		if access.recipient == "" {
-			access.recipient = known[fp]
+			access.recipient = known[fingerprint]
 		}
 	}
 

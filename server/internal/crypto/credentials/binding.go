@@ -230,10 +230,9 @@ func VerifyBinding(plain map[string]any, check BindingCheck) (map[string]any, bo
 //     plaintext it held, public `${param:}` overlays included.
 //
 // Every caller that merges a sealed plaintext over a public config (the
-// claim, the tunnel, the re-wrap and its confirmation) goes through it.
-func OpenSealedPlaintext(
-	envelope string, plain map[string]any, check BindingCheck,
-) (secrets map[string]any, legacyUnbound bool, err error) {
+// claim, the tunnel, the re-wrap and its confirmation) goes through it. The
+// returns are the secrets, legacyUnbound, and the refusal.
+func OpenSealedPlaintext(envelope string, plain map[string]any, check BindingCheck) (map[string]any, bool, error) {
 	secrets, bound, err := VerifyBinding(plain, check)
 	if err != nil || bound {
 		return secrets, false, err

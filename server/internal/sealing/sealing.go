@@ -182,9 +182,10 @@ func RetiredRegionKeys(ctx context.Context, store Store, orgUID string) (map[str
 		return map[string]RegionKey{}, nil //nolint:nilerr // same
 	}
 
-	for fp, key := range out {
-		if key.Recipient == "" || credentials.RecipientFingerprint(key.Recipient) != fp {
-			delete(out, fp)
+	for fingerprint := range out {
+		if recipient := out[fingerprint].Recipient; recipient == "" ||
+			credentials.RecipientFingerprint(recipient) != fingerprint {
+			delete(out, fingerprint)
 		}
 	}
 
@@ -205,9 +206,9 @@ func RetireRegionKey(ctx context.Context, store Store, orgUID string, key Region
 	for len(retired) > maxRetiredRegionKeys {
 		oldest := ""
 
-		for fp, entry := range retired {
-			if oldest == "" || entry.CreatedAt.Before(retired[oldest].CreatedAt) {
-				oldest = fp
+		for fingerprint := range retired {
+			if oldest == "" || retired[fingerprint].CreatedAt.Before(retired[oldest].CreatedAt) {
+				oldest = fingerprint
 			}
 		}
 
@@ -231,12 +232,13 @@ func KnownRegionRecipients(ctx context.Context, store Store, orgUID string) (map
 	}
 
 	out := make(map[string]string, len(current)+len(retired))
-	for fp, key := range retired {
-		out[fp] = key.Recipient
+	for fingerprint := range retired {
+		out[fingerprint] = retired[fingerprint].Recipient
 	}
 
-	for _, key := range current {
-		out[credentials.RecipientFingerprint(key.Recipient)] = key.Recipient
+	for region := range current {
+		recipient := current[region].Recipient
+		out[credentials.RecipientFingerprint(recipient)] = recipient
 	}
 
 	return out, nil

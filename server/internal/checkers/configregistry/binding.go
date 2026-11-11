@@ -1,4 +1,4 @@
-package registry
+package configregistry
 
 import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"

@@ -42,11 +42,24 @@ function generateRegionKey(): RegionKey {
   return { identity, recipient, fingerprint };
 }
 
-/** `solidping seal`: the sealedSecrets object for a private region. */
-function seal(token: string, region: string, secrets: Record<string, string>, configDir: string): unknown {
+/**
+ * `solidping seal`: the sealedSecrets object for a private region, bound to
+ * the check's type and public config (spec 2026-11-11-01).
+ */
+function seal(
+  token: string,
+  region: string,
+  secrets: Record<string, string>,
+  configDir: string,
+  checkType: string,
+  config: Record<string, unknown>,
+): unknown {
   const out = execFileSync(
     BINARY,
-    ["seal", "--org", "test", "--server", API_BASE, "--region", region, "--token", token],
+    [
+      "seal", "--org", "test", "--server", API_BASE, "--region", region, "--token", token,
+      "--type", checkType, "--config-json", JSON.stringify(config),
+    ],
     {
       encoding: "utf8",
       input: JSON.stringify(secrets),
@@ -155,7 +168,9 @@ test.describe("Sealed secrets: peer re-wrap", () => {
         type: "http",
         regions: [region],
         config: { url: "https://internal.example.com" },
-        sealedSecrets: seal(token, region, { basicAuth: "alice:hunter2" }, workDir),
+        sealedSecrets: seal(token, region, { basicAuth: "alice:hunter2" }, workDir, "http", {
+          url: "https://internal.example.com",
+        }),
       },
     });
     expect(created.ok(), await created.text()).toBeTruthy();

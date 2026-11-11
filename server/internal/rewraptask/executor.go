@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"reflect"
 
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/tasks"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/workertasks"
@@ -62,8 +62,8 @@ func (e *Executor) Run(ctx context.Context, claim *workertasks.Claim, rep tasks.
 		return refuse(ctx, e.logger, claim, rep, CodeCannotOpen, err)
 	}
 
-	if err := checkPlaintext(input.Envelope, secrets, input.CheckType, input.Config); err != nil {
-		return refuse(ctx, e.logger, claim, rep, CodeNotSecret, err)
+	if plainErr := checkPlaintext(input.Envelope, secrets, input.CheckType, input.Config); plainErr != nil {
+		return refuse(ctx, e.logger, claim, rep, CodeNotSecret, plainErr)
 	}
 
 	fingerprints, ct, err := credentials.SealForClient(input.Recipients, secrets)
@@ -91,7 +91,7 @@ func checkPlaintext(envelope string, plain map[string]any, checkType string, con
 		return nil
 	}
 
-	_, _, err := credentials.OpenSealedPlaintext(envelope, plain, registry.BindingCheckFor(checkType, config))
+	_, _, err := credentials.OpenSealedPlaintext(envelope, plain, configregistry.BindingCheckFor(checkType, config))
 
 	return err
 }
@@ -137,8 +137,8 @@ func (e *VerifyExecutor) Run(ctx context.Context, claim *workertasks.Claim, rep 
 		return refuse(ctx, e.logger, claim, rep, CodeVerifyCannotOpen, err)
 	}
 
-	if err := checkPlaintext(input.Envelope, pending, input.CheckType, input.Config); err != nil {
-		return refuse(ctx, e.logger, claim, rep, CodeNotSecret, err)
+	if plainErr := checkPlaintext(input.Envelope, pending, input.CheckType, input.Config); plainErr != nil {
+		return refuse(ctx, e.logger, claim, rep, CodeNotSecret, plainErr)
 	}
 
 	if input.Previous != "" {
