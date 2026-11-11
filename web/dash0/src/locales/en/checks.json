@@ -1761,6 +1761,7 @@
     "detailBadge": "Browser-sealed",
     "replace": "Replace",
     "replaceToEdit": "Sealed secrets are replaced together: click Replace to type them all again.",
+    "targetChanged": "The target of this check changed: its sealed secrets are bound to the old one, type them again.",
     "sharedRegionDisabled": "Shared locations are disabled: this organization requires check secrets to be sealed in the browser."
   }
 }

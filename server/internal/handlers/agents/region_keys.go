@@ -58,7 +58,8 @@ func (s *Service) regionKeyRow(
 }
 
 // countChecksNotSealedTo counts the region's checks whose sealed blob does not
-// include the region's current key: sealed to an older key or to agent keys.
+// include the region's current key (sealed to an older key or to agent keys),
+// or was re-sealed by an agent without a second agent's confirmation.
 func (s *Service) countChecksNotSealedTo(ctx context.Context, orgUID, region, fingerprint string) (int, error) {
 	checks, _, err := s.db.ListChecks(ctx, orgUID, &models.ListChecksFilter{})
 	if err != nil {
@@ -73,7 +74,9 @@ func (s *Service) countChecksNotSealedTo(ctx context.Context, orgUID, region, fi
 		}
 
 		fps, fpErr := credentials.SealedRecipientFingerprints(*check.ConfigSealed)
-		if fpErr != nil || !slices.Contains(fps, fingerprint) {
+		// A peer re-wrap no second agent confirmed counts too (spec
+		// 2026-11-11-02).
+		if fpErr != nil || !slices.Contains(fps, fingerprint) || credentials.IsSealedUnconfirmed(*check.ConfigSealed) {
 			count++
 		}
 	}
@@ -144,11 +147,19 @@ func (s *Service) SetRegionKey(
 		return nil, err
 	}
 
-	_, rotated := keys[full]
+	previous, rotated := keys[full]
 	keys[full] = key
 
 	if err := sealing.SetRegionKeys(ctx, s.db, org.UID, keys); err != nil {
 		return nil, err
+	}
+
+	// Blobs sealed to the old key are re-wrapped by an agent that proves it
+	// holds it, which takes its public key (spec 2026-11-11-02).
+	if rotated && previous.Fingerprint != key.Fingerprint {
+		if err := sealing.RetireRegionKey(ctx, s.db, org.UID, previous, s.now()); err != nil {
+			return nil, err
+		}
 	}
 
 	action := "region_key_set"
@@ -172,28 +183,49 @@ func (s *Service) DeleteRegionKey(ctx context.Context, orgSlug, slug string) err
 		return err
 	}
 
-	keys, err := sealing.RegionKeys(ctx, s.db, org.UID)
-	if err != nil {
+	removed, err := s.removeRegionKey(ctx, org.UID, full, slug, "")
+	if err != nil || !removed {
 		return err
 	}
-
-	if _, ok := keys[full]; !ok {
-		return nil
-	}
-
-	delete(keys, full)
-
-	if err := sealing.SetRegionKeys(ctx, s.db, org.UID, keys); err != nil {
-		return err
-	}
-
-	audit.Record(ctx, s.db, org.UID, models.EventTypeOrgSettingsUpdated,
-		audit.Target{Type: "private_region", UID: full, Name: slug},
-		models.JSONMap{auditKeyAction: "region_key_removed"})
 
 	s.ResealRegion(ctx, org.UID, full)
 
 	return nil
+}
+
+// removeRegionKey drops the shared key of a region (a stale one included),
+// retires its public part and records the audit event. It reports whether a
+// key was there. reason is added to the audit event when not empty.
+func (s *Service) removeRegionKey(ctx context.Context, orgUID, full, slug, reason string) (bool, error) {
+	keys, err := sealing.StoredRegionKeys(ctx, s.db, orgUID)
+	if err != nil {
+		return false, err
+	}
+
+	previous, ok := keys[full]
+	if !ok {
+		return false, nil
+	}
+
+	delete(keys, full)
+
+	if err := sealing.SetRegionKeys(ctx, s.db, orgUID, keys); err != nil {
+		return false, err
+	}
+
+	if err := sealing.RetireRegionKey(ctx, s.db, orgUID, previous, s.now()); err != nil {
+		return false, err
+	}
+
+	details := models.JSONMap{auditKeyAction: "region_key_removed"}
+	if reason != "" {
+		details["reason"] = reason
+	}
+
+	audit.Record(ctx, s.db, orgUID, models.EventTypeOrgSettingsUpdated,
+		audit.Target{Type: "private_region", UID: full, Name: slug}, details)
+
+	return true, nil
 }
 
 // ownedRegion resolves an org and one of its private region slugs.

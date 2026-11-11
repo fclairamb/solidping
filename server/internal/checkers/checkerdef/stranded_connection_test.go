@@ -263,13 +263,17 @@ func strandedFirstConnServer(t *testing.T) (*httptest.Server, func() []string) {
 			conns = append(conns, request.RemoteAddr)
 		}
 
-		stranded := len(conns) == 1 && conns[0] == request.RemoteAddr
+		stranded := conns[0] == request.RemoteAddr
 		mu.Unlock()
 
 		if stranded {
 			<-request.Context().Done()
 
-			return
+			// Never answer on the stranded connection: returning normally
+			// would make net/http write an implicit 200 the instant the probe
+			// gives up, which a probe racing its own deadline can still read
+			// as a success. A black hole sends nothing.
+			panic(http.ErrAbortHandler)
 		}
 
 		writer.WriteHeader(http.StatusOK)

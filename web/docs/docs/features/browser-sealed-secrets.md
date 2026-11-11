@@ -85,14 +85,22 @@ The output is a valid `SP_AGENT_REGION_KEYS_FILE`.
 When an agent joins a location, or the region key changes, the checks sealed before are flagged. *Re-seal for the current agents* (on the location page, the Re-seal page, and the warning of a flagged check) fixes them without typing the secrets again:
 
 1. The server picks an online agent that holds a key the secrets were sealed to (its own key, or a region key it loaded).
-2. The agent opens the secrets, seals them for the current agents (or the current region key), and returns only the new ciphertext.
-3. The server checks it like a sealed write (one key slot per recipient, the current fingerprints, the size limit) and stores it. The check keeps its *Encrypted in the browser* status.
+2. **Possession challenge.** The server seals a random value to that one key, and to nothing else, and hands it to the agent with the secrets. The agent opens it and sends it back with the new ciphertext. The server keeps only the value's hash. A public key is no proof: an agent that registered a copy of another agent's key, or advertises a region key it does not hold, cannot open the challenge, and its result is refused (`invalid_result`). The check keeps its old secrets.
+3. The agent opens the secrets, checks they only carry secret fields of the check type (and the [binding](#binding-to-the-target) of this check), seals them for the current agents (or the current region key), and returns only the new ciphertext.
+4. The server checks it like a sealed write (one key slot per recipient, the current fingerprints, the size limit).
+5. **Second agent.** Before storing it, the server sends the new ciphertext to another online agent that holds a current key, with its own possession challenge. That agent opens it, checks it only carries secret fields of the check type, and, when it can open the old secrets too, that they did not change. On its answer the server stores the new ciphertext. The check keeps its *Encrypted in the browser* status. If the second agent cannot open it, or refuses it, nothing is stored and the reason is shown.
+
+With no second agent online, the new ciphertext is stored, but the check stays flagged with the reason *Not confirmed by a second agent*. Re-seal again once two agents are online, or type the secrets again. A single-agent location therefore always ends there: that is the price of not taking one agent's word for it.
 
 The server relays ciphertext only; the recipient list comes from the server, the same trust the browser already gives it. A check stays flagged, with the reason shown, when no online agent can open it, when no agent finishes within 5 minutes, or when the returned ciphertext is refused. Then type its secrets again.
 
+When a region key is rotated or removed, the server keeps its public key (never the identity), so the agents that still hold the old key can be challenged on it. A key rotated before version 0.48 is not on record: its checks show "the agents that hold these secrets cannot prove it", and you type their secrets again.
+
+An agent cannot enroll with an X25519 key that is already another live agent's key, or a region key of the organization: the enrollment is refused, and the token stays valid for a retry with a new identity.
+
 **Turning it off.** The agent seals to the recipient list the server sends. A compromised server could add its own key to that list and read the secrets on the next re-seal. To rule that out, set `SP_AGENT_REWRAP_ENABLED=false` on every agent of the location: the agent then never re-seals, and only the agent's operator can change that, not the server. Flagged checks show "the agents that hold these secrets do not run the re-seal", and you type their secrets again. Each re-seal an agent does is logged on the agent (`Sealed secrets re-wrapped`) with the fingerprints it sealed to, so an unknown key stands out.
 
-API: `POST /api/v1/orgs/:org/sealing/rewrap` with `{"region":"@dc1"}` or `{"checkUids":["…"]}` (every flagged check without a body), then `GET /api/v1/orgs/:org/sealing/rewrap?check=<uid>,<uid>` until each status is `done` or `failed`. Admins only. Agents need version 0.47 or later.
+API: `POST /api/v1/orgs/:org/sealing/rewrap` with `{"region":"@dc1"}` or `{"checkUids":["…"]}` (every flagged check without a body), then `GET /api/v1/orgs/:org/sealing/rewrap?check=<uid>,<uid>` until each status is `done` or `failed`. Admins only. Agents need version 0.48 or later (an older agent cannot answer the possession challenge: its checks show "do not run the re-seal").
 
 ## Adding, revoking and losing agents
 
@@ -107,9 +115,12 @@ With the `solidping` binary and a Personal Access Token:
 
 ```bash
 echo '{"basicAuth":"alice:hunter2"}' | SP_TOKEN=… \
-  solidping seal --server https://solidping.example.com --org acme --region @dc1
-# {"keys":["basicAuth"],"fingerprints":["3f2a…"],"ct":"<base64 age file>"}
+  solidping seal --server https://solidping.example.com --org acme --region @dc1 \
+    --type http --config-json '{"url":"https://db.acme.com/health"}'
+# {"keys":["basicAuth"],"fingerprints":["3f2a…"],"ct":"<base64 age file>","bound":true}
 ```
+
+`--type` and `--config-json` (the check's public config, or `@file.json`) are required: the secrets are bound to that target (see [Binding to the target](#binding-to-the-target)).
 
 Or with the `age` CLI:
 
@@ -124,18 +135,43 @@ echo -n '{"basicAuth":"alice:hunter2"}' | age -r age1… | base64 -w0
 Then send it next to `config` on the check create or PATCH:
 
 ```json
-"sealedSecrets": { "keys": ["basicAuth"], "fingerprints": ["3f2a…"], "ct": "<base64 age file>" }
+"sealedSecrets": { "keys": ["basicAuth"], "fingerprints": ["3f2a…"], "ct": "<base64 age file>", "bound": true }
 ```
+
+With the `age` CLI, add the `_binding` to the plaintext yourself (below) and send `"bound": true`. A blob without one is accepted for now and listed on the Re-seal page.
 
 `fingerprints` must be the current recipients, else `409 SEALING_RECIPIENTS_CHANGED` with the current list. A config-as-code document (`/checks/import`, `/checks/apply`, `sp checks apply`) takes the same `sealedSecrets` object on each check; a stale one is an item error with code `SEALING_RECIPIENTS_CHANGED`, in the dry run too. Exports never contain secrets. The MCP tools `create_check` and `update_check` accept the same object. Compare the fingerprints with the ones your agents log at startup (`Agent sealing key`).
 
+## Binding to the target
+
+The sealed plaintext carries a reserved `_binding` next to the secrets: the check type and a SHA-256 digest of the check's *target fields*, the config keys that decide where the secrets go. Each check type lists them as `targetFields` in `GET /api/v1/orgs/:org/check-types`: `url` for HTTP, host, port and database for the database checks, host and port for TCP, SMTP, SSH and FTP, the script for JS checks, and the tunnel (`tunnelCheckUid`) for every type.
+
+```json
+{"basicAuth": "alice:hunter2", "_binding": {"type": "http", "digest": "<hex sha256>"}}
+```
+
+The agent recomputes the digest from the config of each job. When it differs, or the type does, it does not run the check and reports *sealed secrets were sealed for another target: type them again*. A blob may also only carry secret fields of its type, so it can never replace the URL or any other public field.
+
+So whoever can write the stored config (a compromised server, someone with write access to the database) cannot point a sealed check at a host they control, or copy its blob onto another check: the binding sits inside the ciphertext, which nobody but the agents can open or change. This holds with `SP_AGENT_REWRAP_ENABLED=false` too, and a re-seal on an agent copies the binding as it is: it never rebinds to a target the server sends.
+
+On your side:
+
+- Changing a target field (the URL, host, port, database or tunnel) of a sealed check needs the secrets typed again. The check form opens the secret inputs on its own; the API answers `409 SEALED_TARGET_CHANGED` to a PATCH without new `sealedSecrets`, and a config-as-code document gets an item error with that code, in the dry run too. Other edits (timeout, assertions, name, period) keep the blob.
+- Checks sealed before the binding existed (v0.47.0) still run, with a warning in the agent log, and the Re-seal page lists them as *Seal again to bind to the target*. Type their secrets again to bind them. A later release will refuse unbound blobs.
+
+The digest is computed over a canonical JSON of the target fields that carry a value, keys sorted, numbers and booleans written as strings, `url` with its scheme and host lowercased and the default port made explicit, `host` lowercased. The dashboard and the Go code share a test vector (`web/dash0/src/lib/__fixtures__/target-binding.json`).
+
+The binding does not cover a target the attacker already controls (it binds a name, not who answers it), DNS of the target host, or the TLS settings of the check.
+
 ## What the server still sees
 
-Check names, targets, public config, results, and notification tokens.
+Check names, targets, public config, results, and notification tokens. The server can still edit the targets, but the agents refuse sealed secrets once a target changes (see [Binding to the target](#binding-to-the-target)).
 
 ## Threat model
 
 Protects against a database or backup leak, the operator reading request bodies, logs or memory (the plaintext never reaches the server), a later compromise of the server, and a legal demand on the operator for your check passwords.
+
+It also protects against a server that points a sealed check at another host, or copies its secrets onto another check: the secrets are bound to their target (see [Binding to the target](#binding-to-the-target)).
 
 Does not protect against a server that serves modified dashboard JavaScript or swaps recipient keys (compare fingerprints, or seal with the `age` CLI), a compromised browser or extension, a compromised agent host, a region key copied somewhere unsafe, a target that echoes a secret in its error message, or notification secrets.
 

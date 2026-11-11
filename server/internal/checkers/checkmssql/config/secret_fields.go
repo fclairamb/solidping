@@ -5,3 +5,9 @@ package config
 func (c *MSSQLConfig) SecretFields() []string {
 	return []string{"password"}
 }
+
+// TargetFields lists the config keys that decide where the secrets go: a
+// browser-sealed blob is bound to them (spec 2026-11-11-01).
+func (c *MSSQLConfig) TargetFields() []string {
+	return []string{"host", "port", "database"}
+}

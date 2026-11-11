@@ -25,10 +25,177 @@ export interface SealedSecrets {
   keys: string[];
   fingerprints: string[];
   ct: string;
+  /** The plaintext carries a `_binding` to the check's target (spec 2026-11-11-01). */
+  bound?: boolean;
 }
 
 /** Error code of a write sealed to a recipient set that is no longer current. */
 export const SEALING_RECIPIENTS_CHANGED = "SEALING_RECIPIENTS_CHANGED";
+
+/** Error code of a write that moves a sealed check's target without new secrets. */
+export const SEALED_TARGET_CHANGED = "SEALED_TARGET_CHANGED";
+
+/**
+ * Target binding of sealed secrets (spec 2026-11-11-01), byte for byte the Go
+ * `credentials` canonicaliser (binding.go), pinned by the shared fixture
+ * `__fixtures__/target-binding.json`.
+ *
+ * The sealed plaintext carries a reserved `_binding`: the check type and the
+ * SHA-256 of a canonical JSON of the type's target fields (url, host, port,
+ * database, tunnel...). The agent refuses the secrets once one changes, so
+ * whoever writes the stored config cannot send them to another host.
+ */
+export const BINDING_KEY = "_binding";
+
+/** What the sealed secrets are bound to. */
+export interface SealTarget {
+  type: string;
+  /** The type's `targetFields` (check-types metadata). */
+  targetFields: readonly string[];
+  /** The public config the check is saved with. */
+  config: Record<string, unknown>;
+}
+
+const DEFAULT_URL_PORTS: Record<string, string> = {
+  http: "80",
+  https: "443",
+  ws: "80",
+  wss: "443",
+  ftp: "21",
+};
+
+function asciiLower(value: string): string {
+  return value.replace(/[A-Z]/g, (c) => c.toLowerCase());
+}
+
+/**
+ * Lowercases a URL's scheme and host (ASCII) and makes the scheme's default
+ * port explicit; the rest is kept as is. Not `scheme://…`: unchanged.
+ */
+export function normalizeTargetURL(raw: string): string {
+  const sep = raw.indexOf("://");
+  if (sep <= 0 || !/^[A-Za-z][A-Za-z0-9+.-]*$/.test(raw.slice(0, sep))) return raw;
+  const scheme = asciiLower(raw.slice(0, sep));
+  const rest = raw.slice(sep + 3);
+  const endMatch = rest.search(/[/?#]/);
+  const end = endMatch < 0 ? rest.length : endMatch;
+  let authority = rest.slice(0, end);
+  const tail = rest.slice(end);
+  let userinfo = "";
+  const at = authority.lastIndexOf("@");
+  if (at >= 0) {
+    userinfo = authority.slice(0, at + 1);
+    authority = authority.slice(at + 1);
+  }
+  let host = authority;
+  let port = "";
+  if (authority.startsWith("[")) {
+    const closing = authority.indexOf("]");
+    if (closing >= 0) {
+      host = authority.slice(0, closing + 1);
+      const after = authority.slice(closing + 1);
+      if (after.startsWith(":")) port = after.slice(1);
+    }
+  } else {
+    const colon = authority.lastIndexOf(":");
+    if (colon >= 0) {
+      host = authority.slice(0, colon);
+      port = authority.slice(colon + 1);
+    }
+  }
+  if (port === "") port = DEFAULT_URL_PORTS[scheme] ?? "";
+  return `${scheme}://${userinfo}${asciiLower(host)}${port ? `:${port}` : ""}${tail}`;
+}
+
+function canonicalString(value: string): string {
+  let out = '"';
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    if (char === '"' || char === "\\") out += `\\${char}`;
+    else if (code < 0x20) out += `\\u00${code.toString(16).padStart(2, "0")}`;
+    else out += char;
+  }
+  return `${out}"`;
+}
+
+function formatNumber(value: number): string {
+  if (Number.isInteger(value) && Math.abs(value) < 1e21) return value.toFixed(0);
+  return String(value);
+}
+
+/** The canonical JSON of a value, or null when it carries none. */
+function canonicalValue(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value === "string") return canonicalString(value);
+  if (typeof value === "boolean") return canonicalString(String(value));
+  if (typeof value === "number") return canonicalString(formatNumber(value));
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalValue(item) ?? "null").join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const parts: string[] = [];
+    for (const key of Object.keys(value as object).sort()) {
+      const item = canonicalValue((value as Record<string, unknown>)[key]);
+      if (item !== null) parts.push(`${canonicalString(key)}:${item}`);
+    }
+    return `{${parts.join(",")}}`;
+  }
+  return null;
+}
+
+function isURLField(field: string): boolean {
+  return field === "url" || field.endsWith("Url") || field.endsWith("_url");
+}
+
+function isHostField(field: string): boolean {
+  return field === "host" || field === "hostname" || field === "brokers";
+}
+
+function lowerStrings(value: unknown): unknown {
+  if (typeof value === "string") return asciiLower(value);
+  if (Array.isArray(value)) return value.map(lowerStrings);
+  return value;
+}
+
+/** The canonical JSON the target digest is computed over. */
+export function canonicalTarget(
+  targetFields: readonly string[],
+  config: Record<string, unknown>,
+): string {
+  const parts: string[] = [];
+  for (const field of [...new Set(targetFields)].sort()) {
+    let value = config[field];
+    if (isURLField(field) && typeof value === "string" && value !== "") {
+      value = normalizeTargetURL(value);
+    } else if (isHostField(field)) {
+      value = lowerStrings(value);
+    }
+    const canonical = canonicalValue(value);
+    if (canonical !== null) parts.push(`${canonicalString(field)}:${canonical}`);
+  }
+  return `{${parts.join(",")}}`;
+}
+
+/** Hex SHA-256 of the canonical target. */
+export async function targetDigest(
+  targetFields: readonly string[],
+  config: Record<string, unknown>,
+): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonicalTarget(targetFields, config)),
+  );
+  return toHex(new Uint8Array(digest));
+}
+
+/** Whether two public configs differ on a target field. */
+export function targetChanged(
+  targetFields: readonly string[],
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): boolean {
+  return canonicalTarget(targetFields, before) !== canonicalTarget(targetFields, after);
+}
 
 /**
  * Whether this page can seal: `crypto.subtle` (fingerprints) needs a secure
@@ -145,11 +312,14 @@ export function withoutSecretKeys(
 
 /**
  * Seals a secret map to every recipient. The plaintext is the JSON object of
- * the secrets, which the agent merges into the check config.
+ * the secrets, which the agent merges into the check config. With a target,
+ * it also carries the `_binding` to the check's type and target fields
+ * (spec 2026-11-11-01).
  */
 export async function sealSecrets(
   recipients: Pick<SealingRecipient, "recipient">[],
   secrets: Record<string, unknown>,
+  target?: SealTarget,
 ): Promise<SealedSecrets> {
   if (recipients.length === 0) {
     throw new Error("no recipient to seal to");
@@ -159,14 +329,25 @@ export async function sealSecrets(
   for (const { recipient } of recipients) {
     encrypter.addRecipient(recipient);
   }
-  const ct = await encrypter.encrypt(JSON.stringify(secrets));
+  const plain: Record<string, unknown> = { ...secrets };
+  delete plain[BINDING_KEY];
+  if (target) {
+    plain[BINDING_KEY] = {
+      type: target.type,
+      digest: await targetDigest(target.targetFields, target.config),
+    };
+  }
+  const ct = await encrypter.encrypt(JSON.stringify(plain));
   const fingerprints = await Promise.all(
     recipients.map(({ recipient }) => recipientFingerprint(recipient)),
   );
   return {
-    keys: Object.keys(secrets).sort(),
+    keys: Object.keys(secrets)
+      .filter((key) => key !== BINDING_KEY)
+      .sort(),
     fingerprints: fingerprints.sort(),
     ct: toBase64(ct),
+    ...(target ? { bound: true } : {}),
   };
 }
 

@@ -48,6 +48,14 @@ func TestSealCommand_SealsForTheServerRecipients(t *testing.T) {
 	var gotPath, gotQuery, gotAuth string
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/api/v1/orgs/acme/check-types" {
+			_ = json.NewEncoder(writer).Encode(map[string]any{
+				"data": []map[string]any{{"type": "http", "targetFields": []string{"tunnelCheckUid", "url"}}},
+			})
+
+			return
+		}
+
 		gotPath, gotQuery, gotAuth = req.URL.Path, req.URL.Query().Get("region"), req.Header.Get("Authorization")
 		_ = json.NewEncoder(writer).Encode(map[string]any{
 			"data": []map[string]string{{"recipient": recipient, "fingerprint": credentials.RecipientFingerprint(recipient)}},
@@ -56,7 +64,8 @@ func TestSealCommand_SealsForTheServerRecipients(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	out, err := runSealCommand(t, `{"password":"hunter2","token":"t0k"}`,
-		"--server", server.URL, "--region", "@dc1", "--token", "pat-1")
+		"--server", server.URL, "--region", "@dc1", "--token", "pat-1",
+		"--type", "http", "--config-json", `{"url":"https://DB.acme.com/x","timeout":"5s"}`)
 	r.NoError(err)
 
 	r.Equal("/api/v1/orgs/acme/sealing-recipients", gotPath)
@@ -75,6 +84,19 @@ func TestSealCommand_SealsForTheServerRecipients(t *testing.T) {
 	secrets, err := credentials.UnsealWithIdentity(identity, envelope)
 	r.NoError(err)
 	r.Equal("hunter2", secrets["password"])
+
+	// The binding (spec 2026-11-11-01): the type and the digest of the target.
+	r.True(sealed.Bound)
+	r.Equal(map[string]any{
+		"type": "http",
+		"digest": credentials.TargetDigest(
+			[]string{"tunnelCheckUid", "url"}, map[string]any{"url": "https://db.acme.com:443/x"}),
+	}, secrets[credentials.BindingKey])
+}
+
+// sealArgs are the flags every refusal case shares but --region.
+func sealArgs(server string) []string {
+	return []string{"--server", server, "--token", "p", "--type", "http", "--config-json", `{"url":"https://a.acme.com"}`}
 }
 
 func TestSealCommand_Refusals(t *testing.T) {
@@ -97,18 +119,26 @@ func TestSealCommand_Refusals(t *testing.T) {
 		want  error
 	}{
 		{"no region", `{"password":"x"}`, []string{"--server", empty.URL, "--token", "p"}, ErrSealNoRegion},
-		{"not an object", `"x"`, []string{"--server", empty.URL, "--token", "p", "--region", "@dc1"}, ErrSealNoSecrets},
-		{"empty object", `{}`, []string{"--server", empty.URL, "--token", "p", "--region", "@dc1"}, ErrSealNoSecrets},
 		{
-			"no recipients", `{"password":"x"}`,
-			[]string{"--server", empty.URL, "--token", "p", "--region", "@dc1"},
-			ErrSealNoRecipients,
+			"no type", `{"password":"x"}`,
+			[]string{"--server", empty.URL, "--token", "p", "--region", "@dc1", "--config-json", "{}"},
+			ErrSealNoType,
 		},
 		{
-			"server refusal", `{"password":"x"}`,
-			[]string{"--server", refused.URL, "--token", "p", "--region", "@x"},
-			ErrSealServerRefused,
+			"no config", `{"password":"x"}`,
+			[]string{"--server", empty.URL, "--token", "p", "--region", "@dc1", "--type", "http"},
+			ErrSealBadConfig,
 		},
+		{
+			"config not an object", `{"password":"x"}`,
+			[]string{"--server", empty.URL, "--token", "p", "--region", "@dc1", "--type", "http", "--config-json", "[1]"},
+			ErrSealBadConfig,
+		},
+		{"not an object", `"x"`, append(sealArgs(empty.URL), "--region", "@dc1"), ErrSealNoSecrets},
+		{"empty object", `{}`, append(sealArgs(empty.URL), "--region", "@dc1"), ErrSealNoSecrets},
+		{"reserved key", `{"_binding":{}}`, append(sealArgs(empty.URL), "--region", "@dc1"), ErrSealNoSecrets},
+		{"no recipients", `{"password":"x"}`, append(sealArgs(empty.URL), "--region", "@dc1"), ErrSealNoRecipients},
+		{"server refusal", `{"password":"x"}`, append(sealArgs(refused.URL), "--region", "@x"), ErrSealServerRefused},
 	}
 
 	for _, tc := range cases {

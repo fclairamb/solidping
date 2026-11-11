@@ -1729,6 +1729,19 @@ func TestApplyAgentEnvRewrap(t *testing.T) {
 	r.False(cfg.RewrapDisabled)
 }
 
+// TestApplyAgentEnvInsecure: the override and the explicit re-wrap opt-in are read.
+func TestApplyAgentEnvInsecure(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_AGENT_ALLOW_INSECURE_SERVER", "true")
+	t.Setenv("SP_AGENT_REWRAP_ENABLED", "true")
+
+	cfg := AgentConfig{}
+	applyAgentEnv(&cfg)
+	r.True(cfg.AllowInsecureServer)
+	r.True(cfg.RewrapExplicit)
+}
+
 // TestApplySentryEnv proves SP_SENTRY_TRACES_SAMPLE_RATE actually lands on the
 // snake_case-tagged TracesSampleRate field despite koanf's env
 // underscore→dot collapse — this MUST fail (rate stays 0.0) if applySentryEnv

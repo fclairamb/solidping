@@ -57,3 +57,32 @@ func TestListServerCheckTypesCarriesSecretFields(t *testing.T) {
 
 	r.True(found, "http must be listed")
 }
+
+// TestListServerCheckTypesCarriesTargetFields: every type advertises the keys
+// its sealed secrets are bound to (spec 2026-11-11-01), the tunnel included.
+func TestListServerCheckTypesCarriesTargetFields(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	svc := NewService(checkerdef.NewActivationResolver(&config.CheckersConfig{}, ""), "https://example.com")
+	want := map[string][]string{
+		"http":  {"tunnelCheckUid", "url"},
+		"mysql": {"database", "host", "port", "tunnelCheckUid"},
+		"kafka": {"brokers", "tunnelCheckUid"},
+		"js":    {"script", "tunnelCheckUid"},
+	}
+
+	listed := svc.ListServerCheckTypes().Data
+	for idx := range listed {
+		entry := listed[idx]
+		r.Contains(entry.TargetFields, "tunnelCheckUid", "type %q", entry.Type)
+
+		if fields, ok := want[entry.Type]; ok {
+			r.Equal(fields, entry.TargetFields, entry.Type)
+			delete(want, entry.Type)
+		}
+	}
+
+	r.Empty(want, "every pinned type must be listed")
+}

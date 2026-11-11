@@ -36,6 +36,8 @@ const (
 // Config keys shared across the field tables, GetConfig and SecretFields.
 const (
 	fieldPassword = "password"
+	fieldHost     = "host"
+	fieldPort     = "port"
 	FieldDatabase = "database"
 )
 

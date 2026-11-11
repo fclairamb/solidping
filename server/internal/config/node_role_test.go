@@ -258,6 +258,13 @@ func TestValidateNodeConfigRoles(t *testing.T) {
 		},
 		{name: "agent with a server URL is valid", role: NodeRoleAgent, serverURL: "https://example.com"},
 		{
+			name: "agent over cleartext http is rejected", role: NodeRoleAgent,
+			serverURL: "http://master.acme.com", wantErr: ErrAgentServerURLInsecure,
+		},
+		{name: "agent http localhost is valid", role: NodeRoleAgent, serverURL: "http://localhost:4000"},
+		{name: "agent http 127.0.0.1 is valid", role: NodeRoleAgent, serverURL: "http://127.0.0.1:4000"},
+		{name: "agent http ::1 is valid", role: NodeRoleAgent, serverURL: "http://[::1]:4000"},
+		{
 			name: "unknown role is rejected", role: "bogus",
 			wantErr: ErrInvalidNodeRole,
 		},
@@ -433,4 +440,32 @@ func TestLoad_InvalidNodeRoleFailsValidation(t *testing.T) {
 	err = cfg.Validate()
 	r.ErrorIs(err, ErrInvalidNodeRole)
 	r.Contains(err.Error(), "chekcs")
+}
+
+// TestAgentInsecureServerOverride: the override accepts a cleartext server and
+// turns the re-wrap off unless it is explicitly enabled (spec 2026-11-11-04).
+func TestAgentInsecureServerOverride(t *testing.T) {
+	t.Parallel()
+
+	for _, explicit := range []bool{false, true} {
+		r := require.New(t)
+
+		cfg := &Config{
+			Node: NodeConfig{Role: NodeRoleAgent, Name: "test-node"},
+			Agent: AgentConfig{
+				ServerURL: "http://master.acme.com", AllowInsecureServer: true, RewrapExplicit: explicit,
+			},
+		}
+
+		r.NoError(cfg.validateNodeConfig())
+		r.Equal(!explicit, cfg.Agent.RewrapDisabled)
+	}
+
+	r := require.New(t)
+	cfg := &Config{
+		Node:  NodeConfig{Role: NodeRoleAgent, Name: "test-node"},
+		Agent: AgentConfig{ServerURL: "https://master.acme.com"},
+	}
+	r.NoError(cfg.validateNodeConfig())
+	r.False(cfg.Agent.RewrapDisabled)
 }

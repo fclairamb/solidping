@@ -65,7 +65,11 @@ the file; only the value stays out.
 
 A check of a private location can also carry its secrets **sealed** for the
 location's agents: a `sealedSecrets` object (`keys`, `fingerprints`, `ct`), as
-printed by `solidping seal --region @dc1 < secrets.json` (spec 2026-11-10-03).
+printed by `solidping seal --region @dc1 --type http --config-json '{"url":…}' < secrets.json`
+(spec 2026-11-10-03; `--type`/`--config-json` bind the blob to the check's target, spec 2026-11-11-01).
+An entry that changes a target field of a browser-sealed check (url, host, port,
+database, tunnel) without `sealedSecrets` is an item error with
+`code: SEALED_TARGET_CHANGED`, dry run included.
 Import and apply validate it exactly like the check write API; fingerprints
 that are not the current recipients are an item error with
 `code: SEALING_RECIPIENTS_CHANGED` and the current `recipients`, in the dry run

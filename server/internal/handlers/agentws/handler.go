@@ -331,6 +331,10 @@ func (h *Handler) awaitEnroll(
 		return nil, false, enrollErr
 	}
 
+	if keyErr := h.refuseDuplicateKey(ctx, conn, token, &frame); keyErr != nil {
+		return nil, false, keyErr
+	}
+
 	name := frame.Name
 	if name == "" {
 		name = "agent"
@@ -368,6 +372,69 @@ func (h *Handler) awaitEnroll(
 	}
 
 	return agent, frame.Version != "", nil
+}
+
+// ErrDuplicateAgentKey refuses an enrollment whose X25519 key is another live
+// agent's, or a region key of the org (spec 2026-11-11-02).
+var ErrDuplicateAgentKey = errors.New(
+	"x25519PublicKey is already the key of another agent or a region key of the organization: " +
+		"generate a new agent identity")
+
+// refuseDuplicateKey refuses an X25519 key equal to another live agent's key,
+// or to a region key of the org, current or retired (spec 2026-11-11-02).
+// That is never legitimate: an agent that registers a key it copied would be
+// picked for blobs it cannot open. Checked before the token is consumed, so
+// the operator can retry with a fresh identity.
+func (h *Handler) refuseDuplicateKey(
+	ctx context.Context, conn *websocket.Conn, token *models.AgentEnrollmentToken, frame *agentcrypto.ClientFrame,
+) error {
+	duplicate, err := h.isDuplicateKey(ctx, token, frame.X25519PublicKey)
+	if err != nil {
+		return err
+	}
+
+	if !duplicate {
+		return nil
+	}
+
+	_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
+		Type: agentcrypto.MsgTypeError, ID: frame.ID,
+		Code: string(base.ErrorCodeValidationError), Title: ErrDuplicateAgentKey.Error(),
+	})
+
+	return ErrDuplicateAgentKey
+}
+
+func (h *Handler) isDuplicateKey(
+	ctx context.Context, token *models.AgentEnrollmentToken, recipient string,
+) (bool, error) {
+	agents, err := h.dbService.ListAllAgents(ctx)
+	if err != nil {
+		return false, fmt.Errorf("list agents: %w", err)
+	}
+
+	for _, agent := range agents {
+		if agent.Status == models.AgentStatusActive && agent.X25519PublicKey == recipient {
+			return true, nil
+		}
+	}
+
+	if token.IsSystem() {
+		return false, nil
+	}
+
+	known, err := sealing.KnownRegionRecipients(ctx, h.dbService, token.OrgUID())
+	if err != nil {
+		return false, err
+	}
+
+	for _, key := range known {
+		if key == recipient {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // validateEnrollmentScope runs the per-kind admission checks BEFORE the token is
