@@ -50,6 +50,7 @@ func TestLeaseDuration(t *testing.T) {
 		"the margin is the deployment's")
 }
 
+//nolint:revive // Test helper function, context parameter order is acceptable
 func setTestCheckJobTimeout(t *testing.T, ctx context.Context, svc *sqlite.Service, jobUID, timeout string) {
 	t.Helper()
 

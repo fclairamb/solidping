@@ -809,34 +809,10 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 		cfg.FetchMaxAhead,
 	)
 	prommetrics.RecordCheckStage("fetch", time.Since(fetchStart).Seconds())
-	switch {
-	case err != nil && errors.Is(err, context.Canceled):
-		// no-op: shutdown path
-	case err != nil && isClaimTimeout(err):
-		prommetrics.RecordClaimJobsOutcome("timeout")
-	case err != nil:
-		prommetrics.RecordClaimJobsOutcome("error")
-	case len(jobs) == 0:
-		prommetrics.RecordClaimJobsOutcome("empty")
-	default:
-		prommetrics.RecordClaimJobsOutcome("jobs")
-	}
+	recordClaimOutcome(len(jobs), err)
+
 	if err != nil {
-		switch {
-		case errors.Is(err, context.Canceled):
-			// shutdown path
-		case isConnLoss(err):
-			r.outage.noteLoss(ctx, logger, "claim", err)
-		case isClaimTimeout(err):
-			// A slow database link, not a bug (spec 2026-11-11-06): the
-			// fetcher retries after its back-off, so the region is not left
-			// idle. A claim that keeps timing out needs a longer driver read
-			// timeout (`read_timeout` in the Postgres DSN, default 10s).
-			logger.WarnContext(ctx, "Claim timed out: retrying after back-off",
-				"error", err, "elapsed", time.Since(fetchStart).String(), "retry_in", claimRetryDelay.String())
-		default:
-			logger.ErrorContext(ctx, "Failed to claim jobs", "error", err)
-		}
+		r.logClaimError(ctx, logger, err, time.Since(fetchStart))
 
 		return 0, err
 	}
@@ -866,6 +842,42 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 	}
 
 	return nextIn, nil
+}
+
+// recordClaimOutcome counts one claim under solidping_claim_jobs_result_total.
+// A shutdown cancellation is not counted.
+func recordClaimOutcome(claimed int, err error) {
+	switch {
+	case err != nil && errors.Is(err, context.Canceled):
+		// no-op: shutdown path
+	case err != nil && isClaimTimeout(err):
+		prommetrics.RecordClaimJobsOutcome("timeout")
+	case err != nil:
+		prommetrics.RecordClaimJobsOutcome("error")
+	case claimed == 0:
+		prommetrics.RecordClaimJobsOutcome("empty")
+	default:
+		prommetrics.RecordClaimJobsOutcome("jobs")
+	}
+}
+
+// logClaimError logs a failed claim at the level its cause deserves.
+func (r *CheckWorker) logClaimError(ctx context.Context, logger *slog.Logger, err error, elapsed time.Duration) {
+	switch {
+	case errors.Is(err, context.Canceled):
+		// shutdown path
+	case isConnLoss(err):
+		r.outage.noteLoss(ctx, logger, "claim", err)
+	case isClaimTimeout(err):
+		// A slow database link, not a bug (spec 2026-11-11-06): the fetcher
+		// retries after its back-off, so the region is not left idle. A claim
+		// that keeps timing out needs a longer driver read timeout
+		// (`read_timeout` in the Postgres DSN, default 10s).
+		logger.WarnContext(ctx, "Claim timed out: retrying after back-off",
+			"error", err, "elapsed", elapsed.String(), "retry_in", claimRetryDelay.String())
+	default:
+		logger.ErrorContext(ctx, "Failed to claim jobs", "error", err)
+	}
 }
 
 // accountClaimedLanes counts freshly claimed slow jobs as in flight

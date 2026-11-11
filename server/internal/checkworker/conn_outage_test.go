@@ -21,6 +21,9 @@ import (
 
 var errClosedConn = errors.New("write tcp: use of closed network connection")
 
+// errWriteTimeout is a driver deadline that reached us as text only.
+var errWriteTimeout = errors.New("write tcp 10.0.0.1:5432: i/o timeout")
+
 func abandonedCount(checkType, reason string) float64 {
 	return testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(checkType, reason))
 }
@@ -160,7 +163,7 @@ func TestIsClaimTimeout(t *testing.T) {
 
 	r.True(isClaimTimeout(fmt.Errorf("claim: %w", timeoutNetError{})))
 	r.True(isClaimTimeout(fmt.Errorf("claim: %w", context.DeadlineExceeded)))
-	r.True(isClaimTimeout(errors.New("write tcp 10.0.0.1:5432: i/o timeout")))
+	r.True(isClaimTimeout(errWriteTimeout))
 	r.False(isClaimTimeout(errClaimTimeout))
 	r.False(isClaimTimeout(errClosedConn))
 }
