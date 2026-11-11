@@ -144,7 +144,9 @@ func NewBinding(checkType string, targetFields []string, config map[string]any) 
 }
 
 // WithBinding returns a copy of secrets carrying the binding.
-func WithBinding(secrets map[string]any, checkType string, targetFields []string, config map[string]any) map[string]any {
+func WithBinding(
+	secrets map[string]any, checkType string, targetFields []string, config map[string]any,
+) map[string]any {
 	out := make(map[string]any, len(secrets)+1)
 	for key, value := range secrets {
 		out[key] = value
@@ -299,32 +301,43 @@ func canonicalJSON(value any) (string, bool) {
 	return builder.String(), true
 }
 
-func writeCanonical(builder *strings.Builder, value any) bool {
+// scalarString returns the canonical string of a scalar value, false when
+// value is not one.
+func scalarString(value any) (string, bool) {
 	switch typed := value.(type) {
-	case nil:
-		return false
 	case string:
-		if typed == "" {
-			return false
-		}
-
-		writeCanonicalString(builder, typed)
+		return typed, true
 	case bool:
-		writeCanonicalString(builder, strconv.FormatBool(typed))
+		return strconv.FormatBool(typed), true
 	case float64:
-		writeCanonicalString(builder, formatNumber(typed))
+		return formatNumber(typed), true
 	case float32:
-		writeCanonicalString(builder, formatNumber(float64(typed)))
+		return formatNumber(float64(typed)), true
 	case int:
-		writeCanonicalString(builder, strconv.Itoa(typed))
+		return strconv.Itoa(typed), true
 	case int64:
-		writeCanonicalString(builder, strconv.FormatInt(typed, 10))
+		return strconv.FormatInt(typed, 10), true
 	case int32:
-		writeCanonicalString(builder, strconv.FormatInt(int64(typed), 10))
-	case uint16:
-		writeCanonicalString(builder, strconv.FormatUint(uint64(typed), 10))
+		return strconv.FormatInt(int64(typed), 10), true
 	case json.Number:
-		writeCanonicalString(builder, typed.String())
+		return typed.String(), true
+	default:
+		return "", false
+	}
+}
+
+func writeCanonical(builder *strings.Builder, value any) bool {
+	if value == nil || value == "" {
+		return false
+	}
+
+	if str, ok := scalarString(value); ok {
+		writeCanonicalString(builder, str)
+
+		return true
+	}
+
+	switch typed := value.(type) {
 	case []string:
 		items := make([]any, len(typed))
 		for i, item := range typed {

@@ -232,7 +232,7 @@ func readCheckConfig(value string) (map[string]any, error) {
 	raw := []byte(value)
 
 	if path, isFile := strings.CutPrefix(value, "@"); isFile {
-		content, err := os.ReadFile(path) //nolint:gosec // the operator names the file
+		content, err := os.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("read --config-json file: %w", err)
 		}
@@ -268,14 +268,16 @@ func fetchTargetFields(ctx context.Context, server, org, token, checkType string
 		return nil, fmt.Errorf("decode check types: %w", err)
 	}
 
-	for _, entry := range parsed.Data {
-		if entry.Type == checkType {
-			if entry.TargetFields == nil {
-				return credentials.TargetFieldsFor(nil), nil
-			}
-
-			return entry.TargetFields, nil
+	for idx := range parsed.Data {
+		if parsed.Data[idx].Type != checkType {
+			continue
 		}
+
+		if parsed.Data[idx].TargetFields == nil {
+			return credentials.TargetFieldsFor(nil), nil
+		}
+
+		return parsed.Data[idx].TargetFields, nil
 	}
 
 	return nil, fmt.Errorf("%w: %s", ErrSealUnknownType, checkType)

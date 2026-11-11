@@ -282,7 +282,9 @@ func TestBuildTunnelConfigRefusesRetargetedBastion(t *testing.T) {
 	r.NoError(err)
 
 	fields := []string{"host", "port", credentials.TunnelConfigKey}
-	public := map[string]any{"host": "bastion.acme.com", "port": float64(22), "expected_fingerprint": "SHA256:abc", "username": "u"}
+	public := map[string]any{
+		"host": "bastion.acme.com", "port": float64(22), "expected_fingerprint": "SHA256:abc", "username": "u",
+	}
 
 	fps, ct, err := credentials.SealForClient([]string{keys.X25519Recipient},
 		credentials.WithBinding(map[string]any{"password": "hunter2"}, "ssh", fields, public))
@@ -296,7 +298,9 @@ func TestBuildTunnelConfigRefusesRetargetedBastion(t *testing.T) {
 	r.NoError(err)
 	r.Equal("hunter2", cfg.Password)
 
-	moved := map[string]any{"host": "evil.example", "port": float64(22), "expected_fingerprint": "SHA256:abc", "username": "u"}
+	moved := map[string]any{
+		"host": "evil.example", "port": float64(22), "expected_fingerprint": "SHA256:abc", "username": "u",
+	}
 	_, err = buildTunnelConfig(t.Context(), []string{keys.X25519Identity},
 		&agents.AgentJobTunnel{CheckUID: "ssh-1", Config: moved, ConfigSealed: &sealed}, nil)
 	r.ErrorIs(err, credentials.ErrSealedForAnotherTarget)

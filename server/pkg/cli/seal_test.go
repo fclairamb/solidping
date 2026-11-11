@@ -88,8 +88,9 @@ func TestSealCommand_SealsForTheServerRecipients(t *testing.T) {
 	// The binding (spec 2026-11-11-01): the type and the digest of the target.
 	r.True(sealed.Bound)
 	r.Equal(map[string]any{
-		"type":   "http",
-		"digest": credentials.TargetDigest([]string{"tunnelCheckUid", "url"}, map[string]any{"url": "https://db.acme.com:443/x"}),
+		"type": "http",
+		"digest": credentials.TargetDigest(
+			[]string{"tunnelCheckUid", "url"}, map[string]any{"url": "https://db.acme.com:443/x"}),
 	}, secrets[credentials.BindingKey])
 }
 

@@ -561,7 +561,7 @@ func (s *Service) ListResealChecks(ctx context.Context, orgSlug string) ([]Resea
 	out := make([]ResealCheck, 0)
 
 	for _, check := range checks {
-		reason := ""
+		var reason string
 
 		switch need := s.computeNeedsReseal(ctx, check); {
 		case need != nil && *need:
