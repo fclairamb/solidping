@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Check as CheckIcon, ClipboardPaste, Copy, Download, KeyRound, RotateCw } from "lucide-react";
+import { AlertTriangle, Check as CheckIcon, ClipboardPaste, Copy, Download, KeyRound, RotateCw, X } from "lucide-react";
 
 import { useDeleteRegionKey, useSetRegionKey, type PrivateRegion } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SecretText } from "@/components/ui/secret-text";
 import { NO_CAPTURE_CLASS } from "@/lib/no-capture";
 import { useSessionRecordingPaused } from "@/hooks/use-session-recording-paused";
+import {
+  dismissRegionKeyAdvisory,
+  isRegionKeyAdvisoryDismissed,
+  regionKeyPredatesFix,
+} from "@/lib/region-key-advisory";
 import { canSealInBrowser, generateRegionKey, isAgeRecipient, type GeneratedRegionKey } from "@/lib/sealing";
 
 /** The offline region key command (a verbatim command). */
@@ -49,6 +54,18 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
   // The identity is on screen only while the dialog is open: replay stays
   // paused for that time (GHSA-c9qq-4m99-c7f6).
   useSessionRecordingPaused(!!generated);
+  // GHSA-c9qq-4m99-c7f6: a shared key created before the fix may sit in a
+  // session replay. One notice per key and browser, until dismissed.
+  const keyFingerprint = region.regionKey?.fingerprint ?? "";
+  const [advisoryDismissed, setAdvisoryDismissed] = useState(() =>
+    keyFingerprint ? isRegionKeyAdvisoryDismissed(keyFingerprint) : true,
+  );
+  const showAdvisory =
+    !!shared && regionKeyPredatesFix(region.regionKey?.createdAt) && !advisoryDismissed;
+  const dismissAdvisory = () => {
+    dismissRegionKeyAdvisory(keyFingerprint);
+    setAdvisoryDismissed(true);
+  };
 
   const generate = async () => setGenerated(await generateRegionKey());
 
@@ -122,6 +139,28 @@ export function RegionKeyCell({ org, region }: { org: string; region: PrivateReg
           </code>
         )}
       </div>
+      {showAdvisory && (
+        <div
+          className="flex max-w-md items-start gap-1 rounded border border-status-warning/40 p-2 text-xs"
+          data-testid={`region-key-advisory-${region.slug}`}
+        >
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-status-warning" />
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <p className="font-medium">{t("privateLocations.regionKey.advisoryTitle")}</p>
+            <p className="text-muted-foreground">{t("privateLocations.regionKey.advisoryBody")}</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5 shrink-0"
+            onClick={dismissAdvisory}
+            aria-label={t("privateLocations.regionKey.advisoryDismiss")}
+            data-testid={`region-key-advisory-dismiss-${region.slug}`}
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
       {shared && (region.agentsWithRegionKey ?? 0) === 0 && (
         <p className="flex items-center gap-1 text-xs text-status-warning" data-testid={`region-key-no-agent-${region.slug}`}>
           <AlertTriangle className="h-3 w-3" />

@@ -446,7 +446,10 @@
       "pasteDescription": "Erzeugen Sie den Regionsschlüssel offline mit dem Befehl unten, geben Sie die Identität an die Agents der Region und fügen Sie nur den öffentlichen Schlüssel (age1…) ein. SolidPing sieht die Identität nie.",
       "pasteLabel": "Öffentlicher Schlüssel",
       "pasteInvalid": "Kein öffentlicher age-Schlüssel: Er beginnt mit age1 und hat 62 Zeichen.",
-      "pasteConfirm": "Diesen öffentlichen Schlüssel verwenden"
+      "pasteConfirm": "Diesen öffentlichen Schlüssel verwenden",
+      "advisoryTitle": "Diesen Regionsschlüssel erneuern",
+      "advisoryBody": "Dieser Schlüssel wurde vor der Korrektur zum Sicherheitshinweis GHSA-c9qq-4m99-c7f6 erstellt. Wurde er im Dashboard erzeugt, während die PostHog-Sitzungsaufzeichnung aktiv war (SolidPing SaaS oder gesetztes SP_POSTHOG_PROJECT_API_KEY), kann die Aufzeichnung ihn enthalten. Erneuern Sie ihn: neuen Schlüssel erzeugen, an die Agents verteilen, neu versiegeln und dann den alten Schlüssel entfernen.",
+      "advisoryDismiss": "Ausblenden"
     },
     "reseal": {
       "back": "Zurück zu privaten Standorten",

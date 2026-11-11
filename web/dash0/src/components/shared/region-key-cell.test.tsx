@@ -85,3 +85,42 @@ describe("RegionKeyCell region key dialog", () => {
     await waitFor(() => expect(recording.calls).toEqual(["pause", "resume"]));
   });
 });
+
+describe("RegionKeyCell advisory notice (GHSA-c9qq-4m99-c7f6)", () => {
+  const sharedRegion = (createdAt: string) =>
+    ({
+      region: "@paris",
+      slug: "paris",
+      keyMode: "shared",
+      agentsWithRegionKey: 1,
+      regionKey: { recipient: "age1x", fingerprint: `fp-${createdAt}`, createdAt },
+    }) as unknown as PrivateRegion;
+
+  function renderShared(createdAt: string) {
+    return render(
+      <QueryClientProvider client={new QueryClient()}>
+        <RegionKeyCell org="acme" region={sharedRegion(createdAt)} />
+      </QueryClientProvider>,
+    );
+  }
+
+  afterEach(() => window.localStorage.clear());
+
+  it("asks to rotate a key created before the fix, once per key", () => {
+    renderShared("2026-11-10T12:00:00Z");
+    const notice = screen.getByTestId("region-key-advisory-paris");
+    expect(notice.textContent).toContain("GHSA-c9qq-4m99-c7f6");
+
+    fireEvent.click(screen.getByTestId("region-key-advisory-dismiss-paris"));
+    expect(screen.queryByTestId("region-key-advisory-paris")).toBeNull();
+
+    cleanup();
+    renderShared("2026-11-10T12:00:00Z");
+    expect(screen.queryByTestId("region-key-advisory-paris")).toBeNull();
+  });
+
+  it("says nothing for a key created after the fix", () => {
+    renderShared("2026-12-01T00:00:00Z");
+    expect(screen.queryByTestId("region-key-advisory-paris")).toBeNull();
+  });
+});

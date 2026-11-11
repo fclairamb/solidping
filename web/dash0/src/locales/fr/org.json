@@ -446,7 +446,10 @@
       "pasteDescription": "Générez la clé de région hors ligne avec la commande ci-dessous, donnez l'identité aux agents de la région et collez seulement sa clé publique (age1…). SolidPing ne voit jamais l'identité.",
       "pasteLabel": "Clé publique",
       "pasteInvalid": "Ce n'est pas une clé publique age : elle commence par age1 et compte 62 caractères.",
-      "pasteConfirm": "Utiliser cette clé publique"
+      "pasteConfirm": "Utiliser cette clé publique",
+      "advisoryTitle": "Renouvelez cette clé de région",
+      "advisoryBody": "Cette clé a été créée avant le correctif de l'avis GHSA-c9qq-4m99-c7f6. Si elle a été générée dans le tableau de bord pendant que l'enregistrement de session PostHog était actif (SolidPing SaaS, ou SP_POSTHOG_PROJECT_API_KEY défini), l'enregistrement peut la contenir. Renouvelez-la : générez une nouvelle clé, donnez-la aux agents, rescellez, puis retirez l'ancienne clé.",
+      "advisoryDismiss": "Masquer"
     },
     "reseal": {
       "back": "Retour aux emplacements privés",
