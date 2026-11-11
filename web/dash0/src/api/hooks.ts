@@ -5880,6 +5880,7 @@ export type ConnectionType =
   | "webpush"
   | "kubernetes"
   | "twilio"
+  | "smsfactor"
   | "a2a";
 
 // Capabilities mirror the backend capability registry
@@ -5915,6 +5916,7 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   webpush: NOTIFY,
   kubernetes: SOURCE,
   twilio: NOTIFY,
+  smsfactor: NOTIFY,
   a2a: NOTIFY,
 };
 

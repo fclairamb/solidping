@@ -30,6 +30,8 @@ func TestSMSEnvVarsBind(t *testing.T) {
 	t.Setenv("SP_SMS_OVH_SERVICE_NAME", "sms-ab12345-1")
 	t.Setenv("SP_SMS_OVH_BASE_URL", "https://ovh.test")
 	t.Setenv("SP_SMS_OVH_DLR_TOKEN", "dlr-token-value")
+	t.Setenv("SP_SMS_SMSFACTOR_TOKEN", "smsfactor-token")
+	t.Setenv("SP_SMS_SMSFACTOR_BASE_URL", "https://smsfactor.test")
 	t.Setenv("SP_VOICE_ENABLED", "true")
 	t.Setenv("SP_VOICE_FROM_NUMBER", "+15551234567")
 	t.Setenv("SP_VOICE_TWILIO_ACCOUNT_SID", "AC00000000000000000000000000000002")
@@ -58,6 +60,8 @@ func TestSMSEnvVarsBind(t *testing.T) {
 	r.Equal("sms-ab12345-1", cfg.SMS.OVH.ServiceName)
 	r.Equal("https://ovh.test", cfg.SMS.OVH.BaseURL)
 	r.Equal("dlr-token-value", cfg.SMS.OVH.DLRToken)
+	r.Equal("smsfactor-token", cfg.SMS.SMSFactor.Token)
+	r.Equal("https://smsfactor.test", cfg.SMS.SMSFactor.BaseURL)
 	r.True(cfg.SMS.Active())
 
 	r.True(cfg.Voice.Enabled)
@@ -107,6 +111,7 @@ func TestSMSConfigActive(t *testing.T) {
 				ApplicationKey: "ak", ApplicationSecret: "as",
 				ConsumerKey: "ck", ServiceName: "sms-1",
 			},
+			SMSFactor: SMSSMSFactorConfig{Token: "sf-tok"},
 		}
 		if mutate != nil {
 			mutate(&cfg)
@@ -133,6 +138,19 @@ func TestSMSConfigActive(t *testing.T) {
 		{"ovh missing service name", func(c *SMSConfig) {
 			c.Provider = SMSProviderOVH
 			c.OVH.ServiceName = ""
+		}, false},
+		{"smsfactor complete", func(c *SMSConfig) { c.Provider = SMSProviderSMSFactor }, true},
+		{"smsfactor without sender uses the account default", func(c *SMSConfig) {
+			c.Provider = SMSProviderSMSFactor
+			c.Sender = ""
+		}, true},
+		{"smsfactor missing token", func(c *SMSConfig) {
+			c.Provider = SMSProviderSMSFactor
+			c.SMSFactor.Token = " "
+		}, false},
+		{"smsfactor kill switch off", func(c *SMSConfig) {
+			c.Provider = SMSProviderSMSFactor
+			c.Enabled = false
 		}, false},
 		{"unknown provider", func(c *SMSConfig) { c.Provider = "nexmo" }, false},
 		{"provider casing is normalized", func(c *SMSConfig) { c.Provider = "OVH" }, true},

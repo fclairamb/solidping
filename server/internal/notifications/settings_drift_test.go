@@ -44,6 +44,7 @@ func senderSettingKeys() map[models.ConnectionType][]string {
 		models.ConnectionTypeA2A:          jsonTagNames(a2aSettings{}),
 		models.ConnectionTypeMSTeams:      jsonTagNames(models.MSTeamsSettings{}),
 		models.ConnectionTypeTwilio:       jsonTagNames(models.TwilioSettings{}),
+		models.ConnectionTypeSMSFactor:    jsonTagNames(models.SMSFactorSettings{}),
 		models.ConnectionTypeEmail:        {"to", "subject_prefix"},
 		models.ConnectionTypeWebhook:      {"url", "headers"},
 	}

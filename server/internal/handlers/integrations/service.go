@@ -33,6 +33,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
+	"github.com/fclairamb/solidping/server/internal/integrations/smsfactor"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/notifications"
@@ -577,11 +578,12 @@ var validConnectionTypes = map[models.ConnectionType]bool{
 	models.ConnectionTypeWebPush:      true,
 	models.ConnectionTypeKubernetes:   true,
 	models.ConnectionTypeTwilio:       true,
+	models.ConnectionTypeSMSFactor:    true,
 	models.ConnectionTypeA2A:          true,
 }
 
 // validateConnectionType checks the type is known and, for types with per-type
-// settings invariants (Twilio), validates those too.
+// settings invariants (Twilio, SMS Factor), validates those too.
 func validateConnectionType(connType models.ConnectionType, settings models.JSONMap) error {
 	if !validConnectionTypes[connType] {
 		return ErrInvalidConnectionType
@@ -596,22 +598,26 @@ func validateConnectionType(connType models.ConnectionType, settings models.JSON
 		return validateTwilioSettings(settings)
 	}
 
+	if connType == models.ConnectionTypeSMSFactor {
+		return validateSMSFactorSettings(settings)
+	}
+
 	return nil
 }
 
 // checkCreateTypeConstraints enforces the per-type rules that gate whether a
 // POST is even allowed to proceed for connType: Slack and Teams-bot channels
 // can only originate from their respective provider-driven install flows, and
-// a Twilio connection must have its credentials verified against Twilio
-// before it is ever persisted.
+// a Twilio or SMS Factor connection must have its credentials verified
+// against the provider before it is ever persisted.
 func (s *Service) checkCreateTypeConstraints(
 	ctx context.Context, connType models.ConnectionType, settings models.JSONMap,
 ) error {
 	// A bad or non-public sender URL (webhook/gotify/ntfy/matrix/googlechat/
 	// mattermost) must never reach storage — see validateSenderURLSettings.
 	// Runs for every type; it is a no-op for types outside
-	// senderURLSettingsKey (Slack/Teams-bot bot delivery, Twilio, PagerDuty,
-	// Pushover, …, which POST to a fixed vendor host, never a URL the caller
+	// senderURLSettingsKey (Slack/Teams-bot bot delivery, Twilio, SMS Factor,
+	// PagerDuty, Pushover, …, which POST to a fixed vendor host, never a URL the caller
 	// supplies).
 	if err := s.validateSenderURLSettings(ctx, connType, settings); err != nil {
 		return err
@@ -632,7 +638,7 @@ func (s *Service) checkCreateTypeConstraints(
 		return err
 	}
 
-	switch connType { //nolint:exhaustive // only Slack/Teams-bot/Twilio have creation-time constraints.
+	switch connType { //nolint:exhaustive // only Slack/Teams-bot/Twilio/SMS Factor have creation-time constraints.
 	case models.ConnectionTypeSlack:
 		// Slack channels can only be created by the OAuth install flow (which
 		// calls s.db.CreateChannel directly and writes the bot token). A
@@ -646,6 +652,10 @@ func (s *Service) checkCreateTypeConstraints(
 		// validateTwilioSettings above), so creation always verifies them
 		// against Twilio before the connection is persisted.
 		return s.verifyTwilioOnCreate(ctx, settings)
+	case models.ConnectionTypeSMSFactor:
+		// The token is required by validateSMSFactorSettings, so creation
+		// always verifies it against SMS Factor before persisting.
+		return s.verifySMSFactorOnCreate(ctx, settings)
 	default:
 		return nil
 	}
@@ -690,8 +700,8 @@ func validateKubernetesSettings(connType models.ConnectionType, settings models.
 
 // senderURLSettingsKey names, for each connection type whose sender POSTs to
 // a URL the org member configures, which Settings key holds it (spec
-// 2026-09-25-20). Slack bot delivery, Telegram, PagerDuty, Pushover
-// and Twilio all POST to a fixed vendor host and are deliberately absent —
+// 2026-09-25-20). Slack bot delivery, Telegram, PagerDuty, Pushover,
+// Twilio and SMS Factor all POST to a fixed vendor host and are deliberately absent —
 // there is no caller-supplied URL to validate.
 //
 // senderKeyWebhookURL is the settings key shared by the incoming-webhook senders.
@@ -1031,6 +1041,102 @@ func (s *Service) verifyTwilioOnUpdate(ctx context.Context, existing, merged map
 	return s.verifyTwilioWrite(ctx, after)
 }
 
+// validateSMSFactorSettings enforces the SMS Factor connection's settings
+// invariants: a non-empty API token, an optional sender of 1-11 letters,
+// digits or spaces, and E.164 for every shared recipient. Called against the
+// effective (post-PATCH-merge) settings on update.
+func validateSMSFactorSettings(settings models.JSONMap) error {
+	parsed, err := models.SMSFactorSettingsFromJSONMap(settings)
+	if err != nil {
+		return fmt.Errorf("%w: malformed smsfactor settings", ErrInvalidSettings)
+	}
+
+	if strings.TrimSpace(parsed.Token) == "" {
+		return fmt.Errorf("%w: token is required", ErrInvalidSettings)
+	}
+
+	if sender := strings.TrimSpace(parsed.Sender); sender != "" && !smsfactor.ValidSender(sender) {
+		return fmt.Errorf("%w: sender must be 1-%d letters, digits or spaces",
+			ErrInvalidSettings, smsfactor.MaxSenderLength)
+	}
+
+	for _, n := range parsed.ToNumbers {
+		if !twilio.ValidE164(n) {
+			return fmt.Errorf("%w: to_numbers entry %q must be E.164", ErrInvalidSettings, n)
+		}
+	}
+
+	return nil
+}
+
+// verifySMSFactorCredentials is the token-verification seam used before an
+// SMS Factor connection write that sets or changes the API token. Overridden
+// in tests to avoid a live SMS Factor call.
+//
+//nolint:gochecknoglobals // test seam for the outbound SMS Factor token check.
+var verifySMSFactorCredentials = func(ctx context.Context, token string) error {
+	return smsfactor.NewClient(token).VerifyToken(ctx)
+}
+
+// verifySMSFactorWrite makes one live authenticated call to SMS Factor
+// (GET /credits) to confirm the token works before the caller persists the
+// connection. Skipped in test-run mode for the same reason as
+// verifyTwilioWrite: dev-test and the Playwright suite use placeholder tokens.
+func (s *Service) verifySMSFactorWrite(ctx context.Context, parsed *models.SMSFactorSettings) error {
+	if s.appConfig != nil && s.appConfig.RunMode == "test" {
+		return nil
+	}
+
+	err := verifySMSFactorCredentials(ctx, parsed.Token)
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, smsfactor.ErrTokenRejected) {
+		return fmt.Errorf("%w: SMS Factor rejected this API token", ErrInvalidSettings)
+	}
+
+	return fmt.Errorf(
+		"%w: could not verify the SMS Factor API token "+
+			"(SMS Factor was unreachable, timed out, or returned an error) — the connection was not saved",
+		ErrInvalidSettings)
+}
+
+// verifySMSFactorOnCreate parses the create-request settings and verifies the
+// token against SMS Factor before the caller persists the new connection.
+func (s *Service) verifySMSFactorOnCreate(ctx context.Context, settings models.JSONMap) error {
+	parsed, err := models.SMSFactorSettingsFromJSONMap(settings)
+	if err != nil {
+		return fmt.Errorf("%w: malformed smsfactor settings", ErrInvalidSettings)
+	}
+
+	return s.verifySMSFactorWrite(ctx, parsed)
+}
+
+// verifySMSFactorOnUpdate validates the merged (post-PATCH) settings and
+// re-verifies the token only when the merge changes it.
+func (s *Service) verifySMSFactorOnUpdate(ctx context.Context, existing, merged map[string]any) error {
+	if vErr := validateSMSFactorSettings(models.JSONMap(merged)); vErr != nil {
+		return vErr
+	}
+
+	before, err := models.SMSFactorSettingsFromJSONMap(models.JSONMap(existing))
+	if err != nil {
+		return fmt.Errorf("%w: malformed smsfactor settings", ErrInvalidSettings)
+	}
+
+	after, err := models.SMSFactorSettingsFromJSONMap(models.JSONMap(merged))
+	if err != nil {
+		return fmt.Errorf("%w: malformed smsfactor settings", ErrInvalidSettings)
+	}
+
+	if before.Token == after.Token {
+		return nil
+	}
+
+	return s.verifySMSFactorWrite(ctx, after)
+}
+
 // UpdateIntegration updates a connection.
 func (s *Service) UpdateIntegration(
 	ctx context.Context, orgSlug, connectionUID string, req UpdateIntegrationRequest,
@@ -1139,6 +1245,24 @@ func settingsKeyNames(settings models.JSONMap) []string {
 	return names
 }
 
+// verifyPhoneOnUpdate validates the merged (post-PATCH) settings of a phone
+// connection so a partial update can't leave it in an unsendable state, and
+// re-verifies the credentials with the provider only when the merge actually
+// changes a credential-shaped field (renaming the connection or changing a
+// number must not trigger a live call). A no-op for every other type.
+func (s *Service) verifyPhoneOnUpdate(
+	ctx context.Context, connType models.ConnectionType, existing, merged map[string]any,
+) error {
+	switch connType { //nolint:exhaustive // only the phone types verify credentials on update.
+	case models.ConnectionTypeTwilio:
+		return s.verifyTwilioOnUpdate(ctx, existing, merged)
+	case models.ConnectionTypeSMSFactor:
+		return s.verifySMSFactorOnUpdate(ctx, existing, merged)
+	default:
+		return nil
+	}
+}
+
 // applyUpdateSettings PATCH-merges the incoming settings over the existing
 // (decrypted) settings, validates per-type invariants, re-encrypts, and writes
 // the resulting public/private split onto update. Secret keys absent from the
@@ -1177,14 +1301,8 @@ func (s *Service) applyUpdateSettings(
 		}
 	}
 
-	// Validate the merged (post-PATCH) settings so a partial update can't leave
-	// a Twilio connection in an unsendable state, and re-verify against Twilio
-	// when the merge actually changes a credential-shaped field (renaming the
-	// connection or changing the from-number must not trigger a live call).
-	if conn.Type == models.ConnectionTypeTwilio {
-		if vErr := s.verifyTwilioOnUpdate(ctx, existing, merged); vErr != nil {
-			return vErr
-		}
+	if vErr := s.verifyPhoneOnUpdate(ctx, conn.Type, existing, merged); vErr != nil {
+		return vErr
 	}
 
 	if conn.Type == models.ConnectionTypeEmail {

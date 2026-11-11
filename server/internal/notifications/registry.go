@@ -61,7 +61,8 @@ func senderCapabilities() map[models.ConnectionType]SenderCapabilities {
 	return map[models.ConnectionType]SenderCapabilities{
 		// SMS and voice: every comment or acknowledgment would be a paid text
 		// or a ringing phone.
-		models.ConnectionTypeTwilio: {NotifiesComments: false, NotifiesAcks: false, NotifiesReminders: false},
+		models.ConnectionTypeTwilio:    {NotifiesComments: false, NotifiesAcks: false, NotifiesReminders: false},
+		models.ConnectionTypeSMSFactor: {NotifiesComments: false, NotifiesAcks: false, NotifiesReminders: false},
 		// PagerDuty re-notifies on its own schedule; a reminder would only
 		// re-trigger the same dedup_key.
 		models.ConnectionTypePagerduty: {NotifiesComments: true, NotifiesAcks: true, NotifiesReminders: false},
@@ -129,6 +130,7 @@ func senderFactories() map[models.ConnectionType]func() Sender {
 		models.ConnectionTypePushover:     func() Sender { return &PushoverSender{} },
 		models.ConnectionTypeWebPush:      func() Sender { return &WebPushSender{} },
 		models.ConnectionTypeTwilio:       func() Sender { return &TwilioSender{} },
+		models.ConnectionTypeSMSFactor:    func() Sender { return &SMSFactorSender{} },
 		models.ConnectionTypeA2A:          func() Sender { return &A2ASender{} },
 	}
 }

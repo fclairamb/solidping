@@ -1208,9 +1208,10 @@ function NotificationsPage() {
   // with a fresh one rather than left to rot. No-op for everyone else.
   useWebPushMigration(org, data?.data);
   const slackSuggestion = !dismissedSlack ? data?.slackSuggestion : undefined;
-  // SMS/voice is available once the org has an enabled Twilio integration.
+  // SMS/voice is available once the org has an enabled Twilio (or, for SMS
+  // only, SMS Factor) integration.
   const smsAvailable = (integrations ?? []).some(
-    (i) => i.type === "twilio" && i.enabled,
+    (i) => (i.type === "twilio" || i.type === "smsfactor") && i.enabled,
   );
   // A *verified* telegram contact is what "connected" means: a contact whose
   // verification was cleared by a block still needs reconnecting.
