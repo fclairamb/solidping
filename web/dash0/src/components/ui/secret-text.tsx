@@ -1,15 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
-
-/**
- * The class posthog-js reads to keep an element out of analytics: session
- * replay blocks it (rrweb `blockClass`, the element becomes an empty
- * placeholder of the same size) and autocapture skips it and its children.
- * dash0 records sessions unmasked on purpose (see lib/analytics.ts), so this
- * class is the only thing that keeps a credential rendered as page text out of
- * the PostHog project (GHSA-c9qq-4m99-c7f6, spec 2026-11-11-05).
- */
-export const NO_CAPTURE_CLASS = "ph-no-capture";
+import { NO_CAPTURE_CLASS } from "@/lib/no-capture";
 
 type SecretTextProps = (
   | ({ as?: "code" } & React.ComponentPropsWithoutRef<"code">)

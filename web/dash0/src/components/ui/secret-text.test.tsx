@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { NO_CAPTURE_CLASS, SecretText } from "./secret-text";
+import { SecretText } from "./secret-text";
+import { NO_CAPTURE_CLASS } from "@/lib/no-capture";
 
 // Spec 2026-11-11-05: posthog-js blocks `ph-no-capture` from session replay
 // and autocapture. The primitive must always carry it, whatever the caller

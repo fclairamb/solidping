@@ -15,7 +15,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { RewrapButton } from "@/components/shared/rewrap-button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { NO_CAPTURE_CLASS, SecretText } from "@/components/ui/secret-text";
+import { SecretText } from "@/components/ui/secret-text";
+import { NO_CAPTURE_CLASS } from "@/lib/no-capture";
 import { useSessionRecordingPaused } from "@/hooks/use-session-recording-paused";
 import { canSealInBrowser, generateRegionKey, isAgeRecipient, type GeneratedRegionKey } from "@/lib/sealing";
 

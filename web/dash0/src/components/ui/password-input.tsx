@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Eye, EyeOff } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { NO_CAPTURE_CLASS } from "@/lib/no-capture";
 
 type PasswordInputProps = Omit<React.ComponentProps<"input">, "type"> & {
   showLabel?: string;
@@ -44,7 +45,9 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
           ref={ref}
           type={visible ? "text" : "password"}
           onBlur={handleBlur}
-          className={cn("pr-10", className)}
+          // Revealed, the value is plain text that rrweb no longer masks:
+          // keep the field out of session replay either way (spec 2026-11-11-05).
+          className={cn("pr-10", NO_CAPTURE_CLASS, className)}
         />
         <button
           type="button"

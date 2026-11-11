@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { isSecretInput, NO_CAPTURE_CLASS } from "@/lib/no-capture";
 
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
   ({ className, type, ...props }, ref) => {
@@ -8,6 +9,10 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
         type={type}
         className={cn(
           "flex h-9 w-full rounded-md border border-input bg-control px-3 py-1 text-base shadow-xs transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+          // A secret field (`data-secret-input`, the check form) is kept out
+          // of session replay whatever its type: a text-type secret, or a
+          // browser-sealed one, is not masked by rrweb (spec 2026-11-11-05).
+          isSecretInput(props) && NO_CAPTURE_CLASS,
           className
         )}
         ref={ref}

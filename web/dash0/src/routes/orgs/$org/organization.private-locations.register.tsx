@@ -43,6 +43,7 @@ import {
   type MintedEnrollmentToken,
   type PrivateRegion,
 } from "@/api/hooks";
+import { SecretText } from "@/components/ui/secret-text";
 
 export const Route = createFileRoute(
   "/orgs/$org/organization/private-locations/register",
@@ -484,12 +485,12 @@ function StepMintToken({
               </AlertDescription>
             </Alert>
             <div className="flex items-center gap-2">
-              <code
+              <SecretText
                 className="flex-1 overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs"
                 data-testid="wizard-minted-token"
               >
                 {minted.token}
-              </code>
+              </SecretText>
               <Button variant="outline" size="icon" onClick={() => void onCopy()} data-testid="wizard-copy-token">
                 {copied ? <Check className="h-4 w-4" /> : <KeyRound className="h-4 w-4" />}
               </Button>
@@ -652,10 +653,10 @@ spec:
               </TabsTrigger>
             </TabsList>
             <TabsContent value="docker-run">
-              <CopyableCode code={dockerRun} data-testid="wizard-snippet-docker-run" />
+              <CopyableCode secret code={dockerRun} data-testid="wizard-snippet-docker-run" />
             </TabsContent>
             <TabsContent value="docker-compose">
-              <CopyableCode code={dockerCompose} data-testid="wizard-snippet-docker-compose" />
+              <CopyableCode secret code={dockerCompose} data-testid="wizard-snippet-docker-compose" />
             </TabsContent>
             <TabsContent value="kubernetes">
               <p className="mb-2 text-xs text-muted-foreground">
@@ -664,7 +665,7 @@ spec:
                   "This first run persists the identity on a PVC, exactly like the docker run volume. For a no-persistent-volume setup, read the value out of the file the agent wrote (kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json) and store it as SP_AGENT_KEYS in a Secret. The agent never prints its private keys to the logs — see the docs link at the top of this card.",
                 )}
               </p>
-              <CopyableCode code={kubernetes} data-testid="wizard-snippet-kubernetes" />
+              <CopyableCode secret code={kubernetes} data-testid="wizard-snippet-kubernetes" />
             </TabsContent>
           </Tabs>
         </div>

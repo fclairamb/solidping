@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
+import { SecretText } from "@/components/ui/secret-text";
 
 interface RecoveryCodesDialogProps {
   open: boolean;
@@ -39,14 +40,15 @@ export function RecoveryCodesDialog({ open, codes, onClose }: RecoveryCodesDialo
             {t("account:security.totp.recoverySubtitle")}
           </DialogDescription>
         </DialogHeader>
-        <div
+        <SecretText
+          as="div"
           data-testid="2fa-recovery-codes"
           className="grid grid-cols-2 gap-2 rounded border p-3 font-mono text-sm"
         >
           {codes.map((code) => (
             <div key={code}>{code}</div>
           ))}
-        </div>
+        </SecretText>
         <Button
           variant="outline"
           data-testid="2fa-recovery-copy"
