@@ -45,6 +45,8 @@
     "willInclude": "Will include:",
     "createStatusPage": "Create Status Page",
     "saveChanges": "Save Changes",
+    "createFailed": "Failed to create status page",
+    "updateFailed": "Failed to update status page",
     "removeCheck": "Remove",
     "name": "Name",
     "namePlaceholder": "Production Services",
