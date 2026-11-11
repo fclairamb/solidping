@@ -261,6 +261,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CodeTextarea } from "@/components/ui/code-textarea";
 import { KeyValueRows, type KeyValueRow } from "@/components/ui/key-value-rows";
 import { SecretKeyValueRows } from "@/components/ui/secret-key-value-rows";
+import { SecretText } from "@/components/ui/secret-text";
 import { UptimeStrip } from "@/components/ui/uptime-strip";
 import { AvailabilityStrip } from "@/components/ui/availability-strip";
 import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
@@ -318,6 +319,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "comment-bubble", label: "Comment bubble" },
   { id: "copyable-code", label: "Copyable code" },
   { id: "copyable-inline", label: "Copyable inline" },
+  { id: "secret-text", label: "Secret text" },
   { id: "dns-record-row", label: "DNS record row" },
   { id: "collapsible-code", label: "Collapsible code" },
   { id: "collapsible-section", label: "Collapsible section" },
@@ -383,6 +385,7 @@ function DesignReferencePage() {
       <CommentBubbleSection />
       <CopyableCodeSection />
       <CopyableInlineSection />
+      <SecretTextSection />
       <DnsRecordRowSection />
       <CollapsibleCodeSection />
       <EvidenceImageSection />
@@ -4457,6 +4460,33 @@ function CopyableCodeSection() {
         </div>
         <CodeSnippet
           code={`import { CopyableCode } from "@/components/shared/copyable-code";\n\n<CopyableCode code="https://monitoring.example.com/api/v1/mcp" />`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+function SecretTextSection() {
+  return (
+    <Section
+      id="secret-text"
+      title="Secret text"
+      description="Every secret shown to the user as text goes through this: a shown-once token, a generated key, a signing secret, recovery codes, a command line that embeds one. It renders a <code> (or a pre, div or span through the as prop) that always carries ph-no-capture and data-secret-text, so the unmasked PostHog session replay and autocapture never record it. A secret in a CopyableCode or CopyableInline takes their secret prop; a text-type secret input takes data-secret-input. The ESLint rule secret-local/require-secret-text flags a <code>/<pre> rendering a secret-named value without it. Lives in the region key and enrollment token dialogs."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        <div className="min-w-0 space-y-2">
+          <SecretText
+            className="block overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs"
+            data-testid="design-reference-secret-text"
+          >
+            AGE-SECRET-KEY-1EXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLE
+          </SecretText>
+          <SecretText as="pre" className="max-w-full overflow-x-auto rounded bg-muted p-2 text-xs">
+            SP_AGENT_REGION_KEYS=AGE-SECRET-KEY-1EXAMPLE…
+          </SecretText>
+        </div>
+        <CodeSnippet
+          code={`import { SecretText } from "@/components/ui/secret-text";\n\n// Every secret shown to the user as text goes through this.\n<SecretText className="text-xs" data-testid="minted-token">{minted.token}</SecretText>\n<SecretText as="pre">{dockerRunCommand(origin, minted.token)}</SecretText>\n\n// A credential in a copyable block:\n<CopyableCode secret code={dockerRun} />`}
         />
       </div>
     </Section>
