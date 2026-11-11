@@ -41,6 +41,7 @@ const KNOWN_METHODS: Record<string, string> = {
   microsoft: "Microsoft",
   discord: "Discord",
   slack: "Slack",
+  telegram: "Telegram",
   oidc: "OIDC",
   saml: "SAML",
   invitation: "Invitation",

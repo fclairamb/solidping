@@ -37,6 +37,7 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   "account:sessions.methodMicrosoft": ["fr", "de", "es"], // "Microsoft"
   "account:sessions.methodDiscord": ["fr", "de", "es"], // "Discord"
   "account:sessions.methodSlack": ["fr", "de", "es"], // "Slack"
+  "account:sessions.methodTelegram": ["fr", "de", "es"], // "Telegram"
   "account:sessions.methodOidc": ["fr", "de", "es"], // "OIDC"
   "account:sessions.methodSaml": ["fr", "de", "es"], // "SAML"
   "account:sessions.secondFactorTotp": ["fr", "de", "es"], // "TOTP"

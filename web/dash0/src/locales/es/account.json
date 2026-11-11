@@ -149,6 +149,7 @@
     "methodMicrosoft": "Microsoft",
     "methodDiscord": "Discord",
     "methodSlack": "Slack",
+    "methodTelegram": "Telegram",
     "methodOidc": "OIDC",
     "methodSaml": "SAML",
     "methodInvitation": "Invitación",
