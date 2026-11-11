@@ -281,7 +281,9 @@ These live in the source and are not tunable via env vars today. Listed so
 operators know what to expect:
 
 - Worker heartbeat interval: **50s**
-- Check job lease duration: **500ms** (renewed on the fly during execution)
+- Check job lease: **max(scheduled_at, now) + max(period, check timeout) + 30s**, taken
+  at claim time and not renewed; the margin is the one tunable,
+  `SP_CHECKERS_LEASE_MARGIN` (see [operations gotchas](../runbooks/operations-gotchas.md#database-connections))
 - Job retry cap: **2** retries
 - Fetcher error backoff (check worker): **5s**
 - Job runner error backoff: **100ms → 30s** (doubling, full jitter)

@@ -161,3 +161,16 @@ then `kubectl logs <pod> --previous`. The pod restarts, which also clears the ba
 - A busy server logs about a dozen lines per second, so the container log rotates
   within a minute. A clean `kubectl logs` window is not proof of recovery; read the
   log store.
+- A remote checker region whose database link is slow (hundreds of ms per statement)
+  can outlive its check-job leases. The lease is `max(scheduled_at, now) +
+  max(period, check timeout) + SP_CHECKERS_LEASE_MARGIN` (default `30s`); once it
+  lapses a peer re-claims the job, the check runs twice and the first worker logs
+  `Check lease lost` (with `lease_expires_at`, `missed_by`, `period`, `timeout`) and
+  `failed to release lease: no rows updated`. The regionsweep may then flag `Region
+  stalled`. Read `solidping_check_lease_lost_total` and
+  `solidping_check_lease_held_seconds` by region, and raise `SP_CHECKERS_LEASE_MARGIN`
+  (e.g. `2m`) on that region's deployment by more than the largest `missed_by`.
+- `Claim timed out: retrying after back-off` (`solidping_claim_jobs_result_total
+  {outcome="timeout"}`) is the Postgres driver's read deadline on that link (`i/o
+  timeout`, 10 s by default). The fetcher retries after 5 s. If it keeps firing, raise
+  `read_timeout` in the region's `SP_DB_URL` DSN (e.g. `?read_timeout=30s`).

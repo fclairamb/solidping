@@ -176,11 +176,98 @@ type Service interface {
 // serviceImpl implements the Service interface.
 type serviceImpl struct {
 	db *bun.DB
+	// leaseMargin is the slack added on top of max(period, check timeout)
+	// when a lease is taken (SP_CHECKERS_LEASE_MARGIN, spec 2026-11-11-06).
+	leaseMargin time.Duration
+	// checkTimeout is the deployment's execution ceiling for a check that
+	// sets no `timeout` of its own (SP_SCHEDULING_CHECK_TIMEOUT_MS).
+	checkTimeout time.Duration
+}
+
+// DefaultLeaseMargin is the lease slack used when the deployment sets none.
+const DefaultLeaseMargin = 30 * time.Second
+
+// DefaultLeaseCheckTimeout is the execution ceiling the lease assumes for a
+// check without its own `timeout` when the deployment sets none. It mirrors
+// the default SP_SCHEDULING_CHECK_TIMEOUT_MS.
+const DefaultLeaseCheckTimeout = 15 * time.Second
+
+// MaxPerCheckTimeout is the clamp on a check's own `timeout` config value
+// (spec 2026-07-11-05), shared by the worker's execution budget and the lease.
+// It mirrors the uniform cap enforced at check create/update time; the
+// defensive clamp keeps legacy stored configs written under the old 60s
+// per-checker caps from extending the execution context past 31s.
+const MaxPerCheckTimeout = 30 * time.Second
+
+// CheckTimeoutConfigKey is the check-config key holding the optional
+// per-check timeout duration string (spec 2026-07-11-05).
+const CheckTimeoutConfigKey = "timeout"
+
+// Option tunes a check job service.
+type Option func(*serviceImpl)
+
+// WithLeaseMargin sets the slack added to every lease. A non-positive value
+// keeps DefaultLeaseMargin.
+func WithLeaseMargin(margin time.Duration) Option {
+	return func(s *serviceImpl) {
+		if margin > 0 {
+			s.leaseMargin = margin
+		}
+	}
+}
+
+// WithCheckTimeout sets the execution ceiling the lease assumes for a check
+// without its own `timeout`. A non-positive value keeps
+// DefaultLeaseCheckTimeout.
+func WithCheckTimeout(timeout time.Duration) Option {
+	return func(s *serviceImpl) {
+		if timeout > 0 {
+			s.checkTimeout = timeout
+		}
+	}
 }
 
 // NewService creates a new check job service.
-func NewService(db *bun.DB) Service {
-	return &serviceImpl{db: db}
+func NewService(db *bun.DB, opts ...Option) Service {
+	s := &serviceImpl{db: db, leaseMargin: DefaultLeaseMargin, checkTimeout: DefaultLeaseCheckTimeout}
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	return s
+}
+
+// PerCheckTimeout extracts the optional per-check `timeout` duration from a
+// job's config. Returns (0, false) when the key is absent, not a duration
+// string, or non-positive. Valid values are clamped at MaxPerCheckTimeout.
+func PerCheckTimeout(config map[string]any) (time.Duration, bool) {
+	raw, ok := config[CheckTimeoutConfigKey].(string)
+	if !ok || raw == "" {
+		return 0, false
+	}
+
+	duration, err := time.ParseDuration(raw)
+	if err != nil || duration <= 0 {
+		return 0, false
+	}
+
+	return min(duration, MaxPerCheckTimeout), true
+}
+
+// LeaseDuration is how long a lease taken on job lasts, counted from
+// max(scheduled_at, now): max(period, check timeout) + margin (spec
+// 2026-11-11-06). The check timeout is the job's own `timeout` when set,
+// defaultTimeout otherwise. Sizing on the timeout too means a check whose
+// probe may run longer than its period still owns its row until it releases
+// it, and the margin absorbs the claim, result and release round-trips — the
+// part a remote region with a slow database link pays on every run.
+func LeaseDuration(job *models.CheckJob, defaultTimeout, margin time.Duration) time.Duration {
+	timeout := defaultTimeout
+	if perCheck, ok := PerCheckTimeout(job.Config); ok {
+		timeout = perCheck
+	}
+
+	return max(time.Duration(job.Period), timeout) + margin
 }
 
 // ClaimJobs atomically claims check jobs using lease mechanism, one
@@ -188,7 +275,8 @@ func NewService(db *bun.DB) Service {
 // 2026-07-01-03 D3/D6): fast first up to fastLimit (the total capacity), then
 // slow up to min(slowLimit, fastLimit − claimed fast). Each SELECT is
 // LIMIT-bounded and backed by its lane's partial index. Lease duration is
-// calculated per job as scheduled_at + period + 30s. Uses SELECT FOR UPDATE
+// calculated per job as max(scheduled_at, now) + max(period, timeout) +
+// margin (LeaseDuration). Uses SELECT FOR UPDATE
 // SKIP LOCKED on PostgreSQL for efficient row-level locking; optimistic
 // locking on SQLite. SKIP LOCKED racing can only under-claim a lane, never
 // breach the caller's slow cap.
@@ -1055,16 +1143,17 @@ func (s *serviceImpl) updateSingleJobLease(
 	now time.Time,
 	isPostgres bool,
 ) error {
-	// Convert Period to time.Duration
-	period := time.Duration(job.Period)
-
-	// Calculate lease expiration: Use scheduled_at + period + 30s
-	// This ensures the lease expires at a predictable time regardless of when the job is claimed
+	// Lease expiration: max(scheduled_at, now) + max(period, timeout) +
+	// margin (spec 2026-11-11-06). The clock is read per row, not at the
+	// start of the claim: on a slow database link the claim transaction
+	// itself costs one round-trip per job, and that time must not come out
+	// of the lease.
+	claimedAt := time.Now()
 	latest := *job.ScheduledAt
-	if now.After(latest) {
-		latest = now
+	if claimedAt.After(latest) {
+		latest = claimedAt
 	}
-	leaseExpiresAt := latest.Add(period + 30*time.Second)
+	leaseExpiresAt := latest.Add(LeaseDuration(job, s.checkTimeout, s.leaseMargin))
 
 	// Update the job
 	update := tx.NewUpdate().
@@ -1126,6 +1215,7 @@ func (s *serviceImpl) updateSingleJobLease(
 	// Update the job object with new lease info for return
 	job.LeaseWorkerUID = &workerUID
 	job.LeaseExpiresAt = &leaseExpiresAt
+	job.ClaimedAt = &claimedAt
 	job.LeaseStarts++
 	job.UpdatedAt = now
 

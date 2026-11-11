@@ -150,6 +150,31 @@ var (
 		[]string{labelWorkerUID, labelRegion},
 	)
 
+	// CheckLeaseHeld observes how long a worker held a check-job lease, from
+	// the claim to the release that follows the result (spec 2026-11-11-06).
+	// Compared with the lease the claim granted (max(period, timeout) +
+	// SP_CHECKERS_LEASE_MARGIN), it shows how much slack a region has left.
+	CheckLeaseHeld = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "solidping_check_lease_held_seconds",
+			Help:    "Time from a check job's claim to its lease release after the result, by region",
+			Buckets: []float64{0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300},
+		},
+		[]string{labelRegion},
+	)
+
+	// CheckLeaseLost counts releases refused because the worker no longer
+	// owned the lease: it expired and a peer re-claimed the job, so the check
+	// ran twice (spec 2026-11-11-06). Non-zero on a region means its runs
+	// outlive the lease: raise SP_CHECKERS_LEASE_MARGIN there.
+	CheckLeaseLost = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_check_lease_lost_total",
+			Help: "Check job lease releases refused because another worker had re-claimed the job, by region",
+		},
+		[]string{labelRegion},
+	)
+
 	// IncidentsActive tracks currently open incidents.
 	IncidentsActive = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -731,6 +756,7 @@ var (
 		WatchdogDetectorFailures, WatchdogLastRun,
 		CheckExecutions, CheckDuration, SchedulingDelay,
 		WorkersActive, RegionDark, ChecksStale, WorkerFreeRunners, CheckRunnerParked, WorkerJobsClaimed,
+		CheckLeaseHeld, CheckLeaseLost,
 		IncidentsActive, IncidentsTotal,
 		ChecksRateLimited,
 		HTTPRateLimited,

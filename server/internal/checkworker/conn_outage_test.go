@@ -120,3 +120,47 @@ func TestAbandonDuringOutageIsWarnWithDistinctReason(t *testing.T) {
 	r.InDelta(lostBefore+1, abandonedCount(job.Type, prommetrics.AbandonReasonConnectionLost), 0.01)
 	r.InDelta(ignoredBefore+1, abandonedCount(job.Type, prommetrics.AbandonReasonIgnoredContext), 0.01)
 }
+
+// timeoutNetError is a driver read deadline, as pgdriver reports it on a slow
+// database link (`read tcp …: i/o timeout`).
+type timeoutNetError struct{}
+
+func (timeoutNetError) Error() string   { return "read tcp 10.0.0.1:5432: i/o timeout" }
+func (timeoutNetError) Timeout() bool   { return true }
+func (timeoutNetError) Temporary() bool { return true }
+
+// TestClaimTimeoutIsWarnAndCounted: a claim that times out on a slow database
+// link (spec 2026-11-11-06) is a WARN with the elapsed time, counted under
+// outcome=timeout, not an ERROR — and the fetcher still retries it
+// (TestFetcherKeepsRetryingTransientErrors covers the retry loop).
+func TestClaimTimeoutIsWarnAndCounted(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	claimErr := fmt.Errorf("failed to claim jobs: %w", timeoutNetError{})
+	worker := newCheckWorker(&config.Config{}, newClaimFailBackend(claimErr))
+	worker.setWorker(models.NewWorker("w", "W"))
+	worker.availableRunners.Store(1)
+
+	before := testutil.ToFloat64(prommetrics.ClaimJobsResult.WithLabelValues("timeout"))
+
+	logs := &bytes.Buffer{}
+	_, err := worker.fetchAndDistributeJobs(context.Background(), slog.New(slog.NewTextHandler(logs, nil)))
+	r.Error(err)
+	r.Zero(countLevel(logs.String(), "ERROR"))
+	r.Equal(1, countLevel(logs.String(), "WARN"))
+	r.Contains(logs.String(), "Claim timed out")
+	r.Contains(logs.String(), "elapsed=")
+	r.GreaterOrEqual(testutil.ToFloat64(prommetrics.ClaimJobsResult.WithLabelValues("timeout"))-before, 1.0)
+}
+
+func TestIsClaimTimeout(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.True(isClaimTimeout(fmt.Errorf("claim: %w", timeoutNetError{})))
+	r.True(isClaimTimeout(fmt.Errorf("claim: %w", context.DeadlineExceeded)))
+	r.True(isClaimTimeout(errors.New("write tcp 10.0.0.1:5432: i/o timeout")))
+	r.False(isClaimTimeout(errClaimTimeout))
+	r.False(isClaimTimeout(errClosedConn))
+}

@@ -97,6 +97,7 @@ carries `Content-Encoding` passes through untouched.
 | `SP_NODE_REGION` | - | Worker region (required when the role includes `checks`) |
 | `SP_NODE_NAME` | hostname | Worker identity (`workers.slug` and `workers.name`) — overrides the OS hostname |
 | `SP_REGIONS` | - | Region display definitions, as a JSON list of `{slug, emoji, name}` |
+| `SP_CHECKERS_LEASE_MARGIN` | `30s` | Slack on a check job's lease, which lasts `max(period, check timeout)` plus this margin. Raise it (e.g. `2m`) on a checker region far from its database, so a slow run is not re-claimed and run twice by a peer |
 
 Use `SP_NODE_ROLE` to run SolidPing in a distributed configuration:
 - `all` - Single node running everything (default)

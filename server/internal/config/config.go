@@ -438,6 +438,21 @@ type CheckersConfig struct {
 	// koanf's env loader cannot reach it: SP_CHECK_ENV_ALLOWLIST is bound by
 	// hand in applyCheckersEnv. Read through Config.EnvRefAllowed.
 	EnvRefAllowlist []string `koanf:"env_ref_allowlist"`
+	// Lease sizes the check-job lease a worker takes at claim time (spec
+	// 2026-11-11-06).
+	Lease LeaseConfig `koanf:"lease"`
+}
+
+// LeaseConfig sizes the lease a check worker holds on a claimed check job:
+// max(scheduled_at, now) + max(period, check timeout) + Margin. Single-word
+// koanf keys, so koanf's env loader binds them without a manual reader.
+type LeaseConfig struct {
+	// Margin is the slack on top of max(period, check timeout)
+	// (SP_CHECKERS_LEASE_MARGIN, default 30s). It must cover the claim, the
+	// result submission and the release round-trips: give a remote region
+	// with a slow database link more, so a peer does not re-claim a job
+	// still running there.
+	Margin time.Duration `koanf:"margin"`
 }
 
 // EnvCheckEnvAllowlist is the comma-separated list of environment variable
@@ -2518,6 +2533,7 @@ func Load() (*Config, error) {
 			CallRunawayPerHour: 10,
 		},
 		Checkers: CheckersConfig{
+			Lease: LeaseConfig{Margin: 30 * time.Second},
 			Traceroute: TracerouteConfig{
 				// ON by deployment default, per the spec's "org-level default
 				// (on)". A check still has to be opted in through its org or

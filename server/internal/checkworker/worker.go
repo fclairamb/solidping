@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -686,7 +687,7 @@ func (r *CheckWorker) fetcherLoop(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(time.Second * 5):
+			case <-time.After(claimRetryDelay):
 			}
 			continue
 		}
@@ -703,6 +704,27 @@ func (r *CheckWorker) fetcherLoop(ctx context.Context) {
 			// The claim's next-eligible hint, or the fallback poll
 		}
 	}
+}
+
+// claimRetryDelay is how long the fetcher backs off after a failed claim
+// before it tries again.
+const claimRetryDelay = 5 * time.Second
+
+// isClaimTimeout reports whether a claim failed on a timeout — the driver's
+// read/write deadline (`i/o timeout`) or a context deadline — rather than on
+// a fault. It is a transient state of a slow database link (spec
+// 2026-11-11-06).
+func isClaimTimeout(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	return strings.Contains(err.Error(), "i/o timeout")
 }
 
 // fallbackPollInterval is the fetcher's periodic re-poll when the last claim
@@ -790,6 +812,8 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 	switch {
 	case err != nil && errors.Is(err, context.Canceled):
 		// no-op: shutdown path
+	case err != nil && isClaimTimeout(err):
+		prommetrics.RecordClaimJobsOutcome("timeout")
 	case err != nil:
 		prommetrics.RecordClaimJobsOutcome("error")
 	case len(jobs) == 0:
@@ -803,6 +827,13 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 			// shutdown path
 		case isConnLoss(err):
 			r.outage.noteLoss(ctx, logger, "claim", err)
+		case isClaimTimeout(err):
+			// A slow database link, not a bug (spec 2026-11-11-06): the
+			// fetcher retries after its back-off, so the region is not left
+			// idle. A claim that keeps timing out needs a longer driver read
+			// timeout (`read_timeout` in the Postgres DSN, default 10s).
+			logger.WarnContext(ctx, "Claim timed out: retrying after back-off",
+				"error", err, "elapsed", time.Since(fetchStart).String(), "retry_in", claimRetryDelay.String())
 		default:
 			logger.ErrorContext(ctx, "Failed to claim jobs", "error", err)
 		}
@@ -1496,16 +1527,9 @@ func (r *CheckWorker) executeJob(
 	return nil
 }
 
-// maxPerCheckTimeout is the worker-side clamp on the per-check `timeout`
-// config value (spec 2026-07-11-05). It mirrors the uniform cap enforced at
-// check create/update time; the defensive clamp here keeps legacy stored
-// configs written under the old 60s per-checker caps from extending the
-// execution context past 31s.
-const maxPerCheckTimeout = 30 * time.Second
-
 // checkTimeoutConfigKey is the check-config key holding the optional per-check
 // timeout duration string (spec 2026-07-11-05).
-const checkTimeoutConfigKey = "timeout"
+const checkTimeoutConfigKey = checkjobsvc.CheckTimeoutConfigKey
 
 // configWithDefaultTimeout returns a shallow copy of a check config with the
 // `timeout` key set to the resolved execution budget, used when the user left
@@ -1592,23 +1616,10 @@ func applySMTPDeliveryContext(execCtx context.Context, checkJob *models.CheckJob
 // perCheckTimeout extracts the optional per-check `timeout` duration from a
 // job's config. Returns (0, false) when the key is absent, not a duration
 // string, or non-positive — the caller then falls back to the global /
-// cost-aware execution budget. Valid values are clamped at 30s.
+// cost-aware execution budget. Valid values are clamped at 30s. The lease is
+// sized on the same reading (checkjobsvc.LeaseDuration).
 func perCheckTimeout(config map[string]any) (time.Duration, bool) {
-	raw, ok := config[checkTimeoutConfigKey].(string)
-	if !ok || raw == "" {
-		return 0, false
-	}
-
-	duration, err := time.ParseDuration(raw)
-	if err != nil || duration <= 0 {
-		return 0, false
-	}
-
-	if duration > maxPerCheckTimeout {
-		duration = maxPerCheckTimeout
-	}
-
-	return duration, true
+	return checkjobsvc.PerCheckTimeout(config)
 }
 
 // execOutcome carries a checker's Execute result (or panic) from the child

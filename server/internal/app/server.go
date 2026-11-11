@@ -402,7 +402,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	jobService := jobsvc.NewService(dbService.DB(), dbService, eventNotifier, svcList.Realtime)
 	svcList.Jobs = jobService
 
-	checkJobService := checkjobsvc.NewService(dbService.DB())
+	checkJobService := checkjobsvc.NewService(dbService.DB(),
+		checkjobsvc.WithLeaseMargin(cfg.Checkers.Lease.Margin),
+		checkjobsvc.WithCheckTimeout(cfg.Server.Scheduling.CheckTimeout()),
+	)
 	svcList.CheckJobs = checkJobService
 	svcList.WorkerTasks = workertasks.NewService(dbService.DB())
 
