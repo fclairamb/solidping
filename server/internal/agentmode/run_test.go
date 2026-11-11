@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -86,4 +87,42 @@ func TestRunFailsWhenMasterUnreachable(t *testing.T) {
 	case <-time.After(30 * time.Second):
 		t.Fatal("Run did not return")
 	}
+}
+
+// TestRunWarnsOnCleartextServer: an agent allowed to talk to a cleartext,
+// non-loopback server says so in its log, since the server is unauthenticated.
+func TestRunWarnsOnCleartextServer(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	var logs bytes.Buffer
+
+	previous := slog.Default()
+	slog.SetDefault(bufferLogger(&logs))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	_, encoded := newTestIdentity(t)
+
+	cfg := &config.Config{}
+	cfg.Agent.Keys = encoded
+	cfg.Agent.PrintKeys = true
+	cfg.Agent.Name = "acme-agent"
+	cfg.Agent.ServerURL = "http://192.0.2.1:1"
+	cfg.Agent.AllowInsecureServer = true
+	cfg.Agent.RewrapDisabled = true
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	done := make(chan error, 1)
+
+	go func() { done <- Run(ctx, cfg) }()
+
+	select {
+	case err := <-done:
+		require.Error(t, err)
+	case <-time.After(30 * time.Second):
+		t.Fatal("Run did not return")
+	}
+
+	require.Contains(t, logs.String(), "Agent server URL is cleartext")
 }

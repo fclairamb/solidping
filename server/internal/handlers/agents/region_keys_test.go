@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/agents"
 	"github.com/fclairamb/solidping/server/internal/sealing"
 )
@@ -141,4 +142,64 @@ func TestOrphanedRegionKeyIsNotReturned(t *testing.T) {
 	keys, err = sealing.RegionKeys(ctx, s.dbSvc, s.org.UID)
 	r.NoError(err)
 	r.Empty(keys)
+}
+
+// TestRegionKeyCountsChecksNeedingReseal: a check of the region counts as
+// needing a re-seal when its blob lacks the region key, does not parse, or
+// was re-sealed without a second agent's confirmation; checks of another
+// region, without a blob, or sealed to the key do not.
+func TestRegionKeyCountsChecksNeedingReseal(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	s := newSetup(t)
+	ctx := t.Context()
+
+	_, err := s.svc.CreatePrivateRegion(ctx, "acme", &agents.CreatePrivateRegionRequest{Slug: "dc1"})
+	r.NoError(err)
+
+	_, recipient, err := credentials.GenerateX25519Keypair()
+	r.NoError(err)
+	_, other, err := credentials.GenerateX25519Keypair()
+	r.NoError(err)
+
+	sealedTo := func(to string) string {
+		t.Helper()
+
+		fps, ct, sealErr := credentials.SealForClient([]string{to}, map[string]any{"password": "x"})
+		r.NoError(sealErr)
+
+		envelope, buildErr := credentials.BuildClientSealedEnvelope(fps, ct)
+		r.NoError(buildErr)
+
+		return envelope
+	}
+
+	unconfirmed, err := credentials.MarkSealedUnconfirmed(sealedTo(recipient))
+	r.NoError(err)
+
+	add := func(slug, region string, blob *string) {
+		t.Helper()
+
+		check := models.NewCheck(s.org.UID, slug, "http")
+		check.Config = models.JSONMap{"url": "https://acme.example.com"}
+		check.Regions = []string{region}
+		check.ConfigSealed = blob
+		r.NoError(s.dbSvc.CreateCheck(ctx, check))
+	}
+
+	current, stale, garbage := sealedTo(recipient), sealedTo(other), "not an envelope"
+
+	add("current", "@dc1", &current)         // sealed to the key: fine
+	add("stale", "@dc1", &stale)             // sealed to another key
+	add("garbage", "@dc1", &garbage)         // unreadable blob
+	add("unconfirmed", "@dc1", &unconfirmed) // peer re-wrap, not confirmed
+	add("no-blob", "@dc1", nil)              // nothing sealed
+	add("elsewhere", "@dc2", &stale)         // another region
+
+	_, err = s.svc.SetRegionKey(ctx, "acme", "dc1", &agents.SetRegionKeyRequest{Recipient: recipient})
+	r.NoError(err)
+
+	list, err := s.svc.ListPrivateRegions(ctx, "acme")
+	r.NoError(err)
+	r.Equal(3, list.Data[0].ChecksNeedingReseal)
 }
