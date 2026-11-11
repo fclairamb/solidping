@@ -93,3 +93,7 @@ the compromise. Retargeting stored secrets is not listed at all, and "What the s
 - Unbound legacy blobs (sealed by v0.47.0): accept them with a warning until the user re-seals, or refuse them
   after one release? **Recommended:** accept with a warning and list them on the Re-seal page in this change.
   Refuse them in the next minor, with a changelog entry.
+
+## Resolved open questions
+
+- Unbound legacy blobs (sealed by v0.47.0): accept them with a warning until the user re-seals, and list them on the Re-seal page in this change. Refuse them in the next minor, with a changelog entry. (autopilot: recommended answer)
