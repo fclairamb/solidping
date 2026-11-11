@@ -16,11 +16,11 @@ func listChecksDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolListChecks,
 		Description: "List monitoring checks for the organization, optionally filtered by " +
-			"name/slug substring, labels, or check group; the filters combine with AND. Returns {data, pagination}; " +
-			"pass pagination.cursor back as cursor for the next page. Use this for " +
-			"browsing or filtering a fleet of checks. To investigate a single check's " +
-			"current health, use diagnose_check instead; if you already know its UID " +
-			"or slug, get_check is more direct. Read-only: works with mcp:read tokens.",
+			"name/slug substring, labels, or check group; the filters combine with AND. " +
+			"Returns {data, pagination}. Use this for browsing or " +
+			"filtering a fleet of checks. To investigate a single check's current health, " +
+			"use diagnose_check instead; if you already know its UID or slug, " +
+			"get_check is more direct. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			"q": stringProp(
 				"Case-insensitive substring match on check name or slug, e.g. \"api\".",
@@ -308,7 +308,8 @@ func updateCheckDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolUpdateCheck,
 		Description: "Update an existing check by UID or slug and return the updated check. " +
-			"PATCH semantics — only the fields you pass are modified, others stay as-is. " +
+			"PATCH semantics — only the fields you pass are modified, others stay as-is, " +
+			"except config, which is replaced whole rather than merged. " +
 			"Use create_check to make a new check and delete_check to remove one; to " +
 			"pause without deleting, set enabled:false instead. Modifies the check in place " +
 			"without consuming quota; reversible by updating again with the previous values. " +
