@@ -301,7 +301,8 @@
     "readOnlyHint": "Regístrate gratis para poder cambiar esto.",
     "checkExpires": "Este check está activo y se eliminará dentro de una hora aproximadamente. Regístrate gratis para conservarlo.",
     "seededCheck": "Este check forma parte del catálogo de la demo y no se puede modificar. Clónalo para obtener una copia editable.",
-    "writeRefused": "Esta es la demo pública compartida. Solo se pueden modificar los checks que crea aquí — regístrese gratis para cambiar cualquier otra cosa."
+    "writeRefused": "Esta es la demo pública compartida. Solo se pueden modificar los checks que crea aquí — regístrese gratis para cambiar cualquier otra cosa.",
+    "sessionRenewed": "Sesión de demo renovada"
   },
   "privateLocations": {
     "wizard": {

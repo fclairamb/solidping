@@ -11,6 +11,8 @@
 // decide what to do next (redirect to login).
 
 import { clearToken, getRefreshToken, getToken, redirectToExpiredLogin, setSession } from "@/api/client";
+import { toast } from "sonner";
+import i18n from "@/i18n";
 import { exitImpersonation, isImpersonating } from "@/lib/impersonation";
 
 interface RefreshResponse {
@@ -69,6 +71,60 @@ function escalate(reason: "no-refresh-token" | "rejected"): void {
   redirectToExpiredLogin();
 }
 
+/** True when the stored access token carries the `demo: true` claim. The
+ * token may be long expired — only its payload is read, never trusted for
+ * anything but choosing the recovery path (the server still decides). */
+function isDemoAccessToken(token: string | null): boolean {
+  if (!token) return false;
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return false;
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
+    return (JSON.parse(json) as { demo?: boolean }).demo === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The shared demo session hit its server-side cap (auth.session_max_duration,
+ * one hour). Sign in again with the public demo credential so the visitor
+ * never sees the end of it. Single attempt; null means "fall back to the
+ * login redirect".
+ */
+async function renewDemoSession(): Promise<string | null> {
+  try {
+    const configResponse = await fetch("/api/v1/config");
+    if (!configResponse.ok) return null;
+    const config = (await configResponse.json()) as {
+      demo?: { enabled?: boolean; orgSlug?: string; email?: string; password?: string };
+    };
+    const demo = config.demo;
+    if (!demo?.enabled || !demo.orgSlug || !demo.email || !demo.password) return null;
+
+    const response = await fetch("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ org: demo.orgSlug, email: demo.email, password: demo.password }),
+    });
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as {
+      accessToken?: string;
+      refreshToken?: string;
+      expiresIn?: number;
+    };
+    if (!data.accessToken) return null;
+
+    setSession(data.accessToken, data.refreshToken, data.expiresIn);
+    toast.info(i18n.t("demo.sessionRenewed", { ns: "org" }));
+    return data.accessToken;
+  } catch {
+    return null;
+  }
+}
+
 async function doRefresh(): Promise<RefreshOutcome> {
   // An impersonation token (spec 2026-09-29-03) has no refresh token and must
   // never be "refreshed" into the admin's session behind the admin's back, nor
@@ -111,6 +167,11 @@ async function doRefresh(): Promise<RefreshOutcome> {
     });
 
     if (response.status === 401) {
+      if (isDemoAccessToken(getToken())) {
+        logRefreshFailure("rejected");
+        const renewed = await renewDemoSession();
+        if (renewed) return { accessToken: renewed };
+      }
       escalate("rejected");
       return { accessToken: null, failureReason: "rejected" };
     }

@@ -301,7 +301,8 @@
     "readOnlyHint": "Créez un compte gratuit pour modifier ceci.",
     "checkExpires": "Ce check est actif et sera supprimé dans une heure environ. Créez un compte gratuit pour le conserver.",
     "seededCheck": "Ce check fait partie du catalogue de démonstration et ne peut pas être modifié. Clonez-le pour obtenir une copie modifiable.",
-    "writeRefused": "Ceci est la démo publique partagée. Seuls les checks que vous créez ici peuvent être modifiés — inscrivez-vous gratuitement pour changer le reste."
+    "writeRefused": "Ceci est la démo publique partagée. Seuls les checks que vous créez ici peuvent être modifiés — inscrivez-vous gratuitement pour changer le reste.",
+    "sessionRenewed": "Session de démo renouvelée"
   },
   "privateLocations": {
     "wizard": {

@@ -27,6 +27,9 @@ vi.mock("@/api/client", () => ({
   redirectToExpiredLogin: () => redirectToExpiredLoginMock(),
 }));
 
+vi.mock("sonner", () => ({ toast: { info: vi.fn() } }));
+vi.mock("@/i18n", () => ({ default: { t: (key: string) => key } }));
+
 import { refreshAccessToken, refreshWithOutcome, shouldRefreshNow } from "./token-refresh";
 
 function mockFetchOnce(response: { ok: boolean; status?: number; body?: unknown }) {
@@ -315,5 +318,74 @@ describe("shouldRefreshNow", () => {
     const thresholdMs = (expiresInSeconds * 1000) / 3;
     expect(shouldRefreshNow(now + thresholdMs, expiresInSeconds, now)).toBe(false);
     expect(shouldRefreshNow(now + thresholdMs - 1, expiresInSeconds, now)).toBe(true);
+  });
+});
+
+describe("demo session renewal on a rejected refresh", () => {
+  const demoToken = `h.${btoa(JSON.stringify({ demo: true }))}.s`;
+  const demoConfig = {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      demo: { enabled: true, orgSlug: "demo", email: "d@acme.test", password: "pw" },
+    }),
+  };
+  const rejected = { ok: false, status: 401, json: async () => ({}) };
+
+  beforeEach(() => {
+    storedAccessToken = demoToken;
+    storedRefreshToken = "stored-refresh-token";
+    setSessionMock.mockClear();
+    clearTokenMock.mockClear();
+    redirectToExpiredLoginMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("logs in again with the public credential instead of redirecting", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(rejected)
+      .mockResolvedValueOnce(demoConfig)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ accessToken: "new-demo", refreshToken: "new-refresh", expiresIn: 3600 }),
+      });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(refreshAccessToken()).resolves.toBe("new-demo");
+    expect(setSessionMock).toHaveBeenCalledWith("new-demo", "new-refresh", 3600);
+    expect(redirectToExpiredLoginMock).not.toHaveBeenCalled();
+    expect(clearTokenMock).not.toHaveBeenCalled();
+    const loginBody = JSON.parse(fetchSpy.mock.calls[2][1].body as string);
+    expect(loginBody).toEqual({ org: "demo", email: "d@acme.test", password: "pw" });
+  });
+
+  it("redirects as today for a non-demo session", async () => {
+    storedAccessToken = "stored-access-token";
+    const fetchSpy = vi.fn().mockResolvedValueOnce(rejected);
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(refreshAccessToken()).resolves.toBeNull();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(redirectToExpiredLoginMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("redirects when the re-login fails", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(rejected)
+      .mockResolvedValueOnce(demoConfig)
+      .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(refreshAccessToken()).resolves.toBeNull();
+    expect(clearTokenMock).toHaveBeenCalledTimes(1);
+    expect(redirectToExpiredLoginMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -81,6 +81,17 @@ always ends at the demo org's root, and `resolveDestination` would refuse a
 the login page's redirect-if-authenticated effect stands down, and `enterDemo`
 short-circuits when the current principal is already the demo user.
 
+### The one-hour session cap is invisible
+
+The server caps every demo session at one hour (`auth.session_max_duration`,
+`demoSessionMaxDurationSeconds`), so the refresh answers 401 after that. When a
+refresh is rejected and the dying access token carries the `demo` claim,
+`web/dash0/src/lib/token-refresh.ts` signs in again with the public credential
+from `/api/v1/config`, retries the request that triggered the refresh and shows
+a "Demo session renewed" toast. One attempt only: if the re-login fails, the
+visitor is redirected to the login page as for any expired session. Non-demo
+sessions are unaffected.
+
 ### The one invariant: `login(demoOrg, …)` runs only on `/orgs/<demoOrg>/login`
 
 The demo used to be *signed into* from whatever org the URL happened to name —
