@@ -407,6 +407,34 @@ func TestDeliverSkipsWhatsApp(t *testing.T) {
 	r.Equal(1, report.Skipped)
 	r.Empty(e.deliveries())
 	r.Contains(e.logs.String(), models.UserContactTypeWhatsApp)
+	r.Regexp(`level=WARN .*undeliverable.*skippedContactTypes=\[`+models.UserContactTypeWhatsApp+`\]`, e.logs.String(),
+		"an operator whose only route is WhatsApp is told so at WARN")
+}
+
+// TestDeliverSkippedRouteNextToADeliveredOneIsNotAWarning: a recipient with a
+// WhatsApp route AND an email route is reached by email on every notice. The
+// WhatsApp route is a permanent configuration fact, so it must not log a WARN
+// per event next to the "delivered" line.
+func TestDeliverSkippedRouteNextToADeliveredOneIsNotAWarning(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	e := newEnv(t)
+
+	alice := e.user(t, "alice@acme.com", true)
+	org := e.org(t, "acme")
+	e.join(t, org, alice)
+	e.contact(t, org, alice, models.UserContactTypeWhatsApp, "+33600000000", true)
+	e.contact(t, org, alice, models.UserContactTypeEmail, "alice@acme.com", false)
+
+	report := opsnotify.DeliverToUser(t.Context(), e.deps(), e.log, alice.UID, testNotice())
+
+	r.Equal(1, report.Delivered)
+	r.Equal(1, report.Skipped)
+
+	logs := e.logs.String()
+	r.Contains(logs, "skipping route", "the skip is still logged, at DEBUG")
+	r.NotContains(logs, "level=WARN")
 }
 
 // TestDeliverSurvivesOneFailingMedium: a dead route must never abort the

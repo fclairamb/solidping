@@ -207,6 +207,8 @@ func DeliverToUser(
 	// other medium keeps the English text.
 	loc := recipient.ForUser(user)
 
+	var skippedTypes []string
+
 	for _, route := range routes {
 		switch dispatchRoute(ctx, deps, log, label, route, notice, loc) {
 		case outcomeSent:
@@ -215,6 +217,7 @@ func DeliverToUser(
 			report.Failed++
 		default:
 			report.Skipped++
+			skippedTypes = append(skippedTypes, route.Contact.Type)
 		}
 	}
 
@@ -223,7 +226,7 @@ func DeliverToUser(
 		// nobody could reach must be NAMED, not counted.
 		log.WarnContext(ctx,
 			label+" undeliverable: recipient has no enabled notification route that can carry it",
-			"email", user.Email, "routes", report.Routes)
+			"email", user.Email, "routes", report.Routes, "skippedContactTypes", skippedTypes)
 		count(notice.Event, contactTypeNone, outcomeSkipped)
 
 		return report
@@ -332,10 +335,11 @@ func dispatchRoute(
 	default:
 		// WhatsApp (template-gated: Meta will not carry free-form business
 		// text outside a session), pushover, ntfy, and anything added later.
-		// Named in the log rather than dropped, so an operator whose only
-		// route is one of these finds out from the logs instead of from a
-		// missed message.
-		log.WarnContext(ctx, label+" cannot be delivered over this contact type; skipping route",
+		// A permanent fact of the configuration, not of this event: DEBUG
+		// here, or every notice repeats a WARN next to its "delivered" line.
+		// A recipient whose ONLY routes are of this kind still gets a WARN,
+		// the "undeliverable" one in DeliverToUser, which names the types.
+		log.DebugContext(ctx, label+" cannot be delivered over this contact type; skipping route",
 			"contactType", route.Contact.Type, "contactUid", route.Contact.UID)
 
 		outcome = outcomeSkipped
