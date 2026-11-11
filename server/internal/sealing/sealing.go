@@ -274,9 +274,10 @@ func RetireRegionKey(ctx context.Context, store Store, orgUID string, key Region
 }
 
 // KnownRegionRecipients maps the fingerprint of every region key of the org,
-// current or retired, to its public key.
+// current or retired, to its public key. It reads the stored keys, including
+// those of regions that no longer exist: a key is never reusable as an agent key.
 func KnownRegionRecipients(ctx context.Context, store Store, orgUID string) (map[string]string, error) {
-	current, err := RegionKeys(ctx, store, orgUID)
+	current, err := StoredRegionKeys(ctx, store, orgUID)
 	if err != nil {
 		return nil, err
 	}
