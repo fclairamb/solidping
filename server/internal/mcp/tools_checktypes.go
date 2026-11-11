@@ -14,8 +14,7 @@ func listCheckTypesDef() ToolDefinition {
 		Description: "List all monitoring check types supported by this server " +
 			"(e.g. http, tcp, dns, icmp, ssl), or with `type`, the ready-made sample configs " +
 			"of that type. Call it without arguments first when you don't know what type to " +
-			"use: it returns {data: [...]}, one entry per type with its description, enabled " +
-			"state, period bounds and secretFields. Then call it with type=<chosen type>: it " +
+			"use: it returns {data: [...]}, one entry per type. Then call it with type=<chosen type>: it " +
 			"returns {data: [...]} with one entry per matching type carrying its samples, each " +
 			"a complete, valid config to clone and modify (much more reliable than guessing " +
 			"field names). Read-only: works with mcp:read tokens.",
