@@ -83,14 +83,22 @@ The output is a valid `SP_AGENT_REGION_KEYS_FILE`.
 When an agent joins a location, or the region key changes, the checks sealed before are flagged. *Re-seal for the current agents* (on the location page, the Re-seal page, and the warning of a flagged check) fixes them without typing the secrets again:
 
 1. The server picks an online agent that holds a key the secrets were sealed to (its own key, or a region key it loaded).
-2. The agent opens the secrets, seals them for the current agents (or the current region key), and returns only the new ciphertext.
-3. The server checks it like a sealed write (one key slot per recipient, the current fingerprints, the size limit) and stores it. The check keeps its *Encrypted in the browser* status.
+2. **Possession challenge.** The server seals a random value to that one key, and to nothing else, and hands it to the agent with the secrets. The agent opens it and sends it back with the new ciphertext. The server keeps only the value's hash. A public key is no proof: an agent that registered a copy of another agent's key, or advertises a region key it does not hold, cannot open the challenge, and its result is refused (`invalid_result`). The check keeps its old secrets.
+3. The agent opens the secrets, checks they only carry secret fields of the check type (and the [binding](#binding-to-the-target) of this check), seals them for the current agents (or the current region key), and returns only the new ciphertext.
+4. The server checks it like a sealed write (one key slot per recipient, the current fingerprints, the size limit).
+5. **Second agent.** Before storing it, the server sends the new ciphertext to another online agent that holds a current key, with its own possession challenge. That agent opens it, checks it only carries secret fields of the check type, and, when it can open the old secrets too, that they did not change. On its answer the server stores the new ciphertext. The check keeps its *Encrypted in the browser* status. If the second agent cannot open it, or refuses it, nothing is stored and the reason is shown.
+
+With no second agent online, the new ciphertext is stored, but the check stays flagged with the reason *Not confirmed by a second agent*. Re-seal again once two agents are online, or type the secrets again. A single-agent location therefore always ends there: that is the price of not taking one agent's word for it.
 
 The server relays ciphertext only; the recipient list comes from the server, the same trust the browser already gives it. A check stays flagged, with the reason shown, when no online agent can open it, when no agent finishes within 5 minutes, or when the returned ciphertext is refused. Then type its secrets again.
 
+When a region key is rotated or removed, the server keeps its public key (never the identity), so the agents that still hold the old key can be challenged on it. A key rotated before version 0.48 is not on record: its checks show "the agents that hold these secrets cannot prove it", and you type their secrets again.
+
+An agent cannot enroll with an X25519 key that is already another live agent's key, or a region key of the organization: the enrollment is refused, and the token stays valid for a retry with a new identity.
+
 **Turning it off.** The agent seals to the recipient list the server sends. A compromised server could add its own key to that list and read the secrets on the next re-seal. To rule that out, set `SP_AGENT_REWRAP_ENABLED=false` on every agent of the location: the agent then never re-seals, and only the agent's operator can change that, not the server. Flagged checks show "the agents that hold these secrets do not run the re-seal", and you type their secrets again. Each re-seal an agent does is logged on the agent (`Sealed secrets re-wrapped`) with the fingerprints it sealed to, so an unknown key stands out.
 
-API: `POST /api/v1/orgs/:org/sealing/rewrap` with `{"region":"@dc1"}` or `{"checkUids":["…"]}` (every flagged check without a body), then `GET /api/v1/orgs/:org/sealing/rewrap?check=<uid>,<uid>` until each status is `done` or `failed`. Admins only. Agents need version 0.47 or later.
+API: `POST /api/v1/orgs/:org/sealing/rewrap` with `{"region":"@dc1"}` or `{"checkUids":["…"]}` (every flagged check without a body), then `GET /api/v1/orgs/:org/sealing/rewrap?check=<uid>,<uid>` until each status is `done` or `failed`. Admins only. Agents need version 0.48 or later (an older agent cannot answer the possession challenge: its checks show "do not run the re-seal").
 
 ## Adding, revoking and losing agents
 

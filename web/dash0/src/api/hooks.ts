@@ -9403,8 +9403,10 @@ export interface ResealCheck {
   /**
    * `recipients`: sealed for another set of agents. `unbound`: sealed before
    * the target binding (spec 2026-11-11-01), to be typed again.
+   * `unconfirmed`: re-sealed by one agent, not confirmed by a second one
+   * (spec 2026-11-11-02).
    */
-  reason?: "recipients" | "unbound";
+  reason?: "recipients" | "unbound" | "unconfirmed";
 }
 
 export function useResealChecks(org: string) {

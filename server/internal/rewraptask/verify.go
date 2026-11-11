@@ -38,7 +38,7 @@ func (s *Server) confirmOrStore(
 	}
 
 	pick, err := s.pickAgent(ctx, check.OrganizationUID, privateRegionsOf(check),
-		sealing.SortedFingerprints(recipients), VerifyCapability, exclude)
+		sealing.SortedFingerprints(recipients), []string{VerifyCapability}, exclude)
 	if err != nil {
 		return "", err
 	}

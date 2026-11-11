@@ -636,6 +636,21 @@ packages.
    and is listed `reason: unbound` on the Re-seal page (display-only envelope
    flag `bound`). The server answers `409 SEALED_TARGET_CHANGED` to a target
    change without new secrets. Re-wrap copies `_binding` verbatim.
+   Spec 2026-11-11-02 stops taking the re-wrapping agent on its word: the
+   task payload holds a challenge sealed to the one key the agent was picked
+   for (`credentials/challenge.go`, only its hash `challengeSha256` is kept),
+   and a result without the opened value is `invalid_result`. Region keys
+   rotated away or removed are kept public-only in
+   `sealing.retired_region_keys` so an old-key holder can still be challenged
+   (`no_provable_key` otherwise). A passed result goes to a second agent
+   (`rewrap_verify` kind, `rewrap-verify` capability, `rewraptask/verify.go`,
+   created by the `rewrap` kind's End hook) that opens it, checks its keys
+   (`credentials.OpenSealedPlaintext`) and compares it with the old plaintext
+   when it can; only then is it stored. With no second holder online it is
+   stored with the envelope flag `unconfirmed`, which `NeedsReseal` reads
+   (Re-seal reason `unconfirmed`, outcome `done` + `not_confirmed`). Status
+   folds the confirmation into the re-wrap's outcome. Enrollment refuses an
+   X25519 key equal to a live agent's or a region key of the org.
 
 Open bug: [`2026-07-20-02-private-locations-token-dialog-dirty-rendering`](../../specs/todos/2026-07-20-02-private-locations-token-dialog-dirty-rendering.md)
 — enrollment-token dialog renders fragments outside the dialog on the dev deploy.

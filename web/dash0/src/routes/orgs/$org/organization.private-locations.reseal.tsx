@@ -84,6 +84,17 @@ function ResealPage() {
                         {t("privateLocations.reseal.unboundHint")}
                       </p>
                     )}
+                    {check.reason === "unconfirmed" && (
+                      <p
+                        className="text-xs text-muted-foreground"
+                        data-testid={`reseal-check-unconfirmed-${check.uid}`}
+                      >
+                        <Badge variant="outline" className="mr-1 text-[10px]">
+                          {t("privateLocations.reseal.unconfirmed")}
+                        </Badge>
+                        {t("privateLocations.reseal.unconfirmedHint")}
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-1">
                       {check.regions.map((region) => (
                         <Badge key={region} variant="secondary" className="text-[10px]">

@@ -58,7 +58,8 @@ func (s *Service) regionKeyRow(
 }
 
 // countChecksNotSealedTo counts the region's checks whose sealed blob does not
-// include the region's current key: sealed to an older key or to agent keys.
+// include the region's current key (sealed to an older key or to agent keys),
+// or was re-sealed by an agent without a second agent's confirmation.
 func (s *Service) countChecksNotSealedTo(ctx context.Context, orgUID, region, fingerprint string) (int, error) {
 	checks, _, err := s.db.ListChecks(ctx, orgUID, &models.ListChecksFilter{})
 	if err != nil {
@@ -73,7 +74,9 @@ func (s *Service) countChecksNotSealedTo(ctx context.Context, orgUID, region, fi
 		}
 
 		fps, fpErr := credentials.SealedRecipientFingerprints(*check.ConfigSealed)
-		if fpErr != nil || !slices.Contains(fps, fingerprint) {
+		// A peer re-wrap no second agent confirmed counts too (spec
+		// 2026-11-11-02).
+		if fpErr != nil || !slices.Contains(fps, fingerprint) || credentials.IsSealedUnconfirmed(*check.ConfigSealed) {
 			count++
 		}
 	}

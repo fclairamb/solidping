@@ -322,7 +322,10 @@ func (s *Server) startOne(ctx context.Context, orgUID string, check *models.Chec
 		return refused(CodeNotSealed), nil //nolint:nilerr // as above
 	}
 
-	pick, err := s.pickAgent(ctx, orgUID, privateRegionsOf(check), sealedTo, Capability, "")
+	// An agent that runs the confirmation also answers the possession
+	// challenge (0.48 and later); an older one would always be refused.
+	pick, err := s.pickAgent(ctx, orgUID, privateRegionsOf(check), sealedTo,
+		[]string{Capability, VerifyCapability}, "")
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -386,11 +389,11 @@ type agentPick struct {
 }
 
 // pickAgent returns the online agent of the regions, most recently seen
-// first, that runs the kind of capability wantCap and holds one of the keys
+// first, that reports every capability of wantCaps and holds one of the keys
 // keyFingerprints (its own, or a region key it advertises) the server can
 // seal a challenge to. exclude is an agent never picked.
 func (s *Server) pickAgent(
-	ctx context.Context, orgUID string, privateRegions, keyFingerprints []string, wantCap, exclude string,
+	ctx context.Context, orgUID string, privateRegions, keyFingerprints, wantCaps []string, exclude string,
 ) (agentPick, error) {
 	cutoff := regions.LivenessCutoff(s.now())
 
@@ -412,7 +415,7 @@ func (s *Server) pickAgent(
 				continue
 			}
 
-			access := s.agentKey(ctx, agent, keyFingerprints, known, wantCap)
+			access := s.agentKey(ctx, agent, keyFingerprints, known, wantCaps)
 
 			switch {
 			case !access.holdsKey:
@@ -447,11 +450,11 @@ type keyAccess struct {
 }
 
 // agentKey reports whether an agent holds one of the keys keyFingerprints,
-// which public key to challenge it on, and whether it runs the kind of
-// capability wantCap. Its own enrolled key comes first; a region key it
+// which public key to challenge it on, and whether it reports every
+// capability of wantCaps. Its own enrolled key comes first; a region key it
 // advertises is challenged on the stored public key (current or retired).
 func (s *Server) agentKey(
-	ctx context.Context, agent *models.Agent, keyFingerprints []string, known map[string]string, wantCap string,
+	ctx context.Context, agent *models.Agent, keyFingerprints []string, known map[string]string, wantCaps []string,
 ) keyAccess {
 	var access keyAccess
 
@@ -478,7 +481,11 @@ func (s *Server) agentKey(
 		}
 	}
 
-	access.runsKind = slices.Contains(worker.Capabilities, wantCap)
+	access.runsKind = true
+
+	for _, capability := range wantCaps {
+		access.runsKind = access.runsKind && slices.Contains(worker.Capabilities, capability)
+	}
 
 	return access
 }

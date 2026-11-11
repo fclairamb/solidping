@@ -93,7 +93,8 @@ const (
 	// CodeNoOnlineRecipient is a check no online agent can open.
 	CodeNoOnlineRecipient = "no_online_recipient"
 	// CodeRewrapNotOffered is a check an online agent could open, but none of
-	// those agents runs the re-wrap: older than 0.47, or its operator set
+	// those agents runs the re-wrap: older than 0.48 (no possession
+	// challenge, spec 2026-11-11-02), or its operator set
 	// SP_AGENT_REWRAP_ENABLED=false (spec 2026-11-10-04).
 	CodeRewrapNotOffered = "rewrap_not_offered"
 	// CodeNotSealed is a check without a sealed blob to re-wrap.

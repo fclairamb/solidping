@@ -65,7 +65,12 @@ export function RewrapButton({ org, region, checkUids, testId, onStarted }: Rewr
 
   const busy = start.isPending || (!!results && !settled);
   const failed = (results ?? []).filter((outcome) => outcome.status !== "done" && isRewrapSettled(outcome));
-  const done = (results ?? []).filter((outcome) => outcome.status === "done");
+  // Stored, but no second agent confirmed it (spec 2026-11-11-02): the
+  // check stays flagged.
+  const unconfirmed = (results ?? []).filter(
+    (outcome) => outcome.status === "done" && outcome.errorCode === "not_confirmed",
+  );
+  const done = (results ?? []).filter((outcome) => outcome.status === "done" && !outcome.errorCode);
 
   const reason = (outcome: RewrapOutcome) =>
     t(`privateLocations.rewrap.reason.${outcome.errorCode ?? outcome.status}`, {
@@ -96,6 +101,11 @@ export function RewrapButton({ org, region, checkUids, testId, onStarted }: Rewr
       {settled && done.length > 0 && (
         <p className="text-xs text-status-ok" data-testid={`rewrap-done${suffix}`}>
           {t("privateLocations.rewrap.done", { count: done.length })}
+        </p>
+      )}
+      {settled && unconfirmed.length > 0 && (
+        <p className="text-xs text-status-warning" data-testid={`rewrap-unconfirmed${suffix}`}>
+          {t("privateLocations.rewrap.unconfirmed", { count: unconfirmed.length })}
         </p>
       )}
       {settled && failed.length > 0 && (

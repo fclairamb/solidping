@@ -456,7 +456,9 @@
       "open": "Remplacer les secrets",
       "link": "Resceller",
       "unbound": "Resceller pour lier à la cible",
-      "unboundHint": "Scellés avant la liaison à la cible : saisissez à nouveau les secrets pour les lier à l'URL ou à l'hôte de ce check."
+      "unboundHint": "Scellés avant la liaison à la cible : saisissez à nouveau les secrets pour les lier à l'URL ou à l'hôte de ce check.",
+      "unconfirmed": "Non confirmé par un second agent",
+      "unconfirmedHint": "Re-scellés par un agent, pas encore confirmés par un second : re-scellez à nouveau avec deux agents en ligne, ou saisissez à nouveau les secrets."
     },
     "rewrap": {
       "button": "Re-sceller pour les agents actuels",
@@ -464,12 +466,14 @@
       "running_other": "Re-scellement de {{count}} checks sur un agent…",
       "done_one": "{{count}} check re-scellé.",
       "done_other": "{{count}} checks re-scellés.",
+      "unconfirmed_one": "{{count}} check re-scellé, mais aucun second agent n'était en ligne pour le confirmer : il reste signalé.",
+      "unconfirmed_other": "{{count}} checks re-scellés, mais aucun second agent n'était en ligne pour les confirmer : ils restent signalés.",
       "empty": "Aucun check à re-sceller.",
       "error": "Le re-scellement n'a pas pu démarrer.",
       "failed": "{{check}} : {{reason}}",
       "reason": {
         "no_online_recipient": "aucun agent en ligne ne détient une clé de ces secrets : démarrez-en un, ou saisissez à nouveau les secrets",
-        "rewrap_not_offered": "les agents qui détiennent ces secrets ne font pas le re-chiffrement (version antérieure à 0.47, ou SP_AGENT_REWRAP_ENABLED=false) : saisissez à nouveau les secrets",
+        "rewrap_not_offered": "les agents qui détiennent ces secrets ne font pas le re-chiffrement (version antérieure à 0.48, ou SP_AGENT_REWRAP_ENABLED=false) : saisissez à nouveau les secrets",
         "timed_out": "aucun agent n'a terminé à temps",
         "REWRAP_CANNOT_OPEN": "l'agent n'a pas pu ouvrir ces secrets",
         "REWRAP_SEAL_FAILED": "l'agent n'a pas pu sceller pour les destinataires actuels",
@@ -481,6 +485,11 @@
         "not_sealed": "ces secrets ne sont pas scellés : saisissez-les à nouveau",
         "up_to_date": "déjà scellé pour les agents actuels",
         "no_recipients": "aucun agent ni clé de région vers qui sceller",
+        "not_confirmed": "re-scellé, mais aucun second agent n'était en ligne pour le confirmer",
+        "no_provable_key": "les agents qui détiennent ces secrets ne peuvent pas le prouver (leur clé de région n'est plus connue) : saisissez à nouveau les secrets",
+        "REWRAP_NOT_SECRET": "ces secrets portent un champ qui n'est pas un secret du type de check, ou sont liés à une autre cible : saisissez-les à nouveau",
+        "REWRAP_VERIFY_CANNOT_OPEN": "le second agent n'a pas pu ouvrir les secrets re-scellés, qui ont été refusés",
+        "REWRAP_VERIFY_MISMATCH": "les secrets re-scellés diffèrent des anciens et ont été refusés",
         "max_attempts": "aucun agent n'a terminé à temps",
         "cancelled": "annulé : le check a changé",
         "unknown": "échec ({{code}})"

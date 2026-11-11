@@ -313,3 +313,29 @@ func TestRewrap_NoProvableKey(t *testing.T) {
 	r.Equal("refused", outcome.Status)
 	r.Equal(rewraptask.CodeNoProvableKey, outcome.ErrorCode)
 }
+
+// TestRewrap_AgentWithoutTheChallengeIsNotPicked: an agent older than the
+// possession challenge reports the re-wrap but not the confirmation. It would
+// always be refused, so it gets no task: the reason says so.
+func TestRewrap_AgentWithoutTheChallengeIsNotPicked(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	h := newHarness(t)
+
+	holder := h.enroll("holder", false)
+	check := h.sealedCheck("acme-api", map[string]any{"password": "s3cret"}, holder.keys.X25519Recipient)
+	h.enroll("new", true)
+
+	now := time.Now().UTC()
+	r.NoError(h.db.UpdateAgentLastSeen(ctx, holder.agent.UID, now))
+
+	worker := models.NewWorker(agentcrypto.WorkerSlug(holder.agent.UID), "holder")
+	worker.Capabilities = []string{rewraptask.Capability}
+	r.NoError(h.db.CreateWorker(ctx, worker))
+
+	outcome := startOne(t, h, check)
+	r.Equal("refused", outcome.Status)
+	r.Equal(rewraptask.CodeRewrapNotOffered, outcome.ErrorCode)
+}

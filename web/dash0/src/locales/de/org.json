@@ -456,7 +456,9 @@
       "open": "Geheimnisse ersetzen",
       "link": "Neu versiegeln",
       "unbound": "Neu versiegeln, um an das Ziel zu binden",
-      "unboundHint": "Vor der Zielbindung versiegelt: Geben Sie die Geheimnisse neu ein, um sie an die URL oder den Host dieses Checks zu binden."
+      "unboundHint": "Vor der Zielbindung versiegelt: Geben Sie die Geheimnisse neu ein, um sie an die URL oder den Host dieses Checks zu binden.",
+      "unconfirmed": "Nicht von einem zweiten Agenten bestätigt",
+      "unconfirmedHint": "Von einem Agenten neu versiegelt, noch nicht von einem zweiten bestätigt: Versiegeln Sie erneut, während zwei Agenten online sind, oder geben Sie die Geheimnisse neu ein."
     },
     "rewrap": {
       "button": "Für die aktuellen Agents neu versiegeln",
@@ -464,12 +466,14 @@
       "running_other": "{{count}} Checks werden auf einem Agent neu versiegelt…",
       "done_one": "{{count}} Check neu versiegelt.",
       "done_other": "{{count}} Checks neu versiegelt.",
+      "unconfirmed_one": "{{count}} Check neu versiegelt, aber kein zweiter Agent war online, um ihn zu bestätigen: Er bleibt markiert.",
+      "unconfirmed_other": "{{count}} Checks neu versiegelt, aber kein zweiter Agent war online, um sie zu bestätigen: Sie bleiben markiert.",
       "empty": "Kein Check muss neu versiegelt werden.",
       "error": "Das Neuversiegeln konnte nicht gestartet werden.",
       "failed": "{{check}}: {{reason}}",
       "reason": {
         "no_online_recipient": "kein Online-Agent hält einen Schlüssel dieser Secrets: Starten Sie einen oder geben Sie die Secrets neu ein",
-        "rewrap_not_offered": "die Agenten mit einem Schlüssel dieser Secrets führen keine Neuverschlüsselung aus (älter als 0.47 oder SP_AGENT_REWRAP_ENABLED=false): Geben Sie die Secrets neu ein",
+        "rewrap_not_offered": "die Agenten mit einem Schlüssel dieser Secrets führen keine Neuverschlüsselung aus (älter als 0.48 oder SP_AGENT_REWRAP_ENABLED=false): Geben Sie die Secrets neu ein",
         "timed_out": "kein Agent wurde rechtzeitig fertig",
         "REWRAP_CANNOT_OPEN": "der Agent konnte diese Secrets nicht öffnen",
         "REWRAP_SEAL_FAILED": "der Agent konnte nicht für die aktuellen Empfänger versiegeln",
@@ -481,6 +485,11 @@
         "not_sealed": "diese Secrets sind nicht versiegelt: geben Sie sie neu ein",
         "up_to_date": "bereits für die aktuellen Agents versiegelt",
         "no_recipients": "kein Agent und kein Regionsschlüssel zum Versiegeln",
+        "not_confirmed": "neu versiegelt, aber kein zweiter Agent war online, um es zu bestätigen",
+        "no_provable_key": "die Agenten, die diese Geheimnisse halten, können es nicht beweisen (ihr Regionsschlüssel ist nicht mehr bekannt): Geben Sie die Geheimnisse neu ein",
+        "REWRAP_NOT_SECRET": "diese Geheimnisse enthalten ein Feld, das kein Geheimnis des Check-Typs ist, oder sind an ein anderes Ziel gebunden: Geben Sie sie neu ein",
+        "REWRAP_VERIFY_CANNOT_OPEN": "der zweite Agent konnte die neu versiegelten Geheimnisse nicht öffnen, sie wurden abgelehnt",
+        "REWRAP_VERIFY_MISMATCH": "die neu versiegelten Geheimnisse weichen von den alten ab und wurden abgelehnt",
         "max_attempts": "kein Agent wurde rechtzeitig fertig",
         "cancelled": "abgebrochen: der Check hat sich geändert",
         "unknown": "fehlgeschlagen ({{code}})"
