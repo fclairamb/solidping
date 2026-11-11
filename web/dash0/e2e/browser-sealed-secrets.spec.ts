@@ -7,6 +7,9 @@
  * the server), then an HTTP basic-auth check sealed in the browser never sends
  * its password.
  */
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { gunzipSync } from "node:zlib";
 import { test, expect, API_BASE, uniqueStamp, type Page } from "./fixtures";
 import { choosePinnedRegions } from "./placement-helpers";
 
@@ -50,6 +53,110 @@ async function openAuthSection(page: Page): Promise<void> {
   await expect(page.getByTestId("section-authentication-trigger")).toBeVisible();
   if (!(await panel.isVisible())) await page.getByTestId("section-authentication-trigger").click();
   await expect(panel).toBeVisible();
+}
+
+/**
+ * A stand-in PostHog project (spec 2026-11-11-05). /api/v1/config turns
+ * analytics on with api_host `/ph-stub`, every request under it is answered
+ * here: remote config and flags enable session recording, the recorder is the
+ * real one from posthog-js, and every capture body (events and rrweb
+ * snapshots) is decoded and kept. What the real PostHog project would receive
+ * is exactly what lands in `payloads`.
+ */
+async function stubPostHog(page: Page): Promise<{ payloads: string[]; urls: string[] }> {
+  const payloads: string[] = [];
+  const urls: string[] = [];
+  const posthogDist = createRequire(import.meta.url).resolve("posthog-js/dist/posthog-recorder.js").replace(/[^/]+$/, "");
+
+  // posthog-js drops everything from a browser that looks like a bot
+  // (HeadlessChrome in the user agent or its client hints,
+  // navigator.webdriver): look like a person.
+  await page.addInitScript(() => {
+    const ua = navigator.userAgent.replace(/HeadlessChrome/g, "Chrome");
+    Object.defineProperty(Navigator.prototype, "userAgent", { get: () => ua });
+    Object.defineProperty(Navigator.prototype, "webdriver", { get: () => false });
+    Object.defineProperty(Navigator.prototype, "userAgentData", { get: () => undefined });
+  });
+
+  await page.route("**/api/v1/config", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    json.posthog = { enabled: true, projectApiKey: "phc_e2e_stub", host: "/ph-stub" };
+    await route.fulfill({ response, json });
+  });
+
+  await page.route("**/ph-stub/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    urls.push(`${request.method()} ${url.pathname}${url.search}`);
+
+    const staticFile = /\/static\/([a-z0-9-]+\.js)$/.exec(url.pathname);
+    if (staticFile) {
+      await route.fulfill({
+        contentType: "application/javascript",
+        body: readFileSync(posthogDist + staticFile[1], "utf8"),
+      });
+      return;
+    }
+
+    const body = request.postDataBuffer();
+    if (body && body.length > 0) payloads.push(decodeCapture(body, url));
+
+    const recording = { endpoint: "/s/", recorderVersion: "v2" };
+    if (url.pathname.includes("/array/") || url.pathname.includes("/flags")) {
+      await route.fulfill({
+        json: {
+          sessionRecording: recording,
+          featureFlags: {},
+          flags: {},
+          supportedCompression: [],
+          autocapture_opt_out: false,
+          capturePerformance: false,
+          errorsWhileComputingFlags: false,
+        },
+      });
+      return;
+    }
+    await route.fulfill({ json: { status: 1 } });
+  });
+
+  return { payloads, urls };
+}
+
+function decodeCapture(body: Buffer, url: URL): string {
+  let raw = body;
+  if (url.searchParams.get("compression") === "gzip-js" || (raw[0] === 0x1f && raw[1] === 0x8b)) {
+    raw = gunzipSync(raw);
+  }
+  let text = raw.toString("utf8");
+  if (text.startsWith("data=")) {
+    text = Buffer.from(decodeURIComponent(text.slice(5)), "base64").toString("utf8");
+  }
+  try {
+    return JSON.stringify(inflateSnapshots(JSON.parse(text)));
+  } catch {
+    return text;
+  }
+}
+
+/** posthog-js compresses rrweb event data (`cv: "2024-10"`): every field it
+ * compressed is a latin1 string of gzip bytes. Inflate them all, so a
+ * snapshot is searched for its real text. */
+function inflateSnapshots(value: unknown): unknown {
+  if (typeof value === "string") {
+    if (value.charCodeAt(0) !== 0x1f || value.charCodeAt(1) !== 0x8b) return value;
+    const inflated = gunzipSync(Buffer.from(value, "latin1")).toString("utf8");
+    try {
+      return inflateSnapshots(JSON.parse(inflated));
+    } catch {
+      return inflated;
+    }
+  }
+  if (Array.isArray(value)) return value.map(inflateSnapshots);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, inflateSnapshots(v)]));
+  }
+  return value;
 }
 
 /** Generates the region key from the private locations page (through the
@@ -168,6 +275,58 @@ test.describe("Browser-sealed check secrets", () => {
     for (const body of checkBodies) {
       expect(body).not.toContain(password);
     }
+  });
+
+  // GHSA-c9qq-4m99-c7f6 (spec 2026-11-11-05): the browser-generated region
+  // key never reaches session replay or autocapture.
+  test("never records the region key in session replay", async ({ authenticatedPage }) => {
+    test.setTimeout(120_000);
+    const page = authenticatedPage;
+    const slug = `replay-${uniqueStamp()}`;
+    await createPrivateRegion(page, await getAuthToken(page), slug);
+    const stub = await stubPostHog(page);
+    const recorded = () => stub.payloads.join("\n");
+
+    await page.goto("orgs/test/organization/private-locations");
+    const cell = page.getByTestId(`region-key-${slug}`);
+    await expect(cell).toBeVisible();
+
+    // Positive control: the paste dialog (no secret in it) is recorded, so
+    // the stub really receives rrweb snapshots.
+    await cell.getByTestId("region-key-paste-button").click();
+    const pasteDialog = page.getByTestId("region-key-paste-dialog");
+    await expect(pasteDialog).toBeVisible();
+    const control = ((await pasteDialog.getByRole("heading").textContent()) ?? "").trim();
+    expect(control).not.toBe("");
+    await page.getByTestId("region-key-paste-cancel").click();
+    await expect
+      .poll(recorded, { timeout: 30_000 })
+      .toContain(control)
+      .catch((error) => {
+        throw new Error(`${error}\nrequests: ${stub.urls.join("\n")}`);
+      });
+    expect(recorded()).toContain("$snapshot");
+
+    // Generate a key, click the secret (autocapture), copy it, confirm.
+    await cell.getByTestId("region-key-generate-button").click();
+    const secret = page.getByTestId("region-key-secret");
+    await expect(secret).toContainText("AGE-SECRET-KEY-1");
+    const identity = ((await secret.textContent()) ?? "").trim();
+    await secret.click();
+    await page.getByTestId("region-key-confirm").click();
+    await expect(page.getByTestId("region-key-dialog")).toHaveCount(0);
+    await expect(page.getByTestId(`region-key-mode-${slug}`)).toContainText("Shared region key");
+
+    // Recording resumes after the dialog: wait for a flush carrying a later
+    // snapshot, then check nothing ever carried the identity.
+    const before = stub.payloads.length;
+    await cell.getByTestId("region-key-paste-button").click();
+    await page.getByTestId("region-key-paste-cancel").click();
+    await expect.poll(() => stub.payloads.length, { timeout: 30_000 }).toBeGreaterThan(before);
+
+    expect(recorded()).not.toContain(identity);
+    expect(recorded()).not.toContain(identity.slice("AGE-SECRET-KEY-1".length, 40));
+    expect(recorded()).not.toContain("AGE-SECRET-KEY-1");
   });
 
   test("falls back to server encryption on a shared region", async ({ authenticatedPage }) => {
