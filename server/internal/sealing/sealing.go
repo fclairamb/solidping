@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"time"
@@ -288,13 +287,7 @@ func KnownRegionRecipients(ctx context.Context, store Store, orgUID string) (map
 		return nil, err
 	}
 
-	currentLen := len(current)
-	retiredLen := len(retired)
-	if currentLen > math.MaxInt-retiredLen {
-		return nil, fmt.Errorf("known region recipients too large")
-	}
-
-	out := make(map[string]string, currentLen+retiredLen)
+	out := make(map[string]string)
 	for fingerprint := range retired {
 		out[fingerprint] = retired[fingerprint].Recipient
 	}
