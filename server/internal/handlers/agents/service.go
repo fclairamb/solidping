@@ -312,6 +312,14 @@ func (s *Service) CreatePrivateRegion(
 		emoji = "🏠"
 	}
 
+	// Defense in depth: a key left behind by an earlier region of that slug
+	// must never become this region's key.
+	if _, keyErr := s.removeRegionKey(
+		ctx, org.UID, regions.PrivateRegionSlug(req.Slug), req.Slug, "stale_key_on_create",
+	); keyErr != nil {
+		return nil, keyErr
+	}
+
 	defs = append(defs, regions.RegionDefinition{Slug: req.Slug, Name: name, Emoji: emoji})
 
 	if err := s.regions.SetOrgCustomRegions(ctx, org.UID, defs); err != nil {
@@ -428,6 +436,11 @@ func (s *Service) DeletePrivateRegion(ctx context.Context, orgSlug, slug string)
 
 	if err := s.regions.SetOrgCustomRegions(ctx, org.UID, kept); err != nil {
 		return err
+	}
+
+	// Its shared region key goes with it, retired like a removed key.
+	if _, keyErr := s.removeRegionKey(ctx, org.UID, full, slug, "region_deleted"); keyErr != nil {
+		return keyErr
 	}
 
 	// The location's liveness monitor goes with it (spec 2026-09-25-05). After

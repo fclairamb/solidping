@@ -49,6 +49,15 @@ type sealedEnvelopeJSON struct {
 	// taken from a request. Absent on legacy server-sealed blobs. The agent's
 	// decoder ignores it.
 	Origin string `json:"origin,omitempty"`
+	// Bound records that the client said it sealed a `_binding` next to the
+	// secrets (spec 2026-11-11-01). Display only (the Re-seal page lists the
+	// unbound blobs): the agent checks the binding inside the plaintext and
+	// never trusts this flag.
+	Bound bool `json:"bound,omitempty"`
+	// Unconfirmed records a blob re-sealed by an agent (peer re-wrap) that no
+	// second agent confirmed (spec 2026-11-11-02): NeedsReseal keeps it
+	// flagged until a re-wrap is confirmed or the secrets are typed again.
+	Unconfirmed bool `json:"unconfirmed,omitempty"`
 }
 
 // Seal origins (spec 2026-11-08-01).
@@ -295,6 +304,55 @@ func BuildClientSealedEnvelope(fingerprints []string, ciphertext string) (string
 	return string(out), nil
 }
 
+// MarkSealedBound sets the display-only Bound flag of a sealed envelope.
+func MarkSealedBound(envelope string) (string, error) {
+	env, err := parseSealedEnvelope(envelope)
+	if err != nil {
+		return "", err
+	}
+
+	env.Bound = true
+
+	out, err := json.Marshal(env)
+	if err != nil {
+		return "", fmt.Errorf("marshal sealed envelope: %w", err)
+	}
+
+	return string(out), nil
+}
+
+// IsSealedBound reports the display-only Bound flag of a sealed envelope.
+func IsSealedBound(envelope string) bool {
+	env, err := parseSealedEnvelope(envelope)
+
+	return err == nil && env.Bound
+}
+
+// MarkSealedUnconfirmed sets the Unconfirmed flag of a sealed envelope: a
+// peer re-wrap no second agent confirmed (spec 2026-11-11-02).
+func MarkSealedUnconfirmed(envelope string) (string, error) {
+	env, err := parseSealedEnvelope(envelope)
+	if err != nil {
+		return "", err
+	}
+
+	env.Unconfirmed = true
+
+	out, err := json.Marshal(env)
+	if err != nil {
+		return "", fmt.Errorf("marshal sealed envelope: %w", err)
+	}
+
+	return string(out), nil
+}
+
+// IsSealedUnconfirmed reports the Unconfirmed flag of a sealed envelope.
+func IsSealedUnconfirmed(envelope string) bool {
+	env, err := parseSealedEnvelope(envelope)
+
+	return err == nil && env.Unconfirmed
+}
+
 // SealedCiphertext returns the age file (base64) and the sorted fingerprints
 // of a sealed envelope: what a client sends as sealedSecrets.ct and
 // .fingerprints (spec 2026-11-10-03).
@@ -342,6 +400,8 @@ func RewrapSealedEnvelope(envelope string, fingerprints []string, ciphertext str
 
 	env.Fingerprints = sorted
 	env.CT = ciphertext
+	// A new ciphertext starts confirmed: the re-wrap marks it otherwise.
+	env.Unconfirmed = false
 
 	out, err := json.Marshal(env)
 	if err != nil {
@@ -397,11 +457,20 @@ func SealedRecipientFingerprints(envelope string) ([]string, error) {
 //
 // Either way the fix is the same: re-save the check's credentials so a fresh
 // blob is sealed to exactly the active set.
+//
+// A blob re-sealed by an agent that no second agent confirmed (Unconfirmed,
+// spec 2026-11-11-02) needs a re-seal too, whatever its recipients.
 func NeedsReseal(envelope string, activeFingerprints []string) (bool, error) {
-	sealed, err := SealedRecipientFingerprints(envelope)
+	env, err := parseSealedEnvelope(envelope)
 	if err != nil {
 		return false, err
 	}
+
+	if env.Unconfirmed {
+		return true, nil
+	}
+
+	sealed := env.Fingerprints
 
 	if len(sealed) != len(activeFingerprints) {
 		return true, nil

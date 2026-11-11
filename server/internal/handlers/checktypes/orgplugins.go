@@ -8,6 +8,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/schemas"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
@@ -53,6 +54,7 @@ func withOrgPluginTypes(response ListCheckTypesResponse, remotes []*plugins.Remo
 			DefaultPeriodSeconds: durationToSeconds(meta.DefaultPeriod),
 			ExcludedFromTally:    true,
 			SecretFields:         secrets,
+			TargetFields:         credentials.TargetFieldsFor(remote),
 			Plugin:               meta.Plugin,
 			AgentReported:        true,
 		})

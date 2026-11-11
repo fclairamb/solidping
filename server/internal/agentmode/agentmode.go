@@ -132,10 +132,18 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	// before the worker, so the "rewrap" capability is reported from the start.
 	// SP_AGENT_REWRAP_ENABLED=false keeps it off (spec 2026-11-10-04): the
 	// agent then never re-seals for a list the server chose.
+	if cfg.Agent.CleartextServer() {
+		logger.WarnContext(ctx, "Agent server URL is cleartext (SP_AGENT_ALLOW_INSECURE_SERVER=true): "+
+			"the server is not authenticated, anyone on the network path can impersonate it",
+			"server", cfg.Agent.ServerURL)
+	}
+
 	if cfg.Agent.RewrapDisabled {
 		logger.InfoContext(ctx, "Peer re-wrap of sealed secrets disabled (SP_AGENT_REWRAP_ENABLED=false)")
 	} else {
 		tasks.Register(rewraptask.NewExecutor(wsBackend.UnsealIdentities))
+		// The confirmation of another agent's re-wrap (spec 2026-11-11-02).
+		tasks.Register(rewraptask.NewVerifyExecutor(wsBackend.UnsealIdentities))
 		logger.InfoContext(ctx, "Peer re-wrap of sealed secrets enabled")
 	}
 

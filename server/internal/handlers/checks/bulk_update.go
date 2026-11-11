@@ -384,6 +384,7 @@ func isCheckUpdateRejection(err error) bool {
 		// A browser-sealed check cannot be moved in bulk: the server cannot
 		// re-seal its blob (spec 2026-11-08-01 §4).
 		errors.Is(err, ErrSealingRecipientsChanged) ||
+		errors.Is(err, ErrSealedTargetChanged) ||
 		errors.Is(err, ErrSealedSecretsRequirePrivateRegions) ||
 		errors.Is(err, ErrSecretsMustBeSealed) ||
 		errors.Is(err, ErrSealedSecretsInvalid) ||

@@ -74,6 +74,7 @@ import {
   fetchRecipients,
   isBrowserSealingEligible,
   sealSecrets,
+  targetChanged,
   splitSecrets,
   type SealedSecrets,
   withoutSecretKeys,
@@ -1280,6 +1281,17 @@ export function CheckForm({
   // A stored browser blob is replaced whole: its secret inputs stay closed
   // until "Replace" opens them all at once (or the mode changes).
   const [secretsReplacing, setSecretsReplacing] = useState(!!replaceSecrets);
+  // Sealed secrets are bound to the check's target (spec 2026-11-11-01): a new
+  // URL, host, port or tunnel opens the secret inputs, to be typed again (the
+  // server refuses the write otherwise, the agents refuse the old blob).
+  const activeTargetFields = checkTypeInfoMap.get(type)?.targetFields;
+  const sealedTargetChanged =
+    mode === "edit" &&
+    storedSealed &&
+    hasSecretFields &&
+    !!activeTargetFields &&
+    targetChanged(activeTargetFields, initialData?.config ?? {}, currentConfig);
+  if (sealedTargetChanged && !secretsReplacing) setSecretsReplacing(true);
   const typedSecretKeys = useMemo(
     () =>
       hasSecretFields ? Object.keys(splitSecrets(type, currentConfig, activeSecretFields ?? []).secrets) : [],
@@ -1413,6 +1425,13 @@ export function CheckForm({
         setError(t("checks:sealing.retypeToSwitch"));
         return;
       }
+      // A new target needs the secrets typed again (spec 2026-11-11-01),
+      // unless they are being cleared.
+      const clearing = stored.some((k) => config[k] === null || config[k] === "");
+      if (sealedTargetChanged && secretMode === "browser" && typed.length === 0 && !clearing) {
+        setError(t("checks:sealing.targetChanged"));
+        return;
+      }
       if (secretMode === "browser" && typed.length > 0) {
         const cleared = Object.keys(publicConfig).filter(
           (k) => publicConfig[k] === null || publicConfig[k] === "",
@@ -1438,7 +1457,13 @@ export function CheckForm({
           "NO_RECIPIENT",
         );
       }
-      return sealSecrets(recipients, secretsToSeal);
+      return sealSecrets(
+        recipients,
+        secretsToSeal,
+        activeTargetFields
+          ? { type, targetFields: activeTargetFields, config: submittedConfig }
+          : undefined,
+      );
     };
 
     try {
@@ -2381,6 +2406,11 @@ export function CheckForm({
               {secretLock && (
                 <p className="text-xs text-muted-foreground" data-testid="secret-inputs-locked">
                   {secretLock}
+                </p>
+              )}
+              {sealedTargetChanged && (
+                <p className="text-xs text-amber-600 dark:text-amber-400" data-testid="sealed-target-changed">
+                  {t("checks:sealing.targetChanged")}
                 </p>
               )}
               <AuthFields

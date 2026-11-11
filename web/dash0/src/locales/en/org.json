@@ -457,7 +457,11 @@
       "description": "These checks have secrets sealed for another set of agents (an agent joined or left, or the region key changed). An online agent that still holds a matching key can re-seal them for the current agents; otherwise, type their secrets again.",
       "empty": "No check needs to be re-sealed.",
       "open": "Replace secrets",
-      "link": "Re-seal"
+      "link": "Re-seal",
+      "unbound": "Seal again to bind to the target",
+      "unboundHint": "Sealed before the target binding: type the secrets again to bind them to this check's URL or host.",
+      "unconfirmed": "Not confirmed by a second agent",
+      "unconfirmedHint": "Re-sealed by one agent, not yet confirmed by a second one: re-seal again while two agents are online, or type the secrets again."
     },
     "rewrap": {
       "button": "Re-seal for the current agents",
@@ -465,12 +469,14 @@
       "running_other": "Re-sealing {{count}} checks on an agent…",
       "done_one": "{{count}} check re-sealed.",
       "done_other": "{{count}} checks re-sealed.",
+      "unconfirmed_one": "{{count}} check re-sealed, but no second agent was online to confirm it: it stays flagged.",
+      "unconfirmed_other": "{{count}} checks re-sealed, but no second agent was online to confirm them: they stay flagged.",
       "empty": "No check needs to be re-sealed.",
       "error": "The re-seal could not be started.",
       "failed": "{{check}}: {{reason}}",
       "reason": {
         "no_online_recipient": "no online agent holds a key these secrets were sealed to: start one, or type the secrets again",
-        "rewrap_not_offered": "the agents that hold these secrets do not run the re-seal (older than 0.47, or SP_AGENT_REWRAP_ENABLED=false): type the secrets again",
+        "rewrap_not_offered": "the agents that hold these secrets do not run the re-seal (older than 0.48, or SP_AGENT_REWRAP_ENABLED=false): type the secrets again",
         "timed_out": "no agent finished in time",
         "REWRAP_CANNOT_OPEN": "the agent could not open these secrets",
         "REWRAP_SEAL_FAILED": "the agent could not seal for the current recipients",
@@ -482,6 +488,11 @@
         "not_sealed": "these secrets are not sealed: type them again",
         "up_to_date": "already sealed for the current agents",
         "no_recipients": "no agent or region key to seal to",
+        "not_confirmed": "re-sealed, but no second agent was online to confirm it",
+        "no_provable_key": "the agents that hold these secrets cannot prove it (their region key is no longer on record): type the secrets again",
+        "REWRAP_NOT_SECRET": "these secrets carry a field that is not a secret of the check type, or are bound to another target: type them again",
+        "REWRAP_VERIFY_CANNOT_OPEN": "the second agent could not open the re-sealed secrets, which were refused",
+        "REWRAP_VERIFY_MISMATCH": "the re-sealed secrets differ from the old ones and were refused",
         "max_attempts": "no agent finished in time",
         "cancelled": "cancelled: the check changed",
         "unknown": "failed ({{code}})"

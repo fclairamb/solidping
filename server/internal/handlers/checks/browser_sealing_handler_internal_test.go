@@ -36,6 +36,10 @@ func TestWriteSealingErrorCodes(t *testing.T) {
 			wantStatus: http.StatusConflict, wantCode: "SEALING_RECIPIENTS_CHANGED", handled: true,
 		},
 		{
+			name: "target changed", err: ErrSealedTargetChanged,
+			wantStatus: http.StatusConflict, wantCode: "SEALED_TARGET_CHANGED", handled: true,
+		},
+		{
 			name: "private regions", err: ErrSealedSecretsRequirePrivateRegions,
 			wantStatus: http.StatusBadRequest, wantCode: "SEALED_SECRETS_REQUIRE_PRIVATE_REGIONS", handled: true,
 		},
@@ -72,7 +76,7 @@ func TestWriteSealingErrorCodes(t *testing.T) {
 			r.NoError(json.Unmarshal(rec.Body.Bytes(), &body))
 			r.Equal(tc.wantCode, body["code"])
 
-			if tc.wantStatus == http.StatusConflict {
+			if tc.wantCode == "SEALING_RECIPIENTS_CHANGED" {
 				r.Len(body["recipients"], 1)
 			}
 		})

@@ -270,3 +270,38 @@ func TestTunnelConfigRefusesAnUnresolvableReference(t *testing.T) {
 	r.ErrorIs(err, secretref.ErrUnresolved)
 	r.Contains(err.Error(), "unresolved secret reference: param:bastion-password")
 }
+
+// TestBuildTunnelConfigRefusesRetargetedBastion: a browser-sealed SSH blob is
+// bound to the bastion's host and port (spec 2026-11-11-01). The same blob on
+// another host is refused before anything dials.
+func TestBuildTunnelConfigRefusesRetargetedBastion(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	keys, err := agents.GenerateAgentKeys()
+	r.NoError(err)
+
+	fields := []string{"host", "port", credentials.TunnelConfigKey}
+	public := map[string]any{
+		"host": "bastion.acme.com", "port": float64(22), "expected_fingerprint": "SHA256:abc", "username": "u",
+	}
+
+	fps, ct, err := credentials.SealForClient([]string{keys.X25519Recipient},
+		credentials.WithBinding(map[string]any{"password": "hunter2"}, "ssh", fields, public))
+	r.NoError(err)
+
+	sealed, err := credentials.BuildClientSealedEnvelope(fps, ct)
+	r.NoError(err)
+
+	cfg, err := buildTunnelConfig(t.Context(), []string{keys.X25519Identity},
+		&agents.AgentJobTunnel{CheckUID: "ssh-1", Config: public, ConfigSealed: &sealed}, nil)
+	r.NoError(err)
+	r.Equal("hunter2", cfg.Password)
+
+	moved := map[string]any{
+		"host": "evil.example", "port": float64(22), "expected_fingerprint": "SHA256:abc", "username": "u",
+	}
+	_, err = buildTunnelConfig(t.Context(), []string{keys.X25519Identity},
+		&agents.AgentJobTunnel{CheckUID: "ssh-1", Config: moved, ConfigSealed: &sealed}, nil)
+	r.ErrorIs(err, credentials.ErrSealedForAnotherTarget)
+}

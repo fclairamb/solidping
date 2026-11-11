@@ -2,7 +2,13 @@ import { Decrypter } from "age-encryption";
 import { describe, expect, it } from "vitest";
 
 import fixture from "./__fixtures__/browser-sealed.json";
+import bindingFixture from "./__fixtures__/target-binding.json";
 import {
+  BINDING_KEY,
+  canonicalTarget,
+  normalizeTargetURL,
+  targetChanged,
+  targetDigest,
   generateRegionKey,
   isBrowserSealingEligible,
   recipientFingerprint,
@@ -89,5 +95,42 @@ describe("sealing", () => {
       ),
     ).toEqual({ url: "https://acme.com" });
     expect(withoutSecretKeys("ssh", { host: "h", password: null }, ["password"])).toEqual({ host: "h" });
+  });
+
+  // Target binding (spec 2026-11-11-01): the Go side reads the same fixture
+  // (credentials/binding_test.go).
+  it("gives the Go canonical target and digest for every shared vector", async () => {
+    expect(bindingFixture.cases.length).toBeGreaterThan(0);
+    for (const vector of bindingFixture.cases) {
+      const config = vector.config as Record<string, unknown>;
+      expect(canonicalTarget(vector.targetFields, config), vector.name).toBe(vector.canonical);
+      expect(await targetDigest(vector.targetFields, config), vector.name).toBe(vector.digest);
+    }
+  });
+
+  it("normalises a target URL like the Go side", () => {
+    expect(normalizeTargetURL("HTTPS://Acme.COM")).toBe("https://acme.com:443");
+    expect(normalizeTargetURL("http://[::1]/")).toBe("http://[::1]:80/");
+    expect(normalizeTargetURL("wss://u:P@Acme.com:9000/x")).toBe("wss://u:P@acme.com:9000/x");
+    expect(normalizeTargetURL("not a url")).toBe("not a url");
+  });
+
+  it("tells a target change from any other edit", () => {
+    const fields = ["tunnelCheckUid", "url"];
+    const before = { url: "https://db.acme.com", timeout: "5s" };
+    expect(targetChanged(fields, before, { url: "https://DB.acme.com:443", timeout: "9s" })).toBe(false);
+    expect(targetChanged(fields, before, { url: "https://evil.example" })).toBe(true);
+    expect(targetChanged(fields, before, { ...before, tunnelCheckUid: "bastion" })).toBe(true);
+  });
+
+  it("seals the binding next to the secrets, out of the key list", async () => {
+    const target = { type: "http", targetFields: ["tunnelCheckUid", "url"], config: { url: "https://db.acme.com" } };
+    const sealed = await sealSecrets([{ recipient: fixture.recipient }], { basicAuth: "a:b" }, target);
+    expect(sealed.keys).toEqual(["basicAuth"]);
+    expect(sealed.bound).toBe(true);
+    expect(await open(fixture.identity, sealed.ct)).toEqual({
+      basicAuth: "a:b",
+      [BINDING_KEY]: { type: "http", digest: await targetDigest(target.targetFields, target.config) },
+    });
   });
 });

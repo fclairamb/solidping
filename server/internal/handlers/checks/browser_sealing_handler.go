@@ -17,6 +17,7 @@ const (
 	errorCodeSealedSecretsRequirePrivateRegions base.ErrorCode = "SEALED_SECRETS_REQUIRE_PRIVATE_REGIONS"
 	errorCodeSecretsMustBeSealed                base.ErrorCode = "SECRETS_MUST_BE_SEALED"
 	errorCodeSealingRecipientsChanged           base.ErrorCode = "SEALING_RECIPIENTS_CHANGED"
+	errorCodeSealedTargetChanged                base.ErrorCode = "SEALED_TARGET_CHANGED"
 )
 
 // writeSealingError translates the browser-sealing errors. The first return
@@ -37,6 +38,9 @@ func (h *Handler) writeSealingError(writer http.ResponseWriter, request *http.Re
 			"detail":     changed.Error(),
 			"recipients": recipients,
 		})
+	case errors.Is(err, ErrSealedTargetChanged):
+		return true, h.WriteErrorErr(writer, request, http.StatusConflict,
+			errorCodeSealedTargetChanged, err.Error(), err)
 	case errors.Is(err, ErrSealedSecretsRequirePrivateRegions):
 		return true, h.WriteErrorErr(writer, request, http.StatusBadRequest,
 			errorCodeSealedSecretsRequirePrivateRegions, err.Error(), err)
