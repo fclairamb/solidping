@@ -217,6 +217,39 @@ func VerifyBinding(plain map[string]any, check BindingCheck) (map[string]any, bo
 	return secrets, true, nil
 }
 
+// OpenSealedPlaintext applies the rules of a sealed plaintext about to be
+// used for a job (spec 2026-11-11-01, shared with 2026-11-11-02) and returns
+// the secrets to merge over its public config:
+//
+//   - a blob with a `_binding` must have been sealed for this type and these
+//     target fields, and carry only secret fields of the type;
+//   - a browser blob without one (sealed before the binding existed) still may
+//     not carry a key that is not a secret field; legacyUnbound reports it, so
+//     the caller can warn;
+//   - a server blob without one is used as is: the server sealed it from
+//     plaintext it held, public `${param:}` overlays included.
+//
+// Every caller that merges a sealed plaintext over a public config (the
+// claim, the tunnel, the re-wrap and its confirmation) goes through it.
+func OpenSealedPlaintext(
+	envelope string, plain map[string]any, check BindingCheck,
+) (secrets map[string]any, legacyUnbound bool, err error) {
+	secrets, bound, err := VerifyBinding(plain, check)
+	if err != nil || bound {
+		return secrets, false, err
+	}
+
+	if SealedOrigin(envelope) != SealOriginBrowser {
+		return plain, false, nil
+	}
+
+	if strictErr := StrictSecretKeys(plain, check); strictErr != nil {
+		return nil, false, strictErr
+	}
+
+	return plain, true, nil
+}
+
 // StrictSecretKeys refuses a plaintext key that is not a secret field of the
 // type. Used on browser blobs without a binding too.
 func StrictSecretKeys(plain map[string]any, check BindingCheck) error {

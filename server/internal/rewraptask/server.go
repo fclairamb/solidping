@@ -61,7 +61,12 @@ func Register(deps Deps) *Server {
 		now:    func() time.Time { return time.Now().UTC() },
 	}
 
-	deps.Tasks.RegisterKind(workertasks.TaskKind{Name: Kind, PrepareClaim: srv.prepareClaim, Complete: srv.complete})
+	deps.Tasks.RegisterKind(workertasks.TaskKind{
+		Name: Kind, PrepareClaim: srv.prepareClaim, Complete: srv.complete, End: srv.sendConfirmation,
+	})
+	deps.Tasks.RegisterKind(workertasks.TaskKind{
+		Name: VerifyKind, PrepareClaim: srv.prepareVerifyClaim, Complete: srv.completeVerify,
+	})
 
 	return srv
 }
@@ -106,14 +111,22 @@ func (s *Server) taskCheck(ctx context.Context, task *models.WorkerTask) (*model
 		return nil, false
 	}
 
-	want, _ := task.Payload["envelopeSha256"].(string)
+	want := payloadString(task, payloadEnvelopeSHA256)
 
 	return check, want != "" && envelopeHash(*check.ConfigSealed) == want
 }
 
-// prepareClaim hands the claiming agent the current blob and the current
-// recipient list. A check whose blob changed, or that has nothing to seal to
-// any more, cancels the task.
+// payloadString reads a string of a task payload.
+func payloadString(task *models.WorkerTask, key string) string {
+	value, _ := task.Payload[key].(string)
+
+	return value
+}
+
+// prepareClaim hands the claiming agent the current blob, the current
+// recipient list, its possession challenge and the check's type and public
+// config. A check whose blob changed, or that has nothing to seal to any
+// more, cancels the task.
 func (s *Server) prepareClaim(
 	ctx context.Context, task *models.WorkerTask, _ *workertasks.WorkerIdentity, _ json.RawMessage,
 ) (*workertasks.Prepared, error) {
@@ -131,7 +144,13 @@ func (s *Server) prepareClaim(
 		return nil, workertasks.ErrCancelTask
 	}
 
-	input, err := json.Marshal(Input{Envelope: *check.ConfigSealed, Recipients: sealing.RecipientKeys(recipients)})
+	input, err := json.Marshal(Input{
+		Envelope:   *check.ConfigSealed,
+		Recipients: sealing.RecipientKeys(recipients),
+		Challenge:  payloadString(task, payloadChallenge),
+		CheckType:  check.Type,
+		Config:     check.Config,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("encode re-wrap input: %w", err)
 	}
@@ -139,10 +158,11 @@ func (s *Server) prepareClaim(
 	return &workertasks.Prepared{Input: input, Final: true}, nil
 }
 
-// complete validates the returned blob like a sealedSecrets write (stanza
-// count, size, fingerprints equal to the current recipients) and stores it on
-// the check and its jobs, keeping the blob's origin. A non-empty code fails
-// the task and leaves the check as it was.
+// complete checks the possession challenge, validates the returned blob like
+// a sealedSecrets write (stanza count, size, fingerprints equal to the current
+// recipients), then sends it to a second agent to confirm, or stores it marked
+// unconfirmed when no second agent can (spec 2026-11-11-02). A non-empty code
+// fails the task and leaves the check as it was.
 func (s *Server) complete(ctx context.Context, task *models.WorkerTask, body json.RawMessage) (string, error) {
 	var result Result
 	if err := json.Unmarshal(body, &result); err != nil {
@@ -157,6 +177,16 @@ func (s *Server) complete(ctx context.Context, task *models.WorkerTask, body jso
 		return CodeInvalidResult, nil
 	}
 
+	// Possession (spec 2026-11-11-02): only the holder of the key the agent
+	// was picked for can open the challenge. A task without one (created
+	// before the challenge) is refused too.
+	if !credentials.ChallengeAnswered(result.Challenge, payloadString(task, payloadChallengeSHA256)) {
+		s.logger.WarnContext(ctx, "Re-wrap refused: possession challenge not answered",
+			"check", task.CheckUID, "task", task.UID, "agent", task.TargetWorkerUID)
+
+		return CodeInvalidResult, nil
+	}
+
 	check, same := s.taskCheck(ctx, task)
 	if !same {
 		return CodeCheckChanged, nil
@@ -167,18 +197,7 @@ func (s *Server) complete(ctx context.Context, task *models.WorkerTask, body jso
 		return code, err
 	}
 
-	stored, err := s.store(ctx, check, *check.ConfigSealed, envelope)
-	if err != nil {
-		return "", err
-	}
-
-	if !stored {
-		return CodeCheckChanged, nil
-	}
-
-	s.logger.InfoContext(ctx, "Sealed secrets re-wrapped by a peer agent", "check", check.UID, "task", task.UID)
-
-	return "", nil
+	return s.confirmOrStore(ctx, task, check, envelope)
 }
 
 // validateResult checks a returned blob against the check's current
@@ -303,25 +322,37 @@ func (s *Server) startOne(ctx context.Context, orgUID string, check *models.Chec
 		return refused(CodeNotSealed), nil //nolint:nilerr // as above
 	}
 
-	pick, err := s.pickAgent(ctx, orgUID, privateRegionsOf(check), sealedTo)
+	pick, err := s.pickAgent(ctx, orgUID, privateRegionsOf(check), sealedTo, Capability, "")
 	if err != nil {
 		return Outcome{}, err
 	}
 
 	agent := pick.agent
 
-	if agent == nil && pick.keyHolderWithoutRewrap {
+	switch {
+	case agent == nil && pick.keyHolderWithoutRewrap:
 		return refused(CodeRewrapNotOffered), nil
+	case agent == nil && pick.keyHolderUnprovable:
+		return refused(CodeNoProvableKey), nil
+	case agent == nil:
+		return refused(CodeNoOnlineRecipient), nil
 	}
 
-	if agent == nil {
-		return refused(CodeNoOnlineRecipient), nil
+	// The possession challenge, sealed to the key the agent was picked for
+	// and to nothing else (spec 2026-11-11-02).
+	challenge, challengeSum, err := credentials.NewSealedChallenge(pick.recipient)
+	if err != nil {
+		return Outcome{}, err
 	}
 
 	task := models.NewWorkerTask(orgUID, Kind, agent.Region)
 	task.CheckUID = &check.UID
 	task.TargetWorkerUID = &agent.UID
-	task.Payload = models.JSONMap{"envelopeSha256": envelopeHash(*check.ConfigSealed)}
+	task.Payload = models.JSONMap{
+		payloadEnvelopeSHA256:  envelopeHash(*check.ConfigSealed),
+		payloadChallenge:       challenge,
+		payloadChallengeSHA256: challengeSum,
+	}
 
 	created, err := s.tasks.CreateIfNone(ctx, s.db.DB(), task)
 	if err != nil {
@@ -338,24 +369,35 @@ func (s *Server) startOne(ctx context.Context, orgUID string, check *models.Chec
 	}, nil
 }
 
-// agentPick is what pickAgent found: the agent to send the re-wrap to (nil
-// when none fits), and whether an online agent holds a key of the blob but does
-// not run the re-wrap.
+// agentPick is what pickAgent found: the agent to send the task to (nil
+// when none fits) with the key it was picked for, and why an online key
+// holder was passed over.
 type agentPick struct {
-	agent                  *models.Agent
+	agent *models.Agent
+	// recipient is the public key the agent was picked for: its own, or a
+	// region key it advertises. The possession challenge is sealed to it.
+	recipient string
+	// keyHolderWithoutRewrap: an online agent holds a key but does not run
+	// the kind (older, or SP_AGENT_REWRAP_ENABLED=false, spec 2026-11-10-04).
 	keyHolderWithoutRewrap bool
+	// keyHolderUnprovable: an online agent advertises a region key the
+	// server has no public key for, so it cannot be challenged.
+	keyHolderUnprovable bool
 }
 
 // pickAgent returns the online agent of the regions, most recently seen
-// first, that runs the re-wrap executor and holds a key the blob was sealed
-// to (its own, or a region key it advertises). When there is none,
-// keyHolderWithoutRewrap says whether an online agent holds such a key but
-// does not run the re-wrap (older than 0.47, or SP_AGENT_REWRAP_ENABLED=false,
-// spec 2026-11-10-04).
+// first, that runs the kind of capability wantCap and holds one of the keys
+// keyFingerprints (its own, or a region key it advertises) the server can
+// seal a challenge to. exclude is an agent never picked.
 func (s *Server) pickAgent(
-	ctx context.Context, orgUID string, privateRegions, sealedTo []string,
+	ctx context.Context, orgUID string, privateRegions, keyFingerprints []string, wantCap, exclude string,
 ) (agentPick, error) {
 	cutoff := regions.LivenessCutoff(s.now())
+
+	known, err := sealing.KnownRegionRecipients(ctx, s.db, orgUID)
+	if err != nil {
+		return agentPick{}, err
+	}
 
 	var pick agentPick
 
@@ -366,21 +408,28 @@ func (s *Server) pickAgent(
 		}
 
 		for _, agent := range agents {
-			if !regions.IsAgentLive(agent.Status, agent.LastSeenAt, cutoff) {
+			if agent.UID == exclude || !regions.IsAgentLive(agent.Status, agent.LastSeenAt, cutoff) {
 				continue
 			}
 
-			access := s.agentCanOpen(ctx, agent, sealedTo)
-			if access.holdsKey && !access.runsRewrap {
-				pick.keyHolderWithoutRewrap = true
-			}
+			access := s.agentKey(ctx, agent, keyFingerprints, known, wantCap)
 
-			if !access.holdsKey || !access.runsRewrap {
+			switch {
+			case !access.holdsKey:
+				continue
+			case !access.runsKind:
+				pick.keyHolderWithoutRewrap = true
+
+				continue
+			case access.recipient == "":
+				pick.keyHolderUnprovable = true
+
 				continue
 			}
 
 			if pick.agent == nil || agent.LastSeenAt.After(*pick.agent.LastSeenAt) {
 				pick.agent = agent
+				pick.recipient = access.recipient
 			}
 		}
 	}
@@ -388,22 +437,28 @@ func (s *Server) pickAgent(
 	return pick, nil
 }
 
-// keyAccess says whether an agent holds a key a blob was sealed to, and
-// whether it runs the re-wrap executor.
+// keyAccess says whether an agent holds one of a set of keys, the public key
+// to challenge it on (empty when the server knows none), and whether it runs
+// the kind.
 type keyAccess struct {
-	holdsKey   bool
-	runsRewrap bool
+	holdsKey  bool
+	recipient string
+	runsKind  bool
 }
 
-// agentCanOpen reports whether an agent holds one of the keys a blob was
-// sealed to, and whether it runs the re-wrap executor.
-func (s *Server) agentCanOpen(
-	ctx context.Context, agent *models.Agent, sealedTo []string,
+// agentKey reports whether an agent holds one of the keys keyFingerprints,
+// which public key to challenge it on, and whether it runs the kind of
+// capability wantCap. Its own enrolled key comes first; a region key it
+// advertises is challenged on the stored public key (current or retired).
+func (s *Server) agentKey(
+	ctx context.Context, agent *models.Agent, keyFingerprints []string, known map[string]string, wantCap string,
 ) keyAccess {
 	var access keyAccess
 
-	if agent.X25519PublicKey != "" && slices.Contains(sealedTo, credentials.RecipientFingerprint(agent.X25519PublicKey)) {
+	if agent.X25519PublicKey != "" &&
+		slices.Contains(keyFingerprints, credentials.RecipientFingerprint(agent.X25519PublicKey)) {
 		access.holdsKey = true
+		access.recipient = agent.X25519PublicKey
 	}
 
 	worker, err := s.db.GetWorkerBySlug(ctx, agentcrypto.WorkerSlug(agent.UID))
@@ -412,17 +467,24 @@ func (s *Server) agentCanOpen(
 	}
 
 	for _, fp := range sealing.RegionKeyFingerprints(worker.Capabilities) {
-		if slices.Contains(sealedTo, fp) {
-			access.holdsKey = true
+		if !slices.Contains(keyFingerprints, fp) {
+			continue
+		}
+
+		access.holdsKey = true
+
+		if access.recipient == "" {
+			access.recipient = known[fp]
 		}
 	}
 
-	access.runsRewrap = slices.Contains(worker.Capabilities, Capability)
+	access.runsKind = slices.Contains(worker.Capabilities, wantCap)
 
 	return access
 }
 
-// expire fails the org's re-wraps that no agent finished within Timeout.
+// expire fails the org's re-wraps (and confirmations) that no agent finished
+// within Timeout.
 // A late finish is then fenced off (the task is no longer claimed).
 func (s *Server) expire(ctx context.Context, orgUID string) error {
 	current := s.now()
@@ -435,7 +497,7 @@ func (s *Server) expire(ctx context.Context, orgUID string) error {
 		Set("lease_until = NULL").
 		Set("updated_at = ?", current).
 		Where("organization_uid = ?", orgUID).
-		Where("kind = ?", Kind).
+		Where("kind IN (?)", bun.List([]string{Kind, VerifyKind})).
 		Where("status IN (?)", bun.List([]models.WorkerTaskStatus{
 			models.WorkerTaskStatusPending, models.WorkerTaskStatusClaimed,
 		})).
@@ -492,6 +554,10 @@ func (s *Server) Status(ctx context.Context, orgUID string, checkUIDs []string) 
 
 		if row.ErrorCode != nil {
 			outcome.ErrorCode = *row.ErrorCode
+		}
+
+		if row.Status == models.WorkerTaskStatusDone {
+			s.confirmationOutcome(ctx, row, &outcome)
 		}
 
 		out = append(out, outcome)

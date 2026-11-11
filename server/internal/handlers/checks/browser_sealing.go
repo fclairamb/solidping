@@ -535,7 +535,9 @@ type ResealCheck struct {
 	Regions []string `json:"regions"`
 	// Reason is why the check is listed: ResealReasonRecipients (the
 	// recipients changed) or ResealReasonUnbound (sealed before the target
-	// binding of spec 2026-11-11-01: seal again to bind it).
+	// binding of spec 2026-11-11-01: seal again to bind it) or
+	// ResealReasonUnconfirmed (re-sealed by an agent, not confirmed by a
+	// second one, spec 2026-11-11-02).
 	Reason string `json:"reason"`
 }
 
@@ -543,6 +545,8 @@ type ResealCheck struct {
 const (
 	ResealReasonRecipients = "recipients"
 	ResealReasonUnbound    = "unbound"
+	// ResealReasonUnconfirmed is a peer re-wrap no second agent confirmed.
+	ResealReasonUnconfirmed = "unconfirmed"
 )
 
 // ListResealChecks lists the org's checks flagged `needsReseal`: their secrets
@@ -564,6 +568,8 @@ func (s *Service) ListResealChecks(ctx context.Context, orgSlug string) ([]Resea
 		var reason string
 
 		switch need := s.computeNeedsReseal(ctx, check); {
+		case need != nil && *need && check.ConfigSealed != nil && credentials.IsSealedUnconfirmed(*check.ConfigSealed):
+			reason = ResealReasonUnconfirmed
 		case need != nil && *need:
 			reason = ResealReasonRecipients
 		case isBrowserSealed(check) && !credentials.IsSealedBound(*check.ConfigSealed):

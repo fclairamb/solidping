@@ -76,7 +76,8 @@ func newHarnessOn(t *testing.T, dbSvc db.Service, slug string) *harness {
 }
 
 // enroll enrolls an agent in @dc1. A live agent was seen now and runs the
-// re-wrap executor (its worker row reports the capability, plus regionCaps).
+// re-wrap and confirmation executors (its worker row reports both
+// capabilities, plus regionCaps).
 func (h *harness) enroll(name string, live bool, regionCaps ...string) enrolled {
 	h.t.Helper()
 
@@ -99,7 +100,7 @@ func (h *harness) enroll(name string, live bool, regionCaps ...string) enrolled 
 		agent.LastSeenAt = &now
 
 		worker := models.NewWorker(agentcrypto.WorkerSlug(agent.UID), name)
-		worker.Capabilities = append([]string{rewraptask.Capability}, regionCaps...)
+		worker.Capabilities = append([]string{rewraptask.Capability, rewraptask.VerifyCapability}, regionCaps...)
 		r.NoError(h.db.CreateWorker(ctx, worker))
 	}
 
@@ -159,8 +160,14 @@ func (h *harness) jobSealed(check *models.Check) string {
 func (h *harness) claim(agent *models.Agent) *workertasks.Claim {
 	h.t.Helper()
 
+	return h.claimKind(agent, rewraptask.Kind)
+}
+
+func (h *harness) claimKind(agent *models.Agent, kind string) *workertasks.Claim {
+	h.t.Helper()
+
 	claim, err := h.tasks.Claim(h.t.Context(), &workertasks.WorkerIdentity{
-		UID: agent.UID, Region: testRegion, OrgUID: h.org.UID, IsAgent: true, Kinds: []string{rewraptask.Kind},
+		UID: agent.UID, Region: testRegion, OrgUID: h.org.UID, IsAgent: true, Kinds: []string{kind},
 	})
 	require.NoError(h.t, err)
 
@@ -208,6 +215,45 @@ func (h *harness) run(claim *workertasks.Claim, agent *models.Agent, identities 
 	require.NoError(h.t, exec.Run(h.t.Context(), claim, rep))
 
 	return rep.body
+}
+
+// confirm claims the confirmation of a re-wrap on the agent and runs it on
+// its confirmation executor, and returns what it reported.
+func (h *harness) confirm(agent *models.Agent, identities ...string) (*workertasks.Claim, json.RawMessage) {
+	h.t.Helper()
+
+	claim := h.claimKind(agent, rewraptask.VerifyKind)
+	require.NotNil(h.t, claim, "a confirmation is sent to the second agent")
+
+	exec := rewraptask.NewVerifyExecutor(func() []string { return identities })
+	rep := &reporter{tasks: h.tasks, uid: claim.UID, worker: agent.UID}
+	require.NoError(h.t, exec.Run(h.t.Context(), claim, rep))
+
+	return claim, rep.body
+}
+
+// answer opens the possession challenge of a claim as the agent would.
+func answer(t *testing.T, claim *workertasks.Claim, identities ...string) string {
+	t.Helper()
+
+	var input rewraptask.Input
+	require.NoError(t, json.Unmarshal(claim.Input, &input))
+	require.NotEmpty(t, input.Challenge, "every re-wrap carries a possession challenge")
+
+	value, err := credentials.OpenSealedChallenge(input.Challenge, identities...)
+	require.NoError(t, err)
+
+	return value
+}
+
+func status(t *testing.T, h *harness, check *models.Check) rewraptask.Outcome {
+	t.Helper()
+
+	statuses, err := h.srv.Status(t.Context(), h.org.UID, []string{check.UID})
+	require.NoError(t, err)
+	require.Len(t, statuses, 1)
+
+	return statuses[0]
 }
 
 func startOne(t *testing.T, h *harness, check *models.Check) rewraptask.Outcome {
@@ -267,11 +313,26 @@ func runNewAgentGetsTheBlob(t *testing.T, h *harness) {
 	r.NoError(json.Unmarshal(claim.Input, &input))
 	r.ElementsMatch([]string{oldAgent.keys.X25519Recipient, newAgent.keys.X25519Recipient}, input.Recipients)
 
+	r.NotEmpty(input.Challenge, "the agent gets a possession challenge")
+	r.Equal("http", input.CheckType)
+
+	before := *check.ConfigSealed
+
 	h.run(claim, oldAgent.agent, oldAgent.keys.X25519Identity)
 	r.Equal(models.WorkerTaskStatusDone, h.task(claim.UID).Status)
 
+	// Nothing is stored before the second agent confirms.
+	r.Equal(before, *h.reload(check).ConfigSealed)
+	r.Equal("pending", status(t, h, check).Status)
+
+	r.Nil(h.claimKind(oldAgent.agent, rewraptask.VerifyKind), "the re-wrapping agent never confirms itself")
+
+	_, body := h.confirm(newAgent.agent, newAgent.keys.X25519Identity)
+	r.NotContains(string(body), "errorCode")
+
 	stored := h.reload(check)
 	r.False(needsReseal(t, h, check, oldAgent.keys.X25519Recipient, newAgent.keys.X25519Recipient))
+	r.False(credentials.IsSealedUnconfirmed(*stored.ConfigSealed))
 	r.Equal(credentials.SealOriginBrowser, credentials.SealedOrigin(*stored.ConfigSealed))
 	r.Equal(*stored.ConfigSealed, h.jobSealed(check), "the job carries the new blob too")
 
@@ -279,10 +340,10 @@ func runNewAgentGetsTheBlob(t *testing.T, h *harness) {
 	r.NoError(err)
 	r.Equal("s3cret", secrets["password"])
 
-	statuses, err := h.srv.Status(t.Context(), h.org.UID, []string{check.UID})
-	r.NoError(err)
-	r.Len(statuses, 1)
-	r.Equal("done", statuses[0].Status)
+	final := status(t, h, check)
+	r.Equal("done", final.Status)
+	r.Empty(final.ErrorCode)
+	r.Equal(claim.UID, final.TaskUID, "the outcome keeps the re-wrap's task")
 }
 
 // TestRewrap_RegionKeyRotation re-seals from the old region key to the new
@@ -299,22 +360,41 @@ func TestRewrap_RegionKeyRotation(t *testing.T) {
 	newID, newRecipient, err := credentials.GenerateX25519Keypair()
 	r.NoError(err)
 
+	_, err = h.admin.SetRegionKey(ctx, h.org.Slug, "dc1", &agents.SetRegionKeyRequest{Recipient: oldRecipient})
+	r.NoError(err)
+
 	check := h.sealedCheck("acme-db", map[string]any{"password": "pw"}, oldRecipient)
 
+	// The rotation keeps the old public key: the agent is challenged on it.
 	_, err = h.admin.SetRegionKey(ctx, h.org.Slug, "dc1", &agents.SetRegionKeyRequest{Recipient: newRecipient})
 	r.NoError(err)
 
-	agent := h.enroll("holder", true, "region-key-"+credentials.RecipientFingerprint(oldRecipient))
+	agent := h.enroll("holder", true,
+		"region-key-"+credentials.RecipientFingerprint(oldRecipient),
+		"region-key-"+credentials.RecipientFingerprint(newRecipient))
 
 	outcome := startOne(t, h, check)
 	r.Equal("pending", outcome.Status, outcome.ErrorCode)
 
 	claim := h.claim(agent.agent)
 	r.NotNil(claim)
+
+	// The challenge is sealed to the old region key only.
+	r.NotEmpty(answer(t, claim, oldID))
+
+	_, err = credentials.OpenSealedChallenge(mustInput(t, claim).Challenge, newID, agent.keys.X25519Identity)
+	r.Error(err)
+
 	h.run(claim, agent.agent, agent.keys.X25519Identity, oldID, newID)
 
+	// No second agent holds the new key: stored, but still flagged.
 	stored := h.reload(check)
-	r.False(needsReseal(t, h, check, newRecipient))
+	r.True(credentials.IsSealedUnconfirmed(*stored.ConfigSealed))
+	r.True(needsReseal(t, h, check, newRecipient), "an unconfirmed re-wrap stays flagged")
+
+	final := status(t, h, check)
+	r.Equal("done", final.Status)
+	r.Equal(rewraptask.CodeNotConfirmed, final.ErrorCode)
 
 	_, err = credentials.UnsealWithIdentity(oldID, *stored.ConfigSealed)
 	r.Error(err, "the old region key no longer opens the re-sealed blob")
@@ -367,17 +447,17 @@ func TestRewrap_ResultValidation(t *testing.T) {
 	cases := []struct {
 		name string
 		code string
-		body func(oldRecipient, newRecipient string) rewraptask.Result
+		body func(oldRecipient, newRecipient, challenge string) rewraptask.Result
 	}{
 		{
 			name: "wrong stanza count",
 			code: rewraptask.CodeInvalidResult,
-			body: func(oldRecipient, newRecipient string) rewraptask.Result {
+			body: func(oldRecipient, newRecipient, challenge string) rewraptask.Result {
 				// Sealed to one recipient, but claims both fingerprints.
 				_, ct, err := credentials.SealForClient([]string{oldRecipient}, map[string]any{"password": "x"})
 				require.NoError(t, err)
 
-				return rewraptask.Result{CT: ct, Fingerprints: []string{
+				return rewraptask.Result{CT: ct, Challenge: challenge, Fingerprints: []string{
 					credentials.RecipientFingerprint(oldRecipient), credentials.RecipientFingerprint(newRecipient),
 				}}
 			},
@@ -385,17 +465,39 @@ func TestRewrap_ResultValidation(t *testing.T) {
 		{
 			name: "stale fingerprints",
 			code: rewraptask.CodeRecipientsChanged,
-			body: func(oldRecipient, _ string) rewraptask.Result {
+			body: func(oldRecipient, _, challenge string) rewraptask.Result {
 				fps, ct, err := credentials.SealForClient([]string{oldRecipient}, map[string]any{"password": "x"})
+				require.NoError(t, err)
+
+				return rewraptask.Result{CT: ct, Fingerprints: fps, Challenge: challenge}
+			},
+		},
+		{
+			name: "unknown refusal code",
+			code: rewraptask.CodeInvalidResult,
+			body: func(string, string, string) rewraptask.Result { return rewraptask.Result{ErrorCode: "SOMETHING"} },
+		},
+		{
+			name: "valid blob without the challenge",
+			code: rewraptask.CodeInvalidResult,
+			body: func(oldRecipient, newRecipient, _ string) rewraptask.Result {
+				fps, ct, err := credentials.SealForClient([]string{oldRecipient, newRecipient},
+					map[string]any{"password": "x"})
 				require.NoError(t, err)
 
 				return rewraptask.Result{CT: ct, Fingerprints: fps}
 			},
 		},
 		{
-			name: "unknown refusal code",
+			name: "valid blob with a wrong challenge",
 			code: rewraptask.CodeInvalidResult,
-			body: func(string, string) rewraptask.Result { return rewraptask.Result{ErrorCode: "SOMETHING"} },
+			body: func(oldRecipient, newRecipient, challenge string) rewraptask.Result {
+				fps, ct, err := credentials.SealForClient([]string{oldRecipient, newRecipient},
+					map[string]any{"password": "x"})
+				require.NoError(t, err)
+
+				return rewraptask.Result{CT: ct, Fingerprints: fps, Challenge: challenge + "0"}
+			},
 		},
 	}
 
@@ -415,7 +517,8 @@ func TestRewrap_ResultValidation(t *testing.T) {
 			claim := h.claim(oldAgent.agent)
 			r.NotNil(claim)
 
-			body, err := json.Marshal(tc.body(oldAgent.keys.X25519Recipient, newAgent.keys.X25519Recipient))
+			challenge := answer(t, claim, oldAgent.keys.X25519Identity)
+			body, err := json.Marshal(tc.body(oldAgent.keys.X25519Recipient, newAgent.keys.X25519Recipient, challenge))
 			r.NoError(err)
 			r.NoError(h.tasks.Finish(t.Context(), claim.UID, oldAgent.agent.UID, body))
 
@@ -532,9 +635,19 @@ func TestRewrap_KeepsTheBinding(t *testing.T) {
 	r.NotNil(claim)
 	h.run(claim, oldAgent.agent, oldAgent.keys.X25519Identity)
 	r.Equal(models.WorkerTaskStatusDone, h.task(claim.UID).Status)
+	h.confirm(newAgent.agent, newAgent.keys.X25519Identity)
 
 	plain, err := credentials.UnsealWithIdentity(newAgent.keys.X25519Identity, *h.reload(check).ConfigSealed)
 	r.NoError(err)
 	r.Equal("s3cret", plain["password"])
 	r.Equal(map[string]any{"type": "http", "digest": binding["digest"]}, plain[credentials.BindingKey])
+}
+
+func mustInput(t *testing.T, claim *workertasks.Claim) rewraptask.Input {
+	t.Helper()
+
+	var input rewraptask.Input
+	require.NoError(t, json.Unmarshal(claim.Input, &input))
+
+	return input
 }

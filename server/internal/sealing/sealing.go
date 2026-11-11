@@ -25,7 +25,15 @@ const (
 	ParamKeyBrowserSealingMode = "security.browser_sealing.mode"
 	// ParamKeyRegionKeys holds a JSON map region -> RegionKey.
 	ParamKeyRegionKeys = "sealing.region_keys"
+	// ParamKeyRetiredRegionKeys holds a JSON map fingerprint -> RegionKey of
+	// the region keys rotated away or removed (spec 2026-11-11-02): blobs
+	// still sealed to one can only be handed to an agent that proves it holds
+	// it, which takes its public key.
+	ParamKeyRetiredRegionKeys = "sealing.retired_region_keys"
 )
+
+// maxRetiredRegionKeys bounds the retired key list: the oldest go first.
+const maxRetiredRegionKeys = 64
 
 // Browser-sealing modes of an org.
 const (
@@ -149,6 +157,89 @@ func SetRegionKeys(ctx context.Context, store Store, orgUID string, keys map[str
 	}
 
 	return store.SetOrgParameter(ctx, orgUID, ParamKeyRegionKeys, keys, false)
+}
+
+// RetiredRegionKeys returns the org's retired region keys, keyed by
+// fingerprint. A missing or malformed row reads as none.
+func RetiredRegionKeys(ctx context.Context, store Store, orgUID string) (map[string]RegionKey, error) {
+	param, err := store.GetOrgParameter(ctx, orgUID, ParamKeyRetiredRegionKeys)
+	if err != nil {
+		return nil, fmt.Errorf("read retired region keys: %w", err)
+	}
+
+	out := map[string]RegionKey{}
+
+	if param == nil {
+		return out, nil
+	}
+
+	raw, err := json.Marshal(param.Value[models.ParameterValueKey])
+	if err != nil {
+		return out, nil //nolint:nilerr // a malformed row reads as no key
+	}
+
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return map[string]RegionKey{}, nil //nolint:nilerr // same
+	}
+
+	for fp, key := range out {
+		if key.Recipient == "" || credentials.RecipientFingerprint(key.Recipient) != fp {
+			delete(out, fp)
+		}
+	}
+
+	return out, nil
+}
+
+// RetireRegionKey remembers a region key that was rotated away or removed.
+// The list keeps the maxRetiredRegionKeys most recent ones.
+func RetireRegionKey(ctx context.Context, store Store, orgUID string, key RegionKey, now time.Time) error {
+	retired, err := RetiredRegionKeys(ctx, store, orgUID)
+	if err != nil {
+		return err
+	}
+
+	key.CreatedAt = now.UTC()
+	retired[key.Fingerprint] = key
+
+	for len(retired) > maxRetiredRegionKeys {
+		oldest := ""
+
+		for fp, entry := range retired {
+			if oldest == "" || entry.CreatedAt.Before(retired[oldest].CreatedAt) {
+				oldest = fp
+			}
+		}
+
+		delete(retired, oldest)
+	}
+
+	return store.SetOrgParameter(ctx, orgUID, ParamKeyRetiredRegionKeys, retired, false)
+}
+
+// KnownRegionRecipients maps the fingerprint of every region key of the org,
+// current or retired, to its public key.
+func KnownRegionRecipients(ctx context.Context, store Store, orgUID string) (map[string]string, error) {
+	current, err := RegionKeys(ctx, store, orgUID)
+	if err != nil {
+		return nil, err
+	}
+
+	retired, err := RetiredRegionKeys(ctx, store, orgUID)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[string]string, len(current)+len(retired))
+	for fp, key := range retired {
+		out[fp] = key.Recipient
+	}
+
+	for _, key := range current {
+		out[credentials.RecipientFingerprint(key.Recipient)] = key.Recipient
+	}
+
+	return out, nil
 }
 
 // NewRegionKey builds the stored record of a region recipient.

@@ -144,11 +144,19 @@ func (s *Service) SetRegionKey(
 		return nil, err
 	}
 
-	_, rotated := keys[full]
+	previous, rotated := keys[full]
 	keys[full] = key
 
 	if err := sealing.SetRegionKeys(ctx, s.db, org.UID, keys); err != nil {
 		return nil, err
+	}
+
+	// Blobs sealed to the old key are re-wrapped by an agent that proves it
+	// holds it, which takes its public key (spec 2026-11-11-02).
+	if rotated && previous.Fingerprint != key.Fingerprint {
+		if err := sealing.RetireRegionKey(ctx, s.db, org.UID, previous, s.now()); err != nil {
+			return nil, err
+		}
 	}
 
 	action := "region_key_set"
@@ -177,13 +185,18 @@ func (s *Service) DeleteRegionKey(ctx context.Context, orgSlug, slug string) err
 		return err
 	}
 
-	if _, ok := keys[full]; !ok {
+	previous, ok := keys[full]
+	if !ok {
 		return nil
 	}
 
 	delete(keys, full)
 
 	if err := sealing.SetRegionKeys(ctx, s.db, org.UID, keys); err != nil {
+		return err
+	}
+
+	if err := sealing.RetireRegionKey(ctx, s.db, org.UID, previous, s.now()); err != nil {
 		return err
 	}
 

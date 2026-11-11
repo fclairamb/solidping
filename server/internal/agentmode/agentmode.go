@@ -136,6 +136,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		logger.InfoContext(ctx, "Peer re-wrap of sealed secrets disabled (SP_AGENT_REWRAP_ENABLED=false)")
 	} else {
 		tasks.Register(rewraptask.NewExecutor(wsBackend.UnsealIdentities))
+		// The confirmation of another agent's re-wrap (spec 2026-11-11-02).
+		tasks.Register(rewraptask.NewVerifyExecutor(wsBackend.UnsealIdentities))
 		logger.InfoContext(ctx, "Peer re-wrap of sealed secrets enabled")
 	}
 
