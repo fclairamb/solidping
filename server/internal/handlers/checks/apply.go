@@ -592,15 +592,23 @@ func (s *Service) sealedSecretsErrors(
 
 	for i := range doc.Checks {
 		entry := &doc.Checks[i]
+		_, existing := snapshot.lookup(entry.Slug)
+
+		// A browser-sealed check whose target changes needs new secrets
+		// (spec 2026-11-11-01).
+		if err := s.plannedSealedTargetError(ctx, existing, entry.Config, entry.SealedSecrets); err != nil {
+			out = append(out, *importErrorFor(i, entry.Slug, err))
+
+			continue
+		}
+
 		if entry.SealedSecrets == nil {
 			continue
 		}
 
 		regionList := entry.Regions
-		if len(regionList) == 0 {
-			if _, existing := snapshot.lookup(entry.Slug); existing != nil {
-				regionList = existing.Regions
-			}
+		if len(regionList) == 0 && existing != nil {
+			regionList = existing.Regions
 		}
 
 		if _, err := s.validateClientSealing(

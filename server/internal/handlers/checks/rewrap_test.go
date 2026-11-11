@@ -29,7 +29,7 @@ func makeLiveRewrapAgent(t *testing.T, dbSvc db.Service, agent *models.Agent) {
 	r.NoError(dbSvc.UpdateAgentLastSeen(t.Context(), agent.UID, time.Now().UTC()))
 
 	worker := models.NewWorker(agentcrypto.WorkerSlug(agent.UID), agent.Name)
-	worker.Capabilities = []string{rewraptask.Capability}
+	worker.Capabilities = []string{rewraptask.Capability, rewraptask.VerifyCapability}
 	r.NoError(dbSvc.CreateWorker(t.Context(), worker))
 }
 
@@ -42,7 +42,7 @@ func TestSealCommandOutputAcceptedByWriteAPI(t *testing.T) {
 	svc, dbSvc, org, keys := setupBrowserSealing(t, sqliteSealingEnv)
 	ctx := t.Context()
 
-	sealed, err := spcli.SealSecrets([]string{keys.X25519Recipient}, map[string]any{"basicAuth": "alice:hunter2"})
+	sealed, err := spcli.SealSecrets([]string{keys.X25519Recipient}, map[string]any{"basicAuth": "alice:hunter2"}, nil)
 	r.NoError(err)
 
 	// Through JSON, as a script would pipe it.
@@ -92,7 +92,10 @@ func testStartRewrapClearsNeedsReseal(t *testing.T, env sealingEnv) {
 		clientSeal(t, map[string]any{"basicAuth": "alice:hunter2"}, oldKeys.X25519Recipient), sealTestRegion))
 	r.NoError(err)
 
-	_, newKeys := enrollAgentIn(t, dbSvc, org.UID, sealTestRegion)
+	newAgent, newKeys := enrollAgentIn(t, dbSvc, org.UID, sealTestRegion)
+	makeLiveRewrapAgent(t, dbSvc, newAgent)
+	// The old agent was seen last: it re-wraps, the new one confirms.
+	r.NoError(dbSvc.UpdateAgentLastSeen(ctx, oldAgent.UID, time.Now().UTC().Add(time.Second)))
 
 	detail, err := svc.GetCheck(ctx, org.Slug, created.UID, checks.GetCheckOptions{})
 	r.NoError(err)
@@ -121,6 +124,21 @@ func testStartRewrapClearsNeedsReseal(t *testing.T, env sealingEnv) {
 
 	exec := rewraptask.NewExecutor(func() []string { return []string{oldKeys.X25519Identity} })
 	r.NoError(exec.Run(ctx, claim, &finishReporter{tasks: tasks, uid: claim.UID, worker: oldAgent.UID}))
+
+	pending, err := svc.RewrapStatus(ctx, org.Slug, []string{created.UID})
+	r.NoError(err)
+	r.Len(pending, 1)
+	r.Equal("pending", pending[0].Status, "waiting for the second agent")
+
+	verify, err := tasks.Claim(ctx, &workertasks.WorkerIdentity{
+		UID: newAgent.UID, Region: sealTestRegion, OrgUID: org.UID, IsAgent: true,
+		Kinds: []string{rewraptask.VerifyKind},
+	})
+	r.NoError(err)
+	r.NotNil(verify)
+
+	verifyExec := rewraptask.NewVerifyExecutor(func() []string { return []string{newKeys.X25519Identity} })
+	r.NoError(verifyExec.Run(ctx, verify, &finishReporter{tasks: tasks, uid: verify.UID, worker: newAgent.UID}))
 
 	detail, err = svc.GetCheck(ctx, org.Slug, created.UID, checks.GetCheckOptions{})
 	r.NoError(err)
@@ -163,4 +181,64 @@ func (f *finishReporter) Finish(ctx context.Context, body json.RawMessage) error
 
 func (f *finishReporter) Fail(ctx context.Context, code string) error {
 	return f.tasks.FailSlice(ctx, f.uid, f.worker, code)
+}
+
+// TestStartRewrapWithoutSecondAgentStaysFlagged: with no second agent online
+// to confirm it, the re-wrap is stored but the check stays on the Re-seal
+// page with the reason "unconfirmed" (spec 2026-11-11-02).
+func TestStartRewrapWithoutSecondAgentStaysFlagged(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	svc, dbSvc, org := sqliteSealingEnv(t)
+	defineSealRegions(t, dbSvc, org.UID)
+
+	tasks := workertasks.NewService(dbSvc.DB())
+	svc.SetRewrapper(rewraptask.Register(rewraptask.Deps{DB: dbSvc, Tasks: tasks}))
+
+	oldAgent, oldKeys := enrollAgentIn(t, dbSvc, org.UID, sealTestRegion)
+	makeLiveRewrapAgent(t, dbSvc, oldAgent)
+
+	created, err := svc.CreateCheck(ctx, org.Slug, sealedCheckRequest("rewrap-alone",
+		clientSeal(t, map[string]any{"basicAuth": "alice:hunter2"}, oldKeys.X25519Recipient), sealTestRegion))
+	r.NoError(err)
+
+	_, newKeys := enrollAgentIn(t, dbSvc, org.UID, sealTestRegion) // offline
+
+	outcomes, err := svc.StartRewrap(ctx, org.Slug, &checks.RewrapRequest{Region: sealTestRegion})
+	r.NoError(err)
+	r.Len(outcomes, 1)
+
+	claim, err := tasks.Claim(ctx, &workertasks.WorkerIdentity{
+		UID: oldAgent.UID, Region: sealTestRegion, OrgUID: org.UID, IsAgent: true, Kinds: []string{rewraptask.Kind},
+	})
+	r.NoError(err)
+	r.NotNil(claim)
+
+	exec := rewraptask.NewExecutor(func() []string { return []string{oldKeys.X25519Identity} })
+	r.NoError(exec.Run(ctx, claim, &finishReporter{tasks: tasks, uid: claim.UID, worker: oldAgent.UID}))
+
+	row, err := dbSvc.GetCheck(ctx, org.UID, created.UID)
+	r.NoError(err)
+
+	secrets, err := credentials.UnsealWithIdentity(newKeys.X25519Identity, *row.ConfigSealed)
+	r.NoError(err, "stored for the current agents")
+	r.Equal("alice:hunter2", secrets["basicAuth"])
+
+	detail, err := svc.GetCheck(ctx, org.Slug, created.UID, checks.GetCheckOptions{})
+	r.NoError(err)
+	r.NotNil(detail.NeedsReseal)
+	r.True(*detail.NeedsReseal, "not confirmed by a second agent")
+
+	listed, err := svc.ListResealChecks(ctx, org.Slug)
+	r.NoError(err)
+	r.Len(listed, 1)
+	r.Equal(checks.ResealReasonUnconfirmed, listed[0].Reason)
+
+	statuses, err := svc.RewrapStatus(ctx, org.Slug, []string{created.UID})
+	r.NoError(err)
+	r.Len(statuses, 1)
+	r.Equal("done", statuses[0].Status)
+	r.Equal(rewraptask.CodeNotConfirmed, statuses[0].ErrorCode)
 }

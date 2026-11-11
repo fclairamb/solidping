@@ -1761,6 +1761,7 @@
     "detailBadge": "Scellé dans le navigateur",
     "replace": "Remplacer",
     "replaceToEdit": "Les secrets scellés se remplacent ensemble : cliquez sur Remplacer pour tous les saisir à nouveau.",
+    "targetChanged": "La cible de ce check a changé : ses secrets scellés sont liés à l'ancienne, saisissez-les à nouveau.",
     "sharedRegionDisabled": "Les régions partagées sont désactivées : cette organisation exige que les secrets des checks soient scellés dans le navigateur."
   }
 }

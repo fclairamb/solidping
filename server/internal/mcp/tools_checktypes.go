@@ -52,6 +52,7 @@ func checkTypeOutputProps() map[string]any {
 		"supportsTunnel":       boolProp("The type can run through an SSH check's tunnel."),
 		"supportsIpVersion":    boolProp("The type honors the shared ipVersion config key."),
 		"secretFields":         arrayOfStringsProp("Top-level config keys the type stores encrypted."),
+		"targetFields":         arrayOfStringsProp("Config keys browser-sealed secrets are bound to."),
 	}
 }
 

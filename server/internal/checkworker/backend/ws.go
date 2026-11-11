@@ -346,7 +346,19 @@ func (b *WSBackend) claim(
 				// fix (re-save the credentials).
 				b.logger.WarnContext(ctx, "sealed credentials not addressed to this agent",
 					"check_uid", job.CheckUID, "error", unsealErr)
-				b.submitSealError(ctx, job)
+				b.submitSealError(ctx, job, ErrSealedForOthers)
+
+				continue
+			}
+
+			// The binding (spec 2026-11-11-01): secrets sealed for another
+			// target, or carrying a public key, are never used.
+			secrets, unsealErr = openBoundSecrets(
+				ctx, b.logger, job.CheckUID, job.Type, *job.ConfigSealed, job.Config, secrets)
+			if unsealErr != nil {
+				b.logger.WarnContext(ctx, "sealed credentials refused: not bound to this check's target",
+					"check_uid", job.CheckUID, "error", unsealErr)
+				b.submitSealError(ctx, job, unsealErr)
 
 				continue
 			}
@@ -382,13 +394,13 @@ func (b *WSBackend) claim(
 
 // submitSealError reports a decrypt failure as an error result so the check's
 // history shows the actionable message instead of silently never running.
-func (b *WSBackend) submitSealError(ctx context.Context, job *models.CheckJob) {
+func (b *WSBackend) submitSealError(ctx context.Context, job *models.CheckJob, cause error) {
 	_, _ = b.request(ctx, &agents.ClientFrame{
 		Type:     agents.MsgTypeResult,
 		JobUID:   job.UID,
 		Status:   int(models.ResultStatusError),
 		Duration: 0,
-		Output:   map[string]any{checkerdef.OutputKeyError: ErrSealedForOthers.Error()},
+		Output:   map[string]any{checkerdef.OutputKeyError: cause.Error()},
 	})
 }
 

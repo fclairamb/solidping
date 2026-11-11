@@ -5,14 +5,19 @@
  * region key of a private location. A check is sealed to the old key with
  * `solidping seal`, the key is rotated by pasting a public key generated
  * offline (`solidping agent region-key generate`), and "Re-seal for the
- * current agents" makes the agent re-seal the check for the new key: the
- * needs-re-seal flag clears without typing the secret again.
+ * current agents" makes the agent re-seal the check for the new key.
+ *
+ * The re-seal is confirmed by a second agent before it is stored (spec
+ * 2026-11-11-02): alone, the agent's re-seal is stored but the check stays
+ * flagged, "not confirmed". Once a second agent holding the new key is
+ * online, a new re-seal is confirmed and the flag clears without typing the
+ * secret again.
  *
  * Needs the binary at the repository root (CI builds it there) or in
  * SOLIDPING_BIN; skipped without it.
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, expect, API_BASE, uniqueStamp, type Page } from "./fixtures";
@@ -37,11 +42,24 @@ function generateRegionKey(): RegionKey {
   return { identity, recipient, fingerprint };
 }
 
-/** `solidping seal`: the sealedSecrets object for a private region. */
-function seal(token: string, region: string, secrets: Record<string, string>, configDir: string): unknown {
+/**
+ * `solidping seal`: the sealedSecrets object for a private region, bound to
+ * the check's type and public config (spec 2026-11-11-01).
+ */
+function seal(
+  token: string,
+  region: string,
+  secrets: Record<string, string>,
+  configDir: string,
+  checkType: string,
+  config: Record<string, unknown>,
+): unknown {
   const out = execFileSync(
     BINARY,
-    ["seal", "--org", "test", "--server", API_BASE, "--region", region, "--token", token],
+    [
+      "seal", "--org", "test", "--server", API_BASE, "--region", region, "--token", token,
+      "--type", checkType, "--config-json", JSON.stringify(config),
+    ],
     {
       encoding: "utf8",
       input: JSON.stringify(secrets),
@@ -61,17 +79,59 @@ async function getAuthToken(page: Page): Promise<string> {
 test.describe("Sealed secrets: peer re-wrap", () => {
   test.skip(!existsSync(BINARY), `needs the solidping binary (${BINARY})`);
 
-  let agent: ChildProcess | undefined;
+  let agents: ChildProcess[] = [];
   let workDir = "";
 
   test.afterEach(() => {
-    agent?.kill("SIGTERM");
-    agent = undefined;
+    for (const agent of agents) agent.kill("SIGTERM");
+    agents = [];
     if (workDir) rmSync(workDir, { recursive: true, force: true });
   });
 
+  /** Starts an agent of the region holding these region identities. */
+  async function startAgent(page: Page, headers: Record<string, string>, slug: string, name: string, keys: string[]) {
+    const minted = await page.request.post(`${API_BASE}/api/v1/orgs/test/agent-enrollment-tokens`, {
+      headers,
+      data: { regionSlug: slug },
+    });
+    expect(minted.ok()).toBeTruthy();
+    const enrollmentToken = (await minted.json()).token as string;
+    const home = join(workDir, name);
+    mkdirSync(home, { recursive: true });
+
+    agents.push(
+      spawn(BINARY, ["serve"], {
+        env: {
+          PATH: process.env.PATH ?? "",
+          HOME: home,
+          SP_NODE_ROLE: "agent",
+          SP_AGENT_SERVER_URL: API_BASE,
+          SP_AGENT_ENROLLMENT_TOKEN: enrollmentToken,
+          SP_AGENT_KEYS_FILE: join(home, "agent-keys.json"),
+          SP_AGENT_NAME: `rewrap-${slug}-${name}`,
+          SP_AGENT_REGION_KEYS: keys.join(","),
+        },
+        stdio: "ignore",
+      }),
+    );
+  }
+
+  /** Waits until count agents of the region advertise its current key. */
+  async function waitForKeyHolders(page: Page, headers: Record<string, string>, slug: string, count: number) {
+    await expect
+      .poll(
+        async () => {
+          const resp = await page.request.get(`${API_BASE}/api/v1/orgs/test/private-regions`, { headers });
+          const rows = ((await resp.json()).data ?? []) as Array<{ slug: string; agentsWithRegionKey?: number }>;
+          return rows.find((row) => row.slug === slug)?.agentsWithRegionKey ?? 0;
+        },
+        { timeout: 60_000, intervals: [1000] },
+      )
+      .toBeGreaterThanOrEqual(count);
+  }
+
   test("re-seal from the region page after a key rotation clears the flag", async ({ authenticatedPage: page }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(300_000);
 
     const token = await getAuthToken(page);
     const headers = { Authorization: `Bearer ${token}` };
@@ -95,39 +155,10 @@ test.describe("Sealed secrets: peer re-wrap", () => {
       })).ok(),
     ).toBeTruthy();
 
-    const minted = await page.request.post(`${API_BASE}/api/v1/orgs/test/agent-enrollment-tokens`, {
-      headers,
-      data: { regionSlug: slug },
-    });
-    expect(minted.ok()).toBeTruthy();
-    const enrollmentToken = (await minted.json()).token as string;
-
     // The agent holds both keys, as during a rotation.
-    agent = spawn(BINARY, ["serve"], {
-      env: {
-        PATH: process.env.PATH ?? "",
-        HOME: workDir,
-        SP_NODE_ROLE: "agent",
-        SP_AGENT_SERVER_URL: API_BASE,
-        SP_AGENT_ENROLLMENT_TOKEN: enrollmentToken,
-        SP_AGENT_KEYS_FILE: join(workDir, "agent-keys.json"),
-        SP_AGENT_NAME: `rewrap-${slug}`,
-        SP_AGENT_REGION_KEYS: `${oldKey.identity},${newKey.identity}`,
-      },
-      stdio: "ignore",
-    });
-
+    await startAgent(page, headers, slug, "first", [oldKey.identity, newKey.identity]);
     // Online and advertising the region key.
-    await expect
-      .poll(
-        async () => {
-          const resp = await page.request.get(`${API_BASE}/api/v1/orgs/test/private-regions`, { headers });
-          const rows = ((await resp.json()).data ?? []) as Array<{ slug: string; agentsWithRegionKey?: number }>;
-          return rows.find((row) => row.slug === slug)?.agentsWithRegionKey ?? 0;
-        },
-        { timeout: 60_000, intervals: [1000] },
-      )
-      .toBeGreaterThan(0);
+    await waitForKeyHolders(page, headers, slug, 1);
 
     const created = await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
       headers,
@@ -137,7 +168,9 @@ test.describe("Sealed secrets: peer re-wrap", () => {
         type: "http",
         regions: [region],
         config: { url: "https://internal.example.com" },
-        sealedSecrets: seal(token, region, { basicAuth: "alice:hunter2" }, workDir),
+        sealedSecrets: seal(token, region, { basicAuth: "alice:hunter2" }, workDir, "http", {
+          url: "https://internal.example.com",
+        }),
       },
     });
     expect(created.ok(), await created.text()).toBeTruthy();
@@ -158,7 +191,24 @@ test.describe("Sealed secrets: peer re-wrap", () => {
     await expect(page.getByTestId(`region-key-stale-${slug}`)).toBeVisible();
 
     // Re-seal on the agent: it opens the blob with the old key and seals it
-    // for the new one.
+    // for the new one. No second agent is online to confirm it: stored, but
+    // still flagged.
+    await page.getByTestId(`rewrap-button-${slug}`).click();
+    await expect(page.getByTestId(`rewrap-unconfirmed-${slug}`)).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByTestId(`rewrap-done-${slug}`)).toHaveCount(0);
+
+    const unconfirmed = await page.request.get(`${API_BASE}/api/v1/orgs/test/checks/${checkUid}`, { headers });
+    expect((await unconfirmed.json()).needsReseal).toBe(true);
+
+    await page.goto("orgs/test/organization/private-locations/reseal");
+    await expect(page.getByTestId(`reseal-check-unconfirmed-${checkUid}`)).toBeVisible();
+
+    // A second agent holding the new key comes online: a new re-seal is
+    // confirmed by it, and the flag clears.
+    await startAgent(page, headers, slug, "second", [newKey.identity]);
+    await waitForKeyHolders(page, headers, slug, 2);
+
+    await page.goto("orgs/test/organization/private-locations");
     await page.getByTestId(`rewrap-button-${slug}`).click();
     await expect(page.getByTestId(`rewrap-done-${slug}`)).toBeVisible({ timeout: 90_000 });
 
@@ -169,11 +219,11 @@ test.describe("Sealed secrets: peer re-wrap", () => {
     await expect(page.getByTestId(`region-key-stale-${slug}`)).toHaveCount(0);
 
     // Leave the shared server as it was: no check, no agent, no location.
-    agent?.kill("SIGTERM");
-    agent = undefined;
+    for (const agent of agents) agent.kill("SIGTERM");
+    agents = [];
     await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${checkUid}`, { headers });
-    const agents = await page.request.get(`${API_BASE}/api/v1/orgs/test/agents`, { headers });
-    for (const row of ((await agents.json()).data ?? []) as Array<{ uid: string; region: string }>) {
+    const agentRows = await page.request.get(`${API_BASE}/api/v1/orgs/test/agents`, { headers });
+    for (const row of ((await agentRows.json()).data ?? []) as Array<{ uid: string; region: string }>) {
       if (row.region === region) {
         await page.request.delete(`${API_BASE}/api/v1/orgs/test/agents/${row.uid}`, { headers });
       }

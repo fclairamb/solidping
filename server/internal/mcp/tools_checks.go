@@ -594,6 +594,8 @@ func sealedSecretsProp() map[string]any {
 			"{\"keys\":[\"basicAuth\"],\"fingerprints\":[\"…\"],\"ct\":\"<base64 age file>\"}. " +
 			"Fetch the recipients from GET /api/v1/orgs/{org}/sealing-recipients and seal with the " +
 			"age CLI or dash0. Prefer it to plaintext secrets: an org in browser sealing mode " +
-			"`required` refuses plaintext ones.",
+			"`required` refuses plaintext ones. Seal a `_binding` (type and target digest) next to the " +
+			"secrets and send \"bound\":true, or use `solidping seal --type --config-json`: the agents " +
+			"refuse the secrets once the check's URL, host or port changes (409 SEALED_TARGET_CHANGED).",
 	)
 }

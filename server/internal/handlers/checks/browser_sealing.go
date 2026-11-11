@@ -33,6 +33,13 @@ var (
 	// ErrSealingRecipientsChanged is returned when the blob was sealed to a
 	// recipient set that is not the current one of the check's regions.
 	ErrSealingRecipientsChanged = errors.New("sealing recipients changed")
+	// ErrSealedTargetChanged is returned when a write changes a target field
+	// (the URL, host, port, database, tunnel) of a browser-sealed check
+	// without new secrets: the agents refuse a blob sealed for another target
+	// (spec 2026-11-11-01).
+	ErrSealedTargetChanged = errors.New(
+		"sealed target changed: this check's secrets are sealed for its current target, " +
+			"type them again (send new sealedSecrets) to change the URL, host, port, database or tunnel")
 )
 
 // SealedSecretsRequest is a client-sealed secret map: `ct` is the base64 of
@@ -42,6 +49,10 @@ type SealedSecretsRequest struct {
 	Keys         []string `json:"keys"`
 	Fingerprints []string `json:"fingerprints"`
 	CT           string   `json:"ct"`
+	// Bound says the plaintext carries a `_binding` to the check's target
+	// (spec 2026-11-11-01). Stored as a display-only flag: the Re-seal page
+	// lists the browser blobs without one.
+	Bound bool `json:"bound,omitempty"`
 }
 
 // SealingRecipientsChangedError carries the current recipients, so the client
@@ -59,6 +70,59 @@ func (e *SealingRecipientsChangedError) Unwrap() error { return ErrSealingRecipi
 // invalidSealed builds a VALIDATION_ERROR-mapped refusal.
 func invalidSealed(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrSealedSecretsInvalid, fmt.Sprintf(format, args...))
+}
+
+// targetFieldsForType returns the checker's target keys (spec 2026-11-11-01).
+func (s *Service) targetFieldsForType(ctx context.Context, orgUID, checkType string) []string {
+	cfg, ok := s.parseConfigFor(ctx, orgUID, checkType)
+	if !ok {
+		return credentials.TargetFieldsFor(nil)
+	}
+
+	return credentials.TargetFieldsFor(cfg)
+}
+
+// assertSealedTargetKept refuses a write that would keep a browser-sealed
+// blob while changing a target field of the check (spec 2026-11-11-01): the
+// blob is bound to the old target and the agents would refuse it. A write
+// that brings new secrets (sealed or plaintext) or clears the stored ones
+// replaces the blob and passes. after is the effective public config.
+func (s *Service) assertSealedTargetKept(
+	ctx context.Context, check *models.Check, after map[string]any, bringsSecrets bool,
+) error {
+	if bringsSecrets || !isBrowserSealed(check) {
+		return nil
+	}
+
+	if credentials.TargetChanged(
+		s.targetFieldsForType(ctx, check.OrganizationUID, check.Type), check.Config, after,
+	) {
+		return ErrSealedTargetChanged
+	}
+
+	return nil
+}
+
+// plannedSealedTargetError is assertSealedTargetKept for a dry run: the
+// config-as-code plan of an update of existing to cfg, with or without
+// sealedSecrets.
+func (s *Service) plannedSealedTargetError(
+	ctx context.Context, existing *models.Check, cfg map[string]any, sealed *SealedSecretsRequest,
+) error {
+	if sealed != nil || existing == nil || cfg == nil || !isBrowserSealed(existing) {
+		return nil
+	}
+
+	normalized, err := s.normalizeConfigFor(ctx, existing.OrganizationUID, existing.Type, cfg)
+	if err != nil {
+		normalized = cfg
+	}
+
+	secretFields := s.secretFieldsForType(ctx, existing.OrganizationUID, existing.Type)
+	brings := len(secretKeysWithValues(normalized, secretFields)) > 0 ||
+		len(storedKeysIn(existing.ConfigPrivateKeys, explicitlyClearedKeys(cfg, secretFields))) > 0
+
+	return s.assertSealedTargetKept(ctx, existing, normalized, brings)
 }
 
 // secretFieldsForType returns the checker's declared secret keys.
@@ -269,6 +333,12 @@ func (s *Service) applyClientSealing(
 		return err
 	}
 
+	if sealed.Bound {
+		if envelope, err = credentials.MarkSealedBound(envelope); err != nil {
+			return err
+		}
+	}
+
 	public, _ := credentials.SplitConfig(effective, secretFields)
 	check.Config = public
 	check.ConfigPrivate = nil
@@ -463,7 +533,21 @@ type ResealCheck struct {
 	Slug    string   `json:"slug"`
 	Name    string   `json:"name"`
 	Regions []string `json:"regions"`
+	// Reason is why the check is listed: ResealReasonRecipients (the
+	// recipients changed) or ResealReasonUnbound (sealed before the target
+	// binding of spec 2026-11-11-01: seal again to bind it) or
+	// ResealReasonUnconfirmed (re-sealed by an agent, not confirmed by a
+	// second one, spec 2026-11-11-02).
+	Reason string `json:"reason"`
 }
+
+// Reasons a check is listed on the Re-seal page.
+const (
+	ResealReasonRecipients = "recipients"
+	ResealReasonUnbound    = "unbound"
+	// ResealReasonUnconfirmed is a peer re-wrap no second agent confirmed.
+	ResealReasonUnconfirmed = "unconfirmed"
+)
 
 // ListResealChecks lists the org's checks flagged `needsReseal`: their secrets
 // must be typed again for the current agents (or region key).
@@ -481,8 +565,16 @@ func (s *Service) ListResealChecks(ctx context.Context, orgSlug string) ([]Resea
 	out := make([]ResealCheck, 0)
 
 	for _, check := range checks {
-		need := s.computeNeedsReseal(ctx, check)
-		if need == nil || !*need {
+		var reason string
+
+		switch need := s.computeNeedsReseal(ctx, check); {
+		case need != nil && *need && check.ConfigSealed != nil && credentials.IsSealedUnconfirmed(*check.ConfigSealed):
+			reason = ResealReasonUnconfirmed
+		case need != nil && *need:
+			reason = ResealReasonRecipients
+		case isBrowserSealed(check) && !credentials.IsSealedBound(*check.ConfigSealed):
+			reason = ResealReasonUnbound
+		default:
 			continue
 		}
 
@@ -491,7 +583,9 @@ func (s *Service) ListResealChecks(ctx context.Context, orgSlug string) ([]Resea
 			slug = *check.Slug
 		}
 
-		out = append(out, ResealCheck{UID: check.UID, Slug: slug, Name: checkDisplayName(check), Regions: check.Regions})
+		out = append(out, ResealCheck{
+			UID: check.UID, Slug: slug, Name: checkDisplayName(check), Regions: check.Regions, Reason: reason,
+		})
 	}
 
 	return out, nil

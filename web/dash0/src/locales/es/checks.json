@@ -1761,6 +1761,7 @@
     "detailBadge": "Sellado en el navegador",
     "replace": "Reemplazar",
     "replaceToEdit": "Los secretos sellados se reemplazan juntos: haz clic en Reemplazar para escribirlos todos de nuevo.",
+    "targetChanged": "El destino de este check cambió: sus secretos sellados están ligados al anterior, vuelve a escribirlos.",
     "sharedRegionDisabled": "Las regiones compartidas están desactivadas: esta organización exige que los secretos de los checks se sellen en el navegador."
   }
 }
