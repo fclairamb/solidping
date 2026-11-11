@@ -706,6 +706,8 @@
       "duration": "Dauer",
       "region": "Region",
       "filterAll": "Alle",
+      "filterFailures": "Fehler",
+      "noFailures": "Keine fehlgeschlagene Ausführung unter den letzten Ergebnissen",
       "stats": {
         "min": "Min",
         "avg": "Durchschn.",

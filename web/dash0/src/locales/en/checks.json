@@ -750,6 +750,8 @@
       "duration": "Duration",
       "region": "Region",
       "filterAll": "All",
+      "filterFailures": "Failures",
+      "noFailures": "No failed run among the recent results",
       "stats": {
         "min": "Min",
         "avg": "Avg",

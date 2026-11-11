@@ -750,6 +750,8 @@
       "duration": "Durée",
       "region": "Région",
       "filterAll": "Toutes",
+      "filterFailures": "Échecs",
+      "noFailures": "Aucune exécution en échec parmi les résultats récents",
       "stats": {
         "min": "Min",
         "avg": "Moy",
