@@ -2,6 +2,7 @@ package agents_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -65,4 +66,79 @@ func TestRegionKeyLifecycle(t *testing.T) {
 	list, err = s.svc.ListPrivateRegions(ctx, "acme")
 	r.NoError(err)
 	r.Equal(sealing.KeyModePerAgent, list.Data[0].KeyMode)
+}
+
+// TestDeletedRegionKeyDoesNotReachANewRegion (spec 2026-11-11-03): deleting a
+// region takes its shared key with it, so a region created later with the
+// same slug is per agent, and the old key is retired like a removed one.
+func TestDeletedRegionKeyDoesNotReachANewRegion(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	s := newSetup(t)
+	ctx := t.Context()
+
+	_, err := s.svc.CreatePrivateRegion(ctx, "acme", &agents.CreatePrivateRegionRequest{Slug: "office"})
+	r.NoError(err)
+
+	_, recipient, err := credentials.GenerateX25519Keypair()
+	r.NoError(err)
+	_, err = s.svc.SetRegionKey(ctx, "acme", "office", &agents.SetRegionKeyRequest{Recipient: recipient})
+	r.NoError(err)
+
+	// Positive control: while the region exists, the key is its recipient.
+	got, err := sealing.RecipientsForRegions(ctx, s.dbSvc, s.org.UID, []string{"@office"})
+	r.NoError(err)
+	r.Len(got, 1)
+	r.Equal(sealing.RecipientKindRegion, got[0].Kind)
+
+	r.NoError(s.svc.DeletePrivateRegion(ctx, "acme", "office"))
+
+	stored, err := sealing.StoredRegionKeys(ctx, s.dbSvc, s.org.UID)
+	r.NoError(err)
+	r.Empty(stored)
+
+	retired, err := sealing.RetiredRegionKeys(ctx, s.dbSvc, s.org.UID)
+	r.NoError(err)
+	r.Contains(retired, credentials.RecipientFingerprint(recipient))
+
+	_, err = s.svc.CreatePrivateRegion(ctx, "acme", &agents.CreatePrivateRegionRequest{Slug: "office"})
+	r.NoError(err)
+
+	got, err = sealing.RecipientsForRegions(ctx, s.dbSvc, s.org.UID, []string{"@office"})
+	r.NoError(err)
+	r.Empty(got, "no active agent and no inherited key")
+
+	list, err := s.svc.ListPrivateRegions(ctx, "acme")
+	r.NoError(err)
+	r.Equal(sealing.KeyModePerAgent, list.Data[0].KeyMode)
+}
+
+// TestOrphanedRegionKeyIsNotReturned: an entry of a region that does not exist
+// (left by an older version) reads as absent, and creating the region clears it.
+func TestOrphanedRegionKeyIsNotReturned(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	s := newSetup(t)
+	ctx := t.Context()
+
+	_, recipient, err := credentials.GenerateX25519Keypair()
+	r.NoError(err)
+	key, err := sealing.NewRegionKey(recipient, time.Now())
+	r.NoError(err)
+	r.NoError(sealing.SetRegionKeys(ctx, s.dbSvc, s.org.UID, map[string]sealing.RegionKey{"@gone": key}))
+
+	keys, err := sealing.RegionKeys(ctx, s.dbSvc, s.org.UID)
+	r.NoError(err)
+	r.Empty(keys)
+
+	_, err = s.svc.CreatePrivateRegion(ctx, "acme", &agents.CreatePrivateRegionRequest{Slug: "gone"})
+	r.NoError(err)
+
+	stored, err := sealing.StoredRegionKeys(ctx, s.dbSvc, s.org.UID)
+	r.NoError(err)
+	r.Empty(stored)
+
+	keys, err = sealing.RegionKeys(ctx, s.dbSvc, s.org.UID)
+	r.NoError(err)
+	r.Empty(keys)
 }

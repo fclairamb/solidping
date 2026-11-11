@@ -183,33 +183,49 @@ func (s *Service) DeleteRegionKey(ctx context.Context, orgSlug, slug string) err
 		return err
 	}
 
-	keys, err := sealing.RegionKeys(ctx, s.db, org.UID)
-	if err != nil {
+	removed, err := s.removeRegionKey(ctx, org.UID, full, slug, "")
+	if err != nil || !removed {
 		return err
 	}
-
-	previous, ok := keys[full]
-	if !ok {
-		return nil
-	}
-
-	delete(keys, full)
-
-	if err := sealing.SetRegionKeys(ctx, s.db, org.UID, keys); err != nil {
-		return err
-	}
-
-	if err := sealing.RetireRegionKey(ctx, s.db, org.UID, previous, s.now()); err != nil {
-		return err
-	}
-
-	audit.Record(ctx, s.db, org.UID, models.EventTypeOrgSettingsUpdated,
-		audit.Target{Type: "private_region", UID: full, Name: slug},
-		models.JSONMap{auditKeyAction: "region_key_removed"})
 
 	s.ResealRegion(ctx, org.UID, full)
 
 	return nil
+}
+
+// removeRegionKey drops the shared key of a region (a stale one included),
+// retires its public part and records the audit event. It reports whether a
+// key was there. reason is added to the audit event when not empty.
+func (s *Service) removeRegionKey(ctx context.Context, orgUID, full, slug, reason string) (bool, error) {
+	keys, err := sealing.StoredRegionKeys(ctx, s.db, orgUID)
+	if err != nil {
+		return false, err
+	}
+
+	previous, ok := keys[full]
+	if !ok {
+		return false, nil
+	}
+
+	delete(keys, full)
+
+	if err := sealing.SetRegionKeys(ctx, s.db, orgUID, keys); err != nil {
+		return false, err
+	}
+
+	if err := sealing.RetireRegionKey(ctx, s.db, orgUID, previous, s.now()); err != nil {
+		return false, err
+	}
+
+	details := models.JSONMap{auditKeyAction: "region_key_removed"}
+	if reason != "" {
+		details["reason"] = reason
+	}
+
+	audit.Record(ctx, s.db, orgUID, models.EventTypeOrgSettingsUpdated,
+		audit.Target{Type: "private_region", UID: full, Name: slug}, details)
+
+	return true, nil
 }
 
 // ownedRegion resolves an org and one of its private region slugs.

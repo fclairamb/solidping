@@ -17,6 +17,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 // Org parameter keys. Both are org-scoped `parameters` rows: no migration.
@@ -118,8 +119,62 @@ func SetBrowserSealingMode(ctx context.Context, store Store, orgUID, mode string
 }
 
 // RegionKeys returns the org's shared region keys, keyed by private region.
-// A missing or malformed row reads as none (every region per agent).
+// A missing or malformed row reads as none (every region per agent). An entry
+// whose region no longer exists (a key left behind by a deleted region) is
+// not returned, so a new region with the same slug never inherits it.
 func RegionKeys(ctx context.Context, store Store, orgUID string) (map[string]RegionKey, error) {
+	out, err := StoredRegionKeys(ctx, store, orgUID)
+	if err != nil || len(out) == 0 {
+		return out, err
+	}
+
+	existing, err := existingPrivateRegions(ctx, store, orgUID)
+	if err != nil {
+		return nil, err
+	}
+
+	for region := range out {
+		if _, ok := existing[region]; !ok {
+			delete(out, region)
+		}
+	}
+
+	return out, nil
+}
+
+// existingPrivateRegions returns the canonical `@slug` of the org's private regions.
+func existingPrivateRegions(ctx context.Context, store Store, orgUID string) (map[string]struct{}, error) {
+	param, err := store.GetOrgParameter(ctx, orgUID, regions.ParamCustomRegions)
+	if err != nil {
+		return nil, fmt.Errorf("read custom regions: %w", err)
+	}
+
+	out := map[string]struct{}{}
+
+	if param == nil {
+		return out, nil
+	}
+
+	raw, err := json.Marshal(param.Value[models.ParameterValueKey])
+	if err != nil {
+		return out, nil //nolint:nilerr // a malformed row reads as no region
+	}
+
+	var defs []regions.RegionDefinition
+	if err := json.Unmarshal(raw, &defs); err != nil {
+		return out, nil //nolint:nilerr // same
+	}
+
+	for i := range defs {
+		out[regions.PrivateRegionSlug(defs[i].Slug)] = struct{}{}
+	}
+
+	return out, nil
+}
+
+// StoredRegionKeys returns the stored region keys as they are, including the
+// ones of regions that no longer exist.
+func StoredRegionKeys(ctx context.Context, store Store, orgUID string) (map[string]RegionKey, error) {
 	param, err := store.GetOrgParameter(ctx, orgUID, ParamKeyRegionKeys)
 	if err != nil {
 		return nil, fmt.Errorf("read region keys: %w", err)
