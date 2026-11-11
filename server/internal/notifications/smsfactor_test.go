@@ -161,6 +161,7 @@ func TestSMSFactorSender_Errors(t *testing.T) {
 		wantErr  error
 	}{
 		{name: "missing token", mutate: func(m models.JSONMap) { delete(m, "token") }, wantErr: ErrSMSFactorNotConfigured},
+		{name: "malformed settings", mutate: func(m models.JSONMap) { m["token"] = 42 }, wantErr: ErrSMSFactorNotConfigured},
 		{
 			name: "no recipients", mutate: func(m models.JSONMap) { delete(m, "to_numbers") },
 			wantErr: ErrSMSFactorNoRecipients,

@@ -2,6 +2,7 @@ package sms_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -190,4 +191,96 @@ func TestResolve_SMSFactorBringYourOwn(t *testing.T) {
 			}
 		})
 	}
+}
+
+var errListFailed = errors.New("list failed")
+
+// failingListDB fails ListChannels for one connection type only.
+type failingListDB struct {
+	db.Service
+
+	failType models.ConnectionType
+}
+
+func (f *failingListDB) ListChannels(
+	ctx context.Context, filter *models.ListIntegrationsFilter,
+) ([]*models.Integration, error) {
+	if filter.Type != nil && *filter.Type == f.failType {
+		return nil, errListFailed
+	}
+
+	return f.Service.ListChannels(ctx, filter)
+}
+
+func TestResolve_Errors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("twilio lookup failure", func(t *testing.T) {
+		t.Parallel()
+
+		dbSvc, orgUID := newResolverDB(t)
+		resolver := smssvc.NewResolver(&failingListDB{Service: dbSvc, failType: models.ConnectionTypeTwilio},
+			nil, nil, nil, "")
+
+		_, err := resolver.Resolve(t.Context(), orgUID)
+		require.ErrorIs(t, err, errListFailed)
+		require.Contains(t, err.Error(), "resolve org twilio integration")
+	})
+
+	t.Run("smsfactor lookup failure", func(t *testing.T) {
+		t.Parallel()
+
+		dbSvc, orgUID := newResolverDB(t)
+		resolver := smssvc.NewResolver(&failingListDB{Service: dbSvc, failType: models.ConnectionTypeSMSFactor},
+			nil, nil, nil, "")
+
+		_, err := resolver.Resolve(t.Context(), orgUID)
+		require.ErrorIs(t, err, errListFailed)
+		require.Contains(t, err.Error(), "resolve org smsfactor integration")
+	})
+
+	t.Run("smsfactor settings that cannot be decrypted", func(t *testing.T) {
+		t.Parallel()
+
+		dbSvc, orgUID := newResolverDB(t)
+		conn := models.NewIntegration(orgUID, models.ConnectionTypeSMSFactor, "sf")
+		sealed := "sealed-envelope"
+		conn.SettingsPrivate = &sealed
+		require.NoError(t, dbSvc.CreateChannel(t.Context(), conn))
+
+		_, err := smssvc.NewResolver(dbSvc, nil, nil, nil, "").Resolve(t.Context(), orgUID)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "resolve org smsfactor integration")
+	})
+
+	t.Run("smsfactor settings of the wrong shape", func(t *testing.T) {
+		t.Parallel()
+
+		dbSvc, orgUID := newResolverDB(t)
+		addConnection(t, dbSvc, orgUID, models.ConnectionTypeSMSFactor, true, models.JSONMap{"token": 42})
+
+		_, err := smssvc.NewResolver(dbSvc, nil, nil, nil, "").Resolve(t.Context(), orgUID)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "parse smsfactor settings")
+	})
+}
+
+func TestNewOrgSMSFactorSender(t *testing.T) {
+	t.Parallel()
+
+	sender := smssvc.NewOrgSMSFactorSender(&models.SMSFactorSettings{Token: "tok", Sender: "ACME"})
+	require.NotNil(t, sender)
+}
+
+func TestResolve_DefaultSMSFactorFactory(t *testing.T) {
+	t.Parallel()
+
+	dbSvc, orgUID := newResolverDB(t)
+	addConnection(t, dbSvc, orgUID, models.ConnectionTypeSMSFactor, true, smsFactorSettings())
+
+	res, err := smssvc.NewResolver(dbSvc, nil, nil, nil, "").Resolve(t.Context(), orgUID)
+	require.NoError(t, err)
+	require.True(t, res.SMSAvailable())
+	require.Equal(t, smssvc.ModeBringYourOwn, res.SMSMode)
+	require.Equal(t, "ACME", res.SenderID)
 }

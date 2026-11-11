@@ -322,3 +322,112 @@ func TestNewClient_Defaults(t *testing.T) {
 	r.NotNil(client.HTTPClient)
 	r.Equal("tok", client.Token)
 }
+
+func TestDoRequestBuildErrors(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("tok")
+
+	_, err := client.do(context.Background(), http.MethodGet, "/x", make(chan int))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "encoding smsfactor request")
+
+	_, err = client.do(context.Background(), "BAD METHOD", "/x", nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "creating smsfactor request")
+}
+
+func TestDoUsesDefaultHTTPClientWhenNil(t *testing.T) {
+	t.Parallel()
+
+	srv, seen := newFakeAPI(t, http.StatusOK, `{"status":1,"credits":3}`)
+	client := &Client{BaseURL: srv.URL, Token: "tok"}
+
+	resp, err := client.do(context.Background(), http.MethodGet, "/credits", nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, resp.Status.Int())
+	require.Len(t, seen(), 1)
+}
+
+type failingBody struct{}
+
+func (failingBody) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
+func (failingBody) Close() error             { return nil }
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestDoTransportAndBodyReadErrors(t *testing.T) {
+	t.Parallel()
+
+	failing := &Client{
+		BaseURL: "http://example.invalid",
+		Token:   "tok",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, io.ErrClosedPipe
+		})},
+	}
+
+	_, err := failing.do(context.Background(), http.MethodGet, "/credits", nil)
+	require.ErrorIs(t, err, ErrRequestFailed)
+	require.ErrorIs(t, err, io.ErrClosedPipe)
+
+	unreadable := &Client{
+		BaseURL: "http://example.invalid",
+		Token:   "tok",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Body: failingBody{}}, nil
+		})},
+	}
+
+	_, err = unreadable.do(context.Background(), http.MethodGet, "/credits", nil)
+	require.ErrorIs(t, err, ErrRequestFailed)
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+}
+
+func TestWithHTTPClientOption(t *testing.T) {
+	t.Parallel()
+
+	custom := &http.Client{}
+	require.Same(t, custom, NewClient("tok", WithHTTPClient(custom)).HTTPClient)
+
+	// A nil client leaves the default in place.
+	require.NotNil(t, NewClient("tok", WithHTTPClient(nil)).HTTPClient)
+}
+
+func TestFlexNumberDecoding(t *testing.T) {
+	t.Parallel()
+
+	var resp apiResponse
+
+	require.NoError(t, json.Unmarshal([]byte(`{"status":"7","cost":null,"credits":""}`), &resp))
+	require.Equal(t, 7, resp.Status.Int())
+	require.Equal(t, 0, resp.Cost.Int())
+	require.Equal(t, 0, resp.Credits.Int())
+
+	err := json.Unmarshal([]byte(`{"status":"abc"}`), &resp)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid number")
+}
+
+func TestFlexStringDecoding(t *testing.T) {
+	t.Parallel()
+
+	var resp apiResponse
+
+	require.NoError(t, json.Unmarshal([]byte(`{"ticket":null}`), &resp))
+	require.Empty(t, string(resp.Ticket))
+
+	require.NoError(t, json.Unmarshal([]byte(`{"ticket":"abc"}`), &resp))
+	require.Equal(t, "abc", string(resp.Ticket))
+
+	require.NoError(t, json.Unmarshal([]byte(`{"ticket":14672468}`), &resp))
+	require.Equal(t, "14672468", string(resp.Ticket))
+
+	var direct flexString
+
+	err := direct.UnmarshalJSON([]byte(`"bad\q"`))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid string")
+}

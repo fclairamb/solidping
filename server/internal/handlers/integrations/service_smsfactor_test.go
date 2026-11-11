@@ -218,3 +218,19 @@ func TestVerifySMSFactorWrite_SkippedInTestRunMode(t *testing.T) {
 	r.NoError(svc.verifySMSFactorWrite(t.Context(), &models.SMSFactorSettings{Token: "placeholder"}))
 	r.Equal(0, *calls)
 }
+
+func TestSMSFactorMalformedSettings(t *testing.T) {
+	t.Parallel()
+
+	malformed := models.JSONMap{"token": 42}
+	svc := &Service{}
+
+	require.ErrorIs(t, validateSMSFactorSettings(malformed), ErrInvalidSettings)
+	require.ErrorIs(t, svc.verifySMSFactorOnCreate(t.Context(), malformed), ErrInvalidSettings)
+
+	valid := map[string]any{"token": "tok"}
+
+	// Merged settings are validated first; the existing ones are parsed next.
+	require.ErrorIs(t, svc.verifySMSFactorOnUpdate(t.Context(), map[string]any{"token": 42}, valid), ErrInvalidSettings)
+	require.ErrorIs(t, svc.verifySMSFactorOnUpdate(t.Context(), valid, map[string]any{"token": 42}), ErrInvalidSettings)
+}
