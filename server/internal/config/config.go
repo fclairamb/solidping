@@ -105,6 +105,12 @@ var (
 	ErrExclusiveNodeRole = errors.New("node role cannot be combined with other roles")
 	// ErrAgentServerURLRequired is returned when role is "agent" but no server URL is set.
 	ErrAgentServerURLRequired = errors.New("SP_AGENT_SERVER_URL is required when SP_NODE_ROLE is set to 'agent'")
+	// ErrAgentServerURLInsecure is returned when an agent's server URL is
+	// cleartext (http/ws) to a non-loopback host without the explicit override.
+	ErrAgentServerURLInsecure = errors.New(
+		"SP_AGENT_SERVER_URL must use https: the server is only authenticated by TLS " +
+			"(set SP_AGENT_ALLOW_INSECURE_SERVER=true to accept cleartext on a trusted network)",
+	)
 	// ErrInvalidDiscoveryCIDRs is returned when SP_AGENT_DISCOVERY_ENABLED is
 	// set without a valid SP_AGENT_DISCOVERY_CIDRS allow-list.
 	ErrInvalidDiscoveryCIDRs = errors.New("invalid SP_AGENT_DISCOVERY_CIDRS")
@@ -250,6 +256,58 @@ type AgentConfig struct {
 	// can refuse it: a server-side setting would not survive a compromised
 	// server. Stored inverted so the zero value keeps the re-wrap on.
 	RewrapDisabled bool `koanf:"rewrap_disabled"`
+	// RewrapExplicit records that SP_AGENT_REWRAP_ENABLED=true was set, which
+	// keeps the re-wrap on even over a cleartext server URL.
+	RewrapExplicit bool `koanf:"-"`
+	// AllowInsecureServer accepts a cleartext (http/ws) server URL to a
+	// non-loopback host — SP_AGENT_ALLOW_INSECURE_SERVER. It also turns the
+	// peer re-wrap off unless SP_AGENT_REWRAP_ENABLED=true is set.
+	AllowInsecureServer bool `koanf:"allow_insecure_server"`
+}
+
+// checkServerTransport refuses a cleartext server URL unless overridden. With
+// the override, a cleartext server is not authenticated, so the re-wrap is
+// turned off unless the operator asked for it explicitly.
+func (a *AgentConfig) checkServerTransport() error {
+	if !a.CleartextServer() {
+		return nil
+	}
+
+	if !a.AllowInsecureServer {
+		return ErrAgentServerURLInsecure
+	}
+
+	if !a.RewrapExplicit {
+		a.RewrapDisabled = true
+	}
+
+	return nil
+}
+
+// CleartextServer reports whether ServerURL is a cleartext (http/ws) URL to a
+// host that is not loopback.
+func (a *AgentConfig) CleartextServer() bool {
+	parsed, err := url.Parse(a.ServerURL)
+	if err != nil {
+		return false
+	}
+
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "ws":
+	default:
+		return false
+	}
+
+	host := strings.ToLower(parsed.Hostname())
+	if host == "localhost" {
+		return false
+	}
+
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return false
+	}
+
+	return true
 }
 
 // OTelConfig contains OpenTelemetry configuration.
@@ -2873,6 +2931,22 @@ func applyRealtimeEnv(cfg *RealtimeConfig) {
 // string field bound at agent.keys and fail the whole config unmarshal.
 // SP_AGENT_KEYS is therefore read here too (its struct field binds koanf key
 // "keys_b64", which no env var reaches). See project_koanf_env_quirk.
+// applyAgentSecurityEnv reads the re-wrap and cleartext-server switches.
+func applyAgentSecurityEnv(cfg *AgentConfig) {
+	if v := os.Getenv("SP_AGENT_REWRAP_ENABLED"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.RewrapDisabled = !b
+			cfg.RewrapExplicit = b
+		}
+	}
+
+	if v := os.Getenv("SP_AGENT_ALLOW_INSECURE_SERVER"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.AllowInsecureServer = b
+		}
+	}
+}
+
 func applyAgentEnv(cfg *AgentConfig) {
 	if v := os.Getenv("SP_AGENT_SERVER_URL"); v != "" {
 		cfg.ServerURL = v
@@ -2908,11 +2982,7 @@ func applyAgentEnv(cfg *AgentConfig) {
 		}
 	}
 
-	if v := os.Getenv("SP_AGENT_REWRAP_ENABLED"); v != "" {
-		if b, err := strconv.ParseBool(v); err == nil {
-			cfg.RewrapDisabled = !b
-		}
-	}
+	applyAgentSecurityEnv(cfg)
 
 	if v := os.Getenv("SP_AGENT_DISCOVERY_CIDRS"); v != "" {
 		cfg.DiscoveryCIDRs = nil
@@ -3830,6 +3900,12 @@ func (c *Config) validateNodeConfig() error {
 	// the very first run — a persisted identity replaces it).
 	if roles.Has(NodeRoleAgent) && c.Agent.ServerURL == "" {
 		return ErrAgentServerURLRequired
+	}
+
+	if roles.Has(NodeRoleAgent) {
+		if err := c.Agent.checkServerTransport(); err != nil {
+			return err
+		}
 	}
 
 	if c.Agent.DiscoveryEnabled || len(c.Agent.DiscoveryCIDRs) > 0 {

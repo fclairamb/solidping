@@ -138,6 +138,7 @@ drain.
 |---|---|---|
 | `SP_NODE_ROLE` | — | Set to `agent` to enable agent mode |
 | `SP_AGENT_SERVER_URL` | — | The SolidPing server base URL (required) |
+| `SP_AGENT_ALLOW_INSECURE_SERVER` | `false` | The agent refuses a cleartext `http://` server URL (TLS is the only proof of the server's identity), except for `localhost`/loopback. Set `true` to accept it on a trusted network: a warning is logged at every start and the peer re-wrap is turned off unless `SP_AGENT_REWRAP_ENABLED=true` is set |
 | `SP_AGENT_ENROLLMENT_TOKEN` | — | One-shot `spe_` token (first run only) |
 | `SP_AGENT_KEYS_FILE` | `/data/agent-keys.json` | Where the identity JSON is persisted |
 | `SP_AGENT_KEYS` | — | Base64 identity JSON for env-only deployments (wins over the file) |
