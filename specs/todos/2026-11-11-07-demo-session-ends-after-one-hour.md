@@ -73,3 +73,7 @@ This spec closes fclairamb/solidping-business#66. The implementing PR body **mus
 verify the issue is closed and, if not, close it by hand:
 
     gh issue close 66 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+- Silent re-login: keep the server cap, make its end invisible to the visitor. (autopilot: recommended answer)

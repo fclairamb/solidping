@@ -76,3 +76,8 @@ This spec closes fclairamb/solidping-business#67. The implementing PR body **mus
 verify the issue is closed and, if not, close it by hand:
 
     gh issue close 67 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+- Only users who already linked the same Telegram account may sign in. (autopilot: recommended answer)
+- Worth it now: yes, behind the default-off switch. (autopilot: recommended answer)

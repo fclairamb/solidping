@@ -84,3 +84,7 @@ When the spec is archived to `specs/done/`, verify the issue is closed and, if n
 hand:
 
     gh issue close 63 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+- Size the lease up front (option 2) first. (autopilot: recommended answer)
