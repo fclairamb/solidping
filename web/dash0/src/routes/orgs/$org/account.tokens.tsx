@@ -60,6 +60,7 @@ import {
 import { QueryErrorView } from "@/components/shared/error-views";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { DocsLink } from "@/components/shared/docs-link";
+import { SecretText } from "@/components/ui/secret-text";
 
 export const Route = createFileRoute("/orgs/$org/account/tokens")({
   component: TokensPage,
@@ -309,9 +310,9 @@ function TokensPage() {
               </DialogHeader>
               <Alert>
                 <AlertDescription className="flex items-center gap-2">
-                  <code data-testid="token-created-value" className="flex-1 break-all text-sm">
+                  <SecretText data-testid="token-created-value" className="flex-1 break-all text-sm">
                     {createdToken.token}
-                  </code>
+                  </SecretText>
                   <Button
                     variant="ghost"
                     size="icon"

@@ -7,6 +7,7 @@ import noNodeScopeInBrowserCallback from "./eslint-rules/no-node-scope-in-browse
 import noTextLocators from "./eslint-rules/no-text-locators.js";
 import requireTestidOnInteractive from "./eslint-rules/require-testid-on-interactive.js";
 import noUntranslatedJsxText from "./eslint-rules/no-untranslated-jsx-text.js";
+import requireSecretText from "./eslint-rules/require-secret-text.js";
 
 export default tseslint.config(
   { ignores: ["dist"] },
@@ -142,5 +143,13 @@ export default tseslint.config(
       "testid-local": { rules: { "require-testid-on-interactive": requireTestidOnInteractive } },
     },
     rules: { "testid-local/require-testid-on-interactive": "error" },
+  },
+  {
+    // Spec 2026-11-11-05 (GHSA-c9qq-4m99-c7f6): a secret shown as text goes
+    // through <SecretText>, so the unmasked session replay never records it.
+    files: ["src/**/*.tsx"],
+    ignores: ["src/**/*.test.tsx"],
+    plugins: { "secret-local": { rules: { "require-secret-text": requireSecretText } } },
+    rules: { "secret-local/require-secret-text": "error" },
   }
 );

@@ -139,6 +139,7 @@ export function StatusPageTvCard({
                     value={mintedToken}
                     label={t("statusPages:tvMode.tokenLabel")}
                     size="md"
+                    secret
                   />
                 </AlertDescription>
               </Alert>

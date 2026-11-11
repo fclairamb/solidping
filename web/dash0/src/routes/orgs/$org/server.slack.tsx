@@ -1,3 +1,4 @@
+import { NO_CAPTURE_CLASS } from "@/lib/no-capture";
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -217,6 +218,7 @@ function SlackSettingsPage() {
                   <div className="relative flex-1">
                     <Input
                       id="slackAppToken"
+                      className={NO_CAPTURE_CLASS}
                       type={showToken ? "text" : "password"}
                       placeholder={t(
                         "server:slack.socketMode.appTokenPlaceholder",

@@ -446,7 +446,10 @@
       "pasteDescription": "Generate the region key offline with the command below, give the identity to the region's agents, and paste only its public key (age1…). SolidPing never sees the identity.",
       "pasteLabel": "Public key",
       "pasteInvalid": "Not an age public key: it starts with age1 and has 62 characters.",
-      "pasteConfirm": "Use this public key"
+      "pasteConfirm": "Use this public key",
+      "advisoryTitle": "Rotate this region key",
+      "advisoryBody": "This key was created before the fix for advisory GHSA-c9qq-4m99-c7f6. If it was generated in the dashboard while PostHog session replay was on (SolidPing SaaS, or SP_POSTHOG_PROJECT_API_KEY set), the replay may hold it. Rotate it: generate a new key, give it to the agents, re-seal, then remove the old key.",
+      "advisoryDismiss": "Dismiss"
     },
     "reseal": {
       "back": "Back to private locations",

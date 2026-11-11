@@ -10,6 +10,8 @@ import {
   initAnalytics,
   isAnalyticsEnabled,
   KNOWN_EXCEPTION_NOISE,
+  pauseSessionRecording,
+  resumeSessionRecording,
   __resetAnalyticsForTests,
 } from "./analytics";
 
@@ -493,5 +495,71 @@ describe("getAnalyticsRequestHeaders", () => {
       "X-POSTHOG-DISTINCT-ID": "dist-1",
     });
     vi.doUnmock("./posthog-loader");
+  });
+});
+
+// Spec 2026-11-11-05: the region key dialog pauses session replay while it
+// is open. It must never start a recording the session did not have.
+describe("pauseSessionRecording / resumeSessionRecording", () => {
+  async function loadRecorder(recording: boolean) {
+    const calls: string[] = [];
+    let started = recording;
+    vi.doMock("./posthog-loader", () => ({
+      default: {
+        init: () => {},
+        identify: () => {},
+        reset: () => {},
+        capture: () => {},
+        sessionRecordingStarted: () => started,
+        stopSessionRecording: () => {
+          calls.push("stop");
+          started = false;
+        },
+        startSessionRecording: () => {
+          calls.push("start");
+          started = true;
+        },
+      },
+    }));
+    expect(await initAnalytics({ posthog: { enabled: true, projectApiKey: "phc_k" } })).toBe(true);
+    vi.doUnmock("./posthog-loader");
+    return calls;
+  }
+
+  it("are no-ops with PostHog off", async () => {
+    expect(await initAnalytics(null)).toBe(false);
+    expect(() => {
+      pauseSessionRecording();
+      resumeSessionRecording();
+      resumeSessionRecording();
+    }).not.toThrow();
+  });
+
+  it("stops a running recording and restarts it on resume", async () => {
+    const calls = await loadRecorder(true);
+    pauseSessionRecording();
+    expect(calls).toEqual(["stop"]);
+    resumeSessionRecording();
+    expect(calls).toEqual(["stop", "start"]);
+  });
+
+  it("does nothing when the session was not recording", async () => {
+    const calls = await loadRecorder(false);
+    pauseSessionRecording();
+    resumeSessionRecording();
+    expect(calls).toEqual([]);
+  });
+
+  it("nests: only the outermost pair stops and restarts", async () => {
+    const calls = await loadRecorder(true);
+    pauseSessionRecording();
+    pauseSessionRecording();
+    resumeSessionRecording();
+    expect(calls).toEqual(["stop"]);
+    resumeSessionRecording();
+    expect(calls).toEqual(["stop", "start"]);
+    // An unmatched resume never restarts anything.
+    resumeSessionRecording();
+    expect(calls).toEqual(["stop", "start"]);
   });
 });

@@ -67,6 +67,7 @@ import { AgentVersionCell } from "@/components/shared/agent-version";
 import { LiveDurationAgo } from "@/components/shared/relative-time";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { RegionKeyCell } from "@/components/shared/region-key-cell";
+import { SecretText } from "@/components/ui/secret-text";
 
 export const Route = createFileRoute("/orgs/$org/organization/private-locations/")({
   component: PrivateLocationsPage,
@@ -468,12 +469,12 @@ function TokenRevealDialog({
         {minted && (
           <div className="min-w-0 space-y-3">
             <div className="flex min-w-0 items-center gap-2">
-              <code
+              <SecretText
                 className="min-w-0 flex-1 overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs"
                 data-testid="minted-token"
               >
                 {minted.token}
-              </code>
+              </SecretText>
               <Button variant="outline" size="icon" onClick={copy} data-testid="copy-token">
                 {copied ? <CheckIcon className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </Button>
@@ -481,12 +482,13 @@ function TokenRevealDialog({
             <p className="text-xs text-muted-foreground">
               {t("privateLocations.token.run", "Run the agent with:")}
             </p>
-            <pre
+            <SecretText
+              as="pre"
               className="max-w-full overflow-x-auto rounded bg-muted p-2 text-xs"
               data-testid="docker-run-command"
             >
               {dockerRunCommand(window.location.origin, minted.token)}
-            </pre>
+            </SecretText>
           </div>
         )}
       </DialogContent>
