@@ -44,7 +44,7 @@ type ProvidersResponse struct {
 
 // ListProviders returns which auth providers are configured.
 //
-//nolint:cyclop // Linear sequence of provider checks with the same shape; flatter than splitting up.
+//nolint:cyclop,funlen // Linear sequence of provider checks with the same shape; flatter than splitting up.
 func (h *ProvidersHandler) ListProviders(writer http.ResponseWriter, _ *http.Request) error {
 	providers := make([]ProviderInfo, 0)
 

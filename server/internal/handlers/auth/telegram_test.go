@@ -35,10 +35,10 @@ func signTelegramFields(fields map[string]string, botToken string) map[string]st
 	return signed
 }
 
-// telegramLoginFields is a fresh, unsigned login result for telegramID.
-func telegramLoginFields(telegramID int64, authDate time.Time) map[string]string {
+// telegramLoginFields is an unsigned login result for testTelegramUserID.
+func telegramLoginFields(authDate time.Time) map[string]string {
 	return map[string]string{
-		"id":         strconv.FormatInt(telegramID, 10),
+		"id":         strconv.FormatInt(testTelegramUserID, 10),
 		"first_name": "Acme",
 		"last_name":  "Member",
 		"username":   "acme_member",
@@ -51,7 +51,7 @@ func TestVerifyTelegramLogin(t *testing.T) {
 	t.Parallel()
 
 	now := time.Unix(1_800_000_000, 0)
-	fresh := signTelegramFields(telegramLoginFields(testTelegramUserID, now.Add(-30*time.Second)), testTelegramBotToken)
+	fresh := signTelegramFields(telegramLoginFields(now.Add(-30*time.Second)), testTelegramBotToken)
 
 	t.Run("valid", func(t *testing.T) {
 		t.Parallel()
@@ -112,7 +112,7 @@ func TestVerifyTelegramLogin(t *testing.T) {
 	t.Run("missing hash", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := VerifyTelegramLogin(telegramLoginFields(testTelegramUserID, now), testTelegramBotToken, now)
+		_, err := VerifyTelegramLogin(telegramLoginFields(now), testTelegramBotToken, now)
 		require.ErrorIs(t, err, ErrTelegramAuthInvalid)
 	})
 
@@ -120,7 +120,7 @@ func TestVerifyTelegramLogin(t *testing.T) {
 		t.Parallel()
 
 		stale := signTelegramFields(
-			telegramLoginFields(testTelegramUserID, now.Add(-6*time.Minute)), testTelegramBotToken)
+			telegramLoginFields(now.Add(-6*time.Minute)), testTelegramBotToken)
 
 		_, err := VerifyTelegramLogin(stale, testTelegramBotToken, now)
 		require.ErrorIs(t, err, ErrTelegramAuthExpired)
@@ -130,11 +130,16 @@ func TestVerifyTelegramLogin(t *testing.T) {
 		t.Parallel()
 
 		future := signTelegramFields(
-			telegramLoginFields(testTelegramUserID, now.Add(10*time.Minute)), testTelegramBotToken)
+			telegramLoginFields(now.Add(10*time.Minute)), testTelegramBotToken)
 
 		_, err := VerifyTelegramLogin(future, testTelegramBotToken, now)
 		require.ErrorIs(t, err, ErrTelegramAuthExpired)
 	})
+}
+
+// freshTelegramResult is a just-signed, valid login result.
+func freshTelegramResult() map[string]string {
+	return signTelegramFields(telegramLoginFields(time.Now()), testTelegramBotToken)
 }
 
 // encodeTelegramAuthResult builds a tgAuthResult the way oauth.telegram.org
@@ -165,7 +170,7 @@ func TestDecodeTelegramAuthResult(t *testing.T) {
 
 	r := require.New(t)
 	now := time.Now()
-	signed := signTelegramFields(telegramLoginFields(testTelegramUserID, now), testTelegramBotToken)
+	signed := signTelegramFields(telegramLoginFields(now), testTelegramBotToken)
 
 	for _, enc := range []*base64.Encoding{
 		base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding,
@@ -275,7 +280,7 @@ func runTelegramCallback(t *testing.T, opts callbackOpts) callbackRun {
 		require.NoError(t, err)
 	}
 
-	rec := f.callback(t, state, signTelegramFields(telegramLoginFields(testTelegramUserID, time.Now()), testTelegramBotToken))
+	rec := f.callback(t, state, freshTelegramResult())
 
 	return callbackRun{rec: rec, db: f.svc.db, returnTo: returnTo, orgSlug: f.org.Slug, defaultTo: "/d/orgs/" + f.org.Slug}
 }
@@ -295,7 +300,7 @@ func TestTelegramCallbackWithoutOrgUsesContactOrg(t *testing.T) {
 	state, err := f.svc.GenerateOAuthState(t.Context(), "/", "")
 	r.NoError(err)
 
-	rec := f.callback(t, state, signTelegramFields(telegramLoginFields(testTelegramUserID, time.Now()), testTelegramBotToken))
+	rec := f.callback(t, state, freshTelegramResult())
 	r.Equal(http.StatusFound, rec.Code)
 
 	location, err := url.Parse(rec.Header().Get("Location"))
@@ -341,7 +346,7 @@ func TestTelegramCallbackUnlinkedIsRefused(t *testing.T) {
 	state, err := f.svc.GenerateOAuthState(t.Context(), "/d/orgs/"+f.org.Slug, f.org.Slug)
 	r.NoError(err)
 
-	rec := f.callback(t, state, signTelegramFields(telegramLoginFields(testTelegramUserID, time.Now()), testTelegramBotToken))
+	rec := f.callback(t, state, freshTelegramResult())
 	code, description := redirectError(t, rec)
 	r.Equal(OAuthCodeTelegramNotLinked, code)
 	r.Contains(description, "connect Telegram in your account")
@@ -361,7 +366,7 @@ func TestTelegramCallbackUnverifiedContactIsRefused(t *testing.T) {
 	r.NoError(err)
 
 	code, _ := redirectError(t,
-		f.callback(t, state, signTelegramFields(telegramLoginFields(testTelegramUserID, time.Now()), testTelegramBotToken)))
+		f.callback(t, state, freshTelegramResult()))
 	r.Equal(OAuthCodeTelegramNotLinked, code)
 }
 
@@ -373,12 +378,12 @@ func TestTelegramCallbackRejectsBadResults(t *testing.T) {
 		code   string
 	}{
 		"wrong bot token": {
-			fields: signTelegramFields(telegramLoginFields(testTelegramUserID, time.Now()), "987654321:AAother"),
+			fields: signTelegramFields(telegramLoginFields(time.Now()), "987654321:AAother"),
 			code:   OAuthCodeTelegramInvalid,
 		},
 		"stale": {
 			fields: signTelegramFields(
-				telegramLoginFields(testTelegramUserID, time.Now().Add(-time.Hour)), testTelegramBotToken),
+				telegramLoginFields(time.Now().Add(-time.Hour)), testTelegramBotToken),
 			code: OAuthCodeTelegramExpired,
 		},
 	}
@@ -407,7 +412,7 @@ func TestTelegramCallbackStateIsSingleUse(t *testing.T) {
 	state, err := f.svc.GenerateOAuthState(t.Context(), "/", "")
 	r.NoError(err)
 
-	fields := signTelegramFields(telegramLoginFields(testTelegramUserID, time.Now()), testTelegramBotToken)
+	fields := freshTelegramResult()
 	r.Equal(handoffCompletePath, mustLocationPath(t, f.callback(t, state, fields)))
 
 	code, _ := redirectError(t, f.callback(t, state, fields))
@@ -445,7 +450,7 @@ func TestTelegramCallbackWidgetQueryForm(t *testing.T) {
 	require.NoError(t, err)
 
 	query := url.Values{"state": {state}}
-	for key, value := range signTelegramFields(telegramLoginFields(testTelegramUserID, time.Now()), testTelegramBotToken) {
+	for key, value := range freshTelegramResult() {
 		query.Set(key, value)
 	}
 

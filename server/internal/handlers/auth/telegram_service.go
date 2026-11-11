@@ -213,7 +213,7 @@ func (s *TelegramLoginService) GenerateOAuthState(
 	}
 
 	ttl := telegramOAuthStateTTL
-	value := &models.JSONMap{"state": string(stateJSON)}
+	value := &models.JSONMap{keyState: string(stateJSON)}
 
 	if err := s.db.SetStateEntry(ctx, nil, telegramOAuthStatePrefix+nonce, value, &ttl); err != nil {
 		return "", fmt.Errorf("failed to store state: %w", err)
@@ -235,7 +235,7 @@ func (s *TelegramLoginService) ValidateOAuthState(ctx context.Context, statePara
 
 	_, _ = s.db.DeleteStateEntry(ctx, nil, telegramOAuthStatePrefix+stateParam)
 
-	stateJSON, ok := (*entry.Value)["state"].(string)
+	stateJSON, ok := (*entry.Value)[keyState].(string)
 	if !ok {
 		return nil, ErrInvalidOAuthState
 	}

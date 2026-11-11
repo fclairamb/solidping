@@ -116,7 +116,7 @@ func (h *TelegramLoginHandler) Login(writer http.ResponseWriter, req *http.Reque
 }
 
 // Callback receives the browser back from Telegram.
-// GET /api/v1/auth/telegram/callback?state=...[&tgAuthResult=...|&id=...&hash=...]
+// GET /api/v1/auth/telegram/callback?state=...[&tgAuthResult=...|&id=...&hash=...].
 func (h *TelegramLoginHandler) Callback(writer http.ResponseWriter, req *http.Request) error {
 	query := req.URL.Query()
 
@@ -130,7 +130,7 @@ func (h *TelegramLoginHandler) Callback(writer http.ResponseWriter, req *http.Re
 		return h.redirectWithError(writer, req, "/", OAuthCodeFailed, "Sign in with Telegram is not enabled")
 	}
 
-	oauthState, err := h.svc.ValidateOAuthState(req.Context(), query.Get("state"))
+	oauthState, err := h.svc.ValidateOAuthState(req.Context(), query.Get(keyState))
 	if err != nil {
 		return h.redirectWithError(writer, req, "/", OAuthCodeInvalidState, OAuthDescInvalidState)
 	}
@@ -139,7 +139,7 @@ func (h *TelegramLoginHandler) Callback(writer http.ResponseWriter, req *http.Re
 
 	fields, denied, err := telegramResultFields(query)
 	if denied {
-		return h.redirectWithError(writer, req, returnTo, "access_denied", "Telegram sign-in was cancelled")
+		return h.redirectWithError(writer, req, returnTo, "access_denied", "Telegram sign-in was canceled")
 	}
 
 	if err != nil {
@@ -157,7 +157,7 @@ func (h *TelegramLoginHandler) Callback(writer http.ResponseWriter, req *http.Re
 // telegramResultFields extracts the signed fields from the callback query:
 // either the `tgAuthResult` blob oauth.telegram.org returns, or the plain
 // key/value pairs of the Login Widget's redirect form. denied reports that
-// the user cancelled on Telegram's page.
+// the user canceled on Telegram's page.
 func telegramResultFields(query url.Values) (map[string]string, bool, error) {
 	if query.Get("error") != "" {
 		return nil, true, nil
@@ -177,7 +177,7 @@ func telegramResultFields(query url.Values) (map[string]string, bool, error) {
 
 	for key, values := range query {
 		// state is ours, not Telegram's: it is not part of the signed data.
-		if key == "state" || len(values) == 0 {
+		if key == keyState || len(values) == 0 {
 			continue
 		}
 
@@ -221,7 +221,7 @@ func (h *TelegramLoginHandler) buildTelegramAuthURL(state string) (string, error
 	}
 
 	returnQuery := returnTo.Query()
-	returnQuery.Set("state", state)
+	returnQuery.Set(keyState, state)
 	returnTo.RawQuery = returnQuery.Encode()
 
 	params := url.Values{}

@@ -1066,16 +1066,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		discordAuth.GET("/callback", discordOAuthHandler.Callback)
 	}
 
-	// Sign in with Telegram (org-optional, public). Off unless the operator
-	// set SP_TELEGRAM_LOGIN_ENABLED after giving the bot its domain with
-	// @BotFather /setdomain; the handler re-checks the switch on every call.
-	if s.config.Telegram.LoginActive() {
-		telegramLoginService := auth.NewTelegramLoginService(s.dbService, s.config, s.authService)
-		telegramLoginHandler := auth.NewTelegramLoginHandler(telegramLoginService, s.config)
-		telegramAuth := api.NewGroup("/auth/telegram")
-		telegramAuth.GET("/login", telegramLoginHandler.Login)
-		telegramAuth.GET("/callback", telegramLoginHandler.Callback)
-	}
+	s.mountTelegramLoginRoutes(api)
 
 	// Generic OIDC routes (org-scoped, public)
 	if s.config.OIDC.Enabled && s.config.OIDC.IssuerURL != "" && s.config.OIDC.ClientID != "" {
@@ -5020,6 +5011,22 @@ func statusPageKioskGrant(next httpx.HandlerFunc) httpx.HandlerFunc {
 // The interactions endpoint in particular MUST NOT exist without the public
 // key: its authenticity is the per-request Ed25519 check, and a deployment
 // that cannot verify has nothing to serve there.
+// mountTelegramLoginRoutes mounts Sign in with Telegram (org-optional,
+// public). Off unless the operator set SP_TELEGRAM_LOGIN_ENABLED after giving
+// the bot its domain with @BotFather /setdomain; the handler re-checks the
+// switch on every call.
+func (s *Server) mountTelegramLoginRoutes(api *httpx.Group) {
+	if !s.config.Telegram.LoginActive() {
+		return
+	}
+
+	telegramLoginService := auth.NewTelegramLoginService(s.dbService, s.config, s.authService)
+	telegramLoginHandler := auth.NewTelegramLoginHandler(telegramLoginService, s.config)
+	telegramAuth := api.NewGroup("/auth/telegram")
+	telegramAuth.GET("/login", telegramLoginHandler.Login)
+	telegramAuth.GET("/callback", telegramLoginHandler.Callback)
+}
+
 func (s *Server) mountDiscordBotRoutes(
 	ctx context.Context, api *httpx.Group, discordHandler *discord.Handler,
 ) {
