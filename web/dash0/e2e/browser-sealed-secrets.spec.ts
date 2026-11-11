@@ -170,6 +170,75 @@ test.describe("Browser-sealed check secrets", () => {
     }
   });
 
+  // Spec 2026-11-11-01: sealed secrets are bound to the check's target, so
+  // editing the URL of a sealed check opens the secret inputs to type again.
+  test("editing the URL of a sealed check opens the secret inputs", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const slug = `bind-${Date.now().toString(36)}`.slice(0, 20);
+    await createPrivateRegion(page, token, slug);
+    await generateRegionKey(page, slug);
+
+    const password = `pw-${Date.now()}`;
+    const checkBodies: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/v1/orgs/test/checks") && ["POST", "PATCH"].includes(request.method())) {
+        checkBodies.push(request.postData() ?? "");
+      }
+    });
+
+    await page.goto("orgs/test/checks/new");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+    await page.getByTestId("check-name-input").fill(`E2E Bound ${Date.now()}`);
+    await page.getByTestId("check-url-input").fill("https://internal.example.com/health");
+    await choosePinnedRegions(page);
+    await ensureRegionChecked(page, `region-option-@${slug}`);
+    await ensureRegionUnchecked(page, "region-option-default");
+    await openAuthSection(page);
+    await page.getByTestId("check-username-input").fill("alice");
+    await page.getByTestId("check-password-input").fill(password);
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/(?!new)[^/]+$/);
+    await expect(page.getByTestId("check-browser-sealed-badge")).toBeVisible();
+
+    const create = checkBodies.find((body) => body.includes("sealedSecrets"));
+    expect(create, "the create request carries sealedSecrets").toBeTruthy();
+    expect(JSON.parse(create ?? "{}").sealedSecrets.bound, "the blob is bound to its target").toBe(true);
+
+    const detail = new URL(page.url());
+    await page.goto(`${detail.origin}${detail.pathname}/edit`);
+    await openAuthSection(page);
+    await expect(page.getByTestId("check-password-input")).toBeDisabled();
+
+    // A non-target edit keeps the inputs closed.
+    await expect(page.getByTestId("sealed-target-changed")).toHaveCount(0);
+
+    // A new URL opens them, with the reason.
+    await page.getByTestId("check-url-input").fill("https://other.example.com/health");
+    await expect(page.getByTestId("sealed-target-changed")).toBeVisible();
+    await expect(page.getByTestId("check-password-input")).toBeEnabled();
+    await expect(page.getByTestId("sealed-secret-replace-button")).toHaveCount(0);
+
+    // Saving without the secrets is refused in the form: nothing is sent.
+    const before = checkBodies.length;
+    await page.getByTestId("check-submit-button").click();
+    await expect(page.getByTestId("check-form-error")).toBeVisible();
+    expect(checkBodies.length).toBe(before);
+
+    // Typed again, they are sealed and bound to the new URL.
+    await page.getByTestId("check-username-input").fill("alice");
+    await page.getByTestId("check-password-input").fill(`${password}-2`);
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/(?!new)[^/]+$/);
+    await expect(page.getByTestId("check-browser-sealed-badge")).toBeVisible();
+    const patch = checkBodies.slice(before).find((body) => body.includes("sealedSecrets"));
+    expect(patch, "the PATCH carries new sealed secrets").toBeTruthy();
+    expect(JSON.parse(patch ?? "{}").sealedSecrets.bound).toBe(true);
+    for (const body of checkBodies) {
+      expect(body).not.toContain(password);
+    }
+  });
+
   test("falls back to server encryption on a shared region", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
     const token = await getAuthToken(page);

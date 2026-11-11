@@ -5320,6 +5320,12 @@ export interface CheckTypeInfo {
    * (spec 2026-09-11-01).
    */
   secretFields?: string[];
+  /**
+   * Config keys that decide where the type's secrets go (url, host, port,
+   * database, tunnel). Browser-sealed secrets are bound to their digest
+   * (spec 2026-11-11-01): changing one needs the secrets typed again.
+   */
+  targetFields?: string[];
   /** Set on a type loaded from a server plugin (spec 2026-10-17-05). */
   plugin?: { name: string; version: string };
 }
@@ -9394,6 +9400,11 @@ export interface ResealCheck {
   slug: string;
   name: string;
   regions: string[];
+  /**
+   * `recipients`: sealed for another set of agents. `unbound`: sealed before
+   * the target binding (spec 2026-11-11-01), to be typed again.
+   */
+  reason?: "recipients" | "unbound";
 }
 
 export function useResealChecks(org: string) {

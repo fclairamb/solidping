@@ -53,7 +53,11 @@ function ResealPage() {
           <CardDescription>{t("privateLocations.reseal.description")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {!isLoading && ((checks?.length ?? 0) > 0 || rewrapStarted) && (
+          {/* An unbound blob (sealed before the target binding, spec
+              2026-11-11-01) cannot be fixed by a re-wrap, which never
+              rebinds: only typing the secrets again binds it. */}
+          {!isLoading &&
+            ((checks ?? []).some((check) => check.reason !== "unbound") || rewrapStarted) && (
             <RewrapButton org={org} testId="all" onStarted={() => setRewrapStarted(true)} />
           )}
           {isLoading ? (
@@ -72,6 +76,14 @@ function ResealPage() {
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{check.name}</p>
+                    {check.reason === "unbound" && (
+                      <p className="text-xs text-muted-foreground" data-testid={`reseal-check-unbound-${check.uid}`}>
+                        <Badge variant="outline" className="mr-1 text-[10px]">
+                          {t("privateLocations.reseal.unbound")}
+                        </Badge>
+                        {t("privateLocations.reseal.unboundHint")}
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-1">
                       {check.regions.map((region) => (
                         <Badge key={region} variant="secondary" className="text-[10px]">

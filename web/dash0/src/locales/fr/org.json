@@ -454,7 +454,9 @@
       "description": "Ces checks ont des secrets scellés pour un autre ensemble d'agents (un agent est arrivé ou parti, ou la clé de région a changé). Un agent en ligne qui détient encore une clé correspondante peut les re-sceller pour les agents actuels ; sinon, saisissez à nouveau leurs secrets.",
       "empty": "Aucun check à resceller.",
       "open": "Remplacer les secrets",
-      "link": "Resceller"
+      "link": "Resceller",
+      "unbound": "Resceller pour lier à la cible",
+      "unboundHint": "Scellés avant la liaison à la cible : saisissez à nouveau les secrets pour les lier à l'URL ou à l'hôte de ce check."
     },
     "rewrap": {
       "button": "Re-sceller pour les agents actuels",

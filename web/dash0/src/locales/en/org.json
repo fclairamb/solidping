@@ -454,7 +454,9 @@
       "description": "These checks have secrets sealed for another set of agents (an agent joined or left, or the region key changed). An online agent that still holds a matching key can re-seal them for the current agents; otherwise, type their secrets again.",
       "empty": "No check needs to be re-sealed.",
       "open": "Replace secrets",
-      "link": "Re-seal"
+      "link": "Re-seal",
+      "unbound": "Seal again to bind to the target",
+      "unboundHint": "Sealed before the target binding: type the secrets again to bind them to this check's URL or host."
     },
     "rewrap": {
       "button": "Re-seal for the current agents",

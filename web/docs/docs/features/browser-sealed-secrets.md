@@ -105,9 +105,12 @@ With the `solidping` binary and a Personal Access Token:
 
 ```bash
 echo '{"basicAuth":"alice:hunter2"}' | SP_TOKEN=… \
-  solidping seal --server https://solidping.example.com --org acme --region @dc1
-# {"keys":["basicAuth"],"fingerprints":["3f2a…"],"ct":"<base64 age file>"}
+  solidping seal --server https://solidping.example.com --org acme --region @dc1 \
+    --type http --config-json '{"url":"https://db.acme.com/health"}'
+# {"keys":["basicAuth"],"fingerprints":["3f2a…"],"ct":"<base64 age file>","bound":true}
 ```
+
+`--type` and `--config-json` (the check's public config, or `@file.json`) are required: the secrets are bound to that target (see [Binding to the target](#binding-to-the-target)).
 
 Or with the `age` CLI:
 
@@ -122,18 +125,43 @@ echo -n '{"basicAuth":"alice:hunter2"}' | age -r age1… | base64 -w0
 Then send it next to `config` on the check create or PATCH:
 
 ```json
-"sealedSecrets": { "keys": ["basicAuth"], "fingerprints": ["3f2a…"], "ct": "<base64 age file>" }
+"sealedSecrets": { "keys": ["basicAuth"], "fingerprints": ["3f2a…"], "ct": "<base64 age file>", "bound": true }
 ```
+
+With the `age` CLI, add the `_binding` to the plaintext yourself (below) and send `"bound": true`. A blob without one is accepted for now and listed on the Re-seal page.
 
 `fingerprints` must be the current recipients, else `409 SEALING_RECIPIENTS_CHANGED` with the current list. A config-as-code document (`/checks/import`, `/checks/apply`, `sp checks apply`) takes the same `sealedSecrets` object on each check; a stale one is an item error with code `SEALING_RECIPIENTS_CHANGED`, in the dry run too. Exports never contain secrets. The MCP tools `create_check` and `update_check` accept the same object. Compare the fingerprints with the ones your agents log at startup (`Agent sealing key`).
 
+## Binding to the target
+
+The sealed plaintext carries a reserved `_binding` next to the secrets: the check type and a SHA-256 digest of the check's *target fields*, the config keys that decide where the secrets go. Each check type lists them as `targetFields` in `GET /api/v1/orgs/:org/check-types`: `url` for HTTP, host, port and database for the database checks, host and port for TCP, SMTP, SSH and FTP, the script for JS checks, and the tunnel (`tunnelCheckUid`) for every type.
+
+```json
+{"basicAuth": "alice:hunter2", "_binding": {"type": "http", "digest": "<hex sha256>"}}
+```
+
+The agent recomputes the digest from the config of each job. When it differs, or the type does, it does not run the check and reports *sealed secrets were sealed for another target: type them again*. A blob may also only carry secret fields of its type, so it can never replace the URL or any other public field.
+
+So whoever can write the stored config (a compromised server, someone with write access to the database) cannot point a sealed check at a host they control, or copy its blob onto another check: the binding sits inside the ciphertext, which nobody but the agents can open or change. This holds with `SP_AGENT_REWRAP_ENABLED=false` too, and a re-seal on an agent copies the binding as it is: it never rebinds to a target the server sends.
+
+On your side:
+
+- Changing a target field (the URL, host, port, database or tunnel) of a sealed check needs the secrets typed again. The check form opens the secret inputs on its own; the API answers `409 SEALED_TARGET_CHANGED` to a PATCH without new `sealedSecrets`, and a config-as-code document gets an item error with that code, in the dry run too. Other edits (timeout, assertions, name, period) keep the blob.
+- Checks sealed before the binding existed (v0.47.0) still run, with a warning in the agent log, and the Re-seal page lists them as *Seal again to bind to the target*. Type their secrets again to bind them. A later release will refuse unbound blobs.
+
+The digest is computed over a canonical JSON of the target fields that carry a value, keys sorted, numbers and booleans written as strings, `url` with its scheme and host lowercased and the default port made explicit, `host` lowercased. The dashboard and the Go code share a test vector (`web/dash0/src/lib/__fixtures__/target-binding.json`).
+
+The binding does not cover a target the attacker already controls (it binds a name, not who answers it), DNS of the target host, or the TLS settings of the check.
+
 ## What the server still sees
 
-Check names, targets, public config, results, and notification tokens.
+Check names, targets, public config, results, and notification tokens. The server can still edit the targets, but the agents refuse sealed secrets once a target changes (see [Binding to the target](#binding-to-the-target)).
 
 ## Threat model
 
 Protects against a database or backup leak, the operator reading request bodies, logs or memory (the plaintext never reaches the server), a later compromise of the server, and a legal demand on the operator for your check passwords.
+
+It also protects against a server that points a sealed check at another host, or copies its secrets onto another check: the secrets are bound to their target (see [Binding to the target](#binding-to-the-target)).
 
 Does not protect against a server that serves modified dashboard JavaScript or swaps recipient keys (compare fingerprints, or seal with the `age` CLI), a compromised browser or extension, a compromised agent host, a region key copied somewhere unsafe, a target that echoes a secret in its error message, or notification secrets.
 

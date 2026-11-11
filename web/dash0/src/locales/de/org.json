@@ -454,7 +454,9 @@
       "description": "Diese Checks haben Secrets, die für andere Agents versiegelt sind (ein Agent kam hinzu oder ging, oder der Regionsschlüssel hat sich geändert). Ein Online-Agent, der noch einen passenden Schlüssel hält, kann sie für die aktuellen Agents neu versiegeln; sonst geben Sie die Secrets neu ein.",
       "empty": "Kein Check muss neu versiegelt werden.",
       "open": "Geheimnisse ersetzen",
-      "link": "Neu versiegeln"
+      "link": "Neu versiegeln",
+      "unbound": "Neu versiegeln, um an das Ziel zu binden",
+      "unboundHint": "Vor der Zielbindung versiegelt: Geben Sie die Geheimnisse neu ein, um sie an die URL oder den Host dieses Checks zu binden."
     },
     "rewrap": {
       "button": "Für die aktuellen Agents neu versiegeln",

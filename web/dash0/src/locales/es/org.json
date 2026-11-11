@@ -454,7 +454,9 @@
       "description": "Estos checks tienen secretos sellados para otro conjunto de agentes (un agente llegó o se fue, o la clave de región cambió). Un agente en línea que aún tenga una clave correspondiente puede volver a sellarlos para los agentes actuales; si no, vuelve a escribir sus secretos.",
       "empty": "Ningún check necesita volver a sellarse.",
       "open": "Reemplazar secretos",
-      "link": "Volver a sellar"
+      "link": "Volver a sellar",
+      "unbound": "Volver a sellar para ligar al destino",
+      "unboundHint": "Sellados antes de la vinculación al destino: vuelve a escribir los secretos para ligarlos a la URL o al host de este check."
     },
     "rewrap": {
       "button": "Volver a sellar para los agentes actuales",

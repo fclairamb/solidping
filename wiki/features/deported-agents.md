@@ -627,6 +627,15 @@ packages.
    `rewrap` capability, and the server reports `rewrap_not_offered` when the
    key holders are online but none re-wraps. Also `solidping seal`, `solidping agent region-key generate`
    and `sealedSecrets` in config-as-code. Agent auto-update stays out of scope.
+   Spec 2026-11-11-01 binds a browser blob to its target: the plaintext carries
+   `_binding` (`type` + SHA-256 of the canonical target fields, the checker's
+   `TargetFields()`, `credentials/binding.go`, fixture shared with dash0 in
+   `web/dash0/src/lib/__fixtures__/target-binding.json`). The agent
+   (`checkworker/backend/ws_binding.go`) refuses a mismatch or a non-secret key
+   with an error result; an unbound browser blob runs with a one-time warning
+   and is listed `reason: unbound` on the Re-seal page (display-only envelope
+   flag `bound`). The server answers `409 SEALED_TARGET_CHANGED` to a target
+   change without new secrets. Re-wrap copies `_binding` verbatim.
 
 Open bug: [`2026-07-20-02-private-locations-token-dialog-dirty-rendering`](../../specs/todos/2026-07-20-02-private-locations-token-dialog-dirty-rendering.md)
 — enrollment-token dialog renders fragments outside the dialog on the dev deploy.
