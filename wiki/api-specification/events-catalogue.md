@@ -136,6 +136,7 @@ google
 microsoft
 discord
 slack
+telegram
 oauth
 invitation
 registration

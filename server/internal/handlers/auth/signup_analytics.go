@@ -28,6 +28,9 @@ const (
 	signupMethodOIDC      = "oidc"
 	signupMethodSAML      = "saml"
 	signupMethodLDAP      = "ldap"
+	// signupMethodTelegram only ever labels a login: Sign in with Telegram
+	// never creates an account (Telegram returns no email address).
+	signupMethodTelegram = "telegram"
 )
 
 // signupMethodSlack is the package-internal alias, so the local call sites read

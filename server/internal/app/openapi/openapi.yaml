@@ -1059,6 +1059,86 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthProvidersResponse"
 
+  /api/v1/auth/telegram/login:
+    get:
+      tags: [Authentication]
+      summary: Start Sign in with Telegram
+      operationId: telegramLogin
+      description: |
+        Redirects the browser to `https://oauth.telegram.org/auth` with the
+        instance bot's id, the instance origin and a `return_to` on
+        `/api/v1/auth/telegram/callback` carrying a single-use state (10
+        minutes). Mounted only when Telegram is configured and
+        `SP_TELEGRAM_LOGIN_ENABLED` is true (listed as type `telegram` by
+        `GET /api/v1/auth/providers`); the bot's domain must be set with
+        @BotFather `/setdomain`.
+      security: []
+      parameters:
+        - name: org
+          in: query
+          required: false
+          description: |
+            Org to sign in to. Optional: without it the login lands in the
+            org where the Telegram account was linked.
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          required: false
+          description: Same-origin relative path to return to after sign-in.
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to Telegram, or to the login page with `error` when the org is unknown or the feature is off
+
+  /api/v1/auth/telegram/callback:
+    get:
+      tags: [Authentication]
+      summary: Sign in with Telegram callback
+      operationId: telegramCallback
+      description: |
+        Telegram returns the login result in the URL fragment
+        (`#tgAuthResult=…`), which never reaches the server. Called with only
+        `state`, this endpoint answers a small HTML page (CSP allows its one
+        script by hash) that re-requests it with `tgAuthResult` in the query
+        string. The Login Widget's plain form (`id`, `auth_date`, `hash`, …
+        as query parameters) is accepted too.
+
+        The result's `hash` must verify (HMAC-SHA256 of the sorted
+        `key=value` lines, keyed by SHA-256 of the bot token) and `auth_date`
+        must be at most 5 minutes old. The Telegram account must already be a
+        verified `telegram` notification contact of a SolidPing user: no
+        account is ever created (Telegram returns no email address). Success
+        redirects to `/d/auth/complete?code=…` like every other provider and
+        records `auth.login_succeeded` with `auth_method` `telegram`.
+        Failures redirect with `error` set to `TELEGRAM_NOT_LINKED`,
+        `TELEGRAM_AMBIGUOUS` (linked by several users and no `org` picks
+        one), `TELEGRAM_AUTH_EXPIRED`, `TELEGRAM_AUTH_INVALID`,
+        `INVALID_STATE` or `access_denied`.
+      security: []
+      parameters:
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: tgAuthResult
+          in: query
+          required: false
+          description: Base64 JSON login result moved from the fragment by the bridge page.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bridge page that moves the fragment into the query string
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to the session handoff, or back with `error` / `error_description`
+
   /api/v1/config:
     get:
       tags: [System]

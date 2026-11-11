@@ -1066,6 +1066,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		discordAuth.GET("/callback", discordOAuthHandler.Callback)
 	}
 
+	// Sign in with Telegram (org-optional, public). Off unless the operator
+	// set SP_TELEGRAM_LOGIN_ENABLED after giving the bot its domain with
+	// @BotFather /setdomain; the handler re-checks the switch on every call.
+	if s.config.Telegram.LoginActive() {
+		telegramLoginService := auth.NewTelegramLoginService(s.dbService, s.config, s.authService)
+		telegramLoginHandler := auth.NewTelegramLoginHandler(telegramLoginService, s.config)
+		telegramAuth := api.NewGroup("/auth/telegram")
+		telegramAuth.GET("/login", telegramLoginHandler.Login)
+		telegramAuth.GET("/callback", telegramLoginHandler.Callback)
+	}
+
 	// Generic OIDC routes (org-scoped, public)
 	if s.config.OIDC.Enabled && s.config.OIDC.IssuerURL != "" && s.config.OIDC.ClientID != "" {
 		oidcOAuthService := auth.NewOIDCOAuthService(s.dbService, s.config, s.authService)

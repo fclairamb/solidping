@@ -92,6 +92,15 @@ func (h *ProvidersHandler) ListProviders(writer http.ResponseWriter, _ *http.Req
 		})
 	}
 
+	// Telegram is not OAuth: it needs the instance bot plus the explicit
+	// SP_TELEGRAM_LOGIN_ENABLED opt-in (the bot's domain is set by hand).
+	if h.cfg.Telegram.LoginActive() {
+		providers = append(providers, ProviderInfo{
+			Name: "Telegram",
+			Type: "telegram",
+		})
+	}
+
 	if h.cfg.OIDC.Enabled && h.cfg.OIDC.IssuerURL != "" &&
 		h.cfg.OIDC.ClientID != "" && h.cfg.OIDC.ClientSecret != "" {
 		name := h.cfg.OIDC.DisplayName
