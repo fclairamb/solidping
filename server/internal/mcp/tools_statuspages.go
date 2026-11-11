@@ -175,7 +175,8 @@ func createStatusPageDef() ToolDefinition {
 			"becomes its default, and isDefault:true moves the default to the new page. A new page is " +
 			"enabled, public, and seeded with one \"Services\" section: add sections with " +
 			"manage_status_page_section and pin checks with manage_status_page_resource. Not " +
-			"quota-limited; reversible with delete_status_page. Requires the mcp scope (mcp:read tokens are " +
+			"quota-limited; reversible with delete_status_page. Use update_status_page " +
+			"instead to change an existing page. Requires the mcp scope (mcp:read tokens are " +
 			"refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(autoPublishProps(map[string]any{
 			schemaKeyName:        stringProp("Status page display name (required), e.g. \"Public status\"."),
@@ -255,8 +256,8 @@ func updateStatusPageDef() ToolDefinition {
 			"fields keep their current values; the page must already exist and a " +
 			"slug that collides with another page is rejected. Use " +
 			"create_status_page to make a new page and delete_status_page to remove " +
-			"one instead. Modifies the page in place, so it is reversible by updating " +
-			"again with the previous values. Requires the mcp scope (mcp:read tokens " +
+			"one instead. Modifies the page in place without consuming any quota, so it is " +
+			"reversible by updating again with the previous values. Requires the mcp scope (mcp:read tokens " +
 			"are refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(autoPublishProps(map[string]any{
 			propIdentifier:       stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
@@ -339,7 +340,7 @@ func deleteStatusPageDef() ToolDefinition {
 		Description: "Soft-delete one status page, named by identifier (its UID or slug, as " +
 			"list_status_pages returns; an unknown one fails with not found and changes nothing). The " +
 			"page disappears from the API and the public site with its sections and resources, and its " +
-			"uploaded brand assets are deleted. There is no undelete (permanent, not reversible): use " +
+			"uploaded brand assets are deleted. Not quota-limited. There is no undelete (permanent, not reversible): use " +
 			"update_status_page with enabled:false to take a page down without destroying it, and " +
 			"manage_status_page_section or manage_status_page_resource with action=delete to remove " +
 			"part of a page. Requires the mcp scope (mcp:read tokens are " +
