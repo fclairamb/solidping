@@ -73,6 +73,7 @@ func TestBrowserSealing_Postgres(t *testing.T) {
 		"import sealed secrets":       testImportSealedSecretsStoresBrowserBlob,
 		"import stale fingerprints":   testImportSealedSecretsStaleFingerprintsAreItemErrors,
 		"peer re-wrap":                testStartRewrapClearsNeedsReseal,
+		"sealed target change":        testSealedTargetChangeNeedsNewSecrets,
 	}
 
 	for name, run := range cases {

@@ -1761,6 +1761,7 @@
     "detailBadge": "Im Browser versiegelt",
     "replace": "Ersetzen",
     "replaceToEdit": "Versiegelte Geheimnisse werden gemeinsam ersetzt: Klicken Sie auf Ersetzen, um alle neu einzugeben.",
+    "targetChanged": "Das Ziel dieses Checks hat sich geändert: Seine versiegelten Geheimnisse sind an das alte gebunden, geben Sie sie neu ein.",
     "sharedRegionDisabled": "Geteilte Regionen sind deaktiviert: Diese Organisation verlangt, dass Check-Geheimnisse im Browser versiegelt werden."
   }
 }

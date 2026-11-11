@@ -457,7 +457,11 @@
       "description": "Estos checks tienen secretos sellados para otro conjunto de agentes (un agente llegó o se fue, o la clave de región cambió). Un agente en línea que aún tenga una clave correspondiente puede volver a sellarlos para los agentes actuales; si no, vuelve a escribir sus secretos.",
       "empty": "Ningún check necesita volver a sellarse.",
       "open": "Reemplazar secretos",
-      "link": "Volver a sellar"
+      "link": "Volver a sellar",
+      "unbound": "Volver a sellar para ligar al destino",
+      "unboundHint": "Sellados antes de la vinculación al destino: vuelve a escribir los secretos para ligarlos a la URL o al host de este check.",
+      "unconfirmed": "No confirmado por un segundo agente",
+      "unconfirmedHint": "Sellados de nuevo por un agente, aún no confirmados por un segundo: vuelve a sellar con dos agentes en línea, o vuelve a escribir los secretos."
     },
     "rewrap": {
       "button": "Volver a sellar para los agentes actuales",
@@ -465,12 +469,14 @@
       "running_other": "Volviendo a sellar {{count}} checks en un agente…",
       "done_one": "{{count}} check sellado de nuevo.",
       "done_other": "{{count}} checks sellados de nuevo.",
+      "unconfirmed_one": "{{count}} check sellado de nuevo, pero ningún segundo agente estaba en línea para confirmarlo: sigue marcado.",
+      "unconfirmed_other": "{{count}} checks sellados de nuevo, pero ningún segundo agente estaba en línea para confirmarlos: siguen marcados.",
       "empty": "Ningún check necesita volver a sellarse.",
       "error": "No se pudo iniciar el nuevo sellado.",
       "failed": "{{check}}: {{reason}}",
       "reason": {
         "no_online_recipient": "ningún agente en línea tiene una clave de estos secretos: inicia uno o vuelve a escribir los secretos",
-        "rewrap_not_offered": "los agentes que tienen una clave de estos secretos no ejecutan el recifrado (anteriores a 0.47, o SP_AGENT_REWRAP_ENABLED=false): vuelve a escribir los secretos",
+        "rewrap_not_offered": "los agentes que tienen una clave de estos secretos no ejecutan el recifrado (anteriores a 0.48, o SP_AGENT_REWRAP_ENABLED=false): vuelve a escribir los secretos",
         "timed_out": "ningún agente terminó a tiempo",
         "REWRAP_CANNOT_OPEN": "el agente no pudo abrir estos secretos",
         "REWRAP_SEAL_FAILED": "el agente no pudo sellar para los destinatarios actuales",
@@ -482,6 +488,11 @@
         "not_sealed": "estos secretos no están sellados: vuelve a escribirlos",
         "up_to_date": "ya sellado para los agentes actuales",
         "no_recipients": "ningún agente ni clave de región a quien sellar",
+        "not_confirmed": "sellado de nuevo, pero ningún segundo agente estaba en línea para confirmarlo",
+        "no_provable_key": "los agentes que tienen estos secretos no pueden probarlo (su clave de región ya no está registrada): vuelve a escribir los secretos",
+        "REWRAP_NOT_SECRET": "estos secretos llevan un campo que no es un secreto del tipo de check, o están ligados a otro destino: vuelve a escribirlos",
+        "REWRAP_VERIFY_CANNOT_OPEN": "el segundo agente no pudo abrir los secretos sellados de nuevo, que fueron rechazados",
+        "REWRAP_VERIFY_MISMATCH": "los secretos sellados de nuevo difieren de los anteriores y fueron rechazados",
         "max_attempts": "ningún agente terminó a tiempo",
         "cancelled": "cancelado: el check cambió",
         "unknown": "error ({{code}})"

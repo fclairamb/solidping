@@ -4209,6 +4209,10 @@ func importErrorFor(index int, slug string, err error) *ImportError {
 		importErr.Recipients = changed.Recipients
 	}
 
+	if errors.Is(err, ErrSealedTargetChanged) {
+		importErr.Code = string(errorCodeSealedTargetChanged)
+	}
+
 	return importErr
 }
 
@@ -5653,6 +5657,15 @@ func (s *Service) applyConfigUpdate(
 	if sealed != nil {
 		merged, _ = credentials.SplitConfig(merged, secretFields)
 		validated = withInjectedConfig(merged, sealedPlaceholders(check.Type, sealed.Keys))
+	}
+
+	// A browser-sealed blob is bound to the check's target (spec
+	// 2026-11-11-01): a new URL, host or port needs new secrets.
+	if targetErr := s.assertSealedTargetKept(ctx, check, merged,
+		sealed != nil || len(secretKeysWithValues(merged, secretFields)) > 0 ||
+			len(storedKeysIn(oldPrivateKeys, explicitlyClearedKeys(patch, secretFields))) > 0,
+	); targetErr != nil {
+		return targetErr
 	}
 
 	if cfgErr := s.validatePatchedConfig(

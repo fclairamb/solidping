@@ -46,6 +46,10 @@ type CheckTypeResponse struct {
 	// would defeat the dirty-flag contract. Always present, `[]` when the type
 	// has no secrets.
 	SecretFields []string `json:"secretFields"`
+	// TargetFields lists the config keys that decide where the type's secrets
+	// go, sorted (credentials.TargetFieldsFor). A client that seals secrets
+	// binds them to the digest of these fields (spec 2026-11-11-01).
+	TargetFields []string `json:"targetFields"`
 	// Plugin names the plugin a type comes from (spec 2026-10-17-05). Absent
 	// on built-in types.
 	Plugin *checkerdef.PluginRef `json:"plugin,omitempty"`
@@ -176,6 +180,17 @@ func secretFieldsFor(checkType checkerdef.CheckType) []string {
 	return out
 }
 
+// targetFieldsFor returns the sorted target config keys of a check type
+// (spec 2026-11-11-01); the default list for a type with no parsable config.
+func targetFieldsFor(checkType checkerdef.CheckType) []string {
+	cfg, ok := registry.ParseConfig(checkType)
+	if !ok {
+		return credentials.TargetFieldsFor(nil)
+	}
+
+	return credentials.TargetFieldsFor(cfg)
+}
+
 func toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
 	data := make([]CheckTypeResponse, 0, len(statuses))
 
@@ -194,6 +209,7 @@ func toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
 			SupportsIPVersion:    statuses[idx].SupportsIPVersion,
 			ExcludedFromTally:    statuses[idx].ExcludedFromTally,
 			SecretFields:         secretFieldsFor(statuses[idx].Type),
+			TargetFields:         targetFieldsFor(statuses[idx].Type),
 			Plugin:               statuses[idx].Plugin,
 		})
 	}

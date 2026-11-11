@@ -5,3 +5,9 @@ package config
 func (c *KafkaConfig) SecretFields() []string {
 	return []string{"saslPassword"}
 }
+
+// TargetFields lists the config keys that decide where the secrets go: a
+// browser-sealed blob is bound to them (spec 2026-11-11-01).
+func (c *KafkaConfig) TargetFields() []string {
+	return []string{"brokers"}
+}

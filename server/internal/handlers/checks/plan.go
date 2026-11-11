@@ -459,7 +459,7 @@ func (s *Service) planUpdateCheck(
 		caveats.add(DryRunCaveatSecretMerge)
 	}
 
-	planConfig, sealErr := s.planSealedUpdate(ctx, org.UID, existing.Type, regionsForCheck, req)
+	planConfig, sealErr := s.planSealedUpdate(ctx, existing, regionsForCheck, req)
 	if sealErr != nil {
 		return sealErr
 	}
@@ -640,10 +640,17 @@ func upsertToCreateRequest(slug string, req *UpsertCheckRequest) CreateCheckRequ
 // planSealedUpdate validates a document's client-sealed secrets for an update
 // like the write API, recipients included (spec 2026-11-10-03 §4), and returns
 // the config the checker validates: with placeholders for the keys it cannot
-// see. Without sealedSecrets it returns the request's config.
+// see. Without sealedSecrets it returns the request's config, unless it moves
+// the target of a browser-sealed check (spec 2026-11-11-01).
 func (s *Service) planSealedUpdate(
-	ctx context.Context, orgUID, checkType string, regionsForCheck []string, req *UpsertCheckRequest,
+	ctx context.Context, existing *models.Check, regionsForCheck []string, req *UpsertCheckRequest,
 ) (map[string]any, error) {
+	orgUID, checkType := existing.OrganizationUID, existing.Type
+
+	if err := s.plannedSealedTargetError(ctx, existing, req.Config, req.SealedSecrets); err != nil {
+		return nil, err
+	}
+
 	if req.SealedSecrets == nil {
 		return req.Config, nil
 	}
