@@ -18164,6 +18164,15 @@ components:
             it preserves config keys its own form does not model.
           items:
             type: string
+        targetFields:
+          type: array
+          description: >-
+            Config keys that decide where this type's secrets go (the URL, the
+            host and port, the tunnel reference). Browser-sealed secrets carry
+            a binding to the digest of these fields, and the agent refuses
+            them once one changes.
+          items:
+            type: string
 
     CheckTypeListResponse:
       type: object

@@ -1,0 +1,151 @@
+{
+  "cases": [
+    {
+      "name": "http url: scheme and host lowercased, default port explicit",
+      "type": "http",
+      "targetFields": [
+        "tunnelCheckUid",
+        "url"
+      ],
+      "config": {
+        "method": "GET",
+        "timeout": "5s",
+        "url": "HTTPS://DB.Acme.com/Path?q=A"
+      },
+      "canonical": "{\"url\":\"https://db.acme.com:443/Path?q=A\"}",
+      "digest": "8438f81fc55e90736d32a547f17f97aba0ba7d90d38118e5a9f8595c4b73105e"
+    },
+    {
+      "name": "http url already normalised gives the same digest",
+      "type": "http",
+      "targetFields": [
+        "tunnelCheckUid",
+        "url"
+      ],
+      "config": {
+        "url": "https://db.acme.com:443/Path?q=A"
+      },
+      "canonical": "{\"url\":\"https://db.acme.com:443/Path?q=A\"}",
+      "digest": "8438f81fc55e90736d32a547f17f97aba0ba7d90d38118e5a9f8595c4b73105e"
+    },
+    {
+      "name": "url with user info, explicit port and IPv6 host",
+      "type": "http",
+      "targetFields": [
+        "tunnelCheckUid",
+        "url"
+      ],
+      "config": {
+        "tunnelCheckUid": "0b5c9e4e-2a43-4bb6-a9a0-8c1f2f3e1e10",
+        "url": "http://Ops@[2001:DB8::1]:8080/health"
+      },
+      "canonical": "{\"tunnelCheckUid\":\"0b5c9e4e-2a43-4bb6-a9a0-8c1f2f3e1e10\",\"url\":\"http://Ops@[2001:db8::1]:8080/health\"}",
+      "digest": "cb8b3d9b1a337b3ffa9e2abfd85e262e28e3daae85f85ab2d85bd74ba55c82e7"
+    },
+    {
+      "name": "postgres: host lowercased, numeric port as a string",
+      "type": "postgres",
+      "targetFields": [
+        "database",
+        "host",
+        "port",
+        "tunnelCheckUid"
+      ],
+      "config": {
+        "database": "app",
+        "host": "PG.acme.com",
+        "port": 5432,
+        "ssl_mode": "require",
+        "username": "monitor"
+      },
+      "canonical": "{\"database\":\"app\",\"host\":\"pg.acme.com\",\"port\":\"5432\"}",
+      "digest": "c7d709905ba042f6fbb8212e23ca01ec3c342113a2e978abf0622aa57cee6ad7"
+    },
+    {
+      "name": "postgres: string port binds like the number",
+      "type": "postgres",
+      "targetFields": [
+        "database",
+        "host",
+        "port",
+        "tunnelCheckUid"
+      ],
+      "config": {
+        "database": "app",
+        "host": "pg.acme.com",
+        "port": "5432"
+      },
+      "canonical": "{\"database\":\"app\",\"host\":\"pg.acme.com\",\"port\":\"5432\"}",
+      "digest": "c7d709905ba042f6fbb8212e23ca01ec3c342113a2e978abf0622aa57cee6ad7"
+    },
+    {
+      "name": "kafka brokers list",
+      "type": "kafka",
+      "targetFields": [
+        "brokers",
+        "tunnelCheckUid"
+      ],
+      "config": {
+        "brokers": [
+          "K1.acme.com:9092",
+          "k2.acme.com:9092"
+        ],
+        "topic": "t"
+      },
+      "canonical": "{\"brokers\":[\"k1.acme.com:9092\",\"k2.acme.com:9092\"]}",
+      "digest": "4a1bd64d13ef5369244056a72be4072df734e0876111f02151a45e6a6df46abe"
+    },
+    {
+      "name": "js script: quotes, control characters and non-ASCII kept",
+      "type": "js",
+      "targetFields": [
+        "script",
+        "tunnelCheckUid"
+      ],
+      "config": {
+        "script": "await fetch(\"https://é.acme.com/\u003ca\u003e\u0026b\")\n\t// \\ done \u2028"
+      },
+      "canonical": "{\"script\":\"await fetch(\\\"https://é.acme.com/\u003ca\u003e\u0026b\\\")\\u000a\\u0009// \\\\ done \u2028\"}",
+      "digest": "0d0158541568c6086c86ba2ee862a35cd88b9f640a4e31d98987fa09655125b5"
+    },
+    {
+      "name": "empty and null values do not count",
+      "type": "ssh",
+      "targetFields": [
+        "host",
+        "port",
+        "tunnelCheckUid"
+      ],
+      "config": {
+        "host": "",
+        "port": null,
+        "tunnelCheckUid": ""
+      },
+      "canonical": "{}",
+      "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "name": "booleans and nested values",
+      "type": "plugin",
+      "targetFields": [
+        "dsn",
+        "endpoint",
+        "server"
+      ],
+      "config": {
+        "endpoint": {
+          "Z": 1,
+          "a": [
+            1.5,
+            "X",
+            null
+          ]
+        },
+        "server": true
+      },
+      "canonical": "{\"endpoint\":{\"Z\":\"1\",\"a\":[\"1.5\",\"X\",null]},\"server\":\"true\"}",
+      "digest": "3b492c7531351d3badbfbdab2822978af4c68ffc9781c84b3767cbb626963772"
+    }
+  ],
+  "comment": "Target binding of sealed secrets (spec 2026-11-11-01): canonical JSON and SHA-256 digest of the target fields. Read by the Go (credentials) and dash0 (sealing.ts) tests: both sides must agree byte for byte."
+}

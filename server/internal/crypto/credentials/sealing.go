@@ -49,6 +49,11 @@ type sealedEnvelopeJSON struct {
 	// taken from a request. Absent on legacy server-sealed blobs. The agent's
 	// decoder ignores it.
 	Origin string `json:"origin,omitempty"`
+	// Bound records that the client said it sealed a `_binding` next to the
+	// secrets (spec 2026-11-11-01). Display only (the Re-seal page lists the
+	// unbound blobs): the agent checks the binding inside the plaintext and
+	// never trusts this flag.
+	Bound bool `json:"bound,omitempty"`
 }
 
 // Seal origins (spec 2026-11-08-01).
@@ -293,6 +298,30 @@ func BuildClientSealedEnvelope(fingerprints []string, ciphertext string) (string
 	}
 
 	return string(out), nil
+}
+
+// MarkSealedBound sets the display-only Bound flag of a sealed envelope.
+func MarkSealedBound(envelope string) (string, error) {
+	env, err := parseSealedEnvelope(envelope)
+	if err != nil {
+		return "", err
+	}
+
+	env.Bound = true
+
+	out, err := json.Marshal(env)
+	if err != nil {
+		return "", fmt.Errorf("marshal sealed envelope: %w", err)
+	}
+
+	return string(out), nil
+}
+
+// IsSealedBound reports the display-only Bound flag of a sealed envelope.
+func IsSealedBound(envelope string) bool {
+	env, err := parseSealedEnvelope(envelope)
+
+	return err == nil && env.Bound
 }
 
 // SealedCiphertext returns the age file (base64) and the sorted fingerprints

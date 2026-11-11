@@ -5,3 +5,9 @@ package config
 func (c *POP3Config) SecretFields() []string {
 	return []string{configKeyPassword}
 }
+
+// TargetFields lists the config keys that decide where the secrets go: a
+// browser-sealed blob is bound to them (spec 2026-11-11-01).
+func (c *POP3Config) TargetFields() []string {
+	return []string{"host", "port"}
+}

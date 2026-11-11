@@ -785,3 +785,9 @@ func (c *HTTPConfig) BasicAuthCredentials() (string, string, bool) {
 
 	return "", "", false
 }
+
+// TargetFields lists the config keys that decide where the secrets go: a
+// browser-sealed blob is bound to them (spec 2026-11-11-01).
+func (c *HTTPConfig) TargetFields() []string {
+	return []string{"url"}
+}

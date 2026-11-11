@@ -42,7 +42,7 @@ func TestSealCommandOutputAcceptedByWriteAPI(t *testing.T) {
 	svc, dbSvc, org, keys := setupBrowserSealing(t, sqliteSealingEnv)
 	ctx := t.Context()
 
-	sealed, err := spcli.SealSecrets([]string{keys.X25519Recipient}, map[string]any{"basicAuth": "alice:hunter2"})
+	sealed, err := spcli.SealSecrets([]string{keys.X25519Recipient}, map[string]any{"basicAuth": "alice:hunter2"}, nil)
 	r.NoError(err)
 
 	// Through JSON, as a script would pipe it.

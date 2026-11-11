@@ -393,3 +393,9 @@ func (c *JSConfig) Validate() error {
 
 	return nil
 }
+
+// TargetFields lists the config keys that decide where the secrets go: a
+// browser-sealed blob is bound to them (spec 2026-11-11-01).
+func (c *JSConfig) TargetFields() []string {
+	return []string{"script"}
+}

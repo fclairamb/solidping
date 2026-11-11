@@ -5,3 +5,9 @@ package config
 func (c *SNMPConfig) SecretFields() []string {
 	return []string{"community", "authPassword", "privPassword"}
 }
+
+// TargetFields lists the config keys that decide where the secrets go: a
+// browser-sealed blob is bound to them (spec 2026-11-11-01).
+func (c *SNMPConfig) TargetFields() []string {
+	return []string{"host", "port"}
+}

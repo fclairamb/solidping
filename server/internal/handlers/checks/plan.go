@@ -459,6 +459,10 @@ func (s *Service) planUpdateCheck(
 		caveats.add(DryRunCaveatSecretMerge)
 	}
 
+	if targetErr := s.plannedSealedTargetError(ctx, existing, req.Config, req.SealedSecrets); targetErr != nil {
+		return targetErr
+	}
+
 	planConfig, sealErr := s.planSealedUpdate(ctx, org.UID, existing.Type, regionsForCheck, req)
 	if sealErr != nil {
 		return sealErr

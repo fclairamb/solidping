@@ -509,3 +509,32 @@ func TestRewrap_UpToDateAndTimeout(t *testing.T) {
 
 	r.Nil(h.claim(agent.agent), "a timed-out re-wrap is not claimed any more")
 }
+
+// TestRewrap_KeepsTheBinding: the re-wrapped plaintext carries the original
+// `_binding` as it is (spec 2026-11-11-01), so a re-wrap can never move the
+// secrets to another target.
+func TestRewrap_KeepsTheBinding(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHarness(t)
+
+	oldAgent := h.enroll("old", true)
+	binding := credentials.NewBinding("http", []string{"tunnelCheckUid", "url"},
+		map[string]any{"url": "https://acme.example.com"})
+	check := h.sealedCheck("acme-bound", map[string]any{"password": "s3cret", credentials.BindingKey: binding},
+		oldAgent.keys.X25519Recipient)
+	newAgent := h.enroll("new", true)
+
+	startOne(t, h, check)
+
+	claim := h.claim(oldAgent.agent)
+	r.NotNil(claim)
+	h.run(claim, oldAgent.agent, oldAgent.keys.X25519Identity)
+	r.Equal(models.WorkerTaskStatusDone, h.task(claim.UID).Status)
+
+	plain, err := credentials.UnsealWithIdentity(newAgent.keys.X25519Identity, *h.reload(check).ConfigSealed)
+	r.NoError(err)
+	r.Equal("s3cret", plain["password"])
+	r.Equal(map[string]any{"type": "http", "digest": binding["digest"]}, plain[credentials.BindingKey])
+}

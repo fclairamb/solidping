@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -32,6 +33,14 @@ func buildTunnelConfig(
 		secrets, err := credentials.UnsealWithIdentities(*tunnel.ConfigSealed, identities...)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrTunnelSealedForOthers, err)
+		}
+
+		// The bastion's secrets are bound to the SSH check's own target
+		// (spec 2026-11-11-01).
+		secrets, err = openBoundSecrets(ctx, slog.Default(), tunnel.CheckUID, string(checkerdef.CheckTypeSSH),
+			*tunnel.ConfigSealed, tunnel.Config, secrets)
+		if err != nil {
+			return nil, err
 		}
 
 		merged = credentials.MergeConfig(tunnel.Config, secrets)

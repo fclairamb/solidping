@@ -48,7 +48,9 @@ func clientSeal(t *testing.T, secrets map[string]any, recipients ...string) *che
 		keys = append(keys, key)
 	}
 
-	return &checks.SealedSecretsRequest{Keys: keys, Fingerprints: parsed.Fingerprints, CT: parsed.CT}
+	// Bound as dash0 sends it (spec 2026-11-11-01); the binding itself is the
+	// agent's business, the server only keeps the flag.
+	return &checks.SealedSecretsRequest{Keys: keys, Fingerprints: parsed.Fingerprints, CT: parsed.CT, Bound: true}
 }
 
 func testNow() time.Time { return time.Now() }
