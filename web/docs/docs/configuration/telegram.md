@@ -303,6 +303,12 @@ alerts, so connecting the chat is treated as the opt-in, exactly as adding an
 email address is.
 :::
 
+## Sign in with Telegram
+
+Once a user has connected their chat, the same bot can sign them in. Set the
+bot's domain with @BotFather `/setdomain`, then `SP_TELEGRAM_LOGIN_ENABLED=true`.
+See [Authentication](authentication.md#telegram).
+
 ## Quotas and runaway protection
 
 Telegram messages are free, so — unlike SMS, voice and WhatsApp — there is

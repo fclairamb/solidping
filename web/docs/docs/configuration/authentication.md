@@ -338,6 +338,37 @@ If you also want the Discord bot (the **Install Discord bot** button), the same
 application needs a second redirect URI and a few more settings. See
 [Discord application setup](notifications.md#discord-application-setup).
 
+### Telegram
+
+Sign in with Telegram reuses the [Telegram bot](telegram.md) that sends alerts.
+It needs no client ID or secret, only an opt-in:
+
+```bash
+SP_TELEGRAM_BOT_TOKEN=123456789:AA...   # already set for Telegram alerts
+SP_TELEGRAM_LOGIN_ENABLED=true
+```
+
+**Setup:**
+1. In Telegram, open [@BotFather](https://t.me/BotFather), send `/setdomain`,
+   pick the bot and enter the host of `SP_BASE_URL` (for example
+   `solidping.acme.example`). A bot has one domain, so dev and prod each use
+   their own bot, as they already do for alerts.
+2. Set `SP_TELEGRAM_LOGIN_ENABLED=true` and restart. The **Telegram** button
+   then appears on the login page.
+
+Telegram returns no email address, so it never creates an account. It signs
+in only a user who already connected the same Telegram account under
+**Account → Notifications** (pressing **Start** in the bot chat proves the
+account is theirs). Anyone else gets "This Telegram account is not linked to a
+SolidPing account" and signs in another way first. The button is not shown on
+the registration page.
+
+SolidPing checks the signature Telegram puts on the result (HMAC-SHA256 keyed
+by the bot token) and refuses a result older than 5 minutes. The login is
+recorded with the method `telegram`. When the account is connected in several
+organizations, signing in from an organization's login page lands in that
+organization; otherwise it lands where the account was connected first.
+
 ### After the provider sends you back
 
 Whatever the provider, the callback never puts your session in the URL. It
@@ -362,6 +393,7 @@ Each provider also has an `_ENABLED` switch. The login routes of a provider are 
 | `SP_GITLAB_ENABLED` | `false` | Turns on GitLab sign-in |
 | `SP_MICROSOFT_ENABLED` | `false` | Turns on Microsoft sign-in |
 | `SP_SLACK_ENABLED` | `false` | Turns on Sign in with Slack |
+| `SP_TELEGRAM_LOGIN_ENABLED` | `false` | Turns on Sign in with Telegram (needs the Telegram bot and `/setdomain`, see [Telegram](#telegram)) |
 | `SP_SLACK_SOCKET_MODE_ENABLED` | `false` | Receive Slack events over Socket Mode instead of HTTPS webhooks (needs `SP_SLACK_ENABLED`). See [notifications](notifications.md) |
 | `SP_SLACK_APP_TOKEN` | empty | Slack app-level token (`xapp-...`) used by Socket Mode. Secret |
 
