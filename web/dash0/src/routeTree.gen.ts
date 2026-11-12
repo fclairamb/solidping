@@ -109,6 +109,7 @@ import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidRouteImport } fro
 import { Route as OrgsOrgJobsJobUidRouteImport } from './routes/orgs/$org/jobs.$jobUid'
 import { Route as OrgsOrgIntegrationsNewRouteImport } from './routes/orgs/$org/integrations.new'
 import { Route as OrgsOrgIntegrationsIntegrationUidRouteImport } from './routes/orgs/$org/integrations.$integrationUid'
+import { Route as OrgsOrgIncidentsInsightsRouteImport } from './routes/orgs/$org/incidents.insights'
 import { Route as OrgsOrgIncidentsIncidentUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid'
 import { Route as OrgsOrgEscalationPoliciesNewRouteImport } from './routes/orgs/$org/escalation-policies.new'
 import { Route as OrgsOrgEscalationPoliciesUidRouteImport } from './routes/orgs/$org/escalation-policies.$uid'
@@ -692,6 +693,12 @@ const OrgsOrgIntegrationsIntegrationUidRoute =
     path: '/$integrationUid',
     getParentRoute: () => OrgsOrgIntegrationsRoute,
   } as any)
+const OrgsOrgIncidentsInsightsRoute =
+  OrgsOrgIncidentsInsightsRouteImport.update({
+    id: '/insights',
+    path: '/insights',
+    getParentRoute: () => OrgsOrgIncidentsRoute,
+  } as any)
 const OrgsOrgIncidentsIncidentUidRoute =
   OrgsOrgIncidentsIncidentUidRouteImport.update({
     id: '/$incidentUid',
@@ -1063,6 +1070,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/escalation-policies/$uid': typeof OrgsOrgEscalationPoliciesUidRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
+  '/orgs/$org/incidents/insights': typeof OrgsOrgIncidentsInsightsRoute
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
   '/orgs/$org/integrations/new': typeof OrgsOrgIntegrationsNewRoute
   '/orgs/$org/jobs/$jobUid': typeof OrgsOrgJobsJobUidRoute
@@ -1201,6 +1209,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/escalation-policies/$uid': typeof OrgsOrgEscalationPoliciesUidRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
+  '/orgs/$org/incidents/insights': typeof OrgsOrgIncidentsInsightsRoute
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
   '/orgs/$org/integrations/new': typeof OrgsOrgIntegrationsNewRoute
   '/orgs/$org/jobs/$jobUid': typeof OrgsOrgJobsJobUidRoute
@@ -1351,6 +1360,7 @@ export interface FileRoutesById {
   '/orgs/$org/escalation-policies/$uid': typeof OrgsOrgEscalationPoliciesUidRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
+  '/orgs/$org/incidents/insights': typeof OrgsOrgIncidentsInsightsRoute
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
   '/orgs/$org/integrations/new': typeof OrgsOrgIntegrationsNewRoute
   '/orgs/$org/jobs/$jobUid': typeof OrgsOrgJobsJobUidRoute
@@ -1510,6 +1520,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/escalation-policies/$uid'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
+    | '/orgs/$org/incidents/insights'
     | '/orgs/$org/integrations/$integrationUid'
     | '/orgs/$org/integrations/new'
     | '/orgs/$org/jobs/$jobUid'
@@ -1648,6 +1659,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/escalation-policies/$uid'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
+    | '/orgs/$org/incidents/insights'
     | '/orgs/$org/integrations/$integrationUid'
     | '/orgs/$org/integrations/new'
     | '/orgs/$org/jobs/$jobUid'
@@ -1797,6 +1809,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/escalation-policies/$uid'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
+    | '/orgs/$org/incidents/insights'
     | '/orgs/$org/integrations/$integrationUid'
     | '/orgs/$org/integrations/new'
     | '/orgs/$org/jobs/$jobUid'
@@ -2618,6 +2631,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgIntegrationsIntegrationUidRouteImport
       parentRoute: typeof OrgsOrgIntegrationsRoute
     }
+    '/orgs/$org/incidents/insights': {
+      id: '/orgs/$org/incidents/insights'
+      path: '/insights'
+      fullPath: '/orgs/$org/incidents/insights'
+      preLoaderRoute: typeof OrgsOrgIncidentsInsightsRouteImport
+      parentRoute: typeof OrgsOrgIncidentsRoute
+    }
     '/orgs/$org/incidents/$incidentUid': {
       id: '/orgs/$org/incidents/$incidentUid'
       path: '/$incidentUid'
@@ -3143,12 +3163,14 @@ const OrgsOrgEscalationPoliciesRouteWithChildren =
 
 interface OrgsOrgIncidentsRouteChildren {
   OrgsOrgIncidentsIncidentUidRoute: typeof OrgsOrgIncidentsIncidentUidRoute
+  OrgsOrgIncidentsInsightsRoute: typeof OrgsOrgIncidentsInsightsRoute
   OrgsOrgIncidentsIndexRoute: typeof OrgsOrgIncidentsIndexRoute
   OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute: typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
 }
 
 const OrgsOrgIncidentsRouteChildren: OrgsOrgIncidentsRouteChildren = {
   OrgsOrgIncidentsIncidentUidRoute: OrgsOrgIncidentsIncidentUidRoute,
+  OrgsOrgIncidentsInsightsRoute: OrgsOrgIncidentsInsightsRoute,
   OrgsOrgIncidentsIndexRoute: OrgsOrgIncidentsIndexRoute,
   OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute:
     OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute,

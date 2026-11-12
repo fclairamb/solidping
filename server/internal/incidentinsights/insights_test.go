@@ -11,13 +11,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/incidentinsights"
 )
 
-var (
-	winStart = time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
-	winEnd   = time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)
-	now      = winEnd
-)
+func winStart() time.Time { return time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC) }
+func winEnd() time.Time   { return time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC) }
+func now() time.Time      { return winEnd() }
 
-func at(minutes int) time.Time { return winStart.Add(time.Duration(minutes) * time.Minute) }
+func at(minutes int) time.Time { return winStart().Add(time.Duration(minutes) * time.Minute) }
 
 func tp(v time.Time) *time.Time { return &v }
 
@@ -65,7 +63,7 @@ func TestPercentiles(t *testing.T) {
 				list = append(list, acked(inc("c", i*100), i*100+m))
 			}
 
-			got := incidentinsights.Compute(list, winStart, winEnd, now).Summary.TimeToAcknowledge
+			got := incidentinsights.Compute(list, winStart(), winEnd(), now()).Summary.TimeToAcknowledge
 			r.Equal(len(tc.minutes), got.SampleCount)
 
 			if tc.wantNoSample {
@@ -85,7 +83,7 @@ func TestCompute_EmptyInput(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	got := incidentinsights.Compute(nil, winStart, winEnd, now)
+	got := incidentinsights.Compute(nil, winStart(), winEnd(), now())
 	r.Zero(got.Summary.IncidentCount)
 	r.Zero(got.Summary.AckRate)
 	r.Nil(got.Summary.TimeToAcknowledge.MedianSeconds)
@@ -98,7 +96,7 @@ func TestCompute_NoAcknowledged(t *testing.T) {
 	r := require.New(t)
 
 	got := incidentinsights.Compute(
-		[]*models.Incident{resolved(inc("c", 0), 10, models.ResolutionTypeAuto)}, winStart, winEnd, now)
+		[]*models.Incident{resolved(inc("c", 0), 10, models.ResolutionTypeAuto)}, winStart(), winEnd(), now())
 	r.Zero(got.Summary.AckRate)
 	r.Zero(got.Summary.TimeToAcknowledge.SampleCount)
 	r.Nil(got.Summary.TimeToAcknowledge.MedianSeconds)
@@ -112,7 +110,7 @@ func TestCompute_ReopenedAckMeasuredFromReopen(t *testing.T) {
 	i := acked(inc("c", 0), 130)
 	i.LastReopenedAt = tp(at(120))
 
-	got := incidentinsights.Compute([]*models.Incident{i}, winStart, winEnd, now)
+	got := incidentinsights.Compute([]*models.Incident{i}, winStart(), winEnd(), now())
 	r.Equal(int64(600), *got.Summary.TimeToAcknowledge.MedianSeconds)
 	r.InDelta(1.0, got.Summary.AckRate, 0)
 }
@@ -122,9 +120,9 @@ func TestCompute_OpenIncident(t *testing.T) {
 	r := require.New(t)
 
 	i := inc("c", 0)
-	i.StartedAt = winEnd.Add(-time.Hour)
+	i.StartedAt = winEnd().Add(-time.Hour)
 
-	got := incidentinsights.Compute([]*models.Incident{i}, winStart, winEnd, now)
+	got := incidentinsights.Compute([]*models.Incident{i}, winStart(), winEnd(), now())
 	r.Equal(1, got.Summary.IncidentCount)
 	r.Zero(got.Summary.TimeToResolve.SampleCount)
 	r.Equal(int64(3600), got.Checks[0].DowntimeSeconds)
@@ -135,10 +133,10 @@ func TestCompute_ClippedToWindow(t *testing.T) {
 	r := require.New(t)
 
 	i := inc("c", 0)
-	i.StartedAt = winStart.Add(-time.Hour)
+	i.StartedAt = winStart().Add(-time.Hour)
 	resolved(i, 30, models.ResolutionTypeAuto)
 
-	got := incidentinsights.Compute([]*models.Incident{i}, winStart, winEnd, now)
+	got := incidentinsights.Compute([]*models.Incident{i}, winStart(), winEnd(), now())
 	r.Equal(int64(1800), got.Checks[0].DowntimeSeconds)
 }
 
@@ -153,7 +151,7 @@ func TestCompute_ResolutionSplit(t *testing.T) {
 		resolved(inc("a", 300), 1300, models.ResolutionTypeCheckDeleted),
 	}
 
-	got := incidentinsights.Compute(list, winStart, winEnd, now).Summary
+	got := incidentinsights.Compute(list, winStart(), winEnd(), now()).Summary
 	r.Equal(1, got.ByResolution.Auto.Count)
 	r.Equal(1, got.ByResolution.Manual.Count)
 	r.Equal(2, got.ByResolution.Other.Count)
@@ -169,7 +167,7 @@ func TestCompute_SuppressedLeftOutOfAck(t *testing.T) {
 	rolled.PagingSuppressed = true
 	paged := acked(inc("c", 100), 105)
 
-	got := incidentinsights.Compute([]*models.Incident{rolled, paged}, winStart, winEnd, now).Summary
+	got := incidentinsights.Compute([]*models.Incident{rolled, paged}, winStart(), winEnd(), now()).Summary
 	r.Equal(2, got.IncidentCount)
 	r.Equal(1, got.PagedCount)
 	r.InDelta(1.0, got.AckRate, 0)
@@ -188,7 +186,7 @@ func TestCompute_CheckRows(t *testing.T) {
 	b2 := resolved(inc("b", 300), 301, models.ResolutionTypeAuto)
 	c1 := resolved(inc("c", 10), 11, models.ResolutionTypeAuto)
 
-	got := incidentinsights.Compute([]*models.Incident{c1, a1, b1, a2, b2}, winStart, winEnd, now).Checks
+	got := incidentinsights.Compute([]*models.Incident{c1, a1, b1, a2, b2}, winStart(), winEnd(), now()).Checks
 	r.Len(got, 3)
 	// a and b tie on 2 incidents: b has more downtime and ranks first.
 	r.Equal("b", got[0].CheckUID)

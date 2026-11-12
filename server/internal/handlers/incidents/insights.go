@@ -99,8 +99,8 @@ func (s *Service) GetInsights(ctx context.Context, orgSlug, period string, days 
 	}
 
 	checkUIDs := make([]string, 0, len(rows))
-	for _, row := range rows {
-		checkUIDs = append(checkUIDs, row.CheckUID)
+	for idx := range rows {
+		checkUIDs = append(checkUIDs, rows[idx].CheckUID)
 	}
 
 	checks := map[string]*models.Check{}
@@ -111,8 +111,9 @@ func (s *Service) GetInsights(ctx context.Context, orgSlug, period string, days 
 		}
 	}
 
-	for _, row := range rows {
-		out := InsightsCheckRow{CheckRow: row}
+	for idx := range rows {
+		row := &rows[idx]
+		out := InsightsCheckRow{CheckRow: *row}
 
 		if check := checks[row.CheckUID]; check != nil {
 			if check.Name != nil {
