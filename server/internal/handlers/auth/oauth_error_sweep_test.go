@@ -31,6 +31,7 @@ func TestEveryProviderMapsEveryOAuthError(t *testing.T) {
 	}
 	sentinels := []error{
 		ErrDiscordTokenExchange, ErrEmailNotVerified, ErrGitHubTokenExchange, ErrGitLabTokenExchange,
+		ErrGitLabLinkRequiresSignIn,
 		ErrGoogleTokenExchange, ErrInvalidOAuthState, ErrMicrosoftTokenExchange, ErrOIDCNotConfigured,
 		ErrOIDCTokenExchange, ErrOIDCTokenInvalid, ErrSAMLAssertionInvalid, ErrSAMLNoEmail,
 		ErrSAMLNotConfigured, ErrSlackTokenExchange, errAcmeExploded,
