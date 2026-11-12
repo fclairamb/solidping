@@ -113,13 +113,32 @@ func (h *harness) sealedCheck(slug string, secrets map[string]any, recipients ..
 	h.t.Helper()
 
 	r := require.New(h.t)
-	ctx := h.t.Context()
 
 	fps, ct, err := credentials.SealForClient(recipients, secrets)
 	r.NoError(err)
 
 	envelope, err := credentials.BuildClientSealedEnvelope(fps, ct)
 	r.NoError(err)
+
+	return h.checkWithBlob(slug, envelope)
+}
+
+// serverSealedCheck creates a check in @dc1 whose secrets the server sealed
+// to recipients (a check of a private-only region, spec 2026-11-12-03).
+func (h *harness) serverSealedCheck(slug string, secrets map[string]any, recipients ...string) *models.Check {
+	h.t.Helper()
+
+	envelope, err := credentials.SealForRecipients(recipients, secrets)
+	require.NoError(h.t, err)
+
+	return h.checkWithBlob(slug, envelope)
+}
+
+func (h *harness) checkWithBlob(slug, envelope string) *models.Check {
+	h.t.Helper()
+
+	r := require.New(h.t)
+	ctx := h.t.Context()
 
 	keys := `["password"]`
 	check := models.NewCheck(h.org.UID, slug, "http")
@@ -130,7 +149,7 @@ func (h *harness) sealedCheck(slug string, secrets map[string]any, recipients ..
 	r.NoError(h.db.CreateCheck(ctx, check))
 
 	// CreateCheck makes the check's job; it must carry the blob too.
-	_, err = h.db.DB().NewUpdate().Model((*models.CheckJob)(nil)).
+	_, err := h.db.DB().NewUpdate().Model((*models.CheckJob)(nil)).
 		Set("config_sealed = ?", envelope).Where("check_uid = ?", check.UID).Exec(ctx)
 	r.NoError(err)
 	r.Equal(envelope, h.jobSealed(check))
@@ -650,4 +669,69 @@ func mustInput(t *testing.T, claim *workertasks.Claim) rewraptask.Input {
 	require.NoError(t, json.Unmarshal(claim.Input, &input))
 
 	return input
+}
+
+// TestRewrap_ServerBlobRefusesAPublicField is the attack of spec 2026-11-12-03:
+// a server-sealed blob of a private-only region carrying a public key is
+// refused by the honest re-wrapping agent, whatever its origin.
+func TestRewrap_ServerBlobRefusesAPublicField(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHarness(t)
+
+	oldAgent := h.enroll("old", true)
+	check := h.serverSealedCheck("acme-api", map[string]any{"password": "s3cret", "url": "https://evil.example"},
+		oldAgent.keys.X25519Recipient)
+	before := *check.ConfigSealed
+	h.enroll("new", true)
+
+	outcome := startOne(t, h, check)
+	claim := h.claim(oldAgent.agent)
+	r.NotNil(claim)
+
+	body := h.run(claim, oldAgent.agent, oldAgent.keys.X25519Identity)
+	r.JSONEq(`{"errorCode":"REWRAP_NOT_SECRET"}`, string(body))
+	r.Equal(rewraptask.CodeNotSecret, *h.task(outcome.TaskUID).ErrorCode)
+	r.Equal(before, *h.reload(check).ConfigSealed)
+}
+
+// TestRewrap_ServerBlobBecomesAnAgentBlob: a server blob with only secret
+// fields re-wraps; stored without a second agent, it is an agent blob,
+// reported not confirmed and still flagged.
+func TestRewrap_ServerBlobBecomesAnAgentBlob(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHarness(t)
+
+	oldAgent := h.enroll("old", true)
+	check := h.serverSealedCheck("acme-api", map[string]any{"password": "s3cret"}, oldAgent.keys.X25519Recipient)
+	r.Equal(credentials.SealOriginServer, credentials.SealedOrigin(*check.ConfigSealed))
+
+	// Enrolled but offline: a current recipient that cannot confirm.
+	offline := h.enroll("offline", false)
+
+	outcome := startOne(t, h, check)
+	r.Equal("pending", outcome.Status, outcome.ErrorCode)
+
+	claim := h.claim(oldAgent.agent)
+	r.NotNil(claim)
+
+	body := h.run(claim, oldAgent.agent, oldAgent.keys.X25519Identity)
+	r.NotContains(string(body), "errorCode")
+
+	stored := h.reload(check)
+	r.Equal(credentials.SealOriginAgent, credentials.SealedOrigin(*stored.ConfigSealed))
+	r.True(credentials.IsSealedUnconfirmed(*stored.ConfigSealed))
+	r.True(needsReseal(t, h, check, oldAgent.keys.X25519Recipient, offline.keys.X25519Recipient),
+		"an unconfirmed re-wrap stays flagged")
+
+	final := status(t, h, check)
+	r.Equal("done", final.Status)
+	r.Equal(rewraptask.CodeNotConfirmed, final.ErrorCode)
+
+	secrets, err := credentials.UnsealWithIdentity(offline.keys.X25519Identity, *stored.ConfigSealed)
+	r.NoError(err)
+	r.Equal("s3cret", secrets["password"])
 }

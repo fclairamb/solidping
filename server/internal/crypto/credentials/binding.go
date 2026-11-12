@@ -291,8 +291,15 @@ func VerifyBinding(plain map[string]any, check BindingCheck) (map[string]any, bo
 //   - a browser blob without one (sealed before the binding existed) still may
 //     not carry a key that is not a secret field; legacyUnbound reports it, so
 //     the caller can warn;
+//   - an agent blob (a server blob re-sealed by a peer agent, spec
+//     2026-11-12-03) without one may not carry a key that is not a secret
+//     field either: the server never saw that plaintext;
 //   - a server blob without one is used as is: the server sealed it from
-//     plaintext it held, public `${param:}` overlays included.
+//     plaintext it held, public `${param:}` overlays included. That is the
+//     per-claim blob of a system agent, never stored; a stored server blob
+//     is sealed from the private half of the config and only holds secret
+//     fields. The strict rule keys on the origin rather than on the agent
+//     kind so this system-agent path keeps working.
 //
 // Every caller that merges a sealed plaintext over a public config (the
 // claim, the tunnel, the re-wrap and its confirmation) goes through it. The
@@ -303,7 +310,8 @@ func OpenSealedPlaintext(envelope string, plain map[string]any, check BindingChe
 		return secrets, false, err
 	}
 
-	if SealedOrigin(envelope) != SealOriginBrowser {
+	origin := SealedOrigin(envelope)
+	if origin != SealOriginBrowser && origin != SealOriginAgent {
 		return plain, false, nil
 	}
 
@@ -311,11 +319,14 @@ func OpenSealedPlaintext(envelope string, plain map[string]any, check BindingChe
 		return nil, false, strictErr
 	}
 
-	return plain, true, nil
+	// Only a browser blob can be bound: an agent blob without a binding is
+	// not legacy, it never had one.
+	return plain, origin == SealOriginBrowser, nil
 }
 
 // StrictSecretKeys refuses a plaintext key that is not a secret field of the
-// type. Used on browser blobs without a binding too.
+// type. Used on browser and agent blobs without a binding, and by the re-wrap
+// on every blob whatever its origin.
 func StrictSecretKeys(plain map[string]any, check BindingCheck) error {
 	for key := range plain {
 		if err := checkSecretKey(key, check); err != nil {

@@ -45,8 +45,9 @@ type sealedEnvelopeJSON struct {
 	Alg          string   `json:"alg"`
 	Fingerprints []string `json:"fingerprints"`
 	CT           string   `json:"ct"`
-	// Origin records who produced the ciphertext: SealOriginServer or
-	// SealOriginBrowser (spec 2026-11-08-01). Written by the server, never
+	// Origin records who produced the ciphertext: SealOriginServer,
+	// SealOriginBrowser (spec 2026-11-08-01) or SealOriginAgent (a peer
+	// re-wrap of a server blob, spec 2026-11-12-03). Written by the server, never
 	// taken from a request. Absent on legacy server-sealed blobs. The agent's
 	// decoder ignores it.
 	Origin string `json:"origin,omitempty"`
@@ -74,6 +75,10 @@ const (
 	// SealOriginBrowser marks a blob sealed by the client (dash0 or any API
 	// client) for the agents' public keys: the server never saw the plaintext.
 	SealOriginBrowser = "browser"
+	// SealOriginAgent marks a server blob an agent re-sealed (peer re-wrap,
+	// spec 2026-11-12-03): the server never saw the new plaintext, so it gets
+	// the strict-keys rule of a browser blob at claim.
+	SealOriginAgent = "agent"
 )
 
 // MaxSealedCiphertextBytes caps a client-sealed age file (decoded).
@@ -420,13 +425,18 @@ func SealForClient(recipients []string, secrets map[string]any) ([]string, strin
 }
 
 // RewrapSealedEnvelope replaces the ciphertext and fingerprints of a stored
-// sealed envelope and keeps everything else, its origin included (peer
-// re-wrap, spec 2026-11-10-03): a blob re-sealed by an agent stays a browser
-// blob when the browser sealed it.
+// sealed envelope and keeps everything else (peer re-wrap, spec
+// 2026-11-10-03): a blob re-sealed by an agent stays a browser blob when the
+// browser sealed it. A server blob becomes an agent blob (spec 2026-11-12-03):
+// its new plaintext came from an agent, not from the server.
 func RewrapSealedEnvelope(envelope string, fingerprints []string, ciphertext string) (string, error) {
 	env, err := parseSealedEnvelope(envelope)
 	if err != nil {
 		return "", err
+	}
+
+	if env.Origin != SealOriginBrowser {
+		env.Origin = SealOriginAgent
 	}
 
 	sorted := append([]string(nil), fingerprints...)
@@ -446,16 +456,16 @@ func RewrapSealedEnvelope(envelope string, fingerprints []string, ciphertext str
 }
 
 // SealedOrigin returns who sealed a stored envelope: SealOriginBrowser,
-// SealOriginServer (also for a legacy blob without the field), or "" when the
-// envelope is not a sealed blob.
+// SealOriginAgent, SealOriginServer (also for a legacy blob without the
+// field), or "" when the envelope is not a sealed blob.
 func SealedOrigin(envelope string) string {
 	env, err := parseSealedEnvelope(envelope)
 	if err != nil {
 		return ""
 	}
 
-	if env.Origin == SealOriginBrowser {
-		return SealOriginBrowser
+	if env.Origin == SealOriginBrowser || env.Origin == SealOriginAgent {
+		return env.Origin
 	}
 
 	return SealOriginServer

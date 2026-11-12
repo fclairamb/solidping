@@ -70,6 +70,11 @@ func TestExecutor_Refusals(t *testing.T) {
 	leaky, err := credentials.SealForRecipients([]string{recipient}, leakyPlain)
 	require.NoError(t, err)
 
+	// A server-sealed blob carrying a public key (spec 2026-11-12-03).
+	serverLeaky, err := credentials.SealForRecipients([]string{recipient},
+		map[string]any{"password": "s3cret", "url": "https://evil.example"})
+	require.NoError(t, err)
+
 	challenge, _, err := credentials.NewSealedChallenge(recipient)
 	require.NoError(t, err)
 
@@ -79,6 +84,15 @@ func TestExecutor_Refusals(t *testing.T) {
 		input      any
 		want       string
 	}{
+		{
+			"public field in a server blob",
+			[]string{identity},
+			rewraptask.Input{
+				Envelope: serverLeaky, Recipients: []string{newRecipient}, CheckType: "http",
+				Config: map[string]any{"url": "https://acme.com"},
+			},
+			rewraptask.CodeNotSecret,
+		},
 		{"no input", []string{identity}, map[string]any{}, rewraptask.CodeInvalidInput},
 		{"no recipients", []string{identity}, rewraptask.Input{Envelope: envelope}, rewraptask.CodeInvalidInput},
 		{
@@ -177,6 +191,8 @@ func TestVerifyExecutor(t *testing.T) {
 	leakyPlain := boundTo("https://acme.com")
 	leakyPlain["url"] = "https://evil.example"
 	leaky := seal(leakyPlain)
+	// Unbound, as the server seals (spec 2026-11-12-03).
+	serverLeaky := seal(map[string]any{"password": "s3cret", "url": "https://evil.example"})
 
 	challenge, sum, err := credentials.NewSealedChallenge(recipient)
 	require.NoError(t, err)
@@ -202,6 +218,24 @@ func TestVerifyExecutor(t *testing.T) {
 				Config: map[string]any{"url": "https://acme.com"},
 			},
 			rewraptask.CodeNotSecret,
+		},
+		{
+			"public field in a server blob",
+			[]string{identity},
+			rewraptask.VerifyInput{
+				Envelope: serverLeaky, Challenge: challenge, CheckType: "http",
+				Config: map[string]any{"url": "https://acme.com"},
+			},
+			rewraptask.CodeNotSecret,
+		},
+		{
+			"server blob with secret fields only",
+			[]string{identity},
+			rewraptask.VerifyInput{
+				Envelope: pending, Challenge: challenge, CheckType: "http",
+				Config: map[string]any{"url": "https://acme.com"},
+			},
+			"",
 		},
 		{
 			"differs from the old blob",
@@ -268,4 +302,37 @@ func TestVerifyExecutor_BlobNotOpenable(t *testing.T) {
 	var result rewraptask.VerifyResult
 	require.NoError(t, json.Unmarshal(rep.body, &result))
 	require.Equal(t, rewraptask.CodeVerifyCannotOpen, result.ErrorCode)
+}
+
+// TestExecutor_ServerBlobWithSecretsOnly is the positive control of spec
+// 2026-11-12-03: a server blob that only holds secret fields re-wraps.
+func TestExecutor_ServerBlobWithSecretsOnly(t *testing.T) {
+	t.Parallel()
+
+	identity, recipient, err := credentials.GenerateX25519Keypair()
+	require.NoError(t, err)
+	newIdentity, newRecipient, err := credentials.GenerateX25519Keypair()
+	require.NoError(t, err)
+
+	envelope, err := credentials.SealForRecipients([]string{recipient}, map[string]any{"password": "s3cret"})
+	require.NoError(t, err)
+
+	rep := &captureReporter{}
+	exec := rewraptask.NewExecutor(func() []string { return []string{identity} })
+	require.NoError(t, exec.Run(t.Context(), claimOf(t, rewraptask.Input{
+		Envelope: envelope, Recipients: []string{newRecipient}, CheckType: "http",
+		Config: map[string]any{"url": "https://acme.com"},
+	}), rep))
+
+	var result rewraptask.Result
+	require.NoError(t, json.Unmarshal(rep.body, &result))
+	require.Empty(t, result.ErrorCode)
+
+	stored, err := credentials.RewrapSealedEnvelope(envelope, result.Fingerprints, result.CT)
+	require.NoError(t, err)
+	require.Equal(t, credentials.SealOriginAgent, credentials.SealedOrigin(stored))
+
+	secrets, err := credentials.UnsealWithIdentity(newIdentity, stored)
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"password": "s3cret"}, secrets)
 }
