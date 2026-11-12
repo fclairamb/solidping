@@ -126,7 +126,7 @@ func TestFallbackObserverCleanAndFailureStatus(t *testing.T) {
 func dualStackRequest(t *testing.T, control func(network string) error) *FamilyFallback {
 	t.Helper()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	t.Cleanup(server.Close)
 
 	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
