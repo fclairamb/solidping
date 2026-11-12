@@ -29,6 +29,7 @@ func TestGetSender_NotifyCapableTypesResolve(t *testing.T) {
 		models.ConnectionTypePushover,
 		models.ConnectionTypeWebPush,
 		models.ConnectionTypeTwilio,
+		models.ConnectionTypeSMSFactor,
 	}
 
 	for _, connType := range notifyTypes {

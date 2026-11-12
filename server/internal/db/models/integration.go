@@ -43,6 +43,11 @@ const (
 	// ConnectionTypeMSTeams, which stays as the zero-infra, one-way Teams
 	// Workflow webhook: the two coexist and an org may use either or both.
 	ConnectionTypeMSTeamsBot ConnectionType = "msteams-bot"
+	// ConnectionTypeSMSFactor is an SMS Factor (smsfactor.com) account: SMS
+	// only, no voice. It serves both as a direct notification channel (fan-out
+	// to to_numbers) and as the org's bring-your-own SMS provider when the org
+	// has no Twilio integration.
+	ConnectionTypeSMSFactor ConnectionType = "smsfactor"
 	// ConnectionTypeMatrix is the org-level Matrix (matrix.org) integration: a
 	// stateless HTTP sender to a Matrix room via the Client-Server API,
 	// alongside Slack/Discord/ntfy — not the instance-level direct-channel
@@ -89,9 +94,9 @@ type Capabilities struct {
 // mattermost, msteams, ntfy, gotify, zulip, pagerduty, pushover) is CanNotify; freebox is a data source
 // (CanSource) and cannot receive notifications. Twilio additionally carries
 // the two phone capabilities — it is the only connection type that is a
-// bring-your-own SMS *and* voice account. The default branch intentionally
-// covers every current notification-sink type, so only data sources and the
-// phone type need an explicit case.
+// bring-your-own SMS *and* voice account. SMS Factor carries SMS only. The
+// default branch intentionally covers every current notification-sink type,
+// so only data sources and the phone types need an explicit case.
 //
 //nolint:exhaustive // default branch handles all notification-sink types.
 func CapabilitiesFor(t ConnectionType) Capabilities {
@@ -100,6 +105,9 @@ func CapabilitiesFor(t ConnectionType) Capabilities {
 		return Capabilities{CanSource: true}
 	case ConnectionTypeTwilio:
 		return Capabilities{CanNotify: true, CanSendSMS: true, CanPlaceCall: true}
+	case ConnectionTypeSMSFactor:
+		// SMS Factor has no voice API.
+		return Capabilities{CanNotify: true, CanSendSMS: true}
 	case ConnectionTypeA2A:
 		// Listed explicitly (the default would give the same answer) so the
 		// capability of the AI-agent channel is a visible decision.
@@ -790,4 +798,48 @@ func TwilioSettingsFromJSONMap(m JSONMap) (*TwilioSettings, error) {
 	}
 
 	return &ts, nil
+}
+
+// SMSFactorSettings is the public (queryable) side of an SMS Factor
+// connection's Settings JSONB. The API token lives encrypted in
+// SettingsPrivate under the "token" key (see connectionSecretFields). Sender
+// is the optional alphanumeric sender registered on the SMS Factor account;
+// ToNumbers are the shared E.164 recipients for direct-channel sends.
+//
+//nolint:tagliatelle // JSON keys match the phone-connection settings wire format (snake_case).
+type SMSFactorSettings struct {
+	Token     string   `json:"token,omitempty"`
+	Sender    string   `json:"sender,omitempty"`
+	ToNumbers []string `json:"to_numbers,omitempty"`
+}
+
+// ToJSONMap converts SMSFactorSettings to JSONMap for storage.
+func (ss *SMSFactorSettings) ToJSONMap() (JSONMap, error) {
+	data, err := json.Marshal(ss)
+	if err != nil {
+		return nil, err
+	}
+
+	var m JSONMap
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+
+	return m, nil
+}
+
+// SMSFactorSettingsFromJSONMap parses SMSFactorSettings from a JSONMap. The
+// map is expected to be the decrypt-and-merged Settings (token present).
+func SMSFactorSettingsFromJSONMap(m JSONMap) (*SMSFactorSettings, error) {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+
+	var ss SMSFactorSettings
+	if err := json.Unmarshal(data, &ss); err != nil {
+		return nil, err
+	}
+
+	return &ss, nil
 }

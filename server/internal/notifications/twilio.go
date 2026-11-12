@@ -100,13 +100,27 @@ func (s *TwilioSender) Send(ctx context.Context, jctx *jobdef.JobContext, payloa
 	return nil
 }
 
-// buildBody renders a short (GSM-7-friendly) SMS body for the event, appending
-// a signed one-click ack link for down/escalated events.
+// buildBody renders the Twilio SMS body: the shared SMS body with the US
+// opt-out footer every recurring Twilio message must carry.
 func (s *TwilioSender) buildBody(
 	jctx *jobdef.JobContext, payload *Payload, settings *models.TwilioSettings,
 ) string {
+	var toNumbers []string
+	if settings != nil {
+		toNumbers = settings.ToNumbers
+	}
+
+	return buildSMSBody(jctx, payload, toNumbers, twilio.OptOutFooter)
+}
+
+// buildSMSBody renders a short (GSM-7-friendly) SMS body for the event,
+// appending a signed one-click ack link for down/escalated events and then
+// footer (Twilio's opt-out disclosure, empty for providers that need none).
+// toNumbers are the connection's shared recipients; the first one is the
+// identity embedded in the ack token. Shared by every SMS channel sender.
+func buildSMSBody(jctx *jobdef.JobContext, payload *Payload, toNumbers []string, footer string) string {
 	if isDegradedIncident(payload.Incident) && !closedWithoutRecovery(payload.Incident) {
-		return s.buildDegradedBody(jctx, payload, settings)
+		return buildDegradedSMSBody(jctx, payload, toNumbers, footer)
 	}
 
 	checkName := getCheckName(payload.Check)
@@ -116,44 +130,41 @@ func (s *TwilioSender) buildBody(
 	switch payload.EventType {
 	case eventTypeIncidentResolved:
 		if ResolvedByCheckDeletion(payload.Incident) {
-			return fmt.Sprintf("[%s] %s: %s was deleted, incident closed.", productName, org, checkName) +
-				twilio.OptOutFooter
+			return fmt.Sprintf("[%s] %s: %s was deleted, incident closed.", productName, org, checkName) + footer
 		}
 
 		if ResolvedByCheckDisable(payload.Incident) {
-			return fmt.Sprintf("[%s] %s: %s was disabled, incident closed.", productName, org, checkName) +
-				twilio.OptOutFooter
+			return fmt.Sprintf("[%s] %s: %s was disabled, incident closed.", productName, org, checkName) + footer
 		}
 
 		return fmt.Sprintf("[%s] %s: %s RECOVERED.", productName, org, checkName) +
-			twilioRegionSentence(payload) + twilio.OptOutFooter
+			smsRegionSentence(payload) + footer
 	case eventTypeIncidentEscalated:
 		msg = fmt.Sprintf("[%s] %s: %s STILL DOWN (escalated).", productName, org, checkName)
 	case eventTypeIncidentReopened:
 		msg = fmt.Sprintf("[%s] %s: %s DOWN again.", productName, org, checkName)
 	case eventTypeIncidentReminder:
-		// Not fanned out to Twilio by default (NotifiesReminders is false):
-		// kept so a reminder never renders as a fresh "is DOWN".
+		// Not fanned out to SMS channels by default (NotifiesReminders is
+		// false): kept so a reminder never renders as a fresh "is DOWN".
 		msg = fmt.Sprintf("[%s] %s: %s STILL DOWN, not acknowledged.", productName, org, checkName)
 	default: // created
 		msg = fmt.Sprintf("[%s] %s: %s is DOWN.", productName, org, checkName)
 	}
 
-	msg += twilioRegionSentence(payload)
+	msg += smsRegionSentence(payload)
 
-	if ackURL := s.ackURL(jctx, payload, settings); ackURL != "" {
+	if ackURL := smsAckURL(jctx, payload, toNumbers); ackURL != "" {
 		msg += " Ack: " + ackURL
 	}
 
-	return msg + twilio.OptOutFooter
+	return msg + footer
 }
 
-// buildDegradedBody is buildBody for a degraded incident: it was never down, so
-// the SMS says DEGRADED and gives the pattern, and its end is "steady again"
-// rather than RECOVERED. No region sentence: a degraded incident has none.
-func (s *TwilioSender) buildDegradedBody(
-	jctx *jobdef.JobContext, payload *Payload, settings *models.TwilioSettings,
-) string {
+// buildDegradedSMSBody is buildSMSBody for a degraded incident: it was never
+// down, so the SMS says DEGRADED and gives the pattern, and its end is "steady
+// again" rather than RECOVERED. No region sentence: a degraded incident has
+// none.
+func buildDegradedSMSBody(jctx *jobdef.JobContext, payload *Payload, toNumbers []string, footer string) string {
 	checkName := getCheckName(payload.Check)
 	prefix := fmt.Sprintf("[%s] %s: ", productName, payload.OrgSlug)
 	cause := degradedCause(payload.Incident)
@@ -163,10 +174,10 @@ func (s *TwilioSender) buildDegradedBody(
 	switch payload.EventType {
 	case eventTypeIncidentResolved:
 		if degradedTurnedOff(payload.Incident) {
-			return prefix + checkName + ": degraded detection turned off, episode closed." + twilio.OptOutFooter
+			return prefix + checkName + ": degraded detection turned off, episode closed." + footer
 		}
 
-		return prefix + checkName + " is steady again." + twilio.OptOutFooter
+		return prefix + checkName + " is steady again." + footer
 	case eventTypeIncidentEscalated:
 		msg = prefix + checkName + " STILL DEGRADED (escalated): " + cause + "."
 	case eventTypeIncidentReopened:
@@ -175,17 +186,17 @@ func (s *TwilioSender) buildDegradedBody(
 		msg = prefix + checkName + " is DEGRADED: " + cause + "."
 	}
 
-	if ackURL := s.ackURL(jctx, payload, settings); ackURL != "" {
+	if ackURL := smsAckURL(jctx, payload, toNumbers); ackURL != "" {
 		msg += " Ack: " + ackURL
 	}
 
-	return msg + twilio.OptOutFooter
+	return msg + footer
 }
 
-// twilioRegionSentence is the region line for an SMS: the plain region names,
+// smsRegionSentence is the region line for an SMS: the plain region names,
 // never the emoji (one emoji forces UCS-2 and halves the SMS length). Empty
 // when the payload shows no region line.
-func twilioRegionSentence(payload *Payload) string {
+func smsRegionSentence(payload *Payload) string {
 	title, text := RegionLabelPlainFor(payload)
 	if text == "" {
 		return ""
@@ -194,13 +205,11 @@ func twilioRegionSentence(payload *Payload) string {
 	return " " + title + ": " + text + "."
 }
 
-// ackURL builds the signed magic-link ack URL for the SMS. The shared
+// smsAckURL builds the signed magic-link ack URL for the SMS. The first shared
 // to_number is used as the recipient identity embedded in the token (the
 // direct-channel send has no per-user recipient). Returns "" when the event
 // can't be acked or the JWT secret / base URL is unavailable.
-func (s *TwilioSender) ackURL(
-	jctx *jobdef.JobContext, payload *Payload, settings *models.TwilioSettings,
-) string {
+func smsAckURL(jctx *jobdef.JobContext, payload *Payload, toNumbers []string) string {
 	if !canAckEvent(payload.EventType) {
 		return ""
 	}
@@ -210,8 +219,8 @@ func (s *TwilioSender) ackURL(
 	}
 
 	recipient := ""
-	if len(settings.ToNumbers) > 0 {
-		recipient = settings.ToNumbers[0]
+	if len(toNumbers) > 0 {
+		recipient = toNumbers[0]
 	}
 
 	secret := []byte(jctx.AppConfig.Auth.JWTSecret)

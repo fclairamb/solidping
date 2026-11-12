@@ -58,6 +58,7 @@ const ALL_TYPES: ConnectionType[] = [
   "a2a",
   "pushover",
   "twilio",
+  "smsfactor",
   "freebox",
   "webpush",
   "kubernetes",
