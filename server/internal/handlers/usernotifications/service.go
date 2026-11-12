@@ -62,6 +62,10 @@ type ContactResponse struct {
 	Value      string     `json:"value"`
 	Label      string     `json:"label"`
 	VerifiedAt *time.Time `json:"verifiedAt,omitempty"`
+	// DeliveryFailedAt / DeliveryFailureCode are set when the provider rejected
+	// this contact as an unreachable recipient (e.g. Slack user_not_found).
+	DeliveryFailedAt    *time.Time `json:"deliveryFailedAt,omitempty"`
+	DeliveryFailureCode string     `json:"deliveryFailureCode,omitempty"`
 }
 
 // RouteResponse is the API representation of a UserNotificationRoute.
@@ -659,6 +663,11 @@ func toRouteResponse(route *models.UserNotificationRoute) *RouteResponse {
 			Value:      route.Contact.Value,
 			Label:      route.Contact.Label,
 			VerifiedAt: route.Contact.VerifiedAt,
+
+			DeliveryFailedAt: route.Contact.DeliveryFailedAt,
+		}
+		if route.Contact.DeliveryFailureCode != nil {
+			contactResp.DeliveryFailureCode = *route.Contact.DeliveryFailureCode
 		}
 	}
 

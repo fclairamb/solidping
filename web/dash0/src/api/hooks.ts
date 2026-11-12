@@ -7129,6 +7129,8 @@ export interface NotificationContact {
   value: string;
   label: string;
   verifiedAt?: string;
+  deliveryFailedAt?: string;
+  deliveryFailureCode?: string;
 }
 
 export interface NotificationRoute {

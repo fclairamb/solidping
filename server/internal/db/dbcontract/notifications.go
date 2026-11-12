@@ -82,6 +82,17 @@ func runUserContacts(t *testing.T, fix *fixture) {
 
 	must.NoError(svc.SetUserContactDMChannel(ctx, contact.UID, "dm-1"))
 
+	failedAt := time.Now()
+	must.NoError(svc.SetUserContactDeliveryFailure(ctx, contact.UID, &failedAt, "user_not_found"))
+	got, err = svc.GetUserContact(ctx, contact.UID)
+	must.NoError(err)
+	must.NotNil(got.DeliveryFailedAt)
+	must.Equal("user_not_found", *got.DeliveryFailureCode)
+	must.NoError(svc.SetUserContactDeliveryFailure(ctx, contact.UID, nil, ""))
+	got, err = svc.GetUserContact(ctx, contact.UID)
+	must.NoError(err)
+	must.Nil(got.DeliveryFailedAt)
+
 	byValue, err := svc.ListUserContactsByTypeValue(ctx, models.UserContactTypeTelegram, "chat-42")
 	must.NoError(err)
 	must.Len(byValue, 1)

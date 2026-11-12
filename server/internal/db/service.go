@@ -1628,6 +1628,11 @@ type Service interface {
 	// previously handed us: forget it, re-open on the next send.
 	SetUserContactDMChannel(ctx context.Context, uid, channelID string) error
 
+	// SetUserContactDeliveryFailure records that a provider rejected the
+	// contact as an unreachable recipient (Slack user_not_found, ...). A nil
+	// failedAt clears the failure, which the next successful send does.
+	SetUserContactDeliveryFailure(ctx context.Context, uid string, failedAt *time.Time, code string) error
+
 	// ListUserContactsByTypeValue returns every live contact with the given
 	// type and value, across ALL users and organizations. Inbound provider
 	// callbacks (a Telegram /stop, a block notification) identify the contact

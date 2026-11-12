@@ -663,15 +663,63 @@ func (r *EscalationStepJobRun) sendEscalationSlackDM(
 	text := escalationSlackDMMessage(incident, checkName, orgSlug, baseURL)
 
 	if err := postSlackDM(ctx, accessToken, route.Contact.Value, text); err != nil {
-		log.WarnContext(ctx, "failed to send escalation Slack DM",
-			"contactUID", route.Contact.UID,
-			"userUID", route.UserUID,
-			"error", err)
+		r.handleSlackDMFailure(ctx, jctx, log, route, err)
 
 		return 0
 	}
 
+	if route.Contact.DeliveryFailedAt != nil {
+		if clearErr := jctx.DBService.SetUserContactDeliveryFailure(ctx, route.Contact.UID, nil, ""); clearErr != nil {
+			log.WarnContext(ctx, "failed to clear slack contact delivery failure",
+				"contactUID", route.Contact.UID, "error", clearErr)
+		}
+	}
+
 	return 1
+}
+
+// handleSlackDMFailure logs a failed Slack DM and, when Slack rejected the
+// recipient itself, flags the contact. A contact already flagged is still
+// tried (an id can come back) but its repeat failure is logged at DEBUG, so a
+// dead contact yields one WARN rather than one per escalation repeat.
+func (r *EscalationStepJobRun) handleSlackDMFailure(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	route *models.UserNotificationRoute, err error,
+) {
+	code, recipient := slackclient.IsRecipientError(err)
+	level := slog.LevelWarn
+
+	switch {
+	case !recipient:
+	case route.Contact.DeliveryFailedAt != nil:
+		level = slog.LevelDebug
+	default:
+		flagSlackContact(ctx, jctx, log, route.Contact, code)
+	}
+
+	log.Log(ctx, level, "failed to send escalation Slack DM",
+		"contactUID", route.Contact.UID,
+		"userUID", route.UserUID,
+		"slackError", code,
+		"error", err)
+}
+
+// flagSlackContact records the delivery failure on the contact. A failed write
+// is logged and never fails the escalation step.
+func flagSlackContact(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, contact *models.UserContact, code string,
+) {
+	now := time.Now()
+
+	if err := jctx.DBService.SetUserContactDeliveryFailure(ctx, contact.UID, &now, code); err != nil {
+		log.WarnContext(ctx, "failed to flag unreachable slack contact",
+			"contactUID", contact.UID, "error", err)
+
+		return
+	}
+
+	contact.DeliveryFailedAt = &now
+	contact.DeliveryFailureCode = &code
 }
 
 // escalationSlackDMMessage builds the Slack DM text for a per-user escalation

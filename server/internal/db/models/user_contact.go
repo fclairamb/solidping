@@ -95,9 +95,15 @@ type UserContact struct {
 	// yields the same channel). Caching it therefore removes one rate-limited
 	// round trip from every single page, on the path where latency is the whole
 	// point. A stale id answers 404 and the sender re-opens and re-caches.
-	DMChannelID *string    `bun:"dm_channel_id"`
-	Label       string     `bun:"label,notnull"`
-	VerifiedAt  *time.Time `bun:"verified_at"`
+	DMChannelID *string `bun:"dm_channel_id"`
+	// DeliveryFailedAt / DeliveryFailureCode record that the provider rejected
+	// the recipient itself (Slack user_not_found, channel_not_found, ...). They
+	// are only a flag: the contact is still tried on every escalation, and the
+	// next successful send or a re-link clears them.
+	DeliveryFailedAt    *time.Time `bun:"delivery_failed_at"`
+	DeliveryFailureCode *string    `bun:"delivery_failure_code"`
+	Label               string     `bun:"label,notnull"`
+	VerifiedAt          *time.Time `bun:"verified_at"`
 	// Verification state for contact types that require a code round-trip
 	// (phone). VerifyCodeHash is the SHA-256 hex of the in-flight 6-digit
 	// code; nil when no verification is pending or after a successful confirm.

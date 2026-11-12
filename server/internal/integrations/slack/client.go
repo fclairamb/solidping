@@ -613,7 +613,7 @@ func (c *Client) do(req *http.Request, result any) error {
 	}
 
 	if !apiResp.OK {
-		return fmt.Errorf("%w: %s", ErrSlackAPI, apiResp.Error)
+		return &APIError{Code: apiResp.Error}
 	}
 
 	// If a result struct was provided, unmarshal into it
@@ -624,4 +624,43 @@ func (c *Client) do(req *http.Request, result any) error {
 	}
 
 	return nil
+}
+
+// APIError is a Slack Web API answer of {"ok":false,"error":"<code>"}. It wraps
+// ErrSlackAPI so errors.Is(err, ErrSlackAPI) keeps working.
+type APIError struct {
+	Code string
+}
+
+// Error implements error with the historical "slack API error: <code>" text.
+func (e *APIError) Error() string {
+	return fmt.Sprintf("%s: %s", ErrSlackAPI, e.Code)
+}
+
+// Unwrap lets errors.Is match ErrSlackAPI.
+func (e *APIError) Unwrap() error { return ErrSlackAPI }
+
+// recipientErrorCodes are chat.postMessage errors meaning "this recipient
+// cannot be reached". Token/workspace codes (invalid_auth, token_revoked,
+// account_inactive) are deliberately absent: they concern the bot, not the contact.
+//
+//nolint:gochecknoglobals // constant lookup table
+var recipientErrorCodes = map[string]bool{
+	"channel_not_found": true,
+	"user_not_found":    true,
+	"user_disabled":     true,
+	"cannot_dm_bot":     true,
+	"is_archived":       true,
+}
+
+// IsRecipientError reports whether err is a Slack API error that means the
+// addressed recipient (not the bot's token) is the problem, and returns the
+// Slack error code.
+func IsRecipientError(err error) (string, bool) {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return "", false
+	}
+
+	return apiErr.Code, recipientErrorCodes[apiErr.Code]
 }
