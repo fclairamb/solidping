@@ -180,6 +180,8 @@ import { checkTypeCanCapture } from "@/lib/check-screenshots";
 // The result-output key reporting which address family the probe used, and the
 // config key pinning it. Kept next to each other so the pair can't drift.
 const IP_VERSION_OUTPUT_KEY = "ip_version";
+// Stamped when a dual-stack probe only got through on its fallback family.
+const IP_FALLBACK_OUTPUT_KEY = "ip_fallback";
 
 // The two passive-evaluation output keys that are pure bookkeeping: the
 // self-declaration the worker stamps and the uid it points at (spec
@@ -761,6 +763,11 @@ function CheckDetailPage() {
   const resolvedIpVersion =
     typeof check?.lastResult?.output?.[IP_VERSION_OUTPUT_KEY] === "string"
       ? (check.lastResult.output[IP_VERSION_OUTPUT_KEY] as string)
+      : null;
+  const ipFallbackRaw = check?.lastResult?.output?.[IP_FALLBACK_OUTPUT_KEY];
+  const ipFallback =
+    ipFallbackRaw && typeof ipFallbackRaw === "object"
+      ? (ipFallbackRaw as { failed?: string; reason?: string; after_ms?: number })
       : null;
   const pinnedIpVersionRaw = check?.config?.[IP_VERSION_CONFIG_KEY];
   const pinnedIpVersion =
@@ -2088,6 +2095,23 @@ function CheckDetailPage() {
                     </span>
                   </div>
                 )}
+                {ipFallback && (
+                  <div
+                    className="flex flex-wrap items-center gap-2 text-sm"
+                    data-testid="result-ip-fallback"
+                  >
+                    <span className="text-muted-foreground">
+                      {t("checks:detail.ipFallbackLabel")}:
+                    </span>
+                    <Badge variant="outline">{ipFallback.failed}</Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {t("checks:detail.ipFallbackDetail", {
+                        reason: ipFallback.reason ?? "",
+                        ms: ipFallback.after_ms ?? 0,
+                      })}
+                    </span>
+                  </div>
+                )}
                 {check.lastResult.output &&
                   Object.keys(check.lastResult.output).length > 0 && (
                     <div>
@@ -2105,6 +2129,7 @@ function CheckDetailPage() {
                               key !== "chain" &&
                               key !== "soonestExpiring" &&
                               key !== IP_VERSION_OUTPUT_KEY &&
+                              key !== IP_FALLBACK_OUTPUT_KEY &&
                               key !== JSON_ASSERTION_RESULT_OUTPUT_KEY &&
                               key !== BODY_ASSERTION_RESULT_OUTPUT_KEY &&
                               key !== HEADER_ASSERTION_RESULT_OUTPUT_KEY &&

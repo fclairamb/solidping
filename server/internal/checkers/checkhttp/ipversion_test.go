@@ -178,3 +178,33 @@ func TestExecute_PinnedFamilyUnavailable(t *testing.T) {
 	r.Contains(message, "no address of the requested IP version")
 	r.Contains(message, "IPv6")
 }
+
+// A clean target, auto or pinned, never carries a fallback flag nor a warning:
+// the observer only fires when the first family failed and the other answered.
+func TestExecute_NoFallbackWarningWhenCleanOrPinned(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	for name, ctxFn := range map[string]func(context.Context) context.Context{
+		"auto": func(ctx context.Context) context.Context { return ctx },
+		"pinned": func(ctx context.Context) context.Context {
+			return checkerdef.WithIPVersion(ctx, checkerdef.IPVersionIPv4)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(ctxFn(context.Background()), 10*time.Second)
+			defer cancel()
+
+			result, err := (&HTTPChecker{}).Execute(ctx, &HTTPConfig{URL: server.URL})
+			require.NoError(t, err)
+			require.Equal(t, checkerdef.StatusUp, result.Status)
+			require.NotContains(t, result.Output, checkerdef.OutputKeyIPFallback)
+		})
+	}
+}
