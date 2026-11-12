@@ -100,6 +100,13 @@
     "twilioInvalidNumber": "Numéro E.164 invalide",
     "twilioRemoveNumber": "Supprimer {{n}}",
     "twilioToHint": "Les envois directs (diffusion par contrôle, test) envoient un SMS à ces numéros.",
+    "smsfactorToken": "Jeton d'API",
+    "smsfactorSender": "Nom d'expéditeur (facultatif)",
+    "smsfactorSenderHint": "Jusqu'à 11 lettres, chiffres ou espaces, enregistré chez SMS Factor. Laissez vide pour utiliser l'expéditeur par défaut du compte.",
+    "smsfactorToNumbers": "Numéros destinataires partagés (facultatif)",
+    "smsfactorInvalidNumber": "Numéro E.164 invalide",
+    "smsfactorRemoveNumber": "Supprimer {{n}}",
+    "smsfactorToHint": "Les envois directs (diffusion par contrôle, test) envoient un SMS à ces numéros.",
     "slackOauthHint": "Les canaux Slack sont configurés via l'installation OAuth Slack. Le bot remplira les noms d'espace et de canal à la fin.",
     "slackNotConnectedTitle": "Espace de travail Slack non connecté",
     "slackNotConnectedBody": "Ce canal n'a aucun espace de travail Slack lié. Installez l'application Slack SolidPing pour en connecter un.",
@@ -269,6 +276,7 @@
     "pagerduty": "Alerter les astreintes via PagerDuty",
     "pushover": "Notifications push mobile via Pushover",
     "twilio": "Envoyer des SMS et passer des appels vocaux via Twilio",
+    "smsfactor": "Envoyer des SMS via SMS Factor",
     "freebox": "Surveiller une Freebox Free (qualité de ligne, débit de synchronisation, état réseau)",
     "webpush": "Recevoir des alertes sous forme de notifications navigateur sur vos appareils abonnés",
     "kubernetes": "Surveiller la santé des réplicas Kubernetes (Deployments, ReplicaSets)",
@@ -286,16 +294,17 @@
     "server": {
       "body": "Les SMS sont fournis par cette instance — aucune configuration nécessaire.",
       "bodyWithSender": "Les SMS sont fournis par cette instance. Les messages partent de {{sender}} — aucune configuration nécessaire.",
-      "override": "Vous pouvez ajouter votre propre intégration Twilio pour envoyer avec votre compte, votre expéditeur et votre facturation. Elle remplace le fournisseur de l'instance pour cette organisation."
+      "override": "Vous pouvez ajouter votre propre intégration Twilio ou SMS Factor pour envoyer avec votre compte, votre expéditeur et votre facturation. Elle remplace le fournisseur de l'instance pour cette organisation."
     },
     "byo": {
       "body": "Cette organisation envoie via sa propre intégration Twilio (« {{name}} »). Elle remplace le fournisseur de l'instance pour les SMS et les appels de cette organisation, et Twilio vous facture directement.",
+      "bodySmsFactor": "Cette organisation envoie ses SMS via sa propre intégration SMS Factor (« {{name}} »). Elle remplace le fournisseur de SMS de l'instance pour cette organisation, et SMS Factor vous facture directement. Les appels d'alerte ne sont pas concernés.",
       "onDeleteFallback": "Si vous la supprimez, l'organisation revient aux SMS fournis par cette instance.",
       "onDeleteUnavailable": "Si vous la supprimez, les SMS deviennent indisponibles pour cette organisation — cette instance n'en fournit aucun."
     },
     "unavailable": {
-      "body": "Cette instance ne fournit pas de SMS et cette organisation n'a pas d'intégration Twilio, donc les alertes SMS et vocales ne peuvent pas être envoyées.",
-      "fix": "Ajoutez une intégration Twilio pour utiliser votre propre compte, ou demandez à l'opérateur de configurer les SMS pour cette instance."
+      "body": "Cette instance ne fournit pas de SMS et cette organisation n'a pas d'intégration Twilio ou SMS Factor, donc les alertes SMS et vocales ne peuvent pas être envoyées.",
+      "fix": "Ajoutez une intégration Twilio ou SMS Factor pour utiliser votre propre compte, ou demandez à l'opérateur de configurer les SMS pour cette instance."
     },
     "voice": {
       "byo": "Les appels d'alerte utilisent le même compte Twilio, s'il a un numéro d'appelant configuré.",

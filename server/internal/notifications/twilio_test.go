@@ -207,3 +207,22 @@ func TestTwilioSender_MissingCredentialsErrors(t *testing.T) {
 	err := sender.Send(context.Background(), twilioJobCtx(), twilioPayload(eventTypeIncidentCreated, settings))
 	r.ErrorIs(err, ErrTwilioNotConfigured)
 }
+
+func TestBuildSMSBody_ClosedAndDegradedWordings(t *testing.T) {
+	t.Parallel()
+
+	disabled := twilioPayload(eventTypeIncidentResolved, fullTwilioSettings())
+	resolution := models.ResolutionTypeCheckDisabled
+	disabled.Incident.ResolutionType = &resolution
+
+	body := buildSMSBody(twilioJobCtx(), disabled, nil, "")
+	require.Equal(t, "["+productName+"] acme: API health was disabled, incident closed.", body)
+
+	steady := degradedResolvedPayload(false)
+	require.Equal(t, "["+productName+"] acme: acme api is steady again.",
+		buildSMSBody(twilioJobCtx(), steady, nil, ""))
+
+	turnedOff := degradedResolvedPayload(true)
+	require.Equal(t, "["+productName+"] acme: acme api: degraded detection turned off, episode closed.",
+		buildSMSBody(twilioJobCtx(), turnedOff, nil, ""))
+}

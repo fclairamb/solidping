@@ -13,6 +13,7 @@ import "github.com/fclairamb/solidping/server/internal/db/models"
 const (
 	providerKeyClientSecret = "client_secret"
 	secretKeyAuthToken      = "auth_token"
+	secretKeyToken          = "token"
 )
 
 // connectionSecretFields enumerates the secret JSON keys for each
@@ -51,11 +52,14 @@ var connectionSecretFields = map[models.ConnectionType][]string{
 	// Kubernetes cluster credentials: a bearer token or a pasted kubeconfig.
 	// The API server URL and CA cert stay public (endpoint URLs are not secret
 	// under the DB-theft-only threat model — same as webhook URLs above).
-	models.ConnectionTypeKubernetes: {"token", "kubeconfig"},
+	models.ConnectionTypeKubernetes: {secretKeyToken, "kubeconfig"},
 	// Twilio: only the account auth token is secret. The account SID, from /
 	// messaging-service identifiers and recipient numbers stay public so the
 	// dashboard can render them on the edit form.
 	models.ConnectionTypeTwilio: {secretKeyAuthToken},
+	// SMS Factor: only the API token is secret. The sender and recipient
+	// numbers stay public so the dashboard can render them on the edit form.
+	models.ConnectionTypeSMSFactor: {secretKeyToken},
 	// Microsoft Teams bot: credentials normally live in system config (one
 	// Entra app per instance), so a connection's settings hold no secret in
 	// the standard flow. `app_secret` is registered anyway so that any future
@@ -67,7 +71,7 @@ var connectionSecretFields = map[models.ConnectionType][]string{
 	// A2A (AI agent): the bearer token or the API key value. The Agent Card
 	// URL, the auth mode, the API key header name and the instructions stay
 	// public so the dashboard can render them on the edit form.
-	models.ConnectionTypeA2A: {"token", "api_key_value"},
+	models.ConnectionTypeA2A: {secretKeyToken, "api_key_value"},
 }
 
 // ConnectionSecretFields returns the secret keys for a connection type.
