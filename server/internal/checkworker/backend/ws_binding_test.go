@@ -306,6 +306,7 @@ func TestClaimRunsAgentAndServerBlobsWithSecretsOnly(t *testing.T) {
 		r.Empty(results, name)
 		r.Len(jobs, 1, name)
 		r.Equal("alice:hunter2", jobs[0].Config["basicAuth"], name)
-		r.False(handler.hasWarn("sealed secrets are not bound to their target: seal them again (Re-seal page) to bind them"), name)
+		r.False(handler.hasWarn(
+			"sealed secrets are not bound to their target: seal them again (Re-seal page) to bind them"), name)
 	}
 }
