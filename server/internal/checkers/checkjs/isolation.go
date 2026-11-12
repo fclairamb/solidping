@@ -304,7 +304,7 @@ func (c *hostChannel) runChild(
 	cmd := exec.CommandContext(killCtx, exe)
 	// Nothing of this process's environment (database URL, keys) reaches
 	// the child.
-	cmd.Env = []string{childEnvVar + "=1"}
+	cmd.Env = append([]string{childEnvVar + "=1"}, childExtraEnv...)
 	cmd.WaitDelay = childKillGrace
 
 	stderr := &cappedBuffer{cap: childStderrCap}
