@@ -245,6 +245,7 @@ function MailSettingsPage() {
                   <div className="relative flex-1">
                     <Input
                       id="password"
+                      data-secret-input
                       data-testid="server-mail-password-input"
                       type={showPassword ? "text" : "password"}
                       placeholder={t("server:mail.passwordPlaceholder")}

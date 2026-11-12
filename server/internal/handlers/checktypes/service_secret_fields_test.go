@@ -70,7 +70,7 @@ func TestListServerCheckTypesCarriesTargetFields(t *testing.T) {
 		"http":  {"tunnelCheckUid", "url"},
 		"mysql": {"database", "host", "port", "tunnelCheckUid"},
 		"kafka": {"brokers", "tunnelCheckUid"},
-		"js":    {"script", "tunnelCheckUid"},
+		"js":    {"env", "script", "tunnelCheckUid"},
 	}
 
 	listed := svc.ListServerCheckTypes().Data

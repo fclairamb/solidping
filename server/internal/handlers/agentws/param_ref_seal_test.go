@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/paramkeys"
@@ -104,6 +105,15 @@ func TestParamRefTravelsSealedToASystemAgent(t *testing.T) {
 	merged := credentials.MergeConfig(job.Config, secrets)
 	r.Equal("grant_type=password&password=hunter2", merged["body"],
 		"MergeConfig must put the overlay OVER the reference, not under it")
+
+	// (3) The agent's claim rules let this per-claim server blob through:
+	// the strict-keys rule only applies to browser and agent blobs (spec
+	// 2026-11-12-03), and this one carries a public key by design.
+	r.Equal(credentials.SealOriginServer, credentials.SealedOrigin(*job.ConfigSealed))
+	opened, _, err := credentials.OpenSealedPlaintext(
+		*job.ConfigSealed, secrets, configregistry.BindingCheckFor(job.Type, job.Config))
+	r.NoError(err)
+	r.Equal("grant_type=password&password=hunter2", opened["body"])
 }
 
 // TestParamRefInsideASecretFieldIsResolvedToo covers the other half: a

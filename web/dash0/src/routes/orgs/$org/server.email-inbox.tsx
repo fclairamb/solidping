@@ -250,6 +250,7 @@ function EmailInboxPage() {
                   <div className="relative">
                     <Input
                       id="password"
+                      data-secret-input
                       type={showPassword ? "text" : "password"}
                       placeholder={t("server:emailInbox.passwordPlaceholder")}
                       value={password}

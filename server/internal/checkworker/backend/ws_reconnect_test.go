@@ -192,12 +192,12 @@ func (h *capturingHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
 
 func (h *capturingHandler) WithGroup(_ string) slog.Handler { return h }
 
-func (h *capturingHandler) has(level slog.Level, msg string) bool {
+func (h *capturingHandler) hasWarn(msg string) bool {
 	h.sink.mu.Lock()
 	defer h.sink.mu.Unlock()
 
 	for _, entry := range h.sink.entries {
-		if entry.level == level && entry.msg == msg {
+		if entry.level == slog.LevelWarn && entry.msg == msg {
 			return true
 		}
 	}
@@ -250,7 +250,7 @@ func TestWSBackendReconnectsAfterServerClose(t *testing.T) {
 		t.Fatal("hint from the reconnected connection never arrived — agent did not recover")
 	}
 
-	r.True(logs.has(slog.LevelWarn, "agent connection lost"), "the connection loss must be logged at Warn")
+	r.True(logs.hasWarn("agent connection lost"), "the connection loss must be logged at Warn")
 	r.Zero(fake.claimCount(), "reconnection must not issue any claim")
 }
 
@@ -306,7 +306,7 @@ func TestWSBackendReconnectsOnHalfOpenPingFailure(t *testing.T) {
 
 	elapsed := time.Since(start)
 
-	r.True(logs.has(slog.LevelWarn, "agent connection lost"), "a ping-detected loss must be logged at Warn")
+	r.True(logs.hasWarn("agent connection lost"), "a ping-detected loss must be logged at Warn")
 	// Detection fires within roughly one ping interval + its half-interval
 	// timeout; reconnection must follow immediately after. This bound is tight
 	// enough to catch a regression where retire() blocks on the close

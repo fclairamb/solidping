@@ -65,12 +65,9 @@ func TestNormalizeTargetURL(t *testing.T) {
 func TestTargetFieldsForAddsTheTunnel(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t,
-		[]string{
-			"address", "brokers", "database", "dsn", "endpoint", "host", "hostname", "port", "server",
-			"tunnelCheckUid", "url",
-		},
-		credentials.TargetFieldsFor(nil))
+	// A type that declares no list (a plugin, a type unknown to the agent)
+	// binds every public key (spec 2026-11-12-02).
+	require.Equal(t, []string{credentials.AllPublicKeys, "tunnelCheckUid"}, credentials.TargetFieldsFor(nil))
 }
 
 func bindingCheck(config map[string]any) credentials.BindingCheck {
@@ -191,7 +188,7 @@ func TestMarkSealedBound(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, credentials.IsSealedBound(envelope))
 
-	bound, err := credentials.MarkSealedBound(envelope)
+	bound, err := credentials.MarkSealedBound(envelope, nil)
 	require.NoError(t, err)
 	require.True(t, credentials.IsSealedBound(bound))
 	require.Equal(t, credentials.SealOriginBrowser, credentials.SealedOrigin(bound))
@@ -200,4 +197,75 @@ func TestMarkSealedBound(t *testing.T) {
 	rewrapped, err := credentials.RewrapSealedEnvelope(bound, []string{fix.Fingerprint}, fix.CT)
 	require.NoError(t, err)
 	require.True(t, credentials.IsSealedBound(rewrapped))
+	require.Nil(t, credentials.SealedBoundTargetFields(rewrapped), "no list recorded")
+
+	// The list the client bound to is recorded, sorted, and kept by a re-wrap
+	// (spec 2026-11-12-02).
+	withFields, err := credentials.MarkSealedBound(envelope, []string{"script", "env", "tunnelCheckUid", "env"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"env", "script", "tunnelCheckUid"}, credentials.SealedBoundTargetFields(withFields))
+	rewrapped, err = credentials.RewrapSealedEnvelope(withFields, []string{fix.Fingerprint}, fix.CT)
+	require.NoError(t, err)
+	require.Equal(t, []string{"env", "script", "tunnelCheckUid"}, credentials.SealedBoundTargetFields(rewrapped))
+}
+
+func TestLegacyTargetFieldsFor(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t,
+		[]string{
+			"address", "brokers", "database", "dsn", "endpoint", "host", "hostname", "port", "server",
+			"tunnelCheckUid", "url",
+		},
+		credentials.LegacyTargetFieldsFor(nil))
+}
+
+// TestRewrapMarksAServerBlobAsAnAgentBlob (spec 2026-11-12-03): a peer
+// re-wrap of a server blob is an agent blob, which gets the strict-keys rule;
+// a browser blob stays a browser blob; a server blob is used as is.
+func TestRewrapMarksAServerBlobAsAnAgentBlob(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	_, recipient, err := credentials.GenerateX25519Keypair()
+	r.NoError(err)
+
+	server, err := credentials.SealForRecipients([]string{recipient}, map[string]any{"password": "s3cret"})
+	r.NoError(err)
+	r.Equal(credentials.SealOriginServer, credentials.SealedOrigin(server))
+
+	fps, ct, err := credentials.SealForClient([]string{recipient}, map[string]any{"password": "s3cret"})
+	r.NoError(err)
+
+	agent, err := credentials.RewrapSealedEnvelope(server, fps, ct)
+	r.NoError(err)
+	r.Equal(credentials.SealOriginAgent, credentials.SealedOrigin(agent))
+
+	again, err := credentials.RewrapSealedEnvelope(agent, fps, ct)
+	r.NoError(err)
+	r.Equal(credentials.SealOriginAgent, credentials.SealedOrigin(again))
+
+	browser, err := credentials.BuildClientSealedEnvelope(fps, ct)
+	r.NoError(err)
+	rewrapped, err := credentials.RewrapSealedEnvelope(browser, fps, ct)
+	r.NoError(err)
+	r.Equal(credentials.SealOriginBrowser, credentials.SealedOrigin(rewrapped))
+
+	check := credentials.BindingCheck{
+		Type: "http", Config: map[string]any{"url": "https://acme.com"},
+		TargetFields: []string{"url"}, SecretFields: []string{"password"},
+	}
+	leaky := map[string]any{"password": "s3cret", "url": "https://evil.example"}
+
+	_, _, err = credentials.OpenSealedPlaintext(agent, leaky, check)
+	r.ErrorIs(err, credentials.ErrSealedKeyNotSecret)
+
+	opened, legacy, err := credentials.OpenSealedPlaintext(agent, map[string]any{"password": "s3cret"}, check)
+	r.NoError(err)
+	r.False(legacy, "an agent blob never had a binding: no legacy warning")
+	r.Equal("s3cret", opened["password"])
+
+	opened, _, err = credentials.OpenSealedPlaintext(server, leaky, check)
+	r.NoError(err, "a server blob carries the per-claim ${param:} overlay of public fields")
+	r.Equal("https://evil.example", opened["url"])
 }
