@@ -44,12 +44,7 @@ func uptimeReportFixture(loc i18n.Locale) map[string]any {
 
 	objective := report.SLOs[0]
 
-	topFailing := make([]map[string]any, 0, len(report.TopFailingChecks))
-	for _, row := range report.TopFailingChecks {
-		topFailing = append(topFailing, map[string]any{
-			keyName: row.Name, "URL": row.URL, "Detail": row.Detail,
-		})
-	}
+	topFailing := topFailingMaps(report.TopFailingChecks)
 
 	return map[string]any{
 		keyOrgName:        report.OrgName,
@@ -124,7 +119,6 @@ func uptimeReportPreview() *uptimereport.Data {
 	year := time.Now().Year()
 	july := time.Date(year, time.July, 1, 0, 0, 0, 0, paris)
 	june := july.AddDate(0, -1, 0)
-	attainment := 99.95
 
 	return &uptimereport.Data{
 		OrgName:           fixtureOrgName,
@@ -137,16 +131,7 @@ func uptimeReportPreview() *uptimereport.Data {
 		ShowInsights:      true,
 		AcknowledgedCount: 2,
 		PagedCount:        3,
-		TopFailingChecks: []uptimereport.FailingCheckRow{
-			{
-				Name: fixtureCheckName, IncidentCount: 2, RelapseCount: 1,
-				URL: "https://solidping.example/d/orgs/acme/checks/chk-prod-api",
-			},
-			{
-				Name: "Marketing site", IncidentCount: 1,
-				URL: "https://solidping.example/d/orgs/acme/checks/chk-marketing",
-			},
-		},
+		TopFailingChecks:  previewTopFailing(),
 
 		HasPreviousData:        true,
 		PreviousIncidentCount:  5,
@@ -173,14 +158,7 @@ func uptimeReportPreview() *uptimereport.Data {
 				Days: []uptimereport.DayCell{{Color: "#d1d5db", Span: 31, Wide: true}},
 			},
 		},
-		SLOs: []uptimereport.SLORow{{
-			Name:       "API availability",
-			HasData:    true,
-			State:      slo.StateHealthy,
-			Attainment: &attainment,
-			Target:     99.9,
-			Budget:     21*time.Minute + 30*time.Second,
-		}},
+		SLOs:         previewSLOs(),
 		DashboardURL: fixtureDashboardURL,
 
 		Figures: uptimereport.Figures{
@@ -198,15 +176,53 @@ func uptimeReportPreview() *uptimereport.Data {
 
 			MedianTimeToResolve:     18 * time.Minute,
 			MedianTimeToAcknowledge: 4 * time.Minute,
-			AvgResponse:             171,
-			MinResponse:             42,
-			MaxResponse:             3200,
-			HasResponseRange:        true,
-			PreviousAvgResponse:     158,
-			SlowSamples:             4,
-			SlowPeaks:               2,
-			StripStart:              time.Date(year, time.July, 1, 0, 0, 0, 0, time.UTC),
-			StripDays:               31,
+
+			AvgResponse:         171,
+			MinResponse:         42,
+			MaxResponse:         3200,
+			HasResponseRange:    true,
+			PreviousAvgResponse: 158,
+			SlowSamples:         4,
+			SlowPeaks:           2,
+			StripStart:          time.Date(year, time.July, 1, 0, 0, 0, 0, time.UTC),
+			StripDays:           31,
 		},
 	}
+}
+
+// previewTopFailing is the "Most incidents" block of the preview.
+func previewTopFailing() []uptimereport.FailingCheckRow {
+	return []uptimereport.FailingCheckRow{
+		{
+			Name: fixtureCheckName, IncidentCount: 2, RelapseCount: 1,
+			URL: "https://solidping.example/d/orgs/acme/checks/chk-prod-api",
+		},
+		{
+			Name: "Marketing site", IncidentCount: 1,
+			URL: "https://solidping.example/d/orgs/acme/checks/chk-marketing",
+		},
+	}
+}
+
+func topFailingMaps(rows []uptimereport.FailingCheckRow) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+
+	for i := range rows {
+		out = append(out, map[string]any{keyName: rows[i].Name, "URL": rows[i].URL, "Detail": rows[i].Detail})
+	}
+
+	return out
+}
+
+func previewSLOs() []uptimereport.SLORow {
+	attainment := 99.95
+
+	return []uptimereport.SLORow{{
+		Name:       "API availability",
+		HasData:    true,
+		State:      slo.StateHealthy,
+		Attainment: &attainment,
+		Target:     99.9,
+		Budget:     21*time.Minute + 30*time.Second,
+	}}
 }

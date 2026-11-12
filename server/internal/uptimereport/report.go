@@ -554,10 +554,12 @@ func applyInsights(
 		return
 	}
 
-	for _, row := range result.Checks {
+	for i := range result.Checks {
 		if len(data.TopFailingChecks) == maxTopFailing {
 			break
 		}
+
+		row := &result.Checks[i]
 
 		check := byUID[row.CheckUID]
 		data.TopFailingChecks = append(data.TopFailingChecks, FailingCheckRow{

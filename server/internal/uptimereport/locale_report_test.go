@@ -46,7 +46,8 @@ func englishLeftovers() []string {
 	return []string{
 		"Uptime report", "Availability", "Response time", "Objectives", "Open dashboard",
 		"worst first", "No data", "Checks monitored", "Total downtime", "Budget remaining",
-		" vs ", "uptime", "longest", "average", "samples", "Gray means", "Most incidents", "Median time", "acknowledged", "relapse",
+		" vs ", "uptime", "longest", "average", "samples", "Gray means",
+		"Most incidents", "Median time", "acknowledged", "relapse",
 	}
 }
 
@@ -289,9 +290,14 @@ func TestUptimeReportInsightsAreWrittenInEveryLanguage(t *testing.T) {
 
 	want := map[string][]string{
 		i18n.LangEnglish: {"Median time to resolve: 18m", "2 of 3 acknowledged", "Most incidents", "2 incidents, 1 relapse"},
-		i18n.LangFrench:  {"Délai médian de résolution", "2 sur 3 acquittés", "Le plus d'incidents", "2 incidents, 1 rechute"},
-		i18n.LangGerman:  {"Mediane Zeit bis zur Lösung", "2 von 3 bestätigt", "Meiste Vorfälle", "2 Vorfälle, 1 Rückfall"},
-		i18n.LangSpanish: {"Tiempo mediano de resolución", "2 de 3 reconocidos", "Más incidentes", "2 incidentes, 1 recaída"},
+		i18n.LangFrench: {
+			"Délai médian de résolution", "2 sur 3 acquittés", "Le plus d'incidents", "2 incidents, 1 rechute",
+		},
+		i18n.LangGerman: {"Mediane Zeit bis zur Lösung", "2 von 3 bestätigt", "Meiste Vorfälle", "2 Vorfälle, 1 Rückfall"},
+		i18n.LangSpanish: {
+			"Tiempo mediano de resolución", "2 de 3 reconocidos", "Más incidentes", //nolint:misspell // Spanish
+			"2 incidentes, 1 recaída", //nolint:misspell // Spanish
+		},
 	}
 
 	formatter, err := email.NewFormatter()
