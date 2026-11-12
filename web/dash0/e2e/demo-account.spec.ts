@@ -291,48 +291,6 @@ test.describe("Public live demo", () => {
     );
   });
 
-  // Spec 2026-11-11-07. The server caps a demo session at one hour; the end of
-  // it must be invisible to the visitor (silent re-login, no session_expired).
-  test("a demo session whose refresh is rejected signs in again silently", async ({
-    page,
-    request,
-  }) => {
-    const demo = await demoConfig(request);
-    const org = demo?.orgSlug as string;
-
-    await page.goto("orgs/test/login?demo=1");
-    await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-    await expect(page.getByTestId("demo-banner")).toBeVisible({
-      timeout: 20000,
-    });
-
-    await page.route("**/api/v1/auth/refresh", (route) =>
-      route.fulfill({ status: 401, contentType: "application/json", body: "{}" }),
-    );
-    let rejectedOnce = false;
-    await page.route(new RegExp(`/api/v1/orgs/${org}/checks(\\?|$)`), (route) => {
-      if (!rejectedOnce) {
-        rejectedOnce = true;
-        return route.fulfill({ status: 401, contentType: "application/json", body: "{}" });
-      }
-      return route.continue();
-    });
-    const logins: string[] = [];
-    page.on("request", (req) => {
-      if (req.method() === "POST" && req.url().includes("/api/v1/auth/login")) {
-        logins.push(req.url());
-      }
-    });
-
-    await page.goto(`orgs/${org}/checks`);
-    await expect(page.locator("[data-sonner-toaster]")).toContainText("Demo session renewed", {
-      timeout: 20000,
-    });
-    expect(logins).toHaveLength(1);
-    expect(page.url()).not.toContain("session_expired");
-    expect(page.url()).not.toContain("/login");
-  });
-
   // Spec 2026-09-12-01. The demo is signed into ONLY from the demo org's own
   // login page; every other entry point hops there first. What these pin is
   // the symptom that made it a bug report: the product's front door greeting a

@@ -77,3 +77,8 @@ verify the issue is closed and, if not, close it by hand:
 ## Resolved open questions
 
 - Silent re-login: keep the server cap, make its end invisible to the visitor. (autopilot: recommended answer)
+
+## Cancelled
+
+Cancelled by Florent on 2026-11-12 after implementation: a demo session should not be renewed
+more often than any other session. The silent re-login (`c305ba16`) was reverted in the same PR.
