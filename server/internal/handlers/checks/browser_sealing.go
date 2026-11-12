@@ -53,6 +53,10 @@ type SealedSecretsRequest struct {
 	// (spec 2026-11-11-01). Stored as a display-only flag: the Re-seal page
 	// lists the browser blobs without one.
 	Bound bool `json:"bound,omitempty"`
+	// TargetFields is the target list the client digested the binding over
+	// (spec 2026-11-12-02), stored next to Bound: the Re-seal page lists a
+	// blob whose list no longer gives the digest the agents compute.
+	TargetFields []string `json:"targetFields,omitempty"`
 }
 
 // SealingRecipientsChangedError carries the current recipients, so the client
@@ -80,6 +84,21 @@ func (s *Service) targetFieldsForType(ctx context.Context, orgUID, checkType str
 	}
 
 	return credentials.TargetFieldsFor(cfg)
+}
+
+// sealedBindingStale reports whether a bound browser blob was digested over a
+// target list the agents no longer use for this check, so they refuse it
+// (spec 2026-11-12-02): a JS check bound before `env` was a target field, a
+// plugin check bound to the old default list. It is listed as unbound.
+func (s *Service) sealedBindingStale(ctx context.Context, check *models.Check) bool {
+	cfg, _ := s.parseConfigFor(ctx, check.OrganizationUID, check.Type)
+
+	bound := credentials.SealedBoundTargetFields(*check.ConfigSealed)
+	if bound == nil {
+		bound = credentials.LegacyTargetFieldsFor(cfg)
+	}
+
+	return credentials.BindingStale(bound, credentials.TargetFieldsFor(cfg), check.Config)
 }
 
 // assertSealedTargetKept refuses a write that would keep a browser-sealed
@@ -334,7 +353,7 @@ func (s *Service) applyClientSealing(
 	}
 
 	if sealed.Bound {
-		if envelope, err = credentials.MarkSealedBound(envelope); err != nil {
+		if envelope, err = credentials.MarkSealedBound(envelope, sealed.TargetFields); err != nil {
 			return err
 		}
 	}
@@ -572,7 +591,8 @@ func (s *Service) ListResealChecks(ctx context.Context, orgSlug string) ([]Resea
 			reason = ResealReasonUnconfirmed
 		case need != nil && *need:
 			reason = ResealReasonRecipients
-		case isBrowserSealed(check) && !credentials.IsSealedBound(*check.ConfigSealed):
+		case isBrowserSealed(check) && !credentials.IsSealedBound(*check.ConfigSealed),
+			isBrowserSealed(check) && s.sealedBindingStale(ctx, check):
 			reason = ResealReasonUnbound
 		default:
 			continue

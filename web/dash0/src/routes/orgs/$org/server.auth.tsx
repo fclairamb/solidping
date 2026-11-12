@@ -555,6 +555,7 @@ function AuthSettingsPage() {
                         {field.multiline ? (
                           <Textarea
                             id={field.key}
+                            data-secret-input={field.secret ? true : undefined}
                             data-testid={`provider-field-${field.key}`}
                             rows={4}
                             className="font-mono text-xs"
@@ -571,6 +572,7 @@ function AuthSettingsPage() {
                         ) : (
                           <Input
                             id={field.key}
+                            data-secret-input={field.secret ? true : undefined}
                             data-testid={`provider-field-${field.key}`}
                             type={
                               field.secret && !visibleSecrets.has(field.key)

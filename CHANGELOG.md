@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.48.0](https://github.com/fclairamb/solidping/compare/v0.47.0...v0.48.0) (2026-11-12)
+
+
+### Features
+
+* **notifications:** SMS Factor integration ([#846](https://github.com/fclairamb/solidping/issues/846)) ([1b68d2a](https://github.com/fclairamb/solidping/commit/1b68d2afe255d80ee015eb7afd71b62a4764601f))
+* lease sizing, Telegram sign-in and four small fixes (2026-11-11 issues) ([#848](https://github.com/fclairamb/solidping/issues/848)) ([9972dde](https://github.com/fclairamb/solidping/commit/9972dde27b46766d436586eb286399931327d088))
+
+
+### Bug Fixes
+
+* **security:** require a verified email for GitLab sign-in and stop linking existing accounts by email ([#850](https://github.com/fclairamb/solidping/issues/850)) ([1a0cea9](https://github.com/fclairamb/solidping/commit/1a0cea99a5ed38f651962dcdd55362d7dab8c830))
+* **security:** harden sealed secrets: bind them to their target, verify peer re-wraps, strict re-wrap keys, drop deleted regions' keys, cap the rewrap list, TLS-only agent server URL ([#840](https://github.com/fclairamb/solidping/issues/840), [#851](https://github.com/fclairamb/solidping/issues/851))
+* **security:** keep secret inputs out of dash0 session replay, bind JS env and plugin configs, and mask secret headers on redirects ([#839](https://github.com/fclairamb/solidping/issues/839), [#851](https://github.com/fclairamb/solidping/issues/851))
+* **deps:** update Go dependencies, including goja ([#842](https://github.com/fclairamb/solidping/issues/842), [#844](https://github.com/fclairamb/solidping/issues/844), [#847](https://github.com/fclairamb/solidping/issues/847))
+
 ## [0.47.0](https://github.com/fclairamb/solidping/compare/v0.46.0...v0.47.0) (2026-11-10)
 
 

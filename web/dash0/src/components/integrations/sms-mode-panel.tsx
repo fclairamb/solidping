@@ -33,9 +33,12 @@ export function resolveSMSMode(
   integrations: Integration[] | undefined,
   instanceEnabled: boolean,
 ): { mode: SMSMode; ownIntegration?: Integration } {
-  const own = (integrations ?? []).find(
-    (i) => i.type === "twilio" && i.enabled,
-  );
+  // Mirrors the backend resolver: an enabled Twilio integration wins, then an
+  // enabled SMS Factor one (SMS only, voice stays on the instance provider).
+  const enabled = (integrations ?? []).filter((i) => i.enabled);
+  const own =
+    enabled.find((i) => i.type === "twilio") ??
+    enabled.find((i) => i.type === "smsfactor");
 
   if (own) {
     return { mode: "bring-your-own", ownIntegration: own };
@@ -141,7 +144,7 @@ export function SMSModePanel({
                 <p>
                   {t(
                     "sms.server.override",
-                    "You may add your own Twilio integration to send with your own account, sender and billing instead. It overrides the instance provider for this organization.",
+                    "You may add your own Twilio or SMS Factor integration to send with your own account, sender and billing instead. It overrides the instance provider for this organization.",
                   )}
                 </p>
               </>
@@ -150,11 +153,17 @@ export function SMSModePanel({
             {mode === "bring-your-own" && (
               <>
                 <p data-testid="sms-mode-explanation">
-                  {t(
-                    "sms.byo.body",
-                    'This organization sends through its own Twilio integration ("{{name}}"). It overrides the instance provider for this organization\'s SMS and voice, and Twilio bills you directly.',
-                    { name: ownIntegration?.name ?? "" },
-                  )}
+                  {ownIntegration?.type === "smsfactor"
+                    ? t(
+                        "sms.byo.bodySmsFactor",
+                        'This organization sends SMS through its own SMS Factor integration ("{{name}}"). It overrides the instance SMS provider for this organization, and SMS Factor bills you directly. Alert calls are not affected.',
+                        { name: ownIntegration?.name ?? "" },
+                      )
+                    : t(
+                        "sms.byo.body",
+                        'This organization sends through its own Twilio integration ("{{name}}"). It overrides the instance provider for this organization\'s SMS and voice, and Twilio bills you directly.',
+                        { name: ownIntegration?.name ?? "" },
+                      )}
                 </p>
                 <p>
                   {instance.enabled
@@ -175,13 +184,13 @@ export function SMSModePanel({
                 <p data-testid="sms-mode-explanation">
                   {t(
                     "sms.unavailable.body",
-                    "This instance provides no SMS, and this organization has no Twilio integration of its own, so SMS and voice alerts cannot be sent.",
+                    "This instance provides no SMS, and this organization has no Twilio or SMS Factor integration of its own, so SMS and voice alerts cannot be sent.",
                   )}
                 </p>
                 <p>
                   {t(
                     "sms.unavailable.fix",
-                    "Add a Twilio integration to use your own account, or ask the operator to configure SMS for this instance.",
+                    "Add a Twilio or SMS Factor integration to use your own account, or ask the operator to configure SMS for this instance.",
                   )}
                 </p>
               </>
@@ -189,7 +198,7 @@ export function SMSModePanel({
 
             <p className="flex items-center gap-2">
               <Phone className="h-3.5 w-3.5 shrink-0" />
-              {mode === "bring-your-own"
+              {mode === "bring-your-own" && ownIntegration?.type === "twilio"
                 ? t(
                     "sms.voice.byo",
                     "Alert calls use the same Twilio account, when it has a caller ID configured.",

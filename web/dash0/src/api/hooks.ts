@@ -5889,6 +5889,7 @@ export type ConnectionType =
   | "webpush"
   | "kubernetes"
   | "twilio"
+  | "smsfactor"
   | "a2a";
 
 // Capabilities mirror the backend capability registry
@@ -5924,6 +5925,7 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   webpush: NOTIFY,
   kubernetes: SOURCE,
   twilio: NOTIFY,
+  smsfactor: NOTIFY,
   a2a: NOTIFY,
 };
 
@@ -9461,7 +9463,7 @@ export function useRewrapStatus(org: string, checkUids: string[]) {
     queryFn: async () =>
       (
         await apiFetch<{ data?: RewrapOutcome[] }>(
-          `/api/v1/orgs/${org}/sealing/rewrap?check=${encodeURIComponent(checkUids.join(","))}`,
+          `/api/v1/orgs/${org}/sealing/rewrap?checkUid=${encodeURIComponent(checkUids.join(","))}`,
         )
       ).data ?? [],
     enabled: checkUids.length > 0,

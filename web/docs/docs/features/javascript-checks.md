@@ -84,6 +84,10 @@ every export, never echoed to the dashboard, and **preserved when a write
 omits the key** — which is what lets you edit anything else on the check
 without re-entering the credential.
 
+The script and `env` are the check's target: browser-sealed `secrets` are
+bound to both, so changing a base URL in `env` needs the secrets typed again
+(see [Browser-sealed secrets](./browser-sealed-secrets.md#binding-to-the-target)).
+
 **A password goes in `secrets`, never in `env`.** `env` is public config: it
 comes back on every `GET`, is present in every export, and is exactly as
 visible as the check's name. If a script needs a credential, it belongs in

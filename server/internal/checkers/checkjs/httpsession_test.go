@@ -6,7 +6,9 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -335,4 +337,46 @@ func itoa(value int) string {
 	}
 
 	return digits
+}
+
+// TestSecretValuedHeaderIsNotResentToAnotherHost: a header a script builds
+// from secrets.* is dropped on a cross-host redirect hop (spec 2026-11-12-06).
+func TestSecretValuedHeaderIsNotResentToAnotherHost(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var (
+		mu       sync.Mutex
+		gotKey   string
+		gotTrace string
+	)
+
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		mu.Lock()
+		gotKey, gotTrace = req.Header.Get("X-Api-Key"), req.Header.Get("X-Trace")
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(other.Close)
+
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		http.Redirect(w, req, other.URL, http.StatusFound)
+	}))
+	t.Cleanup(origin.Close)
+
+	result, err := (&JSChecker{}).Execute(context.Background(), &JSConfig{
+		Script: `var res = http.get(` + jsString(origin.URL) +
+			`, { headers: { "X-Api-Key": secrets.KEY, "X-Trace": "1" } });
+return { status: "up", output: { code: res.statusCode } };`,
+		Secrets: map[string]string{"KEY": "s3cret"},
+		Timeout: 10 * time.Second,
+	})
+	r.NoError(err)
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	r.Empty(gotKey)
+	r.Equal("1", gotTrace)
 }

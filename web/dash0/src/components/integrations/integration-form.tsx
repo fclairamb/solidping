@@ -635,6 +635,10 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
       return (
         <TwilioPanel settings={settings} update={update} />
       );
+    case "smsfactor":
+      return (
+        <SMSFactorPanel settings={settings} update={update} />
+      );
     case "a2a":
       return (
         <A2APanel
@@ -956,6 +960,7 @@ function KubeSecretField({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder || "apiVersion: v1\nkind: Config\n..."}
           className="font-mono text-xs"
+          data-secret-input
           data-testid={testid}
         />
       ) : (
@@ -2706,6 +2711,7 @@ function UrlPanel({
       <Label htmlFor="ch-url">{label}</Label>
       <Input
         id="ch-url"
+        data-secret-input
         data-testid="ch-url"
         type="url"
         value={value}
@@ -3086,6 +3092,76 @@ function TwilioPanel({
         <p className="text-xs text-muted-foreground">
           {t(
             "form.twilioToHint",
+            "Direct-channel sends (per-check broadcast, test) text these numbers.",
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// SMSFactorPanel configures SMS Factor (a French SMS provider): an API token
+// (write-only, never echoed back by the API), an optional alphanumeric sender
+// name registered at SMS Factor, and the shared recipient numbers. SMS only,
+// SMS Factor has no voice calls.
+function SMSFactorPanel({
+  settings,
+  update,
+}: {
+  settings: Record<string, unknown>;
+  update: (key: string, value: unknown) => void;
+}) {
+  const { t } = useTranslation("integrations");
+  const toNumbers = (settings.to_numbers as string[] | undefined) ?? [];
+
+  return (
+    <div className="space-y-3" data-testid="smsfactor-panel">
+      <SecretPanel
+        id="ch-smsfactor-token"
+        testId="smsfactor-token"
+        label={t("form.smsfactorToken", "API token")}
+        value={(settings.token as string) || ""}
+        onChange={(v) => update("token", v)}
+      />
+
+      <div className="space-y-2">
+        <Label htmlFor="ch-smsfactor-sender">
+          {t("form.smsfactorSender", "Sender name (optional)")}
+        </Label>
+        <Input
+          id="ch-smsfactor-sender"
+          data-testid="smsfactor-sender"
+          placeholder="SolidPing"
+          maxLength={11}
+          value={(settings.sender as string) || ""}
+          onChange={(e) => update("sender", e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "form.smsfactorSenderHint",
+            "Up to 11 letters, digits or spaces, registered at SMS Factor. Leave empty to use the account's default sender.",
+          )}
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="ch-smsfactor-to">
+          {t("form.smsfactorToNumbers", "Shared recipient numbers (optional)")}
+        </Label>
+        <TokenChipsInput
+          id="ch-smsfactor-to"
+          data-testid="smsfactor-to-numbers"
+          value={toNumbers}
+          onChange={(next) => update("to_numbers", next)}
+          validate={isE164}
+          normalize={(v) => v.trim()}
+          placeholder="+33612345678"
+          invalidTitle={t("form.smsfactorInvalidNumber", "Not a valid E.164 number")}
+          getRemoveLabel={(n) => t("form.smsfactorRemoveNumber", "Remove {{n}}", { n })}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "form.smsfactorToHint",
             "Direct-channel sends (per-check broadcast, test) text these numbers.",
           )}
         </p>

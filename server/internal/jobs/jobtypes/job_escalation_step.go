@@ -1101,11 +1101,18 @@ func twilioStatusCallbackURL(baseURL, orgUID, connID string) string {
 // OVH's API has no per-job callback field (it ignores StatusCallback by design,
 // see sms.ovhSender.SendSMS) and its receipts arrive on the service-level DLR
 // endpoint with its own token, so asking for a Twilio callback there would be
-// requesting a receipt nothing can ever deliver or validate.
+// requesting a receipt nothing can ever deliver or validate. The same holds
+// for SMS Factor, instance or bring-your-own.
 func smsStatusCallbackURL(
 	cfg *config.Config, baseURL, orgUID string, resolution *smssvc.Resolution,
 ) string {
-	if resolution.SMSMode == smssvc.ModeBringYourOwn && resolution.Conn != nil {
+	if resolution.SMSMode == smssvc.ModeBringYourOwn {
+		// A bring-your-own SMS Factor send has no Conn: its provider takes
+		// no Twilio callback, and the instance sentinel would be wrong too.
+		if resolution.Conn == nil {
+			return ""
+		}
+
 		return twilioStatusCallbackURL(baseURL, orgUID, resolution.Conn.UID)
 	}
 

@@ -202,7 +202,7 @@ func TestSealedChallengeFailures(t *testing.T) {
 func TestMarkSealedRejectsNonEnvelopes(t *testing.T) {
 	t.Parallel()
 
-	_, err := credentials.MarkSealedBound("not json")
+	_, err := credentials.MarkSealedBound("not json", nil)
 	require.Error(t, err)
 
 	_, err = credentials.MarkSealedUnconfirmed("not json")

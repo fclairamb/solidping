@@ -87,7 +87,7 @@ test.describe("SMS mode panel", () => {
       "SolidPing",
     );
     // The bring-your-own escape hatch is offered, not hidden.
-    await expect(panel).toContainText(/own Twilio integration/i);
+    await expect(panel).toContainText(/own Twilio or SMS Factor integration/i);
     await expect(page.getByTestId("sms-add-own-twilio")).toBeVisible();
   });
 

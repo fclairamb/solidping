@@ -173,6 +173,35 @@ test.describe("Notification Channels", () => {
     await deleteAllConnections(page, token);
   });
 
+  test("create an SMS Factor channel via the form", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    await deleteAllConnections(page, token);
+
+    await page.goto("orgs/test/integrations/new?type=smsfactor");
+
+    // The SMS Factor-specific panel renders.
+    await expect(page.getByTestId("smsfactor-panel")).toBeVisible();
+
+    await page.getByTestId("smsfactor-token").fill("test-api-token");
+    await page.getByTestId("smsfactor-sender").fill("SolidPing");
+    const toNumbers = page.getByTestId("smsfactor-to-numbers-input");
+    await toNumbers.fill("+33612345678");
+    await toNumbers.press("Enter");
+    await expect(page.getByTestId("smsfactor-to-numbers-chip-0")).toBeVisible();
+
+    await page.getByRole("button", { name: /create integration/i }).click();
+
+    // On success the app navigates to the new integration's detail page.
+    await page.waitForURL((url) =>
+      /\/orgs\/test\/integrations\/[0-9a-f-]{36}$/.test(url.pathname),
+    );
+
+    await deleteAllConnections(page, token);
+  });
+
   test("create webhook channel, bind to check, unbind, delete", async ({
     authenticatedPage,
   }) => {

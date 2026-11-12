@@ -34,7 +34,10 @@ import (
 //     bind the same;
 //   - a field named `url` (or ending in `Url`/`_url`) is a URL: scheme and
 //     host lowercased (ASCII), the scheme's default port made explicit;
-//   - a field named `host`, `hostname` or `brokers` is lowercased (ASCII).
+//   - a field named `host`, `hostname` or `brokers` is lowercased (ASCII);
+//   - an empty object (`env: {}`) carries no value, like an absent field;
+//   - the wildcard `*` (AllPublicKeys) stands for every key of the config
+//     but the NonTargetKeys (spec 2026-11-12-02).
 
 // BindingKey is the reserved plaintext key holding the binding.
 const BindingKey = "_binding"
@@ -57,10 +60,25 @@ var (
 	ErrInvalidBinding         = errors.New("sealed secrets carry an invalid _binding")
 )
 
-// DefaultTargetFields is the target list of a type that declares none
-// (plugins, types without secrets): the usual keys of an address. Absent keys
-// do not count, so a broad list costs nothing.
-var DefaultTargetFields = []string{ //nolint:gochecknoglobals // read-only default list
+// AllPublicKeys is the wildcard target field: every public key of the config
+// but NonTargetKeys. It is the target list of a type that declares none
+// (plugins, a type unknown to the agent): their destination is decided by
+// code from arbitrary config keys, so every key binds (spec 2026-11-12-02).
+const AllPublicKeys = "*"
+
+// NonTargetKeys are the config keys the wildcard leaves out: they can never
+// steer a destination. `timeout` is the run budget the worker threads into
+// every config. Anything else binds: an over-broad binding only forces the
+// secrets to be typed again.
+var NonTargetKeys = []string{"timeout"} //nolint:gochecknoglobals // read-only list
+
+// DefaultTargetFields is the target list of a type that declares none: the
+// wildcard.
+var DefaultTargetFields = []string{AllPublicKeys} //nolint:gochecknoglobals // read-only default list
+
+// legacyDefaultTargetFields is what DefaultTargetFields was before spec
+// 2026-11-12-02: blobs bound by then were digested over it.
+var legacyDefaultTargetFields = []string{ //nolint:gochecknoglobals // read-only list
 	"url", "host", "hostname", "port", "database", "dsn", "address", "endpoint", "server", "brokers",
 }
 
@@ -69,6 +87,13 @@ var DefaultTargetFields = []string{ //nolint:gochecknoglobals // read-only defau
 // (spec 2026-11-11-01). Declared next to SecretFields.
 type TargetFielder interface {
 	TargetFields() []string
+}
+
+// LegacyTargetFielder is an *optional* interface of a config whose target
+// list grew after blobs were bound to it: it returns the old list, so the
+// Re-seal page can tell which blobs the agents now refuse.
+type LegacyTargetFielder interface {
+	LegacyTargetFields() []string
 }
 
 // TargetFieldsFor returns the sorted target fields of a config: its declared
@@ -80,10 +105,52 @@ func TargetFieldsFor(cfg any) []string {
 		fields = tf.TargetFields()
 	}
 
+	return withTunnel(fields)
+}
+
+// LegacyTargetFieldsFor returns the target fields a blob bound before spec
+// 2026-11-12-02 was digested over (the client did not record its list then).
+func LegacyTargetFieldsFor(cfg any) []string {
+	fields := legacyDefaultTargetFields
+
+	if ltf, ok := cfg.(LegacyTargetFielder); ok && cfg != nil {
+		fields = ltf.LegacyTargetFields()
+	} else if tf, ok := cfg.(TargetFielder); ok && cfg != nil {
+		fields = tf.TargetFields()
+	}
+
+	return withTunnel(fields)
+}
+
+func withTunnel(fields []string) []string {
 	out := append([]string{TunnelConfigKey}, fields...)
 	sort.Strings(out)
 
 	return slices.Compact(out)
+}
+
+// expandTargetFields replaces the wildcard with the keys of config, minus
+// NonTargetKeys; the result is sorted and without duplicates.
+func expandTargetFields(targetFields []string, config map[string]any) []string {
+	var fields []string
+
+	for _, field := range targetFields {
+		if field != AllPublicKeys {
+			fields = append(fields, field)
+
+			continue
+		}
+
+		for key := range config {
+			if !slices.Contains(NonTargetKeys, key) {
+				fields = append(fields, key)
+			}
+		}
+	}
+
+	sort.Strings(fields)
+
+	return slices.Compact(fields)
 }
 
 // TargetDigest returns the hex SHA-256 of the canonical JSON of the target
@@ -97,9 +164,7 @@ func TargetDigest(targetFields []string, config map[string]any) string {
 // CanonicalTarget returns the canonical JSON the target digest is computed
 // over. Exposed for the shared fixture test.
 func CanonicalTarget(targetFields []string, config map[string]any) string {
-	fields := append([]string(nil), targetFields...)
-	sort.Strings(fields)
-	fields = slices.Compact(fields)
+	fields := expandTargetFields(targetFields, config)
 
 	var builder strings.Builder
 
@@ -109,7 +174,7 @@ func CanonicalTarget(targetFields []string, config map[string]any) string {
 
 	for _, field := range fields {
 		value, ok := canonicalValue(field, config[field])
-		if !ok {
+		if !ok || value == "{}" {
 			continue
 		}
 
@@ -226,8 +291,15 @@ func VerifyBinding(plain map[string]any, check BindingCheck) (map[string]any, bo
 //   - a browser blob without one (sealed before the binding existed) still may
 //     not carry a key that is not a secret field; legacyUnbound reports it, so
 //     the caller can warn;
+//   - an agent blob (a server blob re-sealed by a peer agent, spec
+//     2026-11-12-03) without one may not carry a key that is not a secret
+//     field either: the server never saw that plaintext;
 //   - a server blob without one is used as is: the server sealed it from
-//     plaintext it held, public `${param:}` overlays included.
+//     plaintext it held, public `${param:}` overlays included. That is the
+//     per-claim blob of a system agent, never stored; a stored server blob
+//     is sealed from the private half of the config and only holds secret
+//     fields. The strict rule keys on the origin rather than on the agent
+//     kind so this system-agent path keeps working.
 //
 // Every caller that merges a sealed plaintext over a public config (the
 // claim, the tunnel, the re-wrap and its confirmation) goes through it. The
@@ -238,7 +310,8 @@ func OpenSealedPlaintext(envelope string, plain map[string]any, check BindingChe
 		return secrets, false, err
 	}
 
-	if SealedOrigin(envelope) != SealOriginBrowser {
+	origin := SealedOrigin(envelope)
+	if origin != SealOriginBrowser && origin != SealOriginAgent {
 		return plain, false, nil
 	}
 
@@ -246,11 +319,14 @@ func OpenSealedPlaintext(envelope string, plain map[string]any, check BindingChe
 		return nil, false, strictErr
 	}
 
-	return plain, true, nil
+	// Only a browser blob can be bound: an agent blob without a binding is
+	// not legacy, it never had one.
+	return plain, origin == SealOriginBrowser, nil
 }
 
 // StrictSecretKeys refuses a plaintext key that is not a secret field of the
-// type. Used on browser blobs without a binding too.
+// type. Used on browser and agent blobs without a binding, and by the re-wrap
+// on every blob whatever its origin.
 func StrictSecretKeys(plain map[string]any, check BindingCheck) error {
 	for key := range plain {
 		if err := checkSecretKey(key, check); err != nil {

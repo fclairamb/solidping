@@ -84,16 +84,24 @@ func (e *Executor) Run(ctx context.Context, claim *workertasks.Claim, rep tasks.
 
 // checkPlaintext refuses a plaintext that carries a key that is not a secret
 // field of the check type, or that is bound to another target (spec
-// 2026-11-11-02 §2). A server older than the check sends no type: nothing to
-// check against.
+// 2026-11-11-02 §2). The secret-fields rule holds whatever the blob's origin
+// (spec 2026-11-12-03): a stored server blob is sealed from the private half
+// of the config, so it only ever holds secret fields, and a server blob of a
+// private-only region goes through a peer re-wrap too. A server older than the
+// check sends no type: nothing to check against.
 func checkPlaintext(envelope string, plain map[string]any, checkType string, config map[string]any) error {
 	if checkType == "" {
 		return nil
 	}
 
-	_, _, err := credentials.OpenSealedPlaintext(envelope, plain, configregistry.BindingCheckFor(checkType, config))
+	check := configregistry.BindingCheckFor(checkType, config)
 
-	return err
+	secrets, _, err := credentials.OpenSealedPlaintext(envelope, plain, check)
+	if err != nil {
+		return err
+	}
+
+	return credentials.StrictSecretKeys(secrets, check)
 }
 
 // VerifyExecutor is the agent side of the confirmation of a re-wrap: it opens

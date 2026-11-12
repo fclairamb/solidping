@@ -145,6 +145,58 @@
       },
       "canonical": "{\"endpoint\":{\"Z\":\"1\",\"a\":[\"1.5\",\"X\",null]},\"server\":\"true\"}",
       "digest": "3b492c7531351d3badbfbdab2822978af4c68ffc9781c84b3767cbb626963772"
+    },
+    {
+      "name": "js script and env: env bound, its keys sorted",
+      "type": "js",
+      "targetFields": [
+        "env",
+        "script",
+        "tunnelCheckUid"
+      ],
+      "config": {
+        "env": {
+          "BASE_URL": "https://api.acme.com",
+          "API_VERSION": "v2"
+        },
+        "script": "const r = http.get(env.BASE_URL + '/health', { headers: { Authorization: secrets.TOKEN } }); return r.status === 200;",
+        "timeout": "10s"
+      },
+      "canonical": "{\"env\":{\"API_VERSION\":\"v2\",\"BASE_URL\":\"https://api.acme.com\"},\"script\":\"const r = http.get(env.BASE_URL + '/health', { headers: { Authorization: secrets.TOKEN } }); return r.status === 200;\"}",
+      "digest": "46c3f9126307a89f7e7a8e6ab3d455d66bb8f2f1bff100987238dd983cafbbf4"
+    },
+    {
+      "name": "js empty env binds like no env",
+      "type": "js",
+      "targetFields": [
+        "env",
+        "script",
+        "tunnelCheckUid"
+      ],
+      "config": {
+        "env": {},
+        "script": "return true;"
+      },
+      "canonical": "{\"script\":\"return true;\"}",
+      "digest": "2f0c340ea47362258cee172cadcfd12c512619417c574b027b7a5118369bef84"
+    },
+    {
+      "name": "plugin wildcard: every public key but timeout",
+      "type": "x-acme",
+      "targetFields": [
+        "*",
+        "tunnelCheckUid"
+      ],
+      "config": {
+        "target": "Mail.Acme.com",
+        "host": "MX.Acme.com",
+        "port": 25,
+        "warning": 2,
+        "empty": "",
+        "timeout": "5s"
+      },
+      "canonical": "{\"host\":\"mx.acme.com\",\"port\":\"25\",\"target\":\"Mail.Acme.com\",\"warning\":\"2\"}",
+      "digest": "c78f237549a1a824fe481a836d6e4389bca8beda51228d360376d9c7c3a69f74"
     }
   ],
   "comment": "Target binding of sealed secrets (spec 2026-11-11-01): canonical JSON and SHA-256 digest of the target fields. Read by the Go (credentials) and dash0 (sealing.ts) tests: both sides must agree byte for byte."

@@ -123,7 +123,11 @@ func TestFallbackObserverCleanAndFailureStatus(t *testing.T) {
 // dualStackRequest runs a real request through the enforcing guard's Happy
 // Eyeballs dialer against a "dual-stack" host (a v6 and a v4 address, the v4
 // being the loopback listener) and returns what the observer saw.
-func dualStackRequest(t *testing.T, control func(network string) error) *FamilyFallback {
+//
+// v4First puts the v4 address first in the lookup so that it is the primary
+// family: the real v6 address is then never dialed, which keeps the "clean"
+// case independent of the runner's IPv6 routing (no v6 route: ENETUNREACH).
+func dualStackRequest(t *testing.T, v4First bool, control func(network string) error) *FamilyFallback {
 	t.Helper()
 
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
@@ -138,7 +142,12 @@ func dualStackRequest(t *testing.T, control func(network string) error) *FamilyF
 		egress.WithLookup(func(context.Context, string) ([]net.IPAddr, error) {
 			calls.Add(1)
 
-			return []net.IPAddr{{IP: net.ParseIP("2606:4700::1111")}, {IP: net.ParseIP("127.0.0.1")}}, nil
+			v6, v4 := net.IPAddr{IP: net.ParseIP("2606:4700::1111")}, net.IPAddr{IP: net.ParseIP("127.0.0.1")}
+			if v4First {
+				return []net.IPAddr{v4, v6}, nil
+			}
+
+			return []net.IPAddr{v6, v4}, nil
 		}),
 		egress.WithPublicOverride(net.ParseIP("127.0.0.1")),
 	)
@@ -174,7 +183,7 @@ func TestFallbackGuardPath(t *testing.T) {
 	t.Run("v6 fails fast", func(t *testing.T) {
 		t.Parallel()
 
-		fb := dualStackRequest(t, func(network string) error {
+		fb := dualStackRequest(t, false, func(network string) error {
 			if network == "tcp6" {
 				return errV6
 			}
@@ -189,7 +198,7 @@ func TestFallbackGuardPath(t *testing.T) {
 	t.Run("v6 silent, v4 slow to connect", func(t *testing.T) {
 		t.Parallel()
 
-		fb := dualStackRequest(t, func(network string) error {
+		fb := dualStackRequest(t, false, func(network string) error {
 			if network == "tcp6" {
 				time.Sleep(5 * time.Second)
 
@@ -207,6 +216,6 @@ func TestFallbackGuardPath(t *testing.T) {
 	t.Run("clean dual-stack is not a fallback", func(t *testing.T) {
 		t.Parallel()
 
-		require.Nil(t, dualStackRequest(t, func(string) error { return nil }))
+		require.Nil(t, dualStackRequest(t, true, func(string) error { return nil }))
 	})
 }

@@ -13,10 +13,12 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/ovhsms"
+	"github.com/fclairamb/solidping/server/internal/integrations/smsfactor"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
 )
 
@@ -28,8 +30,9 @@ var ErrNoSMSProvider = errors.New("no SMS provider available")
 // instance configuration can place a call.
 var ErrNoVoiceProvider = errors.New("no voice provider available")
 
-// ErrUnknownProvider is returned for an SP_SMS_PROVIDER value that is neither
-// "twilio" nor "ovh".
+// ErrUnknownProvider is returned for an SP_SMS_PROVIDER value that is not
+// "twilio", "ovh" or "smsfactor" (and for an invalid provider setting, such as
+// a malformed Twilio region or SMS Factor sender).
 var ErrUnknownProvider = errors.New("unknown SMS provider")
 
 // SendParams are the provider-neutral inputs to one SMS send.
@@ -52,7 +55,8 @@ type SendParams struct {
 
 // SendResult identifies the accepted message at the provider.
 type SendResult struct {
-	// ProviderMessageID is the Twilio message SID or the OVH job id. It is the
+	// ProviderMessageID is the Twilio message SID, the OVH job id or the SMS
+	// Factor campaign ticket. It is the
 	// key delivery receipts are matched on, so it must be the same string the
 	// provider will quote back.
 	ProviderMessageID string
@@ -195,6 +199,40 @@ func (s *ovhSender) SendSMS(ctx context.Context, params *SendParams) (*SendResul
 	return &SendResult{ProviderMessageID: id}, nil
 }
 
+// smsfactorSender adapts the SMS Factor client to Sender. Like OVH, SMS Factor
+// has no voice API, so there is no VoiceCaller here.
+type smsfactorSender struct {
+	client *smsfactor.Client
+	sender string
+}
+
+// NewSMSFactorSender builds an SMS Factor-backed Sender from either
+// credential source (instance config or a per-org integration). baseURL
+// overrides the real API host when set (tests, egress proxies); sender may be
+// empty, which lets SMS Factor use the account's default sender.
+func NewSMSFactorSender(token, baseURL, sender string) Sender {
+	return &smsfactorSender{
+		client: smsfactor.NewClient(token, smsfactor.WithBaseURL(baseURL)),
+		sender: sender,
+	}
+}
+
+func (s *smsfactorSender) SendSMS(ctx context.Context, params *SendParams) (*SendResult, error) {
+	// params.StatusCallback is deliberately ignored: the SMS Factor send body
+	// carries no per-message callback URL (receipts are an account-level
+	// webhook setting), and SolidPing has no SMS Factor receipt handler.
+	res, err := s.client.Send(ctx, &smsfactor.SendParams{
+		Recipients: []string{params.To},
+		Text:       params.Body,
+		Sender:     s.sender,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("smsfactor send: %w", err)
+	}
+
+	return &SendResult{ProviderMessageID: res.Ticket}, nil
+}
+
 // NewInstanceSender builds the shared, instance-level Sender from SMSConfig.
 // Built ONCE at startup and injected, so no send path constructs a client from
 // a package-level var. Returns (nil, nil) when the instance is not configured
@@ -232,6 +270,14 @@ func NewInstanceSender(ctx context.Context, cfg *config.SMSConfig) (Sender, erro
 		}
 
 		return &ovhSender{client: client, sender: cfg.Sender}, nil
+	case config.SMSProviderSMSFactor:
+		sender := strings.TrimSpace(cfg.Sender)
+		if sender != "" && !smsfactor.ValidSender(sender) {
+			return nil, fmt.Errorf("%w: invalid SP_SMS_SENDER %q for smsfactor (1-%d letters, digits or spaces)",
+				ErrUnknownProvider, sender, smsfactor.MaxSenderLength)
+		}
+
+		return NewSMSFactorSender(cfg.SMSFactor.Token, cfg.SMSFactor.BaseURL, sender), nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnknownProvider, cfg.ResolvedProvider())
 	}

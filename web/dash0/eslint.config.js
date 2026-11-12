@@ -7,6 +7,7 @@ import noNodeScopeInBrowserCallback from "./eslint-rules/no-node-scope-in-browse
 import noTextLocators from "./eslint-rules/no-text-locators.js";
 import requireTestidOnInteractive from "./eslint-rules/require-testid-on-interactive.js";
 import noUntranslatedJsxText from "./eslint-rules/no-untranslated-jsx-text.js";
+import requireSecretInput from "./eslint-rules/require-secret-input.js";
 import requireSecretText from "./eslint-rules/require-secret-text.js";
 
 export default tseslint.config(
@@ -149,7 +150,11 @@ export default tseslint.config(
     // through <SecretText>, so the unmasked session replay never records it.
     files: ["src/**/*.tsx"],
     ignores: ["src/**/*.test.tsx"],
-    plugins: { "secret-local": { rules: { "require-secret-text": requireSecretText } } },
-    rules: { "secret-local/require-secret-text": "error" },
+    plugins: {
+      "secret-local": {
+        rules: { "require-secret-text": requireSecretText, "require-secret-input": requireSecretInput },
+      },
+    },
+    rules: { "secret-local/require-secret-text": "error", "secret-local/require-secret-input": "error" },
   }
 );

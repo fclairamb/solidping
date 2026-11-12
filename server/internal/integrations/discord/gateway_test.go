@@ -19,9 +19,10 @@ import (
 // `inbound`. This drives the REAL protocol code — Hello, Identify, heartbeat,
 // dispatch — without a network.
 type fakeGatewayConn struct {
-	inbound chan []byte
-	sent    chan []byte
-	closed  chan struct{}
+	inbound   chan []byte
+	sent      chan []byte
+	closed    chan struct{}
+	closeOnce sync.Once
 }
 
 func newFakeGatewayConn() *fakeGatewayConn {
@@ -53,11 +54,7 @@ func (f *fakeGatewayConn) Write(_ context.Context, data []byte) error {
 }
 
 func (f *fakeGatewayConn) Close() error {
-	select {
-	case <-f.closed:
-	default:
-		close(f.closed)
-	}
+	f.closeOnce.Do(func() { close(f.closed) })
 
 	return nil
 }
