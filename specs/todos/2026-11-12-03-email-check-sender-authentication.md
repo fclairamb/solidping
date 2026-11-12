@@ -169,7 +169,12 @@ badges when present. i18n keys in every locale the app ships.
 lookups per email). Also mention the `smtp` → `email` pair as the way to monitor a relay's
 deliverability.
 
-## Open questions
+## Resolved open questions
+
+1. Verify locally; report the provider's header as `provider_auth`. (autopilot: recommended answer)
+2. `down` by default, `degraded` opt-in through `auth_verdict_status`. (autopilot: recommended answer)
+
+## Open questions (resolved above)
 
 1. **Verify locally, or trust the inbox provider's `Authentication-Results:`?**
    Recommended: verify locally (above), report the provider's header as `provider_auth`.
