@@ -232,6 +232,81 @@ func TestClaimAcceptsLegacyUnboundBlobWithAWarning(t *testing.T) {
 	r.Empty(results)
 	r.Len(jobs, 1)
 	r.Equal("alice:hunter2", jobs[0].Config["basicAuth"])
-	r.True(handler.has(slog.LevelWarn,
-		"sealed secrets are not bound to their target: seal them again (Re-seal page) to bind them"))
+	r.True(handler.hasWarn("sealed secrets are not bound to their target: seal them again (Re-seal page) to bind them"))
+}
+
+// agentBlob seals plain the way an agent's peer re-wrap does and stores it
+// over a server envelope: what the server keeps (spec 2026-11-12-03).
+func agentBlob(t *testing.T, recipient string, plain map[string]any) string {
+	t.Helper()
+
+	serverEnvelope, err := credentials.SealForRecipients([]string{recipient}, map[string]any{"basicAuth": "a:b"})
+	require.NoError(t, err)
+
+	fps, ct, err := credentials.SealForClient([]string{recipient}, plain)
+	require.NoError(t, err)
+
+	envelope, err := credentials.RewrapSealedEnvelope(serverEnvelope, fps, ct)
+	require.NoError(t, err)
+	require.Equal(t, credentials.SealOriginAgent, credentials.SealedOrigin(envelope))
+
+	return envelope
+}
+
+// TestClaimRefusesAnAgentBlobOverridingAPublicField: a server blob re-sealed
+// by a peer agent may only carry secret fields of the type (spec
+// 2026-11-12-03), so the agent that re-sealed it cannot inject a URL.
+func TestClaimRefusesAnAgentBlobOverridingAPublicField(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	jobs, results := claimWith(t, func(recipient string) []agents.AgentJob {
+		blob := agentBlob(t, recipient, map[string]any{"basicAuth": "a:b", "url": "https://evil.example"})
+
+		return []agents.AgentJob{{
+			UID: "job-1", CheckUID: "check-agent-blob", Type: "http", Period: "1m",
+			Config: map[string]any{"url": "https://db.acme.com"}, ConfigSealed: &blob,
+		}}
+	})
+
+	r.Empty(jobs)
+	r.Len(results, 1)
+	r.Contains(results[0], credentials.ErrSealedKeyNotSecret.Error())
+}
+
+// TestClaimRunsAgentAndServerBlobsWithSecretsOnly is the positive control: an
+// agent blob, and a server blob, with only secret fields run, without the
+// legacy-unbound warning.
+func TestClaimRunsAgentAndServerBlobsWithSecretsOnly(t *testing.T) {
+	t.Parallel()
+
+	for name, seal := range map[string]func(*testing.T, string, map[string]any) string{
+		"agent": agentBlob,
+		"server": func(t *testing.T, recipient string, plain map[string]any) string {
+			t.Helper()
+
+			envelope, err := credentials.SealForRecipients([]string{recipient}, plain)
+			require.NoError(t, err)
+
+			return envelope
+		},
+	} {
+		r := require.New(t)
+		handler := newCapturingHandler()
+
+		jobs, results := claimWith(t, func(recipient string) []agents.AgentJob {
+			blob := seal(t, recipient, map[string]any{"basicAuth": "alice:hunter2"})
+
+			return []agents.AgentJob{{
+				UID: "job-1", CheckUID: "check-" + name, Type: "http", Period: "1m",
+				Config: map[string]any{"url": "https://db.acme.com"}, ConfigSealed: &blob,
+			}}
+		}, backend.WithLogger(slog.New(handler)))
+
+		r.Empty(results, name)
+		r.Len(jobs, 1, name)
+		r.Equal("alice:hunter2", jobs[0].Config["basicAuth"], name)
+		r.False(handler.hasWarn(
+			"sealed secrets are not bound to their target: seal them again (Re-seal page) to bind them"), name)
+	}
 }

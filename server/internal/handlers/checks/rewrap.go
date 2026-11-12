@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/fclairamb/solidping/server/internal/checkfilter"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/rewraptask"
 )
@@ -78,6 +79,12 @@ func (s *Service) RewrapStatus(ctx context.Context, orgSlug string, checkUIDs []
 		return nil, ErrOrganizationNotFound
 	}
 
+	if err = checkfilter.CheckCount(checkUIDs); err != nil {
+		return nil, err
+	}
+
+	checkUIDs = checkfilter.Normalize(checkUIDs)
+
 	outcomes, err := s.rewrap.Status(ctx, org.UID, checkUIDs)
 	if err != nil {
 		return nil, err
@@ -97,7 +104,13 @@ func (s *Service) RewrapStatus(ctx context.Context, orgSlug string, checkUIDs []
 // rewrapCandidates resolves the checks a re-wrap request names.
 func (s *Service) rewrapCandidates(ctx context.Context, orgUID string, req *RewrapRequest) ([]*models.Check, error) {
 	if len(req.CheckUIDs) > 0 {
-		return s.checksByRef(ctx, orgUID, req.CheckUIDs)
+		if err := checkfilter.CheckCount(req.CheckUIDs); err != nil {
+			return nil, err
+		}
+
+		if refs := checkfilter.Normalize(req.CheckUIDs); len(refs) > 0 {
+			return s.checksByRef(ctx, orgUID, refs)
+		}
 	}
 
 	if req.Region != "" {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkfilter"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/sealing"
@@ -145,6 +146,10 @@ func (h *Handler) writeRewrapError(writer http.ResponseWriter, req *http.Request
 	case errors.Is(err, ErrSealedSecretsRequirePrivateRegions):
 		return h.WriteErrorErr(writer, req, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"region must be a private region of this organization", err)
+	case errors.Is(err, checkfilter.ErrTooManyIdentifiers):
+		return h.WriteValidationError(writer, err.Error(), []base.ValidationErrorField{
+			{Name: "checkUid", Message: err.Error()},
+		})
 	case errors.Is(err, ErrRewrapUnavailable):
 		return h.WriteErrorErr(writer, req, http.StatusServiceUnavailable, errorCodeRewrapUnavailable, err.Error(), err)
 	default:
@@ -173,17 +178,20 @@ func (h *Handler) StartRewrap(writer http.ResponseWriter, req *http.Request) err
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseDataKey: outcomes})
 }
 
-// RewrapStatus handles GET /orgs/:org/sealing/rewrap?check=<uid>,<uid>: the
+// RewrapStatus handles GET /orgs/:org/sealing/rewrap?checkUid=<uid>,<uid> (`check` is
+// an alias): the
 // latest re-wrap of each check (of every check with a recent one without
-// `check`). A re-wrap left unfinished for rewraptask.Timeout reads as failed
+// `checkUid`). A re-wrap left unfinished for rewraptask.Timeout reads as failed
 // with `timed_out`.
 func (h *Handler) RewrapStatus(writer http.ResponseWriter, req *http.Request) error {
-	var checkUIDs []string
+	raw := req.URL.Query().Get("checkUid")
+	if raw == "" {
+		raw = req.URL.Query().Get("check") // legacy alias
+	}
 
-	for _, uid := range strings.Split(req.URL.Query().Get("check"), ",") {
-		if uid = strings.TrimSpace(uid); uid != "" {
-			checkUIDs = append(checkUIDs, uid)
-		}
+	checkUIDs, splitErr := checkfilter.Split(raw)
+	if splitErr != nil {
+		return h.writeRewrapError(writer, req, splitErr)
 	}
 
 	outcomes, err := h.svc.RewrapStatus(req.Context(), httpx.Param(req, "org"), checkUIDs)

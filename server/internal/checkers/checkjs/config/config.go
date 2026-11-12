@@ -395,7 +395,15 @@ func (c *JSConfig) Validate() error {
 }
 
 // TargetFields lists the config keys that decide where the secrets go: a
-// browser-sealed blob is bound to them (spec 2026-11-11-01).
+// browser-sealed blob is bound to them (spec 2026-11-11-01). The script reads
+// `env` (the base URL of every documented example), so it binds too (spec
+// 2026-11-12-02). `ai` is plain data that never reaches the script.
 func (c *JSConfig) TargetFields() []string {
-	return []string{"script"}
+	return []string{fieldScript, fieldEnv}
+}
+
+// LegacyTargetFields is the list blobs were bound to before `env` was added
+// (spec 2026-11-12-02).
+func (c *JSConfig) LegacyTargetFields() []string {
+	return []string{fieldScript}
 }
