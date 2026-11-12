@@ -3,17 +3,25 @@ package checks_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/checkfilter"
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/rewraptask"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 	"github.com/fclairamb/solidping/server/internal/workertasks"
 	spcli "github.com/fclairamb/solidping/server/pkg/cli"
 )
@@ -241,4 +249,137 @@ func TestStartRewrapWithoutSecondAgentStaysFlagged(t *testing.T) {
 	r.Len(statuses, 1)
 	r.Equal("done", statuses[0].Status)
 	r.Equal(rewraptask.CodeNotConfirmed, statuses[0].ErrorCode)
+}
+
+// recordingRewrapper records what the service hands to the re-wrap kind.
+type recordingRewrapper struct {
+	started    [][]string
+	statusRefs [][]string
+}
+
+func (f *recordingRewrapper) Start(
+	_ context.Context, _ string, list []*models.Check,
+) ([]rewraptask.Outcome, error) {
+	uids := make([]string, 0, len(list))
+	outcomes := make([]rewraptask.Outcome, 0, len(list))
+
+	for _, check := range list {
+		uids = append(uids, check.UID)
+		outcomes = append(outcomes, rewraptask.Outcome{CheckUID: check.UID, Status: "pending"})
+	}
+
+	f.started = append(f.started, uids)
+
+	return outcomes, nil
+}
+
+func (f *recordingRewrapper) Status(_ context.Context, _ string, uids []string) ([]rewraptask.Outcome, error) {
+	f.statusRefs = append(f.statusRefs, uids)
+	outcomes := make([]rewraptask.Outcome, 0, len(uids))
+
+	for _, uid := range uids {
+		outcomes = append(outcomes, rewraptask.Outcome{CheckUID: uid, Status: "pending"})
+	}
+
+	return outcomes, nil
+}
+
+func TestRewrapCheckListIsCapped(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	svc, dbSvc, org := sqliteSealingEnv(t)
+	rec := &recordingRewrapper{}
+	svc.SetRewrapper(rec)
+
+	var first, second *models.Check
+
+	for i, slug := range []string{"rw-a", "rw-b"} {
+		check := &models.Check{
+			UID: uuid.NewString(), OrganizationUID: org.UID, Slug: &slug, Name: &slug, Type: "http",
+			Config: models.JSONMap{"url": "https://example.com"}, Period: timeutils.Duration(time.Minute), Enabled: true,
+		}
+		r.NoError(dbSvc.CreateCheck(ctx, check))
+
+		if i == 0 {
+			first = check
+		} else {
+			second = check
+		}
+	}
+
+	// Over the cap: refused before any lookup (an unknown ref would be 404).
+	tooMany := make([]string, checkfilter.MaxIdentifiers+1)
+	for i := range tooMany {
+		tooMany[i] = "unknown-check"
+	}
+
+	_, err := svc.StartRewrap(ctx, org.Slug, &checks.RewrapRequest{CheckUIDs: tooMany})
+	r.ErrorIs(err, checkfilter.ErrTooManyIdentifiers)
+	r.Empty(rec.started)
+
+	_, err = svc.RewrapStatus(ctx, org.Slug, tooMany)
+	r.ErrorIs(err, checkfilter.ErrTooManyIdentifiers)
+	r.Empty(rec.statusRefs)
+
+	// Duplicates collapse to one re-wrap.
+	dup := make([]string, 50)
+	for i := range dup {
+		dup[i] = first.UID
+	}
+
+	outcomes, err := svc.StartRewrap(ctx, org.Slug, &checks.RewrapRequest{CheckUIDs: dup})
+	r.NoError(err)
+	r.Len(outcomes, 1)
+	r.Equal([][]string{{first.UID}}, rec.started)
+
+	statuses, err := svc.RewrapStatus(ctx, org.Slug, dup)
+	r.NoError(err)
+	r.Len(statuses, 1)
+	r.Equal([]string{first.UID}, rec.statusRefs[0])
+
+	// Positive control: two distinct checks start two re-wraps.
+	outcomes, err = svc.StartRewrap(ctx, org.Slug, &checks.RewrapRequest{CheckUIDs: []string{first.UID, second.UID}})
+	r.NoError(err)
+	r.Len(outcomes, 2)
+}
+
+func TestRewrapStatusHandlerCheckUIDParam(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, _, org := sqliteSealingEnv(t)
+	rec := &recordingRewrapper{}
+	svc.SetRewrapper(rec)
+
+	handler := checks.NewHandler(svc, &config.Config{})
+
+	call := func(query string) *httptest.ResponseRecorder {
+		routeCtx := chi.NewRouteContext()
+		routeCtx.URLParams.Add("org", org.Slug)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/sealing/rewrap?"+query, nil)
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+		resp := httptest.NewRecorder()
+		r.NoError(handler.RewrapStatus(resp, req))
+
+		return resp
+	}
+
+	// Over the cap: 400 VALIDATION_ERROR, nothing queried.
+	resp := call("checkUid=" + strings.Repeat("x,", checkfilter.MaxIdentifiers))
+	r.Equal(http.StatusUnprocessableEntity, resp.Code)
+	r.Contains(resp.Body.String(), "VALIDATION_ERROR")
+	r.Empty(rec.statusRefs)
+
+	// The same UID repeated is looked up once.
+	resp = call("checkUid=" + strings.Repeat("a,", 50) + "a")
+	r.Equal(http.StatusOK, resp.Code)
+	r.Equal([][]string{{"a"}}, rec.statusRefs)
+
+	// Legacy alias still answers.
+	resp = call("check=b,c")
+	r.Equal(http.StatusOK, resp.Code)
+	r.Equal([]string{"b", "c"}, rec.statusRefs[1])
 }
