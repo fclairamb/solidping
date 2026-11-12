@@ -132,7 +132,7 @@ func withTunnel(fields []string) []string {
 // expandTargetFields replaces the wildcard with the keys of config, minus
 // NonTargetKeys; the result is sorted and without duplicates.
 func expandTargetFields(targetFields []string, config map[string]any) []string {
-	fields := make([]string, 0, len(targetFields)+len(config))
+	var fields []string
 
 	for _, field := range targetFields {
 		if field != AllPublicKeys {
