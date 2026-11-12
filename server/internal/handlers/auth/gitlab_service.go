@@ -24,6 +24,12 @@ import (
 var (
 	ErrGitLabTokenExchange = errors.New("gitlab token exchange failed")
 	ErrGitLabAPI           = errors.New("gitlab API error")
+	// ErrGitLabLinkRequiresSignIn refuses a first GitLab sign-in whose email
+	// matches an existing SolidPing account (GHSA-c7jr-53g7-65q8). The GitLab
+	// instance admin controls the emails of every account on it, so even a
+	// confirmed GitLab email does not prove the SolidPing account is the same
+	// person's: the owner signs in with the method they already use instead.
+	ErrGitLabLinkRequiresSignIn = errors.New("an account already uses this email: sign in with it first")
 )
 
 const (
@@ -41,6 +47,19 @@ type GitLabUserInfo struct {
 	Name      string `json:"name"`
 	Email     string `json:"email"`
 	AvatarURL string `json:"avatar_url"`
+	// ConfirmedAt is when the GitLab account confirmed its email. Null or
+	// absent means unconfirmed: self-managed instances can run with email
+	// confirmation off or soft, and an admin can set any address.
+	ConfirmedAt *string `json:"confirmed_at"`
+}
+
+// GitLabEmail is one entry of GitLab's /api/v4/user/emails endpoint.
+//
+//nolint:tagliatelle // GitLab API uses snake_case JSON field names
+type GitLabEmail struct {
+	ID          int     `json:"id"`
+	Email       string  `json:"email"`
+	ConfirmedAt *string `json:"confirmed_at"`
 }
 
 // GitLabTokenResponse represents the response from GitLab's token exchange.
@@ -157,8 +176,19 @@ func (s *GitLabOAuthService) HandleCallback(
 		return nil, fmt.Errorf("%w: failed to fetch user info: %w", ErrGitLabAPI, err)
 	}
 
-	// Validate email
-	if userInfo.Email == "" {
+	// The email must carry a verification signal before it can name, create
+	// or admit an account (GHSA-c7jr-53g7-65q8). Fail closed: an unconfirmed
+	// profile is refused before the emails list is even fetched.
+	if !gitLabAccountConfirmed(userInfo) {
+		return nil, ErrEmailNotVerified
+	}
+
+	emails, err := s.fetchUserEmails(ctx, tokenResp.AccessToken)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to fetch user emails: %w", ErrGitLabAPI, err)
+	}
+
+	if !gitLabEmailConfirmed(userInfo.Email, emails) {
 		return nil, ErrEmailNotVerified
 	}
 
@@ -169,7 +199,7 @@ func (s *GitLabOAuthService) HandleCallback(
 	}
 
 	// Find or create user
-	user, _, err := s.findOrCreateUser(ctx, userInfo)
+	user, _, err := s.findOrCreateUser(ctx, userInfo, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
@@ -239,11 +269,67 @@ func (s *GitLabOAuthService) exchangeCode(ctx context.Context, code string) (*Gi
 	return &tokenResp, nil
 }
 
+// gitLabAccountConfirmed reports whether the GitLab profile has an email and a
+// non-null confirmed_at. A missing field counts as unconfirmed.
+func gitLabAccountConfirmed(userInfo *GitLabUserInfo) bool {
+	return userInfo != nil && userInfo.Email != "" &&
+		userInfo.ConfirmedAt != nil && *userInfo.ConfirmedAt != ""
+}
+
+// gitLabEmailConfirmed reports whether primary is listed in the
+// /api/v4/user/emails response with a non-null confirmed_at. An entry without
+// that field is treated as unconfirmed.
+func gitLabEmailConfirmed(primary string, emails []GitLabEmail) bool {
+	if primary == "" {
+		return false
+	}
+
+	for i := range emails {
+		entry := &emails[i]
+		if strings.EqualFold(strings.TrimSpace(entry.Email), strings.TrimSpace(primary)) &&
+			entry.ConfirmedAt != nil && *entry.ConfirmedAt != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
+// fetchUserEmails fetches the token owner's emails from GitLab's
+// /api/v4/user/emails endpoint (read_user scope).
+func (s *GitLabOAuthService) fetchUserEmails(ctx context.Context, accessToken string) ([]GitLabEmail, error) {
+	body, err := s.getGitLabAPI(ctx, accessToken, "/api/v4/user/emails")
+	if err != nil {
+		return nil, err
+	}
+
+	var emails []GitLabEmail
+	if err := json.Unmarshal(body, &emails); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return emails, nil
+}
+
 // fetchUserProfile fetches user profile from GitLab's /api/v4/user endpoint.
 func (s *GitLabOAuthService) fetchUserProfile(ctx context.Context, accessToken string) (*GitLabUserInfo, error) {
-	userURL := s.getGitLabBaseURL() + "/api/v4/user"
+	body, err := s.getGitLabAPI(ctx, accessToken, "/api/v4/user")
+	if err != nil {
+		return nil, err
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, userURL, nil)
+	var userInfo GitLabUserInfo
+	if err := json.Unmarshal(body, &userInfo); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &userInfo, nil
+}
+
+// getGitLabAPI issues an authenticated GET on the GitLab API and returns the
+// body of a 200 response.
+func (s *GitLabOAuthService) getGitLabAPI(ctx context.Context, accessToken, path string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.getGitLabBaseURL()+path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -267,19 +353,18 @@ func (s *GitLabOAuthService) fetchUserProfile(ctx context.Context, accessToken s
 		return nil, fmt.Errorf("%w: status %d", ErrGitLabAPI, resp.StatusCode)
 	}
 
-	var userInfo GitLabUserInfo
-	if err := json.Unmarshal(body, &userInfo); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return &userInfo, nil
+	return body, nil
 }
 
 // findOrCreateUser finds or creates a user by GitLab identity.
 //
-//nolint:dupl // OAuth provider findOrCreateUser methods share similar structure by design
+// An identity already linked signs in to its account. Otherwise the email is
+// only used to create a NEW account, and only when emailVerified is true (the
+// caller checked confirmed_at on /user and /user/emails). An email that
+// matches an existing account is refused with ErrGitLabLinkRequiresSignIn: it
+// is never linked silently (GHSA-c7jr-53g7-65q8).
 func (s *GitLabOAuthService) findOrCreateUser(
-	ctx context.Context, userInfo *GitLabUserInfo,
+	ctx context.Context, userInfo *GitLabUserInfo, emailVerified bool,
 ) (*models.User, bool, error) {
 	// created reports whether THIS call minted the account.
 	var created bool
@@ -304,40 +389,45 @@ func (s *GitLabOAuthService) findOrCreateUser(
 		if user != nil {
 			return user, false, nil
 		}
-
-		provider = nil
 	}
 
-	// Check by email
-	user, err := s.db.GetUserByEmail(ctx, userInfo.Email)
+	// No link (or a stale one, just cleared): the paths below create an account from the email and mark it
+	// verified, which drives invitations and email-domain auto-join. Only a
+	// confirmed email may do that.
+	if !emailVerified || userInfo.Email == "" {
+		return nil, false, ErrEmailNotVerified
+	}
+
+	// An existing account with this email is never linked on a GitLab
+	// sign-in: its owner signs in with their existing method.
+	existing, err := s.db.GetUserByEmail(ctx, userInfo.Email)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, false, fmt.Errorf("failed to get user by email: %w", err)
 	}
 
-	// Create new user if not found
-	if user == nil {
-		created = true
-		user = models.NewUser(userInfo.Email)
-		user.Name = userInfo.Name
-		user.AvatarURL = userInfo.AvatarURL
-
-		now := time.Now()
-		user.EmailVerifiedAt = &now
-
-		// Routed through the package's single account-creation chokepoint so
-		// the user_signed_up product event fires for SSO signups too.
-		if err := createUserAndCapture(ctx, s.db, user, signupMethodGitLab); err != nil {
-			return nil, false, fmt.Errorf("failed to create user: %w", err)
-		}
+	if existing != nil {
+		return nil, false, ErrGitLabLinkRequiresSignIn
 	}
 
-	// Link GitLab provider if not already linked
-	if provider == nil {
-		provider = models.NewUserProvider(user.UID, models.ProviderTypeGitLab, providerID)
+	created = true
+	user := models.NewUser(userInfo.Email)
+	user.Name = userInfo.Name
+	user.AvatarURL = userInfo.AvatarURL
 
-		if err := s.db.CreateUserProvider(ctx, provider); err != nil {
-			return nil, false, fmt.Errorf("failed to create user provider: %w", err)
-		}
+	// Safe only because emailVerified is true here (checked above).
+	now := time.Now()
+	user.EmailVerifiedAt = &now
+
+	// Routed through the package's single account-creation chokepoint so
+	// the user_signed_up product event fires for SSO signups too.
+	if err := createUserAndCapture(ctx, s.db, user, signupMethodGitLab); err != nil {
+		return nil, false, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	provider = models.NewUserProvider(user.UID, models.ProviderTypeGitLab, providerID)
+
+	if err := s.db.CreateUserProvider(ctx, provider); err != nil {
+		return nil, false, fmt.Errorf("failed to create user provider: %w", err)
 	}
 
 	return user, created, nil
