@@ -25,7 +25,12 @@ read -r -a skip_tags <<<"${SKIP_TAGS-$SKIP_TAGS_DEFAULT}"
 readonly IMAGE_REPO="ghcr.io/fclairamb/solidping"
 readonly WARMUP_SECONDS=30
 readonly HEALTH_TIMEOUT=60
-readonly RESULT_TIMEOUT=90
+# How long HEAD gets to write a new result for the recorded check. The old version
+# claims jobs ahead of their slot and does not hand the leases back on SIGTERM, so
+# the recorded check can be leased by the dead worker until scheduled_at + period +
+# 30s, i.e. up to ~150s after its last result with the 1-minute fixtures, before
+# HEAD may run it (seen on 2026-11-12: every leg failed at 90s once acme.com hung).
+readonly RESULT_TIMEOUT=180
 
 usage() {
     echo "usage: $0 <sqlite|postgres> <from-tag> | --matrix" >&2

@@ -4,6 +4,24 @@
   "properties": {
     "token": {
       "type": "string"
+    },
+    "require_spf": {
+      "type": "string"
+    },
+    "require_dkim": {
+      "type": "boolean"
+    },
+    "require_dmarc": {
+      "type": "string"
+    },
+    "check_blocklists": {
+      "type": "boolean"
+    },
+    "blocklists": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
     }
   },
   "type": "object",

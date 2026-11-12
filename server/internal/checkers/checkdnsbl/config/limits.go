@@ -7,4 +7,7 @@ import "time"
 // checker's execution client.
 const (
 	MaxTimeout = 30 * time.Second
+
+	// MaxBlocklists caps how many zones a check may query per lookup.
+	MaxBlocklists = 16
 )

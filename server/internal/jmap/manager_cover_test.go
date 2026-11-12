@@ -227,3 +227,28 @@ func TestClientAccessorsAndMethodsMisc(t *testing.T) {
 
 	_ = models.JSONMap{}
 }
+
+func TestManagerDownloadBlob(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeMailbox(t)
+	dbSvc := newCoverDB(t)
+	storeConfig(t, dbSvc, fake.config())
+
+	mgr := jmap.NewManager(dbSvc)
+
+	// Not connected yet: no client to download with.
+	_, err := mgr.DownloadBlob(t.Context(), "b1")
+	require.ErrorIs(t, err, jmap.ErrNoSession)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	go func() { _ = mgr.Run(ctx) }()
+
+	require.Eventually(t, func() bool { return mgr.GetStatus().Connected }, 5*time.Second, 20*time.Millisecond)
+
+	body, err := mgr.DownloadBlob(ctx, "b1")
+	require.NoError(t, err)
+	require.Equal(t, "blob:/dl/acc-1/b1/message.eml", string(body))
+}

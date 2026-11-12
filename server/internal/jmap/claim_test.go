@@ -93,6 +93,7 @@ func newFakeMailbox(t *testing.T) *fakeMailbox {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/jmap", f.handleSession)
 	mux.HandleFunc("/jmap", f.handleJMAP)
+	mux.HandleFunc("/dl/", f.handleDownload)
 	f.srv = httptest.NewServer(mux)
 
 	t.Cleanup(f.srv.Close)
@@ -154,7 +155,12 @@ func (f *fakeMailbox) handleSession(w http.ResponseWriter, _ *http.Request) {
 		`"urn:ietf:params:jmap:core":{},"urn:ietf:params:jmap:mail":{}},` +
 		`"accounts":{"acc-1":{"name":"x","isPersonal":true}},` +
 		`"primaryAccounts":{"urn:ietf:params:jmap:mail":"acc-1"},` +
-		`"apiUrl":"` + f.srv.URL + `/jmap","state":"s"}`))
+		`"apiUrl":"` + f.srv.URL + `/jmap",` +
+		`"downloadUrl":"` + f.srv.URL + `/dl/{accountId}/{blobId}/{name}?accept={type}","state":"s"}`))
+}
+
+func (f *fakeMailbox) handleDownload(w http.ResponseWriter, req *http.Request) {
+	_, _ = w.Write([]byte("blob:" + req.URL.Path))
 }
 
 type rawCall [3]json.RawMessage

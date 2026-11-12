@@ -853,9 +853,10 @@ describe("every registered module declares the config keys it writes", () => {
   });
 
   it("declares ownedKeys for every module that models any config", () => {
-    // heartbeat and email model no config key at all — that is deliberate and
-    // is what makes the passthrough preserve a heartbeat's public `token`.
-    const noConfigModules = ["heartbeat", "email"];
+    // heartbeat models no config key at all — that is deliberate and is what
+    // makes the passthrough preserve its public `token`. The email module models
+    // only its sender-authentication keys, never the token.
+    const noConfigModules = ["heartbeat"];
     for (const [name, mod] of modules) {
       if (noConfigModules.includes(name)) {
         expect(mod.ownedKeys).toEqual([]);
