@@ -488,3 +488,54 @@ func TestParseURLHost(t *testing.T) {
 		r.ErrorIs(err, egress.ErrInvalidIPv4Host, invalid)
 	}
 }
+
+// A dual-stack target whose IPv6 path black-holes SYNs must still be reached
+// over IPv4 within a probe's budget (Happy Eyeballs, RFC 8305), not dialed
+// sequentially with the first family eating the whole timeout. The v6 connect
+// is held in the Control hook (no packet leaves); the v4 answer is the loopback
+// listener, treated as public for this guard only.
+func TestEnforcingDialFallsBackToIPv4WhenIPv6Hangs(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	ln, accepted := listenLoopback(t)
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	r.NoError(err)
+
+	var calls atomic.Int32
+
+	deny := egress.New(false,
+		egress.WithLookup(fixedLookup(&calls, "2606:4700::1111", "127.0.0.1")),
+		egress.WithPublicOverride(net.ParseIP("127.0.0.1")),
+	)
+
+	errV6Lost := errors.New("v6 SYN lost") //nolint:err113 // test sentinel
+
+	base := &net.Dialer{
+		Timeout: 30 * time.Second,
+		Control: func(network, _ string, _ syscall.RawConn) error {
+			if network == "tcp6" {
+				time.Sleep(3 * time.Second)
+
+				return errV6Lost
+			}
+
+			return nil
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	conn, err := deny.DialContextWith(ctx, base, "tcp", net.JoinHostPort("dual.acme.com", port))
+	r.NoError(err, "the IPv4 address is raced in instead of waiting for the IPv6 dial")
+	r.NoError(conn.Close())
+	r.Less(time.Since(start), time.Second)
+	remote, ok := conn.RemoteAddr().(*net.TCPAddr)
+	r.True(ok)
+	r.Equal("127.0.0.1", remote.IP.String())
+	require.Eventually(t, func() bool { return accepted.Load() == 1 }, time.Second, 10*time.Millisecond)
+	r.Equal(int32(1), calls.Load(), "resolved exactly once")
+}
