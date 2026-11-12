@@ -13,6 +13,7 @@ import {
   Router,
   Send,
   Siren,
+  Smartphone,
   Users,
   Webhook,
   Bot,
@@ -45,6 +46,7 @@ const ICONS: Record<ConnectionType, typeof Webhook> = {
   webpush: BellRing,
   kubernetes: Boxes,
   twilio: Phone,
+  smsfactor: Smartphone,
   a2a: Sparkles,
 };
 
@@ -97,6 +99,8 @@ export function integrationLabel(type: ConnectionType): string {
       return "Kubernetes";
     case "twilio":
       return "Twilio (SMS / Voice)";
+    case "smsfactor":
+      return "SMS Factor (SMS)";
     case "a2a":
       return "AI agent (A2A)";
     default:
