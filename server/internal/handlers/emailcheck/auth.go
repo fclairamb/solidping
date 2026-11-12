@@ -145,8 +145,8 @@ func (h *Handler) evaluateSenderAuth(
 	auth := &senderAuth{ProviderAuth: parseProviderAuth(email.Headers)}
 
 	hops := parseReceived(email.Headers)
-	for _, hop := range hops {
-		auth.ReceivedIPs = append(auth.ReceivedIPs, hop.ip)
+	for i := range hops {
+		auth.ReceivedIPs = append(auth.ReceivedIPs, hops[i].ip)
 	}
 
 	if auth.ReceivedIPs == nil {
@@ -160,19 +160,19 @@ func (h *Handler) evaluateSenderAuth(
 	needSPF := cfg.RequireSPF != "" || cfg.RequireDMARC != ""
 	needDKIM := cfg.RequireDKIM || cfg.RequireDMARC != ""
 
-	var wg sync.WaitGroup
+	var pending sync.WaitGroup
 
-	run := func(enabled bool, fn func()) {
+	run := func(enabled bool, task func()) {
 		if !enabled {
 			return
 		}
 
-		wg.Add(1)
+		pending.Add(1)
 
 		go func() {
-			defer wg.Done()
+			defer pending.Done()
 
-			fn()
+			task()
 		}()
 	}
 
@@ -180,7 +180,7 @@ func (h *Handler) evaluateSenderAuth(
 	run(needDKIM, func() { h.evalDKIM(ctx, auth, email, fromDomain) })
 	run(cfg.BlocklistsEnabled(), func() { h.evalBlocklists(ctx, auth, cfg) })
 
-	wg.Wait()
+	pending.Wait()
 
 	if cfg.RequireDMARC != "" {
 		h.evalDMARC(ctx, auth, fromDomain)
@@ -223,12 +223,12 @@ func parseReceived(headers []jmap.EmailHeader) []receivedHop {
 			continue
 		}
 
-		m := receivedFromPattern.FindStringSubmatch(headers[i].Value)
-		if m == nil {
+		fromMatch := receivedFromPattern.FindStringSubmatch(headers[i].Value)
+		if fromMatch == nil {
 			continue
 		}
 
-		ipMatch := receivedIPPattern.FindStringSubmatch(m[2])
+		ipMatch := receivedIPPattern.FindStringSubmatch(fromMatch[2])
 		if ipMatch == nil {
 			continue
 		}
@@ -237,7 +237,7 @@ func parseReceived(headers []jmap.EmailHeader) []receivedHop {
 			continue
 		}
 
-		hops = append(hops, receivedHop{helo: strings.Trim(m[1], "[]"), ip: net.ParseIP(ipMatch[1]).String()})
+		hops = append(hops, receivedHop{helo: strings.Trim(fromMatch[1], "[]"), ip: net.ParseIP(ipMatch[1]).String()})
 	}
 
 	return hops
@@ -249,13 +249,13 @@ func parseReceived(headers []jmap.EmailHeader) []receivedHop {
 // were written by the sender's side and can be forged, so they never decide
 // anything: they are only reported as received_ips.
 func trustedHop(hops []receivedHop) receivedHop {
-	for _, hop := range hops {
-		ip := net.ParseIP(hop.ip)
+	for i := range hops {
+		ip := net.ParseIP(hops[i].ip)
 		if ip == nil || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
 			continue
 		}
 
-		return hop
+		return hops[i]
 	}
 
 	return receivedHop{}
@@ -388,18 +388,18 @@ func classifyDKIM(auth *senderAuth, verifs []*dkim.Verification, fromDomain stri
 
 	temp := false
 
-	for _, v := range verifs {
-		if v.Err == nil {
-			auth.DKIMDomains = append(auth.DKIMDomains, strings.ToLower(v.Domain))
+	for _, verif := range verifs {
+		if verif.Err == nil {
+			auth.DKIMDomains = append(auth.DKIMDomains, strings.ToLower(verif.Domain))
 
-			if aligned(v.Domain, fromDomain, "") {
+			if aligned(verif.Domain, fromDomain, "") {
 				auth.DKIMAligned = true
 			}
 
 			continue
 		}
 
-		if dkim.IsTempFail(v.Err) || expired {
+		if dkim.IsTempFail(verif.Err) || expired {
 			temp = true
 		}
 	}
@@ -445,30 +445,9 @@ func (h *Handler) evalDMARC(ctx context.Context, auth *senderAuth, fromDomain st
 		return
 	}
 
-	res := h.resolver()
-	opts := &dmarc.LookupOptions{LookupTXT: func(domain string) ([]string, error) {
-		return lookupTXT(ctx, res, domain)
-	}}
-
-	rec, err := dmarc.LookupWithOptions(fromDomain, opts)
-	if errors.Is(err, dmarc.ErrNoPolicy) {
-		if org, orgErr := publicsuffix.EffectiveTLDPlusOne(fromDomain); orgErr == nil && org != fromDomain {
-			rec, err = dmarc.LookupWithOptions(org, opts)
-		}
-	}
-
-	switch {
-	case errors.Is(err, dmarc.ErrNoPolicy):
-		auth.DMARC = verdictNone
-
-		return
-	case err != nil:
-		auth.DMARC = verdictTempError
-		if !dmarc.IsTempFail(err) && ctx.Err() == nil {
-			auth.DMARC = verdictNone // unparsable record: as good as none
-		} else {
-			auth.TempErrors = append(auth.TempErrors, "dmarc")
-		}
+	rec, verdict := h.lookupDMARC(ctx, auth, fromDomain)
+	if rec == nil {
+		auth.DMARC = verdict
 
 		return
 	}
@@ -495,15 +474,47 @@ func (h *Handler) evalDMARC(ctx context.Context, auth *senderAuth, fromDomain st
 	}
 }
 
+// lookupDMARC finds the published policy of the From domain, falling back to its
+// organizational domain. It returns a nil record and the verdict to record when
+// there is no usable policy.
+func (h *Handler) lookupDMARC(
+	ctx context.Context, auth *senderAuth, fromDomain string,
+) (*dmarc.Record, string) {
+	res := h.resolver()
+	opts := &dmarc.LookupOptions{LookupTXT: func(domain string) ([]string, error) {
+		return lookupTXT(ctx, res, domain)
+	}}
+
+	rec, err := dmarc.LookupWithOptions(fromDomain, opts)
+	if errors.Is(err, dmarc.ErrNoPolicy) {
+		if org, orgErr := publicsuffix.EffectiveTLDPlusOne(fromDomain); orgErr == nil && org != fromDomain {
+			rec, err = dmarc.LookupWithOptions(org, opts)
+		}
+	}
+
+	switch {
+	case err == nil:
+		return rec, ""
+	case errors.Is(err, dmarc.ErrNoPolicy):
+		return nil, verdictNone
+	case dmarc.IsTempFail(err) || ctx.Err() != nil:
+		auth.TempErrors = append(auth.TempErrors, "dmarc")
+
+		return nil, verdictTempError
+	default:
+		return nil, verdictNone // unparsable record: as good as none
+	}
+}
+
 // aligned reports whether two domains are aligned: equal in strict mode, sharing
-// the organisational domain otherwise (relaxed, the default).
-func aligned(a, b, mode string) bool {
-	a, b = strings.ToLower(a), strings.ToLower(b)
-	if a == "" || b == "" {
+// the organizational domain otherwise (relaxed, the default).
+func aligned(left, right, mode string) bool {
+	left, right = strings.ToLower(left), strings.ToLower(right)
+	if left == "" || right == "" {
 		return false
 	}
 
-	if a == b {
+	if left == right {
 		return true
 	}
 
@@ -511,8 +522,8 @@ func aligned(a, b, mode string) bool {
 		return false
 	}
 
-	orgA, errA := publicsuffix.EffectiveTLDPlusOne(a)
-	orgB, errB := publicsuffix.EffectiveTLDPlusOne(b)
+	orgA, errA := publicsuffix.EffectiveTLDPlusOne(left)
+	orgB, errB := publicsuffix.EffectiveTLDPlusOne(right)
 
 	return errA == nil && errB == nil && orgA == orgB
 }
@@ -529,7 +540,7 @@ func (a *senderAuth) collectFailures(cfg *emailconfig.EmailConfig, expired bool)
 		a.Failures = append(a.Failures, fmt.Sprintf("SPF %s for %s", a.SPF, a.SPFDomain))
 	}
 
-	if cfg.RequireDKIM && a.DKIM != verdictTempError && !(a.DKIM == verdictPass && a.DKIMAligned) {
+	if cfg.RequireDKIM && a.DKIM != verdictTempError && (a.DKIM != verdictPass || !a.DKIMAligned) {
 		a.Failures = append(a.Failures, a.dkimFailure())
 	}
 
@@ -560,7 +571,7 @@ func (h *Handler) rawMessage(ctx context.Context, email *jmap.Email) ([]byte, er
 }
 
 // lookupTXT adapts a context-aware resolver to the context-free callbacks of
-// go-msgauth. A cancelled context is reported as a temporary DNS error so the
+// go-msgauth. A canceled context is reported as a temporary DNS error so the
 // verdict becomes temperror, not fail.
 func lookupTXT(ctx context.Context, res authResolver, domain string) ([]string, error) {
 	records, err := res.LookupTXT(ctx, domain)

@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -91,10 +92,7 @@ func TestValidateSpecAuth(t *testing.T) {
 		{"blocklists": []any{"not a zone"}},
 		{"blocklists": []any{"localhost"}},
 		{"blocklists": "zen.spamhaus.org"},
-		{"blocklists": []any{"a.example.com", "b.example.com", "c.example.com", "d.example.com",
-			"e.example.com", "f.example.com", "g.example.com", "h.example.com", "i.example.com",
-			"j.example.com", "k.example.com", "l.example.com", "m.example.com", "n.example.com",
-			"o.example.com", "p.example.com", "q.example.com"}},
+		{"blocklists": tooManyZones()},
 	}
 
 	for _, c := range bad {
@@ -110,4 +108,13 @@ func TestValidateSpecAuth(t *testing.T) {
 	plain := &checkerdef.CheckSpec{}
 	require.NoError(t, config.ValidateSpec(plain))
 	require.Len(t, plain.Config, 1, "only the generated token")
+}
+
+func tooManyZones() []any {
+	zones := make([]any, 0, 17)
+	for i := range 17 {
+		zones = append(zones, fmt.Sprintf("zone%d.example.com", i))
+	}
+
+	return zones
 }

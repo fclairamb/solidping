@@ -164,12 +164,12 @@ func signedMessage(t *testing.T, body string) ([]byte, string) {
 	return out.Bytes(), "v=DKIM1; k=rsa; p=" + base64.StdEncoding.EncodeToString(pub)
 }
 
-func authEmail(extra ...jmap.EmailHeader) *jmap.Email {
-	headers := append([]jmap.EmailHeader{
+func authEmail() *jmap.Email {
+	headers := []jmap.EmailHeader{
 		hdr("Received", "from relay.internal (relay.internal [10.0.0.4]) by mx.provider.test"),
 		hdr("Received", "from mail.example.com (mail.example.com [203.0.113.7]) by relay.internal"),
 		hdr("Return-Path", "<alice@example.com>"),
-	}, extra...)
+	}
 
 	return &jmap.Email{
 		BlobID:  "blob1",

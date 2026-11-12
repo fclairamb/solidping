@@ -43,13 +43,13 @@ const DMARCPass = "pass"
 type EmailConfig struct {
 	Token string `json:"token,omitempty"`
 	// RequireSPF is "" (off), "none", "softfail" or "pass".
-	RequireSPF string `json:"require_spf,omitempty"`
+	RequireSPF string `json:"require_spf,omitempty"` //nolint:tagliatelle // API uses snake_case
 	// RequireDKIM requires one valid signature aligned with the From domain.
-	RequireDKIM bool `json:"require_dkim,omitempty"`
+	RequireDKIM bool `json:"require_dkim,omitempty"` //nolint:tagliatelle // API uses snake_case
 	// RequireDMARC is "" (off) or "pass".
-	RequireDMARC string `json:"require_dmarc,omitempty"`
+	RequireDMARC string `json:"require_dmarc,omitempty"` //nolint:tagliatelle // API uses snake_case
 	// CheckBlocklists looks the sending IP up on DNS blocklists.
-	CheckBlocklists bool `json:"check_blocklists,omitempty"`
+	CheckBlocklists bool `json:"check_blocklists,omitempty"` //nolint:tagliatelle // API uses snake_case
 	// Blocklists are the DNSBL zones; empty means the dnsbl checker defaults.
 	// Setting any implies CheckBlocklists.
 	Blocklists []string `json:"blocklists,omitempty"`

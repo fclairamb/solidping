@@ -55,19 +55,19 @@ func ReverseIPv6(ipStr string) string {
 
 	const hexDigits = "0123456789abcdef"
 
-	var sb strings.Builder
+	var out strings.Builder
 
 	for i := len(ip16) - 1; i >= 0; i-- {
-		sb.WriteByte(hexDigits[ip16[i]&0x0f])
-		sb.WriteByte('.')
-		sb.WriteByte(hexDigits[ip16[i]>>4])
+		out.WriteByte(hexDigits[ip16[i]&0x0f])
+		out.WriteByte('.')
+		out.WriteByte(hexDigits[ip16[i]>>4])
 
 		if i > 0 {
-			sb.WriteByte('.')
+			out.WriteByte('.')
 		}
 	}
 
-	return sb.String()
+	return out.String()
 }
 
 // ReverseIP returns the DNSBL query form of an IPv4 or IPv6 address.
@@ -148,34 +148,34 @@ func Query(ctx context.Context, lookuper Lookuper, ip string, zones []string) Re
 	reversed := ReverseIP(ip)
 
 	var (
-		mu  sync.Mutex
-		res Result
-		wg  sync.WaitGroup
+		resultMu sync.Mutex
+		res      Result
+		pending  sync.WaitGroup
 	)
 
 	for _, zone := range zones {
-		wg.Add(1)
+		pending.Add(1)
 
 		go func() {
-			defer wg.Done()
+			defer pending.Done()
 
 			state := classify(ctx, lookuper, reversed, zone)
 
-			mu.Lock()
-			defer mu.Unlock()
+			resultMu.Lock()
+			defer resultMu.Unlock()
 
 			switch state {
 			case stateListed:
 				res.Listed = append(res.Listed, zone)
 			case stateClean:
 				res.Clean = append(res.Clean, zone)
-			default:
+			case stateInconclusive:
 				res.Inconclusive = append(res.Inconclusive, zone)
 			}
 		}()
 	}
 
-	wg.Wait()
+	pending.Wait()
 
 	slices.Sort(res.Listed)
 	slices.Sort(res.Clean)

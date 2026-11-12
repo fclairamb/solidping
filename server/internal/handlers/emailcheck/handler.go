@@ -416,32 +416,21 @@ func (h *Handler) recordResult(
 
 	durationMs := float32(0)
 
-	from := ""
-	if len(email.From) > 0 {
-		from = email.From[0].Email
-	}
-
-	messageID := ""
-	if len(email.MessageID) > 0 {
-		messageID = email.MessageID[0]
-	}
+	from, messageID := senderAndMessageID(email)
 
 	if h.alreadyRecorded(ctx, check.OrganizationUID, check.UID, messageID, origin) {
 		return nil
 	}
 
-	message := defaultMessage(status)
 	metrics := make(models.JSONMap)
+	message := defaultMessage(status)
 
 	var authOutput map[string]any
 
 	if status == statusUp {
 		var failed string
-
-		authOutput, failed = h.applySenderAuth(ctx, check, email, metrics)
-		if failed != "" {
-			status = statusDown
-			message = failed
+		if authOutput, failed = h.applySenderAuth(ctx, check, email, metrics); failed != "" {
+			status, message = statusDown, failed
 		}
 	}
 
@@ -476,14 +465,7 @@ func (h *Handler) recordResult(
 		CreatedAt:       now,
 	}
 
-	// Tag as maintenance before the insert (spec 2026-08-20-01) — see
-	// incidents.Service.IsCheckInActiveMaintenance. Best-effort.
-	if inMaintenance, mwErr := h.incidentSvc.IsCheckInActiveMaintenance(ctx, check.UID); mwErr != nil {
-		h.logger.WarnContext(ctx, "Failed to resolve maintenance window for result tagging",
-			"check_uid", check.UID, "error", mwErr)
-	} else {
-		result.Maintenance = inMaintenance
-	}
+	h.tagMaintenance(ctx, check, result)
 
 	if err := h.db.SaveResultWithStatusTracking(ctx, result); err != nil {
 		return err
@@ -531,4 +513,32 @@ func (h *Handler) applySenderAuth(
 	}
 
 	return auth.output(), auth.failureMessage()
+}
+
+// senderAndMessageID returns the first From address and the Message-ID.
+func senderAndMessageID(email *jmap.Email) (string, string) {
+	from, messageID := "", ""
+	if len(email.From) > 0 {
+		from = email.From[0].Email
+	}
+
+	if len(email.MessageID) > 0 {
+		messageID = email.MessageID[0]
+	}
+
+	return from, messageID
+}
+
+// tagMaintenance tags the result as maintenance before the insert (spec
+// 2026-08-20-01) — see incidents.Service.IsCheckInActiveMaintenance. Best-effort.
+func (h *Handler) tagMaintenance(ctx context.Context, check *models.Check, result *models.Result) {
+	inMaintenance, err := h.incidentSvc.IsCheckInActiveMaintenance(ctx, check.UID)
+	if err != nil {
+		h.logger.WarnContext(ctx, "Failed to resolve maintenance window for result tagging",
+			"check_uid", check.UID, "error", err)
+
+		return
+	}
+
+	result.Maintenance = inMaintenance
 }
