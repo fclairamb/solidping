@@ -358,7 +358,9 @@ func runGitLabCallback(t *testing.T, opts callbackOpts) callbackRun {
 		case "/oauth/token":
 			writeJSON(w, GitLabTokenResponse{AccessToken: "provider-token", TokenType: "bearer", ExpiresIn: 3600})
 		case "/api/v4/user":
-			writeJSON(w, GitLabUserInfo{ID: 7, Username: "member", Name: "Member", Email: "member@acme.com"})
+			writeJSON(w, gitLabProfile(7, "member@acme.com", gitLabConfirmedAt))
+		case "/api/v4/user/emails":
+			writeJSON(w, confirmedEmails("member@acme.com"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
