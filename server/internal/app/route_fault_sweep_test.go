@@ -43,11 +43,14 @@ func (h *faultHook) AfterQuery(context.Context, *bun.QueryEvent) {}
 
 // faultSweepSkipped lists routes the fault sweep must not drive on top of
 // sweepSkipped: they dial an external host, so a failing query turns into a
-// network wait longer than the sweep's request timeout.
+// network wait longer than the sweep's request timeout. The vendor-status
+// components route is one of them: it fetches the body's url and never
+// touches the database, so there is no query to fail.
 //
 //nolint:gochecknoglobals // Effectively a constant table.
 var faultSweepSkipped = map[string]bool{
-	"POST /api/v1/orgs/{org}/integrations/freebox/pair": true,
+	"POST /api/v1/orgs/{org}/integrations/freebox/pair":       true,
+	"POST /api/v1/orgs/{org}/checks/vendor-status/components": true,
 }
 
 // faultBodies are the request bodies each route is driven with: an empty one
