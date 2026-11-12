@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.48.0](https://github.com/fclairamb/solidping/compare/v0.47.0...v0.48.0) (2026-11-12)
+
+
+### Features
+
+* lease sizing, Telegram sign-in and four small fixes (2026-11-11 issues) ([#848](https://github.com/fclairamb/solidping/issues/848)) ([9972dde](https://github.com/fclairamb/solidping/commit/9972dde27b46766d436586eb286399931327d088))
+* **notifications:** SMS Factor integration ([#846](https://github.com/fclairamb/solidping/issues/846)) ([1b68d2a](https://github.com/fclairamb/solidping/commit/1b68d2afe255d80ee015eb7afd71b62a4764601f))
+
+
+### Bug Fixes
+
+* **deps:** update github.com/dop251/goja digest to f493a2b ([#842](https://github.com/fclairamb/solidping/issues/842)) ([dba208b](https://github.com/fclairamb/solidping/commit/dba208bd4e1eadb90f3c97a9cb6983ab85c87887))
+* **deps:** update go dependencies (non-major) ([#844](https://github.com/fclairamb/solidping/issues/844)) ([621d492](https://github.com/fclairamb/solidping/commit/621d492744739fddc2766b4d7c6017179e9b609c))
+* **deps:** update go dependencies (non-major) ([#847](https://github.com/fclairamb/solidping/issues/847)) ([4bb06f7](https://github.com/fclairamb/solidping/commit/4bb06f76278d2fcebba32ea20fadad46adebdef6))
+* **security:** bind JS env and plugin configs, strict re-wrap keys, replay masking of remaining secret inputs, rewrap list cap, secret headers on redirects ([#851](https://github.com/fclairamb/solidping/issues/851)) ([32fd560](https://github.com/fclairamb/solidping/commit/32fd56038836f7d5f6b3d4fad7ee4d2b52b10fd9))
+* **security:** bind sealed secrets to their target, verify peer re-wraps, drop deleted regions' keys, TLS-only agent server URL ([#840](https://github.com/fclairamb/solidping/issues/840)) ([4b70e46](https://github.com/fclairamb/solidping/commit/4b70e46cdaf376c7a942f3dac37cf14083984deb))
+* **security:** keep shown-once secrets out of dash0 session replay ([#839](https://github.com/fclairamb/solidping/issues/839)) ([9bb8e8b](https://github.com/fclairamb/solidping/commit/9bb8e8bb556f77ce95fde70ab7af5b9f2c765b53))
+* **security:** require a verified email for GitLab sign-in and stop linking existing accounts by email ([#850](https://github.com/fclairamb/solidping/issues/850)) ([1a0cea9](https://github.com/fclairamb/solidping/commit/1a0cea99a5ed38f651962dcdd55362d7dab8c830))
+
 ## [0.47.0](https://github.com/fclairamb/solidping/compare/v0.46.0...v0.47.0) (2026-11-10)
 
 
