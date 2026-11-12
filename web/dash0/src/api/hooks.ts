@@ -2667,6 +2667,49 @@ export function useIncidents(
   });
 }
 
+export type InsightsStats = {
+  medianSeconds: number | null;
+  p90Seconds: number | null;
+  sampleCount: number;
+};
+
+export interface IncidentInsights {
+  period: string;
+  truncated: boolean;
+  summary: {
+    incidentCount: number;
+    pagedCount: number;
+    acknowledgedCount: number;
+    ackRate: number;
+    timeToAcknowledge: InsightsStats;
+    timeToResolve: InsightsStats;
+    byResolution: Record<
+      "auto" | "manual" | "other",
+      { count: number; medianSeconds: number | null; p90Seconds: number | null }
+    >;
+  };
+  checks: Array<{
+    checkUid: string;
+    name?: string;
+    slug?: string;
+    incidentCount: number;
+    downtimeSeconds: number;
+    relapseCount: number;
+    lastIncidentAt: string | null;
+  }>;
+}
+
+export function useIncidentInsights(org: string, period: string) {
+  return useQuery({
+    queryKey: ["incidents", org, "insights", period],
+    queryFn: () =>
+      apiFetch<IncidentInsights>(
+        `/api/v1/orgs/${org}/incidents/insights?period=${period}`,
+      ),
+    enabled: !!org,
+  });
+}
+
 export function useIncident(org: string, uid: string) {
   return useQuery({
     queryKey: ["incident", org, uid],

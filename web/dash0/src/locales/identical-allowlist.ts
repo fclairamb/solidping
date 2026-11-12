@@ -348,6 +348,8 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   "events:audit.targetTypes.integration": ["de"], // "Integration"
   "feedback:tool_text": ["de"], // "Text"
   "incidents:title": ["fr"], // "Incidents"
+  "incidents:insights.columns.incidents": ["fr", "de"], // "Incidents"
+  "incidents:insights.columns.check": ["de"], // "Check"
   "incidents:table.incident": ["fr"], // "Incident"
   "incidents:fallbackTitle": ["fr"], // "Incident"
   "incidents:snoozeDialog.until15m": ["fr"], // "15 minutes"

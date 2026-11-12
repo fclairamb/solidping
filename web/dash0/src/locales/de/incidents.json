@@ -336,5 +336,48 @@
     "noAffected": "Für diese Seite wurden keine betroffenen Komponenten ermittelt.",
     "noUpdates": "Noch keine Updates.",
     "automated": "automatisch"
+  },
+  "insights": {
+    "button": "Auswertung",
+    "title": "Incident-Auswertung",
+    "subtitle": "Welche Checks am häufigsten ausfallen und wie schnell Sie reagieren",
+    "back": "Zurück zu den Incidents",
+    "period": {
+      "7d": "Letzte 7 Tage",
+      "30d": "Letzte 30 Tage",
+      "90d": "Letzte 90 Tage"
+    },
+    "topChecks": "Am häufigsten ausgefallene Checks",
+    "columns": {
+      "check": "Check",
+      "incidents": "Incidents",
+      "downtime": "Ausfallzeit",
+      "relapses": "Rückfälle",
+      "last": "Letzter Incident"
+    },
+    "responseTimes": "Reaktionszeiten",
+    "ack": {
+      "title": "Zeit bis zur Bestätigung",
+      "median": "Medianwert",
+      "p90": "90. Perzentil",
+      "rate": "{{acked}} von {{paged}} bestätigt",
+      "empty": "Kein bestätigter Incident in diesem Zeitraum"
+    },
+    "resolve": {
+      "title": "Zeit bis zur Lösung",
+      "median": "Medianwert",
+      "p90": "90. Perzentil",
+      "empty": "Kein gelöster Incident in diesem Zeitraum"
+    },
+    "resolution": {
+      "title": "Lösung",
+      "auto": "Automatisch behoben",
+      "manual": "Manuell gelöst",
+      "other": "Sonstige Schließungen",
+      "empty": "Kein gelöster Incident in diesem Zeitraum",
+      "median": "Median {{duration}}"
+    },
+    "empty": "Kein Incident in diesem Zeitraum",
+    "truncated": "Es werden nur die neuesten 5.000 Incidents berücksichtigt."
   }
 }

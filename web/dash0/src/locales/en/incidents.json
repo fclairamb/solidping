@@ -336,5 +336,48 @@
     "noAffected": "No affected components resolved for this page.",
     "noUpdates": "No updates yet.",
     "automated": "automated"
+  },
+  "insights": {
+    "button": "Insights",
+    "title": "Incident insights",
+    "subtitle": "Which checks fail the most and how fast you react",
+    "back": "Back to incidents",
+    "period": {
+      "7d": "Last 7 days",
+      "30d": "Last 30 days",
+      "90d": "Last 90 days"
+    },
+    "topChecks": "Top failing checks",
+    "columns": {
+      "check": "Check",
+      "incidents": "Incidents",
+      "downtime": "Downtime",
+      "relapses": "Relapses",
+      "last": "Last incident"
+    },
+    "responseTimes": "Response times",
+    "ack": {
+      "title": "Time to acknowledge",
+      "median": "Median",
+      "p90": "90th percentile",
+      "rate": "{{acked}} of {{paged}} acknowledged",
+      "empty": "No acknowledged incident in this period"
+    },
+    "resolve": {
+      "title": "Time to resolve",
+      "median": "Median",
+      "p90": "90th percentile",
+      "empty": "No resolved incident in this period"
+    },
+    "resolution": {
+      "title": "Resolution",
+      "auto": "Auto-recovered",
+      "manual": "Manually resolved",
+      "other": "Other closures",
+      "empty": "No resolved incident in this period",
+      "median": "median {{duration}}"
+    },
+    "empty": "No incident in this period",
+    "truncated": "Only the most recent 5,000 incidents are included."
   }
 }

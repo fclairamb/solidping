@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  BarChart3,
   Check,
   CheckCircle,
   Layers,
@@ -320,6 +321,19 @@ function IncidentsIndexPage() {
         description={t("subtitle")}
         docsHref="/docs/features/incidents"
         className="flex-wrap"
+        actions={
+          <Button variant="outline" asChild data-testid="incidents-insights-action">
+            <Link
+              to="/orgs/$org/incidents/insights"
+              params={{ org }}
+              search={{ period: "30d" as const }}
+              data-testid="incidents-insights-button"
+            >
+              <BarChart3 className="h-4 w-4 sm:mr-2" />
+              <span>{t("insights.button")}</span>
+            </Link>
+          </Button>
+        }
       />
 
       <div className="flex flex-wrap items-center justify-between gap-4">

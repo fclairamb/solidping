@@ -336,5 +336,48 @@
     "noAffected": "No se han identificado componentes afectados para esta página.",
     "noUpdates": "Todavía no hay actualizaciones.",
     "automated": "automática"
+  },
+  "insights": {
+    "button": "Estadísticas",
+    "title": "Estadísticas de incidentes",
+    "subtitle": "Qué comprobaciones fallan más y con qué rapidez reaccionas",
+    "back": "Volver a incidentes",
+    "period": {
+      "7d": "Últimos 7 días",
+      "30d": "Últimos 30 días",
+      "90d": "Últimos 90 días"
+    },
+    "topChecks": "Comprobaciones que más fallan",
+    "columns": {
+      "check": "Comprobación",
+      "incidents": "Incidentes",
+      "downtime": "Tiempo de caída",
+      "relapses": "Recaídas",
+      "last": "Último incidente"
+    },
+    "responseTimes": "Tiempos de respuesta",
+    "ack": {
+      "title": "Tiempo hasta el reconocimiento",
+      "median": "Mediana",
+      "p90": "Percentil 90",
+      "rate": "{{acked}} de {{paged}} reconocidos",
+      "empty": "Ningún incidente reconocido en este periodo"
+    },
+    "resolve": {
+      "title": "Tiempo hasta la resolución",
+      "median": "Mediana",
+      "p90": "Percentil 90",
+      "empty": "Ningún incidente resuelto en este periodo"
+    },
+    "resolution": {
+      "title": "Resolución",
+      "auto": "Recuperado automáticamente",
+      "manual": "Resuelto manualmente",
+      "other": "Otros cierres",
+      "empty": "Ningún incidente resuelto en este periodo",
+      "median": "mediana {{duration}}"
+    },
+    "empty": "Ningún incidente en este periodo",
+    "truncated": "Solo se incluyen los 5.000 incidentes más recientes."
   }
 }

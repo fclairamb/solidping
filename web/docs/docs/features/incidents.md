@@ -36,6 +36,16 @@ See [Confirmation and recovery](#thresholds) for the settings and a worked timel
 | `active` | Incident is ongoing, check is failing |
 | `resolved` | Check has recovered, incident closed |
 
+## Incident insights {#incident-insights}
+
+The **Insights** button of the incidents page opens a summary of the last 7, 30 or 90 days (`GET /api/v1/orgs/{org}/incidents/insights?period=30d`). It covers check outages only, not SLO burn alerts or degraded incidents.
+
+- **Top failing checks**: the 20 checks with the most incidents (ties broken by downtime), with their downtime, relapses and last incident.
+- **Time to acknowledge**: the median and p90 of `acknowledged_at` minus the start of the incident's current episode. Reopening an incident clears its acknowledgement, so the time is measured from the last reopening. The page always shows how many incidents were acknowledged ("12 of 40"), because most incidents recover before anyone acknowledges them. Rolled-up incidents nobody was paged for are left out of both numbers.
+- **Time to resolve**: the median and p90 of `resolved_at` minus `started_at`, over incidents resolved automatically or by hand. Closures that say nothing about recovery (expired, check deleted, check disabled, escalated) are counted under "Other" and left out of the median.
+
+Medians and p90 are nearest-rank values, never means, so one long outage does not skew them. A card with no sample shows a dash. At most 5,000 incidents are read; the page says when the list was truncated.
+
 ## Incident Number (`#42`)
 
 Every incident also carries a short, **per-organization** number, GitHub-issue

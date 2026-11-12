@@ -4045,6 +4045,80 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/incidents/insights:
+    get:
+      tags: [Incidents]
+      summary: Incident insights
+      description: >-
+        Top failing checks, time to acknowledge and time to resolve over a
+        trailing window. Check outages only (no SLO burn or degraded incidents).
+        Rolled-up (paging-suppressed) incidents count in the checks table and in
+        time to resolve, not in the acknowledge sample or ack rate. Medians and
+        p90 are nearest-rank over the sample; an empty sample has null
+        durations. At most 5000 incidents are read (`truncated`), and the
+        checks table holds the top 20.
+      operationId: getIncidentInsights
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: period
+          in: query
+          description: Trailing window, default 30d. Any other value answers 400 VALIDATION_ERROR.
+          schema:
+            type: string
+            enum: [7d, 30d, 90d]
+            default: 30d
+      responses:
+        "200":
+          description: Incident insights
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [period, windowStart, windowEnd, summary, checks, truncated]
+                properties:
+                  period: {type: string}
+                  windowStart: {type: string, format: date-time}
+                  windowEnd: {type: string, format: date-time}
+                  truncated: {type: boolean}
+                  summary:
+                    type: object
+                    properties:
+                      incidentCount: {type: integer}
+                      pagedCount: {type: integer}
+                      acknowledgedCount: {type: integer}
+                      ackRate: {type: number}
+                      timeToAcknowledge: {$ref: "#/components/schemas/IncidentInsightsStats"}
+                      timeToResolve: {$ref: "#/components/schemas/IncidentInsightsStats"}
+                      byResolution:
+                        type: object
+                        description: Keys auto, manual and other.
+                        additionalProperties:
+                          type: object
+                          properties:
+                            count: {type: integer}
+                            medianSeconds: {type: integer, nullable: true}
+                            p90Seconds: {type: integer, nullable: true}
+                  checks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        checkUid: {type: string}
+                        name: {type: string}
+                        slug: {type: string}
+                        incidentCount: {type: integer}
+                        downtimeSeconds: {type: integer}
+                        relapseCount: {type: integer}
+                        lastIncidentAt: {type: string, format: date-time}
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/incidents/{uid}:
     get:
       tags: [Incidents]
@@ -10635,6 +10709,12 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    IncidentInsightsStats:
+      type: object
+      properties:
+        medianSeconds: {type: integer, nullable: true}
+        p90Seconds: {type: integer, nullable: true}
+        sampleCount: {type: integer}
     SupportReplyWindow:
       type: object
       description: >
