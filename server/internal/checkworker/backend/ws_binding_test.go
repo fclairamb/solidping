@@ -232,8 +232,7 @@ func TestClaimAcceptsLegacyUnboundBlobWithAWarning(t *testing.T) {
 	r.Empty(results)
 	r.Len(jobs, 1)
 	r.Equal("alice:hunter2", jobs[0].Config["basicAuth"])
-	r.True(handler.has(slog.LevelWarn,
-		"sealed secrets are not bound to their target: seal them again (Re-seal page) to bind them"))
+	r.True(handler.hasWarn("sealed secrets are not bound to their target: seal them again (Re-seal page) to bind them"))
 }
 
 // agentBlob seals plain the way an agent's peer re-wrap does and stores it
@@ -307,7 +306,6 @@ func TestClaimRunsAgentAndServerBlobsWithSecretsOnly(t *testing.T) {
 		r.Empty(results, name)
 		r.Len(jobs, 1, name)
 		r.Equal("alice:hunter2", jobs[0].Config["basicAuth"], name)
-		r.False(handler.has(slog.LevelWarn,
-			"sealed secrets are not bound to their target: seal them again (Re-seal page) to bind them"), name)
+		r.False(handler.hasWarn("sealed secrets are not bound to their target: seal them again (Re-seal page) to bind them"), name)
 	}
 }
