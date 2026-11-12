@@ -48,6 +48,10 @@ func (h *faultHook) AfterQuery(context.Context, *bun.QueryEvent) {}
 //nolint:gochecknoglobals // Effectively a constant table.
 var faultSweepSkipped = map[string]bool{
 	"POST /api/v1/orgs/{org}/integrations/freebox/pair": true,
+	// Fetches the status page of the body's url (https://acme.com), a real
+	// host: when it stops answering, the wait outlasts the sweep's timeout
+	// (main CI red on 2026-11-12, acme.com unreachable).
+	"POST /api/v1/orgs/{org}/checks/vendor-status/components": true,
 }
 
 // faultBodies are the request bodies each route is driven with: an empty one
