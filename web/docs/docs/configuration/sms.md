@@ -17,20 +17,23 @@ An organization gets SMS in one of two ways, and it does **not** have to choose
 | Mode | Who configures it | Who pays | Sender |
 |---|---|---|---|
 | **Server-provided** (default) | The operator, once, with `SP_SMS_*` environment variables | The instance | One instance-wide sender |
-| **Bring your own** (override) | The organization, as a Twilio integration | The organization, directly to Twilio | The organization's own number |
+| **Bring your own** (override) | The organization, as a Twilio or SMS Factor integration | The organization, directly to its provider | The organization's own number or sender |
 
 Resolution is **per organization and per capability**:
 
 - An organization with its own Twilio integration sends through it — SMS *and*
   voice, since one Twilio account covers both. It never touches the instance
   credentials.
+- An organization with no Twilio integration but an enabled **SMS Factor**
+  integration sends its SMS through it. SMS Factor has no voice, so calls
+  still use the instance-level voice provider (or are unavailable).
 - An organization without one falls back to the instance-level provider.
 - Deleting the organization's integration drops it back to the server-provided
   mode on the next send — or to "SMS unavailable" if the instance has no SMS
   configured. **No organization is ever left resolving to nothing.**
 
 SMS and voice are resolved **independently**, because the providers differ:
-OVHcloud sells SMS but has no voice API. An instance can therefore run OVH for
+OVHcloud and SMS Factor sell SMS but have no voice API. An instance can therefore run OVH for
 SMS and Twilio for voice at the same time, which is the configuration we expect
 most deployments to want.
 
@@ -49,32 +52,35 @@ There are two independent ways an alert reaches a phone:
   subscriptions, escalation `connection` targets, the **Test** button). Useful
   for a team phone or a NOC handset, and it needs no per-user verification.
 
-Delivery status flows back in both modes, so the notification history shows the
-provider's own delivered / pending / failed state — see
-[Delivery receipts](#delivery-receipts).
+Delivery status flows back in both modes for Twilio and OVH, so the
+notification history shows the provider's own delivered / pending / failed
+state — see [Delivery receipts](#delivery-receipts). SMS Factor sends report
+no delivery receipts.
 
 ## Server-provided mode
 
 ### Choosing a provider
 
-| | Twilio | OVHcloud |
-|---|---|---|
-| SMS | yes | yes |
-| Voice | yes | **no** |
-| Indicative price to France | ~$0.0798 / SMS | ~0,054–0,060 € HT / SMS |
-| Delivery receipts | per-message callback | one service-level callback |
-| Acknowledge by SMS reply | yes | no |
+| | Twilio | OVHcloud | SMS Factor |
+|---|---|---|---|
+| SMS | yes | yes | yes |
+| Voice | yes | **no** | **no** |
+| Indicative price to France | ~$0.0798 / SMS | ~0,054–0,060 € HT / SMS | see SMS Factor's price list |
+| Delivery receipts | per-message callback | one service-level callback | **none** |
+| Acknowledge by SMS reply | yes | no | no |
+| Bring-your-own per organization | yes | no | yes |
 
-OVH is roughly half the price for European traffic; Twilio is the only option
-for voice and for ack-by-SMS-reply. Running both is normal.
+OVH and SMS Factor are cheaper for European traffic; Twilio is the only option
+for voice and for ack-by-SMS-reply. Running one of them for SMS and Twilio for
+voice is normal.
 
 ### Common settings
 
 | Variable | Default | Notes |
 |---|---|---|
 | `SP_SMS_ENABLED` | `false` | Kill switch. It only ever turns the feature **off** — credentials are still required to turn it on. |
-| `SP_SMS_PROVIDER` | `twilio` | `twilio` or `ovh`. |
-| `SP_SMS_SENDER` | — | The instance-wide sender: an E.164 number for Twilio, a registered alphanumeric sender or short number for OVH. |
+| `SP_SMS_PROVIDER` | `twilio` | `twilio`, `ovh` or `smsfactor`. |
+| `SP_SMS_SENDER` | — | The instance-wide sender: an E.164 number for Twilio, a registered alphanumeric sender or short number for OVH, a registered alphanumeric sender for SMS Factor (optional there). |
 | `SP_SMS_GLOBAL_RUNAWAY_PER_HOUR` | `500` | Instance-wide hourly cap — see [Spend protection](#spend-protection). Negative disables it. |
 | `SP_SMS_ALLOWED_COUNTRIES` | *(empty = all)* | Comma-separated E.164 country calling codes, e.g. `33,1,44`. |
 
@@ -118,6 +124,34 @@ Two OVH specifics worth knowing before you debug the wrong thing:
   segment — and is legally reserved for marketing, which transactional alerting
   is not.
 
+### SMS Factor as the instance provider
+
+Create an API token at
+[my.smsfactor.com/developers/api-tokens](https://my.smsfactor.com/developers/api-tokens).
+
+| Variable | Notes |
+|---|---|
+| `SP_SMS_SMSFACTOR_TOKEN` | **Secret.** The API token. Required. |
+| `SP_SMS_SMSFACTOR_BASE_URL` | Overrides `https://api.smsfactor.com` (proxy / tests). |
+
+`SP_SMS_SENDER` is the SMS Factor sender name. It is optional: when empty, SMS
+Factor sends under its default sender. When set, it must be 1 to 11 letters,
+digits or spaces (SolidPing refuses to start otherwise), and the sender must
+first be registered and approved on your SMS Factor account.
+
+SMS Factor specifics:
+
+- Messages go out with `pushtype: alert` (transactional), never as marketing.
+- **No delivery receipts.** The send request carries no per-message callback
+  and SolidPing has no SMS Factor receipt endpoint, so the notification history
+  shows the send as accepted and nothing more.
+- **Duplicate filter.** SMS Factor drops an identical message sent to the same
+  number within an hour. A send where every number was filtered (invalid,
+  blacklisted, duplicate, flood, country limit) is reported as a failure with
+  the counters SMS Factor returned.
+- A campaign held **under moderation** still goes out: SolidPing treats it as
+  accepted and never retries it.
+
 ### Voice (Twilio only)
 
 Voice has its own independent block, so turning off SMS never silences the
@@ -150,6 +184,8 @@ are the authority.
 
 - **Twilio** receives a per-message `StatusCallback`, signed and validated with
   the account auth token.
+- **SMS Factor**: none. The send request carries no callback, so an SMS Factor
+  send stays at "sent" in the timeline.
 - **OVH** has **no per-job callback field** — the callback URL is a
   service-level setting on the SMS account, and OVH does not sign it. SolidPing
   therefore registers
@@ -161,18 +197,26 @@ are the authority.
   If startup registration fails (read-only credentials, for instance), set the
   same URL as the account's callback in the OVH control panel.
 
-Either way, the notification timeline renders the same delivered / pending /
-failed states.
+For Twilio and OVH, the notification timeline renders the same delivered /
+pending / failed states.
 
-## Bring-your-own mode (per-organization Twilio)
+## Bring-your-own mode (per-organization Twilio or SMS Factor)
 
 An organization that wants its own account, sender identity or billing
 relationship adds a **Twilio integration** — this is unchanged and fully
 supported. It overrides the instance provider for that organization's SMS *and*
 voice.
 
-Bring-your-own is **Twilio-only**: OVH is offered as an instance-level provider
-only.
+An organization can instead add an **SMS Factor integration** (settings
+`token`, `sender`, `to_numbers`, see
+[Notifications](./notifications.md#sms-factor)). It overrides the instance
+provider for SMS only; calls keep using the instance voice provider. When an
+organization has both, Twilio wins. The token is checked against SMS Factor
+(`GET /credits`) on every create and on any update that changes it.
+
+OVH is offered as an instance-level provider only.
+
+The rest of this section is about Twilio.
 
 ### Prerequisites
 
@@ -412,8 +456,12 @@ opt-out language, so these are compliance text, not decoration.
   marketing, and it costs characters (possibly a whole extra billed segment) on
   every alert. Our own footer carries the opt-out language instead.
 
+The SMS Factor channel (shared `to_numbers`) sends no footer: its bodies are
+the same alerts without the Twilio opt-out line. Per-user paging keeps the
+footer whatever the provider.
+
 Acknowledging an incident **by SMS reply** is a Twilio-only capability and is
-not offered on the OVH path.
+not offered on the OVH or SMS Factor paths.
 
 ## Spend protection
 
@@ -490,6 +538,9 @@ A Twilio trial account is fine for a first end-to-end test, with three caveats:
 | Nothing sent, log says paging skipped | The contact is unverified, or neither mode is available: no organization integration **and** no instance-level SMS (`SP_SMS_ENABLED` plus credentials). |
 | Instance SMS refused, "country not in allow-list" in the logs | The destination's country calling code is outside `SP_SMS_ALLOWED_COUNTRIES`. Bring-your-own sends are never gated by it. |
 | Instance SMS refused, "instance-wide hourly cap exhausted" | `SP_SMS_GLOBAL_RUNAWAY_PER_HOUR` tripped — alerts are being dropped instance-wide. Check the Usage page. |
+| `smsfactor rejected the request: status -1` | The SMS Factor API token is wrong or revoked. |
+| `smsfactor rejected the request: status -3` | The SMS Factor account is out of credits. |
+| `smsfactor: no recipient reached` | SMS Factor filtered every number (invalid, blacklisted, duplicate within the hour, flood or country limit); the error lists the counters. |
 | OVH returns `403` with credentials you are sure of | Clock skew, or `/auth/time` unreachable — OVH signs against its own clock. |
 | OVH delivery receipts never arrive | The SMS account's service-level `callBack` is not set. SolidPing registers it at startup; set it manually in the OVH control panel if that failed. |
 | Notification history stuck on `queued` | Twilio cannot reach `SP_BASE_URL` to post delivery status. |

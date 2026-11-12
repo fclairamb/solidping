@@ -29,6 +29,7 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | [Pushover](#pushover) | Available | API integration |
 | [Web Push](#web-push) | Available | Browser push (VAPID) |
 | [SMS / Voice](./sms.md) | Available | [SMS & Voice](./sms.md) (server-provided by default, per-organization Twilio as an override) |
+| [SMS Factor](#sms-factor) | Available | SMS Factor API token (SMS only) |
 | [WhatsApp](./whatsapp.md) | Available | [Meta WhatsApp Business Cloud API](./whatsapp.md) (instance-level) |
 | [Telegram](./telegram.md) | Available | [Telegram Bot API](./telegram.md) (instance-level bot, free per message) |
 
@@ -907,6 +908,43 @@ fill in that field and save before testing again.
 1. Create an account at https://pushover.net
 2. Create a new Application/API Token for SolidPing
 3. Add your user key and API token in SolidPing's integration settings
+
+## SMS Factor
+
+[SMS Factor](https://www.smsfactor.com) sends SMS (no voice). An SMS Factor
+integration does two things:
+
+- As a channel, it texts every number in `to_numbers` on incident events, like
+  any other channel. Comments, acknowledgments and reminders are not sent: each
+  would be a paid text.
+- When the organization has no Twilio integration, it is also the
+  organization's own SMS provider for per-user phone paging (see
+  [SMS & Voice](./sms.md#bring-your-own-mode-per-organization-twilio-or-sms-factor)).
+
+### Configuration
+
+| Setting key | Required | Notes |
+|---|---|---|
+| `token` | yes | API token from [my.smsfactor.com/developers/api-tokens](https://my.smsfactor.com/developers/api-tokens). Stored encrypted, never returned by the API. |
+| `sender` | no | Alphanumeric sender registered on your SMS Factor account, 1 to 11 letters, digits or spaces. Empty uses SMS Factor's default sender. |
+| `to_numbers` | no | Shared recipients, E.164 (`+33612345678`). Needed for channel sends; leave empty if the integration only serves per-user paging. |
+
+```json
+{
+  "type": "smsfactor",
+  "name": "On-call phone",
+  "settings": { "token": "eyJ0...", "sender": "ACME", "to_numbers": ["+33612345678"] }
+}
+```
+
+On create, and on any update that changes `token`, SolidPing calls SMS Factor
+(`GET /credits`) to check the token. A rejected token, or SMS Factor being
+unreachable, refuses the save.
+
+Messages are sent as transactional alerts. They carry no `STOP` footer (that
+footer is a Twilio/US requirement), and SMS Factor reports no delivery
+receipts back to SolidPing. SMS Factor drops an identical message sent to the
+same number within an hour.
 
 ## Web Push
 

@@ -208,3 +208,22 @@ func TestStatusCallbackURLNeedsABaseURL(t *testing.T) {
 	r.Empty(smsStatusCallbackURL(cfg, "", "org-1", &smssvc.Resolution{SMSMode: smssvc.ModeServer}))
 	r.Empty(voiceStatusCallbackURL("", "org-1", &smssvc.Resolution{VoiceMode: smssvc.ModeServer}))
 }
+
+// TestStatusCallbackURLSMSFactorBringYourOwn pins that an SMS Factor
+// bring-your-own send (SMSMode bring_your_own with no Twilio Conn) requests no
+// Twilio receipt, even when the instance SMS provider is Twilio: falling back
+// to the instance sentinel would ask for a callback nothing will ever post.
+func TestStatusCallbackURLSMSFactorBringYourOwn(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	cfg := &config.Config{}
+	cfg.SMS.Provider = config.SMSProviderTwilio
+	r.Empty(smsStatusCallbackURL(cfg, "https://app.example.com", "org-1",
+		&smssvc.Resolution{SMSMode: smssvc.ModeBringYourOwn}))
+
+	// Positive control: the instance path still gets its sentinel callback.
+	r.Contains(smsStatusCallbackURL(cfg, "https://app.example.com", "org-1",
+		&smssvc.Resolution{SMSMode: smssvc.ModeServer}), "cid="+smssvc.InstanceCallbackID)
+}

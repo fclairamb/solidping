@@ -11,6 +11,9 @@ const (
 	SMSProviderTwilio = "twilio"
 	// SMSProviderOVH selects the OVHcloud SMS API as the instance SMS provider.
 	SMSProviderOVH = "ovh"
+	// SMSProviderSMSFactor selects the SMS Factor API as the instance SMS
+	// provider.
+	SMSProviderSMSFactor = "smsfactor"
 )
 
 // DefaultSMSGlobalRunawayPerHour bounds instance-wide SMS spend on the
@@ -68,6 +71,16 @@ type SMSOVHConfig struct {
 	DLRToken string `koanf:"dlr_token"`
 }
 
+// SMSSMSFactorConfig holds the instance-level SMS Factor credentials used when
+// Provider is "smsfactor". Token is a SECRET.
+type SMSSMSFactorConfig struct {
+	// Token is the API token created at my.smsfactor.com. SECRET.
+	Token string `koanf:"token"`
+	// BaseURL overrides the API base (SP_SMS_SMSFACTOR_BASE_URL) for tests /
+	// an egress proxy. Empty means https://api.smsfactor.com.
+	BaseURL string `koanf:"base_url"`
+}
+
 // SMSConfig contains the instance-level SMS configuration: which provider the
 // server itself sends through, under which sender identity, and the two
 // instance-spend guards.
@@ -84,11 +97,13 @@ type SMSConfig struct {
 	// Enabled is the kill switch (SP_SMS_ENABLED). It only ever turns the
 	// feature off — credentials are still required to turn it on (see Active).
 	Enabled bool `koanf:"enabled"`
-	// Provider selects the backend: "twilio" or "ovh". Empty defaults to
+	// Provider selects the backend: "twilio", "ovh" or "smsfactor". Empty defaults to
 	// "twilio" so an operator who supplies only Twilio credentials works.
 	Provider string `koanf:"provider"`
 	// Sender is the instance-wide sender identity: an E.164 number for Twilio,
-	// a registered alphanumeric sender (or short number) for OVH. There is
+	// a registered alphanumeric sender (or short number) for OVH, the
+	// registered alphanumeric sender for SMS Factor (optional there: empty
+	// lets SMS Factor use its default sender). There is
 	// deliberately no per-org override on this path — an org that wants its
 	// own sender brings its own Twilio integration instead.
 	Sender string `koanf:"sender"`
@@ -104,11 +119,13 @@ type SMSConfig struct {
 	// the bill. Like the global cap it gates SERVER-credential sends only.
 	AllowedCountries string `koanf:"allowed_countries"`
 
-	Twilio SMSTwilioConfig `koanf:"twilio"`
-	OVH    SMSOVHConfig    `koanf:"ovh"`
+	Twilio    SMSTwilioConfig    `koanf:"twilio"`
+	OVH       SMSOVHConfig       `koanf:"ovh"`
+	SMSFactor SMSSMSFactorConfig `koanf:"smsfactor"`
 }
 
-// ResolvedProvider returns the configured provider, defaulting to Twilio.
+// ResolvedProvider returns the configured provider ("twilio", "ovh" or
+// "smsfactor"), defaulting to Twilio.
 func (c *SMSConfig) ResolvedProvider() string {
 	if p := strings.ToLower(strings.TrimSpace(c.Provider)); p != "" {
 		return p
@@ -123,8 +140,19 @@ func (c *SMSConfig) ResolvedProvider() string {
 // public config endpoint: the kill switch must be on AND the credentials that
 // a send cannot work without must be present for the selected provider.
 // Anything else is off — in particular Enabled=true with no credentials.
+//
+// The sender is required for Twilio and OVH, which cannot send without one;
+// SMS Factor falls back to its own default sender, so only its token is.
 func (c *SMSConfig) Active() bool {
-	if !c.Enabled || strings.TrimSpace(c.Sender) == "" {
+	if !c.Enabled {
+		return false
+	}
+
+	if c.ResolvedProvider() == SMSProviderSMSFactor {
+		return strings.TrimSpace(c.SMSFactor.Token) != ""
+	}
+
+	if strings.TrimSpace(c.Sender) == "" {
 		return false
 	}
 
@@ -224,6 +252,9 @@ const (
 	EnvSMSOVHBaseURL           = "SP_SMS_OVH_BASE_URL"
 	EnvSMSOVHDLRToken          = "SP_SMS_OVH_DLR_TOKEN"
 
+	EnvSMSSMSFactorToken   = "SP_SMS_SMSFACTOR_TOKEN"
+	EnvSMSSMSFactorBaseURL = "SP_SMS_SMSFACTOR_BASE_URL"
+
 	EnvVoiceEnabled          = "SP_VOICE_ENABLED"
 	EnvVoiceFromNumber       = "SP_VOICE_FROM_NUMBER"
 	EnvVoiceTwilioAccountSID = "SP_VOICE_TWILIO_ACCOUNT_SID"
@@ -242,6 +273,7 @@ func SMSEnvVarNames() []string {
 		EnvSMSOVHEndpoint, EnvSMSOVHApplicationKey, EnvSMSOVHApplicationSecret,
 		EnvSMSOVHConsumerKey, EnvSMSOVHServiceName, EnvSMSOVHBaseURL,
 		EnvSMSOVHDLRToken,
+		EnvSMSSMSFactorToken, EnvSMSSMSFactorBaseURL,
 	}
 }
 
@@ -282,6 +314,7 @@ func applySMSEnv(cfg *SMSConfig) {
 		&cfg.OVH.Endpoint, &cfg.OVH.ApplicationKey, &cfg.OVH.ApplicationSecret,
 		&cfg.OVH.ConsumerKey, &cfg.OVH.ServiceName, &cfg.OVH.BaseURL,
 		&cfg.OVH.DLRToken,
+		&cfg.SMSFactor.Token, &cfg.SMSFactor.BaseURL,
 	}
 
 	for i, name := range SMSEnvVarNames() {

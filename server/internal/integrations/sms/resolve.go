@@ -22,9 +22,9 @@ const (
 	// ModeServer means the send uses this instance's own SP_SMS_*/SP_VOICE_*
 	// credentials. This is the default and needs no per-org setup.
 	ModeServer Mode = "server"
-	// ModeBringYourOwn means the org has its own Twilio integration, which
-	// overrides the instance provider for that org's SMS and voice. The
-	// customer's account is billed.
+	// ModeBringYourOwn means the org has its own Twilio integration (SMS and
+	// voice) or SMS Factor integration (SMS only), which overrides the
+	// instance provider for that capability. The customer's account is billed.
 	ModeBringYourOwn Mode = "bring_your_own"
 	// ModeUnavailable means neither is configured — the channel simply cannot
 	// send for this org.
@@ -45,6 +45,9 @@ type Resolution struct {
 	Voice VoiceCaller
 	// Conn is the org's own Twilio integration when one exists (whatever mode
 	// each capability ended up in), nil otherwise. Callbacks need its UID.
+	// Never set for an SMS Factor bring-your-own send: that provider has no
+	// Twilio-style callbacks, so a nil Conn with SMSMode == ModeBringYourOwn
+	// means "no status callback".
 	Conn *models.Integration
 	// SenderID is the sender identity SMS goes out under — informational, for
 	// the UI panel. Never a credential.
@@ -69,7 +72,8 @@ func (r *Resolution) InstanceCredentialsForSMS() bool { return r.SMSMode == Mode
 func (r *Resolution) InstanceCredentialsForVoice() bool { return r.VoiceMode == ModeServer }
 
 // Resolver picks, per org and per capability, between the org's own Twilio
-// integration and the instance-level provider.
+// integration (or, for SMS only, its SMS Factor integration) and the
+// instance-level provider.
 type Resolver struct {
 	db    db.Service
 	creds credentials.Service
@@ -86,6 +90,9 @@ type Resolver struct {
 	// a package-level var, so parallel tests can never race on it; nil means
 	// NewOrgTwilioSender.
 	orgSenderFactory func(*models.TwilioSettings) PhoneSender
+	// orgSMSFactorFactory is orgSenderFactory for a per-org SMS Factor
+	// integration; nil means NewOrgSMSFactorSender.
+	orgSMSFactorFactory func(*models.SMSFactorSettings) Sender
 }
 
 // ResolverOption customizes a Resolver at construction.
@@ -98,6 +105,18 @@ func WithOrgSenderFactory(factory func(*models.TwilioSettings) PhoneSender) Reso
 	return func(r *Resolver) { r.orgSenderFactory = factory }
 }
 
+// WithOrgSMSFactorSenderFactory overrides how a bring-your-own SMS Factor
+// sender is built from a per-org integration's settings (tests).
+func WithOrgSMSFactorSenderFactory(factory func(*models.SMSFactorSettings) Sender) ResolverOption {
+	return func(r *Resolver) { r.orgSMSFactorFactory = factory }
+}
+
+// NewOrgSMSFactorSender builds the bring-your-own SMS sender from a per-org
+// SMS Factor integration's decrypted settings.
+func NewOrgSMSFactorSender(settings *models.SMSFactorSettings) Sender {
+	return NewSMSFactorSender(settings.Token, "", settings.Sender)
+}
+
 // NewResolver builds a resolver. instanceSender / instanceVoice may be nil,
 // which simply means the instance offers no server-provided SMS / voice.
 func NewResolver(
@@ -108,8 +127,9 @@ func NewResolver(
 	resolver := &Resolver{
 		db: dbSvc, creds: creds,
 		instanceSender: instanceSender, instanceVoice: instanceVoice,
-		instanceSenderID: instanceSenderID,
-		orgSenderFactory: NewOrgTwilioSender,
+		instanceSenderID:    instanceSenderID,
+		orgSenderFactory:    NewOrgTwilioSender,
+		orgSMSFactorFactory: NewOrgSMSFactorSender,
 	}
 
 	for _, opt := range opts {
@@ -123,6 +143,8 @@ func NewResolver(
 //
 // Resolution order, applied per capability: a per-org custom integration
 // PROVIDING that capability wins; otherwise the instance-level config applies.
+// For SMS the org's Twilio integration is preferred over its SMS Factor one,
+// which is only looked up when the org has no Twilio integration.
 // An org that has its own integration therefore never touches the instance
 // credentials for a capability its own account covers — which is the whole
 // point of bring-your-own, and the reason the guards in §6 can be scoped to
@@ -167,6 +189,12 @@ func (r *Resolver) Resolve(ctx context.Context, orgUID string) (*Resolution, err
 		}
 	}
 
+	if conn == nil {
+		if err := r.resolveOrgSMSFactor(ctx, orgUID, res); err != nil {
+			return nil, err
+		}
+	}
+
 	if res.Sender == nil && r.instanceSender != nil {
 		res.Sender = r.instanceSender
 		res.SMSMode = ModeServer
@@ -196,6 +224,36 @@ func (r *Resolver) orgIntegration(
 	}
 
 	return conn, settings, nil
+}
+
+// resolveOrgSMSFactor makes the org's default enabled SMS Factor integration,
+// when it has one, its bring-your-own SMS provider. Voice is untouched: SMS
+// Factor has none, so it stays on the instance (or unavailable).
+func (r *Resolver) resolveOrgSMSFactor(ctx context.Context, orgUID string, res *Resolution) error {
+	conn, err := twilioconn.DefaultEnabledConnection(ctx, r.db, orgUID, models.ConnectionTypeSMSFactor)
+	if err != nil {
+		return fmt.Errorf("resolve org smsfactor integration: %w", err)
+	}
+
+	if conn == nil {
+		return nil
+	}
+
+	raw, err := twilioconn.DecryptSettingsMap(ctx, r.creds, conn)
+	if err != nil {
+		return fmt.Errorf("resolve org smsfactor integration: %w", err)
+	}
+
+	settings, err := models.SMSFactorSettingsFromJSONMap(raw)
+	if err != nil {
+		return fmt.Errorf("parse smsfactor settings: %w", err)
+	}
+
+	res.Sender = r.orgSMSFactorFactory(settings)
+	res.SMSMode = ModeBringYourOwn
+	res.SenderID = settings.Sender
+
+	return nil
 }
 
 // InstanceCallbackID is the sentinel `cid` used on Twilio callback URLs for a

@@ -100,6 +100,13 @@
     "twilioInvalidNumber": "Keine gültige E.164-Nummer",
     "twilioRemoveNumber": "{{n}} entfernen",
     "twilioToHint": "Direktkanal-Sendungen (Broadcast pro Check, Test) senden SMS an diese Nummern.",
+    "smsfactorToken": "API-Token",
+    "smsfactorSender": "Absendername (optional)",
+    "smsfactorSenderHint": "Bis zu 11 Buchstaben, Ziffern oder Leerzeichen, bei SMS Factor registriert. Leer lassen, um den Standardabsender des Kontos zu verwenden.",
+    "smsfactorToNumbers": "Gemeinsame Empfängernummern (optional)",
+    "smsfactorInvalidNumber": "Keine gültige E.164-Nummer",
+    "smsfactorRemoveNumber": "{{n}} entfernen",
+    "smsfactorToHint": "Direktkanal-Sendungen (Broadcast pro Check, Test) senden SMS an diese Nummern.",
     "slackOauthHint": "Slack-Kanäle werden über die Slack-OAuth-Installation konfiguriert. Der Bot füllt Workspace- und Kanalnamen nach Abschluss.",
     "testNeedsSave": "Speichern Sie zuerst Ihre Änderungen — der Test verwendet die gespeicherten Einstellungen.",
     "msteamsBotCreateHint": "Erstellen Sie zuerst die Integration, installieren Sie dann das Teams-App-Paket und führen Sie den hier angezeigten Verknüpfungsbefehl aus, um Ihren Microsoft-365-Mandanten zu verbinden.",
@@ -250,6 +257,7 @@
     "pagerduty": "Bereitschaftsdienst über PagerDuty alarmieren",
     "pushover": "Mobile Push-Benachrichtigungen über Pushover",
     "twilio": "SMS senden und Sprachanrufe über Twilio tätigen",
+    "smsfactor": "SMS über SMS Factor senden",
     "webpush": "Browser-Benachrichtigungen auf abonnierten Geräten empfangen",
     "kubernetes": "Replikat-Gesundheit von Kubernetes-Workloads überwachen (Deployments, ReplicaSets)",
     "msteams-bot": "Bidirektionaler Teams-Bot: Alarme, @Mention-Befehle und gebündelte Vorfall-Updates",
@@ -267,16 +275,17 @@
     "server": {
       "body": "SMS werden von dieser Instanz bereitgestellt — keine Einrichtung nötig.",
       "bodyWithSender": "SMS werden von dieser Instanz bereitgestellt. Nachrichten werden von {{sender}} gesendet — keine Einrichtung nötig.",
-      "override": "Sie können eine eigene Twilio-Integration hinzufügen, um mit Ihrem Konto, Absender und Ihrer Abrechnung zu senden. Sie überschreibt den Anbieter der Instanz für diese Organisation."
+      "override": "Sie können eine eigene Twilio- oder SMS-Factor-Integration hinzufügen, um mit Ihrem Konto, Absender und Ihrer Abrechnung zu senden. Sie überschreibt den Anbieter der Instanz für diese Organisation."
     },
     "byo": {
       "body": "Diese Organisation sendet über ihre eigene Twilio-Integration („{{name}}“). Sie überschreibt den Anbieter der Instanz für SMS und Anrufe dieser Organisation, und Twilio rechnet direkt mit Ihnen ab.",
+      "bodySmsFactor": "Diese Organisation sendet SMS über ihre eigene SMS-Factor-Integration („{{name}}“). Sie überschreibt den SMS-Anbieter der Instanz für diese Organisation, und SMS Factor rechnet direkt mit Ihnen ab. Alarmanrufe sind nicht betroffen.",
       "onDeleteFallback": "Beim Löschen fällt die Organisation auf die von dieser Instanz bereitgestellten SMS zurück.",
       "onDeleteUnavailable": "Beim Löschen sind SMS für diese Organisation nicht mehr verfügbar — diese Instanz stellt keine eigenen bereit."
     },
     "unavailable": {
-      "body": "Diese Instanz stellt keine SMS bereit und diese Organisation hat keine eigene Twilio-Integration, daher können keine SMS- und Sprachalarme gesendet werden.",
-      "fix": "Fügen Sie eine Twilio-Integration hinzu, um Ihr eigenes Konto zu nutzen, oder bitten Sie den Betreiber, SMS für diese Instanz zu konfigurieren."
+      "body": "Diese Instanz stellt keine SMS bereit und diese Organisation hat keine eigene Twilio- oder SMS-Factor-Integration, daher können keine SMS- und Sprachalarme gesendet werden.",
+      "fix": "Fügen Sie eine Twilio- oder SMS-Factor-Integration hinzu, um Ihr eigenes Konto zu nutzen, oder bitten Sie den Betreiber, SMS für diese Instanz zu konfigurieren."
     },
     "voice": {
       "byo": "Alarmanrufe nutzen dasselbe Twilio-Konto, sofern eine Anrufer-ID konfiguriert ist.",
