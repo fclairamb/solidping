@@ -20,6 +20,7 @@ var (
 	ErrNoMailAccount    = errors.New("jmap: no account with mail capability")
 	ErrUnexpectedStatus = errors.New("jmap: unexpected HTTP status")
 	ErrResponseTooLarge = errors.New("jmap: response too large")
+	ErrNoDownloadURL    = errors.New("jmap: session has no download URL")
 )
 
 // maxResponseBody caps how much of a session or method answer the client
@@ -27,6 +28,11 @@ var (
 // that host fill the server's memory (spec 2026-10-20-01). Email/get asks for
 // metadata only, so a real answer stays far below this.
 const maxResponseBody = 16 << 20
+
+// MaxBlobSize caps how many bytes DownloadBlob reads. A message larger than
+// this is reported as ErrResponseTooLarge rather than read whole: DKIM needs the
+// exact bytes, so a truncated copy would be worse than none.
+const MaxBlobSize = 10 << 20
 
 // maxErrorSnippet caps how much of an error body goes into an error string.
 const maxErrorSnippet = 512
@@ -266,4 +272,54 @@ func (c *Client) rewrite(raw string) string {
 	}
 
 	return parsed.String()
+}
+
+// DownloadBlob fetches a blob (typically an email's raw RFC 5322 message, via
+// Email.blobId) through the session's downloadUrl template (RFC 8620 §6.2). The
+// read is capped at MaxBlobSize; a longer blob fails with ErrResponseTooLarge.
+func (c *Client) DownloadBlob(ctx context.Context, accountID, blobID string) ([]byte, error) {
+	c.mu.RLock()
+	template := c.downloadURL
+	c.mu.RUnlock()
+
+	if template == "" {
+		return nil, ErrNoDownloadURL
+	}
+
+	target := strings.NewReplacer(
+		"{accountId}", url.PathEscape(accountID),
+		"{blobId}", url.PathEscape(blobID),
+		"{type}", url.PathEscape("message/rfc822"),
+		"{name}", url.PathEscape("message.eml"),
+	).Replace(template)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+
+	c.applyAuth(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("download blob: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= 300 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorSnippet+1))
+
+		return nil, fmt.Errorf("%w: %d: %s", ErrUnexpectedStatus, resp.StatusCode, errorSnippet(snippet))
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxBlobSize+1))
+	if err != nil {
+		return nil, fmt.Errorf("read blob: %w", err)
+	}
+
+	if len(body) > MaxBlobSize {
+		return nil, ErrResponseTooLarge
+	}
+
+	return body, nil
 }

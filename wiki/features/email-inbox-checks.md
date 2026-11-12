@@ -115,6 +115,64 @@ The handler picks a status with the following priority
 Any unknown status string falls through to the next priority level. If
 nothing matches the email defaults to `up`.
 
+## Sender authentication
+
+By default a check turns green as soon as a message carrying the token lands:
+"delivered" says nothing about whether a real recipient would have accepted it.
+Four optional settings on the check (all off by default, in which case nothing
+extra is looked up or recorded) verify the sender "like a receiving MTA would":
+
+```yaml
+config:
+  require_spf: pass        # none | softfail | pass  (a minimum)
+  require_dkim: true       # a valid signature aligned with the From domain
+  require_dmarc: pass
+  check_blocklists: true   # look the sending IP up on DNS blocklists
+  blocklists: [zen.spamhaus.org, bl.spamcop.net]   # empty = the dnsbl defaults
+```
+
+`blocklists` alone implies `check_blocklists`. `require_spf: softfail` accepts
+`pass`, `neutral` and `softfail`; `none` accepts anything but `fail` and
+`permerror`. A failed requirement records the check as `down` with a message
+such as `delivered, but SPF softfail for example.com`. (`degraded` is a rollup
+status that checkers never emit, so there is no softer option.)
+
+**What is verified, and from what.** SolidPing reads the inbox over JMAP, so it
+never sees the SMTP connection: the sending IP and the envelope sender are
+recovered from the headers the receiving server added. The verdicts are computed
+locally (SPF, DKIM and DMARC), not copied from the provider, so they do not
+change with the inbox provider. The provider's own `Authentication-Results:` is
+reported as `provider_auth` for comparison and never decides the status.
+
+**Which `Received:` hop is trusted.** Walking the `Received:` headers top-down,
+hops whose peer IP is private or loopback (the provider's internal relays) are
+skipped and the first public IP is the sending IP. Everything below that hop was
+written by the sender's side and can be forged, so it is only reported
+(`received_ips`) and never used. SPF uses the `Return-Path:` domain, falling back
+to the HELO of that hop, then to the From domain. DKIM and DMARC need the exact
+message bytes, so the raw message is downloaded over JMAP (capped at 10 MiB) only
+for checks that require them.
+
+**`temperror`.** The whole evaluation has a 5 s deadline and the lookups run in
+parallel. A timeout, a DNS error or a raw message that cannot be downloaded gives
+the verdict `temperror`, which never fails a requirement (resolver noise does not
+page anyone): it is reported in the result and logged at WARN. A blocklist that
+refuses the query (a `127.255.255.x` answer) is likewise inconclusive, not listed.
+The evaluation only runs when the token-derived status is `up`: an explicit
+`+down` / `error` from the sender is never masked.
+
+**Result output.** When the evaluation ran, the result carries an `auth` object
+(`sending_ip`, `spf`, `spf_domain`, `dkim`, `dkim_domains`, `dkim_aligned`,
+`dmarc`, `dmarc_policy`, `blocklisted_on`, `provider_auth`, `received_ips`; only
+the parts that were enabled) and a `blocklisted_count` metric.
+
+**Cost.** One blob download (DKIM / DMARC only) and a few DNS lookups per email.
+
+To monitor a relay's deliverability end to end, pair an `smtp` check in send mode
+with an `email` check that requires SPF / DKIM / blocklist cleanliness: the
+round-trip then turns red when the relay's egress IP gets listed, not only when
+mail stops arriving.
+
 ## Mailboxes & retention
 
 The manager owns three mailboxes by JMAP role:
