@@ -947,7 +947,7 @@ export function useInfiniteChecks(
    * describes how often to refresh a cache entry, not which entry it is).
    * Kept as a second parameter so it can never accidentally fork the key.
    */
-  queryOptions?: { refetchInterval?: number },
+  queryOptions?: { refetchInterval?: number; enabled?: boolean },
 ) {
   return useInfiniteQuery({
     queryKey: ["checks", "infinite", org, options],
@@ -960,7 +960,7 @@ export function useInfiniteChecks(
     },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.pagination?.cursor,
-    enabled: !!org,
+    enabled: !!org && (queryOptions?.enabled ?? true),
     refetchInterval: queryOptions?.refetchInterval,
   });
 }
@@ -7129,6 +7129,8 @@ export interface NotificationContact {
   value: string;
   label: string;
   verifiedAt?: string;
+  deliveryFailedAt?: string;
+  deliveryFailureCode?: string;
 }
 
 export interface NotificationRoute {

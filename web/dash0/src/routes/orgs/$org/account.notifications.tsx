@@ -457,6 +457,17 @@ function RouteRow({
                 route.contact.label || route.contact.value
               : route.contact.value}
         </div>
+        {route.contact.deliveryFailedAt && (
+          <Badge
+            variant="outline"
+            className="mt-1 text-xs text-yellow-600 border-yellow-400 whitespace-normal"
+            data-testid="contact-delivery-failed"
+          >
+            {t("notifications.deliveryFailedBadge", {
+              code: (route.contact.deliveryFailureCode ?? "").replace(/_/g, " "),
+            })}
+          </Badge>
+        )}
         {isTelegram && isVerified && (
           <Badge
             variant="outline"

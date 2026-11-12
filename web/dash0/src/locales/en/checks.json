@@ -16,7 +16,9 @@
     "labels": "Labels",
     "scope": "Scope",
     "selected_one": "{{count}} selected",
-    "selected_other": "{{count}} selected"
+    "selected_other": "{{count}} selected",
+    "group": "Group",
+    "ungrouped": "Ungrouped"
   },
   "resetFilters": "Reset",
   "resultCount_one": "{{count}} check",
@@ -1789,5 +1791,7 @@
     "replaceToEdit": "Sealed secrets are replaced together: click Replace to type them all again.",
     "targetChanged": "The target of this check changed: its sealed secrets are bound to the old one, type them again.",
     "sharedRegionDisabled": "Shared locations are disabled: this organization requires check secrets to be sealed in the browser."
-  }
+  },
+  "groupFilterUnknown": "No group matches “{{slug}}”.",
+  "clearGroupFilter": "Clear filter"
 }

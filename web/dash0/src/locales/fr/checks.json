@@ -16,7 +16,9 @@
     "labels": "Étiquettes",
     "scope": "Périmètre",
     "selected_one": "{{count}} sélectionné",
-    "selected_other": "{{count}} sélectionnés"
+    "selected_other": "{{count}} sélectionnés",
+    "group": "Groupe",
+    "ungrouped": "Sans groupe"
   },
   "resetFilters": "Réinitialiser",
   "resultCount_one": "{{count}} contrôle",
@@ -1789,5 +1791,7 @@
     "replaceToEdit": "Les secrets scellés se remplacent ensemble : cliquez sur Remplacer pour tous les saisir à nouveau.",
     "targetChanged": "La cible de ce check a changé : ses secrets scellés sont liés à l'ancienne, saisissez-les à nouveau.",
     "sharedRegionDisabled": "Les régions partagées sont désactivées : cette organisation exige que les secrets des checks soient scellés dans le navigateur."
-  }
+  },
+  "groupFilterUnknown": "Aucun groupe ne correspond à « {{slug}} ».",
+  "clearGroupFilter": "Effacer le filtre"
 }

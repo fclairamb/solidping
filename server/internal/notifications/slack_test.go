@@ -2574,6 +2574,12 @@ func (m *mockDBService) SetUserContactDMChannel(_ context.Context, _, _ string) 
 	return nil
 }
 
+func (m *mockDBService) SetUserContactDeliveryFailure(
+	_ context.Context, _ string, _ *time.Time, _ string,
+) error {
+	return nil
+}
+
 func (m *mockDBService) ClearUserContactVerified(_ context.Context, _ string) error {
 	return nil
 }

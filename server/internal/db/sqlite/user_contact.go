@@ -131,6 +131,10 @@ func (s *Service) UpsertUserContact(ctx context.Context, c *models.UserContact) 
 		// contact, and clearing the cache would cost one extra round trip on the
 		// next page for no reason at all.
 		Set("dm_channel_id = coalesce(EXCLUDED.dm_channel_id, \"user_contact\".dm_channel_id)").
+		// Re-linking or editing a contact is the user's fix for an unreachable
+		// recipient: forget the recorded delivery failure.
+		Set("delivery_failed_at = NULL").
+		Set("delivery_failure_code = NULL").
 		Set("deleted_at = NULL").
 		Set("updated_at = ?", time.Now()).
 		Returning("uid").
@@ -278,6 +282,29 @@ func (s *Service) SetUserContactDMChannel(ctx context.Context, uid, channelID st
 
 	if _, err := query.Exec(ctx); err != nil {
 		return fmt.Errorf("set user contact dm channel: %w", err)
+	}
+
+	return nil
+}
+
+// SetUserContactDeliveryFailure records that a provider rejected the contact
+// as an unreachable recipient. A nil failedAt (and empty code) clears it.
+func (s *Service) SetUserContactDeliveryFailure(
+	ctx context.Context, uid string, failedAt *time.Time, code string,
+) error {
+	query := s.db.NewUpdate().
+		Model((*models.UserContact)(nil)).
+		Where("uid = ?", uid).
+		Set("updated_at = ?", time.Now())
+
+	if failedAt == nil {
+		query = query.Set("delivery_failed_at = NULL").Set("delivery_failure_code = NULL")
+	} else {
+		query = query.Set("delivery_failed_at = ?", *failedAt).Set("delivery_failure_code = ?", code)
+	}
+
+	if _, err := query.Exec(ctx); err != nil {
+		return fmt.Errorf("set user contact delivery failure: %w", err)
 	}
 
 	return nil

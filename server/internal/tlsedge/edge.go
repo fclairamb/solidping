@@ -454,7 +454,12 @@ func (e *Edge) TLSConfig(ctx context.Context) *tls.Config {
 				return cert, nil
 			}
 
-			e.log.WarnContext(ctx, "tlsedge: refusing to serve a host we do not own", "host", host)
+			// DEBUG, not WARN: almost every refusal is an internet scanner
+			// probing the node IP with a random or missing SNI, so a WARN per
+			// probe is noise that grows with the scanning rate and buries the
+			// warnings an operator acts on. A host we used to serve is the
+			// WARN above.
+			e.log.DebugContext(ctx, "tlsedge: refusing to serve a host we do not own", "host", host)
 
 			return nil, fmt.Errorf("%w: %s", ErrHostNotAllowed, host)
 		}
