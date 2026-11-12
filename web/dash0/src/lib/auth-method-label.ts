@@ -19,6 +19,7 @@ const BASE_METHOD_KEYS: Record<string, string> = {
   microsoft: "sessions.methodMicrosoft",
   discord: "sessions.methodDiscord",
   slack: "sessions.methodSlack",
+  telegram: "sessions.methodTelegram",
   oidc: "sessions.methodOidc",
   saml: "sessions.methodSaml",
   invitation: "sessions.methodInvitation",

@@ -1,7 +1,9 @@
 package config
 
 import (
+	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -61,4 +63,25 @@ func TestBrowserCheckerEnvNeedsManualReader(t *testing.T) {
 
 	r.Contains(set, "SP_CHECKERS_BROWSER_CDP_URL")
 	r.Contains(set, "SP_CHECKERS_BROWSER_CHROME_PATH")
+}
+
+// TestLeaseMarginEnv: SP_CHECKERS_LEASE_MARGIN binds through koanf's env
+// loader (single-word keys) and defaults to 30s (spec 2026-11-11-06).
+func TestLeaseMarginEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_CHECKERS_LEASE_MARGIN", "1s") // restored after the test
+	r.NoError(os.Unsetenv("SP_CHECKERS_LEASE_MARGIN"))
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal(30*time.Second, cfg.Checkers.Lease.Margin)
+
+	t.Setenv("SP_CHECKERS_LEASE_MARGIN", "2m")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.Equal(2*time.Minute, cfg.Checkers.Lease.Margin)
+
+	r.Contains(RecognizedEnvVars(), "SP_CHECKERS_LEASE_MARGIN")
 }

@@ -208,6 +208,9 @@ func (c *HTTPChecker) execute(
 	tracker := &connFamilyTracker{}
 	ctx = httptrace.WithClientTrace(ctx, tracker.clientTrace())
 
+	fallback := &checkerdef.FamilyFallbackObserver{}
+	ctx = httptrace.WithClientTrace(ctx, fallback.ClientTrace())
+
 	timer := newPhaseTimer(time.Now())
 	ctx = httptrace.WithClientTrace(ctx, timer.clientTrace())
 
@@ -226,6 +229,10 @@ func (c *HTTPChecker) execute(
 
 		result.Output[checkerdef.OutputKeyIPVersion] = version.String()
 	}
+
+	// An auto-family probe that only got through on its fallback family is up
+	// but worth reporting; a failure keeps its status.
+	fallback.Fallback().Apply(result)
 
 	// The resolved peer address is only observable from the trace, so it is
 	// stamped onto the capture here rather than inside executeRequest.

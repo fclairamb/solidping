@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"time"
 
 	"github.com/prometheus/common/expfmt"
@@ -78,20 +79,28 @@ func (c *PrometheusChecker) Execute(
 		return nil, err
 	}
 
+	fallback := &checkerdef.FamilyFallbackObserver{}
+	ctx = httptrace.WithClientTrace(ctx, fallback.ClientTrace())
+
 	start := time.Now()
 
 	resolved, fetchErr := fetchValue(ctx, cfg)
 	duration := time.Since(start)
 
-	if fetchErr != nil {
-		return fetchFailureResult(cfg, duration, fetchErr), nil
+	var result *checkerdef.Result
+
+	switch {
+	case fetchErr != nil:
+		result = fetchFailureResult(cfg, duration, fetchErr)
+	case resolved.Matched == 0:
+		result = missingResult(cfg, duration)
+	default:
+		result = gradeResult(cfg, resolved, duration)
 	}
 
-	if resolved.Matched == 0 {
-		return missingResult(cfg, duration), nil
-	}
+	fallback.Fallback().Apply(result)
 
-	return gradeResult(cfg, resolved, duration), nil
+	return result, nil
 }
 
 // resolution is the outcome of one fetch: the single numeric value, how many

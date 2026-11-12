@@ -372,12 +372,12 @@ func manualReaderPlatformEnvVars() []string {
 	whatsAppNames := WhatsAppEnvVarNames()
 	telegramNames := TelegramEnvVarNames()
 	smsNames := AllSMSEnvVarNames()
-	out := make([]string, 0, len(names)+len(whatsAppNames)+len(telegramNames)+len(smsNames)+2)
+	out := make([]string, 0, len(names)+len(whatsAppNames)+len(telegramNames)+len(smsNames)+3)
 	out = append(out, names...)
 	out = append(out, whatsAppNames...)
 	out = append(out, EnvEntitlementsWhatsAppRunaway)
 	out = append(out, telegramNames...)
-	out = append(out, EnvEntitlementsTelegramRunaway)
+	out = append(out, EnvTelegramLoginEnabled, EnvEntitlementsTelegramRunaway)
 	out = append(out, smsNames...)
 
 	return out

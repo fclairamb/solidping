@@ -167,6 +167,18 @@ func RecordResultsReaped(n int) {
 	ResultsReaped.Add(float64(n))
 }
 
+// RecordCheckLeaseHeld observes the claim-to-release time of a check job
+// lease in region (spec 2026-11-11-06).
+func RecordCheckLeaseHeld(region string, seconds float64) {
+	CheckLeaseHeld.WithLabelValues(region).Observe(seconds)
+}
+
+// RecordCheckLeaseLost counts a check job release refused because a peer had
+// re-claimed the expired lease (spec 2026-11-11-06).
+func RecordCheckLeaseLost(region string) {
+	CheckLeaseLost.WithLabelValues(region).Inc()
+}
+
 // RecordJobLeaseLost increments the lease-lost counter for the given job type.
 // Called when a worker's terminal write is discarded because the reaper already
 // transitioned the job out of 'running'.

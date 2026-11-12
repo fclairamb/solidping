@@ -438,6 +438,21 @@ type CheckersConfig struct {
 	// koanf's env loader cannot reach it: SP_CHECK_ENV_ALLOWLIST is bound by
 	// hand in applyCheckersEnv. Read through Config.EnvRefAllowed.
 	EnvRefAllowlist []string `koanf:"env_ref_allowlist"`
+	// Lease sizes the check-job lease a worker takes at claim time (spec
+	// 2026-11-11-06).
+	Lease LeaseConfig `koanf:"lease"`
+}
+
+// LeaseConfig sizes the lease a check worker holds on a claimed check job:
+// max(scheduled_at, now) + max(period, check timeout) + Margin. Single-word
+// koanf keys, so koanf's env loader binds them without a manual reader.
+type LeaseConfig struct {
+	// Margin is the slack on top of max(period, check timeout)
+	// (SP_CHECKERS_LEASE_MARGIN, default 30s). It must cover the claim, the
+	// result submission and the release round-trips: give a remote region
+	// with a slow database link more, so a peer does not re-claim a job
+	// still running there.
+	Margin time.Duration `koanf:"margin"`
 }
 
 // EnvCheckEnvAllowlist is the comma-separated list of environment variable
@@ -1912,6 +1927,11 @@ type TelegramConfig struct {
 	// egress proxy, and so tests / test mode can point the whole feature at an
 	// httptest fake without any code path differing.
 	BaseURL string `koanf:"base_url"`
+	// LoginEnabled turns on "Sign in with Telegram" (SP_TELEGRAM_LOGIN_ENABLED).
+	// Default false: Telegram's login only answers for the domain the bot was
+	// given with @BotFather /setdomain, which the operator sets by hand, so the
+	// button must not appear before that is done. See LoginActive.
+	LoginEnabled bool `koanf:"login_enabled"`
 }
 
 // BoolPtr returns a pointer to b, for the tri-state config switches where a
@@ -1954,6 +1974,33 @@ func (c *TelegramConfig) Configured() bool {
 // what used to make SP_TELEGRAM_BOT_USERNAME mandatory even for sending.
 func (c *TelegramConfig) Active() bool {
 	return c.Configured() && strings.TrimSpace(c.BotUsername) != ""
+}
+
+// LoginActive reports whether "Sign in with Telegram" is offered: the bot is
+// configured, the operator opted in with SP_TELEGRAM_LOGIN_ENABLED, and the
+// token carries the numeric bot id the Telegram login page needs.
+func (c *TelegramConfig) LoginActive() bool {
+	return c.LoginEnabled && c.Configured() && c.BotID() != ""
+}
+
+// BotID returns the numeric bot id, which is the part of the @BotFather token
+// before the colon (`123456789:AA…` → "123456789"). Empty when the token does
+// not have that shape. The id is public (Telegram's login URL carries it); the
+// rest of the token is the secret.
+func (c *TelegramConfig) BotID() string {
+	token := strings.TrimSpace(c.BotToken)
+
+	idx := strings.IndexByte(token, ':')
+	if idx <= 0 {
+		return ""
+	}
+
+	id := token[:idx]
+	if _, err := strconv.ParseInt(id, 10, 64); err != nil {
+		return ""
+	}
+
+	return id
 }
 
 // ResolvedBaseURL returns the configured Bot API base or the default.
@@ -2518,6 +2565,7 @@ func Load() (*Config, error) {
 			CallRunawayPerHour: 10,
 		},
 		Checkers: CheckersConfig{
+			Lease: LeaseConfig{Margin: 30 * time.Second},
 			Traceroute: TracerouteConfig{
 				// ON by deployment default, per the spec's "org-level default
 				// (on)". A check still has to be opted in through its org or
@@ -3744,6 +3792,9 @@ const (
 	EnvTelegramBotUsername   = "SP_TELEGRAM_BOT_USERNAME"
 	EnvTelegramWebhookSecret = "SP_TELEGRAM_WEBHOOK_SECRET"
 	EnvTelegramBaseURL       = "SP_TELEGRAM_BASE_URL"
+	// EnvTelegramLoginEnabled turns on Sign in with Telegram. Read by hand:
+	// koanf would collapse it to telegram.login.enabled.
+	EnvTelegramLoginEnabled = "SP_TELEGRAM_LOGIN_ENABLED"
 	// EnvEntitlementsTelegramRunaway caps outbound Telegram messages per org
 	// per hour. There is no monthly quota for Telegram (the channel is free),
 	// so this guard is the only bound on a runaway dispatch loop.
@@ -3781,6 +3832,14 @@ func applyTelegramEnv(cfg *TelegramConfig) {
 	}
 
 	applyTelegramEnabledEnv(cfg)
+
+	if raw := strings.TrimSpace(os.Getenv(EnvTelegramLoginEnabled)); raw != "" {
+		if parsed, err := strconv.ParseBool(raw); err == nil {
+			cfg.LoginEnabled = parsed
+		} else {
+			slog.Warn("ignoring unparseable "+EnvTelegramLoginEnabled, "value", raw)
+		}
+	}
 }
 
 // applyTelegramEnabledEnv re-reads SP_TELEGRAM_ENABLED by hand, overriding what

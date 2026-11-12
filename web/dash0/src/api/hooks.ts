@@ -2042,6 +2042,8 @@ export function useResults(
     periodStartAfter?: string;
     periodEndBefore?: string;
     region?: string;
+    /** Comma-separated result statuses; "down" also matches timeout and error. */
+    status?: string;
     with?: string;
     cursor?: string;
     size?: number;
@@ -2060,6 +2062,7 @@ export function useResults(
       if (options?.periodEndBefore)
         params.set("periodEndBefore", options.periodEndBefore);
       if (options?.region) params.set("region", options.region);
+      if (options?.status) params.set("status", options.status);
       if (options?.with) params.set("with", options.with);
       if (options?.cursor) params.set("cursor", options.cursor);
       if (options?.size) params.set("limit", options.size.toString());

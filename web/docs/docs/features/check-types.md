@@ -1961,6 +1961,16 @@ The family a probe actually used is reported back as the `ip_version` field of
 the result output, and shown on the check detail page — so an `ipVersion: ipv6`
 check that reports `ip_version: ipv6` is real, verified IPv6 coverage.
 
+**Fallback warning.** With `auto`, a dual-stack target whose preferred family
+failed (dial error) or stayed silent for over one second while the other family
+answered is reported as a **warning** (shown as *degraded* once aggregated; it
+still counts as up) instead of up. The result output carries
+`ip_fallback: {"failed": "ipv6", "reason": "timeout", "after_ms": 1200}` and the
+message `IPv6 unreachable from this region, answered over IPv4`. A probe that is
+down for another reason keeps its status (the field is still recorded), and a
+check pinned to a family never gets this warning. It applies to the HTTP check
+and the Prometheus check.
+
 **One check covers one family.** `auto` means "pick one", not "probe both" — this
 is a deliberate difference from Better Stack, where an unset value monitors both.
 To cover both families, create two checks on the same target, one pinned to each;

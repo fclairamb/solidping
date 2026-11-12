@@ -134,6 +134,12 @@ type CheckJob struct {
 	// persisted and never read off the wire, so a config cannot set it.
 	StoredConfig JSONMap `bun:"-"`
 
+	// ClaimedAt is when this process took the lease on the row. Set by the
+	// claim; transient, never persisted and never read off the wire (an agent
+	// result rebuilds the job from the database, so it is nil there). The
+	// claim-to-release histogram is measured from it (spec 2026-11-11-06).
+	ClaimedAt *time.Time `bun:"-" json:"-"`
+
 	// Check is the check this job executes, populated at claim time by
 	// ClaimJobs / ClaimJobsForCheck so the incident hot path can skip a
 	// per-result GetCheck round-trip. Transient: never persisted (bun:"-").

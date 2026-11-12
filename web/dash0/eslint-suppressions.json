@@ -271,7 +271,7 @@
   },
   "src/components/shared/status-page-form.tsx": {
     "testid-local/require-testid-on-interactive": {
-      "count": 16
+      "count": 15
     }
   },
   "src/components/shared/status-page-subscribers.tsx": {

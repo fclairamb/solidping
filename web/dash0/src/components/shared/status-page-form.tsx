@@ -7,6 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { ApiError, getApiErrorField } from "@/api/client";
+import { isDemoReadOnlyError } from "@/lib/demo";
 import { slugify } from "@/lib/utils";
 import { buildStatusPageWandPrefill } from "@/lib/onboarding-wand";
 import {
@@ -111,6 +114,9 @@ export function StatusPageForm({
   const [name, setName] = useState(initialData?.name || initialName || "");
   const [slug, setSlug] = useState(initialData?.slug || "");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(mode === "edit");
+  // The server's field-level message for a slug it rejected (bad format,
+  // conflict), shown under the field until the operator edits it.
+  const [slugError, setSlugError] = useState<string | undefined>(undefined);
   const [description, setDescription] = useState(initialData?.description || "");
   const [visibility, setVisibility] = useState<StatusPageVisibility>(
     initialData?.visibility || "public"
@@ -195,7 +201,28 @@ export function StatusPageForm({
           }
         : undefined;
 
-    await onSubmit({
+    setSlugError(undefined);
+    try {
+      await submit(settings);
+    } catch (err) {
+      // A rejected save must reach the operator, not error tracking as an
+      // unhandled rejection. A refused demo write already got its toast from
+      // api/client.ts.
+      if (isDemoReadOnlyError(err)) return;
+      const slugMessage = getApiErrorField(err, "slug");
+      if (slugMessage) setSlugError(slugMessage);
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : mode === "create"
+            ? t("form.createFailed")
+            : t("form.updateFailed")
+      );
+    }
+  };
+
+  const submit = (settings: StatusPageFormData["settings"]) =>
+    onSubmit({
       name,
       slug,
       description,
@@ -221,7 +248,6 @@ export function StatusPageForm({
       settings,
       checkUids,
     });
-  };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
@@ -317,12 +343,24 @@ export function StatusPageForm({
               onChange={(e) => {
                 setSlug(e.target.value);
                 setSlugManuallyEdited(true);
+                setSlugError(undefined);
               }}
               placeholder={t("form.slugPlaceholder")}
               required
               pattern="^[a-z][a-z0-9-]{2,99}$"
               title={t("form.slugPatternHint")}
+              aria-invalid={slugError ? true : undefined}
+              data-testid="status-page-slug-input"
             />
+            {slugError && (
+              <p
+                className="text-xs text-destructive"
+                role="alert"
+                data-testid="status-page-slug-error"
+              >
+                {slugError}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               {t("form.slugHelp")}
             </p>

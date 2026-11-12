@@ -839,3 +839,45 @@ func TestExecute_HonorsTunnelDialer(t *testing.T) {
 	defer mu.Unlock()
 	r.Positive(dialed, "the tunnel dialer must be used")
 }
+
+// A scrape that only got through on IPv4 after the IPv6 attempt on "localhost"
+// was refused (the listener is IPv4-only) is a warning carrying ip_fallback.
+func TestScrape_DualStackFallbackWarns(t *testing.T) {
+	t.Parallel()
+
+	addrs, err := net.DefaultResolver.LookupHost(t.Context(), "localhost")
+	if err != nil {
+		t.Skip("localhost does not resolve")
+	}
+
+	hasV6 := false
+
+	for _, addr := range addrs {
+		if ip := net.ParseIP(addr); ip != nil && ip.To4() == nil {
+			hasV6 = true
+		}
+	}
+
+	if !hasV6 {
+		t.Skip("localhost does not resolve to an IPv6 address here")
+	}
+
+	server, _ := metricsServer(t, sampleExposition)
+
+	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	require.NoError(t, err)
+
+	if probe, listenErr := (&net.ListenConfig{}).Listen(t.Context(), "tcp6", "[::1]:"+port); listenErr == nil {
+		_ = probe.Close()
+	} else {
+		t.Skip("[::1] port is taken")
+	}
+
+	result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
+		URL: "http://localhost:" + port + "/metrics", Metric: "process_open_fds", Operator: ">",
+		WarningValue: f64(800), CriticalValue: f64(1000),
+	})
+
+	require.Equal(t, checkerdef.StatusWarning, result.Status, "output: %v", result.Output)
+	require.Contains(t, result.Output, checkerdef.OutputKeyIPFallback)
+}

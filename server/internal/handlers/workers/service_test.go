@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
@@ -14,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
@@ -244,4 +246,29 @@ func TestSubmitResultTimeoutIsPinnedToCeiling(t *testing.T) {
 		scheduling.UpdateEWMA(1000, float64(submitParams().EffectiveCheckTimeout().Milliseconds())),
 		after.CostEWMAMs, 1e-6)
 	r.Greater(after.CostEWMAMs, before.CostEWMAMs)
+}
+
+// TestSubmitResultCountsLostLease: when the lease was re-claimed by a peer, the
+// HTTP worker path counts the lost lease like the in-process worker does.
+func TestSubmitResultCountsLostLease(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	e := newSubmitEnv(t)
+	job := e.leasedJob(0, 0, 1)
+
+	peer, err := e.dbSvc.RegisterOrUpdateWorker(t.Context(), models.NewWorker("ag-peer", "agent:peer"))
+	r.NoError(err)
+
+	counter := prommetrics.CheckLeaseLost.WithLabelValues(*job.Region)
+	before := testutil.ToFloat64(counter)
+
+	_, err = e.svc.SubmitResult(t.Context(), &workers.SubmitResultRequest{
+		JobUID:    job.UID,
+		WorkerUID: peer.UID,
+		Status:    int(models.ResultStatusUp),
+		FromProbe: true,
+	})
+	r.ErrorIs(err, checkjobsvc.ErrJobClaimedByAnother)
+	r.InDelta(1.0, testutil.ToFloat64(counter)-before, 0)
 }

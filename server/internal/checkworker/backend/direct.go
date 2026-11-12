@@ -315,6 +315,13 @@ func (b *DirectBackend) releaseAfterResult(
 ) error {
 	err := b.release(ctx, job, workerUID, req)
 
+	region := ""
+	if req.Region != nil {
+		region = *req.Region
+	}
+
+	checkjobsvc.ObserveRelease(ctx, slog.Default(), job, region, err)
+
 	// The check was deleted (or the region removed) while this run was in
 	// flight: the result is stored and there is nothing left to reschedule.
 	if errors.Is(err, checkjobsvc.ErrJobGone) {

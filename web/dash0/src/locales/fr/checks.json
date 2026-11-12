@@ -750,6 +750,8 @@
       "duration": "Durée",
       "region": "Région",
       "filterAll": "Toutes",
+      "filterFailures": "Échecs",
+      "noFailures": "Aucune exécution en échec parmi les résultats récents",
       "stats": {
         "min": "Min",
         "avg": "Moy",
@@ -831,6 +833,8 @@
     "ipVersionLabel": "Version IP",
     "ipVersionPinned": "Fixée en {{version}}",
     "ipVersionAuto": "Auto",
+    "ipFallbackLabel": "Repli IP",
+    "ipFallbackDetail": "Réponse via l'autre famille après {{ms}} ms ({{reason}})",
     "recentResults": "Résultats récents",
     "recentResultsDescription": "Historique des exécutions du contrôle",
     "noResultsAvailable": "Aucun résultat disponible",

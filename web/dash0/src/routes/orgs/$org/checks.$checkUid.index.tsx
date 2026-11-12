@@ -180,6 +180,8 @@ import { checkTypeCanCapture } from "@/lib/check-screenshots";
 // The result-output key reporting which address family the probe used, and the
 // config key pinning it. Kept next to each other so the pair can't drift.
 const IP_VERSION_OUTPUT_KEY = "ip_version";
+// Stamped when a dual-stack probe only got through on its fallback family.
+const IP_FALLBACK_OUTPUT_KEY = "ip_fallback";
 
 // The two passive-evaluation output keys that are pure bookkeeping: the
 // self-declaration the worker stamps and the uid it points at (spec
@@ -218,6 +220,9 @@ interface CheckDetailSearch {
   publish?: boolean;
   /** Set by `checks/new` after a create: shows the inline publication hint. */
   created?: boolean;
+  /** "down": the Recent Results table lists failed runs only (down, timeout,
+   * error, as the results endpoint's `status=down` filter groups them). */
+  resultStatus?: "down";
 }
 
 // Rows shown in the "Recent Incidents" card; the underlying query fetches more
@@ -259,6 +264,7 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
       search.publish === true || search.publish === "true" ? true : undefined,
     created:
       search.created === true || search.created === "true" ? true : undefined,
+    resultStatus: search.resultStatus === "down" ? "down" : undefined,
   }),
   component: CheckDetailPage,
 });
@@ -724,6 +730,7 @@ function CheckDetailPage() {
     graphView,
     publish,
     created,
+    resultStatus,
   } = Route.useSearch();
   const navigate = useNavigate();
   const router = useRouter();
@@ -756,6 +763,11 @@ function CheckDetailPage() {
   const resolvedIpVersion =
     typeof check?.lastResult?.output?.[IP_VERSION_OUTPUT_KEY] === "string"
       ? (check.lastResult.output[IP_VERSION_OUTPUT_KEY] as string)
+      : null;
+  const ipFallbackRaw = check?.lastResult?.output?.[IP_FALLBACK_OUTPUT_KEY];
+  const ipFallback =
+    ipFallbackRaw && typeof ipFallbackRaw === "object"
+      ? (ipFallbackRaw as { failed?: string; reason?: string; after_ms?: number })
       : null;
   const pinnedIpVersionRaw = check?.config?.[IP_VERSION_CONFIG_KEY];
   const pinnedIpVersion =
@@ -879,6 +891,19 @@ function CheckDetailPage() {
   // Every in-page refinement here (region, period, zoom, view, selection)
   // passes `resetScroll: false`: the router otherwise scrolls the window back
   // to the top on each click, losing the reader's place in the page.
+  // Toggles the Recent Results table between every run and failed runs only.
+  const toggleFailuresOnly = () => {
+    navigate({
+      to: ".",
+      search: (prev) => ({
+        ...prev,
+        resultStatus: prev.resultStatus === "down" ? undefined : "down",
+      }),
+      replace: true,
+      resetScroll: false,
+    });
+  };
+
   const setRegion = (nextRegion: string | undefined) => {
     navigate({
       to: ".",
@@ -1022,6 +1047,7 @@ function CheckDetailPage() {
     checkUid,
     size: 10,
     region: effectiveRegion,
+    status: resultStatus,
     with: isPassiveCheck ? "durationMs,region,output" : "durationMs,region",
     refetchInterval,
   });
@@ -2069,6 +2095,23 @@ function CheckDetailPage() {
                     </span>
                   </div>
                 )}
+                {ipFallback && (
+                  <div
+                    className="flex flex-wrap items-center gap-2 text-sm"
+                    data-testid="result-ip-fallback"
+                  >
+                    <span className="text-muted-foreground">
+                      {t("checks:detail.ipFallbackLabel")}:
+                    </span>
+                    <Badge variant="outline">{ipFallback.failed}</Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {t("checks:detail.ipFallbackDetail", {
+                        reason: ipFallback.reason ?? "",
+                        ms: ipFallback.after_ms ?? 0,
+                      })}
+                    </span>
+                  </div>
+                )}
                 {check.lastResult.output &&
                   Object.keys(check.lastResult.output).length > 0 && (
                     <div>
@@ -2086,6 +2129,7 @@ function CheckDetailPage() {
                               key !== "chain" &&
                               key !== "soonestExpiring" &&
                               key !== IP_VERSION_OUTPUT_KEY &&
+                              key !== IP_FALLBACK_OUTPUT_KEY &&
                               key !== JSON_ASSERTION_RESULT_OUTPUT_KEY &&
                               key !== BODY_ASSERTION_RESULT_OUTPUT_KEY &&
                               key !== HEADER_ASSERTION_RESULT_OUTPUT_KEY &&
@@ -2236,33 +2280,45 @@ function CheckDetailPage() {
               {t("checks:detail.recentResultsDescription")}
             </CardDescription>
           </div>
-          {observedRegions.length > 1 && (
-            <div
-              className="flex flex-wrap items-center gap-1"
-              data-testid="results-region-filter"
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant={resultStatus === "down" ? "destructive" : "outline"}
+              size="sm"
+              onClick={toggleFailuresOnly}
+              className="px-2 text-xs"
+              aria-pressed={resultStatus === "down"}
+              data-testid="results-failures-filter"
             >
-              <Button
-                variant={effectiveRegion === undefined ? "default" : "outline"}
-                size="sm"
-                onClick={() => setRegion(undefined)}
-                className="px-2 text-xs"
+              {t("checks:detail.results.filterFailures")}
+            </Button>
+            {observedRegions.length > 1 && (
+              <div
+                className="flex flex-wrap items-center gap-1"
+                data-testid="results-region-filter"
               >
-                {t("checks:detail.results.filterAll")}
-              </Button>
-              {observedRegions.map((slug) => (
                 <Button
-                  key={slug}
-                  variant={effectiveRegion === slug ? "default" : "outline"}
+                  variant={effectiveRegion === undefined ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setRegion(slug)}
+                  onClick={() => setRegion(undefined)}
                   className="px-2 text-xs"
-                  data-testid={`results-region-chip-${slug}`}
                 >
-                  {regionDisplayLabel(regionsData?.regions, slug)}
+                  {t("checks:detail.results.filterAll")}
                 </Button>
-              ))}
-            </div>
-          )}
+                {observedRegions.map((slug) => (
+                  <Button
+                    key={slug}
+                    variant={effectiveRegion === slug ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setRegion(slug)}
+                    className="px-2 text-xs"
+                    data-testid={`results-region-chip-${slug}`}
+                  >
+                    {regionDisplayLabel(regionsData?.regions, slug)}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {results?.data && results.data.length > 0 ? (
@@ -2379,8 +2435,13 @@ function CheckDetailPage() {
               </TableBody>
             </Table>
           ) : (
-            <p className="text-center py-6 text-muted-foreground">
-              {t("checks:detail.noResultsAvailable")}
+            <p
+              className="text-center py-6 text-muted-foreground"
+              data-testid="results-empty"
+            >
+              {resultStatus === "down"
+                ? t("checks:detail.results.noFailures")
+                : t("checks:detail.noResultsAvailable")}
             </p>
           )}
         </CardContent>

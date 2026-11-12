@@ -706,6 +706,8 @@
       "duration": "Dauer",
       "region": "Region",
       "filterAll": "Alle",
+      "filterFailures": "Fehler",
+      "noFailures": "Keine fehlgeschlagene Ausführung unter den letzten Ergebnissen",
       "stats": {
         "min": "Min",
         "avg": "Durchschn.",
@@ -787,6 +789,8 @@
     "ipVersionLabel": "IP-Version",
     "ipVersionPinned": "Auf {{version}} festgelegt",
     "ipVersionAuto": "Auto",
+    "ipFallbackLabel": "IP-Fallback",
+    "ipFallbackDetail": "Antwort über die andere Familie nach {{ms}} ms ({{reason}})",
     "recentResults": "Aktuelle Ergebnisse",
     "recentResultsDescription": "Verlauf der Prüfungs-Ausführungen",
     "noResultsAvailable": "Keine Ergebnisse verfügbar",

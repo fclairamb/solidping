@@ -338,6 +338,7 @@ func TestTelegramEnvVarsBind(t *testing.T) {
 	t.Setenv("SP_TELEGRAM_BOT_USERNAME", "@solidping_bot")
 	t.Setenv("SP_TELEGRAM_WEBHOOK_SECRET", "a-long-random-secret")
 	t.Setenv("SP_TELEGRAM_BASE_URL", "https://telegram.test")
+	t.Setenv("SP_TELEGRAM_LOGIN_ENABLED", "true")
 	t.Setenv("SP_ENTITLEMENTS_TELEGRAM_RUNAWAY_PER_HOUR", "13")
 
 	r := require.New(t)
@@ -355,13 +356,16 @@ func TestTelegramEnvVarsBind(t *testing.T) {
 	r.Equal("https://telegram.test", cfg.Telegram.ResolvedBaseURL())
 	r.Equal(13, cfg.Entitlements.TelegramRunawayPerHour)
 	r.True(cfg.Telegram.Active())
+	r.True(cfg.Telegram.LoginEnabled)
+	r.True(cfg.Telegram.LoginActive())
+	r.Equal("123456789", cfg.Telegram.BotID())
 
 	// Every name used above must also be advertised as recognized, otherwise
 	// the startup env check would flag a variable that in fact binds.
 	recognized := RecognizedEnvVars()
 	for _, name := range []string{
 		"SP_TELEGRAM_ENABLED", "SP_TELEGRAM_BOT_TOKEN", "SP_TELEGRAM_BOT_USERNAME",
-		"SP_TELEGRAM_WEBHOOK_SECRET", "SP_TELEGRAM_BASE_URL",
+		"SP_TELEGRAM_WEBHOOK_SECRET", "SP_TELEGRAM_BASE_URL", "SP_TELEGRAM_LOGIN_ENABLED",
 		"SP_ENTITLEMENTS_TELEGRAM_RUNAWAY_PER_HOUR",
 	} {
 		r.Contains(recognized, name)

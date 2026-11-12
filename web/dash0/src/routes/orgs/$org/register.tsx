@@ -14,6 +14,7 @@ import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
 import { ApiError } from "@/api/client";
 import { useProviders, useRegister } from "@/api/hooks";
 import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";
+import { signUpProviders } from "@/lib/sign-up-providers";
 import { clearSignupAttribution, readSignupAttribution } from "@/lib/attribution";
 import { browserTimezone } from "@/lib/languages";
 
@@ -143,6 +144,8 @@ function RegisterPage() {
                 on rootAuthProtected, so a passkey can do nothing for someone
                 without an account yet. Passkeys are added from account
                 settings after the first login.
+              - No Telegram: Telegram returns no email address, so it signs in
+                only an account that already linked it and never creates one.
               - Not gated on registrationEnabled: that flag mirrors
                 auth.registration_email_pattern and gates *password*
                 self-registration only (handlers/auth/service.go);
@@ -151,7 +154,7 @@ function RegisterPage() {
                 not the password form. */}
           <OAuthProviderButtons
             org={org}
-            providers={providersData?.providers}
+            providers={signUpProviders(providersData?.providers)}
             disabled={register.isPending}
             testIdPrefix="register"
           />

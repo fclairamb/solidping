@@ -45,6 +45,8 @@
     "willInclude": "Incluirá:",
     "createStatusPage": "Crear página de estado",
     "saveChanges": "Guardar cambios",
+    "createFailed": "No se pudo crear la página de estado",
+    "updateFailed": "No se pudo actualizar la página de estado",
     "removeCheck": "Quitar",
     "name": "Nombre",
     "namePlaceholder": "Servicios de producción",

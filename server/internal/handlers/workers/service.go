@@ -133,8 +133,8 @@ func (s *Service) SubmitResult(
 		return nil, fmt.Errorf("%w: %w", ErrJobNotFound, err)
 	}
 
-	if err := s.RecordResult(ctx, &job, req); err != nil {
-		return nil, err
+	if recErr := s.RecordResult(ctx, &job, req); recErr != nil {
+		return nil, recErr
 	}
 
 	// 5. Release lease, folding in the post-exec scheduling state.
@@ -148,7 +148,16 @@ func (s *Service) SubmitResult(
 	// the in-process worker runs.
 	nextScheduledAt := calculateNextScheduledAt(&job)
 
-	if err := s.releaseLease(ctx, &job, req, nextScheduledAt); err != nil {
+	err = s.releaseLease(ctx, &job, req, nextScheduledAt)
+	// Count the held time and any lost lease, as the in-process worker does.
+	region := ""
+	if job.Region != nil {
+		region = *job.Region
+	}
+
+	checkjobsvc.ObserveRelease(ctx, slog.Default(), &job, region, err)
+
+	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to release lease: %w", err,
 		)

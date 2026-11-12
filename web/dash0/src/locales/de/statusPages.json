@@ -45,6 +45,8 @@
     "willInclude": "Enthält:",
     "createStatusPage": "Statusseite erstellen",
     "saveChanges": "Änderungen speichern",
+    "createFailed": "Statusseite konnte nicht erstellt werden",
+    "updateFailed": "Statusseite konnte nicht aktualisiert werden",
     "removeCheck": "Entfernen",
     "name": "Name",
     "namePlaceholder": "Produktionsdienste",

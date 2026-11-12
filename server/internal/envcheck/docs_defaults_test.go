@@ -140,6 +140,7 @@ var docsDefaultAccessors = map[string]func(*config.Config) string{
 	"SP_NODE_REGION":               func(c *config.Config) string { return c.Server.CheckWorker.Region },
 	"SP_SLACK_SOCKET_MODE_ENABLED": boolOf(func(c *config.Config) bool { return c.Slack.SocketModeEnabled }),
 	"SP_K8S_ALLOW_IN_CLUSTER":      boolOf(func(c *config.Config) bool { return c.Kubernetes.AllowInCluster }),
+	"SP_TELEGRAM_LOGIN_ENABLED":    boolOf(func(c *config.Config) bool { return c.Telegram.LoginEnabled }),
 	"SP_LDAP_START_TLS":            boolOf(func(c *config.Config) bool { return c.LDAP.StartTLS }),
 	"SP_LDAP_INSECURE_SKIP_VERIFY": boolOf(func(c *config.Config) bool { return c.LDAP.InsecureSkipVerify }),
 	// Blank in the struct, resolved at sign-in time.

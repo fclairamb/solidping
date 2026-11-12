@@ -143,6 +143,7 @@ func TestProviderCallbacksRedirectWithHandoffCodeOnly(t *testing.T) {
 		"slack":     runSlackCallback,
 		"oidc":      runOIDCCallback,
 		"saml":      runSAMLCallback,
+		"telegram":  runTelegramCallback,
 	}
 
 	for name, run := range providers {

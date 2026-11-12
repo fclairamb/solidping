@@ -44,7 +44,7 @@ type ProvidersResponse struct {
 
 // ListProviders returns which auth providers are configured.
 //
-//nolint:cyclop // Linear sequence of provider checks with the same shape; flatter than splitting up.
+//nolint:cyclop,funlen // Linear sequence of provider checks with the same shape; flatter than splitting up.
 func (h *ProvidersHandler) ListProviders(writer http.ResponseWriter, _ *http.Request) error {
 	providers := make([]ProviderInfo, 0)
 
@@ -89,6 +89,15 @@ func (h *ProvidersHandler) ListProviders(writer http.ResponseWriter, _ *http.Req
 		providers = append(providers, ProviderInfo{
 			Name: "Discord",
 			Type: "discord",
+		})
+	}
+
+	// Telegram is not OAuth: it needs the instance bot plus the explicit
+	// SP_TELEGRAM_LOGIN_ENABLED opt-in (the bot's domain is set by hand).
+	if h.cfg.Telegram.LoginActive() {
+		providers = append(providers, ProviderInfo{
+			Name: "Telegram",
+			Type: "telegram",
 		})
 	}
 

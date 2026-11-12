@@ -223,6 +223,7 @@ func authMethods() []string {
 		signupMethodMicrosoft,
 		signupMethodDiscord,
 		signupMethodSlack,
+		signupMethodTelegram,
 		// Fallback for a connector that did not name itself.
 		AuthMethodOAuth,
 		// Local session-minting paths.
@@ -248,6 +249,7 @@ func federatedAuthMethods() map[string]string {
 		"signupMethodMicrosoft": signupMethodMicrosoft,
 		"signupMethodDiscord":   signupMethodDiscord,
 		"signupMethodSlack":     signupMethodSlack,
+		"signupMethodTelegram":  signupMethodTelegram,
 	}
 }
 

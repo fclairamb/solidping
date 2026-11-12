@@ -45,6 +45,8 @@
     "willInclude": "Inclura :",
     "createStatusPage": "Créer la page de statut",
     "saveChanges": "Enregistrer les modifications",
+    "createFailed": "Échec de la création de la page de statut",
+    "updateFailed": "Échec de la mise à jour de la page de statut",
     "removeCheck": "Retirer",
     "name": "Nom",
     "namePlaceholder": "Services de production",
