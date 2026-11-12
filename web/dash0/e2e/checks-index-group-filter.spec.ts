@@ -120,14 +120,41 @@ test.describe("Checks list group filter", () => {
   });
 
   test("status combines with the group filter", async ({ page }) => {
-    const request = page.waitForRequest(
-      (r) => r.url().includes("checkGroupUid=") && r.url().includes("status=down"),
-    );
-    await page.goto(`orgs/${org.slug}/checks?group=alpha-group&status=down`);
-    await request;
-    // Nothing in the group is down, and nothing outside it leaks in.
+    const stamp = uniqueStamp();
+    const alphaGroup = await createGroup(page, org, "Alpha Two", "alpha-two");
+    const betaGroup = await createGroup(page, org, "Beta Two", "beta-two");
+    const downIn = `down-in-${stamp}`;
+    const upIn = `up-in-${stamp}`;
+    const downOut = `down-out-${stamp}`;
+    await createCheck(page, org, downIn, alphaGroup.uid);
+    await createCheck(page, org, upIn, alphaGroup.uid);
+    await createCheck(page, org, downOut, betaGroup.uid);
+    const wireStatus: Record<string, string> = { [downIn]: "down", [upIn]: "up", [downOut]: "down" };
+
+    // Checks cannot be made down without a real probe, so the list response
+    // is patched: fetch the server's list WITHOUT the status filter (the group
+    // filter still applies server-side), stamp the statuses, then apply the
+    // status filter ourselves.
+    let sawBoth = false;
+    await page.route(`**/api/v1/orgs/${org.slug}/checks?*`, async (route) => {
+      const url = new URL(route.request().url());
+      const wanted = url.searchParams.get("status");
+      if (url.searchParams.get("checkGroupUid") && wanted === "down") sawBoth = true;
+      url.searchParams.delete("status");
+      const resp = await route.fetch({ url: url.toString() });
+      const body = (await resp.json()) as { data: Array<{ name?: string; status?: string }> };
+      body.data = body.data
+        .map((c) => ({ ...c, status: wireStatus[c.name ?? ""] ?? c.status }))
+        .filter((c) => !wanted || wanted.split(",").includes(c.status ?? ""));
+      await route.fulfill({ response: resp, json: body });
+    });
+
+    await page.goto(`orgs/${org.slug}/checks?group=alpha-two&status=down`);
+    await expect(checkRowLocator(page, downIn)).toBeVisible({ timeout: 15000 });
+    expect(sawBoth).toBe(true);
+    await expect(checkRowLocator(page, upIn)).toHaveCount(0);
+    await expect(checkRowLocator(page, downOut)).toHaveCount(0);
     await expect(checkRowLocator(page, names.alpha)).toHaveCount(0);
-    await expect(checkRowLocator(page, names.beta)).toHaveCount(0);
   });
 
   test("reset clears the group filter", async ({ page }) => {
