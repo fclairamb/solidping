@@ -1293,6 +1293,7 @@ function PrivateLocationFields({ state }: CheckTypeFieldsProps<PrivateLocationSt
   return (
     <div className="space-y-2">
       <Label htmlFor="privateLocationRegion">{t("misc.privateLocationRegion")}</Label>
+      {/* eslint-disable-next-line secret-local/require-secret-input -- a region name, not a credential */}
       <Input
         id="privateLocationRegion"
         value={state.region}

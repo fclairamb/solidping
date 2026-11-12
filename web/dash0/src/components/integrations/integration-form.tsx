@@ -956,6 +956,7 @@ function KubeSecretField({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder || "apiVersion: v1\nkind: Config\n..."}
           className="font-mono text-xs"
+          data-secret-input
           data-testid={testid}
         />
       ) : (
@@ -2706,6 +2707,7 @@ function UrlPanel({
       <Label htmlFor="ch-url">{label}</Label>
       <Input
         id="ch-url"
+        data-secret-input
         data-testid="ch-url"
         type="url"
         value={value}

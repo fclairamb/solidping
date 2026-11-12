@@ -567,6 +567,7 @@ export function HttpAuthFields({
             />
             <Input
               type="password"
+              data-secret-input
               placeholder="value"
               value={row.value}
               onChange={(e) => {

@@ -342,6 +342,7 @@ function TokensPage() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="token-name">{tc("name")}</Label>
+                  {/* eslint-disable-next-line secret-local/require-secret-input -- the token label, not the token */}
                   <Input
                     id="token-name"
                     data-testid="token-name-input"
