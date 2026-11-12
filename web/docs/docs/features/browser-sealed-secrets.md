@@ -138,13 +138,15 @@ Then send it next to `config` on the check create or PATCH:
 "sealedSecrets": { "keys": ["basicAuth"], "fingerprints": ["3f2a…"], "ct": "<base64 age file>", "bound": true }
 ```
 
-With the `age` CLI, add the `_binding` to the plaintext yourself (below) and send `"bound": true`. A blob without one is accepted for now and listed on the Re-seal page.
+With the `age` CLI, add the `_binding` to the plaintext yourself (below) and send `"bound": true`, with `"targetFields"` set to the list you digested over. A blob without one is accepted for now and listed on the Re-seal page.
 
 `fingerprints` must be the current recipients, else `409 SEALING_RECIPIENTS_CHANGED` with the current list. A config-as-code document (`/checks/import`, `/checks/apply`, `sp checks apply`) takes the same `sealedSecrets` object on each check; a stale one is an item error with code `SEALING_RECIPIENTS_CHANGED`, in the dry run too. Exports never contain secrets. The MCP tools `create_check` and `update_check` accept the same object. Compare the fingerprints with the ones your agents log at startup (`Agent sealing key`).
 
 ## Binding to the target
 
-The sealed plaintext carries a reserved `_binding` next to the secrets: the check type and a SHA-256 digest of the check's *target fields*, the config keys that decide where the secrets go. Each check type lists them as `targetFields` in `GET /api/v1/orgs/:org/check-types`: `url` for HTTP, host, port and database for the database checks, host and port for TCP, SMTP, SSH and FTP, the script for JS checks, and the tunnel (`tunnelCheckUid`) for every type.
+The sealed plaintext carries a reserved `_binding` next to the secrets: the check type and a SHA-256 digest of the check's *target fields*, the config keys that decide where the secrets go. Each check type lists them as `targetFields` in `GET /api/v1/orgs/:org/check-types`: `url` for HTTP, host, port and database for the database checks, host and port for TCP, SMTP, SSH and FTP, the script and its `env` for JS checks, every public key for plugin types, and the tunnel (`tunnelCheckUid`) for every type.
+
+A plugin type, whose destination its own code picks from any config key, lists the wildcard `*`: every key of the public config but `timeout`. An empty object (`"env": {}`) counts as an absent field.
 
 ```json
 {"basicAuth": "alice:hunter2", "_binding": {"type": "http", "digest": "<hex sha256>"}}
@@ -156,8 +158,9 @@ So whoever can write the stored config (a compromised server, someone with write
 
 On your side:
 
-- Changing a target field (the URL, host, port, database or tunnel) of a sealed check needs the secrets typed again. The check form opens the secret inputs on its own; the API answers `409 SEALED_TARGET_CHANGED` to a PATCH without new `sealedSecrets`, and a config-as-code document gets an item error with that code, in the dry run too. Other edits (timeout, assertions, name, period) keep the blob.
+- Changing a target field (the URL, host, port, database, tunnel, a JS check's `env`, any key of a plugin check but its timeout) of a sealed check needs the secrets typed again. The check form opens the secret inputs on its own; the API answers `409 SEALED_TARGET_CHANGED` to a PATCH without new `sealedSecrets`, and a config-as-code document gets an item error with that code, in the dry run too. Other edits (timeout, assertions, name, period) keep the blob.
 - Checks sealed before the binding existed (v0.47.0) still run, with a warning in the agent log, and the Re-seal page lists them as *Seal again to bind to the target*. Type their secrets again to bind them. A later release will refuse unbound blobs.
+- JS checks bound before their `env` was a target field, and plugin checks bound to the older address-key list, are refused by the agents once that change gives another digest (a JS check with a non-empty `env`, a plugin check with a key outside the old list). The Re-seal page lists them as *Seal again to bind to the target*: type their secrets again.
 
 The digest is computed over a canonical JSON of the target fields that carry a value, keys sorted, numbers and booleans written as strings, `url` with its scheme and host lowercased and the default port made explicit, `host` lowercased. The dashboard and the Go code share a test vector (`web/dash0/src/lib/__fixtures__/target-binding.json`).
 
