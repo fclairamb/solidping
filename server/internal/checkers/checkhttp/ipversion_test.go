@@ -2,15 +2,18 @@ package checkhttp
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // TestBuildTransport_AutoSharesTheCheckTransport is the single most important
@@ -207,4 +210,110 @@ func TestExecute_NoFallbackWarningWhenCleanOrPinned(t *testing.T) {
 			require.NotContains(t, result.Output, checkerdef.OutputKeyIPFallback)
 		})
 	}
+}
+
+// assertFallbackWarning checks the shared expectations of a fallback probe: up
+// at the HTTP level, downgraded to a warning, flagged IPv6, with the message.
+func assertFallbackWarning(t *testing.T, result *checkerdef.Result) {
+	t.Helper()
+
+	require.Equal(t, checkerdef.StatusWarning, result.Status)
+
+	detail, ok := result.Output[checkerdef.OutputKeyIPFallback].(map[string]any)
+	require.True(t, ok, "ip_fallback output missing: %v", result.Output)
+	require.Equal(t, "ipv6", detail["failed"])
+	require.Contains(t, result.Output[checkerdef.OutputKeyMessage], "IPv6 unreachable")
+}
+
+// TestExecute_DualStackFallbackGuardPath runs the enforcing egress guard's
+// Happy Eyeballs dialer against a dual-stack target whose IPv6 path fails: the
+// probe is answered over IPv4, so it is a warning carrying ip_fallback.
+func TestExecute_DualStackFallbackGuardPath(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	require.NoError(t, err)
+
+	guard := egress.New(false,
+		egress.WithLookup(func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("2606:4700::1111")}, {IP: net.ParseIP("127.0.0.1")}}, nil
+		}),
+		egress.WithPublicOverride(net.ParseIP("127.0.0.1")),
+	)
+	base := &net.Dialer{
+		Timeout: 30 * time.Second,
+		Control: func(network, _ string, _ syscall.RawConn) error {
+			if network == "tcp6" {
+				return errors.New("v6 path dropped") //nolint:err113 // test sentinel
+			}
+
+			return nil
+		},
+	}
+
+	checker := &HTTPChecker{
+		probeTransport: func(context.Context, bool, checkerdef.HTTPVersion) (http.RoundTripper, func()) {
+			return &http.Transport{
+				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					return guard.DialContextWith(ctx, base, network, addr)
+				},
+			}, func() {}
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	result, err := checker.Execute(ctx, &HTTPConfig{URL: "http://dual.acme.com:" + port + "/"})
+	require.NoError(t, err)
+	assertFallbackWarning(t, result)
+}
+
+// TestExecute_DualStackFallbackStdlibDialer covers the non-enforcing path: the
+// stdlib dialer resolves "localhost" to ::1 and 127.0.0.1, ::1 is refused (the
+// listener is IPv4-only) and the probe is answered over IPv4.
+func TestExecute_DualStackFallbackStdlibDialer(t *testing.T) {
+	t.Parallel()
+
+	if addrs, err := net.DefaultResolver.LookupHost(t.Context(), "localhost"); err != nil || !containsIPv6(addrs) {
+		t.Skip("localhost does not resolve to an IPv6 address here")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	require.NoError(t, err)
+
+	// Nothing may listen on [::1]:port, else the IPv6 attempt would succeed.
+	if probe, listenErr := (&net.ListenConfig{}).Listen(t.Context(), "tcp6", "[::1]:"+port); listenErr == nil {
+		_ = probe.Close()
+	} else {
+		t.Skip("[::1] port is taken, cannot guarantee a refused IPv6 attempt")
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	result, err := (&HTTPChecker{}).Execute(ctx, &HTTPConfig{URL: "http://localhost:" + port + "/"})
+	require.NoError(t, err)
+
+	assertFallbackWarning(t, result)
+}
+
+func containsIPv6(addrs []string) bool {
+	for _, addr := range addrs {
+		if ip := net.ParseIP(addr); ip != nil && ip.To4() == nil {
+			return true
+		}
+	}
+
+	return false
 }

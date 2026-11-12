@@ -102,3 +102,10 @@ the issue is closed and, if not, close it by hand:
 
 1. (autopilot: recommended answer) Warn only when the first family failed or was still pending 1 s after its start when the other family connected.
 2. (autopilot: recommended answer) No sub-probes in this spec; a second check with `ipVersion: ipv6` covers it.
+
+## Implementation notes
+
+- The warning message says "this region" rather than naming the probing region: the region reaches
+  neither the checker context nor the checker (the worker only hands it to configs implementing
+  `RegionSelector`), so the message cannot include it without a wider plumbing change. The region
+  is already on the result row, which the UI shows next to the message.
