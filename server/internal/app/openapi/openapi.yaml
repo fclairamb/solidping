@@ -4045,6 +4045,103 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/incidents/insights:
+    get:
+      tags: [Incidents]
+      summary: Incident insights
+      description: >-
+        Aggregates the check outages of a trailing window: the checks that fail
+        the most, the time to acknowledge, the time to resolve and how incidents
+        were resolved. Medians and nearest-rank p90, never means. Rolled-up
+        (paging-suppressed) incidents count in the checks table and the resolve
+        time but not in the acknowledge sample or rate. SLO burn and degraded
+        incidents are not counted. At most 5000 incidents are read, then
+        `truncated` is true.
+      operationId: getIncidentInsights
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: period
+          in: query
+          description: Trailing window, one of 7d, 30d (default), 90d. Anything else is a 400 VALIDATION_ERROR.
+          schema:
+            type: string
+            enum: [7d, 30d, 90d]
+            default: 30d
+      responses:
+        "200":
+          description: Incident insights
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [period, windowStart, windowEnd, truncated, summary, checks]
+                properties:
+                  period:
+                    type: string
+                  windowStart:
+                    type: string
+                    format: date-time
+                  windowEnd:
+                    type: string
+                    format: date-time
+                  truncated:
+                    type: boolean
+                  summary:
+                    type: object
+                    properties:
+                      incidentCount:
+                        type: integer
+                      pagedCount:
+                        type: integer
+                        description: Incidents that were not rolled up, the base of ackRate.
+                      acknowledgedCount:
+                        type: integer
+                      ackRate:
+                        type: number
+                        description: 0 to 1
+                      timeToAcknowledge:
+                        $ref: "#/components/schemas/IncidentInsightsDuration"
+                      timeToResolve:
+                        $ref: "#/components/schemas/IncidentInsightsDuration"
+                      byResolution:
+                        type: object
+                        properties:
+                          auto:
+                            $ref: "#/components/schemas/IncidentInsightsResolution"
+                          manual:
+                            $ref: "#/components/schemas/IncidentInsightsResolution"
+                          other:
+                            $ref: "#/components/schemas/IncidentInsightsResolution"
+                  checks:
+                    type: array
+                    description: Top 20 checks by incident count, ties broken by downtime.
+                    items:
+                      type: object
+                      properties:
+                        checkUid:
+                          type: string
+                        checkName:
+                          type: string
+                        checkSlug:
+                          type: string
+                        incidentCount:
+                          type: integer
+                        downtimeSeconds:
+                          type: integer
+                          format: int64
+                        relapseCount:
+                          type: integer
+                        lastIncidentAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/v1/orgs/{org}/incidents/{uid}:
     get:
       tags: [Incidents]
@@ -10635,6 +10732,32 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    IncidentInsightsDuration:
+      type: object
+      properties:
+        medianSeconds:
+          type: integer
+          format: int64
+          nullable: true
+        p90Seconds:
+          type: integer
+          format: int64
+          nullable: true
+        sampleCount:
+          type: integer
+    IncidentInsightsResolution:
+      type: object
+      properties:
+        count:
+          type: integer
+        medianSeconds:
+          type: integer
+          format: int64
+          nullable: true
+        p90Seconds:
+          type: integer
+          format: int64
+          nullable: true
     SupportReplyWindow:
       type: object
       description: >
