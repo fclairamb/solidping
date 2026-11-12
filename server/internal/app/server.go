@@ -1862,9 +1862,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// The supervisor is started from Server.Start() once we have a real
 	// cancellable context.
 	s.jmapManager = jmap.NewManager(s.dbService)
-	s.jmapManager.RegisterHandler(emailcheck.NewHandler(
+	emailCheckHandler := emailcheck.NewHandler(
 		s.dbService, s.jobSvc, s.services.Realtime, incidentPublicationsService, slog.Default(),
-		s.defaultCheckTimeout()))
+		s.defaultCheckTimeout())
+	emailCheckHandler.SetBlobFetcher(s.jmapManager.DownloadBlob)
+	s.jmapManager.RegisterHandler(emailCheckHandler)
 	systemService.SetEmailInboxManager(s.jmapManager)
 
 	// The synchronous transport behind "Send me a test": the button's whole

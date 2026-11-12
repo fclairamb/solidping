@@ -166,6 +166,20 @@ func (m *Manager) RegisterHandler(h Handler) {
 	m.handlers = append(m.handlers, h)
 }
 
+// DownloadBlob fetches a blob of the currently connected account. It fails with
+// ErrNoSession while the manager has no connection.
+func (m *Manager) DownloadBlob(ctx context.Context, blobID string) ([]byte, error) {
+	m.mu.RLock()
+	client := m.client
+	m.mu.RUnlock()
+
+	if client == nil {
+		return nil, ErrNoSession
+	}
+
+	return client.DownloadBlob(ctx, client.AccountID(), blobID)
+}
+
 // GetStatus returns a snapshot of the manager's current state.
 func (m *Manager) GetStatus() Status {
 	m.mu.RLock()

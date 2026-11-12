@@ -15,6 +15,7 @@ import (
 
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdnsbl/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/dnsblquery"
 )
 
 const (
@@ -285,74 +286,23 @@ func resolveTargetIPs(
 }
 
 // reverseIP returns the reversed-octet form of an IPv4 address used for DNSBL
-// queries (1.2.3.4 → 4.3.2.1). It returns "" for non-IPv4 input.
-func reverseIP(ipStr string) string {
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		return ""
-	}
+// queries (1.2.3.4 → 4.3.2.1). It returns "" for non-IPv4 input. The dnsbl
+// checker is IPv4-only; the shared primitives live in dnsblquery.
+func reverseIP(ipStr string) string { return dnsblquery.ReverseIPv4(ipStr) }
 
-	ip4 := ip.To4()
-	if ip4 == nil {
-		return ""
-	}
-
-	return fmt.Sprintf("%d.%d.%d.%d", ip4[3], ip4[2], ip4[1], ip4[0])
-}
-
-// isDNSBLErrorCode reports whether addr is a reserved DNSBL error/status reply.
-//
-// DNSBLs use the 127.255.255.0/24 range for non-listing replies rather than
-// genuine listings — Spamhaus, for example, returns 127.255.255.252 (typo /
-// malformed zone), 127.255.255.254 (query via a public/open resolver, refused),
-// and 127.255.255.255 (query volume / rate-limit exceeded). No legitimate DNSBL
-// encodes a real listing in 127.255.255.x, so the whole /24 is treated as an
-// error range.
-func isDNSBLErrorCode(addr string) bool {
-	ip := net.ParseIP(addr)
-	if ip == nil {
-		return false
-	}
-
-	ip4 := ip.To4()
-	if ip4 == nil {
-		return false
-	}
-
-	return ip4[0] == 127 && ip4[1] == 255 && ip4[2] == 255
-}
+// isDNSBLErrorCode reports whether addr is a reserved DNSBL error/status reply
+// (see dnsblquery.IsErrorCode).
+func isDNSBLErrorCode(addr string) bool { return dnsblquery.IsErrorCode(addr) }
 
 // partitionDNSBLAddrs splits a zone's answer set into genuine listing addresses
-// and reserved 127.255.255.x error/status codes. The error codes must not be
-// counted as listings (see isDNSBLErrorCode).
+// and reserved 127.255.255.x error/status codes (see dnsblquery.PartitionAddrs).
 func partitionDNSBLAddrs(addrs []string) ([]string, []string) {
-	var listings, errCodes []string
-
-	for _, addr := range addrs {
-		if isDNSBLErrorCode(addr) {
-			errCodes = append(errCodes, addr)
-		} else {
-			listings = append(listings, addr)
-		}
-	}
-
-	return listings, errCodes
+	return dnsblquery.PartitionAddrs(addrs)
 }
 
 // isNotFound reports whether err is an NXDOMAIN / host-not-found DNS error,
 // which for a DNSBL means the target is NOT listed (clean).
-func isNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
-		return dnsErr.IsNotFound
-	}
-
-	return false
-}
+func isNotFound(err error) bool { return dnsblquery.IsNotFound(err) }
 
 // createResolver builds a hostLookuper from an optional custom nameserver.
 func createResolver(nameserver string, timeout time.Duration) hostLookuper {

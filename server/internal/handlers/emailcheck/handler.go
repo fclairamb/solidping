@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	emailconfig "github.com/fclairamb/solidping/server/internal/checkers/checkemail/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -52,6 +53,8 @@ const (
 	outputKeySourceCheckUID = "sourceCheckUid"
 	outputKeySentAt         = "sentAt"
 	outputKeyLatencyMs      = "latencyMs"
+	outputKeyAuth           = "auth"
+	metricBlocklistedCount  = "blocklisted_count"
 )
 
 // maxSaneDeliveryLatency bounds the send→receive latency that is recorded as
@@ -88,6 +91,19 @@ type Handler struct {
 	db          db.Service
 	incidentSvc *incidents.Service
 	logger      *slog.Logger
+
+	// fetchBlob downloads an email's raw message (DKIM needs the exact bytes);
+	// dnsResolver does the sender-authentication lookups. Both are optional:
+	// nil means "no raw message available" and the system resolver.
+	fetchBlob   blobFetcher
+	dnsResolver authResolver
+	authTimeout time.Duration
+}
+
+// SetBlobFetcher wires the raw-message download used by the DKIM / DMARC
+// verification. Without it a check that requires them records temperror.
+func (h *Handler) SetBlobFetcher(fetch func(ctx context.Context, blobID string) ([]byte, error)) {
+	h.fetchBlob = fetch
 }
 
 // NewHandler builds a handler wired to the db service and incident pipeline.
@@ -398,8 +414,6 @@ func (h *Handler) recordResult(
 		return err
 	}
 
-	checkerStatus := toCheckerStatus(status)
-	statusInt := int(checkerStatus)
 	durationMs := float32(0)
 
 	from := ""
@@ -416,15 +430,36 @@ func (h *Handler) recordResult(
 		return nil
 	}
 
+	message := defaultMessage(status)
+	metrics := make(models.JSONMap)
+
+	var authOutput map[string]any
+
+	if status == statusUp {
+		var failed string
+
+		authOutput, failed = h.applySenderAuth(ctx, check, email, metrics)
+		if failed != "" {
+			status = statusDown
+			message = failed
+		}
+	}
+
+	checkerStatus := toCheckerStatus(status)
+	statusInt := int(checkerStatus)
+
 	output := models.JSONMap{
-		outputKeyMessage:    defaultMessage(status),
+		outputKeyMessage:    message,
 		outputKeyFrom:       from,
 		outputKeySubject:    email.Subject,
 		outputKeyMessageID:  messageID,
 		outputKeyReceivedAt: email.ReceivedAt.Format(time.RFC3339),
 	}
 
-	metrics := make(models.JSONMap)
+	if authOutput != nil {
+		output[outputKeyAuth] = authOutput
+	}
+
 	enrichFromSMTPHeaders(output, metrics, email, check.OrganizationUID)
 
 	now := time.Now()
@@ -465,4 +500,35 @@ func (h *Handler) recordResult(
 	}
 
 	return nil
+}
+
+// applySenderAuth runs the optional sender-authentication evaluation of the check
+// (see evaluateSenderAuth). It returns the "auth" output object (nil when the
+// check enabled nothing) and, when a requirement failed, the result message.
+// Only called for a message whose token-derived status is up: an explicit down /
+// error from the sender is never masked.
+func (h *Handler) applySenderAuth(
+	ctx context.Context, check *models.Check, email *jmap.Email, metrics models.JSONMap,
+) (map[string]any, string) {
+	cfg := &emailconfig.EmailConfig{}
+	if err := cfg.FromMap(check.Config); err != nil || !cfg.AuthEnabled() {
+		return nil, ""
+	}
+
+	auth := h.evaluateSenderAuth(ctx, email, cfg)
+
+	if len(auth.TempErrors) > 0 {
+		h.logger.WarnContext(ctx, "sender authentication incomplete",
+			"check_uid", check.UID, "temperror", auth.TempErrors)
+	}
+
+	if auth.ran.blocklists {
+		metrics[metricBlocklistedCount] = len(auth.BlocklistedOn)
+	}
+
+	if len(auth.Failures) == 0 {
+		return auth.output(), ""
+	}
+
+	return auth.output(), auth.failureMessage()
 }
