@@ -5,11 +5,11 @@
 
 ### Features
 
-* **checks:** email check validates SPF/DKIM/DMARC and blocklists ([#854](https://github.com/fclairamb/solidping/issues/854)) ([25673c7](https://github.com/fclairamb/solidping/commit/25673c7225285d1f70cf69d0c820fc73ce139870))
-* flag unreachable Slack DM contacts, filter checks by group, quieter tlsedge log ([#860](https://github.com/fclairamb/solidping/issues/860)) ([8c8cda0](https://github.com/fclairamb/solidping/commit/8c8cda0f9d43cd6f451a345b095c3d33fa1aa07d))
+* **checks:** email check now validates SPF/DKIM/DMARC and checks blocklists ([#854](https://github.com/fclairamb/solidping/issues/854)) ([25673c7](https://github.com/fclairamb/solidping/commit/25673c7225285d1f70cf69d0c820fc73ce139870))
+* Slack DM contacts that can't be reached are now flagged, checks can be filtered by group, and the tlsedge log is quieter ([#860](https://github.com/fclairamb/solidping/issues/860)) ([8c8cda0](https://github.com/fclairamb/solidping/commit/8c8cda0f9d43cd6f451a345b095c3d33fa1aa07d))
 
 
-### Bug Fixes
+### Maintenance
 
 * **deps:** update module github.com/prometheus/common to v0.74.0 ([#856](https://github.com/fclairamb/solidping/issues/856)) ([6659341](https://github.com/fclairamb/solidping/commit/66593418dcfa38dbc7be83ac34dd9f1856ca565f))
 
