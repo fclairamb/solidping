@@ -229,7 +229,7 @@ func TestEveryProviderHealsStaleUserLinks(t *testing.T) {
 		{
 			name: "gitlab", providerType: models.ProviderTypeGitLab, providerID: "4243",
 			signIn: func(ctx context.Context, email string) (*models.User, error) {
-				return dropCreatedFlag(gitlab.findOrCreateUser(ctx, &GitLabUserInfo{ID: 4243, Name: "GL", Email: email}))
+				return dropCreatedFlag(gitlab.findOrCreateUser(ctx, &GitLabUserInfo{ID: 4243, Name: "GL", Email: email}, true))
 			},
 		},
 		{
