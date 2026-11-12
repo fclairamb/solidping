@@ -52,6 +52,9 @@ type SealedSecrets struct {
 	CT           string   `json:"ct"`
 	// Bound says the plaintext carries a `_binding` (spec 2026-11-11-01).
 	Bound bool `json:"bound,omitempty"`
+	// TargetFields is the target list the binding was digested over (spec
+	// 2026-11-12-02).
+	TargetFields []string `json:"targetFields,omitempty"`
 }
 
 // SealTarget is what the secrets are bound to: the check type, its target
@@ -92,7 +95,12 @@ func SealSecrets(recipients []string, secrets map[string]any, target *SealTarget
 		return nil, err
 	}
 
-	return &SealedSecrets{Keys: keys, Fingerprints: fingerprints, CT: ciphertext, Bound: target != nil}, nil
+	out := &SealedSecrets{Keys: keys, Fingerprints: fingerprints, CT: ciphertext, Bound: target != nil}
+	if target != nil {
+		out.TargetFields = append([]string{}, target.TargetFields...)
+	}
+
+	return out, nil
 }
 
 // SealCommand is `solidping seal`: read a JSON object of secret fields on

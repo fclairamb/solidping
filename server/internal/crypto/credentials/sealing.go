@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 
@@ -54,6 +55,11 @@ type sealedEnvelopeJSON struct {
 	// unbound blobs): the agent checks the binding inside the plaintext and
 	// never trusts this flag.
 	Bound bool `json:"bound,omitempty"`
+	// TargetFields records the target list the client said it digested the
+	// binding over (spec 2026-11-12-02). Display only, like Bound: the Re-seal
+	// page compares it with the type's current list. Absent on blobs bound
+	// before it existed.
+	TargetFields []string `json:"targetFields,omitempty"`
 	// Unconfirmed records a blob re-sealed by an agent (peer re-wrap) that no
 	// second agent confirmed (spec 2026-11-11-02): NeedsReseal keeps it
 	// flagged until a re-wrap is confirmed or the secrets are typed again.
@@ -304,14 +310,22 @@ func BuildClientSealedEnvelope(fingerprints []string, ciphertext string) (string
 	return string(out), nil
 }
 
-// MarkSealedBound sets the display-only Bound flag of a sealed envelope.
-func MarkSealedBound(envelope string) (string, error) {
+// MarkSealedBound sets the display-only Bound flag of a sealed envelope, and
+// the target list the client bound to (nil when it did not say).
+func MarkSealedBound(envelope string, targetFields []string) (string, error) {
 	env, err := parseSealedEnvelope(envelope)
 	if err != nil {
 		return "", err
 	}
 
 	env.Bound = true
+	env.TargetFields = nil
+
+	if len(targetFields) > 0 {
+		fields := append([]string(nil), targetFields...)
+		sort.Strings(fields)
+		env.TargetFields = slices.Compact(fields)
+	}
 
 	out, err := json.Marshal(env)
 	if err != nil {
@@ -326,6 +340,26 @@ func IsSealedBound(envelope string) bool {
 	env, err := parseSealedEnvelope(envelope)
 
 	return err == nil && env.Bound
+}
+
+// SealedBoundTargetFields returns the target list recorded on a bound
+// envelope (MarkSealedBound), nil when none was recorded.
+func SealedBoundTargetFields(envelope string) []string {
+	env, err := parseSealedEnvelope(envelope)
+	if err != nil {
+		return nil
+	}
+
+	return env.TargetFields
+}
+
+// BindingStale reports whether the agents would refuse a bound blob for this
+// public config because the type's target list grew since it was sealed (spec
+// 2026-11-12-02): the digest over the list it was bound to (recorded, or the
+// legacy list) differs from the digest over the current one. A blob whose new
+// fields carry no value (a JS check with an empty env) is not stale.
+func BindingStale(boundFields, currentFields []string, config map[string]any) bool {
+	return CanonicalTarget(boundFields, config) != CanonicalTarget(currentFields, config)
 }
 
 // MarkSealedUnconfirmed sets the Unconfirmed flag of a sealed envelope: a

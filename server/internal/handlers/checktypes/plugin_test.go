@@ -70,6 +70,8 @@ func TestPluginTypeIsServed(t *testing.T) {
 	r.Equal(60, gopher.MinPeriodSeconds)
 	r.Equal(300, gopher.DefaultPeriodSeconds)
 	r.Equal([]string{}, gopher.SecretFields)
+	// A plugin type binds every public key (spec 2026-11-12-02).
+	r.Equal([]string{"*", "tunnelCheckUid"}, gopher.TargetFields)
 
 	for i := range listing.Data {
 		if listing.Data[i].Type == "http" {

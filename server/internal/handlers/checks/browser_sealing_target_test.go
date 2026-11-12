@@ -186,3 +186,80 @@ func TestResealListsUnboundBlobs(t *testing.T) {
 	r.Equal(unbound.UID, listed[0].UID)
 	r.Equal(checks.ResealReasonUnbound, listed[0].Reason)
 }
+
+// sealedJSRequest is a browser-sealed JS check: its env carries the base URL
+// the script sends the sealed secrets to.
+func sealedJSRequest(slug string, sealed *checks.SealedSecretsRequest, env map[string]any) checks.CreateCheckRequest {
+	config := map[string]any{"script": "return http.get(env.BASE_URL).status === 200;"}
+	if env != nil {
+		config["env"] = env
+	}
+
+	return checks.CreateCheckRequest{
+		Name: slug, Slug: slug, Type: "js", Regions: []string{sealTestRegion},
+		Config: config, SealedSecrets: sealed,
+	}
+}
+
+// TestSealedJSEnvChangeNeedsNewSecrets: a JS check's env is a target field
+// (spec 2026-11-12-02), so moving its base URL without new secrets is a 409;
+// a timeout change is not.
+func TestSealedJSEnvChangeNeedsNewSecrets(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, _, org, keys := setupBrowserSealing(t, sqliteSealingEnv)
+	ctx := t.Context()
+
+	created, err := svc.CreateCheck(ctx, org.Slug, sealedJSRequest("js-target",
+		clientSeal(t, map[string]any{"secrets": map[string]any{"TOKEN": "hunter2"}}, keys.X25519Recipient),
+		map[string]any{"BASE_URL": "https://api.acme.com"}))
+	r.NoError(err)
+
+	script := "return http.get(env.BASE_URL).status === 200;"
+	evil := map[string]any{"script": script, "env": map[string]any{"BASE_URL": "https://evilco.example"}}
+	_, err = svc.UpdateCheck(ctx, org.Slug, created.UID, &checks.UpdateCheckRequest{Config: &evil})
+	r.ErrorIs(err, checks.ErrSealedTargetChanged)
+
+	slower := map[string]any{
+		"script": script, "env": map[string]any{"BASE_URL": "https://api.acme.com"}, "timeout": "20s",
+	}
+	updated, err := svc.UpdateCheck(ctx, org.Slug, created.UID, &checks.UpdateCheckRequest{Config: &slower})
+	r.NoError(err)
+	r.Equal("browser", *updated.SecretsEncryption)
+}
+
+// TestResealListsStaleJSBinding: a JS blob bound to the script only (before
+// spec 2026-11-12-02) is refused by the agents once the check has an env, so
+// the Re-seal page lists it as unbound. One bound to script and env, or one
+// whose env is empty (same digest), is not listed.
+func TestResealListsStaleJSBinding(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, _, org, keys := setupBrowserSealing(t, sqliteSealingEnv)
+	ctx := t.Context()
+
+	seal := func(targetFields ...string) *checks.SealedSecretsRequest {
+		sealed := clientSeal(t, map[string]any{"secrets": map[string]any{"TOKEN": "hunter2"}}, keys.X25519Recipient)
+		sealed.TargetFields = targetFields
+
+		return sealed
+	}
+	env := map[string]any{"BASE_URL": "https://api.acme.com"}
+
+	stale, err := svc.CreateCheck(ctx, org.Slug, sealedJSRequest("js-stale", seal(), env))
+	r.NoError(err)
+
+	_, err = svc.CreateCheck(ctx, org.Slug, sealedJSRequest("js-fresh", seal("env", "script", "tunnelCheckUid"), env))
+	r.NoError(err)
+
+	_, err = svc.CreateCheck(ctx, org.Slug, sealedJSRequest("js-no-env", seal(), nil))
+	r.NoError(err)
+
+	listed, err := svc.ListResealChecks(ctx, org.Slug)
+	r.NoError(err)
+	r.Len(listed, 1)
+	r.Equal(stale.UID, listed[0].UID)
+	r.Equal(checks.ResealReasonUnbound, listed[0].Reason)
+}

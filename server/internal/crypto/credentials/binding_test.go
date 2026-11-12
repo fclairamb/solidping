@@ -65,12 +65,9 @@ func TestNormalizeTargetURL(t *testing.T) {
 func TestTargetFieldsForAddsTheTunnel(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t,
-		[]string{
-			"address", "brokers", "database", "dsn", "endpoint", "host", "hostname", "port", "server",
-			"tunnelCheckUid", "url",
-		},
-		credentials.TargetFieldsFor(nil))
+	// A type that declares no list (a plugin, a type unknown to the agent)
+	// binds every public key (spec 2026-11-12-02).
+	require.Equal(t, []string{credentials.AllPublicKeys, "tunnelCheckUid"}, credentials.TargetFieldsFor(nil))
 }
 
 func bindingCheck(config map[string]any) credentials.BindingCheck {
@@ -191,7 +188,7 @@ func TestMarkSealedBound(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, credentials.IsSealedBound(envelope))
 
-	bound, err := credentials.MarkSealedBound(envelope)
+	bound, err := credentials.MarkSealedBound(envelope, nil)
 	require.NoError(t, err)
 	require.True(t, credentials.IsSealedBound(bound))
 	require.Equal(t, credentials.SealOriginBrowser, credentials.SealedOrigin(bound))
@@ -200,4 +197,25 @@ func TestMarkSealedBound(t *testing.T) {
 	rewrapped, err := credentials.RewrapSealedEnvelope(bound, []string{fix.Fingerprint}, fix.CT)
 	require.NoError(t, err)
 	require.True(t, credentials.IsSealedBound(rewrapped))
+	require.Nil(t, credentials.SealedBoundTargetFields(rewrapped), "no list recorded")
+
+	// The list the client bound to is recorded, sorted, and kept by a re-wrap
+	// (spec 2026-11-12-02).
+	withFields, err := credentials.MarkSealedBound(envelope, []string{"script", "env", "tunnelCheckUid", "env"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"env", "script", "tunnelCheckUid"}, credentials.SealedBoundTargetFields(withFields))
+	rewrapped, err = credentials.RewrapSealedEnvelope(withFields, []string{fix.Fingerprint}, fix.CT)
+	require.NoError(t, err)
+	require.Equal(t, []string{"env", "script", "tunnelCheckUid"}, credentials.SealedBoundTargetFields(rewrapped))
+}
+
+func TestLegacyTargetFieldsFor(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t,
+		[]string{
+			"address", "brokers", "database", "dsn", "endpoint", "host", "hostname", "port", "server",
+			"tunnelCheckUid", "url",
+		},
+		credentials.LegacyTargetFieldsFor(nil))
 }
