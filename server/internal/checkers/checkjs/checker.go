@@ -11,6 +11,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -1145,7 +1146,7 @@ func (r *jsRuntime) httpRequest(
 
 	client := &http.Client{
 		Timeout:       opts.timeout,
-		CheckRedirect: redirectPolicy(&opts, &redirects),
+		CheckRedirect: redirectPolicy(&opts, &redirects, r.config.Secrets),
 		// the shared pooled HTTP/1.1 check transport when untunneled and no IP
 		// version is pinned (js does not declare SupportsIPVersion) — the same
 		// transport the http and prometheus checkers run on (spec 2026-09-28-04
@@ -1215,7 +1216,9 @@ func (r *jsRuntime) httpRequest(
 // is the OAuth case the spec is about: the 302 carrying `code=` IS the success
 // signal, so it must be observable, and the chain stays empty because nothing
 // was followed.
-func redirectPolicy(opts *httpOptions, redirects *[]map[string]any) func(*http.Request, []*http.Request) error {
+func redirectPolicy(
+	opts *httpOptions, redirects *[]map[string]any, secrets map[string]string,
+) func(*http.Request, []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
 		if !opts.followRedirects {
 			return http.ErrUseLastResponse
@@ -1223,6 +1226,12 @@ func redirectPolicy(opts *httpOptions, redirects *[]map[string]any) func(*http.R
 
 		if len(via) >= opts.maxRedirects {
 			return fmt.Errorf("%w: %d", errTooManyRedirects, opts.maxRedirects)
+		}
+
+		// A header carrying a secret value only goes to the URL's own host:
+		// net/http strips just Authorization/Cookie/WWW-Authenticate.
+		if len(via) > 0 && !sameOrigin(via[0].URL, req.URL) {
+			stripSecretValuedHeaders(req.Header, secrets)
 		}
 
 		if req.Response != nil {
@@ -1247,6 +1256,56 @@ func redirectPolicy(opts *httpOptions, redirects *[]map[string]any) func(*http.R
 
 		return nil
 	}
+}
+
+// sameOrigin reports whether two URLs share a hostname and effective port.
+func sameOrigin(first, next *url.URL) bool {
+	if !strings.EqualFold(first.Hostname(), next.Hostname()) {
+		return false
+	}
+
+	// A scheme upgrade on the same host (no explicit port) keeps them.
+	if first.Port() == "" && next.Port() == "" {
+		return true
+	}
+
+	return effectivePort(first) == effectivePort(next)
+}
+
+func effectivePort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+
+	if u.Scheme == "https" {
+		return "443"
+	}
+
+	return "80"
+}
+
+// stripSecretValuedHeaders deletes every header whose value contains a
+// non-empty secret value (a script builds those from `secrets.*`).
+func stripSecretValuedHeaders(header http.Header, secrets map[string]string) {
+	for name, values := range header {
+		for _, value := range values {
+			if containsSecret(value, secrets) {
+				header.Del(name)
+
+				break
+			}
+		}
+	}
+}
+
+func containsSecret(value string, secrets map[string]string) bool {
+	for _, secret := range secrets {
+		if secret != "" && strings.Contains(value, secret) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // responseHeaders converts response headers to a JS-friendly map: canonical
