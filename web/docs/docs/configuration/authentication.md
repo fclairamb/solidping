@@ -217,6 +217,10 @@ SP_GITLAB_CLIENT_SECRET=your-gitlab-client-secret
 3. Set redirect URI to `{SP_BASE_URL}/api/v1/auth/gitlab/callback`
 4. Select scopes: `read_user`, `openid`
 
+**Email checks:**
+- SolidPing requires a confirmed GitLab email. The GitLab account must be confirmed, and its primary email must be listed as confirmed in its emails. Otherwise sign-in is refused with `EMAIL_NOT_VERIFIED`. On a self-managed instance whose email confirmation is `off` or `soft`, users must confirm their email first.
+- A first GitLab sign-in never links to an existing SolidPing account with the same email: it is refused with `ACCOUNT_EXISTS_SIGN_IN_FIRST`. The owner of that account signs in with the method they already use. A GitLab sign-in whose email matches no account creates a new one.
+
 ### Microsoft
 
 ```bash

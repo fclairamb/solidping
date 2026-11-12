@@ -41,8 +41,13 @@ const (
 	OAuthCodeEmailNotVerified = "EMAIL_NOT_VERIFIED"
 	OAuthCodeTokenExchange    = "TOKEN_EXCHANGE_FAILED"
 	OAuthCodeFailed           = "OAUTH_FAILED"
-	OAuthDescInvalidState     = "Invalid or expired state parameter"
-	OAuthDescTokenExchange    = "Failed to exchange authorization code"
+	// OAuthCodeAccountExistsSignInFirst refuses a first provider sign-in whose
+	// email matches an existing account: it is never linked silently.
+	OAuthCodeAccountExistsSignInFirst = "ACCOUNT_EXISTS_SIGN_IN_FIRST"
+	OAuthDescAccountExistsSignInFirst = "An account already uses this email. " +
+		"Sign in with the method you already use for it"
+	OAuthDescInvalidState  = "Invalid or expired state parameter"
+	OAuthDescTokenExchange = "Failed to exchange authorization code"
 	// OAuthDescGenericFailure is what an UNEXPECTED provider-callback failure
 	// tells the user. The details never travel with the redirect: the browser
 	// lands on the SPA with these params in the URL bar, so anything specific

@@ -129,7 +129,10 @@ func (h *GitLabOAuthHandler) handleOAuthError(
 		description = OAuthDescInvalidState
 	case errors.Is(err, ErrEmailNotVerified):
 		code = OAuthCodeEmailNotVerified
-		description = "No verified email found in GitLab profile"
+		description = "Your GitLab email is not confirmed. Confirm it in GitLab, then try again"
+	case errors.Is(err, ErrGitLabLinkRequiresSignIn):
+		code = OAuthCodeAccountExistsSignInFirst
+		description = OAuthDescAccountExistsSignInFirst
 	case errors.Is(err, ErrGitLabTokenExchange):
 		code = OAuthCodeTokenExchange
 		description = OAuthDescTokenExchange
