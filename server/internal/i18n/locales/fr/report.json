@@ -89,5 +89,14 @@
     "perCheckTruncated": "Par contrôle, les moins bons en premier (les {shown} contrôles sur {total} à la plus faible disponibilité) :",
     "objectivesHeading": "Objectifs :",
     "budgetRemaining": "budget restant {budget}"
+  },
+  "insights": {
+    "title": "Le plus d'incidents",
+    "resolve": "Délai médian de résolution : {duration}",
+    "acknowledge": "Délai médian d'acquittement : {duration}",
+    "acknowledged": "{count} sur {total} acquittés",
+    "rowDetail": "{incidents}, {relapses}",
+    "relapses_one": "{count} rechute",
+    "relapses_other": "{count} rechutes"
   }
 }

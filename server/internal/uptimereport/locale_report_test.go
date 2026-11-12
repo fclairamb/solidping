@@ -46,7 +46,7 @@ func englishLeftovers() []string {
 	return []string{
 		"Uptime report", "Availability", "Response time", "Objectives", "Open dashboard",
 		"worst first", "No data", "Checks monitored", "Total downtime", "Budget remaining",
-		" vs ", "uptime", "longest", "average", "samples", "Gray means",
+		" vs ", "uptime", "longest", "average", "samples", "Gray means", "Most incidents", "Median time", "acknowledged", "relapse",
 	}
 }
 
@@ -279,5 +279,32 @@ func TestUptimeReportPluralsSurviveTheJob(t *testing.T) {
 		preheader := preheaderPattern.FindStringSubmatch(body)
 		r.Len(preheader, 2)
 		r.Contains(preheader[1], tc.want, "%s, %d incidents", tc.lang, tc.count)
+	}
+}
+
+// TestUptimeReportInsightsAreWrittenInEveryLanguage pins the new strings: each
+// locale renders its own figures and block title, with no raw key left.
+func TestUptimeReportInsightsAreWrittenInEveryLanguage(t *testing.T) {
+	t.Parallel()
+
+	want := map[string][]string{
+		i18n.LangEnglish: {"Median time to resolve: 18m", "2 of 3 acknowledged", "Most incidents", "2 incidents, 1 relapse"},
+		i18n.LangFrench:  {"Délai médian de résolution", "2 sur 3 acquittés", "Le plus d'incidents", "2 incidents, 1 rechute"},
+		i18n.LangGerman:  {"Mediane Zeit bis zur Lösung", "2 von 3 bestätigt", "Meiste Vorfälle", "2 Vorfälle, 1 Rückfall"},
+		i18n.LangSpanish: {"Tiempo mediano de resolución", "2 de 3 reconocidos", "Más incidentes", "2 incidentes, 1 recaída"},
+	}
+
+	formatter, err := email.NewFormatter()
+	require.NoError(t, err)
+
+	for lang, phrases := range want {
+		_, body, text := renderReport(t, formatter, i18n.New(lang, "Europe/Paris"), sampleData())
+
+		for _, phrase := range phrases {
+			require.Contains(t, visibleText(body), phrase, lang)
+			require.Contains(t, text, phrase, lang)
+		}
+
+		require.NotContains(t, text, "report.insights", lang)
 	}
 }

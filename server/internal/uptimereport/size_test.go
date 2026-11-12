@@ -50,6 +50,9 @@ func worstCaseMonthlyReport(t *testing.T) *Data {
 		AvailabilityColor:      "#c2410c",
 		CheckCount:             maxCheckRows + 87,
 		IncidentCount:          42,
+		ShowInsights:           true,
+		AcknowledgedCount:      30,
+		PagedCount:             42,
 		HasPreviousData:        true,
 		ShowAvailabilityDelta:  true,
 		AvailabilityDeltaColor: deltaBadColor,
@@ -77,15 +80,18 @@ func worstCaseMonthlyReport(t *testing.T) *Data {
 			LongestIncident:      3*time.Hour + 12*time.Minute,
 			AverageIncident:      18 * time.Minute,
 			TotalDowntime:        12*time.Hour + 36*time.Minute,
-			AvgResponse:          412,
-			MinResponse:          37,
-			MaxResponse:          9800,
-			HasResponseRange:     true,
-			PreviousAvgResponse:  292,
-			SlowSamples:          318,
-			SlowPeaks:            24,
-			StripStart:           time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC),
-			StripDays:            days,
+
+			MedianTimeToResolve:     2*time.Hour + 41*time.Minute,
+			MedianTimeToAcknowledge: 13*time.Minute + 20*time.Second,
+			AvgResponse:             412,
+			MinResponse:             37,
+			MaxResponse:             9800,
+			HasResponseRange:        true,
+			PreviousAvgResponse:     292,
+			SlowSamples:             318,
+			SlowPeaks:               24,
+			StripStart:              time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC),
+			StripDays:               days,
 		},
 	}
 
@@ -105,6 +111,15 @@ func worstCaseMonthlyReport(t *testing.T) *Data {
 			AvailabilityColor: "#c2410c",
 			URL:               fmt.Sprintf("https://solidping.example/d/orgs/acme/checks/chk-%02d", i),
 			Days:              cells,
+		})
+	}
+
+	for i := range maxTopFailing {
+		data.TopFailingChecks = append(data.TopFailingChecks, FailingCheckRow{
+			Name:          fmt.Sprintf("top-failing-check-with-a-fairly-long-name-%02d.example", i),
+			URL:           fmt.Sprintf("https://solidping.example/d/orgs/acme/checks/chk-%02d", i),
+			IncidentCount: 40 - i,
+			RelapseCount:  12 - i,
 		})
 	}
 

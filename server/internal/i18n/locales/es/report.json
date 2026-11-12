@@ -89,5 +89,14 @@
     "perCheckTruncated": "Por comprobación, las peores primero (se muestran las {shown} comprobaciones con menor disponibilidad de un total de {total}):",
     "objectivesHeading": "Objetivos:",
     "budgetRemaining": "presupuesto restante {budget}"
+  },
+  "insights": {
+    "title": "Más incidentes",
+    "resolve": "Tiempo mediano de resolución: {duration}",
+    "acknowledge": "Tiempo mediano de reconocimiento: {duration}",
+    "acknowledged": "{count} de {total} reconocidos",
+    "rowDetail": "{incidents}, {relapses}",
+    "relapses_one": "{count} recaída",
+    "relapses_other": "{count} recaídas"
   }
 }

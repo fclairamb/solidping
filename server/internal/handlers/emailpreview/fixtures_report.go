@@ -44,6 +44,13 @@ func uptimeReportFixture(loc i18n.Locale) map[string]any {
 
 	objective := report.SLOs[0]
 
+	topFailing := make([]map[string]any, 0, len(report.TopFailingChecks))
+	for _, row := range report.TopFailingChecks {
+		topFailing = append(topFailing, map[string]any{
+			keyName: row.Name, "URL": row.URL, "Detail": row.Detail,
+		})
+	}
+
 	return map[string]any{
 		keyOrgName:        report.OrgName,
 		"PeriodLabel":     report.PeriodLabel,
@@ -56,6 +63,13 @@ func uptimeReportFixture(loc i18n.Locale) map[string]any {
 		"LongestIncident": report.LongestIncident,
 		"AverageIncident": report.AverageIncident,
 		"TotalDowntime":   report.TotalDowntime,
+
+		"ShowInsights":            report.ShowInsights,
+		"MedianTimeToResolve":     report.MedianTimeToResolve,
+		"MedianTimeToAcknowledge": report.MedianTimeToAcknowledge,
+		"AcknowledgedCount":       report.AcknowledgedCount,
+		"PagedCount":              report.PagedCount,
+		"TopFailingChecks":        topFailing,
 
 		// Period-over-period trend. Present in the fixture so the preview
 		// exercises the delta spans rather than only their absence.
@@ -120,6 +134,20 @@ func uptimeReportPreview() *uptimereport.Data {
 		CheckCount:        2,
 		IncidentCount:     3,
 
+		ShowInsights:      true,
+		AcknowledgedCount: 2,
+		PagedCount:        3,
+		TopFailingChecks: []uptimereport.FailingCheckRow{
+			{
+				Name: fixtureCheckName, IncidentCount: 2, RelapseCount: 1,
+				URL: "https://solidping.example/d/orgs/acme/checks/chk-prod-api",
+			},
+			{
+				Name: "Marketing site", IncidentCount: 1,
+				URL: "https://solidping.example/d/orgs/acme/checks/chk-marketing",
+			},
+		},
+
 		HasPreviousData:        true,
 		PreviousIncidentCount:  5,
 		ShowAvailabilityDelta:  true,
@@ -167,15 +195,18 @@ func uptimeReportPreview() *uptimereport.Data {
 			LongestIncident:      42 * time.Minute,
 			AverageIncident:      21*time.Minute + 40*time.Second,
 			TotalDowntime:        time.Hour + 5*time.Minute,
-			AvgResponse:          171,
-			MinResponse:          42,
-			MaxResponse:          3200,
-			HasResponseRange:     true,
-			PreviousAvgResponse:  158,
-			SlowSamples:          4,
-			SlowPeaks:            2,
-			StripStart:           time.Date(year, time.July, 1, 0, 0, 0, 0, time.UTC),
-			StripDays:            31,
+
+			MedianTimeToResolve:     18 * time.Minute,
+			MedianTimeToAcknowledge: 4 * time.Minute,
+			AvgResponse:             171,
+			MinResponse:             42,
+			MaxResponse:             3200,
+			HasResponseRange:        true,
+			PreviousAvgResponse:     158,
+			SlowSamples:             4,
+			SlowPeaks:               2,
+			StripStart:              time.Date(year, time.July, 1, 0, 0, 0, 0, time.UTC),
+			StripDays:               31,
 		},
 	}
 }

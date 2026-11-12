@@ -428,3 +428,115 @@ func TestBuilderReportsAverageIncidentDuration(t *testing.T) {
 	r.Equal("20m", data.AverageIncident)
 	r.Equal("40m", data.TotalDowntime)
 }
+
+func (e *builderEnv) addIncident(
+	t *testing.T, check *models.Check, startedAt time.Time, resolveAfter, ackAfter time.Duration, relapses int,
+) {
+	t.Helper()
+
+	incident := models.NewIncident(e.org.UID, check.UID, startedAt, "down")
+	incident.RelapseCount = relapses
+
+	if resolveAfter > 0 {
+		resolvedAt := startedAt.Add(resolveAfter)
+		resolutionType := models.ResolutionTypeAuto
+		incident.State = models.IncidentStateResolved
+		incident.ResolvedAt = &resolvedAt
+		incident.ResolutionType = &resolutionType
+	}
+
+	if ackAfter > 0 {
+		ackedAt := startedAt.Add(ackAfter)
+		incident.AcknowledgedAt = &ackedAt
+	}
+
+	require.NoError(t, e.db.CreateIncident(e.ctx, incident))
+}
+
+func TestBuilderFillsIncidentInsights(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	env := newBuilderEnv(t)
+	now := time.Now().UTC()
+	window := currentMonth(now)
+	day := 24 * time.Hour
+
+	api := env.createCheck(t, "api")
+	web := env.createCheck(t, "web")
+	outside := env.createCheck(t, "outside")
+
+	for _, check := range []*models.Check{api, web, outside} {
+		env.addRaw(t, check, now.Add(-time.Hour), 90, 100, 150)
+	}
+
+	env.addIncident(t, api, window.Start.Add(day), 10*time.Minute, 2*time.Minute, 1)
+	env.addIncident(t, api, window.Start.Add(2*day), 30*time.Minute, 0, 2)
+	env.addIncident(t, web, window.Start.Add(3*day), 20*time.Minute, 4*time.Minute, 0)
+	// Not in the schedule's scope: must not be counted anywhere.
+	env.addIncident(t, outside, window.Start.Add(4*day), 5*time.Hour, 0, 9)
+	env.addIncident(t, outside, window.Start.Add(5*day), 5*time.Hour, 0, 9)
+	env.addIncident(t, outside, window.Start.Add(6*day), 5*time.Hour, 0, 9)
+
+	schedule := monthlySchedule(env.org.UID)
+	schedule.CheckUIDs = []string{api.UID, web.UID}
+
+	data, err := env.builder.Build(env.ctx, env.org, schedule, window, now)
+	r.NoError(err)
+
+	r.True(data.ShowInsights)
+	r.Equal(3, data.IncidentCount)
+	r.Equal("20m", data.MedianTimeToResolve)
+	r.Equal("2m", data.MedianTimeToAcknowledge) // nearest-rank median of 2m and 4m
+	r.Equal(2, data.AcknowledgedCount)
+	r.Equal(3, data.PagedCount)
+
+	r.Len(data.TopFailingChecks, 2)
+	r.Equal("api", data.TopFailingChecks[0].Name)
+	r.Equal(2, data.TopFailingChecks[0].IncidentCount)
+	r.Equal(3, data.TopFailingChecks[0].RelapseCount)
+	r.Equal("web", data.TopFailingChecks[1].Name)
+	r.Equal(1, data.TopFailingChecks[1].IncidentCount)
+}
+
+func TestBuilderLeavesInsightsEmptyWithoutIncidents(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	env := newBuilderEnv(t)
+	now := time.Now().UTC()
+
+	check := env.createCheck(t, "api")
+	env.addRaw(t, check, now.Add(-time.Hour), 100, 100, 150)
+
+	data, err := env.builder.Build(env.ctx, env.org, monthlySchedule(env.org.UID), currentMonth(now), now)
+	r.NoError(err)
+
+	r.False(data.ShowInsights)
+	r.Empty(data.MedianTimeToResolve)
+	r.Empty(data.MedianTimeToAcknowledge)
+	r.Zero(data.AcknowledgedCount)
+	r.Empty(data.TopFailingChecks)
+}
+
+func TestBuilderOmitsTopFailingForASingleCheckScope(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	env := newBuilderEnv(t)
+	now := time.Now().UTC()
+	window := currentMonth(now)
+
+	check := env.createCheck(t, "api")
+	env.addRaw(t, check, now.Add(-time.Hour), 90, 100, 150)
+	env.addIncident(t, check, window.Start.Add(24*time.Hour), 10*time.Minute, time.Minute, 0)
+
+	data, err := env.builder.Build(env.ctx, env.org, monthlySchedule(env.org.UID), window, now)
+	r.NoError(err)
+
+	r.True(data.ShowInsights)
+	r.Empty(data.TopFailingChecks)
+}
