@@ -6,6 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import {
   Select,
   SelectContent,
@@ -22,7 +25,7 @@ import { getFieldError } from "@/hooks/use-check-validation";
 import { useEmailAddressDomain } from "@/api/email-inbox";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
-import { getConfigField, validationMessage } from "./common";
+import { getConfigField, splitBlocklists, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
 import { PortInput, PortRangeError } from "../port-input";
 import { applyHostInput } from "./ports";
@@ -1242,16 +1245,50 @@ function HeartbeatFields() {
 }
 
 // ── Email (passive) ──
-export const emailModule: CheckTypeModule<EmptyState> = {
+// The optional sender-authentication policy (spec 2026-11-12-03). Every field
+// absent means a delivered message is "up" and nothing more is evaluated.
+export interface EmailState {
+  requireSpf: string; // "off" | "none" | "softfail" | "pass"
+  requireDkim: boolean;
+  requireDmarc: string; // "off" | "pass"
+  checkBlocklists: boolean;
+  blocklists: string;
+}
+
+const EMAIL_AUTH_OFF = "off";
+
+export const emailModule: CheckTypeModule<EmailState> = {
   types: ["email"],
-  // No modelled config key; see heartbeatModule above.
-  ownedKeys: [],
-  fromConfig: () => ({}),
-  toConfig: () => ({ config: {}, errors: [] }),
+  // Everything else (the public `token`) is carried through by the shared form's
+  // passthrough; only the authentication keys are modelled here.
+  ownedKeys: ["require_spf", "require_dkim", "require_dmarc", "check_blocklists", "blocklists"],
+  fromConfig: (config) => ({
+    requireSpf: getConfigField(config, "require_spf") || EMAIL_AUTH_OFF,
+    requireDkim: getConfigField(config, "require_dkim") === "true",
+    requireDmarc: getConfigField(config, "require_dmarc") || EMAIL_AUTH_OFF,
+    checkBlocklists:
+      getConfigField(config, "check_blocklists") === "true" ||
+      (Array.isArray(config.blocklists) && config.blocklists.length > 0),
+    blocklists: Array.isArray(config.blocklists)
+      ? (config.blocklists as string[]).join("\n")
+      : getConfigField(config, "blocklists"),
+  }),
+  toConfig: (state) => {
+    const cfg: CheckConfig = {};
+    if (state.requireSpf !== EMAIL_AUTH_OFF) cfg.require_spf = state.requireSpf;
+    if (state.requireDkim) cfg.require_dkim = true;
+    if (state.requireDmarc !== EMAIL_AUTH_OFF) cfg.require_dmarc = state.requireDmarc;
+    if (state.checkBlocklists) {
+      cfg.check_blocklists = true;
+      const zones = splitBlocklists(state.blocklists);
+      if (zones.length > 0) cfg.blocklists = zones;
+    }
+    return { config: cfg, errors: [] };
+  },
   Fields: EmailFields,
 };
 
-function EmailFields() {
+function EmailFields({ state, onChange }: CheckTypeFieldsProps<EmailState>) {
   const { t } = useTranslation("checks");
   const { data: emailDomain } = useEmailAddressDomain();
   if (!emailDomain) {
@@ -1261,10 +1298,89 @@ function EmailFields() {
       </Alert>
     );
   }
+  const customized =
+    state.requireSpf !== EMAIL_AUTH_OFF ||
+    state.requireDkim ||
+    state.requireDmarc !== EMAIL_AUTH_OFF ||
+    state.checkBlocklists;
   return (
-    <p className="text-sm text-muted-foreground">
-      {t("misc.emailGeneratedHelp")}
-    </p>
+    <>
+      <p className="text-sm text-muted-foreground">
+        {t("misc.emailGeneratedHelp")}
+      </p>
+      <CollapsibleSection
+        title={t("misc.emailAuthTitle")}
+        customized={customized}
+        defaultOpen={customized}
+        data-testid="email-auth-section"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">{t("misc.emailAuthHelp")}</p>
+          <div className="space-y-2">
+            <Label htmlFor="emailRequireSpf">{t("misc.emailRequireSpf")}</Label>
+            <Select
+              value={state.requireSpf}
+              onValueChange={(requireSpf) => onChange({ ...state, requireSpf })}
+            >
+              <SelectTrigger id="emailRequireSpf" data-testid="email-require-spf-select">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={EMAIL_AUTH_OFF}>{t("misc.emailAuthOff")}</SelectItem>
+                <SelectItem value="none">{t("misc.emailSpfNone")}</SelectItem>
+                <SelectItem value="softfail">{t("misc.emailSpfSoftfail")}</SelectItem>
+                <SelectItem value="pass">{t("misc.emailSpfPass")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <label className="flex items-center gap-2">
+            <Switch
+              checked={state.requireDkim}
+              onCheckedChange={(requireDkim) => onChange({ ...state, requireDkim })}
+              data-testid="email-require-dkim-switch"
+            />
+            <span className="text-sm font-medium">{t("misc.emailRequireDkim")}</span>
+          </label>
+          <div className="space-y-2">
+            <Label htmlFor="emailRequireDmarc">{t("misc.emailRequireDmarc")}</Label>
+            <Select
+              value={state.requireDmarc}
+              onValueChange={(requireDmarc) => onChange({ ...state, requireDmarc })}
+            >
+              <SelectTrigger id="emailRequireDmarc" data-testid="email-require-dmarc-select">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={EMAIL_AUTH_OFF}>{t("misc.emailAuthOff")}</SelectItem>
+                <SelectItem value="pass">{t("misc.emailDmarcPass")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <label className="flex items-center gap-2">
+            <Switch
+              checked={state.checkBlocklists}
+              onCheckedChange={(checkBlocklists) => onChange({ ...state, checkBlocklists })}
+              data-testid="email-check-blocklists-switch"
+            />
+            <span className="text-sm font-medium">{t("misc.emailCheckBlocklists")}</span>
+          </label>
+          {state.checkBlocklists && (
+            <div className="space-y-2">
+              <Label htmlFor="emailBlocklists">{t("misc.emailBlocklists")}</Label>
+              <Textarea
+                id="emailBlocklists"
+                rows={3}
+                placeholder={"zen.spamhaus.org\nbl.spamcop.net"}
+                value={state.blocklists}
+                onChange={(e) => onChange({ ...state, blocklists: e.target.value })}
+                data-testid="email-blocklists-input"
+              />
+              <p className="text-xs text-muted-foreground">{t("misc.emailBlocklistsHelp")}</p>
+            </div>
+          )}
+        </div>
+      </CollapsibleSection>
+    </>
   );
 }
 
