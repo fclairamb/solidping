@@ -1,6 +1,7 @@
 package tlsedge
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -10,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
@@ -199,4 +201,33 @@ func TestHasValidStoredCertificate(t *testing.T) {
 		"past NotAfter the material is useless")
 	r.False(HasValidStoredCertificate(ctx, dbSvc, "other.acme.com", now),
 		"a certificate for one host must not answer for another")
+}
+
+// TestRefusedUnknownHostLogsAtDebug pins the level of the refusal line. Internet
+// scanners hit the node IP with random SNI names all day; one WARN per probe
+// buried the warnings an operator acts on. The refusal itself must not change.
+func TestRefusedUnknownHostLogsAtDebug(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	_, dbSvc := newTestStorage(t)
+
+	var buf bytes.Buffer
+
+	edge, err := New(&Options{
+		ACME:                 config.ACMEConfig{Enabled: true, Email: "ops@solidping.io"},
+		DB:                   dbSvc,
+		ReservedHosts:        []string{"solidping.io"},
+		CustomDomainServable: func(context.Context, string) bool { return false },
+		Logger:               slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	})
+	r.NoError(err)
+
+	_, err = edge.TLSConfig(t.Context()).GetCertificate(helloFor("scanner-probe.acme.com"))
+	r.ErrorIs(err, ErrHostNotAllowed)
+
+	// Positive control: the line is still emitted, so its absence at WARN is
+	// not just a missing log call.
+	r.Contains(buf.String(), "level=DEBUG msg=\"tlsedge: refusing to serve a host we do not own\"")
+	r.NotContains(buf.String(), "level=WARN")
 }
