@@ -118,3 +118,40 @@ func tooManyZones() []any {
 
 	return zones
 }
+
+func TestAuthFromMapRejectsWrongTypes(t *testing.T) {
+	t.Parallel()
+
+	for name, in := range map[string]map[string]any{
+		"require_spf not a string":    {"require_spf": 1},
+		"require_dmarc not a string":  {"require_dmarc": true},
+		"require_dkim not a bool":     {"require_dkim": "yes"},
+		"check_blocklists not a bool": {"check_blocklists": 1},
+		"blocklists not a list":       {"blocklists": "zen.spamhaus.org"},
+		"blocklists item not string":  {"blocklists": []any{"zen.spamhaus.org", 3}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &config.EmailConfig{}
+			require.Error(t, cfg.FromMap(in))
+		})
+	}
+}
+
+func TestAuthFromMapAcceptsStringSlice(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := &config.EmailConfig{}
+	r.NoError(cfg.FromMap(map[string]any{"blocklists": []string{"a.test"}}))
+	r.Equal([]string{"a.test"}, cfg.Blocklists)
+	r.True(cfg.BlocklistsEnabled())
+}
+
+func TestFromMapRejectsNonStringToken(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.EmailConfig{}
+	require.Error(t, cfg.FromMap(map[string]any{"token": 42}))
+}

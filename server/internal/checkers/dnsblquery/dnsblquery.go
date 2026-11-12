@@ -49,9 +49,6 @@ func ReverseIPv6(ipStr string) string {
 	}
 
 	ip16 := ip.To16()
-	if ip16 == nil {
-		return ""
-	}
 
 	const hexDigits = "0123456789abcdef"
 

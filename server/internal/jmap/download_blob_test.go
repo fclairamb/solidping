@@ -91,3 +91,61 @@ func TestDownloadBlob_BadStatusAndNoSession(t *testing.T) {
 	_, err = bare.DownloadBlob(context.Background(), "a", "b")
 	r.ErrorIs(err, jmap.ErrNoDownloadURL)
 }
+
+func sessionClient(t *testing.T, downloadURL func(base string) string) (*jmap.Client, *httptest.Server) {
+	t.Helper()
+
+	var srv *httptest.Server
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/jmap", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"capabilities":    map[string]any{},
+			"primaryAccounts": map[string]string{jmap.CapabilityMail: "acc"},
+			"apiUrl":          srv.URL + "/api",
+			"downloadUrl":     downloadURL(srv.URL),
+		})
+	})
+	mux.HandleFunc("/dl/", func(w http.ResponseWriter, _ *http.Request) {
+		// Promise more bytes than are sent, then hang up: a truncated body.
+		w.Header().Set("Content-Length", "1000")
+		_, _ = w.Write([]byte("short"))
+	})
+
+	srv = httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	client := jmap.NewClient(&jmap.Config{SessionURL: srv.URL + "/.well-known/jmap", Username: "alice"})
+	_, err := client.DiscoverSession(context.Background())
+	require.NoError(t, err)
+
+	return client, srv
+}
+
+func TestDownloadBlob_InvalidTemplateURL(t *testing.T) {
+	t.Parallel()
+
+	client, _ := sessionClient(t, func(base string) string { return base + "/dl/%zz/{blobId}" })
+
+	_, err := client.DownloadBlob(context.Background(), "a", "b")
+	require.ErrorContains(t, err, "build request")
+}
+
+func TestDownloadBlob_TruncatedBody(t *testing.T) {
+	t.Parallel()
+
+	client, _ := sessionClient(t, func(base string) string { return base + "/dl/{accountId}/{blobId}" })
+
+	_, err := client.DownloadBlob(context.Background(), "a", "b")
+	require.ErrorContains(t, err, "read blob")
+}
+
+func TestDownloadBlob_TransportError(t *testing.T) {
+	t.Parallel()
+
+	client, srv := sessionClient(t, func(base string) string { return base + "/dl/{accountId}/{blobId}" })
+	srv.Close()
+
+	_, err := client.DownloadBlob(context.Background(), "a", "b")
+	require.ErrorContains(t, err, "download blob")
+}
