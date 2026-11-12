@@ -833,6 +833,8 @@
     "ipVersionLabel": "IP version",
     "ipVersionPinned": "Pinned to {{version}}",
     "ipVersionAuto": "Auto",
+    "ipFallbackLabel": "IP fallback",
+    "ipFallbackDetail": "Answered over the other family after {{ms}} ms ({{reason}})",
     "recentResults": "Recent Results",
     "recentResultsDescription": "History of check executions",
     "noResultsAvailable": "No results available",

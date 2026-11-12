@@ -62,7 +62,8 @@ func TestHTTPTimingPlain(t *testing.T) {
 		URL: "http://" + localhostURL(t, server.URL), Method: http.MethodGet,
 	})
 	require.NoError(t, err)
-	require.Equal(t, checkerdef.StatusUp, result.Status)
+	// "localhost" may resolve to a refused ::1 first: a (legit) IPv4 fallback warning.
+	require.Contains(t, []checkerdef.Status{checkerdef.StatusUp, checkerdef.StatusWarning}, result.Status)
 
 	metricFloat(t, result, "dns_time_ms")
 	metricFloat(t, result, "connect_time_ms")
@@ -84,7 +85,8 @@ func TestHTTPTimingTLS(t *testing.T) {
 		URL: "https://" + localhostURL(t, server.URL), Method: http.MethodGet, VerifySsl: &verify,
 	})
 	require.NoError(t, err)
-	require.Equal(t, checkerdef.StatusUp, result.Status)
+	// "localhost" may resolve to a refused ::1 first: a (legit) IPv4 fallback warning.
+	require.Contains(t, []checkerdef.Status{checkerdef.StatusUp, checkerdef.StatusWarning}, result.Status)
 
 	metricFloat(t, result, "tls_time_ms")
 	requireSumWithinDuration(t, result)

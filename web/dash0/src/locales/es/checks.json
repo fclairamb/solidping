@@ -789,6 +789,8 @@
     "ipVersionLabel": "Versión IP",
     "ipVersionPinned": "Fijada a {{version}}",
     "ipVersionAuto": "Auto",
+    "ipFallbackLabel": "Repliegue IP",
+    "ipFallbackDetail": "Respondió por la otra familia tras {{ms}} ms ({{reason}})",
     "recentResults": "Resultados recientes",
     "recentResultsDescription": "Historial de ejecuciones de la comprobación",
     "noResultsAvailable": "No hay resultados disponibles",
