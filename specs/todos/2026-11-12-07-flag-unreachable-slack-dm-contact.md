@@ -93,3 +93,8 @@ or need no change, see Source). The implementing PR body **must** carry a
 when the spec is archived to `specs/done/`, verify it is still closed and, if not, close it:
 
     gh issue close 71 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+1. Flag only and keep trying; do not disable the route. (autopilot: recommended answer)
+2. No email notification in this spec; the badge is enough. (autopilot: recommended answer)

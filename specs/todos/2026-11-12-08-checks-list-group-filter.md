@@ -75,3 +75,8 @@ This spec closes fclairamb/solidping-business#72. The implementing PR body **mus
 the spec is archived to `specs/done/`, verify it is still closed and, if not, close it:
 
     gh issue close 72 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+1. The group filter combines (AND) with the other filters. (autopilot: recommended answer)
+2. Single group only. (autopilot: recommended answer)
