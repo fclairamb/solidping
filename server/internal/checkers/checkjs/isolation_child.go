@@ -32,6 +32,15 @@ const (
 //nolint:gochecknoglobals // Test hook, set before init runs.
 var childExtraGlobals func(r *jsRuntime)
 
+// childDeferred lets a test binary run its children from TestMain instead of
+// init, and childExtraEnv adds to their environment (coverage_test.go).
+//
+//nolint:gochecknoglobals // Test hooks, set before init runs.
+var (
+	childDeferred bool
+	childExtraEnv []string
+)
+
 // The hidden subcommand: a binary linking this package started with
 // SP_JS_CHILD=1 runs one script and exits, before any other init of the
 // program (its main, its config) runs. It may also run before this
@@ -40,7 +49,7 @@ var childExtraGlobals func(r *jsRuntime)
 //
 //nolint:gochecknoinits // The child entry point must run before main.
 func init() {
-	if os.Getenv(childEnvVar) != "1" {
+	if os.Getenv(childEnvVar) != "1" || childDeferred {
 		return
 	}
 
