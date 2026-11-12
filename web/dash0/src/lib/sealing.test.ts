@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import fixture from "./__fixtures__/browser-sealed.json";
 import bindingFixture from "./__fixtures__/target-binding.json";
 import {
+  ALL_PUBLIC_KEYS,
   BINDING_KEY,
   canonicalTarget,
   normalizeTargetURL,
@@ -123,11 +124,27 @@ describe("sealing", () => {
     expect(targetChanged(fields, before, { ...before, tunnelCheckUid: "bastion" })).toBe(true);
   });
 
+  // Spec 2026-11-12-02: a JS check binds its env, a plugin every public key.
+  it("binds a JS check's env and every public key of a plugin", () => {
+    const js = ["env", "script", "tunnelCheckUid"];
+    const before = { script: "return env.BASE_URL;", env: { BASE_URL: "https://api.acme.com" }, timeout: "5s" };
+    expect(targetChanged(js, before, { ...before, env: { BASE_URL: "https://evilco.example" } })).toBe(true);
+    expect(targetChanged(js, before, { ...before, timeout: "9s" })).toBe(false);
+    expect(targetChanged(js, { script: "s" }, { script: "s", env: {} })).toBe(false);
+
+    const plugin = [ALL_PUBLIC_KEYS, "tunnelCheckUid"];
+    const cfg = { target: "mail.acme.com", timeout: "5s" };
+    expect(targetChanged(plugin, cfg, { ...cfg, target: "evilco.example" })).toBe(true);
+    expect(targetChanged(plugin, cfg, { ...cfg, extra: "x" })).toBe(true);
+    expect(targetChanged(plugin, cfg, { ...cfg, timeout: "9s" })).toBe(false);
+  });
+
   it("seals the binding next to the secrets, out of the key list", async () => {
     const target = { type: "http", targetFields: ["tunnelCheckUid", "url"], config: { url: "https://db.acme.com" } };
     const sealed = await sealSecrets([{ recipient: fixture.recipient }], { basicAuth: "a:b" }, target);
     expect(sealed.keys).toEqual(["basicAuth"]);
     expect(sealed.bound).toBe(true);
+    expect(sealed.targetFields).toEqual(["tunnelCheckUid", "url"]);
     expect(await open(fixture.identity, sealed.ct)).toEqual({
       basicAuth: "a:b",
       [BINDING_KEY]: { type: "http", digest: await targetDigest(target.targetFields, target.config) },

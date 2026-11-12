@@ -3,12 +3,14 @@ package checkhttp
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -2488,5 +2490,79 @@ func TestHTTPChecker_Execute_ExpectedFinalURL(t *testing.T) {
 		r.NoError(err)
 		r.Equal(checkerdef.StatusDown, result.Status)
 		r.Contains(result.Output[checkerdef.OutputKeyError], "expected final URL")
+	})
+}
+
+// TestHTTPChecker_Execute_SecretHeadersCrossHostRedirect: secret headers are
+// only sent to the URL's own host (spec 2026-11-12-06).
+func TestHTTPChecker_Execute_SecretHeadersCrossHostRedirect(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu       sync.Mutex
+		finalHdr http.Header
+	)
+
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		mu.Lock()
+		finalHdr = req.Header.Clone()
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(other.Close)
+
+	cfg := func(url string) *HTTPConfig {
+		return &HTTPConfig{
+			URL:           url,
+			Headers:       map[string]string{"X-Trace": "1"},
+			SecretHeaders: map[string]string{"X-Api-Key": "k"},
+		}
+	}
+
+	t.Run("cross-host hop drops secrets only", func(t *testing.T) {
+		t.Parallel()
+
+		origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			http.Redirect(w, req, other.URL, http.StatusFound)
+		}))
+		t.Cleanup(origin.Close)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), cfg(origin.URL))
+		require.NoError(t, err)
+		require.Equal(t, checkerdef.StatusUp, result.Status)
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		require.Empty(t, finalHdr.Get("X-Api-Key"))
+		require.Equal(t, "1", finalHdr.Get("X-Trace"))
+		require.Equal(t, []string{"X-Api-Key"}, result.Output["redirect_dropped_secret_headers"])
+		require.NotContains(t, fmt.Sprint(result.Output), "\"k\"")
+	})
+
+	t.Run("same-host hop keeps secrets", func(t *testing.T) {
+		t.Parallel()
+
+		var got string
+
+		var srv *httptest.Server
+
+		srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.URL.Path == "/next" {
+				got = req.Header.Get("X-Api-Key")
+				w.WriteHeader(http.StatusOK)
+
+				return
+			}
+
+			http.Redirect(w, req, srv.URL+"/next", http.StatusFound)
+		}))
+		t.Cleanup(srv.Close)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), cfg(srv.URL))
+		require.NoError(t, err)
+		require.Equal(t, checkerdef.StatusUp, result.Status)
+		require.Equal(t, "k", got)
+		require.NotContains(t, result.Output, "redirect_dropped_secret_headers")
 	})
 }

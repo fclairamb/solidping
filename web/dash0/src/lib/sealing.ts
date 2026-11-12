@@ -27,6 +27,8 @@ export interface SealedSecrets {
   ct: string;
   /** The plaintext carries a `_binding` to the check's target (spec 2026-11-11-01). */
   bound?: boolean;
+  /** The target list the binding was digested over (spec 2026-11-12-02). */
+  targetFields?: string[];
 }
 
 /** Error code of a write sealed to a recipient set that is no longer current. */
@@ -157,13 +159,40 @@ function lowerStrings(value: unknown): unknown {
   return value;
 }
 
+/**
+ * The wildcard target field (spec 2026-11-12-02): every public key of the
+ * config but NON_TARGET_KEYS. The target list of a type that declares none
+ * (plugins), as published by `GET /check-types`.
+ */
+export const ALL_PUBLIC_KEYS = "*";
+
+/** The keys the wildcard leaves out (the Go `credentials.NonTargetKeys`). */
+export const NON_TARGET_KEYS: readonly string[] = ["timeout"];
+
+function expandTargetFields(
+  targetFields: readonly string[],
+  config: Record<string, unknown>,
+): string[] {
+  const fields = new Set<string>();
+  for (const field of targetFields) {
+    if (field !== ALL_PUBLIC_KEYS) {
+      fields.add(field);
+      continue;
+    }
+    for (const key of Object.keys(config)) {
+      if (!NON_TARGET_KEYS.includes(key)) fields.add(key);
+    }
+  }
+  return [...fields].sort();
+}
+
 /** The canonical JSON the target digest is computed over. */
 export function canonicalTarget(
   targetFields: readonly string[],
   config: Record<string, unknown>,
 ): string {
   const parts: string[] = [];
-  for (const field of [...new Set(targetFields)].sort()) {
+  for (const field of expandTargetFields(targetFields, config)) {
     let value = config[field];
     if (isURLField(field) && typeof value === "string" && value !== "") {
       value = normalizeTargetURL(value);
@@ -171,7 +200,8 @@ export function canonicalTarget(
       value = lowerStrings(value);
     }
     const canonical = canonicalValue(value);
-    if (canonical !== null) parts.push(`${canonicalString(field)}:${canonical}`);
+    // An empty object (`env: {}`) carries no value, like an absent field.
+    if (canonical !== null && canonical !== "{}") parts.push(`${canonicalString(field)}:${canonical}`);
   }
   return `{${parts.join(",")}}`;
 }
@@ -347,7 +377,7 @@ export async function sealSecrets(
       .sort(),
     fingerprints: fingerprints.sort(),
     ct: toBase64(ct),
-    ...(target ? { bound: true } : {}),
+    ...(target ? { bound: true, targetFields: [...target.targetFields] } : {}),
   };
 }
 

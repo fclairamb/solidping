@@ -118,3 +118,40 @@ describe("route screens render their shown-once secret blocked", () => {
     expect(source).toMatch(/<CopyableInline\s+value=\{mintedToken\}[^>]*\bsecret\b/);
   });
 });
+
+describe("credential inputs of the integration forms and server sign-in page", () => {
+  it("the kubeconfig textarea and a webhook URL are blocked, the name is not", async () => {
+    const { IntegrationForm } = await import("@/components/integrations/integration-form");
+    const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
+    const client = new QueryClient();
+    const mount = (type: string, initial: unknown = null) =>
+      render(
+        <QueryClientProvider client={client}>
+          <IntegrationForm type={type} initial={initial as never} onChange={() => {}} />
+        </QueryClientProvider>,
+      );
+
+    mount("kubernetes", {
+      uid: "c1",
+      name: "k",
+      type: "kubernetes",
+      enabled: true,
+      isDefault: false,
+      settings: {},
+      settingsPrivateKeys: ["kubeconfig"],
+    });
+    expect(blocked(await screen.findByTestId("kubernetes-kubeconfig"))).toBe(true);
+    expect(blocked(screen.getByTestId("ch-name"))).toBe(false);
+    cleanup();
+
+    mount("discord");
+    expect(blocked(await screen.findByTestId("ch-url"))).toBe(true);
+    expect(blocked(screen.getByTestId("ch-name"))).toBe(false);
+  });
+
+  it("server.auth marks secret provider fields (input and textarea) as secret inputs", () => {
+    const source = readFileSync(join(src, "routes/orgs/$org/server.auth.tsx"), "utf8");
+    const marked = source.match(/data-secret-input=\{field\.secret \? true : undefined\}/g) ?? [];
+    expect(marked).toHaveLength(2);
+  });
+});

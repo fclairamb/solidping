@@ -13,6 +13,7 @@ import (
 	"net/http/httptrace"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -61,6 +62,9 @@ const (
 	// a chain went without turning on capture_failure_response. Absent when
 	// the request never redirected.
 	outputKeyRedirectChain = "redirect_chain"
+	// outputKeyDroppedSecretHeaders lists the secret header names withheld
+	// from a cross-host redirect hop (names only, never values).
+	outputKeyDroppedSecretHeaders = "redirect_dropped_secret_headers"
 
 	// outputKeyFinalURL is the Output key carrying the raw URL the last
 	// request was sent to, set when an expectedFinalUrl assertion fails.
@@ -388,6 +392,10 @@ func (c *HTTPChecker) executeRequest(
 	// reasoning as checkjs's redirects slice).
 	redirectChain := make([]string, 0)
 
+	// droppedSecretHeaders lists the names (never the values) of the secret
+	// headers withheld from a hop that left the original request's host.
+	droppedSecretHeaders := make([]string, 0)
+
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// followRedirects: false stops at the first response, regardless
@@ -403,6 +411,12 @@ func (c *HTTPChecker) executeRequest(
 
 			redirectChain = append(redirectChain, req.URL.String())
 			req.Close = true
+
+			// Secret headers only go to the URL's own host: net/http strips
+			// just Authorization/Cookie/WWW-Authenticate cross-host.
+			if !sameOrigin(via[0].URL, req.URL) {
+				droppedSecretHeaders = stripSecretHeaders(req.Header, cfg.SecretHeaders, droppedSecretHeaders)
+			}
 
 			if c.RedirectGuard != nil {
 				if guardErr := c.RedirectGuard(req); guardErr != nil {
@@ -476,7 +490,7 @@ func (c *HTTPChecker) executeRequest(
 					checkerdef.OutputKeyError: fmt.Sprintf(
 						"expected %s, but the server did not negotiate it: %v", httpVersion.Label(), err),
 					checkerdef.OutputKeyURL: cfg.URL,
-				}, skipTLSVerify), redirectChain),
+				}, skipTLSVerify), redirectChain, droppedSecretHeaders),
 			}, nil
 		}
 
@@ -493,7 +507,7 @@ func (c *HTTPChecker) executeRequest(
 				Output: withRedirectChain(withTLSVerifySkipped(map[string]any{
 					checkerdef.OutputKeyError: hostMismatch.Error(),
 					checkerdef.OutputKeyURL:   cfg.URL,
-				}, skipTLSVerify), redirectChain),
+				}, skipTLSVerify), redirectChain, droppedSecretHeaders),
 			}, nil
 		}
 
@@ -505,7 +519,7 @@ func (c *HTTPChecker) executeRequest(
 				Output: withRedirectChain(withTLSVerifySkipped(map[string]any{
 					checkerdef.OutputKeyError: "request timed out",
 					checkerdef.OutputKeyURL:   cfg.URL,
-				}, skipTLSVerify), redirectChain),
+				}, skipTLSVerify), redirectChain, droppedSecretHeaders),
 			}
 			out.SetNetworkFailure(checkerdef.NewNetworkFailure(
 				checkerdef.ClassifyDialError(err, true), hostFromURL(cfg.URL), "", 0))
@@ -522,7 +536,7 @@ func (c *HTTPChecker) executeRequest(
 			Output: withRedirectChain(withTLSVerifySkipped(map[string]any{
 				checkerdef.OutputKeyError: err.Error(),
 				checkerdef.OutputKeyURL:   cfg.URL,
-			}, skipTLSVerify), redirectChain),
+			}, skipTLSVerify), redirectChain, droppedSecretHeaders),
 		}
 		out.SetNetworkFailure(checkerdef.NewNetworkFailure(
 			checkerdef.ClassifyDialError(err, false), hostFromURL(cfg.URL), "", 0))
@@ -620,7 +634,7 @@ func (c *HTTPChecker) executeRequest(
 		return &checkerdef.Result{
 			Status:      checkerdef.StatusDown,
 			Duration:    duration,
-			Output:      withRedirectChain(output, redirectChain),
+			Output:      withRedirectChain(output, redirectChain, droppedSecretHeaders),
 			Diagnostics: buildFailureCapture(cfg, resp, bodyBytes),
 		}
 	}
@@ -850,7 +864,7 @@ func (c *HTTPChecker) executeRequest(
 			checkerdef.OutputKeyURL:        cfg.URL,
 			checkerdef.OutputKeyStatusCode: resp.StatusCode,
 			checkerdef.OutputKeyMethod:     method,
-		}, skipTLSVerify), redirectChain),
+		}, skipTLSVerify), redirectChain, droppedSecretHeaders),
 	}
 
 	// The unexpected-status case is the single most common HTTP failure, and
@@ -899,9 +913,13 @@ func withTLSVerifySkipped(output map[string]any, skipped bool) map[string]any {
 // or refused — so a result explains where a redirect chain went without
 // requiring capture_failure_response. Absent (not merely empty) when the
 // request never redirected, so a check that never bounces gains no new key.
-func withRedirectChain(output map[string]any, chain []string) map[string]any {
+func withRedirectChain(output map[string]any, chain, droppedSecrets []string) map[string]any {
 	if len(chain) > 0 {
 		output[outputKeyRedirectChain] = chain
+	}
+
+	if len(droppedSecrets) > 0 {
+		output[outputKeyDroppedSecretHeaders] = droppedSecrets
 	}
 
 	return output
@@ -1159,4 +1177,52 @@ func checkFinalURL(cfg *HTTPConfig, resp *http.Response, method string) map[stri
 		checkerdef.OutputKeyMethod:     method,
 		outputKeyFinalURL:              rawActual,
 	}
+}
+
+// effectivePort returns the URL's port, defaulting from its scheme.
+func effectivePort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+
+	if u.Scheme == "https" {
+		return "443"
+	}
+
+	return "80"
+}
+
+// sameOrigin reports whether two URLs share hostname and effective port. A
+// scheme upgrade on the same host (http:80 -> https:443) still counts as the
+// same host, so only the hostname decides when no port is explicit on either.
+func sameOrigin(first, next *url.URL) bool {
+	if !strings.EqualFold(first.Hostname(), next.Hostname()) {
+		return false
+	}
+
+	if first.Port() == "" && next.Port() == "" {
+		return true
+	}
+
+	return effectivePort(first) == effectivePort(next)
+}
+
+// stripSecretHeaders deletes every secret header from header (case-insensitive,
+// as http.Header canonicalizes) and appends the names it removed to dropped.
+func stripSecretHeaders(header http.Header, secrets map[string]string, dropped []string) []string {
+	for name := range secrets {
+		if header.Get(name) == "" {
+			continue
+		}
+
+		header.Del(name)
+
+		if !slices.Contains(dropped, name) {
+			dropped = append(dropped, name)
+		}
+	}
+
+	slices.Sort(dropped)
+
+	return dropped
 }
