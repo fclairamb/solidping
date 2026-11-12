@@ -148,6 +148,8 @@ interface ChecksIndexSearch {
   type?: string;
   groupBy?: GroupByMode;
   q?: string;
+  /** A check-group slug, or "none" for ungrouped checks. */
+  group?: string;
 }
 
 // Status tokens the faceted filter offers, in display order. `degraded` is
@@ -206,6 +208,10 @@ export const Route = createFileRoute("/orgs/$org/checks/")({
       ? (search.groupBy as GroupByMode)
       : undefined,
     q: typeof search.q === "string" && search.q ? search.q : undefined,
+    group:
+      typeof search.group === "string" && (search.group === "none" || groupSlugRegex.test(search.group))
+        ? search.group
+        : undefined,
   }),
 });
 
@@ -735,8 +741,14 @@ function CheckGroupSection({
   groups,
   checksByUid,
   escalationPolicyByUid,
+  onFilterGroup,
+  forceExpanded,
 }: {
   group: CheckGroup;
+  /** Sets ?group=<slug> on the page. */
+  onFilterGroup: (slug: string) => void;
+  /** True while a group filter is active: the single shown section opens. */
+  forceExpanded: boolean;
   org: string;
   checks: Check[];
   isLoading: boolean;
@@ -773,7 +785,7 @@ function CheckGroupSection({
   const defaultCollapsed = group.status === "up";
   // Searching always force-expands (without touching the persisted choice)
   // so matches are never hidden behind a collapsed section.
-  const collapsed = search ? false : (manualOverride ?? defaultCollapsed);
+  const collapsed = search || forceExpanded ? false : (manualOverride ?? defaultCollapsed);
 
   const toggleCollapsed = () => {
     const next = !collapsed;
@@ -829,7 +841,18 @@ function CheckGroupSection({
               {collapsed ? t("menu.expandGroup") : t("menu.collapseGroup")}
             </TooltipContent>
           </Tooltip>
-          <span className="text-base font-semibold truncate" data-testid="group-name" data-group-name={group.name}>{group.name}</span>
+          <button
+            type="button"
+            className="text-base font-semibold truncate text-left hover:underline"
+            data-testid="group-filter-link"
+            onClick={(e) => {
+              e.stopPropagation();
+              onFilterGroup(group.slug);
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <span data-testid="group-name" data-group-name={group.name}>{group.name}</span>
+          </button>
           <span data-testid="group-status-badge">
             <StatusBadge status={group.status} />
           </span>
@@ -1067,6 +1090,7 @@ function ChecksIndexPage() {
     type: typeParam,
     groupBy: groupByParam,
     q: qParam,
+    group: groupParam,
   } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const labelFilters = parseLabelsParam(labelsParam);
@@ -1185,6 +1209,7 @@ function ChecksIndexPage() {
     statusValues.length > 0 ||
     typeValues.length > 0 ||
     Boolean(labelsParam) ||
+    Boolean(groupParam) ||
     internalFilter !== "false";
 
   // "Reset" only tracks the four facet filters (status, type, labels, scope).
@@ -1194,11 +1219,12 @@ function ChecksIndexPage() {
     statusValues.length > 0 ||
     typeValues.length > 0 ||
     Boolean(labelsParam) ||
+    Boolean(groupParam) ||
     internalFilter !== "false";
   const resetFilters = () => {
     setInternalFilter("false");
     void navigate({
-      search: (prev) => ({ ...prev, status: undefined, type: undefined, labels: undefined }),
+      search: (prev) => ({ ...prev, status: undefined, type: undefined, labels: undefined, group: undefined }),
       replace: true,
     });
   };
@@ -1218,6 +1244,33 @@ function ChecksIndexPage() {
     refetch: refetchGroups,
     isRefetching,
   } = useCheckGroups(org);
+
+  // ?group= is a slug (or "none"); the API wants the uid. An unknown slug
+  // (once the groups list has loaded) must show an empty state, never the
+  // whole list, so the query is held back in that case.
+  const groupFilterUid =
+    groupParam === "none"
+      ? "none"
+      : groupParam
+        ? (groups ?? []).find((g) => g.slug === groupParam)?.uid
+        : undefined;
+  const groupFilterUnknown = Boolean(groupParam) && !groupsLoading && !groupFilterUid;
+  const groupFilterPending = Boolean(groupParam) && !groupFilterUid;
+  const groupOptions = useMemo(
+    () => [
+      ...[...(groups ?? [])]
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((g) => ({ value: g.slug, label: g.name })),
+      { value: "none", label: t("filters.ungrouped") },
+    ],
+    [groups, t],
+  );
+  const setGroupFilter = (slug: string | undefined) => {
+    void navigate({
+      search: (prev) => ({ ...prev, group: slug }),
+      replace: true,
+    });
+  };
 
   // Only fetched for the group-header escalation indicator (name/silent
   // lookup) — a small, already-cached list shared with the check form.
@@ -1248,6 +1301,7 @@ function ChecksIndexPage() {
     q: debouncedSearch || undefined,
     internal: internalFilter,
     labels: labelsParam,
+    checkGroupUid: groupFilterUid,
     // Pass the raw URL params through untouched, not the leniently-parsed
     // statusValues/typeValues used for the popover's checked state: an
     // unknown ?status= token must still reach the backend and 400 (covered
@@ -1269,6 +1323,7 @@ function ChecksIndexPage() {
     // "checks" hints; this poll is what keeps the per-run cells (status dot,
     // latency) fresh in between, bounded by one interval.
     refetchInterval: CHECKS_LIST_POLL_MS,
+    enabled: !groupFilterPending,
   });
 
   // A bucket that is still empty must read as *loading*, never as an empty
@@ -1749,6 +1804,19 @@ function ChecksIndexPage() {
               title={t("filters.type")}
               testId="type-filter"
             />
+            {(groups?.length ?? 0) > 0 && (
+              <FacetedFilter
+                options={groupOptions}
+                selected={groupParam ? [groupParam] : []}
+                onChange={(next) => {
+                  // Single-select: keep only the option just ticked.
+                  const added = next.find((v) => v !== groupParam);
+                  setGroupFilter(added);
+                }}
+                title={t("filters.group")}
+                testId="group-filter"
+              />
+            )}
             <LabelFilter
               org={org}
               value={labelFilters}
@@ -1844,6 +1912,18 @@ function ChecksIndexPage() {
               <Skeleton key={i} className="h-12 rounded-lg" />
             ))}
           </div>
+        ) : groupFilterUnknown ? (
+          <div
+            className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card"
+            data-testid="group-filter-unknown"
+          >
+            <p className="text-sm font-medium text-foreground">
+              {t("groupFilterUnknown", { slug: groupParam })}
+            </p>
+            <Button variant="outline" onClick={() => setGroupFilter(undefined)} data-testid="group-filter-clear">
+              {t("clearGroupFilter")}
+            </Button>
+          </div>
         ) : (
           <div className="space-y-4">
             {(groups || [])
@@ -1878,6 +1958,8 @@ function ChecksIndexPage() {
                   groups={groups || []}
                   checksByUid={checksByUid}
                   escalationPolicyByUid={escalationPolicyByUid}
+                  onFilterGroup={setGroupFilter}
+                  forceExpanded={Boolean(groupParam)}
                 />
               ))}
 

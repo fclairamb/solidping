@@ -16,7 +16,9 @@
     "labels": "Etiquetas",
     "scope": "Ámbito",
     "selected_one": "{{count}} seleccionado",
-    "selected_other": "{{count}} seleccionados"
+    "selected_other": "{{count}} seleccionados",
+    "group": "Grupo",
+    "ungrouped": "Sin grupo"
   },
   "resetFilters": "Restablecer",
   "resultCount_one": "{{count}} comprobación",
@@ -1789,5 +1791,7 @@
     "replaceToEdit": "Los secretos sellados se reemplazan juntos: haz clic en Reemplazar para escribirlos todos de nuevo.",
     "targetChanged": "El destino de este check cambió: sus secretos sellados están ligados al anterior, vuelve a escribirlos.",
     "sharedRegionDisabled": "Las regiones compartidas están desactivadas: esta organización exige que los secretos de los checks se sellen en el navegador."
-  }
+  },
+  "groupFilterUnknown": "Ningún grupo coincide con «{{slug}}».",
+  "clearGroupFilter": "Quitar filtro"
 }
