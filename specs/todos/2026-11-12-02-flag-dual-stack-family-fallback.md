@@ -97,3 +97,8 @@ was closed when this spec was filed). The implementing PR body **must** carry
 the issue is closed and, if not, close it by hand:
 
     gh issue close 69 --repo fclairamb/solidping-business --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+1. (autopilot: recommended answer) Warn only when the first family failed or was still pending 1 s after its start when the other family connected.
+2. (autopilot: recommended answer) No sub-probes in this spec; a second check with `ipVersion: ipv6` covers it.
