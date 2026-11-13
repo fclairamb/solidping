@@ -332,7 +332,6 @@ function IncidentsIndexPage() {
               to="/orgs/$org/incidents/insights"
               params={{ org }}
               search={{ period: "30d" }}
-              data-testid="incidents-insights-link"
             >
               <BarChart3 className="h-4 w-4" />
               {t("insights.button")}
