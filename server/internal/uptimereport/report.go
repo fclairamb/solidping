@@ -412,12 +412,9 @@ func (b *Builder) measure(
 
 	applyIncidents(data, incidents)
 
-	insightRows, err := b.insightsIncidents(ctx, org.UID, checkUIDs, window)
-	if err != nil {
-		return nil, err
+	if insightsErr := b.loadInsights(ctx, data, org, checks, checkUIDs, window, now, baseURL); insightsErr != nil {
+		return nil, insightsErr
 	}
-
-	applyInsights(data, checks, insightRows, window, now, baseURL, org.Slug)
 
 	if trendErr := b.applyPreviousPeriod(
 		ctx, org.UID, schedule, checkUIDs, window, now, hints, data, overall, incidents.Count,
@@ -771,6 +768,22 @@ func (b *Builder) incidentBlock(
 	}
 
 	return availability.IncidentBlock(all, window.Start.UTC(), window.End.UTC(), now.UTC()), nil
+}
+
+// loadInsights fills the incident insights; a failed load fails the report
+// rather than sending it without them.
+func (b *Builder) loadInsights(
+	ctx context.Context, data *Data, org *models.Organization, checks []*models.Check,
+	checkUIDs []string, window slo.Window, now time.Time, baseURL string,
+) error {
+	incidents, err := b.insightsIncidents(ctx, org.UID, checkUIDs, window)
+	if err != nil {
+		return err
+	}
+
+	applyInsights(data, checks, incidents, window, now, baseURL, org.Slug)
+
+	return nil
 }
 
 // insightsIncidents loads the incidents active during the window (started
