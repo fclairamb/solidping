@@ -10,6 +10,8 @@
 #   HEAD_BIN   the HEAD server binary (default: ./solidping, see `make test-upgrade`)
 #   SKIP_TAGS  space-separated tags left out of the matrix (default: SKIP_TAGS below)
 #   PG_IMAGE   Postgres image for the old and new side (default: docker-compose.yml's)
+#   IMAGE_WAIT seconds to wait for the released image to be published (default: 0).
+#              CI sets it: a tag exists minutes before the image its own CI pushes.
 #
 # Needs: bash, docker, curl, jq, git (matrix), sqlite3 (sqlite engine).
 
@@ -121,6 +123,22 @@ fail() {
     exit 1
 }
 
+# pull_image <image>: pulls it, retrying every 30 s for IMAGE_WAIT seconds. A
+# release tag enters the matrix the moment it is pushed, but its image only
+# exists once the tag's own CI has built it (about 20 minutes later): a PR whose
+# CI starts in between failed every leg from that tag on "not found".
+pull_image() {
+    local image=$1 deadline=$((SECONDS + ${IMAGE_WAIT:-0})) err
+    until err=$(docker pull -q "$image" 2>&1 >/dev/null); do
+        if ((SECONDS >= deadline)); then
+            echo "$err" >&2
+            return 1
+        fi
+        echo "    $image is not available yet, retrying in 30 s" >&2
+        sleep 30
+    done
+}
+
 # wait_health <port> <seconds>: succeeds once /api/mgmt/health answers ok.
 wait_health() {
     local port=$1 deadline=$((SECONDS + $2))
@@ -222,6 +240,7 @@ fi
 
 # ---- Old side -------------------------------------------------------------
 step "starting $IMAGE_REPO:${from_tag#v}"
+pull_image "$IMAGE_REPO:${from_tag#v}" || fail "could not pull $IMAGE_REPO:${from_tag#v}"
 old_env_args=()
 for kv in "${common_env[@]}"; do old_env_args+=(-e "$kv"); done
 docker run -d --name "$old_name" -p 127.0.0.1::4000 "${old_args[@]}" "${old_env_args[@]}" \

@@ -1423,7 +1423,9 @@ jobs:
     runs-on: ubuntu-26.04
     needs: [changes, upgrade-matrix]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && needs.changes.outputs.code == 'true' }}
-    timeout-minutes: 10
+    # A leg takes about 3 minutes. The rest is IMAGE_WAIT below: room to wait
+    # for the image of a tag pushed moments before this run started.
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -1446,6 +1448,8 @@ jobs:
         run: go build -o ../solidping .
 
       - name: Upgrade ${{ matrix.tag }} to HEAD
+        env:
+          IMAGE_WAIT: "1500"
         run: |
           set -euo pipefail
           command -v sqlite3 >/dev/null || sudo apt-get install -y sqlite3
