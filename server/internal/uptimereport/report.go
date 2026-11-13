@@ -762,6 +762,7 @@ func (b *Builder) incidentBlock(
 	all, err := b.listCheckIncidents(ctx, orgUID, checkUIDs, &models.ListIncidentsFilter{
 		Since: &window.Start,
 		Until: &window.End,
+		Kinds: []string{models.IncidentKindCheck},
 	})
 	if err != nil {
 		return availability.PeriodIncidents{}, fmt.Errorf("list incidents: %w", err)
@@ -796,6 +797,7 @@ func (b *Builder) insightsIncidents(
 	all, err := b.listCheckIncidents(ctx, orgUID, checkUIDs, &models.ListIncidentsFilter{
 		ActiveSince: &window.Start,
 		Until:       &window.End,
+		Kinds:       []string{models.IncidentKindCheck},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list incidents for insights: %w", err)
