@@ -224,11 +224,15 @@ type ListIncidentsFilter struct {
 	// check outages. Callers that compute DOWNTIME from incidents (availability,
 	// SLO status, uptime reports) pass IncidentKindCheck, or a burn alert would
 	// count as downtime against the very objective that produced it.
-	Kinds          []string
-	Since          *time.Time // Optional: incidents started after this time
-	Until          *time.Time // Optional: incidents started before this time
-	HideSuppressed bool       // Optional: hide rolled-up (paging-suppressed) incidents
-	CausedByUID    string     // Optional: only incidents whose caused_by_incident_uid equals this
+	Kinds []string
+	Since *time.Time // Optional: incidents started after this time
+	Until *time.Time // Optional: incidents started before this time
+	// ActiveSince keeps incidents still open or resolved at/after this instant
+	// (resolved_at IS NULL OR resolved_at >= value). With Until it selects the
+	// incidents overlapping a window.
+	ActiveSince    *time.Time
+	HideSuppressed bool   // Optional: hide rolled-up (paging-suppressed) incidents
+	CausedByUID    string // Optional: only incidents whose caused_by_incident_uid equals this
 	// AckedOnly returns only incidents with non-NULL acknowledged_at (and
 	// expired snoozes, since snoozed-but-expired is just acked again). Set by
 	// the handler when ?state=acked is requested.

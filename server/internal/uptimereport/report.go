@@ -405,13 +405,19 @@ func (b *Builder) measure(
 
 	applyOverall(data, overall, checks)
 
-	incidents, incidentRows, err := b.incidentBlock(ctx, org.UID, checkUIDs, window, now)
+	incidents, err := b.incidentBlock(ctx, org.UID, checkUIDs, window, now)
 	if err != nil {
 		return nil, err
 	}
 
 	applyIncidents(data, incidents)
-	applyInsights(data, checks, incidentRows, window, now, baseURL, org.Slug)
+
+	insightRows, err := b.insightsIncidents(ctx, org.UID, checkUIDs, window)
+	if err != nil {
+		return nil, err
+	}
+
+	applyInsights(data, checks, insightRows, window, now, baseURL, org.Slug)
 
 	if trendErr := b.applyPreviousPeriod(
 		ctx, org.UID, schedule, checkUIDs, window, now, hints, data, overall, incidents.Count,
@@ -677,7 +683,7 @@ func (b *Builder) applyPreviousPeriod(
 		previousOverall.Add(byCheck[checkUID])
 	}
 
-	previousIncidents, _, err := b.incidentBlock(ctx, orgUID, checkUIDs, previous, now)
+	previousIncidents, err := b.incidentBlock(ctx, orgUID, checkUIDs, previous, now)
 	if err != nil {
 		return err
 	}
@@ -753,25 +759,58 @@ func (b *Builder) scopeChecks(
 
 func (b *Builder) incidentBlock(
 	ctx context.Context, orgUID string, checkUIDs []string, window slo.Window, now time.Time,
-) (availability.PeriodIncidents, []*models.Incident, error) {
+) (availability.PeriodIncidents, error) {
+	// Started inside the window: the downtime and count figures are about the
+	// incidents that began in the period.
+	all, err := b.listCheckIncidents(ctx, orgUID, checkUIDs, &models.ListIncidentsFilter{
+		Since: &window.Start,
+		Until: &window.End,
+	})
+	if err != nil {
+		return availability.PeriodIncidents{}, fmt.Errorf("list incidents: %w", err)
+	}
+
+	return availability.IncidentBlock(all, window.Start.UTC(), window.End.UTC(), now.UTC()), nil
+}
+
+// insightsIncidents loads the incidents active during the window (started
+// before its end, still open or resolved inside it), the population of the
+// incident insights page. incidentBlock counts by start date, so an outage that
+// began before the window would be missing here.
+func (b *Builder) insightsIncidents(
+	ctx context.Context, orgUID string, checkUIDs []string, window slo.Window,
+) ([]*models.Incident, error) {
+	all, err := b.listCheckIncidents(ctx, orgUID, checkUIDs, &models.ListIncidentsFilter{
+		ActiveSince: &window.Start,
+		Until:       &window.End,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list incidents for insights: %w", err)
+	}
+
+	return all, nil
+}
+
+// listCheckIncidents returns the check incidents of every check (a group
+// incident listed by several members once), narrowed by the time fields of base.
+func (b *Builder) listCheckIncidents(
+	ctx context.Context, orgUID string, checkUIDs []string, base *models.ListIncidentsFilter,
+) ([]*models.Incident, error) {
 	seen := make(map[string]struct{})
 	all := make([]*models.Incident, 0)
 
 	for _, checkUID := range checkUIDs {
-		filter := &models.ListIncidentsFilter{
-			OrganizationUID: orgUID,
-			MemberCheckUID:  checkUID,
-			// Check incidents only — the digest reports downtime, not budget
-			// alerts (spec 2026-08-21-08).
-			Kinds: []string{models.IncidentKindCheck},
-			Since: &window.Start,
-			Until: &window.End,
-			Limit: incidentFetchLimit,
-		}
+		filter := *base
+		filter.OrganizationUID = orgUID
+		filter.MemberCheckUID = checkUID
+		// Check incidents only: the digest reports downtime, not budget
+		// alerts (spec 2026-08-21-08).
+		filter.Kinds = []string{models.IncidentKindCheck}
+		filter.Limit = incidentFetchLimit
 
-		incidents, _, err := b.db.ListIncidents(ctx, filter)
+		incidents, _, err := b.db.ListIncidents(ctx, &filter)
 		if err != nil {
-			return availability.PeriodIncidents{}, nil, fmt.Errorf("list incidents: %w", err)
+			return nil, err //nolint:wrapcheck // wrapped by the callers
 		}
 
 		for _, inc := range incidents {
@@ -785,9 +824,7 @@ func (b *Builder) incidentBlock(
 		}
 	}
 
-	block := availability.IncidentBlock(all, window.Start.UTC(), window.End.UTC(), now.UTC())
-
-	return block, all, nil
+	return all, nil
 }
 
 // sloRows evaluates every enabled objective whose scope intersects the report's.

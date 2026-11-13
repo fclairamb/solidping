@@ -254,6 +254,10 @@ type Service struct {
 	jobsSvc jobsvc.Service
 	clock   clock.Clock
 
+	// insightsPageSize and insightsMaxLoaded override the insights loader's
+	// defaults when positive (tests).
+	insightsPageSize, insightsMaxLoaded int
+
 	// publications is the status-page publication hook. Nil-safe: every call
 	// site goes through the publish* helpers below, which no-op when unset
 	// (status pages disabled, tests).

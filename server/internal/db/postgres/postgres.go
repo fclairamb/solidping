@@ -4147,6 +4147,10 @@ func applyIncidentsFilter(query *bun.SelectQuery, filter *models.ListIncidentsFi
 		query = query.Where("started_at < ?", *filter.Until)
 	}
 
+	if filter.ActiveSince != nil {
+		query = query.Where("(resolved_at IS NULL OR resolved_at >= ?)", *filter.ActiveSince)
+	}
+
 	if filter.HideSuppressed {
 		query = query.Where("paging_suppressed = ?", false)
 	}
