@@ -1,4 +1,4 @@
-//go:build cgo && (cgosqlite || !((darwin && amd64) || (darwin && arm64) || (linux && 386) || (linux && amd64) || (linux && arm) || (linux && arm64) || (windows && amd64)))
+//go:build cgo && (cgosqlite || !((darwin && amd64) || (darwin && arm64) || (linux && 386) || (linux && amd64) || (linux && arm) || (linux && arm64) || (linux && riscv64) || (windows && amd64)))
 
 package sqlitedriver
 
