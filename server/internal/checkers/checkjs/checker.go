@@ -11,7 +11,6 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -1228,9 +1227,11 @@ func redirectPolicy(
 			return fmt.Errorf("%w: %d", errTooManyRedirects, opts.maxRedirects)
 		}
 
-		// A header carrying a secret value only goes to the URL's own host:
-		// net/http strips just Authorization/Cookie/WWW-Authenticate.
-		if len(via) > 0 && !sameOrigin(via[0].URL, req.URL) {
+		// A header carrying a secret value only goes to the original
+		// request's origin (checkerdef.SameRedirectOrigin: same host, and the
+		// same scheme and port or an http -> https upgrade). net/http strips
+		// just Authorization/Cookie/WWW-Authenticate, and only cross-host.
+		if len(via) > 0 && !checkerdef.SameRedirectOrigin(via[0].URL, req.URL) {
 			stripSecretValuedHeaders(req.Header, secrets)
 		}
 
@@ -1256,32 +1257,6 @@ func redirectPolicy(
 
 		return nil
 	}
-}
-
-// sameOrigin reports whether two URLs share a hostname and effective port.
-func sameOrigin(first, next *url.URL) bool {
-	if !strings.EqualFold(first.Hostname(), next.Hostname()) {
-		return false
-	}
-
-	// A scheme upgrade on the same host (no explicit port) keeps them.
-	if first.Port() == "" && next.Port() == "" {
-		return true
-	}
-
-	return effectivePort(first) == effectivePort(next)
-}
-
-func effectivePort(u *url.URL) string {
-	if port := u.Port(); port != "" {
-		return port
-	}
-
-	if u.Scheme == "https" {
-		return "443"
-	}
-
-	return "80"
 }
 
 // stripSecretValuedHeaders deletes every header whose value contains a

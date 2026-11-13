@@ -412,10 +412,14 @@ func (c *HTTPChecker) executeRequest(
 			redirectChain = append(redirectChain, req.URL.String())
 			req.Close = true
 
-			// Secret headers only go to the URL's own host: net/http strips
-			// just Authorization/Cookie/WWW-Authenticate cross-host.
-			if !sameOrigin(via[0].URL, req.URL) {
+			// Secret headers and Authorization (basic auth, or one set as a
+			// plain header) only go to the original request's origin: same
+			// host, and the same scheme and port or an http -> https upgrade.
+			// net/http strips Authorization on a host change only, so a
+			// same-host https -> http downgrade would resend it in cleartext.
+			if !checkerdef.SameRedirectOrigin(via[0].URL, req.URL) {
 				droppedSecretHeaders = stripSecretHeaders(req.Header, cfg.SecretHeaders, droppedSecretHeaders)
+				droppedSecretHeaders = stripSecretHeaders(req.Header, authorizationHeader, droppedSecretHeaders)
 			}
 
 			if c.RedirectGuard != nil {
@@ -1179,33 +1183,10 @@ func checkFinalURL(cfg *HTTPConfig, resp *http.Response, method string) map[stri
 	}
 }
 
-// effectivePort returns the URL's port, defaulting from its scheme.
-func effectivePort(u *url.URL) string {
-	if port := u.Port(); port != "" {
-		return port
-	}
-
-	if u.Scheme == "https" {
-		return "443"
-	}
-
-	return "80"
-}
-
-// sameOrigin reports whether two URLs share hostname and effective port. A
-// scheme upgrade on the same host (http:80 -> https:443) still counts as the
-// same host, so only the hostname decides when no port is explicit on either.
-func sameOrigin(first, next *url.URL) bool {
-	if !strings.EqualFold(first.Hostname(), next.Hostname()) {
-		return false
-	}
-
-	if first.Port() == "" && next.Port() == "" {
-		return true
-	}
-
-	return effectivePort(first) == effectivePort(next)
-}
+// authorizationHeader is the credential header stripped, like the secret
+// headers, from a hop that leaves the original origin. Only its name matters
+// to stripSecretHeaders.
+var authorizationHeader = map[string]string{"Authorization": ""} //nolint:gochecknoglobals // read-only lookup
 
 // stripSecretHeaders deletes every secret header from header (case-insensitive,
 // as http.Header canonicalizes) and appends the names it removed to dropped.
