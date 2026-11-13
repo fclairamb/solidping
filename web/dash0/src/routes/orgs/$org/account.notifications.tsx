@@ -60,6 +60,7 @@ import {
 import {
   useDiscordBotEnabled,
   useTelegramEnabled,
+  useTelegramLoginEnabled,
   useWhatsAppEnabled,
 } from "@/api/public-config";
 import {
@@ -247,6 +248,18 @@ function TelegramConnect({
 }) {
   const { t } = useTranslation("account");
   const createLink = useCreateTelegramLink(org);
+  // With Sign in with Telegram on, a connected chat also signs in, so minting
+  // a link needs a re-authentication (spec 2026-11-13-03), exactly like the
+  // Discord link: the current password when the account has one, otherwise a
+  // recent sign-in.
+  const loginEnabled = useTelegramLoginEnabled();
+  const { data: me } = useQuery({
+    queryKey: ["telegramLinkMe"],
+    queryFn: () => apiFetch<{ hasPassword: boolean }>("/api/v1/auth/me"),
+    enabled: loginEnabled,
+  });
+  const [showReauth, setShowReauth] = useState(false);
+  const [signInRequired, setSignInRequired] = useState(false);
   const [link, setLink] = useState<{
     url: string;
     expiresAt: number;
@@ -285,26 +298,65 @@ function TelegramConnect({
     }
   }, [justConnected, t]);
 
+  const mint = async (currentPassword?: string) => {
+    const resp = await createLink.mutateAsync({ currentPassword });
+    const expiresAt = new Date(resp.expiresAt).getTime();
+    setNow(Date.now());
+    setLink({ url: resp.url, expiresAt, wasConnected: connected });
+    window.open(resp.url, "_blank", "noopener,noreferrer");
+  };
+
   const start = async () => {
     setError(null);
+    setSignInRequired(false);
+
+    if (loginEnabled && me?.hasPassword) {
+      setShowReauth(true);
+      return;
+    }
+
     try {
-      const resp = await createLink.mutateAsync();
-      const expiresAt = new Date(resp.expiresAt).getTime();
-      setNow(Date.now());
-      setLink({ url: resp.url, expiresAt, wasConnected: connected });
-      window.open(resp.url, "_blank", "noopener,noreferrer");
+      await mint();
     } catch (err: unknown) {
+      if (isReauthRequired(err)) {
+        setSignInRequired(true);
+        return;
+      }
+      // /auth/me had not answered yet and the account has a password.
+      if (err instanceof ApiError && err.code === "INVALID_CURRENT_PASSWORD") {
+        setShowReauth(true);
+        return;
+      }
       setError(err instanceof Error ? err.message : t("notifications.telegram.linkFailed"));
     }
+  };
+
+  // The password dialog shows a refused password itself, so errors are
+  // rethrown to it.
+  const onReauth = async (password: string) => {
+    await mint(password);
+    setShowReauth(false);
   };
 
   return (
     <div className="space-y-2">
       {error && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" data-testid="telegram-connect-error">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
+      )}
+
+      {signInRequired && <SignInAgainAlert />}
+
+      {showReauth && (
+        <ReauthPasswordDialog
+          open={showReauth}
+          title={t("notifications.telegram.connectButton")}
+          testIdPrefix="telegram-link"
+          onClose={() => setShowReauth(false)}
+          onSubmit={onReauth}
+        />
       )}
 
       {!pending && (

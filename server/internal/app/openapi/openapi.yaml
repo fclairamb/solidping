@@ -4580,11 +4580,26 @@ paths:
         A replayed token is a no-op, not a second contact. Poll
         `GET /api/v1/orgs/{org}/users/me/notification-routes` to observe the new
         contact appear.
+
+        When Sign in with Telegram is on (`SP_TELEGRAM_LOGIN_ENABLED`), the
+        linked chat also signs in to the account, so this is a new sign-in
+        factor and needs a re-authentication: `currentPassword` when the
+        account has a password, otherwise a sign-in within the last 10 minutes.
+        Every attempt spends the per-user change-password budget, and a link
+        that makes the chat a sign-in method emails the account owner a
+        "Telegram account linked" notice. With sign-in off the body is ignored.
+        Refused for personal access tokens and impersonation tokens.
       operationId: createMyTelegramLink
       security:
         - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelegramLinkRequest"
       responses:
         "201":
           description: Connect link minted
@@ -4595,9 +4610,27 @@ paths:
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: >
+            Not authenticated, or, with Telegram sign-in on, `currentPassword`
+            is missing or wrong (error code `INVALID_CURRENT_PASSWORD`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: >
+            With Telegram sign-in on, the account has no password and the
+            session's sign-in is more than 10 minutes old (error code
+            `REAUTHENTICATION_REQUIRED`); or the request runs under
+            impersonation or a personal access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
   /api/v1/orgs/{org}/users/me/discord/link-start:
     post:
@@ -12009,6 +12042,13 @@ components:
             The bot's @username without the leading '@'. Present only when
             `enabled` is true.
           example: solidping_bot
+        loginEnabled:
+          type: boolean
+          description: |
+            Present and true when Sign in with Telegram is on
+            (`SP_TELEGRAM_LOGIN_ENABLED`). A connected chat then also signs in
+            to the account, so the dashboard asks for the current password
+            before minting a connect link.
 
     PublicWhatsAppConfig:
       type: object
@@ -14902,6 +14942,16 @@ components:
             The password currently on the account. Required unless the account
             has no password (it then needs a sign-in within the last 10
             minutes).
+
+    TelegramLinkRequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          description: >
+            The password currently on the account. Required when Sign in with
+            Telegram is on, unless the account has no password (it then needs a
+            sign-in within the last 10 minutes). Ignored otherwise.
 
     DiscordLinkResponse:
       type: object

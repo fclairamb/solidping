@@ -80,6 +80,8 @@ export interface WhatsAppPublicConfig {
 export interface TelegramPublicConfig {
   enabled: boolean;
   botUsername?: string;
+  /** Sign in with Telegram is on: a connected chat also signs in. */
+  loginEnabled?: boolean;
 }
 
 /**
