@@ -1480,11 +1480,10 @@ export function CheckForm({
         escalationPolicyUid:
           escalationPolicyUid || (mode === "edit" ? "" : undefined),
         period: isPassiveCheckType(type) ? formatPeriod(periodValue, periodUnit) : period,
-        // Heartbeat and private-location edits have nothing editable in their
-        // config (the token / region are server-managed), so it is not sent.
-        // An email check's sender-authentication options ARE editable: its
-        // config goes out, the stored token riding along in the passthrough
-        // (and the server preserves an absent one anyway).
+        // Passive edits omit config: heartbeat has no editable key and a
+        // private location's region is read-only. Email is the exception, its
+        // sender-authentication options live in config. The server keeps the
+        // stored token when a PATCH leaves it out.
         ...(isPassiveCheckType(type) && type !== "email" && mode === "edit"
           ? {}
           : { config: submittedConfig }),
