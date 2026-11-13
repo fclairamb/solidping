@@ -1,0 +1,18 @@
+{{define "subject"}}{{t "account.telegramLinked.subject"}}{{end}}
+{{define "preheader"}}{{t "account.telegramLinked.preheader"}}{{end}}
+{{template "base.html" .}}
+{{define "content"}}
+    <h1>{{t "account.telegramLinked.title"}}</h1>
+    <p>{{t "account.telegramLinked.body" "date" (date .LinkedAt)}}</p>
+    <p>{{t "account.telegramLinked.revoke"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .NotificationsURL "Label" (t "account.telegramLinked.cta") "Variant" "primary"}}</div>
+    <p class="meta">{{t "account.securityNotice.warning"}}</p>
+{{end}}
+{{define "text"}}{{t "account.telegramLinked.title"}}
+
+{{t "account.telegramLinked.body" "date" (date .LinkedAt)}}
+
+{{t "account.telegramLinked.revoke"}} {{.NotificationsURL}}
+
+{{t "account.securityNotice.warning"}}
+{{end}}
