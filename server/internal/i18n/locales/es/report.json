@@ -27,7 +27,15 @@
   "labels": {
     "checksMonitored": "Comprobaciones monitorizadas",
     "incidents": "Incidentes",
-    "totalDowntime": "Tiempo de inactividad total"
+    "totalDowntime": "Tiempo de inactividad total",
+    "medianResolve": "Tiempo mediano de resolución",
+    "medianAcknowledge": "Tiempo mediano de reconocimiento"
+  },
+  "insights": {
+    "title": "Más incidentes",
+    "acknowledged": "{acknowledged} de {total} reconocidos",
+    "relapses_one": "{count} recaída",
+    "relapses_other": "{count} recaídas"
   },
   "incidentStats": {
     "longest": "{duration} como máximo",

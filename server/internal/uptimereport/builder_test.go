@@ -428,3 +428,101 @@ func TestBuilderReportsAverageIncidentDuration(t *testing.T) {
 	r.Equal("20m", data.AverageIncident)
 	r.Equal("40m", data.TotalDowntime)
 }
+
+func (e *builderEnv) addIncident(
+	t *testing.T, check *models.Check, startedAt time.Time, resolved time.Duration, ackAfter time.Duration,
+) {
+	t.Helper()
+
+	incident := models.NewIncident(e.org.UID, check.UID, startedAt, "down")
+
+	if resolved > 0 {
+		resolvedAt := startedAt.Add(resolved)
+		resolutionType := models.ResolutionTypeAuto
+		incident.State = models.IncidentStateResolved
+		incident.ResolvedAt = &resolvedAt
+		incident.ResolutionType = &resolutionType
+	}
+
+	if ackAfter > 0 {
+		ackedAt := startedAt.Add(ackAfter)
+		incident.AcknowledgedAt = &ackedAt
+	}
+
+	require.NoError(t, e.db.CreateIncident(e.ctx, incident))
+}
+
+func TestBuilderReportsIncidentInsights(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newBuilderEnv(t)
+	now := time.Now().UTC()
+	window := currentMonth(now)
+
+	flappy := env.createCheck(t, "flappy")
+	steady := env.createCheck(t, "steady")
+	other := env.createCheck(t, "outside")
+	env.addRaw(t, flappy, now.Add(-time.Hour), 90, 100, 150)
+	env.addRaw(t, steady, now.Add(-time.Hour), 90, 100, 150)
+
+	schedule := monthlySchedule(env.org.UID)
+	schedule.CheckUIDs = []string{flappy.UID, steady.UID}
+
+	// No incident: nothing to show.
+	data, err := env.builder.Build(env.ctx, env.org, schedule, window, now)
+	r.NoError(err)
+	r.False(data.ShowInsights)
+	r.Empty(data.MedianTimeToResolve)
+	r.Empty(data.TopFailingChecks)
+
+	day := 24 * time.Hour
+	env.addIncident(t, flappy, window.Start.Add(day), 10*time.Minute, 2*time.Minute)
+	env.addIncident(t, flappy, window.Start.Add(2*day), 30*time.Minute, 0)
+	env.addIncident(t, flappy, window.Start.Add(3*day), 20*time.Minute, 4*time.Minute)
+	env.addIncident(t, steady, window.Start.Add(4*day), 60*time.Minute, 0)
+	// Outside the schedule's scope.
+	env.addIncident(t, other, window.Start.Add(day), 10*time.Minute, time.Minute)
+	env.addIncident(t, other, window.Start.Add(2*day), 10*time.Minute, time.Minute)
+	env.addIncident(t, other, window.Start.Add(3*day), 10*time.Minute, time.Minute)
+	// Started before the window, still active inside it: counted, as on the page.
+	env.addIncident(t, steady, window.Start.Add(-time.Hour), 2*time.Hour, 0)
+
+	data, err = env.builder.Build(env.ctx, env.org, schedule, window, now)
+	r.NoError(err)
+
+	r.True(data.ShowInsights)
+	// Resolve sample: 10, 30, 20, 60, 120 minutes.
+	r.Equal("30m", data.MedianTimeToResolve)
+	r.Equal(2, data.Figures.AcknowledgedCount)
+	r.Equal(5, data.Figures.PagedCount)
+	r.Equal("3m", data.MedianTimeToAcknowledge)
+	r.Equal("2 of 5 acknowledged", data.AcknowledgedLine)
+
+	r.Len(data.TopFailingChecks, 2)
+	r.Equal("flappy", data.TopFailingChecks[0].Name)
+	r.Equal(3, data.TopFailingChecks[0].Incidents)
+	r.Equal("steady", data.TopFailingChecks[1].Name)
+	r.Equal(2, data.TopFailingChecks[1].Incidents)
+}
+
+func TestBuilderOmitsMostIncidentsForASingleCheck(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newBuilderEnv(t)
+	now := time.Now().UTC()
+	window := currentMonth(now)
+
+	check := env.createCheck(t, "api")
+	env.addRaw(t, check, now.Add(-time.Hour), 90, 100, 150)
+	env.addIncident(t, check, window.Start.Add(24*time.Hour), 10*time.Minute, 0)
+
+	data, err := env.builder.Build(env.ctx, env.org, monthlySchedule(env.org.UID), window, now)
+	r.NoError(err)
+	r.True(data.ShowInsights)
+	r.Equal("10m", data.MedianTimeToResolve)
+	r.Empty(data.MedianTimeToAcknowledge)
+	r.Equal("0 of 1 acknowledged", data.AcknowledgedLine)
+	r.Empty(data.TopFailingChecks)
+}

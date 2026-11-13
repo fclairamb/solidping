@@ -22,6 +22,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/slos"
 	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
+	"github.com/fclairamb/solidping/server/internal/incidentinsights"
 	"github.com/fclairamb/solidping/server/internal/slo"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
@@ -164,6 +165,18 @@ type Data struct {
 	AverageIncident string `json:"AverageIncident,omitempty"`
 	TotalDowntime   string `json:"TotalDowntime,omitempty"`
 
+	// --- Incident insights (package incidentinsights) -------------------
+	//
+	// ShowInsights is false, and the line and the block absent, when no
+	// incident overlapped the period. The medians are empty when their sample
+	// is (nothing acknowledged, nothing resolved). AcknowledgedLine is empty
+	// when nobody was paged. TopFailingChecks is empty for a single-check scope.
+	ShowInsights            bool              `json:"ShowInsights"`
+	MedianTimeToResolve     string            `json:"MedianTimeToResolve,omitempty"`
+	MedianTimeToAcknowledge string            `json:"MedianTimeToAcknowledge,omitempty"`
+	AcknowledgedLine        string            `json:"AcknowledgedLine,omitempty"`
+	TopFailingChecks        []FailingCheckRow `json:"TopFailingChecks,omitempty"`
+
 	// --- Period-over-period trend -------------------------------------
 	//
 	// Every Show* flag is false when there is no previous-period data, and the
@@ -275,6 +288,12 @@ type Figures struct {
 	AverageIncident time.Duration
 	TotalDowntime   time.Duration
 
+	// Incident insights: the medians are zero when their sample is empty.
+	MedianTimeToResolve     time.Duration
+	MedianTimeToAcknowledge time.Duration
+	AcknowledgedCount       int
+	PagedCount              int
+
 	// Response times in milliseconds (HasLatency, the range when
 	// HasResponseRange, the previous average when ShowResponseDelta).
 	AvgResponse         float64
@@ -288,6 +307,23 @@ type Figures struct {
 	// StripStart and StripDays are the UTC days the day strips cover.
 	StripStart time.Time
 	StripDays  int
+}
+
+// maxFailingChecks caps the "Most incidents" block.
+const maxFailingChecks = 5
+
+// FailingCheckRow is one line of the "Most incidents" block. Incidents and
+// Relapses are the figures its labels are written from.
+//
+//nolint:tagliatelle // template view-model keys are PascalCase; see Data.
+type FailingCheckRow struct {
+	Name          string `json:"Name"`
+	URL           string `json:"URL,omitempty"`
+	IncidentCount string `json:"IncidentCount"`
+	RelapseCount  string `json:"RelapseCount,omitempty"`
+
+	Incidents int `json:"-"`
+	Relapses  int `json:"-"`
 }
 
 // Builder renders reports.
@@ -391,6 +427,10 @@ func (b *Builder) measure(
 
 	applyIncidents(data, incidents)
 
+	if insightsErr := b.applyInsights(ctx, data, org, checks, window, now); insightsErr != nil {
+		return nil, insightsErr
+	}
+
 	if trendErr := b.applyPreviousPeriod(
 		ctx, org.UID, schedule, checkUIDs, window, now, hints, data, overall, incidents.Count,
 	); trendErr != nil {
@@ -474,6 +514,100 @@ func applyIncidents(data *Data, incidents availability.PeriodIncidents) {
 	data.Figures.LongestIncident = time.Duration(incidents.LongestSeconds) * time.Second
 	data.Figures.AverageIncident = time.Duration(incidents.AverageSeconds) * time.Second
 	data.Figures.TotalDowntime = time.Duration(incidents.TotalDowntimeSeconds) * time.Second
+}
+
+// applyInsights fills the incident insights from every incident that overlaps
+// the window, the population the incident insights page uses, so the email and
+// the page agree. It is a dedicated load: incidentBlock counts by start date.
+func (b *Builder) applyInsights(
+	ctx context.Context, data *Data, org *models.Organization, checks []*models.Check,
+	window slo.Window, now time.Time,
+) error {
+	inScope := make(map[string]*models.Check, len(checks))
+	for _, check := range checks {
+		inScope[check.UID] = check
+	}
+
+	seen := make(map[string]struct{})
+	all := make([]*models.Incident, 0)
+
+	for _, check := range checks {
+		filter := &models.ListIncidentsFilter{
+			OrganizationUID: org.UID,
+			MemberCheckUID:  check.UID,
+			Kinds:           []string{models.IncidentKindCheck},
+			ActiveSince:     &window.Start,
+			Until:           &window.End,
+			Limit:           incidentFetchLimit,
+		}
+
+		incidents, _, err := b.db.ListIncidents(ctx, filter)
+		if err != nil {
+			return fmt.Errorf("list incidents for insights: %w", err)
+		}
+
+		for _, inc := range incidents {
+			if _, dup := seen[inc.UID]; dup {
+				continue
+			}
+
+			seen[inc.UID] = struct{}{}
+
+			all = append(all, inc)
+		}
+	}
+
+	result := incidentinsights.Compute(all, window.Start.UTC(), window.End.UTC(), now.UTC())
+	if result.Summary.IncidentCount == 0 {
+		return nil
+	}
+
+	fig := &data.Figures
+	summary := result.Summary
+	data.ShowInsights = true
+	fig.AcknowledgedCount = summary.AcknowledgedCount
+	fig.PagedCount = summary.PagedCount
+	fig.MedianTimeToResolve = medianDuration(summary.TimeToResolve)
+	fig.MedianTimeToAcknowledge = medianDuration(summary.TimeToAcknowledge)
+
+	if len(checks) < 2 {
+		return nil
+	}
+
+	baseURL := ""
+	if b.cfg != nil {
+		baseURL = b.cfg.Server.BaseURL
+	}
+
+	for idx := range result.Checks {
+		row := &result.Checks[idx]
+
+		check := inScope[row.CheckUID]
+		if check == nil {
+			continue
+		}
+
+		data.TopFailingChecks = append(data.TopFailingChecks, FailingCheckRow{
+			Name:      checkDisplayName(check),
+			URL:       checkReportURL(baseURL, org.Slug, check),
+			Incidents: row.IncidentCount,
+			Relapses:  row.RelapseCount,
+		})
+
+		if len(data.TopFailingChecks) == maxFailingChecks {
+			break
+		}
+	}
+
+	return nil
+}
+
+func medianDuration(stats incidentinsights.Stats) time.Duration {
+	if stats.MedianSeconds == nil {
+		return 0
+	}
+
+	return time.Duration(*stats.MedianSeconds) * time.Second
 }
 
 // buildCheckRows folds the per-check window stats into rows and, at the same

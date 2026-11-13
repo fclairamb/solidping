@@ -27,7 +27,15 @@
   "labels": {
     "checksMonitored": "Überwachte Prüfungen",
     "incidents": "Vorfälle",
-    "totalDowntime": "Gesamtausfallzeit"
+    "totalDowntime": "Gesamtausfallzeit",
+    "medianResolve": "Mittlere Zeit bis zur Behebung",
+    "medianAcknowledge": "Mittlere Zeit bis zur Bestätigung"
+  },
+  "insights": {
+    "title": "Meiste Vorfälle",
+    "acknowledged": "{acknowledged} von {total} bestätigt",
+    "relapses_one": "{count} Rückfall",
+    "relapses_other": "{count} Rückfälle"
   },
   "incidentStats": {
     "longest": "maximal {duration}",

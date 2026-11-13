@@ -56,6 +56,7 @@ func (d *Data) In(loc i18n.Locale) *Data {
 	out := *d
 	out.Checks = slices.Clone(d.Checks)
 	out.SLOs = slices.Clone(d.SLOs)
+	out.TopFailingChecks = slices.Clone(d.TopFailingChecks)
 	out.readers = nil
 	out.written = nil
 	out.write(loc)
@@ -84,6 +85,7 @@ func (d *Data) write(loc i18n.Locale) {
 	d.AverageIncident = spanIfAny(loc, fig.AverageIncident)
 	d.TotalDowntime = spanIfAny(loc, fig.TotalDowntime)
 
+	d.writeInsights(loc)
 	d.writeTrend(loc)
 	d.writeLatency(loc)
 
@@ -104,6 +106,29 @@ func (d *Data) write(loc i18n.Locale) {
 	d.StripBudgetNote = ""
 	if d.ShowStripBudgetNote {
 		d.StripBudgetNote = loc.Tn("report.strip.budgetNote", d.StripsShown)
+	}
+}
+
+func (d *Data) writeInsights(loc i18n.Locale) {
+	fig := &d.Figures
+
+	d.MedianTimeToResolve = spanIfAny(loc, fig.MedianTimeToResolve)
+	d.MedianTimeToAcknowledge = spanIfAny(loc, fig.MedianTimeToAcknowledge)
+
+	d.AcknowledgedLine = ""
+	if d.ShowInsights && fig.PagedCount > 0 {
+		d.AcknowledgedLine = loc.T("report.insights.acknowledged",
+			"acknowledged", fig.AcknowledgedCount, "total", fig.PagedCount)
+	}
+
+	for i := range d.TopFailingChecks {
+		row := &d.TopFailingChecks[i]
+		row.IncidentCount = loc.Tn("report.incidents", row.Incidents)
+
+		row.RelapseCount = ""
+		if row.Relapses > 0 {
+			row.RelapseCount = loc.Tn("report.insights.relapses", row.Relapses)
+		}
 	}
 }
 

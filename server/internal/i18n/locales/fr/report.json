@@ -27,7 +27,15 @@
   "labels": {
     "checksMonitored": "Contrôles surveillés",
     "incidents": "Incidents",
-    "totalDowntime": "Indisponibilité totale"
+    "totalDowntime": "Indisponibilité totale",
+    "medianResolve": "Délai médian de résolution",
+    "medianAcknowledge": "Délai médian d'acquittement"
+  },
+  "insights": {
+    "title": "Le plus d'incidents",
+    "acknowledged": "{acknowledged} sur {total} acquittés",
+    "relapses_one": "{count} rechute",
+    "relapses_other": "{count} rechutes"
   },
   "incidentStats": {
     "longest": "{duration} au maximum",

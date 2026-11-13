@@ -41,6 +41,14 @@ func sampleData() *uptimereport.Data {
 		AvailabilityColor: "#15803d",
 		CheckCount:        2,
 		IncidentCount:     3,
+		ShowInsights:      true,
+		TopFailingChecks: []uptimereport.FailingCheckRow{
+			{
+				Name: "Production API", URL: "https://solidping.example/d/orgs/acme/checks/chk-prod-api",
+				Incidents: 2, Relapses: 1,
+			},
+			{Name: "Marketing site", Incidents: 1},
+		},
 
 		HasPreviousData:       true,
 		PreviousIncidentCount: 5,
@@ -87,26 +95,30 @@ func sampleData() *uptimereport.Data {
 		UnsubscribeURL: "https://solidping.example/unsubscribe?token=abc",
 
 		Figures: uptimereport.Figures{
-			Period:               slo.Window{Start: july, End: july.AddDate(0, 1, 0)},
-			Previous:             slo.Window{Start: july.AddDate(0, -1, 0), End: july},
-			OrgWide:              true,
-			Availability:         99.95,
-			PreviousAvailability: 99.87,
-			AvailabilityDelta:    0.08,
-			IncidentDelta:        -2,
-			ResponseDelta:        8.4,
-			LongestIncident:      42 * time.Minute,
-			AverageIncident:      21*time.Minute + 40*time.Second,
-			TotalDowntime:        time.Hour + 5*time.Minute,
-			AvgResponse:          171,
-			MinResponse:          42,
-			MaxResponse:          3200,
-			HasResponseRange:     true,
-			PreviousAvgResponse:  158,
-			SlowSamples:          4,
-			SlowPeaks:            2,
-			StripStart:           time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC),
-			StripDays:            31,
+			Period:                  slo.Window{Start: july, End: july.AddDate(0, 1, 0)},
+			Previous:                slo.Window{Start: july.AddDate(0, -1, 0), End: july},
+			OrgWide:                 true,
+			Availability:            99.95,
+			PreviousAvailability:    99.87,
+			AvailabilityDelta:       0.08,
+			IncidentDelta:           -2,
+			MedianTimeToResolve:     18 * time.Minute,
+			MedianTimeToAcknowledge: 4 * time.Minute,
+			AcknowledgedCount:       2,
+			PagedCount:              3,
+			ResponseDelta:           8.4,
+			LongestIncident:         42 * time.Minute,
+			AverageIncident:         21*time.Minute + 40*time.Second,
+			TotalDowntime:           time.Hour + 5*time.Minute,
+			AvgResponse:             171,
+			MinResponse:             42,
+			MaxResponse:             3200,
+			HasResponseRange:        true,
+			PreviousAvgResponse:     158,
+			SlowSamples:             4,
+			SlowPeaks:               2,
+			StripStart:              time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC),
+			StripDays:               31,
 		},
 	}
 
@@ -299,6 +311,7 @@ func TestUptimeReportRendersNoDataHonestly(t *testing.T) {
 	data.AvailabilityPct = ""
 	data.Checks = nil
 	data.SLOs = nil
+	data.TopFailingChecks = nil
 
 	_, html, text, err := formatter.Format(uptimereport.TemplateName, i18n.English, roundTrip(t, data))
 	r.NoError(err)
@@ -627,4 +640,92 @@ func TestUptimeReportDownAllPeriodStatesTheFactAndDropsLatency(t *testing.T) {
 	r.NotContains(html, "color: #15803d")
 	r.NotContains(html, "color:#15803d")
 	r.NotContains(html, `bgcolor="#15803d"`)
+}
+
+func renderEnglish(t *testing.T, data *uptimereport.Data) (string, string) {
+	t.Helper()
+
+	formatter, err := email.NewFormatter()
+	require.NoError(t, err)
+
+	_, html, text, err := formatter.Format(uptimereport.TemplateName, i18n.English, roundTrip(t, data.In(i18n.English)))
+	require.NoError(t, err)
+
+	return visibleText(html), text
+}
+
+func TestUptimeReportRendersIncidentInsights(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	html, text := renderEnglish(t, sampleData())
+
+	for _, body := range []string{html, text} {
+		r.Contains(body, "Median time to resolve")
+		r.Contains(body, "18m")
+		r.Contains(body, "Median time to acknowledge")
+		r.Contains(body, "4m")
+		r.Contains(body, "2 of 3 acknowledged")
+		r.Contains(body, "Most incidents")
+		r.Contains(body, "2 incidents")
+		r.Contains(body, "1 relapse")
+	}
+}
+
+func TestUptimeReportOmitsInsightsWithoutIncident(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Positive control: the same data with an incident renders them.
+	html, _ := renderEnglish(t, sampleData())
+	r.Contains(html, "Most incidents")
+	r.Contains(html, "Median time to resolve")
+
+	data := sampleData()
+	data.ShowInsights = false
+	data.TopFailingChecks = nil
+	data.Figures.MedianTimeToResolve = 0
+	data.Figures.MedianTimeToAcknowledge = 0
+	data.Figures.PagedCount = 0
+
+	html, text := renderEnglish(t, data)
+
+	for _, body := range []string{html, text} {
+		r.NotContains(body, "Most incidents")
+		r.NotContains(body, "Median time")
+		r.NotContains(body, "acknowledged")
+	}
+}
+
+func TestUptimeReportInsightsWithoutAcknowledgement(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	data := sampleData()
+	data.Figures.MedianTimeToAcknowledge = 0
+	data.Figures.AcknowledgedCount = 0
+
+	html, text := renderEnglish(t, data)
+
+	for _, body := range []string{html, text} {
+		r.NotContains(body, "Median time to acknowledge")
+		r.Contains(body, "0 of 3 acknowledged")
+		r.Contains(body, "Median time to resolve")
+	}
+}
+
+func TestUptimeReportOmitsMostIncidentsForASingleCheck(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	data := sampleData()
+	data.TopFailingChecks = nil
+
+	html, text := renderEnglish(t, data)
+
+	for _, body := range []string{html, text} {
+		r.NotContains(body, "Most incidents")
+		r.Contains(body, "Median time to resolve")
+	}
 }

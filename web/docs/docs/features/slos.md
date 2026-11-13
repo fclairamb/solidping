@@ -119,6 +119,13 @@ scope.
 - **Incidents**: how many, the longest, the average, and the total downtime,
   each against the previous period. There is deliberately no MTBF: with the
   handful of incidents a typical month produces it is not a meaningful number.
+- **Incident insights**: the median time to resolve, the median time to
+  acknowledge and how many incidents were acknowledged ("12 of 40 acknowledged"),
+  then a **Most incidents** block with the 5 checks that opened the most
+  incidents and their relapses. They are the numbers of the incident insights
+  page, over every incident that overlapped the period. Nothing is shown when
+  there was no incident, the acknowledge figure is left out when nothing was
+  acknowledged, and a single-check scope has no **Most incidents** block.
 - **Response time**: average, fastest and slowest, and how many probes were
   slower than one second. Recent periods count individual *samples*; older data
   is stored as rollups, which can only report *peaks* — a rolled-up period whose

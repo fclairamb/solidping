@@ -281,3 +281,38 @@ func TestUptimeReportPluralsSurviveTheJob(t *testing.T) {
 		r.Contains(preheader[1], tc.want, "%s, %d incidents", tc.lang, tc.count)
 	}
 }
+
+// TestUptimeReportInsightsAreTranslated renders the insights line and block in
+// every language: the English copy is the positive control, the others must
+// not carry any of it.
+func TestUptimeReportInsightsAreTranslated(t *testing.T) {
+	t.Parallel()
+
+	formatter, err := email.NewFormatter()
+	require.NoError(t, err)
+
+	english := []string{
+		"Median time to resolve", "Median time to acknowledge", "2 of 3 acknowledged", "Most incidents", "1 relapse",
+	}
+
+	for _, lang := range []string{i18n.LangEnglish, i18n.LangFrench, i18n.LangGerman, i18n.LangSpanish} {
+		subject, body, text := renderReport(t, formatter, i18n.New(lang, ""), sampleData())
+
+		for part, content := range readerParts(subject, body, text) {
+			if part == "subject" {
+				continue
+			}
+
+			for _, phrase := range english {
+				if lang == i18n.LangEnglish {
+					require.Contains(t, content, phrase, "%s %s", lang, part)
+				} else {
+					require.NotContains(t, content, phrase, "%s %s", lang, part)
+				}
+			}
+
+			require.NotContains(t, content, "report.insights", "%s %s", lang, part)
+			require.NotContains(t, content, "report.labels.median", "%s %s", lang, part)
+		}
+	}
+}

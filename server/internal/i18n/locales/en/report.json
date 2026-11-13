@@ -27,7 +27,15 @@
   "labels": {
     "checksMonitored": "Checks monitored",
     "incidents": "Incidents",
-    "totalDowntime": "Total downtime"
+    "totalDowntime": "Total downtime",
+    "medianResolve": "Median time to resolve",
+    "medianAcknowledge": "Median time to acknowledge"
+  },
+  "insights": {
+    "title": "Most incidents",
+    "acknowledged": "{acknowledged} of {total} acknowledged",
+    "relapses_one": "{count} relapse",
+    "relapses_other": "{count} relapses"
   },
   "incidentStats": {
     "longest": "longest {duration}",

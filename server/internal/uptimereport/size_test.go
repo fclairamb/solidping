@@ -43,13 +43,36 @@ func worstCaseMonthlyReport(t *testing.T) *Data {
 	july := time.Date(2026, time.July, 1, 0, 0, 0, 0, paris)
 
 	data := &Data{
-		OrgName:                "acme",
-		BrandName:              "acme",
-		Timezone:               "Europe/Paris",
-		HasData:                true,
-		AvailabilityColor:      "#c2410c",
-		CheckCount:             maxCheckRows + 87,
-		IncidentCount:          42,
+		OrgName:           "acme",
+		BrandName:         "acme",
+		Timezone:          "Europe/Paris",
+		HasData:           true,
+		AvailabilityColor: "#c2410c",
+		CheckCount:        maxCheckRows + 87,
+		IncidentCount:     42,
+		ShowInsights:      true,
+		TopFailingChecks: []FailingCheckRow{
+			{
+				Name: "flapping-endpoint-00.acme.com", URL: "https://solidping.example/d/orgs/acme/checks/flap-00",
+				Incidents: 12, Relapses: 7,
+			},
+			{
+				Name: "flapping-endpoint-01.acme.com", URL: "https://solidping.example/d/orgs/acme/checks/flap-01",
+				Incidents: 10, Relapses: 5,
+			},
+			{
+				Name: "flapping-endpoint-02.acme.com", URL: "https://solidping.example/d/orgs/acme/checks/flap-02",
+				Incidents: 8, Relapses: 3,
+			},
+			{
+				Name: "flapping-endpoint-03.acme.com", URL: "https://solidping.example/d/orgs/acme/checks/flap-03",
+				Incidents: 6, Relapses: 2,
+			},
+			{
+				Name: "flapping-endpoint-04.acme.com", URL: "https://solidping.example/d/orgs/acme/checks/flap-04",
+				Incidents: 4, Relapses: 1,
+			},
+		},
 		HasPreviousData:        true,
 		ShowAvailabilityDelta:  true,
 		AvailabilityDeltaColor: deltaBadColor,
@@ -66,26 +89,30 @@ func worstCaseMonthlyReport(t *testing.T) *Data {
 		UnsubscribeURL:         "https://solidping.example/unsubscribe?token=abcdef0123456789",
 		Checks:                 make([]CheckRow, 0, maxCheckRows),
 		Figures: Figures{
-			Period:               slo.Window{Start: july, End: july.AddDate(0, 1, 0)},
-			Previous:             slo.Window{Start: july.AddDate(0, -1, 0), End: july},
-			OrgWide:              true,
-			Availability:         97.512,
-			PreviousAvailability: 99.87,
-			AvailabilityDelta:    -2.358,
-			IncidentDelta:        37,
-			ResponseDelta:        41.2,
-			LongestIncident:      3*time.Hour + 12*time.Minute,
-			AverageIncident:      18 * time.Minute,
-			TotalDowntime:        12*time.Hour + 36*time.Minute,
-			AvgResponse:          412,
-			MinResponse:          37,
-			MaxResponse:          9800,
-			HasResponseRange:     true,
-			PreviousAvgResponse:  292,
-			SlowSamples:          318,
-			SlowPeaks:            24,
-			StripStart:           time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC),
-			StripDays:            days,
+			Period:                  slo.Window{Start: july, End: july.AddDate(0, 1, 0)},
+			Previous:                slo.Window{Start: july.AddDate(0, -1, 0), End: july},
+			OrgWide:                 true,
+			Availability:            97.512,
+			PreviousAvailability:    99.87,
+			AvailabilityDelta:       -2.358,
+			IncidentDelta:           37,
+			ResponseDelta:           41.2,
+			LongestIncident:         3*time.Hour + 12*time.Minute,
+			AverageIncident:         18 * time.Minute,
+			TotalDowntime:           12*time.Hour + 36*time.Minute,
+			MedianTimeToResolve:     18 * time.Minute,
+			MedianTimeToAcknowledge: 4 * time.Minute,
+			AcknowledgedCount:       30,
+			PagedCount:              42,
+			AvgResponse:             412,
+			MinResponse:             37,
+			MaxResponse:             9800,
+			HasResponseRange:        true,
+			PreviousAvgResponse:     292,
+			SlowSamples:             318,
+			SlowPeaks:               24,
+			StripStart:              time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC),
+			StripDays:               days,
 		},
 	}
 
@@ -193,7 +220,8 @@ func TestUptimeReportStaysUnderGmailClipLimit(t *testing.T) {
 			// rendered: 50 rows, the last check name present, and a real pile
 			// of day cells.
 			r.Contains(html, "check-with-a-fairly-long-name-49.acme.com")
-			r.Equal(maxCheckRows, strings.Count(html, "acme.com</a>"))
+			r.Equal(maxCheckRows, strings.Count(html, "-long-name-"), "table rows")
+			r.Equal(maxFailingChecks, strings.Count(html, "flapping-endpoint-"), "Most incidents rows")
 
 			cells := strings.Count(html, "bgcolor=")
 			r.Positive(cells)

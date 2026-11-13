@@ -24,7 +24,7 @@ const fixtureReportZone = "Europe/Paris"
 // unsubscribe link, so TestPreview_AllShippedTemplatesRender exercises the
 // range blocks and the bulk-mail footer rather than only the header.
 func uptimeReportFixture(loc i18n.Locale) map[string]any {
-	report := uptimeReportPreview().In(loc)
+	report := withPreviewInsights(uptimeReportPreview()).In(loc)
 
 	checks := make([]map[string]any, 0, len(report.Checks))
 	for i := range report.Checks {
@@ -56,6 +56,13 @@ func uptimeReportFixture(loc i18n.Locale) map[string]any {
 		"LongestIncident": report.LongestIncident,
 		"AverageIncident": report.AverageIncident,
 		"TotalDowntime":   report.TotalDowntime,
+
+		// Incident insights.
+		"ShowInsights":            report.ShowInsights,
+		"MedianTimeToResolve":     report.MedianTimeToResolve,
+		"MedianTimeToAcknowledge": report.MedianTimeToAcknowledge,
+		"AcknowledgedLine":        report.AcknowledgedLine,
+		"TopFailingChecks":        failingRows(report.TopFailingChecks),
 
 		// Period-over-period trend. Present in the fixture so the preview
 		// exercises the delta spans rather than only their absence.
@@ -97,6 +104,32 @@ func uptimeReportFixture(loc i18n.Locale) map[string]any {
 		keyDashboardURL:  report.DashboardURL,
 		"UnsubscribeURL": "https://solidping.example/unsubscribe?token=preview-unsub-token",
 	}
+}
+
+func failingRows(rows []uptimereport.FailingCheckRow) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for i := range rows {
+		out = append(out, map[string]any{
+			keyName: rows[i].Name, "IncidentCount": rows[i].IncidentCount, "RelapseCount": rows[i].RelapseCount,
+		})
+	}
+
+	return out
+}
+
+// withPreviewInsights adds the incident insights to the preview report.
+func withPreviewInsights(report *uptimereport.Data) *uptimereport.Data {
+	report.ShowInsights = true
+	report.TopFailingChecks = []uptimereport.FailingCheckRow{
+		{Name: fixtureCheckName, Incidents: 2, Relapses: 1},
+		{Name: "Marketing site", Incidents: 1},
+	}
+	report.Figures.MedianTimeToResolve = 18 * time.Minute
+	report.Figures.MedianTimeToAcknowledge = 4 * time.Minute
+	report.Figures.AcknowledgedCount = 2
+	report.Figures.PagedCount = 3
+
+	return report
 }
 
 // uptimeReportPreview is the measured report behind the fixture: a monthly
