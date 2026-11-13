@@ -1186,7 +1186,6 @@ func (r *jsRuntime) httpRequest(
 	start := time.Now()
 
 	resp, err := client.Do(req)
-
 	r.recordDroppedHeaders(dropped)
 
 	if err != nil {
@@ -1223,10 +1222,7 @@ func (r *jsRuntime) httpRequest(
 		result[jsKeyTunneled] = true
 	}
 
-	// Present only when a cross-origin hop dropped a header (names only).
-	if len(dropped) > 0 {
-		result[jsKeyRedirectDroppedHeaders] = dedupSorted(dropped)
-	}
+	addRedirectDroppedHeaders(result, dropped)
 
 	return result
 }
@@ -1257,7 +1253,7 @@ func redirectPolicy(
 		// Authorization/Cookie/WWW-Authenticate, and only cross-host.
 		//
 		// A script can encode a secret (base64, hex, percent-encoding) before
-		// putting it in a header, which no value match recognises (spec
+		// putting it in a header, which no value match recognizes (spec
 		// 2026-11-13-05). So a check holding secrets sends only the generic
 		// headers of redirectSafeHeaders past its origin, and the value match
 		// still covers one of those carrying a raw secret.
@@ -1358,6 +1354,14 @@ func (r *jsRuntime) recordDroppedHeaders(names []string) {
 func (r *jsRuntime) addDroppedHeaders(out map[string]any) {
 	if len(r.redirectDroppedHeaders) > 0 {
 		out[OutputKeyRedirectDroppedSecretHeaders] = dedupSorted(r.redirectDroppedHeaders)
+	}
+}
+
+// addRedirectDroppedHeaders sets the response's redirectDroppedHeaders, present
+// only when a cross-origin hop dropped a header (names only).
+func addRedirectDroppedHeaders(result map[string]any, dropped []string) {
+	if len(dropped) > 0 {
+		result[jsKeyRedirectDroppedHeaders] = dedupSorted(dropped)
 	}
 }
 
