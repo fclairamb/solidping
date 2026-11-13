@@ -201,6 +201,16 @@ func executeIsolated(
 		host.consoleBuf.WriteString(console)
 	}
 
+	// http.* runs here in the host, so the redirect hops it stripped are
+	// known only here.
+	if len(host.redirectDroppedHeaders) > 0 {
+		if result.Output == nil {
+			result.Output = map[string]any{}
+		}
+
+		host.addDroppedHeaders(result.Output)
+	}
+
 	host.attachScreenshot(result)
 
 	if refused := repairList.Refused(); refused != nil {

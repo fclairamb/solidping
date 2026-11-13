@@ -99,6 +99,13 @@ func discordLinkedFixture(_ i18n.Locale) map[string]any {
 	}
 }
 
+func telegramLinkedFixture(_ i18n.Locale) map[string]any {
+	return map[string]any{
+		"LinkedAt":         fixtureChangedAt(),
+		"NotificationsURL": fixtureDashboardURL + "/orgs/acme/account/notifications",
+	}
+}
+
 func invitationFixture(loc i18n.Locale) map[string]any {
 	return map[string]any{
 		keyOrgName:    fixtureOrgName,

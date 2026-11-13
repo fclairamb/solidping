@@ -107,6 +107,14 @@
     "revoke": "Si vous ne l'avez pas associé vous-même, contactez immédiatement votre administrateur pour le retirer. Vous pouvez changer votre mot de passe depuis la page de sécurité :",
     "cta": "Changer mon mot de passe"
   },
+  "telegramLinked": {
+    "subject": "Un compte Telegram a été associé à votre compte SolidPing",
+    "preheader": "Il permet désormais de se connecter à votre compte.",
+    "title": "Un compte Telegram a été associé",
+    "body": "Un compte Telegram a été associé à votre compte SolidPing le {date}. La connexion avec Telegram ouvre désormais votre compte.",
+    "revoke": "Si ce n'était pas vous, retirez-le de vos réglages de notifications et changez votre mot de passe :",
+    "cta": "Ouvrir mes réglages de notifications"
+  },
   "invitation": {
     "subject": "Invitation à rejoindre {org} sur SolidPing",
     "preheader": {

@@ -341,19 +341,20 @@ func itoa(value int) string {
 
 // TestSecretValuedHeaderIsNotResentToAnotherHost: a header a script builds
 // from secrets.* is dropped on a cross-host redirect hop (spec 2026-11-12-06).
+// Since spec 2026-11-13-05 a check with secrets also drops every non-generic
+// header (X-Trace), and a generic one (Accept-Language) holding a raw secret.
 func TestSecretValuedHeaderIsNotResentToAnotherHost(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
 	var (
-		mu       sync.Mutex
-		gotKey   string
-		gotTrace string
+		mu  sync.Mutex
+		got http.Header
 	)
 
 	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		mu.Lock()
-		gotKey, gotTrace = req.Header.Get("X-Api-Key"), req.Header.Get("X-Trace")
+		got = req.Header.Clone()
 		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -366,7 +367,8 @@ func TestSecretValuedHeaderIsNotResentToAnotherHost(t *testing.T) {
 
 	result, err := (&JSChecker{}).Execute(context.Background(), &JSConfig{
 		Script: `var res = http.get(` + jsString(origin.URL) +
-			`, { headers: { "X-Api-Key": secrets.KEY, "X-Trace": "1" } });
+			`, { headers: { "X-Api-Key": secrets.KEY, "X-Trace": "1",
+  "Accept-Language": "fr-" + secrets.KEY, "Accept": "text/plain" } });
 return { status: "up", output: { code: res.statusCode } };`,
 		Secrets: map[string]string{"KEY": "s3cret"},
 		Timeout: 10 * time.Second,
@@ -377,6 +379,12 @@ return { status: "up", output: { code: res.statusCode } };`,
 	mu.Lock()
 	defer mu.Unlock()
 
-	r.Empty(gotKey)
-	r.Equal("1", gotTrace)
+	r.Empty(got.Get("X-Api-Key"))
+	r.Empty(got.Get("X-Trace"))
+	r.Empty(got.Get("Accept-Language"))
+	r.Equal("text/plain", got.Get("Accept"))
+	r.Equal(
+		[]string{"Accept-Language", "X-Api-Key", "X-Trace"},
+		result.Output[OutputKeyRedirectDroppedSecretHeaders],
+	)
 }

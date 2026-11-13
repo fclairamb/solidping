@@ -107,6 +107,14 @@
     "revoke": "If you did not link it yourself, contact your administrator right away to remove it. You can change your password from the security page:",
     "cta": "Change my password"
   },
+  "telegramLinked": {
+    "subject": "A Telegram account was linked to your SolidPing account",
+    "preheader": "It can now be used to sign in to your account.",
+    "title": "A Telegram account was linked",
+    "body": "A Telegram account was linked to your SolidPing account on {date}. Signing in with Telegram now opens your account.",
+    "revoke": "If it wasn't you, remove it from your notification settings and change your password:",
+    "cta": "Open my notification settings"
+  },
   "invitation": {
     "subject": "You're invited to join {org} on SolidPing",
     "preheader": {

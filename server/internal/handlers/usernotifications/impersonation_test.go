@@ -55,10 +55,10 @@ func TestImpersonationCannotBindAChannel(t *testing.T) {
 		r := require.New(t)
 		svc, _, org, user := setupTelegramService(t)
 
-		_, err := svc.CreateTelegramLink(audit.WithImpersonator(t.Context(), "admin-uid"), org.Slug, user)
+		_, err := svc.CreateTelegramLink(audit.WithImpersonator(t.Context(), "admin-uid"), org.Slug, user, nil)
 		r.ErrorIs(err, ErrImpersonationForbidden)
 
-		_, err = svc.CreateTelegramLink(t.Context(), org.Slug, user)
+		_, err = svc.CreateTelegramLink(t.Context(), org.Slug, user, nil)
 		r.NoError(err)
 	})
 }
