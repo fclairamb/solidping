@@ -140,8 +140,22 @@ func (h *Handler) CreateTelegramLink(writer http.ResponseWriter, req *http.Reque
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Not authenticated")
 	}
 
-	resp, err := h.svc.CreateTelegramLink(req.Context(), httpx.Param(req, "org"), user)
+	var body struct {
+		// CurrentPassword re-authenticates the member when Sign in with
+		// Telegram is on (spec 2026-11-13-03). Ignored otherwise.
+		CurrentPassword *string `json:"currentPassword"`
+	}
+
+	// A missing or unparseable body is decoded as empty: a missing password is
+	// refused by the re-authentication when one is needed.
+	_ = json.NewDecoder(req.Body).Decode(&body)
+
+	resp, err := h.svc.CreateTelegramLink(req.Context(), httpx.Param(req, "org"), user, body.CurrentPassword)
 	if err != nil {
+		if handled, writeErr := auth.WriteReauthError(&h.HandlerBase, writer, req, err); handled {
+			return writeErr
+		}
+
 		return h.handleError(writer, req, err)
 	}
 

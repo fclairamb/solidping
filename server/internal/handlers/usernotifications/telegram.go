@@ -83,8 +83,13 @@ func (s *Service) TelegramEnabled() bool {
 // webhook is instance-level and carries no org whatsoever, so an org-scoped row
 // would be unfindable at redemption time. The org lives in the value, and the
 // token's own entropy is what protects it.
+//
+// With Sign in with Telegram on, the linked chat also signs in to the account,
+// so the link is a sign-in factor and asks the same re-authentication as a
+// Discord link (spec 2026-11-13-03). With it off, the link is only a paging
+// channel and needs no password.
 func (s *Service) CreateTelegramLink(
-	ctx context.Context, orgSlug string, user *models.User,
+	ctx context.Context, orgSlug string, user *models.User, currentPassword *string,
 ) (*TelegramLinkResponse, error) {
 	if err := refuseImpersonation(ctx); err != nil {
 		return nil, err
@@ -97,6 +102,16 @@ func (s *Service) CreateTelegramLink(
 	orgUID, err := s.resolveOrgUID(ctx, orgSlug)
 	if err != nil {
 		return nil, err
+	}
+
+	if s.telegramCfg.LoginActive() {
+		if s.reauth == nil {
+			return nil, ErrReauthUnavailable
+		}
+
+		if reauthErr := s.reauth.ReauthenticateForFactor(ctx, user, currentPassword); reauthErr != nil {
+			return nil, reauthErr
+		}
 	}
 
 	token, err := newTelegramLinkToken()
