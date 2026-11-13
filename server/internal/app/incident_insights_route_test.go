@@ -23,4 +23,10 @@ func TestIncidentInsightsRoute(t *testing.T) {
 	authed := env.get(t, path+"?period=7d", map[string]string{"Authorization": "Bearer " + env.login(t)})
 	r.Equal(http.StatusOK, authed.status, string(authed.body))
 	r.Contains(string(authed.body), `"period":"7d"`)
+	r.Contains(string(authed.body), `"summary"`)
+	r.Contains(string(authed.body), `"checks"`)
+
+	bad := env.get(t, path+"?period=1y", map[string]string{"Authorization": "Bearer " + env.login(t)})
+	r.Equal(http.StatusBadRequest, bad.status, string(bad.body))
+	r.Contains(string(bad.body), `"VALIDATION_ERROR"`)
 }

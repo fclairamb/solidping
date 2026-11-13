@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	insightsPageSize    = 500
-	insightsMaxLoaded   = 5000
-	insightsTopChecks   = 20
-	insightsDefaultDays = 30
+	defaultInsightsPageSize  = 500
+	defaultInsightsMaxLoaded = 5000
+	insightsTopChecks        = 20
+	insightsDefaultDays      = 30
 )
 
 var errInvalidInsightsPeriod = errors.New("invalid period: must be one of 7d, 30d, 90d")
@@ -77,7 +77,7 @@ func (s *Service) GetInsights(ctx context.Context, orgSlug, period string, days 
 	now := s.clock.Now()
 	windowStart := now.AddDate(0, 0, -days)
 
-	incidents, truncated, err := s.loadInsightsIncidents(ctx, org.UID, windowStart)
+	incidents, truncated, err := s.loadInsightsIncidents(ctx, org.UID, windowStart, now)
 	if err != nil {
 		return nil, err
 	}
@@ -131,11 +131,21 @@ func (s *Service) GetInsights(ctx context.Context, orgSlug, period string, days 
 	return response, nil
 }
 
-// loadInsightsIncidents pages through the window's check outages, stopping at
-// insightsMaxLoaded rows (truncated is then true).
+// loadInsightsIncidents pages through the check outages active during the
+// window (started before its end, still open or resolved inside it), stopping
+// at the load cap (truncated is then true).
 func (s *Service) loadInsightsIncidents(
-	ctx context.Context, orgUID string, since time.Time,
+	ctx context.Context, orgUID string, since, until time.Time,
 ) ([]*models.Incident, bool, error) {
+	pageSize, maxLoaded := s.insightsPageSize, s.insightsMaxLoaded
+	if pageSize <= 0 {
+		pageSize = defaultInsightsPageSize
+	}
+
+	if maxLoaded <= 0 {
+		maxLoaded = defaultInsightsMaxLoaded
+	}
+
 	var all []*models.Incident
 
 	var (
@@ -147,18 +157,19 @@ func (s *Service) loadInsightsIncidents(
 		page, _, err := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
 			OrganizationUID: orgUID,
 			Kinds:           []string{models.IncidentKindCheck},
-			Since:           &since,
+			ActiveSince:     &since,
+			Until:           &until,
 			CursorTimestamp: cursorTS,
 			CursorUID:       cursorUID,
-			Limit:           insightsPageSize + 1,
+			Limit:           pageSize + 1,
 		})
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to list incidents: %w", err)
 		}
 
-		hasMore := len(page) > insightsPageSize
+		hasMore := len(page) > pageSize
 		if hasMore {
-			page = page[:insightsPageSize]
+			page = page[:pageSize]
 		}
 
 		all = append(all, page...)
@@ -167,8 +178,8 @@ func (s *Service) loadInsightsIncidents(
 			return all, false, nil
 		}
 
-		if len(all) >= insightsMaxLoaded {
-			return all, true, nil
+		if len(all) >= maxLoaded {
+			return all[:maxLoaded], true, nil
 		}
 
 		last := page[len(page)-1]

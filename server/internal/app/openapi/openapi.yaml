@@ -4050,7 +4050,9 @@ paths:
       tags: [Incidents]
       summary: Incident insights
       description: >-
-        Aggregates the check outages of a trailing window: the checks that fail
+        Aggregates the check outages active during a trailing period (started before
+        its end, still open or resolved inside it; downtime is clipped to the
+        period): the checks that fail
         the most, the time to acknowledge, the time to resolve and how incidents
         were resolved. Medians and nearest-rank p90, never means. Rolled-up
         (paging-suppressed) incidents count in the checks table and the resolve
