@@ -2,6 +2,7 @@ package uptimereport
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -525,4 +526,120 @@ func TestBuilderOmitsMostIncidentsForASingleCheck(t *testing.T) {
 	r.Empty(data.MedianTimeToAcknowledge)
 	r.Equal("0 of 1 acknowledged", data.AcknowledgedLine)
 	r.Empty(data.TopFailingChecks)
+}
+
+// TestBuilderCountsAGroupIncidentOnceAcrossMembers: a group incident is
+// returned by the per-check load of each in-scope member, and the dedupe by
+// incident UID makes it count once.
+func TestBuilderCountsAGroupIncidentOnceAcrossMembers(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newBuilderEnv(t)
+	now := time.Now().UTC()
+	window := currentMonth(now)
+
+	first := env.createCheck(t, "grp-a")
+	second := env.createCheck(t, "grp-b")
+	env.addRaw(t, first, now.Add(-time.Hour), 90, 100, 150)
+	env.addRaw(t, second, now.Add(-time.Hour), 90, 100, 150)
+
+	group := models.NewCheckGroup(env.org.UID, "Group", "grp")
+	r.NoError(env.db.CreateCheckGroup(env.ctx, group))
+
+	startedAt := window.Start.Add(24 * time.Hour)
+	ackedAt := startedAt.Add(2 * time.Minute)
+	resolvedAt := startedAt.Add(10 * time.Minute)
+	resolutionType := models.ResolutionTypeAuto
+
+	// A group incident carries a representative check; both checks are members.
+	incident := models.NewIncident(env.org.UID, first.UID, startedAt, "group down")
+	incident.CheckGroupUID = &group.UID
+	incident.State = models.IncidentStateResolved
+	incident.ResolvedAt = &resolvedAt
+	incident.ResolutionType = &resolutionType
+	incident.AcknowledgedAt = &ackedAt
+	r.NoError(env.db.CreateIncident(env.ctx, incident))
+
+	for _, check := range []*models.Check{first, second} {
+		r.NoError(env.db.UpsertIncidentMemberCheck(env.ctx, &models.IncidentMemberCheck{
+			IncidentUID:    incident.UID,
+			CheckUID:       check.UID,
+			JoinedAt:       startedAt,
+			FirstFailureAt: startedAt,
+			LastFailureAt:  startedAt,
+			FailureCount:   1,
+		}))
+	}
+
+	// Positive control: both per-check loads do return the incident.
+	for _, check := range []*models.Check{first, second} {
+		listed, _, err := env.db.ListIncidents(env.ctx, &models.ListIncidentsFilter{
+			OrganizationUID: env.org.UID,
+			MemberCheckUID:  check.UID,
+			Kinds:           []string{models.IncidentKindCheck},
+			ActiveSince:     &window.Start,
+			Until:           &window.End,
+			Limit:           incidentFetchLimit,
+		})
+		r.NoError(err)
+		r.Len(listed, 1)
+	}
+
+	schedule := monthlySchedule(env.org.UID)
+	schedule.CheckUIDs = []string{first.UID, second.UID}
+
+	data, err := env.builder.Build(env.ctx, env.org, schedule, window, now)
+	r.NoError(err)
+
+	r.True(data.ShowInsights)
+	r.Equal(1, data.Figures.AcknowledgedCount)
+	r.Equal(1, data.Figures.PagedCount)
+	r.Equal("1 of 1 acknowledged", data.AcknowledgedLine)
+
+	total := 0
+	for _, row := range data.TopFailingChecks {
+		total += row.Incidents
+	}
+
+	r.Equal(1, total)
+}
+
+var errListIncidents = errors.New("list incidents failed")
+
+// failingIncidentsDB fails only the insights load (the one that filters by
+// ActiveSince), so incidentBlock still succeeds and the error is the insights'.
+type failingIncidentsDB struct {
+	db.Service
+}
+
+func (f failingIncidentsDB) ListIncidents(
+	ctx context.Context, filter *models.ListIncidentsFilter,
+) ([]*models.Incident, int64, error) {
+	if filter.ActiveSince != nil {
+		return nil, 0, errListIncidents
+	}
+
+	return f.Service.ListIncidents(ctx, filter)
+}
+
+// TestBuilderFailsWhenTheInsightsIncidentLoadFails: the report errors instead
+// of going out without its insights block.
+func TestBuilderFailsWhenTheInsightsIncidentLoadFails(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newBuilderEnv(t)
+	now := time.Now().UTC()
+	window := currentMonth(now)
+
+	check := env.createCheck(t, "api")
+	env.addRaw(t, check, now.Add(-time.Hour), 90, 100, 150)
+
+	builder := NewBuilder(failingIncidentsDB{env.db}, &config.Config{}, nil)
+
+	_, err := builder.Build(env.ctx, env.org, monthlySchedule(env.org.UID), window, now)
+	r.Error(err)
+	r.ErrorIs(err, errListIncidents)
+	r.Contains(err.Error(), "list incidents for insights")
 }

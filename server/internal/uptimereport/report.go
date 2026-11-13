@@ -519,6 +519,9 @@ func applyIncidents(data *Data, incidents availability.PeriodIncidents) {
 // applyInsights fills the incident insights from every incident that overlaps
 // the window, the population the incident insights page uses, so the email and
 // the page agree. It is a dedicated load: incidentBlock counts by start date.
+// A failed load fails the whole report, like incidentBlock: it never goes out
+// with a missing block. The 1,000 incidents per check limit (incidentFetchLimit)
+// mirrors incidentBlock and is accepted.
 func (b *Builder) applyInsights(
 	ctx context.Context, data *Data, org *models.Organization, checks []*models.Check,
 	window slo.Window, now time.Time,
