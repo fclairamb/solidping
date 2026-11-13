@@ -416,8 +416,8 @@ func (h *Handler) linkContact(
 	now := time.Now()
 	contact.VerifiedAt = &now
 
-	if err := h.db.UpsertUserContact(ctx, contact); err != nil {
-		return err
+	if upsertErr := h.db.UpsertUserContact(ctx, contact); upsertErr != nil {
+		return upsertErr
 	}
 
 	// Read back the canonical row: after an upsert the UID may be the
