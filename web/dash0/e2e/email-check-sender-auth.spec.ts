@@ -75,4 +75,50 @@ test.describe("Email check sender authentication", () => {
       "zen.spamhaus.org\nbl.spamcop.net",
     );
   });
+
+  // The edit form used to drop `config` from every passive check's PATCH, so
+  // the options changed on an existing email check were never saved.
+  test("saves the authentication options changed on edit, keeping the token", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    const authToken = await getAuthToken(page);
+    await ensureEmailInboxConfigured(page, authToken);
+
+    const stamp = Date.now();
+    const created = await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+      data: {
+        type: "email",
+        name: `E2E Email Auth Edit ${stamp}`,
+        slug: `e2e-email-auth-edit-${stamp}`,
+        config: {},
+      },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    const { uid, config: before } = await created.json();
+    expect(typeof before.token).toBe("string");
+
+    await page.goto(`orgs/test/checks/${uid}/edit`);
+    await page.getByTestId("email-auth-section").click();
+    await page.getByTestId("email-require-spf-select").click();
+    await page.getByRole("option", { name: "Pass", exact: true }).click();
+    await page.getByTestId("email-require-dkim-switch").click();
+    await page.getByTestId("email-check-blocklists-switch").click();
+    await page.getByTestId("email-blocklists-input").fill("zen.spamhaus.org");
+
+    const saved = page.waitForResponse(
+      (r) => r.url().includes(`/checks/${uid}`) && r.request().method() === "PATCH",
+    );
+    await page.getByTestId("check-submit-button").click();
+    expect((await saved).ok()).toBe(true);
+
+    const resp = await page.request.get(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const config = (await resp.json()).config;
+    expect(config.require_spf).toBe("pass");
+    expect(config.require_dkim).toBe(true);
+    expect(config.check_blocklists).toBe(true);
+    expect(config.blocklists).toEqual(["zen.spamhaus.org"]);
+    expect(config.token).toBe(before.token);
+  });
 });
