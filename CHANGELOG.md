@@ -6,7 +6,7 @@
 ### Bug Fixes
 
 * **dash0:** an email check's SPF, DKIM, DMARC and blocklist options can now be changed on its edit page ([#868](https://github.com/fclairamb/solidping/issues/868)) ([612be13](https://github.com/fclairamb/solidping/commit/612be13d7c0f37bb93afcd3a2ecd0ed8221ce4f3))
-* **deps:** update go dependencies (non-major) ([#871](https://github.com/fclairamb/solidping/issues/871)) ([4d2f10b](https://github.com/fclairamb/solidping/commit/4d2f10bd7fa9ea1454f794a2e1e8d917c0f67e28))
+* **deps:** Go dependencies updated to their latest non-major versions ([#871](https://github.com/fclairamb/solidping/issues/871)) ([4d2f10b](https://github.com/fclairamb/solidping/commit/4d2f10bd7fa9ea1454f794a2e1e8d917c0f67e28))
 
 ## [0.49.1](https://github.com/fclairamb/solidping/compare/v0.49.0...v0.49.1) (2026-11-13)
 
