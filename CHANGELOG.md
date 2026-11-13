@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.49.1](https://github.com/fclairamb/solidping/compare/v0.49.0...v0.49.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **security:** linking a Telegram account now requires re-authentication, and secret headers are no longer forwarded on redirect downgrades or derived by JS checks ([#865](https://github.com/fclairamb/solidping/issues/865)) ([05a17b3](https://github.com/fclairamb/solidping/commit/05a17b36cf07230946fa880a4a1b9994d068831b))
+
 ## [0.49.0](https://github.com/fclairamb/solidping/compare/v0.48.0...v0.49.0) (2026-11-12)
 
 
