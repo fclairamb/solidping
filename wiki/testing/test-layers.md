@@ -138,7 +138,7 @@ checks), HEAD starts on it, and the script asserts:
 - health answers `ok` within 60 s, and the log has no "half-migrated" or "migration content changed";
 - every HEAD migration is listed in `bun_migrations`;
 - the counts of checks, incidents, status pages, integrations and members are unchanged;
-- a check gets a result newer than the old version's last one (the scheduler runs on upgraded data);
+- an enabled check gets a result newer than the old version's last one (the scheduler runs on upgraded data). The watched check must be enabled: every fixture check has a seeded `created` row, and a disabled one never gets another result;
 - SQLite only: the `solidping.db.pre-<migration>.bak` exists when HEAD has a newer migration.
 
 `scripts/upgrade-test.sh --matrix` prints the legs, one `<engine> <tag>` per line: the 3 most

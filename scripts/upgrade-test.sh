@@ -179,9 +179,10 @@ count_integrations() {
     echo 0
 }
 
-# snapshot <port> prints "name=count" lines plus the newest raw result.
+# snapshot <port> prints "name=count" lines plus the newest raw result of an
+# enabled check.
 snapshot() {
-    local port=$1 token name
+    local port=$1 token name enabled
     token=$(curl -sf -X POST -H 'Content-Type: application/json' \
         -d '{"org":"test","email":"test@test.com","password":"test"}' \
         "http://127.0.0.1:$port/api/v1/auth/login" | jq -r .accessToken)
@@ -190,8 +191,14 @@ snapshot() {
         echo "$name=$(api "$port" "$token" "$name?limit=1000" | jq '.data | length')"
     done
     echo "integrations=$(count_integrations "$port" "$token")"
-    api "$port" "$token" "results?periodType=raw&limit=1" |
-        jq -r '.data[0] | "lastCheck=\(.checkUid)\nlastPeriodStart=\(.periodStart)"'
+    # Only an enabled check can be watched. Every fixture check is seeded with a
+    # "created" row, and when no check finished during the warmup the newest row
+    # is the one of a disabled fixture, which never gets another result.
+    enabled=$(api "$port" "$token" "checks?limit=1000" | jq -c '[.data[] | select(.enabled) | .uid]')
+    api "$port" "$token" "results?periodType=raw&limit=100" |
+        jq -r --argjson enabled "$enabled" \
+            '[.data[] | select(.checkUid as $uid | $enabled | index($uid))][0]
+             | "lastCheck=\(.checkUid)\nlastPeriodStart=\(.periodStart)"'
 }
 
 latest_period_start() { # latest_period_start <port> <check uid>
@@ -258,7 +265,7 @@ before=$(snapshot "$old_port") || fail "could not snapshot the old version"
 echo "$before"
 last_check=$(sed -n 's/^lastCheck=//p' <<<"$before")
 last_start=$(sed -n 's/^lastPeriodStart=//p' <<<"$before")
-[[ -n "$last_check" && "$last_check" != null ]] || fail "the old version wrote no result"
+[[ -n "$last_check" && "$last_check" != null ]] || fail "the old version has no result for an enabled check"
 
 step "stopping the old version (SIGTERM)"
 docker stop "$old_name" >/dev/null
