@@ -1,7 +1,9 @@
 package incidents_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
@@ -139,4 +142,136 @@ func TestGetInsights(t *testing.T) {
 		r.Empty(got.Checks)
 		r.Nil(got.Summary.TimeToAcknowledge.MedianSeconds)
 	})
+}
+
+func newInsightsDB(t *testing.T) *sqlite.Service {
+	t.Helper()
+
+	dbSvc, err := sqlite.New(t.Context(), sqlite.Config{InMemory: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dbSvc.Close() })
+	require.NoError(t, dbSvc.Initialize(t.Context()))
+
+	return dbSvc
+}
+
+func newInsightsRouterFor(dbSvc db.Service, limits ...int) *httpx.Router {
+	svc := incidents.NewService(dbSvc, nil, clock.Real{}, nil)
+	if len(limits) == 2 {
+		svc.SetInsightsLimitsForTest(limits[0], limits[1])
+	}
+
+	router := httpx.New()
+	router.GET("/orgs/:org/incidents/insights", incidents.NewHandler(svc, &config.Config{}).GetInsights)
+
+	return router
+}
+
+// TestGetInsightsWindowOverlap: incidents active during the period count even
+// when they started before it; one resolved before the window start does not.
+func TestGetInsightsWindowOverlap(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	dbSvc := newInsightsDB(t)
+
+	org := models.NewOrganization("overlap-org", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	openCheck := models.NewCheck(org.UID, "still-open", "http")
+	r.NoError(dbSvc.CreateCheck(ctx, openCheck))
+	oldCheck := models.NewCheck(org.UID, "long-resolved", "http")
+	r.NoError(dbSvc.CreateCheck(ctx, oldCheck))
+	crossCheck := models.NewCheck(org.UID, "resolved-inside", "http")
+	r.NoError(dbSvc.CreateCheck(ctx, crossCheck))
+
+	now := time.Now()
+	started := now.Add(-20 * 24 * time.Hour) // before the 7d window
+
+	r.NoError(dbSvc.CreateIncident(ctx, models.NewIncident(org.UID, openCheck.UID, started, "x")))
+
+	oldResolvedAt := now.Add(-10 * 24 * time.Hour)
+	old := models.NewIncident(org.UID, oldCheck.UID, started, "x")
+	old.ResolvedAt = &oldResolvedAt
+	r.NoError(dbSvc.CreateIncident(ctx, old))
+
+	crossResolvedAt := now.Add(-3 * 24 * time.Hour)
+	cross := models.NewIncident(org.UID, crossCheck.UID, started, "x")
+	cross.ResolvedAt = &crossResolvedAt
+	r.NoError(dbSvc.CreateIncident(ctx, cross))
+
+	rec, got := fetchInsights(t, newInsightsRouterFor(dbSvc), org.Slug, "?period=7d")
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+	r.Equal(2, got.Summary.IncidentCount, "open and resolved-inside count, resolved-before does not")
+
+	slugs := map[string]bool{}
+	for _, row := range got.Checks {
+		slugs[row.CheckSlug] = true
+	}
+
+	r.True(slugs["still-open"], "positive control: an open outage from before the window")
+	r.True(slugs["resolved-inside"])
+	r.False(slugs["long-resolved"], "resolved before the window start")
+}
+
+// TestGetInsightsPaginationAndTruncation uses a tiny page size and cap.
+func TestGetInsightsPaginationAndTruncation(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	dbSvc := newInsightsDB(t)
+
+	org := models.NewOrganization("paging-org", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+	check := models.NewCheck(org.UID, "paged", "http")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	for idx := range 7 {
+		inc := models.NewIncident(org.UID, check.UID, time.Now().Add(-time.Duration(idx+1)*time.Hour), "x")
+		r.NoError(dbSvc.CreateIncident(ctx, inc))
+	}
+
+	// 7 incidents over pages of 3: every page is followed, nothing truncated.
+	rec, got := fetchInsights(t, newInsightsRouterFor(dbSvc, 3, 100), org.Slug, "?period=7d")
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+	r.Equal(7, got.Summary.IncidentCount)
+	r.False(got.Truncated)
+
+	// A cap of 5 over pages of 3: truncated at exactly 5.
+	rec, got = fetchInsights(t, newInsightsRouterFor(dbSvc, 3, 5), org.Slug, "?period=7d")
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+	r.Equal(5, got.Summary.IncidentCount)
+	r.True(got.Truncated)
+}
+
+var errChecksLookup = errors.New("checks lookup failed")
+
+type failingChecksDB struct {
+	db.Service
+}
+
+func (failingChecksDB) GetChecksByUIDs(context.Context, string, []string) (map[string]*models.Check, error) {
+	return nil, errChecksLookup
+}
+
+// TestGetInsightsChecksLookupError: a failed check lookup is a 500, not a
+// silently nameless table.
+func TestGetInsightsChecksLookupError(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	dbSvc := newInsightsDB(t)
+
+	org := models.NewOrganization("lookup-err-org", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+	check := models.NewCheck(org.UID, "chk-lookup", "http")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+	r.NoError(dbSvc.CreateIncident(ctx, models.NewIncident(org.UID, check.UID, time.Now().Add(-time.Hour), "x")))
+
+	rec, _ := fetchInsights(t, newInsightsRouterFor(failingChecksDB{dbSvc}), org.Slug, "?period=7d")
+	r.Equal(http.StatusInternalServerError, rec.Code, rec.Body.String())
+	r.Contains(rec.Body.String(), "INTERNAL_ERROR")
 }

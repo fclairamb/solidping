@@ -117,4 +117,20 @@ test.describe("Incident insights", () => {
     );
     expect(overflow).toBe(false);
   });
+
+  // No page.route: the page talks to the real insights endpoint. The test-mode
+  // seed (server/test/testdata) has an active check incident on "Captured
+  // Check" that stays open for the whole run.
+  test("against the real endpoint, a seeded incident shows its check and count", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/insights?period=30d`);
+
+    const row = page.getByTestId("insights-check-row").filter({ hasText: "Captured Check" });
+    await expect(row).toHaveCount(1);
+    await expect(row.getByTestId("insights-incident-count")).toHaveText(/^[1-9]\d*$/);
+    await expect(page.getByTestId("insights-empty")).toHaveCount(0);
+  });
 });
