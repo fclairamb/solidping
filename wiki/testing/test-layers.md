@@ -148,6 +148,11 @@ recent `v*` tags plus the newest tag of the previous minor, each on both engines
 in `ci.yml`, both gating the `ci` job). Locally, `make test-upgrade` runs the whole matrix and
 needs docker, jq and sqlite3. A single leg: `HEAD_BIN=./solidping scripts/upgrade-test.sh sqlite v0.38.6`.
 
+A tag enters the matrix the moment it is pushed, about 20 minutes before its own CI publishes
+its image. CI sets `IMAGE_WAIT=1500` so a leg retries the pull that long instead of failing on
+"not found" (the job timeout is 35 minutes for that reason). The default is 0: locally a
+missing image fails at once.
+
 It complements `scripts/check-frozen-migrations.sh` (static) and does not replace it.
 
 CI builds its own Go-only binary for the `upgrade` job (no frontends), so the layer also runs on
