@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chromedp/cdproto"
 	"github.com/chromedp/chromedp"
 
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkbrowser/config"
@@ -329,8 +330,19 @@ func (c *BrowserChecker) captureScreenshot(
 
 	shot, err := capture(shotCtx)
 	if err != nil {
-		slog.WarnContext(ctx, "browser check: screenshot capture failed",
-			"url", cfg.URL, "error", err, "budget_remaining_ms", budgetRemaining.Milliseconds())
+		// A page that closed or crashed before the shot is the monitored
+		// page's doing, not a CDP/infra failure: logged at INFO so it does not
+		// read as a worker fault in the pod logs.
+		detached := pageDetached(err)
+
+		level := slog.LevelWarn
+		if detached {
+			level = slog.LevelInfo
+		}
+
+		slog.Log(ctx, level, "browser check: screenshot capture failed",
+			"url", cfg.URL, "error", err, "budget_remaining_ms", budgetRemaining.Milliseconds(),
+			"page_detached", detached)
 		setScreenshotError(result, CaptureErrorMessage(err, budgetRemaining))
 
 		return
@@ -387,7 +399,29 @@ func CaptureErrorMessage(err error, budget time.Duration) string {
 		return "the capture timed out"
 	}
 
+	if pageDetached(err) {
+		return "the page was closed or crashed before the capture"
+	}
+
 	return err.Error()
+}
+
+// cdpServerError is the JSON-RPC "server error" code Chrome answers with when
+// a command targets a session whose page is gone.
+const cdpServerError = -32000
+
+// pageDetached reports whether a CDP command failed because its page was no
+// longer attached: the tab closed itself, crashed, or the target went away
+// before the command ran. Chrome reports it as -32000 "Not attached to an
+// active page" (or "Session with given id not found").
+func pageDetached(err error) bool {
+	var cdpErr *cdproto.Error
+	if !errors.As(err, &cdpErr) || cdpErr.Code != cdpServerError {
+		return false
+	}
+
+	return strings.Contains(cdpErr.Message, "Not attached to an active page") ||
+		strings.Contains(cdpErr.Message, "Session with given id not found")
 }
 
 // OverCapMessage is the ScreenshotError of a capture dropped over
