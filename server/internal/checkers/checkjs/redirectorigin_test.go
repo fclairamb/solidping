@@ -40,21 +40,29 @@ func TestRedirectPolicyStripsSecretsOnSchemeDowngrade(t *testing.T) {
 			next.Header.Set("X-Api-Key", "Bearer tok-123")
 			next.Header.Set("X-Trace", "1")
 
-			var redirects []map[string]any
+			var (
+				redirects []map[string]any
+				dropped   []string
+			)
 
 			policy := redirectPolicy(
 				&httpOptions{followRedirects: true, maxRedirects: 5},
 				&redirects,
+				&dropped,
 				map[string]string{"apiKey": "tok-123"},
 			)
 			require.NoError(t, policy(next, []*http.Request{first}))
 
-			require.Equal(t, "1", next.Header.Get("X-Trace"))
-
 			if tc.wantKept {
 				require.Equal(t, "Bearer tok-123", next.Header.Get("X-Api-Key"))
+				require.Equal(t, "1", next.Header.Get("X-Trace"))
+				require.Empty(t, dropped)
 			} else {
+				// A check with secrets sends only generic headers past its
+				// origin (spec 2026-11-13-05).
 				require.Empty(t, next.Header.Get("X-Api-Key"))
+				require.Empty(t, next.Header.Get("X-Trace"))
+				require.ElementsMatch(t, []string{"X-Api-Key", "X-Trace"}, dropped)
 			}
 		})
 	}
