@@ -30,10 +30,7 @@ function insightsBody(period: string, incidentCount: number) {
           ? { medianSeconds: 600, p90Seconds: 900, sampleCount: incidentCount }
           : emptyDuration,
       byResolution: {
-        auto:
-          incidentCount > 0
-            ? { count: incidentCount, medianSeconds: 600, p90Seconds: 900 }
-            : emptyResolution,
+        auto: incidentCount > 0 ? { count: incidentCount, medianSeconds: 600, p90Seconds: 900 } : emptyResolution,
         manual: emptyResolution,
         other: emptyResolution,
       },
@@ -57,8 +54,7 @@ function insightsBody(period: string, incidentCount: number) {
 
 async function mockInsights(page: Page, countFor: (period: string) => number) {
   await page.route("**/api/v1/orgs/*/incidents/insights*", async (route) => {
-    const period =
-      new URL(route.request().url()).searchParams.get("period") ?? "30d";
+    const period = new URL(route.request().url()).searchParams.get("period") ?? "30d";
     await route.fulfill({ json: insightsBody(period, countFor(period)) });
   });
 }
@@ -78,36 +74,28 @@ test.describe("Incident insights", () => {
 
     const row = page.getByTestId("insights-check-row").first();
     await expect(row).toBeVisible({ timeout: 15000 });
-    const count = Number(
-      await row.getByTestId("insights-incident-count").innerText(),
-    );
+    const count = Number(await row.getByTestId("insights-incident-count").innerText());
     expect(count).toBeGreaterThanOrEqual(1);
     await expect(page.getByTestId("insights-card-ack")).toBeVisible();
     await expect(page.getByTestId("insights-card-resolve")).toBeVisible();
     await expect(page.getByTestId("insights-card-resolution")).toBeVisible();
   });
 
-  test("switching the period updates the URL and the numbers", async ({
-    authenticatedPage,
-  }) => {
+  test("switching the period updates the URL and the numbers", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
     await mockInsights(page, (period) => (period === "7d" ? 2 : 5));
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/insights`);
     await expect(page.getByTestId("insights-incident-count")).toHaveText("5");
     // No acknowledged incident: a dash and the reason, never "0s".
-    await expect(page.getByTestId("insights-card-ack")).toContainText(
-      "No acknowledged incident",
-    );
+    await expect(page.getByTestId("insights-card-ack")).toContainText("No acknowledged incident");
 
     await page.getByTestId("insights-period-7d").click();
     await expect(page).toHaveURL(/period=7d/);
     await expect(page.getByTestId("insights-incident-count")).toHaveText("2");
   });
 
-  test("an org with no incident shows the empty state", async ({
-    authenticatedPage,
-  }) => {
+  test("an org with no incident shows the empty state", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
     await mockInsights(page, () => 0);
 
@@ -116,9 +104,7 @@ test.describe("Incident insights", () => {
     await expect(page.getByTestId("insights-check-row")).toHaveCount(0);
   });
 
-  test("a phone viewport has no horizontal page scroll", async ({
-    authenticatedPage,
-  }) => {
+  test("a phone viewport has no horizontal page scroll", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
     await page.setViewportSize({ width: 375, height: 812 });
     await mockInsights(page, () => 5);
@@ -127,9 +113,7 @@ test.describe("Incident insights", () => {
     await expect(page.getByTestId("insights-check-row")).toBeVisible();
 
     const overflow = await page.evaluate(
-      () =>
-        document.documentElement.scrollWidth >
-        document.documentElement.clientWidth + 1,
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
     );
     expect(overflow).toBe(false);
   });
@@ -148,9 +132,7 @@ test.describe("Incident insights", () => {
       has: page.getByRole("link", { name: "Captured Check" }),
     });
     await expect(row).toHaveCount(1);
-    await expect(row.getByTestId("insights-incident-count")).toHaveText(
-      /^[1-9]\d*$/,
-    );
+    await expect(row.getByTestId("insights-incident-count")).toHaveText(/^[1-9]\d*$/);
     await expect(page.getByTestId("insights-empty")).toHaveCount(0);
   });
 });
