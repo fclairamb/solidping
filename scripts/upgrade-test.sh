@@ -190,8 +190,13 @@ snapshot() {
         echo "$name=$(api "$port" "$token" "$name?limit=1000" | jq '.data | length')"
     done
     echo "integrations=$(count_integrations "$port" "$token")"
-    api "$port" "$token" "results?periodType=raw&limit=1" |
-        jq -r '.data[0] | "lastCheck=\(.checkUid)\nlastPeriodStart=\(.periodStart)"'
+    # Newest result of an ENABLED check: the seed also holds disabled fixtures
+    # that a release probes once at boot, and the scheduler never runs them again.
+    local enabled
+    enabled=$(api "$port" "$token" "checks?limit=1000" | jq -c '[.data[] | select(.enabled != false) | .uid]')
+    api "$port" "$token" "results?periodType=raw&limit=200" |
+        jq -r --argjson enabled "$enabled" \
+            '[.data[] | select(.checkUid as $u | $enabled | index($u))][0] | "lastCheck=\(.checkUid)\nlastPeriodStart=\(.periodStart)"'
 }
 
 latest_period_start() { # latest_period_start <port> <check uid>
