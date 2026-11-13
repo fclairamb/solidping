@@ -246,6 +246,17 @@ next. For a flow that needs cookies across calls, see
 | `redirectHostPolicy` | string | `"any"` | `"same-host"` refuses any redirect hop whose URL host differs from the previous hop's — `resp.error` reports `redirect to different host refused` and the refused hop is never dialed. An unknown value is an error, not a silent fallback to `"any"` |
 | `timeout` | duration string or number of ms | the check's own timeout | Never longer than the check's own timeout, regardless of what is asked for |
 
+**Redirects and secrets.** When the check has `secrets`, a redirect hop that
+leaves the first request's origin (another host, another port, or an https →
+http downgrade) carries only generic headers: `Accept`, `Accept-Encoding`,
+`Accept-Language`, `Content-Type`, `User-Agent`, `Cache-Control` and the
+`Referer` net/http adds. Every other header the script set is dropped, since it
+may hold a secret in an encoded form (base64, hex, percent-encoding) — and a
+kept header whose value contains a raw secret is dropped too. The dropped names
+(never their values) are listed in the response's `redirectDroppedHeaders` and
+in the check's output as `redirect_dropped_secret_headers`. A check without
+secrets sends its headers unchanged.
+
 **Response**
 
 | Field | Meaning |
@@ -255,6 +266,7 @@ next. For a flow that needs cookies across calls, see
 | `headers` | Response headers, **canonical keys** (`Content-Type`, `Set-Cookie`) — a single value is a string, a repeated header is an array |
 | `url` | The final URL, after any redirects that were followed |
 | `redirects` | The chain that was walked: `[{statusCode, location}]`, empty when nothing was followed |
+| `redirectDroppedHeaders` | Names of the headers a cross-origin redirect hop dropped from a check with `secrets` (see above) — present only when one was dropped |
 | `duration` | Milliseconds |
 | `tunneled` | `true` when the check has a `tunnelCheckUid` and the request was dialed through it — present only when true, so an untunneled response's shape is unchanged. See [Running through an SSH tunnel](#running-through-an-ssh-tunnel) |
 | `error` | Present **instead of** every field above when the request could not even be made (DNS failure, connection refused, …) — always check `resp.error` before reading `resp.statusCode` |

@@ -23,6 +23,7 @@ var accountTemplates = []string{
 	"password-changed.html", "email-changed.html", "device-token-created.html", "passkey-added.html", "totp-enabled.html",
 	"totp-disabled.html",
 	"discord-linked.html",
+	"telegram-linked.html",
 	"invitation.html",
 	"membership-request-new.html", "membership-request-decision.html",
 }
@@ -185,6 +186,24 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 			i18n.LangSpanish: {
 				"Se ha vinculado una cuenta de Discord a tu cuenta de SolidPing",
 				"El 5 jul, 10:00 UTC se vinculó una cuenta de Discord",
+			},
+		},
+		"telegram-linked.html": {
+			i18n.LangEnglish: {
+				"A Telegram account was linked to your SolidPing account",
+				"was linked to your SolidPing account on Jul 5, 10:00 UTC.",
+			},
+			i18n.LangFrench: {
+				"Un compte Telegram a été associé à votre compte SolidPing",
+				"a été associé à votre compte SolidPing le 5 juil., 10:00 UTC.",
+			},
+			i18n.LangGerman: {
+				"Mit Ihrem SolidPing-Konto wurde ein Telegram-Konto verknüpft",
+				"am 5. Juli, 10:00 UTC ein Telegram-Konto verknüpft",
+			},
+			i18n.LangSpanish: {
+				"Se ha vinculado una cuenta de Telegram a tu cuenta de SolidPing",
+				"El 5 jul, 10:00 UTC se vinculó una cuenta de Telegram",
 			},
 		},
 		"passkey-added.html": {

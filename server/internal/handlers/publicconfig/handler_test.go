@@ -552,3 +552,25 @@ func TestGetConfigGitHubStar(t *testing.T) {
 	off := &config.Config{App: config.AppConfig{StarPrompt: false}}
 	require.False(t, star(serve(t, off)))
 }
+
+// TestBuild_TelegramLoginEnabled: the dashboard learns that Sign in with
+// Telegram is on, so it asks for the password before connecting a chat
+// (spec 2026-11-13-03). Off, the key is not emitted at all.
+func TestBuild_TelegramLoginEnabled(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	cfg := &config.Config{}
+	cfg.Telegram = config.TelegramConfig{
+		Enabled: config.BoolPtr(true), BotToken: "123456789:AAsecret", BotUsername: "solidping_bot",
+	}
+
+	encoded, err := json.Marshal(publicconfig.Build(cfg))
+	r.NoError(err)
+	r.NotContains(string(encoded), "loginEnabled")
+
+	cfg.Telegram.LoginEnabled = true
+	resp := publicconfig.Build(cfg)
+	r.True(resp.Telegram.LoginEnabled)
+}

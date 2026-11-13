@@ -124,15 +124,24 @@ type Commenter interface {
 	) (*models.Event, error)
 }
 
+// LinkNotifier tells the account owner a Telegram account was linked. With
+// Sign in with Telegram on, the link is a way to sign in, so it must not happen
+// unnoticed (spec 2026-11-13-03). *auth.Service implements it; an interface so
+// this package does not import the auth handlers.
+type LinkNotifier interface {
+	NotifyTelegramLinked(ctx context.Context, userUID, orgUID string)
+}
+
 // Handler serves the inbound Telegram webhook.
 type Handler struct {
-	db        db.Service
-	cfg       *config.Config
-	log       *slog.Logger
-	sender    Sender
-	acker     Acknowledger
-	commenter Commenter
-	support   *support.Service
+	db           db.Service
+	cfg          *config.Config
+	log          *slog.Logger
+	sender       Sender
+	acker        Acknowledger
+	commenter    Commenter
+	support      *support.Service
+	linkNotifier LinkNotifier
 }
 
 // Option customizes a Handler at construction.
@@ -162,6 +171,12 @@ func WithCommenter(commenter Commenter) Option {
 // go back to being logged and dropped.
 func WithSupport(svc *support.Service) Option {
 	return func(h *Handler) { h.support = svc }
+}
+
+// WithLinkNotifier wires the "Telegram account linked" email. Without it a
+// link made while Sign in with Telegram is on goes unannounced.
+func WithLinkNotifier(notifier LinkNotifier) Option {
+	return func(h *Handler) { h.linkNotifier = notifier }
 }
 
 // NewHandler builds a Telegram webhook handler.
@@ -377,9 +392,21 @@ var errContactNotPersisted = errors.New("telegram contact was not persisted")
 // the second link refreshes the label and undeletes the row. The explicit
 // re-verify afterwards is what turns a "reconnect needed" contact (one whose
 // VerifiedAt a block cleared) back into a live route.
+//
+// When Sign in with Telegram is on, a link that makes this chat a sign-in
+// method (a new contact, a revived deleted one, or one a block had
+// un-verified) emails the owner. Refreshing a row that was already verified
+// changes nothing and sends nothing.
 func (h *Handler) linkContact(
 	ctx context.Context, payload *usernotifications.TelegramLinkPayload, chatID, label string,
 ) error {
+	previous, err := h.findContact(ctx, payload, chatID)
+	if err != nil {
+		return err
+	}
+
+	alreadyVerified := previous != nil && previous.VerifiedAt != nil
+
 	contact := models.NewUserContact(
 		payload.UserUID, payload.OrgUID, models.UserContactTypeTelegram, chatID, label,
 	)
@@ -389,8 +416,8 @@ func (h *Handler) linkContact(
 	now := time.Now()
 	contact.VerifiedAt = &now
 
-	if err := h.db.UpsertUserContact(ctx, contact); err != nil {
-		return err
+	if upsertErr := h.db.UpsertUserContact(ctx, contact); upsertErr != nil {
+		return upsertErr
 	}
 
 	// Read back the canonical row: after an upsert the UID may be the
@@ -408,7 +435,24 @@ func (h *Handler) linkContact(
 		return verifyErr
 	}
 
-	return h.db.EnsureUserNotificationRoute(ctx, payload.UserUID, payload.OrgUID, persisted.UID)
+	if routeErr := h.db.EnsureUserNotificationRoute(
+		ctx, payload.UserUID, payload.OrgUID, persisted.UID,
+	); routeErr != nil {
+		return routeErr
+	}
+
+	if !alreadyVerified && h.linkNotifier != nil && h.loginActive() {
+		h.linkNotifier.NotifyTelegramLinked(ctx, payload.UserUID, payload.OrgUID)
+	}
+
+	return nil
+}
+
+// loginActive reports whether a linked chat also signs in to the account.
+func (h *Handler) loginActive() bool {
+	cfg := h.telegramConfig()
+
+	return cfg.LoginActive()
 }
 
 // findContact returns this chat's contact row within the linking user's org.

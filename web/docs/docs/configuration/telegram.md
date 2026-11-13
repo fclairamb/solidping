@@ -309,6 +309,11 @@ Once a user has connected their chat, the same bot can sign them in. Set the
 bot's domain with @BotFather `/setdomain`, then `SP_TELEGRAM_LOGIN_ENABLED=true`.
 See [Authentication](authentication.md#telegram).
 
+Enabling sign-in also makes every Telegram chat users already connected a way
+to sign in to their account. With it on, connecting a chat asks for the current
+password (or a recent sign-in), and the account owner gets an email when a chat
+is linked.
+
 ## Quotas and runaway protection
 
 Telegram messages are free, so — unlike SMS, voice and WhatsApp — there is

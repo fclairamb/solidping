@@ -2489,7 +2489,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		telegramHandler := telegramcb.NewHandler(s.dbService, s.config,
 			telegramcb.WithAcknowledger(incidentsService),
 			telegramcb.WithCommenter(incidentsService),
-			telegramcb.WithSupport(supportService))
+			telegramcb.WithSupport(supportService),
+			telegramcb.WithLinkNotifier(s.authService))
 		telegramIntegration := api.NewGroup("/integrations/telegram")
 		// Path kept in sync with TelegramWebhookPath, which the boot-time
 		// self-registration uses.

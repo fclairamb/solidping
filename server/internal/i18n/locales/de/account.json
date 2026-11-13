@@ -107,6 +107,14 @@
     "revoke": "Wenn Sie es nicht selbst verknüpft haben, wenden Sie sich sofort an Ihren Administrator, um es zu entfernen. Ihr Passwort können Sie auf der Sicherheitsseite ändern:",
     "cta": "Passwort ändern"
   },
+  "telegramLinked": {
+    "subject": "Mit Ihrem SolidPing-Konto wurde ein Telegram-Konto verknüpft",
+    "preheader": "Damit kann man sich jetzt bei Ihrem Konto anmelden.",
+    "title": "Ein Telegram-Konto wurde verknüpft",
+    "body": "Mit Ihrem SolidPing-Konto wurde am {date} ein Telegram-Konto verknüpft. Die Anmeldung mit Telegram öffnet jetzt Ihr Konto.",
+    "revoke": "Wenn Sie das nicht waren, entfernen Sie es in Ihren Benachrichtigungseinstellungen und ändern Sie Ihr Passwort:",
+    "cta": "Benachrichtigungseinstellungen öffnen"
+  },
   "invitation": {
     "subject": "Einladung zu {org} bei SolidPing",
     "preheader": {

@@ -128,6 +128,17 @@ export function useTelegramEnabled(): boolean {
 }
 
 /**
+ * Whether Sign in with Telegram is on. A connected Telegram chat then also
+ * signs in to the account, so connecting one asks for a re-authentication
+ * (spec 2026-11-13-03). Defaults to false while loading.
+ */
+export function useTelegramLoginEnabled(): boolean {
+  const { data } = usePublicConfig();
+
+  return Boolean(data?.telegram?.loginEnabled);
+}
+
+/**
  * Whether this instance has a FULLY configured Discord bot. Mirrors the
  * backend's `config.DiscordOAuthConfig.BotConfigured()` rule — the very same
  * predicate the install routes are mounted on, so the button and the endpoint

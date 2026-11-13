@@ -17,8 +17,11 @@ import { test as authTest, expect } from "./fixtures";
  * cause the next poll to see.
  */
 
-/** Serves a public-config document with the Telegram capability on/off. */
-async function stubPublicConfig(page: Page, telegramEnabled: boolean) {
+/**
+ * Serves a public-config document with the Telegram capability on/off, and
+ * optionally Sign in with Telegram on.
+ */
+async function stubPublicConfig(page: Page, telegramEnabled: boolean, loginEnabled = false) {
   await page.route("**/api/v1/config", async (route) => {
     await route.fulfill({
       status: 200,
@@ -27,7 +30,7 @@ async function stubPublicConfig(page: Page, telegramEnabled: boolean) {
         posthog: { enabled: false },
         whatsapp: { enabled: false },
         telegram: telegramEnabled
-          ? { enabled: true, botUsername: "solidping_test_bot" }
+          ? { enabled: true, botUsername: "solidping_test_bot", ...(loginEnabled ? { loginEnabled } : {}) }
           : { enabled: false },
       }),
     });
@@ -49,6 +52,90 @@ function telegramRoute(verified: boolean) {
     },
     createdAt: new Date().toISOString(),
   };
+}
+
+const TEST_PASSWORD = "correct-horse-battery";
+
+/**
+ * Stubs /auth/me (hasPassword only), the routes list (empty) and the link
+ * endpoint, answering it the way the server's re-authentication does when Sign
+ * in with Telegram is on (spec 2026-11-13-03).
+ */
+async function stubReauthLink(
+  page: Page,
+  opts: { hasPassword: boolean; staleSignIn?: boolean },
+) {
+  const state = { linkBodies: [] as Array<{ currentPassword?: string }> };
+
+  await page.route("**/api/v1/auth/me", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+
+      return;
+    }
+
+    const response = await route.fetch();
+    const body = await response.json();
+    await route.fulfill({ response, json: { ...body, hasPassword: opts.hasPassword } });
+  });
+
+  await page.route("**/notification-routes**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [] }),
+      });
+
+      return;
+    }
+
+    await route.continue();
+  });
+
+  await page.route("**/users/me/telegram/link", async (route) => {
+    const body = route.request().postDataJSON() ?? {};
+    state.linkBodies.push(body);
+
+    if (opts.hasPassword && body.currentPassword !== TEST_PASSWORD) {
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({
+          code: "INVALID_CURRENT_PASSWORD",
+          title: "Current password is incorrect",
+        }),
+      });
+
+      return;
+    }
+
+    if (!opts.hasPassword && opts.staleSignIn) {
+      await route.fulfill({
+        status: 403,
+        contentType: "application/json",
+        body: JSON.stringify({
+          code: "REAUTHENTICATION_REQUIRED",
+          title: "Sign in again to make this change",
+        }),
+      });
+
+      return;
+    }
+
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        url: "https://t.me/solidping_test_bot?start=tok-123",
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      }),
+    });
+  });
+
+  await page.context().route("https://t.me/**", (route) => route.abort());
+
+  return state;
 }
 
 authTest.describe("Account Notifications — Telegram", () => {
@@ -294,6 +381,76 @@ authTest.describe("Account Notifications — Telegram", () => {
       await expect(reason).toBeVisible();
       await expect(reason).toContainText(/blocked/i);
       await expect(reason).not.toContainText("telegram_bot_blocked");
+    },
+  );
+
+  authTest(
+    "asks for the password before connecting when Telegram sign-in is on",
+    async ({ authenticatedPage: page }) => {
+      await stubPublicConfig(page, true, true);
+      const state = await stubReauthLink(page, { hasPassword: true });
+
+      await page.goto("orgs/test/account/notifications");
+      await page.waitForLoadState("networkidle");
+
+      await page.getByTestId("add-contact-button").click();
+      await page.getByTestId("telegram-connect-button").click();
+
+      // A connected chat signs in, so the password comes first: nothing is
+      // requested before it is typed.
+      await expect(page.getByTestId("telegram-link-reauth-dialog")).toBeVisible();
+      expect(state.linkBodies).toHaveLength(0);
+
+      // A wrong password is refused in the dialog, and the member stays signed in.
+      await page.getByTestId("telegram-link-current-password").fill("not-the-password");
+      await page.getByTestId("telegram-link-reauth-continue").click();
+      await expect(page.getByTestId("telegram-link-reauth-error")).toBeVisible();
+      await expect(page).toHaveURL(/account\/notifications/);
+
+      await page.getByTestId("telegram-link-current-password").fill(TEST_PASSWORD);
+      await page.getByTestId("telegram-link-reauth-continue").click();
+
+      await expect(page.getByTestId("telegram-link-reauth-dialog")).toHaveCount(0);
+      await expect(page.getByTestId("telegram-connect-pending")).toBeVisible();
+      expect(state.linkBodies).toHaveLength(2);
+      expect(state.linkBodies[1]).toMatchObject({ currentPassword: TEST_PASSWORD });
+    },
+  );
+
+  authTest(
+    "connects without a password when Telegram sign-in is off",
+    async ({ authenticatedPage: page }) => {
+      await stubPublicConfig(page, true, false);
+      const state = await stubReauthLink(page, { hasPassword: false });
+
+      await page.goto("orgs/test/account/notifications");
+      await page.waitForLoadState("networkidle");
+
+      await page.getByTestId("add-contact-button").click();
+      await page.getByTestId("telegram-connect-button").click();
+
+      await expect(page.getByTestId("telegram-connect-pending")).toBeVisible();
+      await expect(page.getByTestId("telegram-link-reauth-dialog")).toHaveCount(0);
+      expect(state.linkBodies).toHaveLength(1);
+      expect(state.linkBodies[0].currentPassword).toBeUndefined();
+    },
+  );
+
+  authTest(
+    "a passwordless account with a stale sign-in is told to sign in again",
+    async ({ authenticatedPage: page }) => {
+      await stubPublicConfig(page, true, true);
+      const state = await stubReauthLink(page, { hasPassword: false, staleSignIn: true });
+
+      await page.goto("orgs/test/account/notifications");
+      await page.waitForLoadState("networkidle");
+
+      await page.getByTestId("add-contact-button").click();
+      await page.getByTestId("telegram-connect-button").click();
+
+      await expect(page.getByTestId("reauth-sign-in-required")).toBeVisible();
+      await expect(page.getByTestId("telegram-connect-pending")).toHaveCount(0);
+      expect(state.linkBodies).toHaveLength(1);
     },
   );
 });

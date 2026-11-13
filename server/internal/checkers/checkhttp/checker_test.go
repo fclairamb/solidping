@@ -2566,3 +2566,88 @@ func TestHTTPChecker_Execute_SecretHeadersCrossHostRedirect(t *testing.T) {
 		require.NotContains(t, result.Output, "redirect_dropped_secret_headers")
 	})
 }
+
+// TestHTTPChecker_Execute_SecretHeadersSchemeRedirect covers the scheme half of
+// the redirect origin rule (spec 2026-11-13-04): a same-host https -> http hop
+// must not resend the secret headers nor Authorization in cleartext, while a
+// same-scheme hop and an http -> https upgrade keep them. A fake transport
+// answers for both schemes on the same hostname and port, which two httptest
+// servers (always on different ports) cannot do.
+func TestHTTPChecker_Execute_SecretHeadersSchemeRedirect(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		start    string
+		next     string
+		wantKept bool
+	}{
+		{"port-less downgrade", "https://a.acme.com/", "http://a.acme.com/next", false},
+		{"explicit-port downgrade", "https://a.acme.com:8443/", "http://a.acme.com:8443/next", false},
+		{"same-scheme same-host", "https://a.acme.com/", "https://a.acme.com/next", true},
+		{"port-less upgrade", "http://a.acme.com/", "https://a.acme.com/next", true},
+		{"explicit-port upgrade", "http://a.acme.com:8443/", "https://a.acme.com:8443/next", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var finalHdr http.Header
+
+			checker := &HTTPChecker{
+				probeTransport: func(context.Context, bool, checkerdef.HTTPVersion) (http.RoundTripper, func()) {
+					return roundTripFunc(func(req *http.Request) (*http.Response, error) {
+						resp := &http.Response{
+							Status:     "200 OK",
+							StatusCode: http.StatusOK,
+							Proto:      "HTTP/1.1",
+							ProtoMajor: 1,
+							ProtoMinor: 1,
+							Header:     http.Header{},
+							Body:       io.NopCloser(strings.NewReader("ok")),
+							Request:    req,
+						}
+
+						if req.URL.Path != "/next" {
+							resp.Status = "302 Found"
+							resp.StatusCode = http.StatusFound
+							resp.Header.Set("Location", tc.next)
+
+							return resp, nil
+						}
+
+						finalHdr = req.Header.Clone()
+
+						return resp, nil
+					}), func() {}
+				},
+			}
+
+			result, err := checker.Execute(context.Background(), &HTTPConfig{
+				URL:           tc.start,
+				Headers:       map[string]string{"X-Trace": "1"},
+				SecretHeaders: map[string]string{"X-Api-Key": "k"},
+				Username:      "user",
+				Password:      "s3cr3t-pw",
+			})
+			require.NoError(t, err)
+			require.Equal(t, checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+			require.NotNil(t, finalHdr, "the final hop was never sent")
+			require.Equal(t, "1", finalHdr.Get("X-Trace"))
+
+			if tc.wantKept {
+				require.Equal(t, "k", finalHdr.Get("X-Api-Key"))
+				require.NotEmpty(t, finalHdr.Get("Authorization"))
+				require.NotContains(t, result.Output, "redirect_dropped_secret_headers")
+
+				return
+			}
+
+			require.Empty(t, finalHdr.Get("X-Api-Key"))
+			require.Empty(t, finalHdr.Get("Authorization"))
+			require.Equal(t, []string{"Authorization", "X-Api-Key"}, result.Output["redirect_dropped_secret_headers"])
+			require.NotContains(t, fmt.Sprint(result.Output), "s3cr3t-pw")
+		})
+	}
+}

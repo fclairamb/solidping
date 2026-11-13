@@ -2,16 +2,22 @@ package usernotifications
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
 
 func activeTelegramConfig() *config.TelegramConfig {
@@ -118,7 +124,7 @@ func TestCreateTelegramLink_MintsAConsumableToken(t *testing.T) {
 
 	svc, dbSvc, org, user := setupTelegramService(t)
 
-	resp, err := svc.CreateTelegramLink(ctx, org.Slug, user)
+	resp, err := svc.CreateTelegramLink(ctx, org.Slug, user, nil)
 	r.NoError(err)
 	r.True(strings.HasPrefix(resp.URL, "https://t.me/solidping_test_bot?start="))
 	r.WithinDuration(time.Now().Add(TelegramLinkTTL), resp.ExpiresAt, time.Minute)
@@ -148,7 +154,7 @@ func TestConsumeTelegramLinkToken_IsSingleUse(t *testing.T) {
 
 	svc, dbSvc, org, user := setupTelegramService(t)
 
-	resp, err := svc.CreateTelegramLink(ctx, org.Slug, user)
+	resp, err := svc.CreateTelegramLink(ctx, org.Slug, user, nil)
 	r.NoError(err)
 
 	_, token, _ := strings.Cut(resp.URL, "?start=")
@@ -175,7 +181,7 @@ func TestCreateTelegramLink_TokensAreUnique(t *testing.T) {
 	seen := make(map[string]bool, 5)
 
 	for range 5 {
-		resp, err := svc.CreateTelegramLink(ctx, org.Slug, user)
+		resp, err := svc.CreateTelegramLink(ctx, org.Slug, user, nil)
 		r.NoError(err)
 
 		_, token, _ := strings.Cut(resp.URL, "?start=")
@@ -230,7 +236,7 @@ func TestCreateTelegramLink_RefusedWhenInactive(t *testing.T) {
 	svc, org, user := setupUserNotificationsService(t)
 	r.False(svc.TelegramEnabled())
 
-	_, err := svc.CreateTelegramLink(ctx, org.Slug, user)
+	_, err := svc.CreateTelegramLink(ctx, org.Slug, user, nil)
 	r.ErrorIs(err, ErrTelegramNotEnabled)
 }
 
@@ -240,4 +246,144 @@ func TestTelegramLinkURL(t *testing.T) {
 	r := require.New(t)
 
 	r.Equal("https://t.me/solidping_bot?start=abc", TelegramLinkURL("solidping_bot", "abc"))
+}
+
+// Spec 2026-11-13-03: with Sign in with Telegram on, a linked chat signs in to
+// the account, so minting a connect link asks the same re-authentication as a
+// Discord link.
+
+func loginTelegramConfig() *config.TelegramConfig {
+	cfg := activeTelegramConfig()
+	cfg.LoginEnabled = true
+
+	return cfg
+}
+
+// telegramLinkTokenCount is the number of live Telegram connect tokens.
+//
+//nolint:revive // ctx-second matches the existing test helpers
+func telegramLinkTokenCount(t *testing.T, ctx context.Context, env *contactEnv) int {
+	t.Helper()
+
+	entries, err := env.db.ListStateEntries(ctx, nil, TelegramLinkStatePrefix)
+	require.NoError(t, err)
+
+	return len(entries)
+}
+
+// postTelegramLink drives the real connect-link handler.
+//
+//nolint:revive // ctx-second matches the existing test helpers
+func postTelegramLink(
+	t *testing.T, ctx context.Context, handler *Handler, body string,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("org", "acme")
+
+	req := httptest.NewRequestWithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx), http.MethodPost,
+		"/api/v1/orgs/acme/users/me/telegram/link", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	require.NoError(t, handler.CreateTelegramLink(rec, req))
+
+	return rec
+}
+
+func TestTelegramLinkWithLoginRequiresCurrentPassword(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ name, body string }{
+		{"missing", `{}`},
+		{"empty body", ``},
+		{"wrong", `{"currentPassword":"nope"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+			ctx, env, handler := linkReauthEnv(t, true, WithTelegramConfig(loginTelegramConfig()))
+
+			rec := postTelegramLink(t, sessionCtx(ctx, env.user, time.Now()), handler, tc.body)
+			r.Equal(http.StatusUnauthorized, rec.Code, rec.Body.String())
+			r.Equal(string(base.ErrorCodeInvalidCurrentPassword), errorCode(t, rec))
+			r.Zero(telegramLinkTokenCount(t, ctx, env), "a refused link mints no connect token")
+		})
+	}
+}
+
+func TestTelegramLinkWithLoginAndCorrectPassword(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx, env, handler := linkReauthEnv(t, true, WithTelegramConfig(loginTelegramConfig()))
+
+	rec := postTelegramLink(t, sessionCtx(ctx, env.user, time.Now().Add(-24*time.Hour)), handler,
+		`{"currentPassword":"`+linkTestPassword+`"}`)
+	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
+
+	var resp TelegramLinkResponse
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	r.True(strings.HasPrefix(resp.URL, "https://t.me/solidping_test_bot?start="))
+	r.Equal(1, telegramLinkTokenCount(t, ctx, env))
+}
+
+func TestTelegramLinkWithLoginPasswordlessNeedsRecentSignIn(t *testing.T) {
+	t.Parallel()
+
+	t.Run("stale sign-in", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+		ctx, env, handler := linkReauthEnv(t, false, WithTelegramConfig(loginTelegramConfig()))
+
+		rec := postTelegramLink(t, sessionCtx(ctx, env.user, time.Now().Add(-time.Hour)), handler, `{}`)
+		r.Equal(http.StatusForbidden, rec.Code, rec.Body.String())
+		r.Equal(string(base.ErrorCodeReauthenticationRequired), errorCode(t, rec))
+		r.Zero(telegramLinkTokenCount(t, ctx, env))
+	})
+
+	t.Run("recent sign-in", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+		ctx, env, handler := linkReauthEnv(t, false, WithTelegramConfig(loginTelegramConfig()))
+
+		rec := postTelegramLink(t, sessionCtx(ctx, env.user, time.Now()), handler, `{}`)
+		r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
+		r.Equal(1, telegramLinkTokenCount(t, ctx, env))
+	})
+}
+
+// The impersonation refusal comes before the password check, so an
+// impersonating admin who knows the password gets no link either.
+func TestTelegramLinkWithLoginRefusesImpersonationBeforePassword(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx, env, _ := linkReauthEnv(t, true, WithTelegramConfig(loginTelegramConfig()))
+
+	_, err := env.svc.CreateTelegramLink(
+		audit.WithImpersonator(sessionCtx(ctx, env.user, time.Now()), "admin-uid"),
+		env.org.Slug, env.user, new(linkTestPassword))
+	r.ErrorIs(err, ErrImpersonationForbidden)
+	r.Zero(telegramLinkTokenCount(t, ctx, env))
+}
+
+func TestTelegramLinkWithLoginFailsClosedWithoutReauthenticator(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx, env := setupContactEnv(t, WithTelegramConfig(loginTelegramConfig()), WithFactorReauthenticator(nil))
+
+	_, err := env.svc.CreateTelegramLink(ctx, env.org.Slug, env.user, new(linkTestPassword))
+	r.ErrorIs(err, ErrReauthUnavailable)
+	r.Zero(telegramLinkTokenCount(t, ctx, env))
+}
+
+// With Sign in with Telegram off the link is only a paging channel: no
+// password, even for an account that has one and a stale sign-in.
+func TestTelegramLinkWithoutLoginNeedsNoPassword(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx, env, handler := linkReauthEnv(t, true, WithTelegramConfig(activeTelegramConfig()))
+
+	rec := postTelegramLink(t, sessionCtx(ctx, env.user, time.Now().Add(-24*time.Hour)), handler, ``)
+	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
+	r.Equal(1, telegramLinkTokenCount(t, ctx, env))
 }

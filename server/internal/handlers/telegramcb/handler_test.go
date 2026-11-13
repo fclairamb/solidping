@@ -181,7 +181,7 @@ func (e *tgEnv) mintToken(t *testing.T) string {
 			Enabled: config.BoolPtr(true), BotToken: "123:AAtest", BotUsername: "solidping_test_bot",
 		}))
 
-	resp, err := svc.CreateTelegramLink(context.Background(), e.org.Slug, e.user)
+	resp, err := svc.CreateTelegramLink(context.Background(), e.org.Slug, e.user, nil)
 	require.NoError(t, err)
 	require.Contains(t, resp.URL, "https://t.me/solidping_test_bot?start=")
 

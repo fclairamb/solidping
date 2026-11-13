@@ -11,7 +11,7 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"net/url"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -270,6 +270,14 @@ func (r *jsRuntime) runScript(start time.Time, timeout time.Duration) *checkerde
 // flips the check back to `repair: propose` on it.
 const OutputKeyRepairRefused = "aiRepairHostRefused"
 
+// OutputKeyRedirectDroppedSecretHeaders lists the header names (never their
+// values) a cross-origin redirect hop dropped from a check holding secrets —
+// the http checker's key, so a broken check is diagnosed the same way.
+const OutputKeyRedirectDroppedSecretHeaders = "redirect_dropped_secret_headers"
+
+// jsKeyRedirectDroppedHeaders is the same list on the http.* response object.
+const jsKeyRedirectDroppedHeaders = "redirectDroppedHeaders"
+
 type repairHoldKey struct{}
 
 // repairHold is the repair allowlist decision taken on a stored config.
@@ -424,6 +432,10 @@ type jsRuntime struct {
 	vnc        checkvnc.VNCSession
 	vncOpened  bool
 	vncActions atomic.Int32
+
+	// redirectDroppedHeaders are the header names cross-origin redirect hops
+	// dropped (spec 2026-11-13-05), reported in the check's output.
+	redirectDroppedHeaders []string
 
 	// sockets holds one disposer per connection the script opened through the
 	// `tcp` / `udp` / `websocket` globals, in open order. Execute defers
@@ -1144,9 +1156,12 @@ func (r *jsRuntime) httpRequest(
 	// client.Do while that happens, so a plain slice is safe here.
 	redirects := make([]map[string]any, 0)
 
+	// Same goroutine argument: the header names a cross-origin hop dropped.
+	var dropped []string
+
 	client := &http.Client{
 		Timeout:       opts.timeout,
-		CheckRedirect: redirectPolicy(&opts, &redirects, r.config.Secrets),
+		CheckRedirect: redirectPolicy(&opts, &redirects, &dropped, r.config.Secrets),
 		// the shared pooled HTTP/1.1 check transport when untunneled and no IP
 		// version is pinned (js does not declare SupportsIPVersion) — the same
 		// transport the http and prometheus checkers run on (spec 2026-09-28-04
@@ -1171,6 +1186,8 @@ func (r *jsRuntime) httpRequest(
 	start := time.Now()
 
 	resp, err := client.Do(req)
+	r.recordDroppedHeaders(dropped)
+
 	if err != nil {
 		return map[string]any{checkerdef.OutputKeyError: "request failed: " + err.Error()}
 	}
@@ -1205,6 +1222,8 @@ func (r *jsRuntime) httpRequest(
 		result[jsKeyTunneled] = true
 	}
 
+	addRedirectDroppedHeaders(result, dropped)
+
 	return result
 }
 
@@ -1217,7 +1236,7 @@ func (r *jsRuntime) httpRequest(
 // signal, so it must be observable, and the chain stays empty because nothing
 // was followed.
 func redirectPolicy(
-	opts *httpOptions, redirects *[]map[string]any, secrets map[string]string,
+	opts *httpOptions, redirects *[]map[string]any, dropped *[]string, secrets map[string]string,
 ) func(*http.Request, []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
 		if !opts.followRedirects {
@@ -1228,10 +1247,18 @@ func redirectPolicy(
 			return fmt.Errorf("%w: %d", errTooManyRedirects, opts.maxRedirects)
 		}
 
-		// A header carrying a secret value only goes to the URL's own host:
-		// net/http strips just Authorization/Cookie/WWW-Authenticate.
-		if len(via) > 0 && !sameOrigin(via[0].URL, req.URL) {
-			stripSecretValuedHeaders(req.Header, secrets)
+		// A header carrying a secret only goes to the original request's
+		// origin (checkerdef.SameRedirectOrigin: same host, and the same
+		// scheme and port or an http -> https upgrade). net/http strips just
+		// Authorization/Cookie/WWW-Authenticate, and only cross-host.
+		//
+		// A script can encode a secret (base64, hex, percent-encoding) before
+		// putting it in a header, which no value match recognizes (spec
+		// 2026-11-13-05). So a check holding secrets sends only the generic
+		// headers of redirectSafeHeaders past its origin, and the value match
+		// still covers one of those carrying a raw secret.
+		if len(via) > 0 && !checkerdef.SameRedirectOrigin(via[0].URL, req.URL) {
+			*dropped = append(*dropped, stripRedirectHeaders(req.Header, secrets)...)
 		}
 
 		if req.Response != nil {
@@ -1258,44 +1285,52 @@ func redirectPolicy(
 	}
 }
 
-// sameOrigin reports whether two URLs share a hostname and effective port.
-func sameOrigin(first, next *url.URL) bool {
-	if !strings.EqualFold(first.Hostname(), next.Hostname()) {
-		return false
-	}
-
-	// A scheme upgrade on the same host (no explicit port) keeps them.
-	if first.Port() == "" && next.Port() == "" {
-		return true
-	}
-
-	return effectivePort(first) == effectivePort(next)
+// redirectSafeHeaders are the canonical names of the headers that never carry
+// credentials: they follow a cross-origin hop even when the check has secrets.
+// Referer is the one net/http adds itself on a redirect.
+//
+//nolint:gochecknoglobals // read-only lookup table
+var redirectSafeHeaders = map[string]bool{
+	"Accept":          true,
+	"Accept-Encoding": true,
+	"Accept-Language": true,
+	"Content-Type":    true,
+	"User-Agent":      true,
+	"Cache-Control":   true,
+	"Referer":         true,
 }
 
-func effectivePort(u *url.URL) string {
-	if port := u.Port(); port != "" {
-		return port
+// stripRedirectHeaders deletes, before a cross-origin hop, every header that
+// may carry a secret and returns the deleted names. Without secrets nothing
+// can leak, so the headers are left alone. With secrets, every header outside
+// redirectSafeHeaders goes, and so does a safe one whose value contains a raw
+// secret.
+func stripRedirectHeaders(header http.Header, secrets map[string]string) []string {
+	if len(secrets) == 0 {
+		return nil
 	}
 
-	if u.Scheme == "https" {
-		return "443"
-	}
+	var removed []string
 
-	return "80"
-}
-
-// stripSecretValuedHeaders deletes every header whose value contains a
-// non-empty secret value (a script builds those from `secrets.*`).
-func stripSecretValuedHeaders(header http.Header, secrets map[string]string) {
 	for name, values := range header {
-		for _, value := range values {
-			if containsSecret(value, secrets) {
-				header.Del(name)
+		if !redirectSafeHeaders[http.CanonicalHeaderKey(name)] || anyContainsSecret(values, secrets) {
+			header.Del(name)
 
-				break
-			}
+			removed = append(removed, http.CanonicalHeaderKey(name))
 		}
 	}
+
+	return removed
+}
+
+func anyContainsSecret(values []string, secrets map[string]string) bool {
+	for _, value := range values {
+		if containsSecret(value, secrets) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func containsSecret(value string, secrets map[string]string) bool {
@@ -1306,6 +1341,36 @@ func containsSecret(value string, secrets map[string]string) bool {
 	}
 
 	return false
+}
+
+// recordDroppedHeaders keeps, for the check's output, the header names a
+// cross-origin redirect hop dropped. The JS runtime is single-threaded.
+func (r *jsRuntime) recordDroppedHeaders(names []string) {
+	r.redirectDroppedHeaders = append(r.redirectDroppedHeaders, names...)
+}
+
+// addDroppedHeaders reports the dropped header names (never their values) as
+// redirect_dropped_secret_headers, like the http checker does.
+func (r *jsRuntime) addDroppedHeaders(out map[string]any) {
+	if len(r.redirectDroppedHeaders) > 0 {
+		out[OutputKeyRedirectDroppedSecretHeaders] = dedupSorted(r.redirectDroppedHeaders)
+	}
+}
+
+// addRedirectDroppedHeaders sets the response's redirectDroppedHeaders, present
+// only when a cross-origin hop dropped a header (names only).
+func addRedirectDroppedHeaders(result map[string]any, dropped []string) {
+	if len(dropped) > 0 {
+		result[jsKeyRedirectDroppedHeaders] = dedupSorted(dropped)
+	}
+}
+
+// dedupSorted returns the distinct names, sorted.
+func dedupSorted(names []string) []string {
+	out := slices.Clone(names)
+	slices.Sort(out)
+
+	return slices.Compact(out)
 }
 
 // responseHeaders converts response headers to a JS-friendly map: canonical
@@ -1442,6 +1507,8 @@ func (r *jsRuntime) buildOutput(value string) map[string]any {
 		out["console"] = r.consoleBuf.String()
 	}
 
+	r.addDroppedHeaders(out)
+
 	return out
 }
 
@@ -1460,6 +1527,8 @@ func (r *jsRuntime) buildOutputFromObj(obj *goja.Object) map[string]any {
 	if r.consoleBuf.Len() > 0 {
 		out["console"] = r.consoleBuf.String()
 	}
+
+	r.addDroppedHeaders(out)
 
 	return out
 }

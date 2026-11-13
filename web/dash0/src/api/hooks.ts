@@ -7312,11 +7312,21 @@ export interface TelegramLinkResponse {
  */
 export function useCreateTelegramLink(org: string) {
   return useMutation({
-    mutationFn: () =>
+    mutationFn: (vars?: {
+      /**
+       * Required when Sign in with Telegram is on and the account has a
+       * password (spec 2026-11-13-03). Ignored otherwise.
+       */
+      currentPassword?: string;
+    }) =>
       apiFetch<TelegramLinkResponse>(
         `/api/v1/orgs/${org}/users/me/telegram/link`,
         {
           method: "POST",
+          body: JSON.stringify({ currentPassword: vars?.currentPassword }),
+          // A wrong password answers 401 INVALID_CURRENT_PASSWORD: about the
+          // body, not the session, so it must not sign the member out.
+          suppress401Handling: true,
         },
       ),
   });

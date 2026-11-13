@@ -28,10 +28,10 @@ const linkTestPassword = "correct-horse-battery"
 
 // linkReauthEnv is a contact env whose service re-authenticates through the
 // real auth service.
-func linkReauthEnv(t *testing.T, withPassword bool) (context.Context, *contactEnv, *Handler) {
+func linkReauthEnv(t *testing.T, withPassword bool, opts ...Option) (context.Context, *contactEnv, *Handler) {
 	t.Helper()
 
-	ctx, env := setupContactEnv(t, WithServerBaseURL("https://solidping.example"))
+	ctx, env := setupContactEnv(t, append([]Option{WithServerBaseURL("https://solidping.example")}, opts...)...)
 
 	if withPassword {
 		hash, err := passwords.Hash(linkTestPassword)

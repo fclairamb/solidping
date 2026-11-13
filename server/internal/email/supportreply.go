@@ -56,6 +56,7 @@ const (
 	TemplateTOTPEnabled             = "totp-enabled.html"
 	TemplateTOTPDisabled            = "totp-disabled.html"
 	TemplateDiscordLinked           = "discord-linked.html"
+	TemplateTelegramLinked          = "telegram-linked.html"
 	TemplateIncidentAcknowledged    = "incident-acknowledged.html"
 	TemplateIncidentUnacknowledged  = "incident-unacknowledged.html"
 	TemplateIncidentComment         = "incident-comment.html"
@@ -151,6 +152,7 @@ var supportReplyableTemplates = map[string]bool{
 	TemplateTOTPEnabled:             false,
 	TemplateTOTPDisabled:            false,
 	TemplateDiscordLinked:           false,
+	TemplateTelegramLinked:          false,
 	TemplatePasswordReset:           false,
 	TemplatePasswordResetSSO:        false,
 	TemplateRegistration:            false,

@@ -71,6 +71,10 @@ type TelegramPublicConfig struct {
 	// BotUsername is the bot's @username without the '@', which the dashboard
 	// needs to build the `https://t.me/<botUsername>?start=<token>` deep link.
 	BotUsername string `json:"botUsername,omitempty"`
+	// LoginEnabled reports that Sign in with Telegram is on, which makes a
+	// connected chat a sign-in method: the dashboard then asks for the
+	// current password before minting a connect link (spec 2026-11-13-03).
+	LoginEnabled bool `json:"loginEnabled,omitempty"`
 }
 
 // SMSPublicConfig is the browser-safe view of the instance's SERVER-PROVIDED
@@ -236,8 +240,9 @@ func Build(cfg *config.Config) Response {
 
 	if cfg != nil && cfg.Telegram.Active() {
 		resp.Telegram = TelegramPublicConfig{
-			Enabled:     true,
-			BotUsername: cfg.Telegram.ResolvedBotUsername(),
+			Enabled:      true,
+			BotUsername:  cfg.Telegram.ResolvedBotUsername(),
+			LoginEnabled: cfg.Telegram.LoginActive(),
 		}
 	}
 
