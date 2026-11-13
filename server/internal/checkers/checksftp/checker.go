@@ -125,6 +125,13 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		}, nil
 	}
 
+	// ssh.ClientConfig.Timeout only bounds a dial ssh does itself, and the
+	// handshake, the SFTP session and Stat read this conn with no deadline: a
+	// server that stalls after accepting would outlive the worker's deadline.
+	// Closing the conn when the context ends unblocks every one of them.
+	stopWatch := context.AfterFunc(ctx, func() { _ = netConn.Close() })
+	defer stopWatch()
+
 	sshConn, chans, reqs, err := ssh.NewClientConn(netConn, target, sshConfig)
 	if err != nil {
 		_ = netConn.Close()
@@ -164,34 +171,8 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	connectTime := time.Since(connectStart)
 	metrics["connection_time_ms"] = float64(connectTime.Microseconds()) / microsecondsPerMs
 
-	// Create SFTP client
-	sftpClient, err := sftp.NewClient(sshClient)
-	if err != nil {
-		return &checkerdef.Result{
-			Status:   checkerdef.StatusDown,
-			Duration: time.Since(start),
-			Metrics:  metrics,
-			Output: mergeOutput(output, map[string]any{
-				checkerdef.OutputKeyError: fmt.Sprintf("SFTP session failed: %v", err),
-			}),
-		}, nil
-	}
-
-	defer func() { _ = sftpClient.Close() }()
-
-	// Verify path if specified
-	if cfg.Path != "" {
-		_, err = sftpClient.Stat(cfg.Path)
-		if err != nil {
-			return &checkerdef.Result{
-				Status:   checkerdef.StatusDown,
-				Duration: time.Since(start),
-				Metrics:  metrics,
-				Output: mergeOutput(output, map[string]any{
-					checkerdef.OutputKeyError: fmt.Sprintf("path verification failed: %v", err),
-				}),
-			}, nil
-		}
+	if failed := probeSFTP(ctx, sshClient, cfg.Path, start, metrics, output); failed != nil {
+		return failed, nil
 	}
 
 	metrics["total_time_ms"] = float64(time.Since(start).Microseconds()) / microsecondsPerMs
@@ -202,6 +183,53 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		Metrics:  metrics,
 		Output:   output,
 	}, nil
+}
+
+// probeSFTP opens the SFTP session and, when path is set, stats it. It returns
+// the failing result, or nil when both succeeded.
+func probeSFTP(
+	ctx context.Context, sshClient *ssh.Client, path string,
+	start time.Time, metrics, output map[string]any,
+) *checkerdef.Result {
+	// Create SFTP client
+	sftpClient, err := sftp.NewClient(sshClient)
+	if err != nil {
+		if ctx.Err() != nil {
+			return timeoutResult(start, metrics, output, "SFTP session timeout")
+		}
+
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusDown,
+			Duration: time.Since(start),
+			Metrics:  metrics,
+			Output: mergeOutput(output, map[string]any{
+				checkerdef.OutputKeyError: fmt.Sprintf("SFTP session failed: %v", err),
+			}),
+		}
+	}
+
+	defer func() { _ = sftpClient.Close() }()
+
+	// Verify path if specified
+	if path != "" {
+		_, err = sftpClient.Stat(path)
+		if err != nil {
+			if ctx.Err() != nil {
+				return timeoutResult(start, metrics, output, "path verification timeout")
+			}
+
+			return &checkerdef.Result{
+				Status:   checkerdef.StatusDown,
+				Duration: time.Since(start),
+				Metrics:  metrics,
+				Output: mergeOutput(output, map[string]any{
+					checkerdef.OutputKeyError: fmt.Sprintf("path verification failed: %v", err),
+				}),
+			}
+		}
+	}
+
+	return nil
 }
 
 // hostKeyCallback builds the SSH host key callback for an SFTP check.
@@ -222,6 +250,15 @@ func hostKeyCallback(pin string, output map[string]any, observed *string) ssh.Ho
 		}
 
 		return nil
+	}
+}
+
+func timeoutResult(start time.Time, metrics, output map[string]any, msg string) *checkerdef.Result {
+	return &checkerdef.Result{
+		Status:   checkerdef.StatusTimeout,
+		Duration: time.Since(start),
+		Metrics:  metrics,
+		Output:   mergeOutput(output, map[string]any{checkerdef.OutputKeyError: msg}),
 	}
 }
 
