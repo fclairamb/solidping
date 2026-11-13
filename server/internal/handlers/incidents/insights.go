@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	insightsMaxIncidents = 5000
-	insightsPageSize     = 500
-	insightsTopChecks    = 20
-	hoursPerDay          = 24
+	defaultInsightsMaxIncidents = 5000
+	defaultInsightsPageSize     = 500
+	insightsTopChecks           = 20
+	hoursPerDay                 = 24
 )
 
 // ErrInvalidInsightsPeriod is returned for a period other than 7d, 30d or 90d.
@@ -68,13 +68,25 @@ func (s *Service) GetInsights(ctx context.Context, orgSlug, period string) (*Ins
 	now := s.clock.Now().UTC()
 	start := now.Add(-time.Duration(days) * hoursPerDay * time.Hour)
 
-	all := make([]*models.Incident, 0, insightsPageSize)
+	pageSize, maxIncidents := s.insightsPageSize, s.insightsMaxIncidents
+	if pageSize <= 0 {
+		pageSize = defaultInsightsPageSize
+	}
+
+	if maxIncidents <= 0 {
+		maxIncidents = defaultInsightsMaxIncidents
+	}
+
+	all := make([]*models.Incident, 0, pageSize)
 	truncated := false
+	// Every incident overlapping the window: started before its end and still
+	// open or resolved inside it.
 	filter := &models.ListIncidentsFilter{
 		OrganizationUID: org.UID,
-		Since:           &start,
+		ActiveSince:     &start,
+		Until:           &now,
 		Kinds:           []string{models.IncidentKindCheck},
-		Limit:           insightsPageSize,
+		Limit:           pageSize,
 	}
 
 	for {
@@ -85,14 +97,14 @@ func (s *Service) GetInsights(ctx context.Context, orgSlug, period string) (*Ins
 
 		all = append(all, page...)
 
-		if len(all) >= insightsMaxIncidents {
-			all = all[:insightsMaxIncidents]
+		if len(all) >= maxIncidents {
+			all = all[:maxIncidents]
 			truncated = true
 
 			break
 		}
 
-		if len(page) < insightsPageSize {
+		if len(page) < pageSize {
 			break
 		}
 
@@ -108,15 +120,20 @@ func (s *Service) GetInsights(ctx context.Context, orgSlug, period string) (*Ins
 		rows = rows[:insightsTopChecks]
 	}
 
+	checkRows, err := s.insightsCheckRows(ctx, org.UID, rows)
+	if err != nil {
+		return nil, err
+	}
+
 	return &InsightsResponse{
 		Period: period, WindowStart: start, WindowEnd: now,
-		Summary: result.Summary, Checks: s.insightsCheckRows(ctx, org.UID, rows), Truncated: truncated,
+		Summary: result.Summary, Checks: checkRows, Truncated: truncated,
 	}, nil
 }
 
 func (s *Service) insightsCheckRows(
 	ctx context.Context, orgUID string, rows []incidentinsights.CheckRow,
-) []InsightsCheckRow {
+) ([]InsightsCheckRow, error) {
 	uids := make([]string, 0, len(rows))
 	for idx := range rows {
 		uids = append(uids, rows[idx].CheckUID)
@@ -124,7 +141,7 @@ func (s *Service) insightsCheckRows(
 
 	checks, err := s.db.GetChecksByUIDs(ctx, orgUID, uids)
 	if err != nil {
-		checks = nil
+		return nil, fmt.Errorf("failed to load checks: %w", err)
 	}
 
 	out := make([]InsightsCheckRow, 0, len(rows))
@@ -138,7 +155,7 @@ func (s *Service) insightsCheckRows(
 		out = append(out, item)
 	}
 
-	return out
+	return out, nil
 }
 
 // GetInsights handles GET /orgs/:org/incidents/insights.

@@ -38,7 +38,7 @@ See [Confirmation and recovery](#thresholds) for the settings and a worked timel
 
 ## Incident insights {#incident-insights}
 
-The **Insights** button of the incidents page opens a summary of the last 7, 30 or 90 days (`GET /api/v1/orgs/{org}/incidents/insights?period=30d`). It covers check outages only, not SLO burn alerts or degraded incidents.
+The **Insights** button of the incidents page opens a summary of the incidents active during the last 7, 30 or 90 days, including ones that started before the period and are still open (`GET /api/v1/orgs/{org}/incidents/insights?period=30d`). It covers check outages only, not SLO burn alerts or degraded incidents.
 
 - **Top failing checks**: the 20 checks with the most incidents (ties broken by downtime), with their downtime, relapses and last incident.
 - **Time to acknowledge**: the median and p90 of `acknowledged_at` minus the start of the incident's current episode. Reopening an incident clears its acknowledgement, so the time is measured from the last reopening. The page always shows how many incidents were acknowledged ("12 of 40"), because most incidents recover before anyone acknowledges them. Rolled-up incidents nobody was paged for are left out of both numbers.

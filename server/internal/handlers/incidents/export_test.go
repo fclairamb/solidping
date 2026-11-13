@@ -75,3 +75,9 @@ func (s *Service) RollUpExistingChildrenForTest(
 ) {
 	s.rollUpExistingChildren(ctx, parentCheck, parent, onset)
 }
+
+// SetInsightsLimitsForTest shrinks the insights page size and incident cap so
+// pagination and truncation can be exercised without thousands of rows.
+func (s *Service) SetInsightsLimitsForTest(pageSize, maxIncidents int) {
+	s.insightsPageSize, s.insightsMaxIncidents = pageSize, maxIncidents
+}

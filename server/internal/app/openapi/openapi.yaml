@@ -4050,8 +4050,10 @@ paths:
       tags: [Incidents]
       summary: Incident insights
       description: >-
-        Top failing checks, time to acknowledge and time to resolve over a
-        trailing window. Check outages only (no SLO burn or degraded incidents).
+        Top failing checks, time to acknowledge and time to resolve for the
+        incidents active during the trailing period (started before its end and
+        still open or resolved inside it; downtime is clipped to the period).
+        Check outages only (no SLO burn or degraded incidents).
         Rolled-up (paging-suppressed) incidents count in the checks table and in
         time to resolve, not in the acknowledge sample or ack rate. Medians and
         p90 are nearest-rank over the sample; an empty sample has null

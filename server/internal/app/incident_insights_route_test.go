@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -51,4 +52,44 @@ func TestIncidentInsightsRoute(t *testing.T) {
 	r.NoError(err)
 	_ = resp.Body.Close()
 	r.Equal(http.StatusUnauthorized, resp.StatusCode)
+
+	// Authenticated: the route reaches the insights handler (the /:uid route
+	// would answer 404 or 400 for the literal "insights").
+	now := time.Now()
+	user := models.NewUser("insights-viewer@acme.com")
+	user.EmailVerifiedAt = &now
+	r.NoError(server.dbService.CreateUser(ctx, user))
+
+	member := models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleViewer)
+	member.JoinedAt = &now
+	r.NoError(server.dbService.CreateOrganizationMember(ctx, member))
+
+	token := mintTestToken(t, server, user.UID, org.Slug, string(models.MemberRoleViewer), false)
+
+	get := func(query string) (int, map[string]any) {
+		authReq, reqErr := http.NewRequestWithContext(ctx, http.MethodGet,
+			ts.URL+"/api/v1/orgs/"+org.Slug+"/incidents/insights"+query, nil)
+		r.NoError(reqErr)
+		authReq.Header.Set("Authorization", "Bearer "+token)
+
+		authResp, doErr := http.DefaultClient.Do(authReq)
+		r.NoError(doErr)
+
+		defer func() { _ = authResp.Body.Close() }()
+
+		var body map[string]any
+		r.NoError(json.NewDecoder(authResp.Body).Decode(&body))
+
+		return authResp.StatusCode, body
+	}
+
+	status, body := get("")
+	r.Equal(http.StatusOK, status)
+	r.Equal("30d", body["period"])
+	r.Contains(body, "summary")
+	r.Contains(body, "checks")
+
+	status, body = get("?period=1y")
+	r.Equal(http.StatusBadRequest, status)
+	r.Equal("VALIDATION_ERROR", body["code"])
 }
