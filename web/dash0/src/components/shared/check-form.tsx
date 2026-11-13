@@ -1480,8 +1480,14 @@ export function CheckForm({
         escalationPolicyUid:
           escalationPolicyUid || (mode === "edit" ? "" : undefined),
         period: isPassiveCheckType(type) ? formatPeriod(periodValue, periodUnit) : period,
-        // Don't send config for passive edits — the token is managed by the backend
-        ...(isPassiveCheckType(type) && mode === "edit" ? {} : { config: submittedConfig }),
+        // Heartbeat and private-location edits have nothing editable in their
+        // config (the token / region are server-managed), so it is not sent.
+        // An email check's sender-authentication options ARE editable: its
+        // config goes out, the stored token riding along in the passthrough
+        // (and the server preserves an absent one anyway).
+        ...(isPassiveCheckType(type) && type !== "email" && mode === "edit"
+          ? {}
+          : { config: submittedConfig }),
         // Automatic placement sends the count and lets the server choose the
         // regions; pinned sends the explicit list (spec 2026-09-25-06). When
         // the picker is hidden (fewer than two eligible regions), a NEW check
