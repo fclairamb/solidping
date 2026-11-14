@@ -65,6 +65,10 @@ const (
 	// outputKeyDroppedSecretHeaders lists the secret header names withheld
 	// from a cross-host redirect hop (names only, never values).
 	outputKeyDroppedSecretHeaders = "redirect_dropped_secret_headers"
+	// outputKeyRedirectBodyWithheld is true when a cross-origin 307/308 would
+	// have replayed the request body: the hop was not followed and the result
+	// reports the redirect response itself (spec 2026-11-14-02).
+	outputKeyRedirectBodyWithheld = "redirect_body_withheld"
 
 	// outputKeyFinalURL is the Output key carrying the raw URL the last
 	// request was sent to, set when an expectedFinalUrl assertion fails.
@@ -396,6 +400,10 @@ func (c *HTTPChecker) executeRequest(
 	// headers withheld from a hop that left the original request's host.
 	droppedSecretHeaders := make([]string, 0)
 
+	// bodyWithheld is set when a cross-origin 307/308 hop was refused because
+	// it would have replayed the request body (spec 2026-11-14-02).
+	bodyWithheld := false
+
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// followRedirects: false stops at the first response, regardless
@@ -417,9 +425,20 @@ func (c *HTTPChecker) executeRequest(
 			// host, and the same scheme and port or an http -> https upgrade.
 			// net/http strips Authorization on a host change only, so a
 			// same-host https -> http downgrade would resend it in cleartext.
-			if !checkerdef.SameRedirectOrigin(via[0].URL, req.URL) {
+			//
+			// The same hop never carries Referer (the previous URL, whose query
+			// can hold a resolved secret parameter), and a 307/308 that would
+			// replay the body to it is not followed: the redirect response is
+			// the result (checkerdef.ApplyRedirectHop, spec 2026-11-14-02).
+			if hop := checkerdef.ApplyRedirectHop(via[0].URL, req); hop.CrossOrigin {
 				droppedSecretHeaders = stripSecretHeaders(req.Header, cfg.SecretHeaders, droppedSecretHeaders)
 				droppedSecretHeaders = stripSecretHeaders(req.Header, authorizationHeader, droppedSecretHeaders)
+
+				if hop.WithholdBody {
+					bodyWithheld = true
+
+					return http.ErrUseLastResponse
+				}
 			}
 
 			if c.RedirectGuard != nil {
@@ -494,7 +513,7 @@ func (c *HTTPChecker) executeRequest(
 					checkerdef.OutputKeyError: fmt.Sprintf(
 						"expected %s, but the server did not negotiate it: %v", httpVersion.Label(), err),
 					checkerdef.OutputKeyURL: cfg.URL,
-				}, skipTLSVerify), redirectChain, droppedSecretHeaders),
+				}, skipTLSVerify), redirectChain, droppedSecretHeaders, bodyWithheld),
 			}, nil
 		}
 
@@ -511,7 +530,7 @@ func (c *HTTPChecker) executeRequest(
 				Output: withRedirectChain(withTLSVerifySkipped(map[string]any{
 					checkerdef.OutputKeyError: hostMismatch.Error(),
 					checkerdef.OutputKeyURL:   cfg.URL,
-				}, skipTLSVerify), redirectChain, droppedSecretHeaders),
+				}, skipTLSVerify), redirectChain, droppedSecretHeaders, bodyWithheld),
 			}, nil
 		}
 
@@ -523,7 +542,7 @@ func (c *HTTPChecker) executeRequest(
 				Output: withRedirectChain(withTLSVerifySkipped(map[string]any{
 					checkerdef.OutputKeyError: "request timed out",
 					checkerdef.OutputKeyURL:   cfg.URL,
-				}, skipTLSVerify), redirectChain, droppedSecretHeaders),
+				}, skipTLSVerify), redirectChain, droppedSecretHeaders, bodyWithheld),
 			}
 			out.SetNetworkFailure(checkerdef.NewNetworkFailure(
 				checkerdef.ClassifyDialError(err, true), hostFromURL(cfg.URL), "", 0))
@@ -540,7 +559,7 @@ func (c *HTTPChecker) executeRequest(
 			Output: withRedirectChain(withTLSVerifySkipped(map[string]any{
 				checkerdef.OutputKeyError: err.Error(),
 				checkerdef.OutputKeyURL:   cfg.URL,
-			}, skipTLSVerify), redirectChain, droppedSecretHeaders),
+			}, skipTLSVerify), redirectChain, droppedSecretHeaders, bodyWithheld),
 		}
 		out.SetNetworkFailure(checkerdef.NewNetworkFailure(
 			checkerdef.ClassifyDialError(err, false), hostFromURL(cfg.URL), "", 0))
@@ -638,7 +657,7 @@ func (c *HTTPChecker) executeRequest(
 		return &checkerdef.Result{
 			Status:      checkerdef.StatusDown,
 			Duration:    duration,
-			Output:      withRedirectChain(output, redirectChain, droppedSecretHeaders),
+			Output:      withRedirectChain(output, redirectChain, droppedSecretHeaders, bodyWithheld),
 			Diagnostics: buildFailureCapture(cfg, resp, bodyBytes),
 		}
 	}
@@ -868,7 +887,7 @@ func (c *HTTPChecker) executeRequest(
 			checkerdef.OutputKeyURL:        cfg.URL,
 			checkerdef.OutputKeyStatusCode: resp.StatusCode,
 			checkerdef.OutputKeyMethod:     method,
-		}, skipTLSVerify), redirectChain, droppedSecretHeaders),
+		}, skipTLSVerify), redirectChain, droppedSecretHeaders, bodyWithheld),
 	}
 
 	// The unexpected-status case is the single most common HTTP failure, and
@@ -917,13 +936,19 @@ func withTLSVerifySkipped(output map[string]any, skipped bool) map[string]any {
 // or refused — so a result explains where a redirect chain went without
 // requiring capture_failure_response. Absent (not merely empty) when the
 // request never redirected, so a check that never bounces gains no new key.
-func withRedirectChain(output map[string]any, chain, droppedSecrets []string) map[string]any {
+func withRedirectChain(
+	output map[string]any, chain, droppedSecrets []string, bodyWithheld bool,
+) map[string]any {
 	if len(chain) > 0 {
 		output[outputKeyRedirectChain] = chain
 	}
 
 	if len(droppedSecrets) > 0 {
 		output[outputKeyDroppedSecretHeaders] = droppedSecrets
+	}
+
+	if bodyWithheld {
+		output[outputKeyRedirectBodyWithheld] = true
 	}
 
 	return output

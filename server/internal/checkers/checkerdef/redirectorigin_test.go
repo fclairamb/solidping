@@ -1,7 +1,10 @@
 package checkerdef
 
 import (
+	"io"
+	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -42,6 +45,62 @@ func TestSameRedirectOrigin(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, tc.want, SameRedirectOrigin(first, next))
+		})
+	}
+}
+
+// TestApplyRedirectHop covers the shared redirect hop rule (spec
+// 2026-11-14-02): a cross-origin hop never carries Referer, and one that would
+// replay a body (a 307/308) is refused, while a 303 (body dropped) is followed.
+func TestApplyRedirectHop(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name         string
+		first        string
+		next         string
+		method       string
+		body         string
+		hasBody      bool
+		wantCross    bool
+		wantWithhold bool
+	}{
+		{"same origin keeps referer", "https://a.acme.com/x", "https://a.acme.com/y", http.MethodGet, "", false, false, false},
+		{"same origin 307 with body followed", "https://a.acme.com/x", "https://a.acme.com/y", http.MethodPost, "k=v", true, false, false},
+		{"cross host", "https://a.acme.com/x", "https://b.acme.com/y", http.MethodGet, "", false, true, false},
+		{"https to http", "https://a.acme.com/x", "http://a.acme.com/y", http.MethodGet, "", false, true, false},
+		{"303 drops the body", "https://a.acme.com/x", "https://b.acme.com/y", http.MethodGet, "", false, true, false},
+		{"307 with body refused", "https://a.acme.com/x", "https://b.acme.com/y", http.MethodPost, "k=v", true, true, true},
+		{"307 with empty body followed", "https://a.acme.com/x", "https://b.acme.com/y", http.MethodPost, "", true, true, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			first, err := url.Parse(tc.first)
+			require.NoError(t, err)
+
+			var body io.Reader
+			if tc.hasBody {
+				body = strings.NewReader(tc.body)
+			}
+
+			// What net/http hands CheckRedirect: Referer already set, and on a
+			// 307/308 the body re-read through GetBody.
+			req, err := http.NewRequestWithContext(t.Context(), tc.method, tc.next, body)
+			require.NoError(t, err)
+			req.Header.Set("Referer", tc.first+"?api_key=s3cr3t")
+
+			hop := ApplyRedirectHop(first, req)
+			require.Equal(t, tc.wantCross, hop.CrossOrigin)
+			require.Equal(t, tc.wantWithhold, hop.WithholdBody)
+
+			if tc.wantCross {
+				require.Empty(t, req.Header.Get("Referer"))
+			} else {
+				require.NotEmpty(t, req.Header.Get("Referer"))
+			}
 		})
 	}
 }
