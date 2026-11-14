@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.49.3](https://github.com/fclairamb/solidping/compare/v0.49.2...v0.49.3) (2026-11-14)
+
+
+### Bug Fixes
+
+* **security:** email checks now use unique tokens minted by the server, and redirects to another origin no longer forward the Referer header or the request body ([#876](https://github.com/fclairamb/solidping/issues/876)) ([ebf9f07](https://github.com/fclairamb/solidping/commit/ebf9f07713b4be9c3ac707dee45e9eaf9488a582))
+* **sqlite:** SolidPing now builds and runs on riscv64 ([#875](https://github.com/fclairamb/solidping/issues/875)) ([c710c8b](https://github.com/fclairamb/solidping/commit/c710c8b6b56e735413aabf35315075e41896c64b))
+* **deps:** Go dependencies updated to their latest non-major versions ([#873](https://github.com/fclairamb/solidping/issues/873)) ([6f1ece8](https://github.com/fclairamb/solidping/commit/6f1ece8baaacd7a214af44f52abeaaa816ef112d))
+
 ## [0.49.2](https://github.com/fclairamb/solidping/compare/v0.49.1...v0.49.2) (2026-11-13)
 
 
