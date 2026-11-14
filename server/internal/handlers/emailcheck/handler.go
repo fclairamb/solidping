@@ -174,6 +174,16 @@ func (h *Handler) HandleEmail(
 	}
 
 	check, err := h.db.GetCheckByEmailToken(ctx, token)
+	if errors.Is(err, db.ErrDuplicateEmailToken) {
+		// The unique index makes this unreachable: two live checks sharing an
+		// inbound address is data corruption, and recording the mail on either
+		// would hand one org's mail to another (spec 2026-11-14-01).
+		h.logger.ErrorContext(ctx, "email token resolves to more than one check, mail rejected",
+			"token", token, "recipient", recipient)
+
+		return jmap.OutcomeRejected, nil
+	}
+
 	if err != nil || check == nil {
 		// Token-shaped local-part but no matching check — won't ever match.
 		// Reject so the email moves to Processed and the handler chain stops.

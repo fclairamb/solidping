@@ -19,6 +19,13 @@ import (
 // it first.
 var ErrEnrollmentTokenInvalid = errors.New("enrollment token is invalid, expired, or already used")
 
+// ErrDuplicateEmailToken is returned by GetCheckByEmailToken when more than one
+// live email check carries the token. The unique index
+// idx_checks_email_token_unique makes that unreachable, so it means data
+// corruption, and the mail must be rejected rather than recorded on whichever
+// row the database returns first (spec 2026-11-14-01).
+var ErrDuplicateEmailToken = errors.New("email token matches more than one check")
+
 // ErrCheckJobBusy is returned by RequestCheckRun when the job's lease state
 // kept changing under it and the request could be neither made due nor
 // parked. A caller should never see it in practice.
@@ -389,7 +396,8 @@ type Service interface {
 	GetChecksByUIDs(ctx context.Context, orgUID string, checkUIDs []string) (map[string]*models.Check, error)
 	GetCheckByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.Check, error)
 	// GetCheckByEmailToken finds an email-type check by its config.token across all
-	// organizations. The token alone is unique because it's 24 random bytes.
+	// organizations. The token is server-minted (24 random bytes) and unique among
+	// live email checks; more than one match returns ErrDuplicateEmailToken.
 	GetCheckByEmailToken(ctx context.Context, token string) (*models.Check, error)
 	ListChecks(ctx context.Context, orgUID string, filter *models.ListChecksFilter) ([]*models.Check, int64, error)
 	// ListChecksByTunnelCheckUID returns the org's non-deleted checks that dial

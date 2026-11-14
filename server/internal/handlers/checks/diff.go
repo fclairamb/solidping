@@ -485,6 +485,10 @@ func diffCheckConfig(existing *models.Check, current, desired *ExportCheck) []Ch
 		if preserver, isPreserver := cfg.(checkerdef.AbsentFieldPreserver); isPreserver {
 			preserver.PreserveAbsentFields(current.Config, desiredPublic)
 		}
+
+		// A server-managed field keeps its stored value whatever the document
+		// says (spec 2026-11-14-01), so a value in the document is no drift.
+		applyStoredServerManagedFields(serverManagedFields(cfg), current.Config, desiredPublic)
 	}
 
 	keys := make(map[string]struct{}, max(len(current.Config), len(desiredPublic)))
