@@ -132,7 +132,9 @@ keys:
 
 Both are **restored on import**, which is why a stripped export re-imports
 cleanly and why re-applying one never rotates a token or breaks a paired
-check. A file marked `secrets: stripped` is not an incomplete file, and the
+check. An email check's token is also never *taken* from a document: an
+existing check keeps its own, and a new one always gets a fresh token from the
+server, so an inbound address cannot be carried over to another instance. A file marked `secrets: stripped` is not an incomplete file, and the
 validator does not treat it as one.
 
 A secret you *do* want in version control belongs in a reference:

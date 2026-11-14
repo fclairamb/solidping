@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"reflect"
 	"regexp"
@@ -5197,6 +5198,35 @@ func (s *Service) cloneValidate(ctx context.Context, orgUID string, clone *model
 	return s.firstConfigValidationError(ctx, orgUID, clone.Type, clone.Config, clone.Regions)
 }
 
+// remintServerManagedFields gives a clone fresh values for the server-managed
+// config fields instead of the source's (spec 2026-11-14-01): two email checks
+// sharing an inbound token would share an inbound address, which the unique
+// index refuses anyway. The checker's Validate mints them, as on create.
+func (s *Service) remintServerManagedFields(ctx context.Context, orgUID string, clone *models.Check) error {
+	fields := s.serverManagedFieldsFor(ctx, orgUID, clone.Type)
+	if len(fields) == 0 {
+		return nil
+	}
+
+	config := maps.Clone(clone.Config)
+	if config == nil {
+		config = map[string]any{}
+	}
+
+	for _, field := range fields {
+		delete(config, field)
+	}
+
+	spec := &checkerdef.CheckSpec{Config: config}
+	if err := s.validateSpecFor(ctx, orgUID, clone.Type, spec); err != nil {
+		return err
+	}
+
+	clone.Config = spec.Config
+
+	return nil
+}
+
 // CloneCheck creates a near-identical copy of an existing check, server-side.
 // Runtime state (status streak, results, incidents, scheduler row) is not
 // copied; status-page and maintenance-window references are not copied
@@ -5224,6 +5254,10 @@ func (s *Service) CloneCheck(
 
 	clone := s.cloneBuildCheck(org.UID, source, req, finalSlug)
 	clone.CreatedBy = createdByForCaller(ctx)
+
+	if mintErr := s.remintServerManagedFields(ctx, org.UID, clone); mintErr != nil {
+		return CheckResponse{}, mintErr
+	}
 
 	// Cloning is deliberately NOT ownership-gated, unlike PATCH and DELETE: it
 	// mutates nothing, and the spec's own rule ("cloning a seeded check
@@ -6225,12 +6259,79 @@ func (s *Service) preserveAbsentRedactedFields(ctx context.Context, check *model
 		}
 	}
 
+	// Server-managed fields (spec 2026-11-14-01) are stricter still: the stored
+	// value wins even over one the request carries, so a caller can never point
+	// a check at a value they chose, such as another org's email token.
+	applyStoredServerManagedFields(serverManagedFields(cfg), check.Config, merged)
+
 	// Server-maintained fields follow the same "omitted is kept" rule: the dns
 	// change-detection baseline (spec 2026-10-03-04) is captured by the
 	// server, so a manifest exported before the capture must not reset it on
 	// every apply. An explicit value (including `{}`) is honored.
 	if preserver, ok := cfg.(checkerdef.AbsentFieldPreserver); ok {
 		preserver.PreserveAbsentFields(check.Config, merged)
+	}
+}
+
+// serverManagedFields returns the config keys of cfg that only the server
+// writes (checkerdef.ServerManagedFielder), nil for a config with none.
+func serverManagedFields(cfg checkerdef.Config) []string {
+	if managed, ok := cfg.(checkerdef.ServerManagedFielder); ok {
+		return managed.ServerManagedFields()
+	}
+
+	return nil
+}
+
+// serverManagedFieldsFor is serverManagedFields for a check type of the org.
+func (s *Service) serverManagedFieldsFor(ctx context.Context, orgUID, checkType string) []string {
+	cfg, ok := s.parseConfigFor(ctx, orgUID, checkType)
+	if !ok {
+		return nil
+	}
+
+	return serverManagedFields(cfg)
+}
+
+// withoutServerManagedFields returns config without the server-managed keys, so
+// the checker's Validate mints them (spec 2026-11-14-01). The caller's map is
+// never written: a copy is returned when there is anything to drop, and config
+// itself otherwise.
+func withoutServerManagedFields(config map[string]any, fields []string) map[string]any {
+	present := false
+
+	for _, field := range fields {
+		if _, ok := config[field]; ok {
+			present = true
+
+			break
+		}
+	}
+
+	if !present {
+		return config
+	}
+
+	out := maps.Clone(config)
+	for _, field := range fields {
+		delete(out, field)
+	}
+
+	return out
+}
+
+// applyStoredServerManagedFields makes merged carry the stored value of every
+// server-managed field, whatever the update asked for: the stored value when
+// there is one, no value at all otherwise.
+func applyStoredServerManagedFields(fields []string, stored, merged map[string]any) {
+	for _, field := range fields {
+		if value, ok := stored[field]; ok && value != nil && value != "" {
+			merged[field] = value
+
+			continue
+		}
+
+		delete(merged, field)
 	}
 }
 
