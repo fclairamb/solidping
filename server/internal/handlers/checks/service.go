@@ -5188,7 +5188,15 @@ type CloneCheckRequest struct {
 // clone is a new save of the source's stored config, so a `${env:NAME}` stored
 // before the operator allowlist existed (or since removed from it) is refused
 // here rather than copied (spec 2026-10-16-03).
+//
+// It also replaces the server-managed config fields the clone copied from its
+// source with fresh ones (remintServerManagedFields), so what is validated is
+// what gets stored.
 func (s *Service) cloneValidate(ctx context.Context, orgUID string, clone *models.Check) error {
+	if mintErr := s.remintServerManagedFields(ctx, orgUID, clone); mintErr != nil {
+		return mintErr
+	}
+
 	if demoErr := assertDemoCheckShape(
 		ctx, clone.Type, time.Duration(clone.Period), clone.Regions,
 	); demoErr != nil {
@@ -5254,10 +5262,6 @@ func (s *Service) CloneCheck(
 
 	clone := s.cloneBuildCheck(org.UID, source, req, finalSlug)
 	clone.CreatedBy = createdByForCaller(ctx)
-
-	if mintErr := s.remintServerManagedFields(ctx, org.UID, clone); mintErr != nil {
-		return CheckResponse{}, mintErr
-	}
 
 	// Cloning is deliberately NOT ownership-gated, unlike PATCH and DELETE: it
 	// mutates nothing, and the spec's own rule ("cloning a seeded check

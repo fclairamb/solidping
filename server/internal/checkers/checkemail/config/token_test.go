@@ -17,7 +17,8 @@ func TestValidateSpecReplacesMalformedToken(t *testing.T) {
 
 	const minted = "0123456789abcdef0123456789abcdef0123456789abcdef"
 
-	for _, token := range []any{nil, "", "not-hex", "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789", minted + "00", 42} {
+	malformed := []any{nil, "", "not-hex", "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789", minted + "00", 42}
+	for _, token := range malformed {
 		spec := &checkerdef.CheckSpec{Config: map[string]any{"token": token}}
 		require.NoError(t, config.ValidateSpec(spec))
 
