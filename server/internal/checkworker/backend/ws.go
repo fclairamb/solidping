@@ -14,6 +14,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/agents/capturecache"
@@ -87,6 +88,11 @@ type WSBackend struct {
 	serverURL       string
 	enrollmentToken string
 	name            string
+
+	// bootID identifies this process to the server (spec 2026-11-14-03): it is
+	// sent on enroll and on every reconnect, and a new value tells the server
+	// the previous process is gone, so it frees that process's leases.
+	bootID string
 
 	// egressGuard is the agent's own egress policy (spec 2026-09-25-19),
 	// consulted before a server-requested path trace. Nil allows everything.
@@ -215,6 +221,7 @@ func NewWSBackend(
 ) *WSBackend {
 	backend := &WSBackend{
 		serverURL:        serverURL,
+		bootID:           uuid.NewString(),
 		enrollmentToken:  enrollmentToken,
 		name:             name,
 		identity:         identity,
@@ -262,6 +269,12 @@ func (b *WSBackend) Register(ctx context.Context, _ *models.Worker) (*models.Wor
 		Name:   b.name,
 		Region: &region,
 	}, nil
+}
+
+// ReleaseStaleLeases is a no-op: the server frees a previous process's leases
+// itself, when this process connects with a new boot ID (spec 2026-11-14-03).
+func (b *WSBackend) ReleaseStaleLeases(context.Context, string, time.Time) (int, error) {
+	return 0, nil
 }
 
 // Heartbeat is a no-op: the server refreshes last_seen_at on pings and frames,
@@ -736,6 +749,7 @@ func (b *WSBackend) dialEnroll(ctx context.Context) error {
 		Name:             b.name,
 		Ed25519PublicKey: b.identity.Ed25519PublicKey,
 		X25519PublicKey:  b.identity.X25519Recipient,
+		BootID:           b.bootID,
 		Version:          version.Get().Version,
 	}); err != nil {
 		_ = conn.Close(websocket.StatusProtocolError, "enroll write failed")
@@ -820,6 +834,7 @@ func (b *WSBackend) dialReconnect(ctx context.Context) error {
 	headers.Set("X-Sp-Timestamp", timestamp)
 	headers.Set("X-Sp-Nonce", nonce)
 	headers.Set("X-Sp-Signature", signature)
+	headers.Set(agents.HeaderBootID, b.bootID)
 
 	conn, err := b.dial(ctx, headers)
 	if err != nil {

@@ -31,6 +31,22 @@ type fakeAgentServer struct {
 	conns  int
 	claims int
 	onConn func(idx int, conn *websocket.Conn)
+	// bootIDs is the boot ID of each handshake, in order: the enroll frame's
+	// or the reconnect header's (spec 2026-11-14-03).
+	bootIDs []string
+}
+
+func (f *fakeAgentServer) recordBootID(bootID string) {
+	f.mu.Lock()
+	f.bootIDs = append(f.bootIDs, bootID)
+	f.mu.Unlock()
+}
+
+func (f *fakeAgentServer) seenBootIDs() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]string(nil), f.bootIDs...)
 }
 
 func newFakeAgentServer(t *testing.T, region string) *fakeAgentServer {
@@ -69,6 +85,9 @@ func (f *fakeAgentServer) serve(writer http.ResponseWriter, req *http.Request) {
 	conn.SetReadLimit(256 * 1024)
 
 	isEnroll := req.Header.Get("Authorization") != ""
+	if !isEnroll {
+		f.recordBootID(req.Header.Get(agents.HeaderBootID))
+	}
 	if !f.handshake(req.Context(), conn, isEnroll) {
 		return
 	}
@@ -107,6 +126,8 @@ func (f *fakeAgentServer) handshake(ctx context.Context, conn *websocket.Conn, i
 	if err := wsjson.Read(ctx, conn, &enroll); err != nil {
 		return false
 	}
+
+	f.recordBootID(enroll.BootID)
 
 	if err := wsjson.Write(ctx, conn, agents.ServerFrame{
 		Type: agents.MsgTypeEnrolled, ID: enroll.ID,

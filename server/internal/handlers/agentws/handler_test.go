@@ -211,6 +211,16 @@ func (e *env) enrollWith(
 	token, name string, opts *websocket.DialOptions,
 ) (*websocket.Conn, *agentcrypto.AgentKeys, agentcrypto.ServerFrame) {
 	e.t.Helper()
+
+	return e.enrollBoot(token, name, opts, "")
+}
+
+// enrollBoot is enrollWith with the agent's per-process boot ID in the enroll
+// frame (spec 2026-11-14-03). Empty sends none, like an older agent.
+func (e *env) enrollBoot(
+	token, name string, opts *websocket.DialOptions, bootID string,
+) (*websocket.Conn, *agentcrypto.AgentKeys, agentcrypto.ServerFrame) {
+	e.t.Helper()
 	r := require.New(e.t)
 	ctx := e.t.Context()
 
@@ -238,6 +248,7 @@ func (e *env) enrollWith(
 		Name:             name,
 		Ed25519PublicKey: keys.Ed25519PublicKey,
 		X25519PublicKey:  keys.X25519Recipient,
+		BootID:           bootID,
 	}))
 
 	var enrolled agentcrypto.ServerFrame

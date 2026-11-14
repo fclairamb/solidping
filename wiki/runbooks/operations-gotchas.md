@@ -170,6 +170,18 @@ then `kubectl logs <pod> --previous`. The pod restarts, which also clears the ba
   stalled`. Read `solidping_check_lease_lost_total` and
   `solidping_check_lease_held_seconds` by region, and raise `SP_CHECKERS_LEASE_MARGIN`
   (e.g. `2m`) on that region's deployment by more than the largest `missed_by`.
+- A restarted worker frees its own leases at once (spec 2026-11-14-03). It comes back
+  under the same worker UID (registration matches by slug), so it used to leave the jobs
+  it had leased locked until `lease_expires_at`, up to a whole period: every node
+  upgrade raised `dark-region` alerts while the region had a live worker. An in-process
+  worker frees, right after it registers, the leases its UID took before the process
+  started (`Released the leases of a previous process`, `released=N`). A deported agent
+  sends a random boot ID per process on enroll and reconnect, and the server frees its
+  leases only when that ID changes (`released the leases of a previous agent process`):
+  a network reconnect keeps its in-flight runs. Agents older than this release send no
+  boot ID, so their leases still wait for expiry: upgrade them. Two pods sharing one
+  `SP_NODE_NAME` (a rolling update with `maxSurge`) share a UID: the new pod frees the
+  leases the old one took before it started, and those checks may run twice once.
 - `Claim timed out: retrying after back-off` (`solidping_claim_jobs_result_total
   {outcome="timeout"}`) is the Postgres driver's read deadline on that link (`i/o
   timeout`, 10 s by default). The fetcher retries after 5 s. If it keeps firing, raise

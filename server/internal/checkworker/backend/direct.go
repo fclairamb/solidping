@@ -64,6 +64,14 @@ func (b *DirectBackend) Register(
 	return b.dbService.RegisterOrUpdateWorker(ctx, worker)
 }
 
+// ReleaseStaleLeases frees the leases a previous process of this worker left
+// behind (spec 2026-11-14-03).
+func (b *DirectBackend) ReleaseStaleLeases(
+	ctx context.Context, workerUID string, claimedBefore time.Time,
+) (int, error) {
+	return b.checkJobSvc.ReleaseWorkerLeases(ctx, workerUID, claimedBefore)
+}
+
 // Heartbeat updates the worker's last_active_at timestamp and the reported
 // capability set and build version.
 func (b *DirectBackend) Heartbeat(
