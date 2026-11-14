@@ -1417,13 +1417,13 @@ func (s *serviceImpl) ReleaseLeasesOnNewBoot(ctx context.Context, workerUID stri
 
 		if rows == 0 {
 			// Same process, or the first boot ID this row ever saw.
-			if _, err := tx.NewUpdate().
+			if _, firstErr := tx.NewUpdate().
 				Model((*models.Worker)(nil)).
 				Set("boot_id = ?", bootID).
 				Where("uid = ?", workerUID).
 				Where("boot_id IS NULL").
-				Exec(ctx); err != nil {
-				return fmt.Errorf("failed to record the worker boot ID: %w", err)
+				Exec(ctx); firstErr != nil {
+				return fmt.Errorf("failed to record the worker boot ID: %w", firstErr)
 			}
 
 			return nil

@@ -56,7 +56,7 @@ func (e *env) workerBootID(workerUID string) *string {
 // TestAgentRestartFreesLeasesReconnectKeepsThem covers spec 2026-11-14-03 on
 // the agent path: a reconnect from the same process (same boot ID) keeps its
 // in-flight lease and its late result is accepted, an agent that sends no
-// boot ID keeps today's behaviour, and a new process frees the leases its
+// boot ID keeps today's behavior, and a new process frees the leases its
 // predecessor left so its first claim gets the job back.
 func TestAgentRestartFreesLeasesReconnectKeepsThem(t *testing.T) {
 	t.Parallel()

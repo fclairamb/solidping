@@ -82,7 +82,7 @@ func TestRestartedWorkerReclaimsItsOwnLeases(t *testing.T) {
 	t.Cleanup(func() {
 		cancel()
 		select {
-		case <-runDone:
+		case <-runDone: //nolint:errcheck // exit error irrelevant here
 		case <-time.After(10 * time.Second):
 			t.Error("worker did not shut down")
 		}

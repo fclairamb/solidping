@@ -23,7 +23,7 @@ const portWorkerRestartRelease = 15686
 // check's job to a worker with a lease that is still valid for an hour.
 type restartFixture struct {
 	t     *testing.T
-	ctx   context.Context
+	ctx   context.Context //nolint:containedctx // test fixture, scoped to one test
 	dbSvc db.Service
 	bunDB *bun.DB
 	org   *models.Organization
@@ -218,7 +218,7 @@ func exerciseReleaseOnNewBoot(ctx context.Context, t *testing.T, dbSvc db.Servic
 	released, err := svc.ReleaseLeasesOnNewBoot(ctx, worker.UID, "")
 	r.NoError(err)
 	r.Zero(released)
-	stillLeased("an agent that sends no boot ID keeps today's behaviour")
+	stillLeased("an agent that sends no boot ID keeps today's behavior")
 	r.Nil(bootOf())
 
 	released, err = svc.ReleaseLeasesOnNewBoot(ctx, worker.UID, "boot-1")
@@ -246,9 +246,9 @@ func exerciseReleaseOnNewBoot(ctx context.Context, t *testing.T, dbSvc db.Servic
 func runRestartRelease(ctx context.Context, t *testing.T, dbSvc db.Service, bunDB *bun.DB) {
 	t.Helper()
 
-	t.Run("release-worker-leases", func(t *testing.T) { exerciseReleaseWorkerLeases(ctx, t, dbSvc, bunDB) })
-	t.Run("released-fields", func(t *testing.T) { exerciseReleaseFieldsBeforeReclaim(ctx, t, dbSvc, bunDB) })
-	t.Run("release-on-new-boot", func(t *testing.T) { exerciseReleaseOnNewBoot(ctx, t, dbSvc, bunDB) })
+	exerciseReleaseWorkerLeases(ctx, t, dbSvc, bunDB)
+	exerciseReleaseFieldsBeforeReclaim(ctx, t, dbSvc, bunDB)
+	exerciseReleaseOnNewBoot(ctx, t, dbSvc, bunDB)
 }
 
 // TestReleaseWorkerLeases runs the restart contract on SQLite.
