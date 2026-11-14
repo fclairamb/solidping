@@ -92,3 +92,10 @@ live worker. A 24 h check would miss a whole day. This happens on every node upg
   *Recommended:* the agent generates a random boot ID at start and sends it on enroll and on
   reconnect. The server keeps the last one per worker (new nullable column, new migration) and
   releases only when it changes. An agent too old to send one: no release (today's behaviour).
+
+## Resolved open questions
+
+- **Agent restart vs network reconnect:** the agent generates a random boot ID at start and sends it
+  on enroll and on reconnect. The server stores the last one per worker (new nullable column, new
+  migration) and releases the worker's leases only when the boot ID changes. An agent too old to send
+  one gets no release (today's behaviour). (autopilot: recommended answer)
