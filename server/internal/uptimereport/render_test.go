@@ -42,6 +42,17 @@ func sampleData() *uptimereport.Data {
 		CheckCount:        2,
 		IncidentCount:     3,
 
+		ShowInsights:      true,
+		AcknowledgedCount: 2,
+		PagedCount:        3,
+		TopFailingChecks: []uptimereport.FailingCheckRow{
+			{
+				Name: "Production API", IncidentCount: 2, RelapseCount: 1,
+				URL: "https://solidping.example/d/orgs/acme/checks/chk-prod-api",
+			},
+			{Name: "Marketing site", IncidentCount: 1},
+		},
+
 		HasPreviousData:       true,
 		PreviousIncidentCount: 5,
 
@@ -98,15 +109,18 @@ func sampleData() *uptimereport.Data {
 			LongestIncident:      42 * time.Minute,
 			AverageIncident:      21*time.Minute + 40*time.Second,
 			TotalDowntime:        time.Hour + 5*time.Minute,
-			AvgResponse:          171,
-			MinResponse:          42,
-			MaxResponse:          3200,
-			HasResponseRange:     true,
-			PreviousAvgResponse:  158,
-			SlowSamples:          4,
-			SlowPeaks:            2,
-			StripStart:           time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC),
-			StripDays:            31,
+
+			MedianTimeToResolve:     18 * time.Minute,
+			MedianTimeToAcknowledge: 4 * time.Minute,
+			AvgResponse:             171,
+			MinResponse:             42,
+			MaxResponse:             3200,
+			HasResponseRange:        true,
+			PreviousAvgResponse:     158,
+			SlowSamples:             4,
+			SlowPeaks:               2,
+			StripStart:              time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC),
+			StripDays:               31,
 		},
 	}
 
@@ -299,6 +313,7 @@ func TestUptimeReportRendersNoDataHonestly(t *testing.T) {
 	data.AvailabilityPct = ""
 	data.Checks = nil
 	data.SLOs = nil
+	data.TopFailingChecks = nil
 
 	_, html, text, err := formatter.Format(uptimereport.TemplateName, i18n.English, roundTrip(t, data))
 	r.NoError(err)
@@ -457,6 +472,7 @@ func TestUptimeReportEveryViewModelFieldSurvivesTheRoundTrip(t *testing.T) {
 	requireEveryFieldIsKeyed(t, data.Checks[0])
 	requireEveryFieldIsKeyed(t, data.Checks[0].Days[0])
 	requireEveryFieldIsKeyed(t, data.SLOs[0])
+	requireEveryFieldIsKeyed(t, data.TopFailingChecks[0])
 
 	// And the whole thing still renders with no unresolved key.
 	formatter, err := email.NewFormatter()
@@ -627,4 +643,89 @@ func TestUptimeReportDownAllPeriodStatesTheFactAndDropsLatency(t *testing.T) {
 	r.NotContains(html, "color: #15803d")
 	r.NotContains(html, "color:#15803d")
 	r.NotContains(html, `bgcolor="#15803d"`)
+}
+
+// insightsCopy is what the three figures and the block render as in English
+// for sampleData.
+const (
+	insightsResolve      = "Median time to resolve: 18m"
+	insightsAcknowledge  = "Median time to acknowledge: 4m"
+	insightsAcknowledged = "2 of 3 acknowledged"
+	insightsTitle        = "Most incidents"
+)
+
+func renderInsights(t *testing.T, data *uptimereport.Data) (string, string) {
+	t.Helper()
+
+	formatter, err := email.NewFormatter()
+	require.NoError(t, err)
+
+	_, html, text, err := formatter.Format(uptimereport.TemplateName, i18n.English, roundTrip(t, data.In(i18n.English)))
+	require.NoError(t, err)
+
+	return visibleText(html), text
+}
+
+func TestUptimeReportRendersInsightsLineAndBlock(t *testing.T) {
+	t.Parallel()
+
+	html, text := renderInsights(t, sampleData())
+
+	for _, body := range []string{html, text} {
+		require.Contains(t, body, insightsResolve)
+		require.Contains(t, body, insightsAcknowledge)
+		require.Contains(t, body, insightsAcknowledged)
+		require.Contains(t, body, insightsTitle)
+		require.Contains(t, body, "2 incidents, 1 relapse")
+		require.Contains(t, body, "1 incident, 0 relapses")
+	}
+}
+
+func TestUptimeReportOmitsInsightsWithoutIncidents(t *testing.T) {
+	t.Parallel()
+
+	data := sampleData()
+	data.IncidentCount = 0
+	data.ShowInsights = false
+	data.AcknowledgedCount, data.PagedCount = 0, 0
+	data.TopFailingChecks = nil
+	data.Figures.MedianTimeToResolve, data.Figures.MedianTimeToAcknowledge = 0, 0
+
+	html, text := renderInsights(t, data)
+
+	for _, body := range []string{html, text} {
+		require.NotContains(t, body, "Median time")
+		require.NotContains(t, body, "acknowledged")
+		require.NotContains(t, body, insightsTitle)
+	}
+}
+
+func TestUptimeReportInsightsWithNothingAcknowledged(t *testing.T) {
+	t.Parallel()
+
+	data := sampleData()
+	data.AcknowledgedCount = 0
+	data.Figures.MedianTimeToAcknowledge = 0
+
+	html, text := renderInsights(t, data)
+
+	for _, body := range []string{html, text} {
+		require.NotContains(t, body, "Median time to acknowledge")
+		require.Contains(t, body, "0 of 3 acknowledged")
+		require.Contains(t, body, insightsResolve)
+	}
+}
+
+func TestUptimeReportOmitsMostIncidentsForASingleCheck(t *testing.T) {
+	t.Parallel()
+
+	data := sampleData()
+	data.TopFailingChecks = nil
+
+	html, text := renderInsights(t, data)
+
+	for _, body := range []string{html, text} {
+		require.NotContains(t, body, insightsTitle)
+		require.Contains(t, body, insightsAcknowledged)
+	}
 }

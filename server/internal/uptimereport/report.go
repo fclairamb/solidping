@@ -22,6 +22,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/slos"
 	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
+	"github.com/fclairamb/solidping/server/internal/incidentinsights"
 	"github.com/fclairamb/solidping/server/internal/slo"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
@@ -164,6 +165,22 @@ type Data struct {
 	AverageIncident string `json:"AverageIncident,omitempty"`
 	TotalDowntime   string `json:"TotalDowntime,omitempty"`
 
+	// --- Incident insights (package incidentinsights) --------------------
+	//
+	// ShowInsights is false when the period had no incident: neither the
+	// medians line nor the block is rendered. The medians are empty when
+	// nothing was acknowledged / resolved. AcknowledgedCount and PagedCount
+	// carry no omitempty: "0 of 3 acknowledged" must survive the round trip.
+	ShowInsights            bool   `json:"ShowInsights"`
+	MedianTimeToResolve     string `json:"MedianTimeToResolve,omitempty"`
+	MedianTimeToAcknowledge string `json:"MedianTimeToAcknowledge,omitempty"`
+	AcknowledgedCount       int    `json:"AcknowledgedCount"`
+	// PagedCount is the incidents somebody could have acknowledged.
+	PagedCount int `json:"PagedCount"`
+	// TopFailingChecks is up to maxTopFailing checks, most incidents first.
+	// Empty (block omitted) for a scope of a single check.
+	TopFailingChecks []FailingCheckRow `json:"TopFailingChecks,omitempty"`
+
 	// --- Period-over-period trend -------------------------------------
 	//
 	// Every Show* flag is false when there is no previous-period data, and the
@@ -274,6 +291,10 @@ type Figures struct {
 	LongestIncident time.Duration
 	AverageIncident time.Duration
 	TotalDowntime   time.Duration
+
+	// Incident insight medians (zero when there is no sample).
+	MedianTimeToResolve     time.Duration
+	MedianTimeToAcknowledge time.Duration
 
 	// Response times in milliseconds (HasLatency, the range when
 	// HasResponseRange, the previous average when ShowResponseDelta).
@@ -391,6 +412,10 @@ func (b *Builder) measure(
 
 	applyIncidents(data, incidents)
 
+	if insightsErr := b.loadInsights(ctx, data, org, checks, checkUIDs, window, now, baseURL); insightsErr != nil {
+		return nil, insightsErr
+	}
+
 	if trendErr := b.applyPreviousPeriod(
 		ctx, org.UID, schedule, checkUIDs, window, now, hints, data, overall, incidents.Count,
 	); trendErr != nil {
@@ -474,6 +499,79 @@ func applyIncidents(data *Data, incidents availability.PeriodIncidents) {
 	data.Figures.LongestIncident = time.Duration(incidents.LongestSeconds) * time.Second
 	data.Figures.AverageIncident = time.Duration(incidents.AverageSeconds) * time.Second
 	data.Figures.TotalDowntime = time.Duration(incidents.TotalDowntimeSeconds) * time.Second
+}
+
+// maxTopFailing caps the "Most incidents" block.
+const maxTopFailing = 5
+
+// FailingCheckRow is one line of the "Most incidents" block.
+//
+//nolint:tagliatelle // template view-model keys are PascalCase; see Data.
+type FailingCheckRow struct {
+	Name          string `json:"Name"`
+	URL           string `json:"URL,omitempty"`
+	IncidentCount int    `json:"IncidentCount"`
+	RelapseCount  int    `json:"RelapseCount"`
+	// Detail is "4 incidents, 2 relapses", written in the reader's language.
+	Detail string `json:"Detail,omitempty"`
+}
+
+// applyInsights fills the incident insights from the incidents of the scope's
+// checks, using the same computation as the dashboard page.
+func applyInsights(
+	data *Data, checks []*models.Check, incidents []*models.Incident,
+	window slo.Window, now time.Time, baseURL, orgSlug string,
+) {
+	byUID := make(map[string]*models.Check, len(checks))
+	for _, check := range checks {
+		byUID[check.UID] = check
+	}
+
+	scoped := make([]*models.Incident, 0, len(incidents))
+
+	for _, inc := range incidents {
+		if _, ok := byUID[inc.CheckUID]; ok {
+			scoped = append(scoped, inc)
+		}
+	}
+
+	result := incidentinsights.Compute(scoped, window.Start.UTC(), window.End.UTC(), now.UTC())
+	if result.Summary.IncidentCount == 0 {
+		return
+	}
+
+	data.ShowInsights = true
+	data.AcknowledgedCount = result.Summary.AcknowledgedCount
+	data.PagedCount = result.Summary.PagedCount
+
+	if m := result.Summary.TimeToResolve.MedianSeconds; m != nil {
+		data.Figures.MedianTimeToResolve = time.Duration(*m) * time.Second
+	}
+
+	if m := result.Summary.TimeToAcknowledge.MedianSeconds; m != nil {
+		data.Figures.MedianTimeToAcknowledge = time.Duration(*m) * time.Second
+	}
+
+	// The table already names the one check of a single-check scope.
+	if len(checks) < 2 {
+		return
+	}
+
+	for i := range result.Checks {
+		if len(data.TopFailingChecks) == maxTopFailing {
+			break
+		}
+
+		row := &result.Checks[i]
+
+		check := byUID[row.CheckUID]
+		data.TopFailingChecks = append(data.TopFailingChecks, FailingCheckRow{
+			Name:          checkDisplayName(check),
+			URL:           checkReportURL(baseURL, orgSlug, check),
+			IncidentCount: row.IncidentCount,
+			RelapseCount:  row.RelapseCount,
+		})
+	}
 }
 
 // buildCheckRows folds the per-check window stats into rows and, at the same
@@ -659,24 +757,75 @@ func (b *Builder) scopeChecks(
 func (b *Builder) incidentBlock(
 	ctx context.Context, orgUID string, checkUIDs []string, window slo.Window, now time.Time,
 ) (availability.PeriodIncidents, error) {
+	// Started inside the window: the downtime and count figures are about the
+	// incidents that began in the period.
+	all, err := b.listCheckIncidents(ctx, orgUID, checkUIDs, &models.ListIncidentsFilter{
+		Since: &window.Start,
+		Until: &window.End,
+		Kinds: []string{models.IncidentKindCheck},
+	})
+	if err != nil {
+		return availability.PeriodIncidents{}, fmt.Errorf("list incidents: %w", err)
+	}
+
+	return availability.IncidentBlock(all, window.Start.UTC(), window.End.UTC(), now.UTC()), nil
+}
+
+// loadInsights fills the incident insights; a failed load fails the report
+// rather than sending it without them.
+func (b *Builder) loadInsights(
+	ctx context.Context, data *Data, org *models.Organization, checks []*models.Check,
+	checkUIDs []string, window slo.Window, now time.Time, baseURL string,
+) error {
+	incidents, err := b.insightsIncidents(ctx, org.UID, checkUIDs, window)
+	if err != nil {
+		return err
+	}
+
+	applyInsights(data, checks, incidents, window, now, baseURL, org.Slug)
+
+	return nil
+}
+
+// insightsIncidents loads the incidents active during the window (started
+// before its end, still open or resolved inside it), the population of the
+// incident insights page. incidentBlock counts by start date, so an outage that
+// began before the window would be missing here.
+func (b *Builder) insightsIncidents(
+	ctx context.Context, orgUID string, checkUIDs []string, window slo.Window,
+) ([]*models.Incident, error) {
+	all, err := b.listCheckIncidents(ctx, orgUID, checkUIDs, &models.ListIncidentsFilter{
+		ActiveSince: &window.Start,
+		Until:       &window.End,
+		Kinds:       []string{models.IncidentKindCheck},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list incidents for insights: %w", err)
+	}
+
+	return all, nil
+}
+
+// listCheckIncidents returns the check incidents of every check (a group
+// incident listed by several members once), narrowed by the time fields of base.
+func (b *Builder) listCheckIncidents(
+	ctx context.Context, orgUID string, checkUIDs []string, base *models.ListIncidentsFilter,
+) ([]*models.Incident, error) {
 	seen := make(map[string]struct{})
 	all := make([]*models.Incident, 0)
 
 	for _, checkUID := range checkUIDs {
-		filter := &models.ListIncidentsFilter{
-			OrganizationUID: orgUID,
-			MemberCheckUID:  checkUID,
-			// Check incidents only — the digest reports downtime, not budget
-			// alerts (spec 2026-08-21-08).
-			Kinds: []string{models.IncidentKindCheck},
-			Since: &window.Start,
-			Until: &window.End,
-			Limit: incidentFetchLimit,
-		}
+		filter := *base
+		filter.OrganizationUID = orgUID
+		filter.MemberCheckUID = checkUID
+		// Check incidents only: the digest reports downtime, not budget
+		// alerts (spec 2026-08-21-08).
+		filter.Kinds = []string{models.IncidentKindCheck}
+		filter.Limit = incidentFetchLimit
 
-		incidents, _, err := b.db.ListIncidents(ctx, filter)
+		incidents, _, err := b.db.ListIncidents(ctx, &filter)
 		if err != nil {
-			return availability.PeriodIncidents{}, fmt.Errorf("list incidents: %w", err)
+			return nil, err //nolint:wrapcheck // wrapped by the callers
 		}
 
 		for _, inc := range incidents {
@@ -690,7 +839,7 @@ func (b *Builder) incidentBlock(
 		}
 	}
 
-	return availability.IncidentBlock(all, window.Start.UTC(), window.End.UTC(), now.UTC()), nil
+	return all, nil
 }
 
 // sloRows evaluates every enabled objective whose scope intersects the report's.

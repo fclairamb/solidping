@@ -1,6 +1,9 @@
 package regionsweep_test
 
 import (
+	"bytes"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -213,4 +216,34 @@ func TestReplaceAutoChecksNeverTouchesPinnedOrPrivate(t *testing.T) {
 	})
 	r.NoError(err)
 	r.Empty(changes, "a private region is never a re-placement source")
+}
+
+// TestStuckAutoChecksLogOneLinePerPass: the sweep retries the stuck checks on
+// every pass while the region stays dark, so a line per check per pass would
+// flood the logs during a long outage. One pass logs one line, with the count.
+func TestStuckAutoChecksLogOneLinePerPass(t *testing.T) { //nolint:paralleltest // slog.SetDefault
+	r := require.New(t)
+	env := newTestEnv(t)
+
+	uids := make([]string, 0, 3)
+	for _, name := range []string{"Acme API", "Acme Web", "Acme DB"} {
+		uids = append(uids, env.autoCheck(t, env.acme, name, darkRegion).UID)
+	}
+
+	var logs bytes.Buffer
+
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	changes, err := env.checks.ReplaceAutoChecks(t.Context(), checks.ReplacementRequest{
+		Region: darkRegion, CheckUIDs: uids, Healthy: map[string]bool{},
+		Reason: models.PlacementReasonRegionOffline,
+	})
+	r.NoError(err)
+	r.Empty(changes, "no healthy candidate: nothing moves")
+
+	r.Equal(1, strings.Count(logs.String(), "stay in a dark region"), logs.String())
+	r.Contains(logs.String(), "region="+darkRegion)
+	r.Contains(logs.String(), "stuck=3")
 }

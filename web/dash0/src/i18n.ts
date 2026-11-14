@@ -89,6 +89,16 @@ const enResources = {
   support: en_support,
 };
 
+// Keep <html lang> on the language actually rendered (index.html ships "en").
+// A stale lang makes the browser offer to auto-translate a page already in the
+// visitor's language, and the translator's DOM edits crash React's
+// reconciliation (removeChild NotFoundError). resolvedLanguage is the shipped
+// language in use: "fr" for fr-CA, "en" for a language the app lacks.
+i18n.on("languageChanged", () => {
+  if (typeof document === "undefined") return;
+  document.documentElement.lang = i18n.resolvedLanguage ?? "en";
+});
+
 const initPromise = i18n
   .use(LanguageDetector)
   .use(initReactI18next)

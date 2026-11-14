@@ -138,7 +138,7 @@ checks), HEAD starts on it, and the script asserts:
 - health answers `ok` within 60 s, and the log has no "half-migrated" or "migration content changed";
 - every HEAD migration is listed in `bun_migrations`;
 - the counts of checks, incidents, status pages, integrations and members are unchanged;
-- a check gets a result newer than the old version's last one (the scheduler runs on upgraded data);
+- an enabled check gets a result newer than the old version's last one (the scheduler runs on upgraded data). The watched check must be enabled: every fixture check has a seeded `created` row, and a disabled one never gets another result;
 - SQLite only: the `solidping.db.pre-<migration>.bak` exists when HEAD has a newer migration.
 
 `scripts/upgrade-test.sh --matrix` prints the legs, one `<engine> <tag>` per line: the 3 most
@@ -147,6 +147,11 @@ recent `v*` tags plus the newest tag of the previous minor, each on both engines
 `migration_028_split_027_test.go`). CI builds the legs from it (`upgrade-matrix` then `upgrade`
 in `ci.yml`, both gating the `ci` job). Locally, `make test-upgrade` runs the whole matrix and
 needs docker, jq and sqlite3. A single leg: `HEAD_BIN=./solidping scripts/upgrade-test.sh sqlite v0.38.6`.
+
+A tag enters the matrix the moment it is pushed, about 20 minutes before its own CI publishes
+its image. CI sets `IMAGE_WAIT=1500` so a leg retries the pull that long instead of failing on
+"not found" (the job timeout is 35 minutes for that reason). The default is 0: locally a
+missing image fails at once.
 
 It complements `scripts/check-frozen-migrations.sh` (static) and does not replace it.
 
