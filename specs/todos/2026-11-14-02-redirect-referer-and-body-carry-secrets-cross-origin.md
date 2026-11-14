@@ -77,3 +77,8 @@ cross-origin 307, but the checks' own model (AK6) binds secrets to the original 
   The worker does not know which parts of a resolved config came from a secret. Recommended:
   refuse them all. A monitor rarely needs to POST across origins on a 307, and the redirect
   response is still reported.
+
+## Resolved open questions
+
+- Refuse every cross-origin 307/308 that carries a body, whether or not the check holds secret
+  material; the redirect response is still reported. (autopilot: recommended answer)
