@@ -1756,8 +1756,8 @@ func (s *Service) enrichSelectorCounts(
 		if err != nil {
 			// Best-effort like the rest of this function: a failed lookup
 			// leaves every counter at zero rather than failing the page load.
-			slog.ErrorContext(ctx, "Failed to check selector group existence",
-				"error", err, "orgUid", orgUID, "sectionUid", section.UID)
+			logLoadFailure(ctx, slog.LevelError, "Failed to check selector group existence",
+				err, "orgUid", orgUID, "sectionUid", section.UID)
 
 			return
 		}
@@ -1769,8 +1769,8 @@ func (s *Service) enrichSelectorCounts(
 	// claimed-elsewhere tally needs the actual matched UIDs.
 	matched, total, err := s.db.ListChecks(ctx, orgUID, section.Selector.Filter())
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to count status page selector matches",
-			"error", err, "orgUid", orgUID, "sectionUid", section.UID)
+		logLoadFailure(ctx, slog.LevelError, "Failed to count status page selector matches",
+			err, "orgUid", orgUID, "sectionUid", section.UID)
 
 		return
 	}
@@ -1904,8 +1904,8 @@ func (s *Service) enrichSelectorCountsIfDynamic(
 
 	states, err := s.loadPageState(ctx, pageUID)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to load page state for selector enrichment",
-			"error", err, "orgUid", orgUID, "statusPageUid", pageUID)
+		logLoadFailure(ctx, slog.LevelError, "Failed to load page state for selector enrichment",
+			err, "orgUid", orgUID, "statusPageUid", pageUID)
 
 		return
 	}
@@ -2682,8 +2682,8 @@ func (s *Service) computeStatusPageView(
 	if s.publicIncidents != nil {
 		active, incErr := s.publicIncidents.ListPublicIncidents(ctx, page, true)
 		if incErr != nil {
-			slog.ErrorContext(ctx, "Failed to load active incident publications for status page",
-				"error", incErr, "statusPageUID", page.UID, "orgUID", org.UID)
+			logLoadFailure(ctx, slog.LevelError, "Failed to load active incident publications for status page",
+				incErr, "statusPageUID", page.UID, "orgUID", org.UID)
 		} else {
 			response.ActiveIncidents = active
 		}
@@ -2722,8 +2722,8 @@ func (s *Service) loadRecentUpdates(
 
 	updates, err := s.db.ListPublicStatusUpdates(ctx, page.UID, window)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to load public status updates for status page",
-			"error", err, "statusPageUID", page.UID, "orgUID", orgUID)
+		logLoadFailure(ctx, slog.LevelError, "Failed to load public status updates for status page",
+			err, "statusPageUID", page.UID, "orgUID", orgUID)
 
 		return nil
 	}
@@ -3024,8 +3024,8 @@ func (s *Service) expandResourceMembers(
 			case resource.CheckGroupUID != nil:
 				uids, err := s.db.ListCheckUIDsByGroup(ctx, orgUID, *resource.CheckGroupUID)
 				if err != nil {
-					slog.ErrorContext(ctx, "Failed to list check group members for status page",
-						"error", err, "orgUID", orgUID, "checkGroupUID", *resource.CheckGroupUID)
+					logLoadFailure(ctx, slog.LevelError, "Failed to list check group members for status page",
+						err, "orgUID", orgUID, "checkGroupUID", *resource.CheckGroupUID)
 
 					continue
 				}
@@ -3342,8 +3342,8 @@ func (s *Service) fetchRecentResults(
 
 	rows, err := s.db.RecentResultsPerCheck(sloghook.WithCallsite(ctx, "statuspages.recent_results"), filter)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to load status page response-time results",
-			"error", err, "orgUID", orgUID, "checks", len(checkUIDs))
+		logLoadFailure(ctx, slog.LevelError, "Failed to load status page response-time results",
+			err, "orgUID", orgUID, "checks", len(checkUIDs))
 
 		return recentByCheck
 	}
@@ -3436,8 +3436,8 @@ func (s *Service) fetchResponseTimeSeam(
 			BinDuration:     seamBinWidth(windowSpan),
 		})
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to load status page response-time seam bins",
-			"error", err, "orgUID", orgUID, "checks", len(checkUIDs))
+		logLoadFailure(ctx, slog.LevelError, "Failed to load status page response-time seam bins",
+			err, "orgUID", orgUID, "checks", len(checkUIDs))
 
 		return nil
 	}
@@ -3848,9 +3848,9 @@ func (s *Service) responseTimeBudgets(
 ) map[string]int {
 	checks, err := s.db.GetChecksByUIDs(ctx, orgUID, checkUIDs)
 	if err != nil {
-		slog.WarnContext(ctx, "Failed to size status page response-time budgets from check regions; "+
+		logLoadFailure(ctx, slog.LevelWarn, "Failed to size status page response-time budgets from check regions; "+
 			"falling back to the region fan-out cap",
-			"error", err, "orgUID", orgUID)
+			err, "orgUID", orgUID)
 
 		return nil
 	}
@@ -3944,7 +3944,7 @@ func (s *Service) enrichHourly(
 func (s *Service) memberChecks(ctx context.Context, orgUID string, checkUIDs []string) map[string]*models.Check {
 	checks, err := s.db.GetChecksByUIDs(ctx, orgUID, checkUIDs)
 	if err != nil {
-		slog.WarnContext(ctx, "Failed to load checks for status page coverage", "error", err)
+		logLoadFailure(ctx, slog.LevelWarn, "Failed to load checks for status page coverage", err)
 
 		return nil
 	}
@@ -4444,8 +4444,8 @@ func (s *Service) enrichResourceInfo(
 	if pageHasGroupResource(sections) {
 		counts, err := s.db.GetCheckGroupStatusCounts(ctx, orgUID)
 		if err != nil {
-			slog.ErrorContext(ctx, "Failed to load check group status counts for status page",
-				"error", err, "orgUID", orgUID)
+			logLoadFailure(ctx, slog.LevelError, "Failed to load check group status counts for status page",
+				err, "orgUID", orgUID)
 		} else {
 			groupCounts = counts
 		}
