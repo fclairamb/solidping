@@ -55,7 +55,14 @@ type Worker struct {
 	// an old agent that predates version reporting must not look broken. The
 	// match/drifted/unknown comparison against the server's own version is
 	// computed at read time (handlers/agents), not stored here.
-	Version   *string    `bun:"version"`
+	Version *string `bun:"version"`
+	// BootID is the random ID of the deported agent process that last
+	// connected under this row (spec 2026-11-14-03). The agent sends it on
+	// enroll and reconnect; a change means a new process, whose predecessor's
+	// check-job leases are freed at once. Nil: never reported (an in-process
+	// worker, or an agent too old to send one). Written only by
+	// checkjobsvc.ReleaseLeasesOnNewBoot, never by RegisterOrUpdateWorker.
+	BootID    *string    `bun:"boot_id"`
 	CreatedAt time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
 	DeletedAt *time.Time `bun:"deleted_at"`
