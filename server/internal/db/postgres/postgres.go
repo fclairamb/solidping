@@ -1908,21 +1908,31 @@ func (s *Service) GetCheckByUidOrSlug(ctx context.Context, orgUID, identifier st
 }
 
 // GetCheckByEmailToken looks up an email check by its random token. Tokens
-// are 24 random bytes (48 hex chars), so org scoping is unnecessary —
-// collisions are negligible globally.
+// are server-minted, 24 random bytes (48 hex chars), and unique among live
+// email checks (idx_checks_email_token_unique), so org scoping is unnecessary.
+// Two matches can only mean corruption: ErrDuplicateEmailToken, never a pick
+// of whichever row comes first (spec 2026-11-14-01).
 func (s *Service) GetCheckByEmailToken(ctx context.Context, token string) (*models.Check, error) {
-	check := new(models.Check)
+	var found []*models.Check
 
 	if err := s.db.NewSelect().
-		Model(check).
+		Model(&found).
 		Where("type = ?", string(checkerdef.CheckTypeEmail)).
 		Where("deleted_at IS NULL").
 		Where("config->>'token' = ?", token).
+		Limit(2).
 		Scan(ctx); err != nil {
 		return nil, err
 	}
 
-	return check, nil
+	switch len(found) {
+	case 0:
+		return nil, sql.ErrNoRows
+	case 1:
+		return found[0], nil
+	default:
+		return nil, db.ErrDuplicateEmailToken
+	}
 }
 
 // ListChecksByTunnelCheckUID returns the org's non-deleted checks whose config

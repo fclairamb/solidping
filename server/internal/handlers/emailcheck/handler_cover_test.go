@@ -182,3 +182,42 @@ func TestToCheckerStatus(t *testing.T) {
 	r.Equal(checkerdef.StatusRunning, toCheckerStatus(statusRunning))
 	r.Equal(checkerdef.StatusUp, toCheckerStatus("unknown"))
 }
+
+// TestHandleEmailRecordsMailForTheSingleMatchingCheck is the positive control
+// of spec 2026-11-14-01: a token naming exactly one live check is recorded.
+func TestHandleEmailRecordsMailForTheSingleMatchingCheck(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	f := newAuthFixture(t, models.JSONMap{}, &stubResolver{})
+	f.deliver(t, testToken+"@inbox.example.com", "<single@x>")
+
+	r.Equal(1, f.countResults(t))
+}
+
+// TestHandleEmailRejectsTokenSharedByTwoChecks: with the unique index gone
+// (data corruption), a token naming two live checks is rejected and recorded
+// on neither, instead of landing on whichever row the database returns first.
+func TestHandleEmailRejectsTokenSharedByTwoChecks(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	f := newAuthFixture(t, models.JSONMap{}, &stubResolver{})
+
+	_, err := f.svc.DB().ExecContext(t.Context(), `drop index idx_checks_email_token_unique`)
+	r.NoError(err)
+
+	twin := models.NewCheck(f.check.OrganizationUID, "auth-check-twin", "email")
+	twin.Config = models.JSONMap{"token": testToken}
+	r.NoError(f.svc.CreateCheck(t.Context(), twin))
+
+	email := authEmail()
+	email.To = []jmap.EmailAddress{{Email: testToken + "@inbox.example.com"}}
+	email.MessageID = []string{"<shared@x>"}
+	email.ReceivedAt = time.Now()
+
+	outcome, err := f.h.HandleEmail(t.Context(), nil, *email, jmap.OriginInbox)
+	r.NoError(err)
+	r.Equal(jmap.OutcomeRejected, outcome)
+	r.Zero(f.countResults(t))
+}
