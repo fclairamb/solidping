@@ -55,6 +55,14 @@ func TestSameRedirectOrigin(t *testing.T) {
 func TestApplyRedirectHop(t *testing.T) {
 	t.Parallel()
 
+	const (
+		origin = "https://a.acme.com/x"
+		same   = "https://a.acme.com/y"
+		other  = "https://b.acme.com/y"
+		get    = http.MethodGet
+		post   = http.MethodPost
+	)
+
 	cases := []struct {
 		name         string
 		first        string
@@ -65,13 +73,13 @@ func TestApplyRedirectHop(t *testing.T) {
 		wantCross    bool
 		wantWithhold bool
 	}{
-		{"same origin keeps referer", "https://a.acme.com/x", "https://a.acme.com/y", http.MethodGet, "", false, false, false},
-		{"same origin 307 with body followed", "https://a.acme.com/x", "https://a.acme.com/y", http.MethodPost, "k=v", true, false, false},
-		{"cross host", "https://a.acme.com/x", "https://b.acme.com/y", http.MethodGet, "", false, true, false},
-		{"https to http", "https://a.acme.com/x", "http://a.acme.com/y", http.MethodGet, "", false, true, false},
-		{"303 drops the body", "https://a.acme.com/x", "https://b.acme.com/y", http.MethodGet, "", false, true, false},
-		{"307 with body refused", "https://a.acme.com/x", "https://b.acme.com/y", http.MethodPost, "k=v", true, true, true},
-		{"307 with empty body followed", "https://a.acme.com/x", "https://b.acme.com/y", http.MethodPost, "", true, true, false},
+		{"same origin keeps referer", origin, same, get, "", false, false, false},
+		{"same origin 307 with body followed", origin, same, post, "k=v", true, false, false},
+		{"cross host", origin, other, get, "", false, true, false},
+		{"https to http", origin, "http://a.acme.com/y", get, "", false, true, false},
+		{"303 drops the body", origin, other, get, "", false, true, false},
+		{"307 with body refused", origin, other, post, "k=v", true, true, true},
+		{"307 with empty body followed", origin, other, post, "", true, true, false},
 	}
 
 	for _, tc := range cases {

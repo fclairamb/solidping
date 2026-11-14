@@ -2,10 +2,10 @@ package checkjs
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -133,7 +133,7 @@ func TestRedirectBodyCrossOrigin(t *testing.T) {
 	t.Parallel()
 
 	for _, code := range []int{http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
-		t.Run(fmt.Sprint(code), func(t *testing.T) {
+		t.Run(strconv.Itoa(code), func(t *testing.T) {
 			t.Parallel()
 
 			var hits atomic.Int32

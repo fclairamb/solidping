@@ -2737,7 +2737,7 @@ func TestHTTPChecker_Execute_RefererCrossOriginRedirect(t *testing.T) {
 func TestHTTPChecker_Execute_BodyCrossOriginRedirect(t *testing.T) {
 	t.Parallel()
 
-	const body = `{"token":"s3cr3t-body"}`
+	const body = "token=s3cr3t-body"
 
 	for _, code := range []int{http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
 		t.Run(fmt.Sprintf("cross-origin %d refused", code), func(t *testing.T) {

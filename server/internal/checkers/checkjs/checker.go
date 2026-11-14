@@ -1234,6 +1234,14 @@ func (r *jsRuntime) httpRequest(
 		jsKeyDuration:   duration.Milliseconds(),
 	}
 
+	r.addResponseMarkers(result, dropped, bodyWithheld)
+
+	return result
+}
+
+// addResponseMarkers sets the http.* response fields present only when they
+// apply: tunneled, redirectDroppedHeaders and redirectBodyWithheld.
+func (r *jsRuntime) addResponseMarkers(result map[string]any, dropped []string, bodyWithheld bool) {
 	// Present only when true, so an untunneled response's shape is unchanged.
 	if checkerdef.TunnelDialerFrom(r.execCtx) != nil {
 		result[jsKeyTunneled] = true
@@ -1244,8 +1252,6 @@ func (r *jsRuntime) httpRequest(
 	if bodyWithheld {
 		result[jsKeyRedirectBodyWithheld] = true
 	}
-
-	return result
 }
 
 // redirectPolicy builds the client's CheckRedirect: it records the chain and
