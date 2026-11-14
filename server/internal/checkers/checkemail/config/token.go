@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"regexp"
 )
 
 // tokenByteLength is the number of random bytes (24 → 48 hex chars).
@@ -18,4 +19,13 @@ func generateToken() (string, error) {
 	}
 
 	return hex.EncodeToString(b), nil
+}
+
+// tokenPattern is the only token shape the server mints, and the only one the
+// inbound handler matches: 48 lowercase hex characters.
+var tokenPattern = regexp.MustCompile(`^[0-9a-f]{48}$`)
+
+// IsValidToken reports whether token has the shape the server mints.
+func IsValidToken(token string) bool {
+	return tokenPattern.MatchString(token)
 }

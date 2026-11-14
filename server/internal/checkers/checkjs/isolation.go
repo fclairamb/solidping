@@ -203,7 +203,7 @@ func executeIsolated(
 
 	// http.* runs here in the host, so the redirect hops it stripped are
 	// known only here.
-	if len(host.redirectDroppedHeaders) > 0 {
+	if len(host.redirectDroppedHeaders) > 0 || host.redirectBodyWithheld {
 		if result.Output == nil {
 			result.Output = map[string]any{}
 		}

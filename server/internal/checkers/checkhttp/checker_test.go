@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1939,9 +1940,10 @@ type queryRedirectServers struct {
 	finalMethod, finalBody *string
 }
 
-// newQueryRedirectServers builds a fresh final destination + 307-redirector
-// pair. The final destination captures the method and body it actually
-// received, so a test can confirm both survived the redirect.
+// newQueryRedirectServers builds a fresh 307-redirector whose target, /final,
+// lives on the same origin (a cross-origin 307 with a body is not followed,
+// spec 2026-11-14-02). The final destination captures the method and body it
+// actually received, so a test can confirm both survived the redirect.
 func newQueryRedirectServers(t *testing.T) queryRedirectServers {
 	t.Helper()
 
@@ -1949,7 +1951,13 @@ func newQueryRedirectServers(t *testing.T) queryRedirectServers {
 	method := ""
 	body := ""
 
-	final := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/final" {
+			http.Redirect(w, r, "/final", http.StatusTemporaryRedirect)
+
+			return
+		}
+
 		hit = true
 		method = r.Method
 
@@ -1960,11 +1968,6 @@ func newQueryRedirectServers(t *testing.T) queryRedirectServers {
 		body = string(b)
 
 		w.WriteHeader(http.StatusOK)
-	}))
-	t.Cleanup(final.Close)
-
-	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, final.URL, http.StatusTemporaryRedirect)
 	}))
 	t.Cleanup(redirector.Close)
 
@@ -2650,4 +2653,158 @@ func TestHTTPChecker_Execute_SecretHeadersSchemeRedirect(t *testing.T) {
 			require.NotContains(t, fmt.Sprint(result.Output), "s3cr3t-pw")
 		})
 	}
+}
+
+// TestHTTPChecker_Execute_RefererCrossOriginRedirect: a cross-origin hop never
+// carries Referer, which net/http fills with the previous URL, query string
+// (and so a resolved secret parameter) included (spec 2026-11-14-02, AM2).
+func TestHTTPChecker_Execute_RefererCrossOriginRedirect(t *testing.T) {
+	t.Parallel()
+
+	const query = "?api_key=s3cr3t-param"
+
+	t.Run("cross-origin hop drops Referer", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			mu      sync.Mutex
+			reached bool
+			referer string
+		)
+
+		other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			mu.Lock()
+			reached = true
+			referer = req.Header.Get("Referer")
+			mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+		}))
+		t.Cleanup(other.Close)
+
+		origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			http.Redirect(w, req, other.URL+"/landing", http.StatusFound)
+		}))
+		t.Cleanup(origin.Close)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{URL: origin.URL + "/" + query})
+		require.NoError(t, err)
+		require.Equal(t, checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		require.True(t, reached)
+		require.Empty(t, referer)
+	})
+
+	t.Run("same-origin hop keeps Referer", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			mu      sync.Mutex
+			referer string
+		)
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.URL.Path == "/next" {
+				mu.Lock()
+				referer = req.Header.Get("Referer")
+				mu.Unlock()
+				w.WriteHeader(http.StatusOK)
+
+				return
+			}
+
+			http.Redirect(w, req, "/next", http.StatusFound)
+		}))
+		t.Cleanup(srv.Close)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{URL: srv.URL + "/" + query})
+		require.NoError(t, err)
+		require.Equal(t, checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		require.Contains(t, referer, "api_key=s3cr3t-param")
+	})
+}
+
+// TestHTTPChecker_Execute_BodyCrossOriginRedirect: a 307/308 to another origin
+// would replay the body (and the secrets resolved in it), so the hop is not
+// followed: the result reports the redirect response and
+// redirect_body_withheld (spec 2026-11-14-02, AM3).
+func TestHTTPChecker_Execute_BodyCrossOriginRedirect(t *testing.T) {
+	t.Parallel()
+
+	const body = "token=s3cr3t-body"
+
+	for _, code := range []int{http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
+		t.Run(fmt.Sprintf("cross-origin %d refused", code), func(t *testing.T) {
+			t.Parallel()
+
+			var hits atomic.Int32
+
+			other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				hits.Add(1)
+				w.WriteHeader(http.StatusOK)
+			}))
+			t.Cleanup(other.Close)
+
+			origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				http.Redirect(w, req, other.URL+"/landing", code)
+			}))
+			t.Cleanup(origin.Close)
+
+			result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+				URL:    origin.URL + "/submit",
+				Method: http.MethodPost,
+				Body:   body,
+			})
+			require.NoError(t, err)
+			require.Equal(t, int32(0), hits.Load(), "the other origin must receive no request")
+			require.Equal(t, code, result.Output[checkerdef.OutputKeyStatusCode], "output: %v", result.Output)
+			require.Equal(t, true, result.Output["redirect_body_withheld"])
+			require.NotContains(t, fmt.Sprint(result.Output), "s3cr3t-body")
+		})
+	}
+
+	t.Run("same-origin 307 followed with the body", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			mu  sync.Mutex
+			got string
+		)
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.URL.Path == "/next" {
+				data, _ := io.ReadAll(req.Body)
+
+				mu.Lock()
+				got = string(data)
+				mu.Unlock()
+				w.WriteHeader(http.StatusOK)
+
+				return
+			}
+
+			http.Redirect(w, req, "/next", http.StatusTemporaryRedirect)
+		}))
+		t.Cleanup(srv.Close)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL:    srv.URL + "/submit",
+			Method: http.MethodPost,
+			Body:   body,
+		})
+		require.NoError(t, err)
+		require.Equal(t, checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+		require.NotContains(t, result.Output, "redirect_body_withheld")
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		require.Equal(t, body, got)
+	})
 }

@@ -22,7 +22,11 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 		return err
 	}
 
-	if _, ok := spec.Config["token"].(string); !ok || spec.Config["token"] == "" {
+	// The token is server-managed (spec 2026-11-14-01): the checks service drops
+	// a caller's value before this runs, and a stored value that is not the
+	// minted 48-hex shape is replaced, since the inbound pattern could never
+	// match it anyway.
+	if token, _ := spec.Config["token"].(string); !IsValidToken(token) {
 		token, err := generateToken()
 		if err != nil {
 			return checkerdef.NewConfigError("token", "failed to generate token")

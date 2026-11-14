@@ -155,6 +155,15 @@ type AbsentFieldPreserver interface {
 	PreserveAbsentFields(stored, merged map[string]any)
 }
 
+// ServerManagedFielder is implemented by configs holding fields only the
+// server may write (spec 2026-11-14-01, the email check's inbound token). A
+// caller never chooses their value: on create the field is dropped from the
+// request so the checker's Validate mints it, on update the stored value always
+// wins over whatever the request carries, and a clone gets a fresh one.
+type ServerManagedFielder interface {
+	ServerManagedFields() []string
+}
+
 // ExtraBudgeter is an optional interface a checker config implements when its
 // execution needs wall-clock time beyond the checker's own probe timeout for
 // work that happens AFTER the verdict is decided — the browser checker's

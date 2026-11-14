@@ -49,6 +49,7 @@ func TestRedirectPolicyStripsSecretsOnSchemeDowngrade(t *testing.T) {
 				&httpOptions{followRedirects: true, maxRedirects: 5},
 				&redirects,
 				&dropped,
+				new(bool),
 				map[string]string{"apiKey": "tok-123"},
 			)
 			require.NoError(t, policy(next, []*http.Request{first}))
