@@ -139,6 +139,11 @@ func (s *Service) planCreateCheck(
 		return nil, ErrInvalidCheckType
 	}
 
+	// A server-managed field (an email check's inbound token, spec
+	// 2026-11-14-01) is never taken from the request: dropped here, before any
+	// rule reads the config, so the checker's Validate below mints it.
+	req.Config = withoutServerManagedFields(req.Config, s.serverManagedFieldsFor(ctx, org.UID, req.Type))
+
 	period, err := s.planPeriod(ctx, org.UID, req.Type, req.Period, req.Config)
 	if err != nil {
 		return nil, err

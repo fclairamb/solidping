@@ -39,3 +39,15 @@ func (c *EmailConfig) SecretFields() []string {
 func (c *EmailConfig) ExportRedactedFields() []string {
 	return []string{"token"}
 }
+
+// ServerManagedFields declares the config keys only the server writes.
+// Implements checkerdef.ServerManagedFielder.
+//
+// Inbound mail is matched to its check by the `token` alone, across every
+// organization (GetCheckByEmailToken), so a token a caller could choose is a
+// token they could copy from another org's address (spec 2026-11-14-01). The
+// checks service therefore drops it on create (ValidateSpec mints one), keeps
+// the stored one on every update and mints a fresh one on clone.
+func (c *EmailConfig) ServerManagedFields() []string {
+	return []string{"token"}
+}

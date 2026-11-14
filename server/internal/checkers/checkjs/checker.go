@@ -278,6 +278,15 @@ const OutputKeyRedirectDroppedSecretHeaders = "redirect_dropped_secret_headers"
 // jsKeyRedirectDroppedHeaders is the same list on the http.* response object.
 const jsKeyRedirectDroppedHeaders = "redirectDroppedHeaders"
 
+// OutputKeyRedirectBodyWithheld is true in a check's output when an http.*
+// request got a cross-origin 307/308 that would have replayed its body: the
+// hop was not followed and the redirect response was returned (spec
+// 2026-11-14-02).
+const OutputKeyRedirectBodyWithheld = "redirect_body_withheld"
+
+// jsKeyRedirectBodyWithheld is the same flag on the http.* response object.
+const jsKeyRedirectBodyWithheld = "redirectBodyWithheld"
+
 type repairHoldKey struct{}
 
 // repairHold is the repair allowlist decision taken on a stored config.
@@ -436,6 +445,9 @@ type jsRuntime struct {
 	// redirectDroppedHeaders are the header names cross-origin redirect hops
 	// dropped (spec 2026-11-13-05), reported in the check's output.
 	redirectDroppedHeaders []string
+	// redirectBodyWithheld is set once a cross-origin 307/308 was refused
+	// because it would have replayed a request body.
+	redirectBodyWithheld bool
 
 	// sockets holds one disposer per connection the script opened through the
 	// `tcp` / `udp` / `websocket` globals, in open order. Execute defers
@@ -1156,12 +1168,16 @@ func (r *jsRuntime) httpRequest(
 	// client.Do while that happens, so a plain slice is safe here.
 	redirects := make([]map[string]any, 0)
 
-	// Same goroutine argument: the header names a cross-origin hop dropped.
-	var dropped []string
+	// Same goroutine argument: the header names a cross-origin hop dropped,
+	// and whether a cross-origin 307/308 was refused to keep the body home.
+	var (
+		dropped      []string
+		bodyWithheld bool
+	)
 
 	client := &http.Client{
 		Timeout:       opts.timeout,
-		CheckRedirect: redirectPolicy(&opts, &redirects, &dropped, r.config.Secrets),
+		CheckRedirect: redirectPolicy(&opts, &redirects, &dropped, &bodyWithheld, r.config.Secrets),
 		// the shared pooled HTTP/1.1 check transport when untunneled and no IP
 		// version is pinned (js does not declare SupportsIPVersion) — the same
 		// transport the http and prometheus checkers run on (spec 2026-09-28-04
@@ -1187,6 +1203,7 @@ func (r *jsRuntime) httpRequest(
 
 	resp, err := client.Do(req)
 	r.recordDroppedHeaders(dropped)
+	r.redirectBodyWithheld = r.redirectBodyWithheld || bodyWithheld
 
 	if err != nil {
 		return map[string]any{checkerdef.OutputKeyError: "request failed: " + err.Error()}
@@ -1217,6 +1234,14 @@ func (r *jsRuntime) httpRequest(
 		jsKeyDuration:   duration.Milliseconds(),
 	}
 
+	r.addResponseMarkers(result, dropped, bodyWithheld)
+
+	return result
+}
+
+// addResponseMarkers sets the http.* response fields present only when they
+// apply: tunneled, redirectDroppedHeaders and redirectBodyWithheld.
+func (r *jsRuntime) addResponseMarkers(result map[string]any, dropped []string, bodyWithheld bool) {
 	// Present only when true, so an untunneled response's shape is unchanged.
 	if checkerdef.TunnelDialerFrom(r.execCtx) != nil {
 		result[jsKeyTunneled] = true
@@ -1224,7 +1249,9 @@ func (r *jsRuntime) httpRequest(
 
 	addRedirectDroppedHeaders(result, dropped)
 
-	return result
+	if bodyWithheld {
+		result[jsKeyRedirectBodyWithheld] = true
+	}
 }
 
 // redirectPolicy builds the client's CheckRedirect: it records the chain and
@@ -1235,8 +1262,14 @@ func (r *jsRuntime) httpRequest(
 // is the OAuth case the spec is about: the 302 carrying `code=` IS the success
 // signal, so it must be observable, and the chain stays empty because nothing
 // was followed.
+//
+// A cross-origin hop never carries Referer, and a cross-origin 307/308 that
+// would replay the request body is not followed either: the redirect response
+// is returned and *bodyWithheld is set (checkerdef.ApplyRedirectHop, spec
+// 2026-11-14-02).
 func redirectPolicy(
-	opts *httpOptions, redirects *[]map[string]any, dropped *[]string, secrets map[string]string,
+	opts *httpOptions, redirects *[]map[string]any, dropped *[]string, bodyWithheld *bool,
+	secrets map[string]string,
 ) func(*http.Request, []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
 		if !opts.followRedirects {
@@ -1257,8 +1290,16 @@ func redirectPolicy(
 		// 2026-11-13-05). So a check holding secrets sends only the generic
 		// headers of redirectSafeHeaders past its origin, and the value match
 		// still covers one of those carrying a raw secret.
-		if len(via) > 0 && !checkerdef.SameRedirectOrigin(via[0].URL, req.URL) {
-			*dropped = append(*dropped, stripRedirectHeaders(req.Header, secrets)...)
+		if len(via) > 0 {
+			if hop := checkerdef.ApplyRedirectHop(via[0].URL, req); hop.CrossOrigin {
+				*dropped = append(*dropped, stripRedirectHeaders(req.Header, secrets)...)
+
+				if hop.WithholdBody {
+					*bodyWithheld = true
+
+					return http.ErrUseLastResponse
+				}
+			}
 		}
 
 		if req.Response != nil {
@@ -1287,7 +1328,9 @@ func redirectPolicy(
 
 // redirectSafeHeaders are the canonical names of the headers that never carry
 // credentials: they follow a cross-origin hop even when the check has secrets.
-// Referer is the one net/http adds itself on a redirect.
+// Referer is not one of them: net/http fills it with the previous URL, whose
+// query can hold a secret, so checkerdef.ApplyRedirectHop removes it from
+// every cross-origin hop, secrets or not (spec 2026-11-14-02).
 //
 //nolint:gochecknoglobals // read-only lookup table
 var redirectSafeHeaders = map[string]bool{
@@ -1297,7 +1340,6 @@ var redirectSafeHeaders = map[string]bool{
 	"Content-Type":    true,
 	"User-Agent":      true,
 	"Cache-Control":   true,
-	"Referer":         true,
 }
 
 // stripRedirectHeaders deletes, before a cross-origin hop, every header that
@@ -1351,9 +1393,16 @@ func (r *jsRuntime) recordDroppedHeaders(names []string) {
 
 // addDroppedHeaders reports the dropped header names (never their values) as
 // redirect_dropped_secret_headers, like the http checker does.
+//
+// It also reports redirect_body_withheld when a cross-origin 307/308 was
+// refused to keep a request body on its origin.
 func (r *jsRuntime) addDroppedHeaders(out map[string]any) {
 	if len(r.redirectDroppedHeaders) > 0 {
 		out[OutputKeyRedirectDroppedSecretHeaders] = dedupSorted(r.redirectDroppedHeaders)
+	}
+
+	if r.redirectBodyWithheld {
+		out[OutputKeyRedirectBodyWithheld] = true
 	}
 }
 
