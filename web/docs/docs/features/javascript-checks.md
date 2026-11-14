@@ -249,13 +249,19 @@ next. For a flow that needs cookies across calls, see
 **Redirects and secrets.** When the check has `secrets`, a redirect hop that
 leaves the first request's origin (another host, another port, or an https →
 http downgrade) carries only generic headers: `Accept`, `Accept-Encoding`,
-`Accept-Language`, `Content-Type`, `User-Agent`, `Cache-Control` and the
-`Referer` net/http adds. Every other header the script set is dropped, since it
+`Accept-Language`, `Content-Type`, `User-Agent` and `Cache-Control`. Every other header the script set is dropped, since it
 may hold a secret in an encoded form (base64, hex, percent-encoding) — and a
 kept header whose value contains a raw secret is dropped too. The dropped names
 (never their values) are listed in the response's `redirectDroppedHeaders` and
 in the check's output as `redirect_dropped_secret_headers`. A check without
 secrets sends its headers unchanged.
+
+Whatever the check holds, a hop that leaves the first request's origin never
+carries `Referer` (it would repeat the previous URL, query string and any
+secret in it included), and a 307 or 308 that would resend a request body is
+followed only within that origin. To another origin it is not followed: the
+script gets the 307/308 response itself, with `redirectBodyWithheld: true`, and
+the check's output reports `redirect_body_withheld: true`.
 
 **Response**
 
@@ -267,6 +273,7 @@ secrets sends its headers unchanged.
 | `url` | The final URL, after any redirects that were followed |
 | `redirects` | The chain that was walked: `[{statusCode, location}]`, empty when nothing was followed |
 | `redirectDroppedHeaders` | Names of the headers a cross-origin redirect hop dropped from a check with `secrets` (see above) — present only when one was dropped |
+| `redirectBodyWithheld` | `true` when a 307/308 to another origin was not followed because it would have resent the request body (see above) — present only when true |
 | `duration` | Milliseconds |
 | `tunneled` | `true` when the check has a `tunnelCheckUid` and the request was dialed through it — present only when true, so an untunneled response's shape is unchanged. See [Running through an SSH tunnel](#running-through-an-ssh-tunnel) |
 | `error` | Present **instead of** every field above when the request could not even be made (DNS failure, connection refused, …) — always check `resp.error` before reading `resp.statusCode` |
