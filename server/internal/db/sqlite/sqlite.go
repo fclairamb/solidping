@@ -1900,9 +1900,14 @@ func (s *Service) GetCheckByEmailToken(ctx context.Context, token string) (*mode
 
 	if err := s.db.NewSelect().
 		Model(&found).
-		Where("type = ?", string(checkerdef.CheckTypeEmail)).
-		Where("deleted_at IS NULL").
-		Where("json_extract(config, '$.token') = ?", token).
+		// A deleted org keeps its checks live (DeleteOrganization only
+		// soft-deletes the org row), so its tokens must read as unknown here
+		// or inbound mail keeps writing results into it (spec 2026-11-15-03).
+		Join("JOIN organizations AS o ON o.uid = ?TableAlias.organization_uid").
+		Where("?TableAlias.type = ?", string(checkerdef.CheckTypeEmail)).
+		Where("?TableAlias.deleted_at IS NULL").
+		Where("o.deleted_at IS NULL").
+		Where("json_extract(?TableAlias.config, '$.token') = ?", token).
 		Limit(2).
 		Scan(ctx); err != nil {
 		return nil, err

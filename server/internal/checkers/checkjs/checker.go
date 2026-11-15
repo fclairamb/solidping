@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -1177,7 +1178,7 @@ func (r *jsRuntime) httpRequest(
 
 	client := &http.Client{
 		Timeout:       opts.timeout,
-		CheckRedirect: redirectPolicy(&opts, &redirects, &dropped, &bodyWithheld, r.config.Secrets),
+		CheckRedirect: redirectPolicy(&opts, &redirects, &dropped, &bodyWithheld, r.redirectSecrets()),
 		// the shared pooled HTTP/1.1 check transport when untunneled and no IP
 		// version is pinned (js does not declare SupportsIPVersion) — the same
 		// transport the http and prometheus checkers run on (spec 2026-09-28-04
@@ -1347,6 +1348,32 @@ var redirectSafeHeaders = map[string]bool{
 // can leak, so the headers are left alone. With secrets, every header outside
 // redirectSafeHeaders goes, and so does a safe one whose value contains a raw
 // secret.
+// redirectSecrets is what a cross-origin redirect hop matches headers
+// against: the check's `secrets`, plus the values its `${param:…}` /
+// `${env:…}` references resolved to (spec 2026-11-15-01). A reference in env
+// or in the script carries a real value once resolved, so a check holding one
+// counts as holding secrets even with no `secrets` block. http.* always runs
+// in this (host) process, isolated or not, so execCtx carries the values.
+func (r *jsRuntime) redirectSecrets() map[string]string {
+	refs := checkerdef.ResolvedReferenceValuesFrom(r.execCtx)
+	if len(refs) == 0 {
+		return r.config.Secrets
+	}
+
+	merged := make(map[string]string, len(r.config.Secrets)+len(refs))
+	for key, value := range r.config.Secrets {
+		merged[key] = value
+	}
+
+	// The keys only need to be distinct: the matching reads the values. A NUL
+	// prefix cannot collide with a `secrets` key.
+	for i, value := range refs {
+		merged["\x00ref:"+strconv.Itoa(i)] = value
+	}
+
+	return merged
+}
+
 func stripRedirectHeaders(header http.Header, secrets map[string]string) []string {
 	if len(secrets) == 0 {
 		return nil

@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 // Prometheus HTTP API result types.
@@ -72,13 +74,15 @@ func queryURL(base, query string) (string, error) {
 // rejected rather than silently reduced: a range query returns a series of
 // points over time and there is no defensible single "current value" to grade
 // — the fix is an instant query, so the error says so.
-func fetchPromQL(ctx context.Context, cfg *PrometheusConfig) (*resolution, error) {
+func fetchPromQL(
+	ctx context.Context, cfg *PrometheusConfig, redirects *checkerdef.CredentialRedirectPolicy,
+) (*resolution, error) {
 	target, err := queryURL(cfg.URL, cfg.Query)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := doGet(ctx, cfg, target)
+	resp, err := doGet(ctx, cfg, redirects, target)
 	if err != nil {
 		return nil, err
 	}

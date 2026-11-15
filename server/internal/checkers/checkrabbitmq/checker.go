@@ -383,6 +383,21 @@ func managementSnippet(body []byte) string {
 	return string(body[:managementErrorSnippet]) + "…[truncated]"
 }
 
+// managementClient is the client of the management API calls. It does not
+// follow redirects: the URL is built from the configured host and port, so a
+// redirect is never expected, and following one with net/http's policy would
+// resend the Basic auth to the new host on a same-host https -> http hop, or
+// any header to another host (spec 2026-11-15-02). The redirect response
+// itself is the result: a non-200 status.
+func managementClient(ctx context.Context) *http.Client {
+	client := checkerdef.GuardedHTTPClient(ctx)
+	client.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	return client
+}
+
 // errNodesRequestFailed wraps a non-200 /api/nodes response into a static,
 // wrapped error (err113) while still naming the actual status/body.
 var errNodesRequestFailed = errors.New("management API request failed")
@@ -405,8 +420,8 @@ func fetchNodes(ctx context.Context, cfg *RabbitMQConfig, mgmtPort int) ([]nodeI
 	req.SetBasicAuth(cfg.Username, cfg.Password)
 
 	// Management API: same host, answers to the egress guard (spec
-	// 2026-09-25-19) under an enforcing policy.
-	resp, err := checkerdef.GuardedHTTPClient(ctx).Do(req)
+	// 2026-09-25-19) under an enforcing policy, never follows a redirect.
+	resp, err := managementClient(ctx).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -676,8 +691,8 @@ func (c *RabbitMQChecker) doManagementRequest(
 	metrics := map[string]any{}
 
 	// Management API: same host, answers to the egress guard (spec
-	// 2026-09-25-19) under an enforcing policy.
-	resp, err := checkerdef.GuardedHTTPClient(ctx).Do(req)
+	// 2026-09-25-19) under an enforcing policy, never follows a redirect.
+	resp, err := managementClient(ctx).Do(req)
 	if err != nil {
 		return handleManagementError(ctx, err, start, output), nil
 	}
