@@ -135,6 +135,24 @@ const tooltipFor = (page: Page, probes: string) =>
 const cells = (page: Page) =>
   page.getByTestId("response-time-chart-availability-strip-cell");
 
+/**
+ * Bring the strip to the middle of the viewport before any hover.
+ *
+ * A hovered cell grows (`hover:scale-y-125`). When the strip sits at the
+ * bottom edge of the viewport, the grown cell no longer fits, so the NEXT
+ * Playwright hover scrolls the page first. That scroll moves the cell out from
+ * under the pointer, and Radix closes an open tooltip on any scroll of its
+ * trigger's ancestors: depending on whether that scroll event lands before or
+ * after the reopening pointermove, the tooltip ends up open or closed. With
+ * the strip centred, no hover ever needs to scroll.
+ */
+async function centerStrip(page: Page): Promise<void> {
+  await expect(cells(page)).toHaveCount(6, { timeout: 10000 });
+  await page
+    .getByTestId("response-time-chart-availability-strip")
+    .evaluate((el) => el.scrollIntoView({ block: "center" }));
+}
+
 test.describe("Chart availability strip", () => {
   test("hovering a cell reveals its exact percentage, span and probe counts", async ({
     authenticatedPage,
@@ -142,7 +160,7 @@ test.describe("Chart availability strip", () => {
     const page = authenticatedPage;
     await gotoCheckDetail(page);
 
-    await expect(cells(page)).toHaveCount(6, { timeout: 10000 });
+    await centerStrip(page);
 
     // The bad cell: 20 of 60 probes up. Tooltips are matched by CONTENT rather
     // than by position, because Radix leaves the previous tooltip mounted for a
@@ -158,11 +176,10 @@ test.describe("Chart availability strip", () => {
     // The no-data cell must offer no percentage at all — a tooltip claiming a
     // number for a bucket with no probes is the fabricated figure this spec
     // exists to remove.
-    // Leave the current cell, then hover the next one TWICE: Radix opens on a
-    // pointermove inside the trigger, and the single move Playwright's first
-    // hover() emits lands on the boundary often enough to be flaky.
+    // Leave the current cell, then hover the no-data one. A single hover is
+    // enough: what used to make this step flaky was a second hover() that
+    // scrolled the page (see centerStrip), not the pointermove itself.
     await page.mouse.move(0, 0);
-    await cells(page).nth(5).hover();
     await cells(page).nth(5).hover();
 
     const noDataTooltip = page.locator(
@@ -178,7 +195,7 @@ test.describe("Chart availability strip", () => {
     const page = authenticatedPage;
     await gotoCheckDetail(page);
 
-    await expect(cells(page)).toHaveCount(6, { timeout: 10000 });
+    await centerStrip(page);
 
     // Cell 3 is the bad bucket (20 / 60), cell 4 is a healthy one (60 / 60) —
     // adjacent, so a pointer sweep along the strip crosses straight from one
