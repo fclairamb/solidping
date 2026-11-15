@@ -13,6 +13,12 @@ import (
 // incompatible server upgrades and force a clean reconnect.
 const ProtocolVersion = 1
 
+// HeaderBootID carries the agent's boot ID on a signed reconnect, which has
+// no frame of its own (the enroll frame carries it as BootID). See
+// ClientFrame.BootID. Not covered by the reconnect signature: the worst a
+// forged value does is free the agent's own leases early.
+const HeaderBootID = "X-Sp-Agent-Boot-Id"
+
 // Client -> server frame types.
 const (
 	MsgTypeEnroll = "enroll"
@@ -65,6 +71,12 @@ type ClientFrame struct {
 	Name             string `json:"name,omitempty"`
 	Ed25519PublicKey string `json:"ed25519PublicKey,omitempty"`
 	X25519PublicKey  string `json:"x25519PublicKey,omitempty"`
+	// BootID is a random ID the agent generates once per process (spec
+	// 2026-11-14-03), sent here on enroll and in HeaderBootID on reconnect.
+	// The server frees the agent's check-job leases when it changes: a new
+	// process cannot finish the runs the old one leased. OPTIONAL: an older
+	// agent omits it and its leases wait for expiry, as before.
+	BootID string `json:"bootId,omitempty"`
 
 	// claim
 	MaxJobs  int    `json:"maxJobs,omitempty"`

@@ -82,7 +82,7 @@ voice is normal.
 | `SP_SMS_PROVIDER` | `twilio` | `twilio`, `ovh` or `smsfactor`. |
 | `SP_SMS_SENDER` | — | The instance-wide sender: an E.164 number for Twilio, a registered alphanumeric sender or short number for OVH, a registered alphanumeric sender for SMS Factor (optional there). |
 | `SP_SMS_GLOBAL_RUNAWAY_PER_HOUR` | `500` | Instance-wide hourly cap — see [Spend protection](#spend-protection). Negative disables it. |
-| `SP_SMS_ALLOWED_COUNTRIES` | *(empty = all)* | Comma-separated E.164 country calling codes, e.g. `33,1,44`. |
+| `SP_SMS_ALLOWED_COUNTRIES` | *(empty = all)* | Comma-separated E.164 country calling codes, e.g. `33,1,44`. Repeated refusals flag the organization, see [Verification-code probing](#verification-code-probing). |
 
 There is deliberately **no per-organization sender** on this path: the shared
 credentials send under one sender for every organization. An organization that
@@ -489,9 +489,10 @@ The allow-list closes another: a count quota under-prices expensive
 destinations — France is around 0,05 € while some destinations exceed 0,30 €, a
 six-fold spread on an identical quota.
 
-Both instance guards **log loudly** and surface on the organization's **Usage**
-page when they refuse a send. They never fail silently: what they drop is an
-alert.
+Both instance guards **log** and surface on the organization's **Usage** page
+when they refuse a send. They never fail silently: what they drop is an alert.
+An allow-list refusal is a `WARN` line carrying the destination's leading
+digits (`destinationPrefix`), never the full number.
 
 On top of all four, monthly quotas come from the organization's entitlements. A
 self-hosted deployment is **unlimited** by default — the operator's own
@@ -509,6 +510,28 @@ mode).
 The first time a channel's monthly cap refuses a send in a month, the
 organization's owners and admins get one email about it. Hourly-guard refusals
 do not send it.
+
+### Verification-code probing
+
+Phone and WhatsApp verification codes are the cheapest way to make an instance
+send an SMS, so they have limits of their own, on top of the per-contact one
+(3 codes per contact per hour):
+
+| Limit | Value |
+|---|---|
+| Distinct destinations receiving a code, per organization per hour | 5 |
+| Same, when the requesting account is younger than 24 hours | 2 |
+| Allow-list refusals that flag an organization | 3 within 10 minutes |
+| Verification block of a flagged organization | 1 hour |
+
+Re-sending a code to a destination already counted does not use a slot. When an
+organization's sends hit `SP_SMS_ALLOWED_COUNTRIES` 3 times within 10 minutes,
+the usual signature of SMS pumping, SolidPing logs one `ERROR` ("SMS
+destination probing"), sends the **SMS destination probing** operator
+notification (subscribe to it under **Server → Notifications**) at most once
+per organization per hour, and refuses every verification code of that
+organization for the next hour. Users see the usual "requested too recently"
+message. These limits are fixed and process-local: a restart resets them.
 
 ## Trial accounts
 
@@ -536,7 +559,8 @@ A Twilio trial account is fine for a first end-to-end test, with three caveats:
 | SMS arrives, no voice call | `voice_from_number` is empty, `SP_BASE_URL` is unset, or the severity lacks the `voice` token. |
 | Voice call connects but says nothing useful, or callbacks return 403 | The auth token in the connection no longer matches Twilio's — signature validation fails. |
 | Nothing sent, log says paging skipped | The contact is unverified, or neither mode is available: no organization integration **and** no instance-level SMS (`SP_SMS_ENABLED` plus credentials). |
-| Instance SMS refused, "country not in allow-list" in the logs | The destination's country calling code is outside `SP_SMS_ALLOWED_COUNTRIES`. Bring-your-own sends are never gated by it. |
+| Instance SMS refused, "country not in allow-list" in the logs | The destination (its leading digits are in `destinationPrefix`) is outside `SP_SMS_ALLOWED_COUNTRIES`. Bring-your-own sends are never gated by it. |
+| "verification code was requested too recently" on a new contact | The organization reached its distinct-destination limit for the hour, or is blocked after an SMS destination probing alert. See [Verification-code probing](#verification-code-probing). |
 | Instance SMS refused, "instance-wide hourly cap exhausted" | `SP_SMS_GLOBAL_RUNAWAY_PER_HOUR` tripped — alerts are being dropped instance-wide. Check the Usage page. |
 | `smsfactor rejected the request: status -1` | The SMS Factor API token is wrong or revoked. |
 | `smsfactor rejected the request: status -3` | The SMS Factor account is out of credits. |

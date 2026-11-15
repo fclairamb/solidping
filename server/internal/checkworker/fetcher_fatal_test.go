@@ -71,6 +71,10 @@ func (b *claimFailBackend) SubmitResult(
 	return nil
 }
 
+func (b *claimFailBackend) ReleaseStaleLeases(context.Context, string, time.Time) (int, error) {
+	return 0, nil
+}
+
 func (b *claimFailBackend) DeferRateLimited(context.Context, *models.CheckJob, string, time.Time) error {
 	return nil
 }

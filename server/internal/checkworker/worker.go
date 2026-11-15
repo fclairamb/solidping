@@ -603,12 +603,30 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 		Version:      &agentVersion,
 	}
 
+	// Taken before Register: nothing this process claims can predate it, so
+	// every lease older than this one was left by a previous process.
+	registeredAt := time.Now()
+
 	registeredWorker, err := r.backend.Register(ctx, worker)
 	if err != nil {
 		return err
 	}
 
 	r.setWorker(registeredWorker)
+
+	// A restarted process comes back under the same worker UID (registration
+	// matches by slug) but does not know it holds its predecessor's leases.
+	// Free them before the fetcher starts, or nobody runs those jobs until
+	// their lease expires, up to a whole period later (spec 2026-11-14-03).
+	// A failure only costs that wait, so it does not stop the worker.
+	released, err := r.backend.ReleaseStaleLeases(ctx, registeredWorker.UID, registeredAt)
+	if err != nil {
+		r.logger.WarnContext(ctx, "Failed to release the leases of a previous process", "error", err)
+	} else if released > 0 {
+		r.logger.InfoContext(ctx, "Released the leases of a previous process",
+			"worker", registeredWorker.Slug, "released", released)
+	}
+
 	return nil
 }
 

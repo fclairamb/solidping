@@ -10,7 +10,14 @@
 // their own (simpler) fallback — clear the session and let the caller
 // decide what to do next (redirect to login).
 
-import { clearToken, getRefreshToken, getToken, redirectToExpiredLogin, setSession } from "@/api/client";
+import {
+  clearToken,
+  getRefreshToken,
+  getSessionEpoch,
+  getToken,
+  redirectToExpiredLogin,
+  setSession,
+} from "@/api/client";
 import { exitImpersonation, isImpersonating } from "@/lib/impersonation";
 
 interface RefreshResponse {
@@ -103,12 +110,32 @@ async function doRefresh(): Promise<RefreshOutcome> {
     return { accessToken: null, failureReason: "no-refresh-token" };
   }
 
+  // The session this refresh belongs to. If it is replaced while the POST is
+  // in flight (an org rename or switch adopted a new session), the answer is
+  // about a session that no longer exists: writing its access token would pair
+  // it with the NEW refresh token (a mixed session scoped to the old slug), and
+  // escalating its 401 would log the user out of the new one
+  // (solidping-business#81). Hand back the current token instead.
+  const epoch = getSessionEpoch();
+  const superseded = (): RefreshOutcome | null => {
+    if (getSessionEpoch() === epoch) return null;
+    const current = getToken();
+    return current
+      ? { accessToken: current }
+      : { accessToken: null, failureReason: "no-refresh-token" };
+  };
+
   try {
     const response = await fetch("/api/v1/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken }),
     });
+
+    const replaced = superseded();
+    if (replaced) {
+      return replaced;
+    }
 
     if (response.status === 401) {
       escalate("rejected");
@@ -120,6 +147,10 @@ async function doRefresh(): Promise<RefreshOutcome> {
     }
 
     const data = (await response.json()) as RefreshResponse;
+    const replacedWhileReading = superseded();
+    if (replacedWhileReading) {
+      return replacedWhileReading;
+    }
     // The refresh token itself never rotates (see spec D1/D2) — only the
     // access token and its expiry change, so the stored refresh token is
     // left untouched.

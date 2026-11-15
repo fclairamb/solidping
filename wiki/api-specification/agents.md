@@ -21,6 +21,9 @@ Auth (agent credentials, two phases):
   `X-Sp-Agent-Uid`, `X-Sp-Timestamp`, `X-Sp-Nonce`, and `X-Sp-Signature`. The
   timestamp bounds replay windows and the nonce makes each signature
   single-use.
+- Both phases carry the agent's per-process boot ID (`bootId` in the enroll
+  frame, `X-Sp-Agent-Boot-Id` on reconnect, optional). A changed boot ID frees
+  the leases of the agent's previous process (spec 2026-11-14-03).
 
 ### POST /api/v1/agent/attachments
 The WS route's sibling, and its counterpart: the socket is a JSON control

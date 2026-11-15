@@ -3,6 +3,7 @@ package checkworker
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -26,6 +27,11 @@ func (b *captureRegisterBackend) Register(
 	b.registered = worker
 
 	return worker, nil
+}
+
+// ReleaseStaleLeases holds no leases to free (spec 2026-11-14-03).
+func (b *captureRegisterBackend) ReleaseStaleLeases(context.Context, string, time.Time) (int, error) {
+	return 0, nil
 }
 
 // TestRegisterWorkerIdentity proves the check worker's `workers` row takes its

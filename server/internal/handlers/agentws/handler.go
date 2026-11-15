@@ -284,7 +284,8 @@ func (h *Handler) serveEnrollment(
 	// version to compare — an agent that omitted it (or predates the field)
 	// leaves the drift check for the first claim to perform, same as a bare
 	// reconnect.
-	h.runAgentConnection(ctx, conn, live, agent, versionChecked)
+	// The enroll path already recorded the boot ID (awaitEnroll).
+	h.runAgentConnection(ctx, conn, live, agent, versionChecked, "")
 
 	return nil
 }
@@ -359,6 +360,10 @@ func (h *Handler) awaitEnroll(
 	}
 
 	h.warnIfVersionDrift(ctx, agent.UID, frame.Version)
+
+	// A fresh enrollment holds no leases yet; this stores the boot ID so the
+	// next process of this agent is recognized as a new one.
+	h.releaseOnNewBoot(ctx, agent, workerUID, frame.BootID)
 
 	if err := wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
 		Type:        agentcrypto.MsgTypeEnrolled,
@@ -547,9 +552,32 @@ func (h *Handler) serveReconnect(
 	// false: a bare reconnect carries no frame at all, so the version-drift
 	// check has never had a chance to run yet — the first claim on this
 	// connection does it.
-	h.runAgentConnection(ctx, conn, live, agent, false)
+	h.runAgentConnection(ctx, conn, live, agent, false, req.Header.Get(agentcrypto.HeaderBootID))
 
 	return nil
+}
+
+// releaseOnNewBoot frees the leases a previous process of this agent left
+// behind, when bootID shows the agent restarted (spec 2026-11-14-03). A
+// reconnect from the same process keeps its in-flight leases. A failure only
+// costs the wait for lease expiry, so the connection goes on.
+func (h *Handler) releaseOnNewBoot(ctx context.Context, agent *models.Agent, workerUID, bootID string) {
+	if bootID == "" {
+		return
+	}
+
+	released, err := h.checkJobSvc.ReleaseLeasesOnNewBoot(ctx, workerUID, bootID)
+	if err != nil {
+		h.logger.WarnContext(ctx, "failed to release the leases of a previous agent process",
+			"error", err, "agent", agent.UID)
+
+		return
+	}
+
+	if released > 0 {
+		h.logger.InfoContext(ctx, "released the leases of a previous agent process",
+			"agent", agent.UID, "worker", workerUID, "released", released)
+	}
 }
 
 // ensureWorkerRow registers (idempotently, by deterministic slug) the workers
@@ -759,8 +787,12 @@ func isDevBuild(v string) bool {
 // ensureWorkerRow call reports no version ("") — the enroll path already
 // wrote it, and a reconnect has nothing new to report — so it can never
 // clobber what the enroll frame (or a subsequent claim) already stored.
+//
+// bootID is the reconnecting agent's process ID (agents.HeaderBootID), empty
+// on the enroll path, which already recorded it (spec 2026-11-14-03).
 func (h *Handler) runAgentConnection(
 	ctx context.Context, conn *websocket.Conn, live *liveness, agent *models.Agent, versionChecked bool,
+	bootID string,
 ) {
 	if !h.beginConnection() {
 		_ = conn.Close(websocket.StatusGoingAway, "server shutting down")
@@ -776,6 +808,10 @@ func (h *Handler) runAgentConnection(
 
 		return
 	}
+
+	// Before the hello frame: the agent claims as soon as it sees it, and a
+	// restarted agent must find its predecessor's jobs claimable.
+	h.releaseOnNewBoot(ctx, agent, workerUID, bootID)
 
 	state := &connState{
 		agent: agent, workerUID: workerUID, versionChecked: versionChecked,

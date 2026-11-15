@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   apiFetch,
+  clearToken,
   getRefreshToken,
+  getSessionEpoch,
   getToken,
   handleResponse,
   NetworkError,
@@ -409,5 +411,106 @@ describe("apiFetch — logout POST still refreshes despite loggingOut", () => {
     // there was nothing for token-refresh.ts's escalate() to log either.
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+});
+
+// solidping-business#81: a request that left with the session the org rename
+// just replaced must not tear down the new one when it 401s.
+describe("session epoch and stale-token 401s", () => {
+  let store: Record<string, string>;
+  let hrefSetter: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    store = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => {
+        store[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete store[k];
+      },
+    });
+    hrefSetter = vi.fn();
+    vi.stubGlobal("window", {
+      location: {
+        pathname: "/d/orgs/acme-new/organization/settings",
+        search: "",
+        set href(v: string) {
+          hrefSetter(v);
+        },
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  const flags = (sentToken: string | null) => ({
+    skipAuth: false,
+    suppress401Redirect: false,
+    hadSession: true,
+    sentToken,
+  });
+
+  it("bumps the epoch when the refresh token is replaced or cleared, not on an access-token refresh", () => {
+    setSession("at-1", "rt-1", 900);
+    const afterLogin = getSessionEpoch();
+
+    setSession("at-2", undefined, 900);
+    expect(getSessionEpoch()).toBe(afterLogin);
+    setSession("at-3", "rt-1", 900);
+    expect(getSessionEpoch()).toBe(afterLogin);
+
+    setSession("at-4", "rt-2", 900);
+    expect(getSessionEpoch()).toBe(afterLogin + 1);
+
+    clearToken();
+    expect(getSessionEpoch()).toBe(afterLogin + 2);
+  });
+
+  it("clears the session and redirects on a 401 for the current token (positive control)", async () => {
+    setSession("current-token", "current-refresh", 900);
+
+    await expect(
+      handleResponse(new Response(null, { status: 401 }), flags("current-token")),
+    ).rejects.toMatchObject({ status: 401, code: "UNAUTHORIZED" });
+
+    expect(getToken()).toBeNull();
+    expect(hrefSetter).toHaveBeenCalledWith(expect.stringContaining("session_expired=true"));
+  });
+
+  it("keeps the newer session on a 401 for a token that was replaced in flight", async () => {
+    setSession("new-slug-token", "new-refresh", 900);
+
+    await expect(
+      handleResponse(new Response(null, { status: 401 }), flags("old-slug-token")),
+    ).rejects.toMatchObject({ status: 401, code: "SESSION_CHANGED" });
+
+    expect(getToken()).toBe("new-slug-token");
+    expect(getRefreshToken()).toBe("new-refresh");
+    expect(hrefSetter).not.toHaveBeenCalled();
+  });
+
+  it("keeps the newer session when a request sent before the swap 401s end to end", async () => {
+    setSession("old-slug-token", "old-refresh", 900);
+
+    const fetchSpy = vi.fn(async () => {
+      // The rename adopts its session while this request is in flight.
+      setSession("new-slug-token", "new-refresh", 900);
+      return new Response(null, { status: 401 });
+    });
+    vi.stubGlobal("fetch", fetchSpy as unknown as typeof fetch);
+
+    // _isRetry: no second refresh-and-retry, so the stale 401 reaches
+    // handleResponse as is.
+    await expect(
+      apiFetch("/api/v1/orgs/acme-old/checks", { _isRetry: true }),
+    ).rejects.toMatchObject({ code: "SESSION_CHANGED" });
+
+    expect(getToken()).toBe("new-slug-token");
+    expect(hrefSetter).not.toHaveBeenCalled();
   });
 });

@@ -22,6 +22,7 @@ A signup produced nothing at all beyond an optional analytics event.
 |---|---|---|
 | `support.message` | An **inbound** support message is captured, on any channel (WhatsApp, Telegram, SMS, Slack, Discord) | Channel, sender, whether the thread is new, a ~200-character preview, and a deep link to the thread |
 | `user.registered` | A new account is created, by any method — password, Google, GitHub, GitLab, Microsoft, Discord, Slack, OIDC, SAML, LDAP, or accepting an invitation | Email, display name, signup method, and the organization they landed in (or "no organization") |
+| `sms.destination_probing` | One organization's SMS sends were refused by `SP_SMS_ALLOWED_COUNTRIES` 3 times within 10 minutes (likely SMS pumping); at most once per organization per hour. See [SMS](./sms.md#verification-code-probing) | Organization slug and UID, refusal count, the refused destination prefixes (never a full number), and the length of the verification block |
 
 Outbound replies do **not** fire `support.message`: a colleague answering is not
 something anyone needs to be paged for.

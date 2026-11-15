@@ -87,5 +87,13 @@
     },
     "diff": "Modifications :",
     "review": "Pour relire ou annuler cette réparation : {link}"
+  },
+  "smsDestinationProbing": {
+    "subject": "Sondage de destinations SMS depuis {org}",
+    "intro_one": "{count} envoi(s) SMS d'une même organisation ont été refusés par la liste des pays autorisés (SP_SMS_ALLOWED_COUNTRIES) en {minutes} minutes : probablement une tentative de fraude au SMS (SMS pumping).",
+    "intro_other": "{count} envois SMS d'une même organisation ont été refusés par la liste des pays autorisés (SP_SMS_ALLOWED_COUNTRIES) en {minutes} minutes : probablement une tentative de fraude au SMS (SMS pumping).",
+    "org": "Org :       {org}",
+    "prefixes": "Préfixes : {prefixes}",
+    "blocked": "Ses codes de vérification par téléphone et WhatsApp sont refusés pendant les {minutes} prochaines minutes."
   }
 }

@@ -152,6 +152,39 @@ type Service interface {
 	// diagnostic that exposed this pathology in production.
 	DeferLeaseRateLimited(ctx context.Context, jobUID string, workerUID string, nextScheduledAt time.Time) error
 
+	// ReleaseWorkerLeases frees every check-job lease workerUID holds that was
+	// taken before claimedBefore (spec 2026-11-14-03). A restarted process
+	// comes back under the same worker UID but does not know it holds those
+	// leases, so without this nobody runs them until lease_expires_at, up to a
+	// whole period later.
+	//
+	// The job becomes due at once: scheduled_at and effective_scheduled_at are
+	// left alone, and the job is already overdue. A "Capture now" request the
+	// lease carried goes back to pending, and a parked run request stays (no
+	// probe answered either). lease_starts is kept, not reset: the lease ended
+	// without a release, which is what the crash-loop counter counts, and the
+	// next claim adds one to it. The multi-step pointers (step_run_*) are kept
+	// too, like the stuck-job reaper does, so the next claim resumes the run.
+	//
+	// claimedBefore guards against a sibling sharing the slug (two pods with
+	// the same SP_NODE_NAME during a rolling update): leases it claims after
+	// this process started are never touched. A claim sets updated_at, so a
+	// lease with updated_at at or after claimedBefore is left to expire.
+	// Returns the number of jobs freed.
+	ReleaseWorkerLeases(ctx context.Context, workerUID string, claimedBefore time.Time) (int, error)
+
+	// ReleaseLeasesOnNewBoot records bootID, the random ID a deported agent
+	// process sends on enroll and reconnect, on its workers row, and frees
+	// the worker's leases (ReleaseWorkerLeases) only when it replaces a
+	// DIFFERENT stored boot ID (spec 2026-11-14-03). A reconnect from the
+	// same process (a network blip) keeps its in-flight leases, so the result
+	// it submits afterwards is still accepted. An empty bootID (an agent too
+	// old to send one) does nothing. A first report on a row that has none
+	// only stores it: there is no way to tell whether the process changed.
+	// Both writes share one transaction, so a failed release leaves the old
+	// boot ID in place and the next connection tries again.
+	ReleaseLeasesOnNewBoot(ctx context.Context, workerUID string, bootID string) (int, error)
+
 	// ReleaseLeaseWithSchedulingState releases the lease, reschedules, and folds
 	// the post-exec cost and delay signals into the row in the same write: it
 	// stores the updated cost and delay EWMAs, the recomputed
@@ -1313,6 +1346,98 @@ func (s *serviceImpl) DeferLeaseRateLimited(
 		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
 
 	return s.execRelease(ctx, jobUID, update)
+}
+
+// ReleaseWorkerLeases frees the leases a previous process of workerUID left
+// behind (spec 2026-11-14-03). See the interface for the column rules.
+func (s *serviceImpl) ReleaseWorkerLeases(
+	ctx context.Context,
+	workerUID string,
+	claimedBefore time.Time,
+) (int, error) {
+	return releaseWorkerLeases(ctx, s.db, workerUID, claimedBefore)
+}
+
+func releaseWorkerLeases(ctx context.Context, idb bun.IDB, workerUID string, claimedBefore time.Time) (int, error) {
+	result, err := idb.NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("lease_worker_uid = NULL").
+		Set("lease_expires_at = NULL").
+		// lease_starts is deliberately kept: see the interface doc.
+		// scheduled_at / effective_scheduled_at are kept: the job is overdue,
+		// so it is due right away. run_requested_at is kept: no probe ran.
+		Set("capture_requested_at = COALESCE(capture_requested_at, capture_claimed_at)").
+		Set("capture_claimed_at = NULL").
+		Set("updated_at = ?", time.Now()).
+		Where("lease_worker_uid = ?", workerUID).
+		Where("updated_at < ?", claimedBefore).
+		Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to release the worker's leases: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	return int(rows), nil
+}
+
+// maxBootIDLen caps the boot ID a client may store. The agent sends a UUID.
+const maxBootIDLen = 64
+
+// ReleaseLeasesOnNewBoot records the agent's boot ID and frees its leases
+// when the process changed (spec 2026-11-14-03).
+func (s *serviceImpl) ReleaseLeasesOnNewBoot(ctx context.Context, workerUID string, bootID string) (int, error) {
+	if bootID == "" || len(bootID) > maxBootIDLen {
+		return 0, nil
+	}
+
+	released := 0
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		claimedBefore := time.Now()
+
+		changed, err := tx.NewUpdate().
+			Model((*models.Worker)(nil)).
+			Set("boot_id = ?", bootID).
+			Where("uid = ?", workerUID).
+			Where("boot_id IS NOT NULL").
+			Where("boot_id <> ?", bootID).
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to record the worker boot ID: %w", err)
+		}
+
+		rows, err := changed.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("failed to get rows affected: %w", err)
+		}
+
+		if rows == 0 {
+			// Same process, or the first boot ID this row ever saw.
+			if _, firstErr := tx.NewUpdate().
+				Model((*models.Worker)(nil)).
+				Set("boot_id = ?", bootID).
+				Where("uid = ?", workerUID).
+				Where("boot_id IS NULL").
+				Exec(ctx); firstErr != nil {
+				return fmt.Errorf("failed to record the worker boot ID: %w", firstErr)
+			}
+
+			return nil
+		}
+
+		released, err = releaseWorkerLeases(ctx, tx, workerUID, claimedBefore)
+
+		return err
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	return released, nil
 }
 
 // ReleaseLeaseWithSchedulingState releases the lease and folds the post-exec

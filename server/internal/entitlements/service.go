@@ -80,6 +80,11 @@ type Service struct {
 	// above — a bring-your-own send bills the customer and must neither consume
 	// the shared cap nor be gated by the allow-list.
 	instanceSMS instanceSMSGuards
+
+	// smsProbe flags an org whose sends keep hitting the country allow-list
+	// (destination probing), alerts an operator and blocks its verification
+	// sends for a while.
+	smsProbe smsProbeTracker
 }
 
 // Option customizes a Service at construction.

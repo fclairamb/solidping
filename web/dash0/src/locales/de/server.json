@@ -501,7 +501,8 @@
     "columnRoutes": "Zugestellt über",
     "events": {
       "supportMessage": "Support-Nachricht",
-      "userRegistered": "Neue Registrierung"
+      "userRegistered": "Neue Registrierung",
+      "smsDestinationProbing": "SMS-Zielsondierung"
     },
     "noRoutes": "Keine Benachrichtigungswege — dieser Administrator muss selbst einen hinzufügen",
     "noRoutesSelf": "Keine Benachrichtigungswege — richten Sie einen auf Ihrer Benachrichtigungsseite ein",

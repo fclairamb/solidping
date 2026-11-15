@@ -501,7 +501,8 @@
     "columnRoutes": "Delivered on",
     "events": {
       "supportMessage": "Support message",
-      "userRegistered": "New signup"
+      "userRegistered": "New signup",
+      "smsDestinationProbing": "SMS destination probing"
     },
     "noRoutes": "No notification routes — this admin must add one before anything is delivered",
     "noRoutesSelf": "No notification routes — set one up on your notifications page",

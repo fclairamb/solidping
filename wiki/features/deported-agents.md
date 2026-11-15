@@ -170,6 +170,14 @@ The timestamp is RFC3339. The server enforces a ±5 minute clock-skew window
 Presence of `X-Sp-Agent-Uid` is what selects the signed path over the
 `Authorization: Bearer spe_…` enrollment path.
 
+The agent also sends `X-Sp-Agent-Boot-Id` (and `bootId` in the enroll frame): a
+random ID generated once per process (spec 2026-11-14-03). It is not signed. The
+server stores it on the agent's `workers` row (`boot_id`) and, when it changes,
+frees the check-job leases the previous process left, so a restarted agent runs
+them at once instead of after `lease_expires_at`. A reconnect with the same boot
+ID (a network blip) keeps its in-flight leases. An agent that sends none keeps
+the old behaviour.
+
 ### 3. Job flow
 
 Versioned JSON frames over one WebSocket (`agents/protocol.go`):

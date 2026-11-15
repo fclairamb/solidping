@@ -223,13 +223,13 @@ apply every `*.up.sql` in order to an empty SQLite file, assert each folded sect
 objects exist, apply the `.down.sql` and assert they are gone. Before deleting a
 migration file, `grep 'migrations/NNN_' --include=*.go` for tests that read it by name.
 
-**The unreleased migration right now is `025_v0_34_0`** (opened 2026-09-27 by
-spec 2026-09-27-01, the "Capture now" failure columns on `check_jobs`).
-`024_v0_33_0` is the last RELEASED migration (it shipped in v0.33.0), so any
-further schema change this cycle is appended to `025` as a new SECTION — do not
-open `026`. The `v0_34_0` suffix assumes this cycle lands as a minor; rename the
+**The unreleased migration right now is `036_v0_49_4`** (opened 2026-11-14 by
+spec 2026-11-14-03, `workers.boot_id`).
+`035_v0_49_3` is the last RELEASED migration (it shipped in v0.49.3), so any
+further schema change this cycle is appended to `036` as a new SECTION — do not
+open `037`. The `v0_49_4` suffix assumes this cycle lands as a patch; rename the
 file (both dialects, both directions) if the batch PR title settles it as a
-patch. Whoever ships or renames it **updates this paragraph**, because a stale
+minor. Whoever ships or renames it **updates this paragraph**, because a stale
 pointer here is what causes the mistake it is meant to prevent.
 
 `023` has already been hand-edited in place under exactly the rule above: the

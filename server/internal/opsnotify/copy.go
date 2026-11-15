@@ -181,3 +181,61 @@ func (t *operatorTest) Localize(loc i18n.Locale) (string, string) {
 		loc.T("notices.test.intro") + "\n" + loc.T("notices.test.works") + "\n\n" +
 			loc.T("notices.test.requestedBy", "email", t.requestedBy)
 }
+
+// SMSDestinationProbing is an sms.destination_probing notice in structured
+// form. It travels the job queue like SupportMessage, so its JSON tags are a
+// compatibility contract with queued rows.
+type SMSDestinationProbing struct {
+	// OrgUID is the flagged organization.
+	OrgUID string `json:"orgUid"`
+	// OrgSlug is its slug, empty when it could not be resolved.
+	OrgSlug string `json:"orgSlug,omitempty"`
+	// Refusals is how many allow-list refusals flagged it.
+	Refusals int `json:"refusals"`
+	// WindowMinutes is the window those refusals happened in.
+	WindowMinutes int `json:"windowMinutes"`
+	// Prefixes are the refused destination prefixes (leading digits only,
+	// never a full number).
+	Prefixes []string `json:"prefixes,omitempty"`
+	// BlockMinutes is how long the org's verification sends stay refused.
+	BlockMinutes int `json:"blockMinutes"`
+}
+
+// NewSMSDestinationProbingNotice is the notice for an organization flagged for
+// SMS destination probing.
+func NewSMSDestinationProbingNotice(probe *SMSDestinationProbing) *Notice {
+	subject, body := probe.Localize(i18n.English)
+
+	return &Notice{Event: EventSMSDestinationProbing, Subject: subject, Body: body, Localized: probe}
+}
+
+// Localize implements Localizer.
+func (p *SMSDestinationProbing) Localize(loc i18n.Locale) (string, string) {
+	org := p.OrgUID
+	if p.OrgSlug != "" {
+		org = p.OrgSlug + " (" + p.OrgUID + ")"
+	}
+
+	prefixes := make([]string, 0, len(p.Prefixes))
+
+	for _, prefix := range p.Prefixes {
+		if prefix == "" {
+			prefixes = append(prefixes, "?")
+
+			continue
+		}
+
+		prefixes = append(prefixes, "+"+prefix)
+	}
+
+	lines := []string{
+		loc.Tn("notices.smsDestinationProbing.intro", p.Refusals, "minutes", p.WindowMinutes),
+		"",
+		loc.T("notices.smsDestinationProbing.org", "org", org),
+		loc.T("notices.smsDestinationProbing.prefixes", "prefixes", strings.Join(prefixes, ", ")),
+		"",
+		loc.T("notices.smsDestinationProbing.blocked", "minutes", p.BlockMinutes),
+	}
+
+	return tagInstance + loc.T("notices.smsDestinationProbing.subject", "org", org), strings.Join(lines, "\n")
+}

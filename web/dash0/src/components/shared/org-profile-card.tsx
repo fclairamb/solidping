@@ -183,16 +183,23 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
     if (result.accessToken && result.slug !== org) {
       // Swap the session BEFORE navigating: the token in hand is scoped to the
       // old slug and every request to the new URL would 403 with it.
-      await adoptRenamedOrgSession({
-        slug: result.slug,
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-      });
-      await navigate({
-        to: "/orgs/$org/organization/settings",
-        params: { org: result.slug },
-      });
+      // The navigation runs inside the adoption so the org guard keeps still
+      // until the URL carries the new slug (solidping-business#81).
+      await adoptRenamedOrgSession(
+        {
+          slug: result.slug,
+          previousSlug: result.previousSlug ?? org,
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+          expiresIn: result.expiresIn,
+        },
+        async () => {
+          await navigate({
+            to: "/orgs/$org/organization/settings",
+            params: { org: result.slug },
+          });
+        },
+      );
       return;
     }
 

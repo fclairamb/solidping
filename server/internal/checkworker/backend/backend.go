@@ -75,6 +75,13 @@ type WorkerBackend interface {
 	// persisted record.
 	Register(ctx context.Context, worker *models.Worker) (*models.Worker, error)
 
+	// ReleaseStaleLeases frees the check-job leases a previous process left
+	// under workerUID, those claimed before claimedBefore (spec 2026-11-14-03),
+	// and returns how many. The worker calls it right after Register, before it
+	// claims anything. DirectBackend frees them in the database; WSBackend is a
+	// no-op, the server does it when the agent connects from a new process.
+	ReleaseStaleLeases(ctx context.Context, workerUID string, claimedBefore time.Time) (int, error)
+
 	// Heartbeat updates the worker's last_active_at timestamp and refreshes the
 	// self-reported egress families (spec 2026-08-15-11). Reporting on the
 	// heartbeat rather than at process start is what lets a host that gains or
