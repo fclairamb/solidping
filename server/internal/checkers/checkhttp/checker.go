@@ -404,6 +404,10 @@ func (c *HTTPChecker) executeRequest(
 	// it would have replayed the request body (spec 2026-11-14-02).
 	bodyWithheld := false
 
+	// refValues are the values the config's ${param:…} / ${env:…} references
+	// resolved to: a header carrying one stays with the original origin.
+	refValues := checkerdef.ResolvedReferenceValuesFrom(ctx)
+
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// followRedirects: false stops at the first response, regardless
@@ -433,6 +437,9 @@ func (c *HTTPChecker) executeRequest(
 			if hop := checkerdef.ApplyRedirectHop(via[0].URL, req); hop.CrossOrigin {
 				droppedSecretHeaders = stripSecretHeaders(req.Header, cfg.SecretHeaders, droppedSecretHeaders)
 				droppedSecretHeaders = stripSecretHeaders(req.Header, authorizationHeader, droppedSecretHeaders)
+				// A plain header holding a resolved ${param:…} / ${env:…}
+				// value is a secret header too (spec 2026-11-15-01).
+				droppedSecretHeaders = stripReferenceHeaders(req.Header, refValues, droppedSecretHeaders)
 
 				if hop.WithholdBody {
 					bodyWithheld = true
@@ -1215,6 +1222,32 @@ var authorizationHeader = map[string]string{"Authorization": ""} //nolint:gochec
 
 // stripSecretHeaders deletes every secret header from header (case-insensitive,
 // as http.Header canonicalizes) and appends the names it removed to dropped.
+// stripReferenceHeaders deletes every header whose value contains one of the
+// resolved reference values and appends its name (never the value) to dropped.
+func stripReferenceHeaders(header http.Header, refValues []string, dropped []string) []string {
+	if len(refValues) == 0 {
+		return dropped
+	}
+
+	for name, values := range header {
+		if !slices.ContainsFunc(values, func(value string) bool {
+			return checkerdef.ContainsResolvedReferenceValue(value, refValues)
+		}) {
+			continue
+		}
+
+		header.Del(name)
+
+		if !slices.Contains(dropped, name) {
+			dropped = append(dropped, name)
+		}
+	}
+
+	slices.Sort(dropped)
+
+	return dropped
+}
+
 func stripSecretHeaders(header http.Header, secrets map[string]string, dropped []string) []string {
 	for name := range secrets {
 		if header.Get(name) == "" {

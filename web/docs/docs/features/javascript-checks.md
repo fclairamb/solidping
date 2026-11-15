@@ -253,8 +253,12 @@ http downgrade) carries only generic headers: `Accept`, `Accept-Encoding`,
 may hold a secret in an encoded form (base64, hex, percent-encoding) — and a
 kept header whose value contains a raw secret is dropped too. The dropped names
 (never their values) are listed in the response's `redirectDroppedHeaders` and
-in the check's output as `redirect_dropped_secret_headers`. A check without
-secrets sends its headers unchanged.
+in the check's output as `redirect_dropped_secret_headers`. A
+`${param:…}` or `${env:…}` reference in `env` or in the script counts as a
+secret: once resolved it carries a real value, so a check holding one is
+treated like a check with `secrets`, and a header containing the resolved value
+is dropped. A check with neither secrets nor references sends its headers
+unchanged.
 
 Whatever the check holds, a hop that leaves the first request's origin never
 carries `Referer` (it would repeat the previous URL, query string and any
@@ -272,7 +276,7 @@ the check's output reports `redirect_body_withheld: true`.
 | `headers` | Response headers, **canonical keys** (`Content-Type`, `Set-Cookie`) — a single value is a string, a repeated header is an array |
 | `url` | The final URL, after any redirects that were followed |
 | `redirects` | The chain that was walked: `[{statusCode, location}]`, empty when nothing was followed |
-| `redirectDroppedHeaders` | Names of the headers a cross-origin redirect hop dropped from a check with `secrets` (see above) — present only when one was dropped |
+| `redirectDroppedHeaders` | Names of the headers a cross-origin redirect hop dropped from a check with `secrets` or `${param:…}` / `${env:…}` references (see above) — present only when one was dropped |
 | `redirectBodyWithheld` | `true` when a 307/308 to another origin was not followed because it would have resent the request body (see above) — present only when true |
 | `duration` | Milliseconds |
 | `tunneled` | `true` when the check has a `tunnelCheckUid` and the request was dialed through it — present only when true, so an untunneled response's shape is unchanged. See [Running through an SSH tunnel](#running-through-an-ssh-tunnel) |
