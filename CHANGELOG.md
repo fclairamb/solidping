@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.50.0](https://github.com/fclairamb/solidping/compare/v0.49.3...v0.50.0) (2026-11-15)
+
+
+### Features
+
+* incident insights page and uptime report insights ([#862](https://github.com/fclairamb/solidping/issues/862)) ([e0f9b6a](https://github.com/fclairamb/solidping/commit/e0f9b6a77a47b792ab4a0283bae2af27413b8e7a))
+
+
+### Bug Fixes
+
+* batch-gate fixes for check worker wake-up, disable toggle, ui-state order and E2E races ([#885](https://github.com/fclairamb/solidping/issues/885)) ([829f43b](https://github.com/fclairamb/solidping/commit/829f43bb18a1fe0d6b4ba84dbd854f718e134ba5))
+* **deps:** update module github.com/slack-go/slack to v0.36.0 ([#878](https://github.com/fclairamb/solidping/issues/878)) ([a50d878](https://github.com/fclairamb/solidping/commit/a50d87825d3f58b58102d586814d43428b0c97fc))
+* free a restarted worker's check leases, quieter status page logs, phone checks menu ([#879](https://github.com/fclairamb/solidping/issues/879)) ([5543a4c](https://github.com/fclairamb/solidping/commit/5543a4c21dc989a512d0a6a35231f07b21204bf7))
+* **security:** redirect header policy, deleted-org email checks, tokens out of the session replay ([#880](https://github.com/fclairamb/solidping/issues/880)) ([cc8d0a5](https://github.com/fclairamb/solidping/commit/cc8d0a52a1edec2a7eb677b63d187a3946997a84))
+
 ## [0.49.3](https://github.com/fclairamb/solidping/compare/v0.49.2...v0.49.3) (2026-11-14)
 
 
