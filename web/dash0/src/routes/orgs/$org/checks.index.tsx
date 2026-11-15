@@ -1641,7 +1641,9 @@ function ChecksIndexPage() {
         description={t("subtitle")}
         actions={
           <>
-            <Button variant="outline" onClick={() => setShowNewGroup(true)} data-testid="new-group-button" aria-label={t("newGroup")}>
+            {/* Icon-only below sm: square like the "…" menu, so the four
+                actions fit one row on a phone and the menu stays at its end. */}
+            <Button variant="outline" className="w-9 px-0 sm:w-auto sm:px-4" onClick={() => setShowNewGroup(true)} data-testid="new-group-button" aria-label={t("newGroup")}>
               <FolderPlus className="sm:mr-2 h-4 w-4" />
               <span className="hidden sm:inline">{t("newGroup")}</span>
             </Button>
@@ -1655,7 +1657,7 @@ function ChecksIndexPage() {
             </Link>
             {/* "Describe it" (spec 2026-10-03-07): only when the server has an AI provider. */}
             {aiChecksEnabled && (
-              <Button variant="outline" asChild data-testid="describe-check-button" aria-label={t("ai.describeButton")}>
+              <Button variant="outline" className="w-9 px-0 sm:w-auto sm:px-4" asChild data-testid="describe-check-button" aria-label={t("ai.describeButton")}>
                 <Link to="/orgs/$org/checks/describe" params={{ org }}>
                   <Sparkles className="sm:mr-2 h-4 w-4" />
                   <span className="hidden sm:inline">{t("ai.describeButton")}</span>
@@ -1669,12 +1671,15 @@ function ChecksIndexPage() {
               checks; it stays reachable whether or not the org is over its cap.
               The automatic-placement dialog is mounted outside this menu (below)
               so closing the menu does not unmount it.
+              ml-auto: on a phone too narrow for one row, the menu wraps to the
+              right end of the next row, never alone at its left.
             */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
                   size="icon"
+                  className="ml-auto"
                   aria-label={t("detail.moreActions")}
                   data-testid="checks-more-actions"
                 >

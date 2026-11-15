@@ -35,6 +35,17 @@
         <tr><td class="label">{{t "report.labels.incidents"}}</td><td class="value">{{.IncidentCount}}{{if .LongestIncident}} &middot; {{t "report.incidentStats.longest" "duration" .LongestIncident}}{{end}}{{if .AverageIncident}} &middot; {{t "report.incidentStats.average" "duration" .AverageIncident}}{{end}}{{if .ShowIncidentDelta}}<br><span class="meta"><span style="color: {{.IncidentDeltaColor}}; font-weight: 600">{{.IncidentDeltaText}}</span> {{t "report.versus" "period" .PreviousPeriodLabel "previous" .PreviousIncidentCount}}</span>{{end}}</td></tr>
         {{if .TotalDowntime}}<tr><td class="label">{{t "report.labels.totalDowntime"}}</td><td class="value">{{.TotalDowntime}}</td></tr>{{end}}
     </table>
+    {{if .ShowInsights}}
+    <p class="meta">{{if .MedianTimeToResolve}}{{t "report.insights.resolve" "duration" .MedianTimeToResolve}} &middot; {{end}}{{if .MedianTimeToAcknowledge}}{{t "report.insights.acknowledge" "duration" .MedianTimeToAcknowledge}} &middot; {{end}}{{t "report.insights.acknowledged" "count" .AcknowledgedCount "total" .PagedCount}}</p>
+    {{if .TopFailingChecks}}
+    <h2 class="section-title">{{t "report.insights.title"}}</h2>
+    <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
+        {{range .TopFailingChecks}}
+        <tr><td class="label">{{if .URL}}<a href="{{.URL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td><td class="value">{{.Detail}}</td></tr>
+        {{end}}
+    </table>
+    {{end}}
+    {{end}}
 
     {{if .HasLatency}}
     <h2 class="section-title">{{t "report.latency.title"}}</h2>
@@ -105,7 +116,14 @@
 {{end}}{{t "common.textField" "label" (t "report.labels.checksMonitored") "value" .CheckCount}}
 {{t "common.textField" "label" (t "report.labels.incidents") "value" .IncidentCount}}{{if .LongestIncident}} ({{t "report.incidentStats.longest" "duration" .LongestIncident}}{{if .AverageIncident}}, {{t "report.incidentStats.average" "duration" .AverageIncident}}{{end}}){{end}}{{if .ShowIncidentDelta}} ({{.IncidentDeltaText}} {{t "report.text.versus" "period" .PreviousPeriodLabel "previous" .PreviousIncidentCount}}){{end}}
 {{if .TotalDowntime}}{{t "common.textField" "label" (t "report.labels.totalDowntime") "value" .TotalDowntime}}
-{{end}}{{if .HasLatency}}
+{{end}}{{if .ShowInsights}}{{if .MedianTimeToResolve}}{{t "report.insights.resolve" "duration" .MedianTimeToResolve}}
+{{end}}{{if .MedianTimeToAcknowledge}}{{t "report.insights.acknowledge" "duration" .MedianTimeToAcknowledge}}
+{{end}}{{t "report.insights.acknowledged" "count" .AcknowledgedCount "total" .PagedCount}}
+{{if .TopFailingChecks}}
+{{t "report.insights.title"}}
+{{range .TopFailingChecks}}  - {{t "common.textField" "label" .Name "value" .Detail}}
+{{if .URL}}    {{.URL}}
+{{end}}{{end}}{{end}}{{end}}{{if .HasLatency}}
 {{t "report.text.latencyHeading"}}
   - {{t "common.textField" "label" (t "report.latency.average") "value" .AvgResponseTime}}{{if .ShowResponseDelta}} ({{.ResponseDeltaText}} {{t "report.text.versus" "period" .PreviousPeriodLabel "previous" .PreviousAvgResponseTime}}){{end}}
 {{if .MinResponseTime}}  - {{t "common.textField" "label" (t "report.latency.range") "value" (printf "%s / %s" .MinResponseTime .MaxResponseTime)}}

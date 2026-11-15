@@ -82,9 +82,18 @@ async function stubAccount(page: Page, opts: StubOptions = {}) {
       return;
     }
 
-    const response = await route.fetch();
-    const body = await response.json();
-    await route.fulfill({ response, json: { ...body, hasPassword } });
+    // A test that asserts an absence can end while this fetch is still in
+    // flight; the page is then gone and the fetch is disposed. That is teardown,
+    // not a failure, so it must not be reported against the test.
+    try {
+      const response = await route.fetch();
+      const body = await response.json();
+      await route.fulfill({ response, json: { ...body, hasPassword } });
+    } catch (error) {
+      if (!/disposed|closed/i.test(String(error))) {
+        throw error;
+      }
+    }
   });
 
   await page.route("**/api/v1/config", async (route) => {

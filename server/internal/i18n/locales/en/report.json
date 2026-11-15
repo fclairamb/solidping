@@ -89,5 +89,14 @@
     "perCheckTruncated": "Per check, worst first (showing the {shown} lowest-uptime checks of {total}):",
     "objectivesHeading": "Objectives:",
     "budgetRemaining": "budget remaining {budget}"
+  },
+  "insights": {
+    "title": "Most incidents",
+    "resolve": "Median time to resolve: {duration}",
+    "acknowledge": "Median time to acknowledge: {duration}",
+    "acknowledged": "{count} of {total} acknowledged",
+    "rowDetail": "{incidents}, {relapses}",
+    "relapses_one": "{count} relapse",
+    "relapses_other": "{count} relapses"
   }
 }

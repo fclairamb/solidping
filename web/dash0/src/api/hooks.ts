@@ -2667,6 +2667,58 @@ export function useIncidents(
   });
 }
 
+export type InsightsPeriod = "7d" | "30d" | "90d";
+
+export interface InsightsDuration {
+  medianSeconds: number | null;
+  p90Seconds: number | null;
+  sampleCount: number;
+}
+
+export interface InsightsResolution {
+  count: number;
+  medianSeconds: number | null;
+  p90Seconds: number | null;
+}
+
+export interface IncidentInsights {
+  period: InsightsPeriod;
+  truncated: boolean;
+  summary: {
+    incidentCount: number;
+    pagedCount: number;
+    acknowledgedCount: number;
+    ackRate: number;
+    timeToAcknowledge: InsightsDuration;
+    timeToResolve: InsightsDuration;
+    byResolution: {
+      auto: InsightsResolution;
+      manual: InsightsResolution;
+      other: InsightsResolution;
+    };
+  };
+  checks: {
+    checkUid: string;
+    checkName: string;
+    checkSlug: string;
+    incidentCount: number;
+    downtimeSeconds: number;
+    relapseCount: number;
+    lastIncidentAt: string | null;
+  }[];
+}
+
+export function useIncidentInsights(org: string, period: InsightsPeriod) {
+  return useQuery({
+    queryKey: ["incident-insights", org, period],
+    queryFn: () =>
+      apiFetch<IncidentInsights>(
+        `/api/v1/orgs/${org}/incidents/insights?period=${period}`,
+      ),
+    enabled: !!org,
+  });
+}
+
 export function useIncident(org: string, uid: string) {
   return useQuery({
     queryKey: ["incident", org, uid],
