@@ -23,6 +23,7 @@ type resourceSpec struct {
 	slug          string
 	status        models.CheckStatus
 	inMaintenance bool
+	disabled      bool
 }
 
 // seedResourceWithStatus creates a check with the given status, attaches it
@@ -38,6 +39,7 @@ func seedResourceWithStatus(
 
 	check := models.NewCheck(orgUID, spec.slug, "http")
 	check.Status = spec.status
+	check.Enabled = !spec.disabled
 	r.NoError(svc.db.CreateCheck(ctx, check))
 
 	_, err := svc.CreateResource(ctx, orgSlug, page.UID, section.UID, CreateResourceRequest{CheckUID: check.UID})
@@ -146,6 +148,18 @@ func TestViewStatusPage_OverallStatus(t *testing.T) {
 			},
 			want:    "maintenance",
 			wantCnt: StatusCountsResponse{Operational: 1, Maintenance: 1},
+		},
+		{
+			// A disabled check keeps the status it had when it was turned off
+			// (often down): nobody measures it any more, so it must neither
+			// taint the page nor count in the "N of M operational" total.
+			name: "disabled down check is left out of the rollup and the counts",
+			resources: []resourceSpec{
+				{slug: "res-a", status: models.CheckStatusUp},
+				{slug: "res-b", status: models.CheckStatusDown, disabled: true},
+			},
+			want:    "operational",
+			wantCnt: StatusCountsResponse{Operational: 1},
 		},
 	}
 
