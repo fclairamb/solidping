@@ -183,7 +183,10 @@ test.describe("Organization profile", () => {
     // access token expiring right then would: that is what starts the
     // reactive refresh with the OLD refresh token.
     await page.route("**/api/v1/auth/me", async (route) => {
-      if (armed && !forced401) {
+      // GET only: the page may also PATCH /auth/me on its own (the preference
+      // sync of a user's first visit), and that write is not the request this
+      // test means to fail.
+      if (armed && !forced401 && route.request().method() === "GET") {
         forced401 = true;
         await route.fulfill({
           status: 401,
