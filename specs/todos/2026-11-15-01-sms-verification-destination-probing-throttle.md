@@ -80,6 +80,11 @@ and nothing throttled or flagged it. The report is right on all three points bel
   stops a probe mid-run at the price of blocking a legitimate user who mistyped several numbers
   (rare, and they get the usual rate-limited message).
 
+## Resolved open questions
+
+- **Limit scope and numbers.** Cap at 5 distinct destinations per org per hour, 2 for an account younger than 24 h, counted per org (not per user). (autopilot: recommended answer)
+- **Temporary block or alert only.** After the ops alert fires, block SMS verification for that org for one hour; the user gets the usual rate-limited message. (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes fclairamb/solidping-business#79. The implementing PR body **must** carry a
