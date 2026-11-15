@@ -497,6 +497,8 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		entitlementsapi.WithInstanceSMSGuards(
 			cfg.SMS.ResolvedGlobalRunawayPerHour(), cfg.SMS.AllowedCountryCodes(),
 		),
+		// Repeated allow-list refusals from one org: tell an operator.
+		entitlementsapi.WithSMSProbingNotifier(smsProbingNotifier(dbService)),
 	)
 	svcList.Entitlements = entitlementsService
 

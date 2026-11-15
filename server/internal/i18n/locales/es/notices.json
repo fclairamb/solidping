@@ -87,5 +87,13 @@
     },
     "diff": "Cambios:",
     "review": "Revisa o deshaz la reparación: {link}"
+  },
+  "smsDestinationProbing": {
+    "subject": "Sondeo de destinos SMS desde {org}",
+    "intro_one": "{count} envío SMS de una organización fue rechazado por la lista de países permitidos (SP_SMS_ALLOWED_COUNTRIES) en {minutes} minutos: probablemente un intento de SMS pumping.",
+    "intro_other": "{count} envíos SMS de una organización fueron rechazados por la lista de países permitidos (SP_SMS_ALLOWED_COUNTRIES) en {minutes} minutos: probablemente un intento de SMS pumping.",
+    "org": "Org:      {org}",
+    "prefixes": "Prefijos: {prefixes}",
+    "blocked": "Sus códigos de verificación por teléfono y WhatsApp se rechazan durante los próximos {minutes} minutos."
   }
 }

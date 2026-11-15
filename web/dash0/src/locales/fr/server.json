@@ -501,7 +501,8 @@
     "columnRoutes": "Remis via",
     "events": {
       "supportMessage": "Message de support",
-      "userRegistered": "Nouvelle inscription"
+      "userRegistered": "Nouvelle inscription",
+      "smsDestinationProbing": "Sondage de destinations SMS"
     },
     "noRoutes": "Aucun canal de notification — cet administrateur doit en ajouter un pour recevoir quoi que ce soit",
     "noRoutesSelf": "Aucun canal de notification — configurez-en un sur votre page de notifications",

@@ -14,13 +14,14 @@ import (
 // is not a volume problem — a retry a minute later fails identically.
 var ErrCountryNotAllowed = errors.New("destination country is not in the instance SMS allow-list")
 
-// CountryError carries the refused destination's country code so the caller
-// can log it (and only it — never the full number).
+// CountryError carries the refused destination's prefix so the caller can log
+// it (and only it — never the full number).
 type CountryError struct {
-	// CountryCode is the matched E.164 country calling code, or the leading
-	// digits (at most three — country codes are 1-3 digits, so this can never
-	// leak subscriber digits) when nothing in the allow-list matched. Empty
-	// when the destination could not be parsed at all.
+	// CountryCode is, despite its name, NOT a country code: a refused
+	// destination by definition matched nothing in the allow-list, so this is
+	// its leading digits (at most three — country codes are 1-3 digits, so this
+	// can never leak subscriber digits), a dialling-prefix hint. Empty when the
+	// destination could not be parsed at all. Logged as "destinationPrefix".
 	CountryCode string
 }
 
@@ -104,7 +105,7 @@ func WithInstanceSMSGuards(perHour int, allowedCountries []string) Option {
 //
 // Returns a *CountryError when the destination is out of the allow-list and a
 // *QuotaError when the instance-wide cap is exhausted; nil when reserved.
-func (s *Service) ReserveInstanceSMS(_ context.Context, orgUID, toNumber string) error {
+func (s *Service) ReserveInstanceSMS(ctx context.Context, orgUID, toNumber string) error {
 	s.instanceSMS.mu.Lock()
 	allowed := s.instanceSMS.allowedCountries
 	perHour := s.instanceSMS.globalPerHour
@@ -112,6 +113,7 @@ func (s *Service) ReserveInstanceSMS(_ context.Context, orgUID, toNumber string)
 
 	if code, ok := countryAllowed(toNumber, allowed); !ok {
 		s.recordSMSGuardBreach(orgUID, false)
+		s.noteCountryRefusal(ctx, orgUID, code)
 
 		return &CountryError{CountryCode: code}
 	}
@@ -133,9 +135,14 @@ func (s *Service) ReserveInstanceSMS(_ context.Context, orgUID, toNumber string)
 	return nil
 }
 
-// LogInstanceSMSBreach emits the loud log a guard breach owes an operator. The
-// destination number is never logged in full — only its country code — because
-// a refused alert is still a subscriber's phone number.
+// LogInstanceSMSBreach emits the log a guard breach owes an operator. The
+// destination number is never logged in full — only its leading digits —
+// because a refused alert is still a subscriber's phone number.
+//
+// An allow-list refusal is a WARN: one refusal is not actionable on its own,
+// and a burst of them from one org raises the aggregate destination-probing
+// operator notice (see noteCountryRefusal). The instance-wide cap stays an
+// ERROR: it drops alerts for every org.
 func (s *Service) LogInstanceSMSBreach(ctx context.Context, log *slog.Logger, orgUID string, err error) {
 	if log == nil || err == nil {
 		return
@@ -143,8 +150,8 @@ func (s *Service) LogInstanceSMSBreach(ctx context.Context, log *slog.Logger, or
 
 	var countryErr *CountryError
 	if errors.As(err, &countryErr) {
-		log.ErrorContext(ctx, "instance SMS refused: destination country not in SP_SMS_ALLOWED_COUNTRIES",
-			"orgUID", orgUID, "countryCode", countryErr.CountryCode)
+		log.WarnContext(ctx, "instance SMS refused: destination country not in SP_SMS_ALLOWED_COUNTRIES",
+			"orgUID", orgUID, "destinationPrefix", countryErr.CountryCode)
 
 		return
 	}

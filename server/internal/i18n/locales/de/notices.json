@@ -87,5 +87,13 @@
     },
     "diff": "Änderungen:",
     "review": "Reparatur ansehen oder rückgängig machen: {link}"
+  },
+  "smsDestinationProbing": {
+    "subject": "SMS-Zielsondierung von {org}",
+    "intro_one": "{count} SMS-Versand einer Organisation wurde innerhalb von {minutes} Minuten von der Länder-Freigabeliste (SP_SMS_ALLOWED_COUNTRIES) abgelehnt: wahrscheinlich ein SMS-Pumping-Versuch.",
+    "intro_other": "{count} SMS-Sendungen einer Organisation wurden innerhalb von {minutes} Minuten von der Länder-Freigabeliste (SP_SMS_ALLOWED_COUNTRIES) abgelehnt: wahrscheinlich ein SMS-Pumping-Versuch.",
+    "org": "Org:      {org}",
+    "prefixes": "Präfixe:  {prefixes}",
+    "blocked": "Ihre Telefon- und WhatsApp-Bestätigungscodes werden für die nächsten {minutes} Minuten abgelehnt."
   }
 }

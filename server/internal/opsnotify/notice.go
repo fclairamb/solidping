@@ -37,6 +37,11 @@ const (
 	// method — password, any OAuth/OIDC/SAML/LDAP provider, or accepting an
 	// invitation.
 	EventUserRegistered = "user.registered"
+	// EventSMSDestinationProbing fires when one organization's SMS sends hit
+	// the instance country allow-list several times within minutes (spec
+	// 2026-11-15-01): the signature of SMS pumping / IRSF probing. At most once
+	// per organization per hour.
+	EventSMSDestinationProbing = "sms.destination_probing"
 	// EventWatchdogDigest is the platform watchdog's hourly digest. It is NOT
 	// subscribable through operator notifications — the watchdog has its own
 	// `platform_watchdog` recipient list — but it travels this transport, so
@@ -57,7 +62,7 @@ const (
 // The watchdog digest and the test notice are absent on purpose: subscribing
 // to them would either duplicate `platform_watchdog` or mean nothing.
 func SubscribableEvents() []string {
-	return []string{EventSupportMessage, EventUserRegistered}
+	return []string{EventSupportMessage, EventUserRegistered, EventSMSDestinationProbing}
 }
 
 // IsSubscribableEvent reports whether an event may appear in a recipient's

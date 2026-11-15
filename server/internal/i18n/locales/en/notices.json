@@ -87,5 +87,13 @@
     },
     "diff": "Diff:",
     "review": "Review or undo it: {link}"
+  },
+  "smsDestinationProbing": {
+    "subject": "SMS destination probing from {org}",
+    "intro_one": "{count} SMS send(s) from one organization were refused by the country allow-list (SP_SMS_ALLOWED_COUNTRIES) within {minutes} minutes: a likely SMS pumping probe.",
+    "intro_other": "{count} SMS send(s) from one organization were refused by the country allow-list (SP_SMS_ALLOWED_COUNTRIES) within {minutes} minutes: a likely SMS pumping probe.",
+    "org": "Org:      {org}",
+    "prefixes": "Prefixes: {prefixes}",
+    "blocked": "Its phone and WhatsApp verification codes are refused for the next {minutes} minutes."
   }
 }

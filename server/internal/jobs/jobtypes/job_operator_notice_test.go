@@ -360,6 +360,10 @@ func TestOperatorNoticeJobConfigCarriesEveryNoticeField(t *testing.T) {
 		nil,
 		&opsnotify.SupportMessage{NewThread: true, Channel: "sms", From: "+33600000000", Preview: "hi", Folded: 2},
 		&opsnotify.UserRegistered{Email: "carol@acme.com", Name: "Carol", Method: "password"},
+		&opsnotify.SMSDestinationProbing{
+			OrgUID: "org-1", OrgSlug: "acme", Refusals: 3, WindowMinutes: 10,
+			Prefixes: []string{"880", "998"}, BlockMinutes: 60,
+		},
 	} {
 		r := require.New(t)
 

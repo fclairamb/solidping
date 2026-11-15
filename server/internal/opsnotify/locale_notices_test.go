@@ -99,6 +99,10 @@ func localizedNotices() map[string]*opsnotify.Notice {
 		"orphan":  orphan,
 		"invited": invited,
 		"test":    opsnotify.NewTestNotice("alice@acme.com", "https://solidping.example/d/"),
+		"probing": opsnotify.NewSMSDestinationProbingNotice(&opsnotify.SMSDestinationProbing{
+			OrgUID: "org-1", OrgSlug: "acme", Refusals: 3, WindowMinutes: 10,
+			Prefixes: []string{"880", "998"}, BlockMinutes: 60,
+		}),
 	}
 }
 
@@ -126,6 +130,10 @@ func TestNoticesAreWrittenInEveryLanguage(t *testing.T) {
 				"Organisations : acme, beta", //nolint:misspell // French
 			},
 			"test": {"[SolidPing] Test des notifications opérateur", "Demandé par alice@acme.com."},
+			"probing": {
+				"[SolidPing] Sondage de destinations SMS depuis acme (org-1)", "3 envois SMS", "+880, +998",
+				"60 prochaines minutes",
+			},
 		},
 		"de": {
 			"support": {
@@ -146,6 +154,7 @@ func TestNoticesAreWrittenInEveryLanguage(t *testing.T) {
 				"Test der Betreiber-Benachrichtigungen", "Angefordert von alice@acme.com.",
 				"über den sie zugestellt wurde.",
 			},
+			"probing": {"[SolidPing] SMS-Zielsondierung von acme (org-1)", "3 SMS-Sendungen", "+880, +998"},
 		},
 		"es": {
 			"support": {
@@ -160,7 +169,8 @@ func TestNoticesAreWrittenInEveryLanguage(t *testing.T) {
 			"invited": {
 				"[SolidPing] Nuevo registro: erin@acme.com (invitación)", "Organizaciones: acme, beta",
 			},
-			"test": {"Prueba de las notificaciones para el operador", "Solicitada por alice@acme.com."},
+			"test":    {"Prueba de las notificaciones para el operador", "Solicitada por alice@acme.com."},
+			"probing": {"[SolidPing] Sondeo de destinos SMS desde acme (org-1)", "3 envíos SMS", "+880, +998"},
 		},
 	}
 
@@ -314,4 +324,23 @@ func TestDeliverEmailsAnEnglishReaderTheSameText(t *testing.T) {
 	r.Equal("UTC", capture.timezone)
 	r.Equal(notice.Subject, capture.subject)
 	r.Equal(notice.Body, capture.text)
+}
+
+// TestSMSDestinationProbingNoticeEnglish pins the English text every
+// non-email medium sends, and checks an unparseable prefix reads as "?".
+func TestSMSDestinationProbingNoticeEnglish(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	notice := opsnotify.NewSMSDestinationProbingNotice(&opsnotify.SMSDestinationProbing{
+		OrgUID: "org-1", Refusals: 4, WindowMinutes: 10, Prefixes: []string{"", "880"}, BlockMinutes: 60,
+	})
+	r.Equal(opsnotify.EventSMSDestinationProbing, notice.Event)
+	r.True(opsnotify.IsSubscribableEvent(opsnotify.EventSMSDestinationProbing))
+	r.Equal("[SolidPing] SMS destination probing from org-1", notice.Subject)
+	r.Equal("4 SMS send(s) from one organization were refused by the country allow-list "+
+		"(SP_SMS_ALLOWED_COUNTRIES) within 10 minutes: a likely SMS pumping probe.\n\n"+
+		"Org:      org-1\nPrefixes: ?, +880\n\n"+
+		"Its phone and WhatsApp verification codes are refused for the next 60 minutes.", notice.Body)
 }

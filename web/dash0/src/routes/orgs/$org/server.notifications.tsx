@@ -46,6 +46,7 @@ export const Route = createFileRoute("/orgs/$org/server/notifications")({
 const EVENT_LABEL_KEY: Record<string, string> = {
   "support.message": "supportMessage",
   "user.registered": "userRegistered",
+  "sms.destination_probing": "smsDestinationProbing",
 };
 
 /** Subscription state as the table edits it: userUid -> set of events. */
