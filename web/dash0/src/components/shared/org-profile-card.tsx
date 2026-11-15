@@ -87,6 +87,12 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
   // state. Last-action-wins: a successful upload switches to the badge view,
   // "Use an external URL instead" switches back to the input.
   const [showLogoUrlField, setShowLogoUrlField] = useState(true);
+  // True once the user has picked "Use an external URL instead" since the
+  // last sync/save. Like logoUrlTouched it keeps a late background refresh
+  // (the upload's own /auth/me) from flipping the view back to the badge,
+  // but unlike it, it does not mark the empty field for sending: saving
+  // without typing a URL must not clear the uploaded logo.
+  const [logoUrlFieldChosen, setLogoUrlFieldChosen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fileInput = useRef<HTMLInputElement>(null);
@@ -128,11 +134,12 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
   // user's own just-completed action, not a stale background refresh.
   const syncLogoState = (url: string, force = false) => {
     setLogoUrl(url);
-    if (!force && logoUrlTouched) return;
+    if (!force && (logoUrlTouched || logoUrlFieldChosen)) return;
     const uploaded = isUploadedLogoPath(url);
     setShowLogoUrlField(!uploaded);
     setLogoUrlDraft(uploaded ? "" : url);
     setLogoUrlTouched(false);
+    setLogoUrlFieldChosen(false);
   };
 
   if (orgChanged) {
@@ -391,6 +398,7 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
                       setShowLogoUrlField(true);
                       setLogoUrlDraft("");
                       setLogoUrlTouched(false);
+                      setLogoUrlFieldChosen(true);
                     }}
                     disabled={busy}
                     data-testid="org-profile-logo-use-url"
