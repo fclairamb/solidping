@@ -480,3 +480,49 @@ func TestReclaimedSlugNeverResurrectsTheAlias(t *testing.T) {
 	_, err = dbService.GetOrganizationBySlug(ctx, "handover")
 	r.Error(err, "the slug is simply free again")
 }
+
+// TestSwitchOrgToThePreviousSlugLandsOnTheRenamedOrg pins the server half of
+// solidping-business#81. Right after a rename, the owner's tab still shows the
+// old slug in its URL while it adopts the re-minted session, and the dashboard's
+// org guard asks to switch to that slug. Refusing it (ErrOrganizationNotFound,
+// a 401 on switch-org) sent the owner to login?session_expired=true; the alias
+// must resolve to the renamed org instead, as every org-scoped route already
+// does through middleware.OrgSlugRedirect.
+func TestSwitchOrgToThePreviousSlugLandsOnTheRenamedOrg(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbService, ctx := setupAuthTestService(t)
+	org, owner := seedOwnedOrg(ctx, t, dbService, "switch-old")
+
+	newSlug := "switch-new"
+	_, err := svc.UpdateOrgProfile(ctx, "switch-old", owner.UID,
+		UpdateOrgProfileRequest{Slug: &newSlug}, Context{})
+	r.NoError(err)
+
+	resp, err := svc.SwitchOrg(ctx, owner.UID, "switch-old", Context{})
+	r.NoError(err)
+	r.Equal("switch-new", resp.Organization.Slug)
+
+	claims, err := svc.ValidateToken(ctx, resp.AccessToken)
+	r.NoError(err)
+	r.Equal("switch-new", claims.OrgSlug, "the session must be scoped to the org's current slug")
+
+	_, denial := AuthorizeOrgAccess(ctx, dbService, &Claims{
+		UserUID: owner.UID, OrgSlug: claims.OrgSlug, Role: claims.Role,
+	}, owner, "switch-new")
+	r.Equal(OrgAccessGranted, denial)
+	r.Equal(org.UID, resp.Organization.UID)
+
+	// Membership still gates the alias: a stranger is refused exactly as on
+	// the live slug.
+	stranger := models.NewUser("stranger@switch.example")
+	r.NoError(dbService.CreateUser(ctx, stranger))
+
+	_, err = svc.SwitchOrg(ctx, stranger.UID, "switch-old", Context{})
+	r.ErrorIs(err, ErrInvalidCredentials)
+
+	// A slug that is neither live nor an alias is still unknown.
+	_, err = svc.SwitchOrg(ctx, owner.UID, "never-existed", Context{})
+	r.ErrorIs(err, ErrOrganizationNotFound)
+}

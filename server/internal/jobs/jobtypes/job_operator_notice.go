@@ -42,6 +42,9 @@ type OperatorNoticeJobConfig struct {
 	// email is Subject and Body too.
 	SupportMessage *opsnotify.SupportMessage `json:"supportMessage,omitempty"`
 	UserRegistered *opsnotify.UserRegistered `json:"userRegistered,omitempty"`
+	// SMSDestinationProbing is the structured form of an
+	// sms.destination_probing notice (spec 2026-11-15-01).
+	SMSDestinationProbing *opsnotify.SMSDestinationProbing `json:"smsDestinationProbing,omitempty"`
 }
 
 // NewOperatorNoticeJobConfig is the ONLY place a Notice becomes a queued job
@@ -54,7 +57,7 @@ type OperatorNoticeJobConfig struct {
 // other — stayed green. One conversion, next to the struct, with a round-trip
 // test that fails if a field stops traveling.
 //
-// Only the two queued kinds have a structured form that travels: the other
+// Only the queued kinds have a structured form that travels: the other
 // notices (watchdog, region, test) are delivered in process and never queued.
 func NewOperatorNoticeJobConfig(notice *opsnotify.Notice) OperatorNoticeJobConfig {
 	cfg := OperatorNoticeJobConfig{
@@ -70,6 +73,8 @@ func NewOperatorNoticeJobConfig(notice *opsnotify.Notice) OperatorNoticeJobConfi
 		cfg.SupportMessage = localized
 	case *opsnotify.UserRegistered:
 		cfg.UserRegistered = localized
+	case *opsnotify.SMSDestinationProbing:
+		cfg.SMSDestinationProbing = localized
 	}
 
 	return cfg
@@ -92,6 +97,8 @@ func (c *OperatorNoticeJobConfig) Notice() *opsnotify.Notice {
 		notice.Localized = c.SupportMessage
 	case c.UserRegistered != nil:
 		notice.Localized = c.UserRegistered
+	case c.SMSDestinationProbing != nil:
+		notice.Localized = c.SMSDestinationProbing
 	}
 
 	return notice

@@ -25,6 +25,14 @@ const (
 	// verifyResendWindow / verifyResendMax rate-limit code issuance per contact.
 	verifyResendWindow = time.Hour
 	verifyResendMax    = 3
+	// verifyDestinationWindow / verifyDestinationMax cap the DISTINCT
+	// destinations one organization may send codes to (spec 2026-11-15-01),
+	// verifyDestinationMaxYoung when the requesting account is younger than
+	// verifyYoungAccountAge: a fresh account is the usual probing vehicle.
+	verifyDestinationWindow   = time.Hour
+	verifyDestinationMax      = 5
+	verifyDestinationMaxYoung = 2
+	verifyYoungAccountAge     = 24 * time.Hour
 )
 
 // Verification errors.
@@ -40,7 +48,10 @@ var (
 	// ErrNoProvider is returned when the org has no Twilio connection to send
 	// the code through.
 	ErrNoProvider = errors.New("no SMS provider configured for this organization")
-	// ErrResendTooSoon is returned when the per-contact resend rate limit is hit.
+	// ErrResendTooSoon is returned when a verification rate limit is hit: the
+	// per-contact resend limit, the per-org distinct-destination limit, or the
+	// temporary block of an org flagged for destination probing. One error, so
+	// the dashboard shows the same rate-limited message for all three.
 	ErrResendTooSoon = errors.New("verification code was requested too recently")
 	// ErrNoPendingCode is returned when confirm is called without an in-flight code.
 	ErrNoPendingCode = errors.New("no verification code pending; request one first")
@@ -58,6 +69,22 @@ var (
 //
 //nolint:gochecknoglobals // process-wide per-contact resend throttle.
 var resendTracker = newResendLimiter()
+
+// destinationTracker caps distinct verification destinations per org, across
+// contacts. Same restart posture as resendTracker.
+//
+//nolint:gochecknoglobals // process-wide per-org destination throttle.
+var destinationTracker = newDestinationLimiter()
+
+// destinationLimitFor is the distinct-destination cap for a request made by
+// user at now.
+func destinationLimitFor(user *models.User, now time.Time) int {
+	if user != nil && now.Sub(user.CreatedAt) < verifyYoungAccountAge {
+		return verifyDestinationMaxYoung
+	}
+
+	return verifyDestinationMax
+}
 
 // codeTransport delivers one verification code to one destination. Resolved
 // per contact type so the shared issue/confirm machinery below stays
@@ -124,7 +151,18 @@ func (s *Service) VerifyContact(
 		return ErrAlreadyVerified
 	}
 
-	if !resendTracker.allow(contactUID, s.now()) {
+	// An org flagged for destination probing gets nothing sent for an hour,
+	// whatever the destination: the provider is never called.
+	if s.entitlements != nil && s.entitlements.SMSVerificationBlocked(orgUID) {
+		return ErrResendTooSoon
+	}
+
+	now := s.now()
+	if !destinationTracker.allow(orgUID, contact.Value, destinationLimitFor(user, now), now) {
+		return ErrResendTooSoon
+	}
+
+	if !resendTracker.allow(contactUID, now) {
 		return ErrResendTooSoon
 	}
 

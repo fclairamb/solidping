@@ -501,7 +501,8 @@
     "columnRoutes": "Entregado por",
     "events": {
       "supportMessage": "Mensaje de soporte",
-      "userRegistered": "Nuevo registro"
+      "userRegistered": "Nuevo registro",
+      "smsDestinationProbing": "Sondeo de destinos SMS"
     },
     "noRoutes": "Sin rutas de notificación — este administrador debe añadir una para recibir algo",
     "noRoutesSelf": "Sin rutas de notificación — configura una en tu página de notificaciones",

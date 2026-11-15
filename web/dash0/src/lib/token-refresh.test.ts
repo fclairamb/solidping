@@ -17,10 +17,14 @@ const clearTokenMock = vi.fn(() => {
   storedRefreshToken = null;
 });
 const redirectToExpiredLoginMock = vi.fn();
+// Mirrors client.ts's session epoch: tests bump it to simulate another session
+// being adopted (an org rename, a switch) while a refresh is in flight.
+let sessionEpoch = 0;
 
 vi.mock("@/api/client", () => ({
   getToken: () => storedAccessToken,
   getRefreshToken: () => storedRefreshToken,
+  getSessionEpoch: () => sessionEpoch,
   setSession: (accessToken: string, refreshToken?: string, expiresIn?: number) =>
     setSessionMock(accessToken, refreshToken, expiresIn),
   clearToken: () => clearTokenMock(),
@@ -315,5 +319,76 @@ describe("shouldRefreshNow", () => {
     const thresholdMs = (expiresInSeconds * 1000) / 3;
     expect(shouldRefreshNow(now + thresholdMs, expiresInSeconds, now)).toBe(false);
     expect(shouldRefreshNow(now + thresholdMs - 1, expiresInSeconds, now)).toBe(true);
+  });
+});
+
+// solidping-business#81: renaming the org adopts a brand-new session. A refresh
+// that spent the PREVIOUS refresh token and settles afterwards must neither
+// write its (old-slug) access token over the new session nor log the user out
+// of it.
+describe("refreshWithOutcome — a session adopted mid-refresh", () => {
+  beforeEach(() => {
+    storedAccessToken = "old-access-token";
+    storedRefreshToken = "old-refresh-token";
+    sessionEpoch = 0;
+    setSessionMock.mockClear();
+    clearTokenMock.mockClear();
+    redirectToExpiredLoginMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function adoptNewSessionDuringFetch(answer: { ok: boolean; status: number; body?: unknown }) {
+    return vi.fn(async () => {
+      // The rename's session lands while the refresh POST is in flight.
+      storedAccessToken = "new-access-token";
+      storedRefreshToken = "new-refresh-token";
+      sessionEpoch++;
+      return { ...answer, json: async () => answer.body ?? {} };
+    });
+  }
+
+  it("persists the refreshed token when nothing replaced the session (positive control)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetchOnce({ ok: true, body: { accessToken: "refreshed", expiresIn: 900 } }),
+    );
+
+    const outcome = await refreshWithOutcome();
+
+    expect(outcome).toEqual({ accessToken: "refreshed" });
+    expect(setSessionMock).toHaveBeenCalledWith("refreshed", undefined, 900);
+  });
+
+  it("drops a stale success instead of overwriting the newer session", async () => {
+    const fetchSpy = adoptNewSessionDuringFetch({
+      ok: true,
+      status: 200,
+      body: { accessToken: "stale-old-slug-token", expiresIn: 900 },
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const outcome = await refreshWithOutcome();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(setSessionMock).not.toHaveBeenCalled();
+    // The caller retries with the session that is actually in place.
+    expect(outcome).toEqual({ accessToken: "new-access-token" });
+    expect(storedRefreshToken).toBe("new-refresh-token");
+  });
+
+  it("does not escalate a stale 401 into a logout of the newer session", async () => {
+    vi.stubGlobal("fetch", adoptNewSessionDuringFetch({ ok: false, status: 401 }));
+
+    const outcome = await refreshWithOutcome();
+
+    expect(outcome).toEqual({ accessToken: "new-access-token" });
+    expect(clearTokenMock).not.toHaveBeenCalled();
+    expect(redirectToExpiredLoginMock).not.toHaveBeenCalled();
   });
 });

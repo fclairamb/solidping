@@ -73,6 +73,24 @@ export function getExpiresInSeconds(): number | null {
 }
 
 /**
+ * Session generation. Bumped every time the stored refresh token is replaced
+ * or dropped (a login-shaped response, switch-org, an org rename, a logout),
+ * never by a plain access-token refresh, which keeps the same refresh token.
+ *
+ * Work that started on one session and settles after it was replaced must not
+ * write over, or tear down, the newer one (solidping-business#81): a refresh
+ * that spent the previous refresh token drops its result (token-refresh.ts),
+ * and a request sent with a token that is no longer the stored one does not
+ * clear the session on its 401 (handleResponse).
+ */
+let sessionEpoch = 0;
+
+/** The current session generation. See `sessionEpoch`. */
+export function getSessionEpoch(): number {
+  return sessionEpoch;
+}
+
+/**
  * Persists the whole session — access token, refresh token, and the
  * computed absolute expiry — in one call. Every login-shaped response
  * (password, 2FA, passkey, OAuth, Slack, switch-org, confirm-registration,
@@ -100,6 +118,9 @@ export function setSession(
   }
   localStorage.setItem(TOKEN_KEY, accessToken);
   if (refreshToken) {
+    if (refreshToken !== localStorage.getItem(REFRESH_TOKEN_KEY)) {
+      sessionEpoch++;
+    }
     localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
   }
   if (typeof expiresIn === "number" && !isNaN(expiresIn)) {
@@ -111,6 +132,7 @@ export function setSession(
 export function clearToken(): void {
   // A session that is over takes any impersonation riding on it with it.
   clearImpersonation();
+  sessionEpoch++;
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem(EXPIRES_AT_KEY);
@@ -420,6 +442,7 @@ async function fetchWithAuth(
     suppress401Redirect: boolean;
     suppress401Handling: boolean;
     hadSession: boolean;
+    sentToken: string | null;
   };
 }> {
   const {
@@ -434,10 +457,15 @@ async function fetchWithAuth(
   // handleResponse would then mistake an expired session for a first visit.
   const hadSession = Boolean(getToken() || getRefreshToken());
 
+  // The token this request actually carries (null when none). handleResponse
+  // compares it with the stored one to tell "this session is over" from "this
+  // request left before the session was swapped".
+  let sentToken: string | null = null;
   if (!skipAuth) {
     const token = getToken();
     if (token) {
       headers.set("Authorization", `Bearer ${token}`);
+      sentToken = token;
     }
   }
 
@@ -476,6 +504,7 @@ async function fetchWithAuth(
     if (newToken) {
       const retryHeaders = new Headers(headers);
       retryHeaders.set("Authorization", `Bearer ${newToken}`);
+      sentToken = newToken;
       response = await doFetch(url, retryHeaders, fetchOptions);
       // Fall through to the normal status handling below with the retried
       // response. A second 401 here is not retried again — handleResponse
@@ -484,7 +513,7 @@ async function fetchWithAuth(
     }
   }
 
-  return { response, flags: { skipAuth, suppress401Redirect, suppress401Handling, hadSession } };
+  return { response, flags: { skipAuth, suppress401Redirect, suppress401Handling, hadSession, sentToken } };
 }
 
 /** True when a JSON `Content-Type` header value denotes a JSON media type
@@ -496,6 +525,14 @@ function isJsonContentType(contentType: string | null): boolean {
   return mediaType === "application/json" || mediaType.endsWith("+json");
 }
 
+/** True when a request was sent with a token and a DIFFERENT session is now
+ * stored. No stored token means the session is gone, not replaced. */
+function isStaleToken(sentToken: string | null | undefined): boolean {
+  if (!sentToken) return false;
+  const current = getToken();
+  return current !== null && current !== sentToken;
+}
+
 /** Exported for tests only. */
 export async function handleResponse<T>(
   response: Response,
@@ -504,13 +541,24 @@ export async function handleResponse<T>(
     suppress401Redirect,
     suppress401Handling = false,
     hadSession: hadSessionBeforeRequest,
+    sentToken,
   }: {
     skipAuth: boolean;
     suppress401Redirect: boolean;
     suppress401Handling?: boolean;
     hadSession?: boolean;
+    sentToken?: string | null;
   }
 ): Promise<T> {
+  if (response.status === 401 && !skipAuth && !suppress401Handling && isStaleToken(sentToken)) {
+    // The request left with a token that has since been replaced (an org
+    // rename or switch adopted a new session while it was in flight). Its 401
+    // says nothing about the session now in place: clearing that one and
+    // redirecting to login?session_expired=true is how renaming the org
+    // logged its owner out (solidping-business#81). Fail just this request.
+    throw new ApiError("Session changed", "SESSION_CHANGED", undefined, 401);
+  }
+
   if (response.status === 401 && !skipAuth && !suppress401Handling) {
     // Read before clearing: a 401 with no token behind it is a visitor who
     // never had a session, and must not be told theirs expired.

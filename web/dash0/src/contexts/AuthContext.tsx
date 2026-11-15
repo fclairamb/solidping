@@ -112,6 +112,9 @@ export interface LoginResult {
 // RenamedOrgSession is the session half of the PATCH /orgs/:org response.
 export interface RenamedOrgSession {
   slug: string;
+  // The slug the org had before the rename: its cached queries are cancelled
+  // and dropped, and its switcher entry is renamed in place.
+  previousSlug?: string;
   accessToken: string;
   refreshToken?: string;
   expiresIn?: number;
@@ -167,7 +170,14 @@ interface AuthContextType {
   // 403 against the new one, so the tokens must be swapped in before the app
   // navigates to the new URL — this is switchOrg's problem without the
   // round-trip, since the server already minted the session.
-  adoptRenamedOrgSession: (session: RenamedOrgSession) => Promise<void>;
+  //
+  // `navigateToRenamedOrg` runs while the swap still counts as an org switch in
+  // flight (isSwitchOrgInFlight): until the URL carries the new slug, OrgLayout
+  // must not react to auth.org disagreeing with it (solidping-business#81).
+  adoptRenamedOrgSession: (
+    session: RenamedOrgSession,
+    navigateToRenamedOrg?: () => Promise<void>,
+  ) => Promise<void>;
   // Adopts the session DELETE /orgs/:org hands back after an owner deletes the
   // organization. The org the current token names no longer exists, so without
   // this the user would be logged out by their own maintenance action (issue
@@ -768,17 +778,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const adoptRenamedOrgSession = async (session: RenamedOrgSession) => {
-    // Overwrite (never merge) both tokens: the refresh token was re-minted for
-    // the renamed org, and keeping the old one would let a background refresh
-    // resurrect a session scoped to a slug that no longer exists.
-    setSession(session.accessToken, session.refreshToken, session.expiresIn);
-    setStoredOrg(session.slug);
-    setOrg(session.slug);
+  const adoptRenamedOrgSession = async (
+    session: RenamedOrgSession,
+    navigateToRenamedOrg?: () => Promise<void>,
+  ) => {
+    const previousSlug = session.previousSlug;
+    const isPreviousOrgQuery = (query: { queryKey: readonly unknown[] }) =>
+      previousSlug !== undefined && query.queryKey.includes(previousSlug);
 
-    const data = await apiFetch<MeResponse>(`/api/v1/auth/me`);
-    setSessionOrganization(data.organization ?? null);
-    setOrganizations(data.organizations || []);
+    // From here until the URL carries the new slug, auth.org disagrees with
+    // the URL on purpose. OrgLayout's guard used to read that as "switch to
+    // the URL's org" and POST switch-org for the old slug, whose 401 sent the
+    // owner to login?session_expired=true (solidping-business#81).
+    switchOrgInFlight = true;
+    try {
+      // Nothing addressed to the old slug may settle on top of the new session.
+      if (previousSlug) {
+        await queryClient.cancelQueries({ predicate: isPreviousOrgQuery });
+      }
+
+      // Overwrite (never merge) both tokens: the refresh token was re-minted for
+      // the renamed org, and keeping the old one would let a background refresh
+      // resurrect a session scoped to a slug that no longer exists. setSession
+      // bumps the session epoch, so a refresh or a request still in flight on
+      // the old session cannot overwrite or tear down this one.
+      setSession(session.accessToken, session.refreshToken, session.expiresIn);
+      setStoredOrg(session.slug);
+      setOrg(session.slug);
+      if (previousSlug) {
+        setOrganizations((prev) =>
+          prev.map((o) => (o.slug === previousSlug ? { ...o, slug: session.slug } : o)),
+        );
+      }
+
+      try {
+        const data = await apiFetch<MeResponse>(`/api/v1/auth/me`);
+        setSessionOrganization(data.organization ?? null);
+        setOrganizations(data.organizations || []);
+      } catch {
+        // The session is adopted and the switcher entry already renamed: a
+        // failed /me only leaves the org details stale until the next one.
+      }
+
+      await navigateToRenamedOrg?.();
+    } finally {
+      switchOrgInFlight = false;
+    }
+
+    // Only now, off the old slug's routes, drop its cache (same order as the
+    // org-deletion flow): every org-scoped key carries the slug.
+    if (previousSlug) {
+      queryClient.removeQueries({ predicate: isPreviousOrgQuery });
+    }
   };
 
   // Synchronous on purpose: the caller navigates away the moment this returns,

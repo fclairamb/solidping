@@ -30,6 +30,7 @@ const NOTIFICATION_KEYS = [
   "notifications.columnRoutes",
   "notifications.events.supportMessage",
   "notifications.events.userRegistered",
+  "notifications.events.smsDestinationProbing",
   "notifications.noRoutes",
   "notifications.noRoutesSelf",
   "notifications.noRecipients",
@@ -79,6 +80,7 @@ describe("operator notifications copy locale parity", () => {
         unknown
       >;
       expect(Object.keys(events).sort()).toEqual([
+        "smsDestinationProbing",
         "supportMessage",
         "userRegistered",
       ]);

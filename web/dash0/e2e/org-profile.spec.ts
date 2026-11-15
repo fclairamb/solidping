@@ -8,7 +8,10 @@ import { test, expect, API_BASE, uniqueStamp } from "./fixtures";
 // through the real POST /api/v1/orgs by a freshly seeded zero-org user, so a
 // rename here cannot disturb the shared `test` fixture org.
 test.describe("Organization profile", () => {
-  async function seedOwnedOrg(page: import("@playwright/test").Page) {
+  async function seedOwnedOrg(
+    page: import("@playwright/test").Page,
+    slug?: string,
+  ) {
     const stamp = uniqueStamp();
     const email = `profile-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";
@@ -31,7 +34,7 @@ test.describe("Organization profile", () => {
 
     const session = (await loginResp.json()) as { accessToken: string };
 
-    const orgSlug = `prof-${stamp}`;
+    const orgSlug = slug ?? `prof-${stamp}`;
     const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
       headers: { Authorization: `Bearer ${session.accessToken}` },
       data: { name: `Profile Co ${stamp}`, slug: orgSlug },
@@ -131,6 +134,121 @@ test.describe("Organization profile", () => {
       { maxRedirects: 0 },
     );
     expect(direct.status()).not.toBe(301);
+  });
+
+  // solidping-business#81: a freshly registered owner uploaded a logo, renamed
+  // the slug and saved, and was hard-navigated to
+  // login?session_expired=true ~80 ms after landing on the new URL. Between
+  // adopting the re-minted session and navigating, OrgLayout saw auth.org (new
+  // slug) disagree with the URL (old slug) and POSTed switch-org for the old
+  // slug, whose 401 escalated to "session expired". This replays the save
+  // with every concurrent source of trouble the report named: old-slug
+  // queries still in flight (a), a refresh spending the old refresh token
+  // across the swap (b), and a logo upload that just finished (c).
+  test("renaming right after a logo upload, with requests and a refresh in flight, keeps the owner signed in", async ({
+    page,
+  }) => {
+    // Slugs are capped at 20 characters.
+    const stamp = uniqueStamp().slice(-6);
+    const { orgSlug } = await seedOwnedOrg(page, `acme-${stamp}`);
+    const renamed = `acme-${stamp}-new`;
+    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    const navigations: string[] = [];
+    page.on("framenavigated", (frame) => {
+      if (frame === page.mainFrame()) navigations.push(frame.url());
+    });
+    const authFailures: string[] = [];
+    page.on("response", (response) => {
+      const url = new URL(response.url());
+      if (url.pathname.startsWith("/api/") && response.status() === 401) {
+        authFailures.push(`${response.request().method()} ${url.pathname}`);
+      }
+    });
+
+    let armed = false;
+    let forced401 = false;
+    let refreshesInFlight = 0;
+
+    // (b) Every refresh takes a while, so one that starts before the save
+    // resolves only after the renamed session was adopted.
+    await page.route("**/api/v1/auth/refresh", async (route) => {
+      refreshesInFlight++;
+      await delay(1500);
+      refreshesInFlight--;
+      await route.continue();
+    });
+
+    // (c) The upload's own /auth/me (refreshUser) answers 401 once, as an
+    // access token expiring right then would: that is what starts the
+    // reactive refresh with the OLD refresh token.
+    await page.route("**/api/v1/auth/me", async (route) => {
+      if (armed && !forced401) {
+        forced401 = true;
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ title: "Invalid or expired token", code: "INVALID_TOKEN" }),
+        });
+        return;
+      }
+      // Widens the window between adopting the session and navigating.
+      if (armed) await delay(400);
+      await route.continue();
+    });
+
+    // (a) Queries addressed to the old slug are slow, so some are still in
+    // flight when the session is swapped.
+    const oldOrgPrefix = `/api/v1/orgs/${orgSlug}`;
+    await page.route(
+      (url) => url.pathname === oldOrgPrefix || url.pathname.startsWith(`${oldOrgPrefix}/`),
+      async (route) => {
+        if (armed) await delay(route.request().method() === "PATCH" ? 300 : 700);
+        await route.continue();
+      },
+    );
+
+    await page.goto(`orgs/${orgSlug}/organization/settings`);
+    await expect(page.getByTestId("org-profile-card")).toBeVisible();
+
+    armed = true;
+    await uploadLogo(page);
+    await expect.poll(() => forced401).toBe(true);
+    await expect.poll(() => refreshesInFlight).toBe(1);
+
+    await page.getByTestId("org-profile-slug").fill(renamed);
+    await page.getByTestId("org-profile-save").click();
+
+    await page.waitForURL(
+      (url) => url.pathname.endsWith(`/orgs/${renamed}/organization/settings`),
+      { timeout: 15000 },
+    );
+    // Let the stale refresh, the slowed queries and any late guard reaction
+    // settle: the report's logout came ~80 ms AFTER the landing.
+    await expect.poll(() => refreshesInFlight, { timeout: 10000 }).toBe(0);
+    await page.waitForTimeout(1500);
+
+    expect(new URL(page.url()).pathname).toMatch(
+      new RegExp(`/orgs/${renamed}/organization/settings$`),
+    );
+    expect(navigations.filter((u) => u.includes("session_expired"))).toEqual([]);
+    expect(navigations.filter((u) => u.includes("/login"))).toEqual([]);
+    await expect(page.getByTestId("org-profile-card")).toBeVisible();
+    await expect(page.getByTestId("org-profile-slug")).toHaveValue(renamed);
+
+    // The only 401 is the one this test forced; switch-org in particular
+    // never answered one.
+    expect(authFailures).toEqual(["GET /api/v1/auth/me"]);
+
+    // The stored session is the renamed org's, not a stale refresh's token
+    // for the old slug paired with the new refresh token.
+    const claimedSlug = await page.evaluate(() => {
+      const token = localStorage.getItem("solidping_session_token") ?? "";
+      const payload = token.split(".")[1] ?? "";
+      const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+      return (JSON.parse(json) as { orgSlug?: string }).orgSlug ?? null;
+    });
+    expect(claimedSlug).toBe(renamed);
   });
 
   test("editing the name never touches the slug", async ({ page }) => {
