@@ -989,9 +989,23 @@ func (r *CheckWorker) runnerLoop(ctx context.Context, id int) {
 	logger.DebugContext(ctx, "Runner started")
 	defer logger.DebugContext(ctx, "Runner stopped")
 
+	firstLoop := true
+
 	for {
 		// Signal: "I'm available for work"
 		r.availableRunners.Add(1)
+
+		// The fetcher may have run its first claim before any runner was
+		// counted and skipped it: wake it so jobs already due (e.g. the ones
+		// a restart just freed) do not wait for the fallback poll.
+		if firstLoop {
+			firstLoop = false
+
+			select {
+			case r.completionChan <- struct{}{}:
+			default:
+			}
+		}
 
 		// Wait for a job
 		var job *models.CheckJob
