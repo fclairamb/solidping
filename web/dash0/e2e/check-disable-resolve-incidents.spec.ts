@@ -102,4 +102,61 @@ test.describe("Disable a check with open incidents", () => {
       });
     }
   });
+
+  test("a click before the open incidents are known cannot skip the dialog", async ({
+    authenticatedPage: page,
+  }) => {
+    const token = await getAuthToken(page);
+    const auth = { Authorization: `Bearer ${token}` };
+    const check = await createHeartbeatCheck(page, token, `E2E Disable Early ${uniqueStamp()}`);
+
+    try {
+      await page.request.get(
+        `${API_BASE}/api/v1/heartbeat/test/${check.uid}?token=${check.hbToken}&status=down`,
+      );
+      await expect
+        .poll(
+          async () => {
+            const resp = await page.request.get(
+              `${API_BASE}/api/v1/orgs/test/incidents?checkUid=${check.uid}&state=active`,
+              { headers: auth },
+            );
+            return ((await resp.json()).data ?? []).length;
+          },
+          { timeout: 15_000 },
+        )
+        .toBe(1);
+
+      // Hold the page's open-incidents query: before the fix, a click in this
+      // window disabled the check at once and left its incident open.
+      let release: () => void = () => {};
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await page.route(
+        (url) =>
+          url.pathname.endsWith("/api/v1/orgs/test/incidents") &&
+          url.searchParams.get("checkUid") === check.uid &&
+          url.searchParams.get("state") === "active",
+        async (route) => {
+          await released;
+          await route.continue();
+        },
+      );
+
+      await page.goto(`/d/orgs/test/checks/${check.uid}`);
+      const toggle = page.getByTestId("check-toggle-enabled");
+      await expect(toggle).toBeVisible();
+      await expect(toggle).toBeDisabled();
+
+      release();
+      await expect(toggle).toBeEnabled();
+      await toggle.click();
+      await expect(page.getByTestId("disable-check-dialog")).toBeVisible();
+    } finally {
+      await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${check.uid}`, {
+        headers: auth,
+      });
+    }
+  });
 });
