@@ -56,6 +56,7 @@ func (d *Data) In(loc i18n.Locale) *Data {
 	out := *d
 	out.Checks = slices.Clone(d.Checks)
 	out.SLOs = slices.Clone(d.SLOs)
+	out.TopFailingChecks = slices.Clone(d.TopFailingChecks)
 	out.readers = nil
 	out.written = nil
 	out.write(loc)
@@ -84,12 +85,22 @@ func (d *Data) write(loc i18n.Locale) {
 	d.AverageIncident = spanIfAny(loc, fig.AverageIncident)
 	d.TotalDowntime = spanIfAny(loc, fig.TotalDowntime)
 
+	d.MedianTimeToResolve = spanIfAny(loc, fig.MedianTimeToResolve)
+	d.MedianTimeToAcknowledge = spanIfAny(loc, fig.MedianTimeToAcknowledge)
+
 	d.writeTrend(loc)
 	d.writeLatency(loc)
 
 	for i := range d.Checks {
 		row := &d.Checks[i]
 		row.AvailabilityPct = pctIf(loc, row.HasData, row.Availability)
+	}
+
+	for i := range d.TopFailingChecks {
+		row := &d.TopFailingChecks[i]
+		row.Detail = loc.T("report.insights.rowDetail",
+			"incidents", loc.Tn("report.incidents", row.IncidentCount),
+			"relapses", loc.Tn("report.insights.relapses", row.RelapseCount))
 	}
 
 	for i := range d.SLOs {

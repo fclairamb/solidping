@@ -77,6 +77,18 @@ func (s *Service) ReplaceAutoChecks(ctx context.Context, req ReplacementRequest)
 	envs := make(map[string]*placementEnv)
 	changes := make([]PlacementChange, 0, len(candidates))
 
+	// Checks left in the dark region for want of a healthy candidate. The
+	// sweep calls this on every pass while the region stays dark, so they are
+	// logged as ONE line per pass, never one line per check per pass.
+	stuck := 0
+
+	defer func() {
+		if stuck > 0 {
+			slog.InfoContext(ctx, "Auto-placed checks stay in a dark region: no healthy candidate left",
+				"region", req.Region, "stuck", stuck)
+		}
+	}()
+
 	for _, check := range candidates {
 		if !check.Enabled || check.IsPassive() || !slices.Contains(check.Regions, req.Region) {
 			continue
@@ -100,6 +112,8 @@ func (s *Service) ReplaceAutoChecks(ctx context.Context, req ReplacementRequest)
 
 		if moved {
 			changes = append(changes, change)
+		} else {
+			stuck++
 		}
 	}
 
@@ -107,6 +121,7 @@ func (s *Service) ReplaceAutoChecks(ctx context.Context, req ReplacementRequest)
 }
 
 // replaceOne moves one check off the region, when a healthy candidate exists.
+// It reports moved = false, without an error, for a check that has none.
 func (s *Service) replaceOne(
 	ctx context.Context, check *models.Check, env *placementEnv, req *ReplacementRequest,
 ) (PlacementChange, bool, error) {
@@ -119,9 +134,7 @@ func (s *Service) replaceOne(
 
 	next, target, ok := regions.Replace(check.Regions, eligible, req.Healthy, req.Region)
 	if !ok {
-		slog.InfoContext(ctx, "Auto-placed check stays in a dark region: no healthy candidate left",
-			"checkUid", check.UID, "region", req.Region)
-
+		// Counted and logged once per pass by ReplaceAutoChecks.
 		return PlacementChange{}, false, nil
 	}
 

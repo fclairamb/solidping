@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  BarChart3,
   Check,
   CheckCircle,
   Layers,
@@ -320,6 +321,23 @@ function IncidentsIndexPage() {
         description={t("subtitle")}
         docsHref="/docs/features/incidents"
         className="flex-wrap"
+        actions={
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            data-testid="incidents-insights-button"
+          >
+            <Link
+              to="/orgs/$org/incidents/insights"
+              params={{ org }}
+              search={{ period: "30d" }}
+            >
+              <BarChart3 className="h-4 w-4" />
+              {t("insights.button")}
+            </Link>
+          </Button>
+        }
       />
 
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -418,6 +436,7 @@ function IncidentsIndexPage() {
         </div>
         <Button
           variant="outline"
+          data-testid="incidents-refresh-button"
           onClick={() => refetch()}
           disabled={isRefetching}
           aria-label={t("common:refresh")}
