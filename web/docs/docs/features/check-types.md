@@ -462,6 +462,13 @@ wss://hostname/path  # With TLS
 | URL | WebSocket endpoint | `wss://api.example.com/ws` |
 | Timeout | Connection timeout | `10s` |
 
+**Redirects:** a redirected handshake is followed for up to 10 hops; a loop
+fails the check instead of running to the timeout. A hop to another origin
+(another host or port, or a `wss` → `ws` downgrade) carries none of the
+configured headers, nor `Authorization`, `Proxy-Authorization`, `Cookie` or
+`Referer`. The names (never the values) of the headers withheld are listed in
+the `redirect_dropped_secret_headers` output.
+
 ### RDP (Remote Desktop) {#rdp-remote-desktop}
 
 Monitor Remote Desktop Protocol servers. Unlike a plain TCP/3389 port probe, this checker performs the **pre-auth RDP negotiation handshake** (X.224 Connection Request/Confirm, MS-RDPBCGR): a valid answer proves the RDP listener (TermService, xrdp, …) actually parsed the request — not just that a firewall forwards the port. The handshake needs **no credentials** and stops before any authentication.
@@ -1228,6 +1235,11 @@ without thresholds configured, so a check gains memory/disk history for free.
 Thresholds are only accepted in management mode — AMQP has no visibility
 into a node's resource usage.
 
+The management API calls never follow a redirect: their URL is built from the
+configured host and port, so a redirect is unexpected, and following it could
+hand the Basic auth credentials to another host or resend them over plain
+`http`. A redirect response fails the call with its status code.
+
 ### MQTT {#mqtt}
 
 Monitor MQTT broker connectivity via subscription.
@@ -1574,6 +1586,15 @@ explicit error naming the cap — never truncated: a half-read exposition body
 still parses, and would then be graded as a wrong-but-plausible value. If your
 `/metrics` output is that big, narrow the endpoint or switch to `promql` mode,
 where the query bounds the response.
+
+#### Redirects
+
+Redirects are followed for up to 10 hops. A hop to another origin (another
+host or port, or an `https` → `http` downgrade) carries none of the configured
+`headers`, nor `Authorization`, `Proxy-Authorization`, `Cookie` or `Referer`:
+the credentials stay with the endpoint you configured. The names (never the
+values) of the headers withheld are listed in the
+`redirect_dropped_secret_headers` output. A same-origin redirect keeps them.
 
 ## Special Check Types
 
