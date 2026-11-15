@@ -34,7 +34,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.39.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.44.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.52.0 // indirect
-	github.com/aws/smithy-go v1.28.9 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/beevik/etree v1.8.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -229,6 +228,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.18
 	github.com/aws/aws-sdk-go-v2/credentials v1.21.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.10
+	github.com/aws/smithy-go v1.28.9
 	github.com/beevik/ntp v1.6.0
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/chromedp/cdproto v0.0.0-20260922220944-a19bff23514f

@@ -13,12 +13,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage"
@@ -116,18 +118,41 @@ func (b *Backend) WriteFile(
 		return "", fmt.Errorf("read body: %w", err)
 	}
 
-	input := &s3.PutObjectInput{
-		Bucket:      aws.String(b.Bucket),
-		Key:         aws.String(key),
-		Body:        bytes.NewReader(body),
-		ContentType: aws.String(meta.MimeType),
+	put := func() error {
+		_, putErr := b.Client.PutObject(ctx, &s3.PutObjectInput{
+			Bucket:      aws.String(b.Bucket),
+			Key:         aws.String(key),
+			Body:        bytes.NewReader(body),
+			ContentType: aws.String(meta.MimeType),
+		})
+
+		return putErr
 	}
 
-	if _, err := b.Client.PutObject(ctx, input); err != nil {
+	err = put()
+	if isInvalidRequest(err) {
+		// The key is new and the request carries no encryption parameter, so
+		// this answer cannot come from what was sent. Some S3-compatible
+		// stores give it once in a while; the SDK does not retry a 400.
+		slog.WarnContext(ctx, "S3 refused a write as an invalid request, retrying once",
+			"group", group, "error", err)
+
+		err = put()
+	}
+
+	if err != nil {
 		return "", fmt.Errorf("put object: %w", err)
 	}
 
 	return scheme + rel, nil
+}
+
+// isInvalidRequest reports whether the store answered with the generic
+// InvalidRequest error code.
+func isInvalidRequest(err error) bool {
+	var apiErr smithy.APIError
+
+	return errors.As(err, &apiErr) && apiErr.ErrorCode() == "InvalidRequest"
 }
 
 // ReadFile returns the object's body. The caller is responsible for closing
