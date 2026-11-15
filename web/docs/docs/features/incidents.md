@@ -304,6 +304,16 @@ the next evaluation.
 Degraded incidents do not count in the check's availability: the **Outages**
 column of the availability table counts outages only.
 
+## Incident insights {#insights}
+
+The **Insights** button in the header of the incidents list opens a page that answers the questions a team asks after a few weeks on call. Pick a window of 7, 30 or 90 days. It covers the incidents active during the period: those that started inside it, and those that started earlier and were still open or resolved inside it. Only check outages count: SLO burn alerts and degraded incidents are left out.
+
+- **Top failing checks**: the 20 checks with the most incidents active in the window (ties broken by downtime), with their downtime, relapses and last incident. Downtime is the wall-clock time of the incidents, clipped to the window; an open incident counts up to now.
+- **Time to acknowledge**: the time between the start of the incident's current episode and its acknowledgement. When an incident reopens, the acknowledgement is cleared, so the time is measured from the reopening. It is always shown with "N of M acknowledged", because most incidents recover before anybody acknowledges them and the time alone would flatter you. Incidents rolled up under a root cause (nobody was paged) are not part of it.
+- **Time to resolve**: the time between the start and the resolution of incidents that were auto-recovered or resolved manually. Closures that say nothing about recovery (expired, escalated, disabled check, deleted check) are counted under "Other" and left out of the median.
+
+Every duration is a **median** and a **p90** (nearest rank), never a mean, so one six-hour outage does not distort the picture. With no data the card shows a dash, not zero. The same numbers are available from `GET /api/v1/orgs/{org}/incidents/insights?period=30d`. At most 5,000 incidents are read; the response then carries `truncated: true`.
+
 ## Notification Events
 
 | Event | When | Description |

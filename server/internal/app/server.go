@@ -1620,6 +1620,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)
 	orgIncidents := orgGroup("/orgs/:org/incidents")
 	orgIncidents.GET("", incidentsHandler.ListIncidents)
+	// Registered before "/:uid" so "insights" is not read as an incident uid.
+	orgIncidents.GET("/insights", incidentsHandler.GetInsights)
 	orgIncidents.GET("/:uid", incidentsHandler.GetIncident)
 	orgIncidents.POST("/:uid/ack", incidentsHandler.AcknowledgeIncident)
 	orgIncidents.POST("/:uid/unack", incidentsHandler.UnacknowledgeIncident)

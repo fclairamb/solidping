@@ -89,5 +89,14 @@
     "perCheckTruncated": "Pro Prüfung, schlechteste zuerst (angezeigt werden die {shown} Prüfungen mit der niedrigsten Verfügbarkeit von insgesamt {total}):",
     "objectivesHeading": "Ziele:",
     "budgetRemaining": "verbleibendes Budget {budget}"
+  },
+  "insights": {
+    "title": "Meiste Vorfälle",
+    "resolve": "Mediane Zeit bis zur Lösung: {duration}",
+    "acknowledge": "Mediane Zeit bis zur Bestätigung: {duration}",
+    "acknowledged": "{count} von {total} bestätigt",
+    "rowDetail": "{incidents}, {relapses}",
+    "relapses_one": "{count} Rückfall",
+    "relapses_other": "{count} Rückfälle"
   }
 }
