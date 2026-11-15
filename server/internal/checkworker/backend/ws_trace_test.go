@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -113,10 +114,11 @@ func TestAgentRunsTheRequestedTraceAndUploadsIt(t *testing.T) {
 	sig, err := base64.StdEncoding.DecodeString(upload.signature)
 	r.NoError(err)
 	r.True(ed25519.Verify(agentPub,
-		agents.SignatureChallenge(
-			http.MethodPost, "/api/v1/agent/attachments", upload.timestamp, upload.nonce),
+		agents.SignatureChallengeV2(
+			http.MethodPost, "/api/v1/agent/attachments?topic="+url.QueryEscape(upload.topic),
+			upload.timestamp, upload.nonce, upload.body),
 		sig,
-	), "the trace upload must be signed with the agent's own key")
+	), "the trace upload must be signed with the agent's own key over query and body")
 }
 
 // TestAgentIgnoresATraceRequestWithNoUsableTarget: a malformed frame must be a

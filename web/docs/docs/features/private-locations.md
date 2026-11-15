@@ -75,8 +75,9 @@ the private key material that authenticates the agent and decrypts every
 credential sealed to it, and container stdout ends up in your log aggregator.
 
 Every later connection authenticates with an Ed25519 signature over
-`method|path|timestamp|nonce` (±5 minutes of clock skew, replay-protected) —
-there is no bearer token to steal, and the database only ever holds public keys.
+`method|requestURI|timestamp|nonce|sha256(body)` (±5 minutes of clock skew,
+replay-protected) — there is no bearer token to steal, and the database only
+ever holds public keys.
 
 ### Getting the `SP_AGENT_KEYS` value
 
@@ -423,7 +424,8 @@ Stated plainly, because a security feature's caveats matter more than its
 marketing:
 
 - **Reconnect replay protection is per-instance.** Each agent reconnect is
-  signed over `method|path|timestamp|nonce`, and the server remembers recent
+  signed over `method|requestURI|timestamp|nonce|sha256(body)`, and the server
+  remembers recent
   nonces to reject replays. That memory is **local to the server instance that
   handled the connection**. If you run SolidPing as multiple replicas behind a
   load balancer, an attacker who captures a signed handshake could replay it

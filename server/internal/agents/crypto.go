@@ -4,9 +4,13 @@
 // A deported agent holds two keypairs it generates itself and never shares the
 // private halves of:
 //
-//   - Ed25519 for identity — every reconnect is authenticated by an Ed25519
-//     signature over method|path|timestamp|nonce, so the server never stores a
-//     replayable bearer credential for an agent, only its public key.
+//   - Ed25519 for identity — every reconnect and signed HTTP call is
+//     authenticated by an Ed25519 signature. The current (v2) challenge covers
+//     method|requestURI|timestamp|nonce|sha256(body), so the signature binds
+//     the query string and the exact payload, not just the path. The legacy
+//     v1 challenge (method|path|timestamp|nonce) is still verified for older
+//     agents. The server never stores a replayable bearer credential for an
+//     agent, only its public key.
 //   - X25519 (age) for credential decryption — see internal/crypto/credentials.
 //
 // Enrollment is one-shot: an admin mints a token (shown once), the agent presents
@@ -78,15 +82,70 @@ func KeyFingerprint(publicKeyB64 string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// SignatureChallenge builds the canonical message an agent signs on reconnect:
-// the HTTP method, request path, timestamp, and nonce joined by '|'. Both the
-// agent (signing) and the server (verifying) must build it identically.
+// SignatureChallenge builds the LEGACY (v1) canonical message an agent signs:
+// the HTTP method, request path, timestamp, and nonce joined by '|'. It covers
+// neither the query string nor the body; kept only so agents that have not
+// upgraded yet can still authenticate. New signatures use SignatureChallengeV2.
 func SignatureChallenge(method, path, timestamp, nonce string) []byte {
 	return []byte(method + "|" + path + "|" + timestamp + "|" + nonce)
 }
 
-// VerifySignature checks an Ed25519 signature over the reconnect challenge. Both
-// the public key and the signature are base64 (standard encoding).
+// SignatureVersionV2 is the value of the X-Sp-Signature-Version header that
+// marks a request as signed with the v2 challenge. An absent header means the
+// legacy v1 challenge; any other value is refused.
+const SignatureVersionV2 = "2"
+
+// HeaderSignatureVersion carries the challenge version the agent signed with.
+// Same name on the agent side and on both server verification paths (HTTP
+// signed calls and the WebSocket reconnect).
+const HeaderSignatureVersion = "X-Sp-Signature-Version"
+
+// signatureChallengeV2Prefix namespaces the v2 canonical message so a v1
+// challenge can never be reinterpreted as a v2 one (or the reverse): the two
+// formats are unambiguous even before the version header is consulted.
+const signatureChallengeV2Prefix = "v2|"
+
+// SignatureChallengeV2 builds the canonical message an agent signs for a
+// request: version prefix, HTTP method, full request URI (path AND query),
+// timestamp, nonce, and the hex SHA-256 of the exact body bytes (the hash of
+// the empty slice for a bodyless call). Binding the query and the body is what
+// keeps an on-path attacker on a plain-HTTP agent link from rewriting a
+// capture's topic or content, or a worker task's result, inside a validly
+// signed, nonce-fresh request.
+func SignatureChallengeV2(method, requestURI, timestamp, nonce string, body []byte) []byte {
+	sum := sha256.Sum256(body)
+
+	return []byte(signatureChallengeV2Prefix + method + "|" + requestURI + "|" +
+		timestamp + "|" + nonce + "|" + hex.EncodeToString(sum[:]))
+}
+
+// VerifySignatureV2 checks an Ed25519 signature over the v2 challenge. Both
+// the public key and the signature are base64 (standard encoding). body must
+// be the exact bytes received (nil for a bodyless call).
+func VerifySignatureV2(
+	publicKeyB64, method, requestURI, timestamp, nonce string, body []byte, signatureB64 string,
+) error {
+	pub, err := ParsePublicKey(publicKeyB64)
+	if err != nil {
+		return err
+	}
+
+	sig, err := base64.StdEncoding.DecodeString(signatureB64)
+	if err != nil {
+		return fmt.Errorf("%w: decode signature: %w", ErrBadSignature, err)
+	}
+
+	if !ed25519.Verify(pub, SignatureChallengeV2(method, requestURI, timestamp, nonce, body), sig) {
+		return ErrBadSignature
+	}
+
+	return nil
+}
+
+// VerifySignature checks an Ed25519 signature over the LEGACY (v1) reconnect
+// challenge. Both the public key and the signature are base64 (standard
+// encoding). Kept for agents that have not upgraded to the v2 challenge; new
+// verification paths use VerifySignatureV2.
 func VerifySignature(publicKeyB64, method, path, timestamp, nonce, signatureB64 string) error {
 	pub, err := ParsePublicKey(publicKeyB64)
 	if err != nil {
@@ -174,9 +233,24 @@ func GenerateAgentKeys() (*AgentKeys, error) {
 	}, nil
 }
 
-// Sign produces the base64 Ed25519 signature over the reconnect challenge, using
-// a base64 private key. Used agent-side.
+// Sign produces the base64 Ed25519 signature over the LEGACY (v1) challenge,
+// using a base64 private key. Kept so tests can still mint old-style agent
+// signatures; agents sign with SignV2.
 func (k *AgentKeys) Sign(method, path, timestamp, nonce string) (string, error) {
+	return k.signChallenge(SignatureChallenge(method, path, timestamp, nonce))
+}
+
+// SignV2 produces the base64 Ed25519 signature over the v2 challenge: the full
+// request URI (path AND query) and the exact body bytes are bound into the
+// signature. Used agent-side for every signed call (WS reconnect included,
+// with a nil body).
+func (k *AgentKeys) SignV2(method, requestURI, timestamp, nonce string, body []byte) (string, error) {
+	return k.signChallenge(SignatureChallengeV2(method, requestURI, timestamp, nonce, body))
+}
+
+// signChallenge signs a canonical challenge with the agent's Ed25519 private
+// key — the one place the private half is decoded and used.
+func (k *AgentKeys) signChallenge(challenge []byte) (string, error) {
 	raw, err := base64.StdEncoding.DecodeString(k.Ed25519PrivateKey)
 	if err != nil {
 		return "", fmt.Errorf("decode private key: %w", err)
@@ -186,7 +260,7 @@ func (k *AgentKeys) Sign(method, path, timestamp, nonce string) (string, error) 
 		return "", fmt.Errorf("%w: bad private key length", ErrBadSignature)
 	}
 
-	sig := ed25519.Sign(ed25519.PrivateKey(raw), SignatureChallenge(method, path, timestamp, nonce))
+	sig := ed25519.Sign(ed25519.PrivateKey(raw), challenge)
 
 	return base64.StdEncoding.EncodeToString(sig), nil
 }

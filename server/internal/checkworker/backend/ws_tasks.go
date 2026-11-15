@@ -11,12 +11,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/checkworker/tasks"
 	"github.com/fclairamb/solidping/server/internal/workertasks"
 )
 
 // tasksPath is the prefix of the agent worker-task routes. Signed with the
-// same challenge as the attachment upload (method|path|ts|nonce).
+// same v2 challenge as the attachment upload (method|requestURI|ts|nonce|body
+// hash).
 const tasksPath = "/api/v1/agent/tasks"
 
 // taskRequestTimeout bounds one worker-task call.
@@ -171,7 +173,9 @@ func (c *HTTPTaskClient) signedRequest(ctx context.Context, path string, body []
 		return nil, err
 	}
 
-	signature, err := identity.Sign(http.MethodPost, path, timestamp, nonce)
+	// The signature binds the exact JSON body (task claim, step, result or
+	// failure), so it cannot be rewritten in transit.
+	signature, err := identity.SignV2(http.MethodPost, path, timestamp, nonce, body)
 	if err != nil {
 		return nil, fmt.Errorf("sign worker task request: %w", err)
 	}
@@ -187,6 +191,7 @@ func (c *HTTPTaskClient) signedRequest(ctx context.Context, path string, body []
 	req.Header.Set("X-Sp-Timestamp", timestamp)
 	req.Header.Set("X-Sp-Nonce", nonce)
 	req.Header.Set("X-Sp-Signature", signature)
+	req.Header.Set(agents.HeaderSignatureVersion, agents.SignatureVersionV2)
 
 	return req, nil
 }
