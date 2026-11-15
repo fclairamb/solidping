@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1102,8 +1103,24 @@ func (r *CheckWorker) redactedConfig(checkType string, cfg models.JSONMap) map[s
 // persisted or served ever carries the resolved value.
 //
 // A job with no references is untouched (and pays one regexp scan per string).
+//
+// It also records, on checkJob.ResolvedRefValues, the values the env/param
+// references resolved to (spec 2026-11-15-01), so the checker can withhold a
+// header carrying one from a redirect to another origin.
 func (r *CheckWorker) materializeConfig(checkJob *models.CheckJob) error {
+	checkJob.ResolvedRefValues = nil
+
+	// The template the references are read from: a deported agent merged its
+	// sealed envelope (the resolved ${param:…} values) over Config already, so
+	// only StoredConfig still shows where the references were.
+	template := map[string]any(checkJob.Config)
+	if checkJob.StoredConfig != nil {
+		template = checkJob.StoredConfig
+	}
+
 	if len(checkJob.ParamOverlay) == 0 && !secretref.ContainsInConfig(checkJob.Config) {
+		checkJob.ResolvedRefValues = secretref.ReferenceValues(template, checkJob.Config)
+
 		return nil
 	}
 
@@ -1137,13 +1154,25 @@ func (r *CheckWorker) materializeConfig(checkJob *models.CheckJob) error {
 		merged[key] = value
 	}
 
-	resolved, _, err := secretref.ResolveConfig(
-		context.Background(), merged, secretref.ExecutionResolverWith(vars, r.config.EnvRefAllowed))
+	var envValues []string
+
+	resolved, _, err := secretref.ResolveConfig(context.Background(), merged,
+		secretref.CollectingResolver(secretref.ExecutionResolverWith(vars, r.config.EnvRefAllowed), &envValues))
 	if err != nil {
 		return err
 	}
 
+	// ${env:…} values are known exactly; ${param:…} ones arrived resolved, in
+	// the overlay, and are read back against the template.
+	values := secretref.ReferenceValues(template, resolved)
+	for _, value := range envValues {
+		if !slices.Contains(values, value) {
+			values = append(values, value)
+		}
+	}
+
 	checkJob.Config = models.JSONMap(resolved)
+	checkJob.ResolvedRefValues = values
 
 	return nil
 }
@@ -1461,6 +1490,10 @@ func (r *CheckWorker) executeJob(
 	if forcedCapture {
 		execCtx = checkerdef.WithForcedCapture(execCtx)
 	}
+
+	// The values the env/param references resolved to: a redirect to another
+	// origin withholds the headers carrying one (spec 2026-11-15-01).
+	execCtx = checkerdef.WithResolvedReferenceValues(execCtx, checkJob.ResolvedRefValues)
 
 	execStart := time.Now()
 	result, err := r.runCheckerGuarded(execCtx, logger, checker, checkConfig, checkJob, hardBudget, startTime)

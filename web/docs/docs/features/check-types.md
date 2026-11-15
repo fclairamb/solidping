@@ -61,7 +61,7 @@ operating system gives up on it (up to ~15 minutes). Every probe opens a fresh
 connection and closes it afterwards, so each result includes DNS, connect and
 TLS time whatever the check period (see [Timing breakdown](#http-timing)).
 
-**Redirects:** redirects are followed by default (`followRedirects`, up to 10 hops). Set it to `false` to assert on the first response instead. `redirectHostPolicy: same-host` fails the check when a hop leaves the previous hop's host. Every followed hop is listed in the `redirect_chain` output. `secretHeaders` are only sent to the URL's own host: a hop to another host drops them, and their names (never values) appear in `redirect_dropped_secret_headers`. A hop to another origin (another host or port, or an https → http downgrade) never carries `Referer`, which would repeat the previous URL and its query string. A 307 or 308 that would resend the request `body` is followed only within the origin: to another origin the check stops at the redirect response and reports `redirect_body_withheld: true`.
+**Redirects:** redirects are followed by default (`followRedirects`, up to 10 hops). Set it to `false` to assert on the first response instead. `redirectHostPolicy: same-host` fails the check when a hop leaves the previous hop's host. Every followed hop is listed in the `redirect_chain` output. `secretHeaders` are only sent to the URL's own host: a hop to another host drops them, and their names (never values) appear in `redirect_dropped_secret_headers`. A plain `headers` entry holding a `${param:…}` or `${env:…}` reference (`X-Api-Key: ${param:api-key}`) is treated the same way: on a hop to another origin, a header whose value contains the resolved value is dropped and listed there too. A hop to another origin (another host or port, or an https → http downgrade) never carries `Referer`, which would repeat the previous URL and its query string. A 307 or 308 that would resend the request `body` is followed only within the origin: to another origin the check stops at the redirect response and reports `redirect_body_withheld: true`.
 
 `expectedFinalUrl` asserts where the chain ends, so `http://acme.com` redirecting to a login or parking page no longer reads as up. The match is exact after normalisation: scheme and host are lowercased, `:80` (http) and `:443` (https) are dropped, an empty path becomes `/`, and the fragment is ignored. Path and query are compared as sent (`/x` and `/x/` differ, so do `?a=1&b=2` and `?b=2&a=1`). It is checked before the body assertions. On a mismatch the error reads `expected final URL "...", got "..."` and the raw URL of the last request is in `final_url`. It cannot be combined with `followRedirects: false`, nor with `redirectHostPolicy: same-host` and a different host.
 
@@ -461,6 +461,13 @@ wss://hostname/path  # With TLS
 |--------|-------------|---------|
 | URL | WebSocket endpoint | `wss://api.example.com/ws` |
 | Timeout | Connection timeout | `10s` |
+
+**Redirects:** a redirected handshake is followed for up to 10 hops; a loop
+fails the check instead of running to the timeout. A hop to another origin
+(another host or port, or a `wss` → `ws` downgrade) carries none of the
+configured headers, nor `Authorization`, `Proxy-Authorization`, `Cookie` or
+`Referer`. The names (never the values) of the headers withheld are listed in
+the `redirect_dropped_secret_headers` output.
 
 ### RDP (Remote Desktop) {#rdp-remote-desktop}
 
@@ -1228,6 +1235,11 @@ without thresholds configured, so a check gains memory/disk history for free.
 Thresholds are only accepted in management mode — AMQP has no visibility
 into a node's resource usage.
 
+The management API calls never follow a redirect: their URL is built from the
+configured host and port, so a redirect is unexpected, and following it could
+hand the Basic auth credentials to another host or resend them over plain
+`http`. A redirect response fails the call with its status code.
+
 ### MQTT {#mqtt}
 
 Monitor MQTT broker connectivity via subscription.
@@ -1574,6 +1586,15 @@ explicit error naming the cap — never truncated: a half-read exposition body
 still parses, and would then be graded as a wrong-but-plausible value. If your
 `/metrics` output is that big, narrow the endpoint or switch to `promql` mode,
 where the query bounds the response.
+
+#### Redirects
+
+Redirects are followed for up to 10 hops. A hop to another origin (another
+host or port, or an `https` → `http` downgrade) carries none of the configured
+`headers`, nor `Authorization`, `Proxy-Authorization`, `Cookie` or `Referer`:
+the credentials stay with the endpoint you configured. The names (never the
+values) of the headers withheld are listed in the
+`redirect_dropped_secret_headers` output. A same-origin redirect keeps them.
 
 ## Special Check Types
 

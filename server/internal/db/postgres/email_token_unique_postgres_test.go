@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"database/sql"
 	"regexp"
 	"testing"
 
@@ -146,4 +147,23 @@ func TestEmailTokenUniqueMigration_Postgres(t *testing.T) {
 
 	r.Error(rig.insert("c0000000-0000-0000-0000-000000000006", sharedEmailTokenPG, "2026-11-01 13:00:00+00", false),
 		"the migration must leave the unique index in place")
+}
+
+// TestGetCheckByEmailTokenSkipsDeletedOrganization_Postgres is the Postgres
+// twin: a live check of a deleted organization is not found by its token.
+func TestGetCheckByEmailTokenSkipsDeletedOrganization_Postgres(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	rig := newEmailTokenRigPG(t)
+
+	r.NoError(rig.insert("c0000000-0000-0000-0000-000000000001", sharedEmailTokenPG, "2026-11-01 10:00:00+00", false))
+
+	found, err := rig.svc.GetCheckByEmailToken(t.Context(), sharedEmailTokenPG)
+	r.NoError(err)
+	r.Equal("c0000000-0000-0000-0000-000000000001", found.UID)
+
+	r.NoError(rig.svc.DeleteOrganization(t.Context(), emailTokenOrgPG))
+
+	_, err = rig.svc.GetCheckByEmailToken(t.Context(), sharedEmailTokenPG)
+	r.ErrorIs(err, sql.ErrNoRows)
 }

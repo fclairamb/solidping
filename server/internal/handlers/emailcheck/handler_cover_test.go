@@ -221,3 +221,24 @@ func TestHandleEmailRejectsTokenSharedByTwoChecks(t *testing.T) {
 	r.Equal(jmap.OutcomeRejected, outcome)
 	r.Zero(f.countResults(t))
 }
+
+// TestHandleEmailRejectsMailForADeletedOrganization: once its organization is
+// deleted, an email check's token reads as unknown, so the mail is rejected
+// and no result is recorded in the deleted org (spec 2026-11-15-03).
+func TestHandleEmailRejectsMailForADeletedOrganization(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	f := newAuthFixture(t, models.JSONMap{}, &stubResolver{})
+	r.NoError(f.svc.DeleteOrganization(t.Context(), f.check.OrganizationUID))
+
+	email := authEmail()
+	email.To = []jmap.EmailAddress{{Email: testToken + "@inbox.example.com"}}
+	email.MessageID = []string{"<deleted-org@x>"}
+	email.ReceivedAt = time.Now()
+
+	outcome, err := f.h.HandleEmail(t.Context(), nil, *email, jmap.OriginInbox)
+	r.NoError(err)
+	r.Equal(jmap.OutcomeRejected, outcome)
+	r.Zero(f.countResults(t))
+}

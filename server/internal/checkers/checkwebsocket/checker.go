@@ -54,7 +54,11 @@ func (c *WebSocketChecker) Execute(
 
 	start := time.Now()
 
-	conn, resp, err := c.dial(ctx, cfg)
+	// Configured headers carry the endpoint's credentials: a redirect to
+	// another origin does not get them (spec 2026-11-15-02).
+	redirects := checkerdef.NewCredentialRedirectPolicy(checkerdef.HeaderNames(cfg.Headers))
+
+	conn, resp, err := c.dial(ctx, cfg, redirects)
 
 	handshakeTime := time.Since(start)
 
@@ -63,7 +67,10 @@ func (c *WebSocketChecker) Execute(
 	}
 
 	if err != nil {
-		return c.handleDialError(ctx, err, start), nil
+		result := c.handleDialError(ctx, err, start)
+		redirects.ReportDropped(result.Output)
+
+		return result, nil
 	}
 
 	defer func() { _ = conn.CloseNow() }()
@@ -79,6 +86,8 @@ func (c *WebSocketChecker) Execute(
 	if resp != nil {
 		output["status_code"] = resp.StatusCode
 	}
+
+	redirects.ReportDropped(output)
 
 	if err := c.sendAndExpect(ctx, conn, cfg, output); err != nil {
 		return &checkerdef.Result{
@@ -111,7 +120,7 @@ func (c *WebSocketChecker) Execute(
 }
 
 func (c *WebSocketChecker) dial(
-	ctx context.Context, cfg *WebSocketConfig,
+	ctx context.Context, cfg *WebSocketConfig, redirects *checkerdef.CredentialRedirectPolicy,
 ) (*websocket.Conn, *http.Response, error) {
 	opts := &websocket.DialOptions{}
 
@@ -123,6 +132,12 @@ func (c *WebSocketChecker) dial(
 
 		opts.HTTPHeader = header
 	}
+
+	// The client always carries the credential redirect policy: without a
+	// CheckRedirect of ours, coder/websocket follows every redirect with
+	// net/http's header policy and no hop limit. It calls this one after
+	// rewriting a ws/wss Location to http/https.
+	client := &http.Client{CheckRedirect: redirects.CheckRedirect}
 
 	transport := &http.Transport{}
 	needClient := false
@@ -137,18 +152,20 @@ func (c *WebSocketChecker) dial(
 
 	// Tunneled: route the WebSocket handshake's underlying dial through the
 	// bastion. http.Transport hands the raw host:port to DialContext (no local
-	// resolution), so the bastion resolves private names. Untunneled, no custom
-	// client is set and coder/websocket uses its default byte-for-byte —
-	// unless the egress policy (spec 2026-09-25-19) is enforcing, in which case
-	// the handshake dials through the guard.
+	// resolution), so the bastion resolves private names. Untunneled, the
+	// client keeps net/http's default transport, as coder/websocket's default
+	// client does — unless the egress policy (spec 2026-09-25-19) is
+	// enforcing, in which case the handshake dials through the guard.
 	if dialer := checkerdef.OutboundDialer(ctx); dialer != nil {
 		transport.DialContext = dialer.DialContext
 		needClient = true
 	}
 
 	if needClient {
-		opts.HTTPClient = &http.Client{Transport: transport}
+		client.Transport = transport
 	}
+
+	opts.HTTPClient = client
 
 	conn, resp, err := websocket.Dial(ctx, cfg.URL, opts)
 	if err != nil {
