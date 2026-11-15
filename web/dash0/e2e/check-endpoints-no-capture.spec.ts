@@ -1,4 +1,5 @@
-import { test, expect, API_BASE, mockSloCoverage, type Locator, type Page } from "./fixtures";
+import type { Locator } from "@playwright/test";
+import { test, expect, API_BASE, mockSloCoverage, type Page } from "./fixtures";
 
 // Spec 2026-11-15-04: dash0 records PostHog sessions unmasked, so the
 // heartbeat URL (its `?token=`) and the email check address (`<token>@…`)
@@ -86,8 +87,11 @@ test.describe("Check endpoints stay out of session replay", () => {
 
     await page.goto("orgs/test/checks");
     await page.getByTestId("checks-search-input").fill(name);
-    const row = page.getByTestId("check-row").filter({ hasText: name });
-    const target = row.getByTestId("check-row-email-target");
+    const rows = page.getByTestId("check-row");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.getByTestId("check-row-name")).toContainText(name);
+    const row = rows.first();
+    const target = row.getByTestId("check-row-email-target").first();
     await expect(target).toHaveText(`${token.slice(0, 8)}…@inbox.e2e-test.invalid`);
     expect(await row.evaluate((el, t) => el.outerHTML.includes(t), token)).toBe(false);
   });
