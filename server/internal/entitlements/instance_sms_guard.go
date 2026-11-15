@@ -20,7 +20,7 @@ type CountryError struct {
 	// CountryCode is, despite its name, NOT a country code: a refused
 	// destination by definition matched nothing in the allow-list, so this is
 	// its leading digits (at most three — country codes are 1-3 digits, so this
-	// can never leak subscriber digits), a dialling-prefix hint. Empty when the
+	// can never leak subscriber digits), a dialing-prefix hint. Empty when the
 	// destination could not be parsed at all. Logged as "destinationPrefix".
 	CountryCode string
 }

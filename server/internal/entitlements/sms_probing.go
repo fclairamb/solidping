@@ -102,13 +102,14 @@ func (t *smsProbeTracker) recordRefusal(orgUID, prefix string, now time.Time) *S
 	seen := make(map[string]struct{}, len(window))
 	prefixes := make([]string, 0, len(window))
 
-	for _, refusal := range window {
-		if _, dup := seen[refusal.prefix]; dup {
+	for i := range window {
+		prefix := window[i].prefix
+		if _, dup := seen[prefix]; dup {
 			continue
 		}
 
-		seen[refusal.prefix] = struct{}{}
-		prefixes = append(prefixes, refusal.prefix)
+		seen[prefix] = struct{}{}
+		prefixes = append(prefixes, prefix)
 	}
 
 	sort.Strings(prefixes)
@@ -150,9 +151,9 @@ func (t *smsProbeTracker) pruneLocked(now time.Time) {
 	for org, window := range t.refusals {
 		kept := window[:0]
 
-		for _, refusal := range window {
-			if refusal.at.After(cutoff) {
-				kept = append(kept, refusal)
+		for i := range window {
+			if window[i].at.After(cutoff) {
+				kept = append(kept, window[i])
 			}
 		}
 
