@@ -129,7 +129,8 @@ func getCheckDef() ToolDefinition {
 		Description: "Get one check by identifier (its UID or its slug, e.g. \"api-prod\"); an unknown " +
 			"identifier fails with not found. Returns the check object only: type, config, regions, " +
 			"labels, group, period and status, with no result history. with=lastResult adds the most " +
-			"recent result and with=lastStatusChange the time the status last changed. Use " +
+			"recent result and with=lastStatusChange the time the status last changed; the two " +
+			"combine. Use " +
 			"diagnose_check for a triage briefing (recent results and incidents), list_results for " +
 			"history, and list_checks to search by name or label. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
@@ -311,8 +312,10 @@ func updateCheckDef() ToolDefinition {
 			"PATCH semantics — only the fields you pass are modified, others stay as-is, " +
 			"except config, which is replaced whole rather than merged. " +
 			"Use create_check to make a new check and delete_check to remove one; to " +
-			"pause without deleting, set enabled:false instead. Modifies the check in place " +
-			"without consuming quota; reversible by updating again with the previous values. " +
+			"pause without deleting, set enabled:false instead. A change of regions, period, " +
+			"config or enabled reschedules the check's runs, and every update is recorded as one " +
+			"version in its history. No quota is consumed; reversible by updating again with " +
+			"the previous values. " +
 			"Requires the mcp scope (mcp:read tokens are refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier:  stringProp(descIdentifier),
