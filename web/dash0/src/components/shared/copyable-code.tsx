@@ -145,11 +145,14 @@ export function CollapsibleCode({
   label,
   value,
   defaultOpen = false,
+  secret = false,
   "data-testid": testId,
 }: {
   label: string;
   value: string;
   defaultOpen?: boolean;
+  /** The value embeds a credential: keep it out of session replay. */
+  secret?: boolean;
   "data-testid"?: string;
 }) {
   const { t } = useTranslation("common");
@@ -163,7 +166,7 @@ export function CollapsibleCode({
 
   return (
     <details
-      className="group rounded-md border"
+      className={secret ? `group rounded-md border ${NO_CAPTURE_CLASS}` : "group rounded-md border"}
       open={defaultOpen}
       data-testid={testId}
     >
