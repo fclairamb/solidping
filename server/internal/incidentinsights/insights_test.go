@@ -159,6 +159,22 @@ func TestCompute_ResolutionSplit(t *testing.T) {
 	r.Equal(int64(600), *got.TimeToResolve.MedianSeconds)
 }
 
+// A resolved incident with a NULL resolution_type was closed by the check
+// recovering: the state machine's recovery path did not write the column
+// before it was fixed, so these rows are auto-recovered, not "other".
+func TestCompute_NullResolutionTypeCountsAsAuto(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	legacy := inc("a", 0)
+	legacy.ResolvedAt = tp(at(10))
+
+	got := incidentinsights.Compute([]*models.Incident{legacy}, winStart(), winEnd(), now()).Summary
+	r.Equal(1, got.ByResolution.Auto.Count)
+	r.Zero(got.ByResolution.Other.Count)
+	r.Equal(1, got.TimeToResolve.SampleCount)
+}
+
 func TestCompute_SuppressedLeftOutOfAck(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

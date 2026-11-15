@@ -1568,10 +1568,12 @@ func (s *Service) resolveIncident(
 ) error {
 	resolvedState := models.IncidentStateResolved
 	resolvedAt := result.PeriodStart
+	resolutionType := models.ResolutionTypeAuto
 
 	update := models.IncidentUpdate{
-		State:      &resolvedState,
-		ResolvedAt: &resolvedAt,
+		State:          &resolvedState,
+		ResolvedAt:     &resolvedAt,
+		ResolutionType: &resolutionType,
 	}
 
 	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
@@ -1589,6 +1591,7 @@ func (s *Service) resolveIncident(
 		keyResolvedAt:      resolvedAt,
 		keyDurationSeconds: durationSeconds,
 		keyTotalFailures:   incident.FailureCount,
+		keyResolutionType:  resolutionType,
 	}); err != nil {
 		return fmt.Errorf("failed to emit incident resolved event: %w", err)
 	}
@@ -1597,6 +1600,7 @@ func (s *Service) resolveIncident(
 	// publication hook sees a resolved incident rather than a stale active one.
 	incident.State = resolvedState
 	incident.ResolvedAt = &resolvedAt
+	incident.ResolutionType = &resolutionType
 
 	s.publishResolved(ctx, incident)
 
