@@ -2221,18 +2221,44 @@ func (s *Service) RevokeToken(ctx context.Context, userUID, tokenUID string) err
 	return nil
 }
 
+// switchOrgTarget resolves the organization a switch-org request names. A
+// renamed organization's previous slug resolves to the organization itself,
+// exactly as middleware.OrgSlugRedirect does for every org-scoped route: a tab
+// still showing the old URL right after a rename (the owner's own tab, between
+// adopting the re-minted session and navigating, or any other open tab) asks
+// to switch to the slug it sees. Answering that with ErrOrganizationNotFound
+// (a 401 on this endpoint) used to log the owner out of the org they had just
+// renamed (solidping-business#81). Membership is still checked by the caller,
+// and the alias is already public through the redirect, so nothing leaks.
+func (s *Service) switchOrgTarget(ctx context.Context, slug string) (*models.Organization, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, slug)
+	if err == nil {
+		return org, nil
+	}
+
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	aliased, aliasErr := s.db.GetOrganizationByPreviousSlug(ctx, slug)
+	if aliasErr != nil && !errors.Is(aliasErr, sql.ErrNoRows) {
+		return nil, aliasErr
+	}
+
+	if aliased == nil || aliasErr != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	return aliased, nil
+}
+
 // SwitchOrg switches the user's current organization context.
 // It verifies membership and mints new tokens scoped to the target org.
 func (s *Service) SwitchOrg(
 	ctx context.Context, userUID, targetOrgSlug string, authContext Context,
 ) (*LoginResponse, error) {
-	// Get target organization
-	org, err := s.db.GetOrganizationBySlug(ctx, targetOrgSlug)
+	org, err := s.switchOrgTarget(ctx, targetOrgSlug)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrOrganizationNotFound
-		}
-
 		return nil, err
 	}
 
