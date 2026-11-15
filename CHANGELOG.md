@@ -5,7 +5,7 @@
 
 ### Bug Fixes
 
-* retry once a file upload that S3 refuses as an invalid request ([#887](https://github.com/fclairamb/solidping/issues/887)) ([bc98c95](https://github.com/fclairamb/solidping/commit/bc98c9555d6c1770084dbe7f6db3427e4da65b0b))
+* **storage:** file uploads that S3 rejects as an invalid request are now retried once ([#887](https://github.com/fclairamb/solidping/issues/887)) ([bc98c95](https://github.com/fclairamb/solidping/commit/bc98c9555d6c1770084dbe7f6db3427e4da65b0b))
 
 ## [0.50.0](https://github.com/fclairamb/solidping/compare/v0.49.3...v0.50.0) (2026-11-15)
 
