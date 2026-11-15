@@ -846,6 +846,10 @@ type ResourceCheckInfo struct {
 	// absent for a group resource (same no-extra-query rule as
 	// StatusChangedAt). Nil on a stale check that never produced a result.
 	LastResultAt *time.Time `json:"lastResultAt,omitempty"`
+	// disabled is true for a CHECK resource whose check is turned off. Never on
+	// the wire: it only keeps the check out of the page-level rollup and its
+	// counts, since a disabled check keeps whatever status it last had.
+	disabled bool
 }
 
 // ResourceAvailabilityData contains availability and performance data for public display.
@@ -4477,6 +4481,13 @@ func (s *Service) enrichResourceInfo(
 				info, rawStatus, err := s.getCheckInfo(ctx, orgUID, *resource.CheckUID)
 				if err == nil {
 					resource.Check = info
+					// A disabled check is not monitored: its frozen status says
+					// nothing about the service, so it stays out of the rollup
+					// (as disabled members already do in a group's rollup).
+					if info.disabled {
+						continue
+					}
+
 					rollupInputs = append(rollupInputs, models.PageResourceStatus{
 						Status: rawStatus, InMaintenance: info.InMaintenance,
 					})
@@ -4562,6 +4573,7 @@ func (s *Service) getCheckInfo(
 		Status:          publicCheckStatus(check.Status),
 		InMaintenance:   inMaintenance,
 		StatusChangedAt: check.StatusChangedAt,
+		disabled:        !check.Enabled,
 	}
 
 	if check.Status == models.CheckStatusStale {

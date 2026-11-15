@@ -153,10 +153,13 @@ func onset(inc *models.Incident) time.Time {
 	return inc.StartedAt
 }
 
-// resolutionBucket maps a resolution type to auto, manual or "other".
+// resolutionBucket maps a resolution type to auto, manual or "other". A NULL
+// type is auto: the check state machine's recovery path was the only one that
+// did not write the column, so every resolved row it closed before that was
+// fixed carries NULL.
 func resolutionBucket(inc *models.Incident) string {
 	if inc.ResolutionType == nil {
-		return "other"
+		return models.ResolutionTypeAuto
 	}
 
 	switch *inc.ResolutionType {
