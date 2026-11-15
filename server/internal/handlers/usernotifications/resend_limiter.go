@@ -66,11 +66,20 @@ func (l *destinationLimiter) allow(orgUID, destination string, limit int, now ti
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	// Other orgs are pruned against the wall clock, never against the caller's
+	// now: an injected (or skewed) clock must not evict another org's slots.
+	// The caller's own org is pruned against now.
+	wallCutoff := time.Now().Add(-verifyDestinationWindow)
 	cutoff := now.Add(-verifyDestinationWindow)
 
 	for org, destinations := range l.seen {
+		orgCutoff := wallCutoff
+		if org == orgUID {
+			orgCutoff = cutoff
+		}
+
 		for dest, at := range destinations {
-			if !at.After(cutoff) {
+			if !at.After(orgCutoff) {
 				delete(destinations, dest)
 			}
 		}
