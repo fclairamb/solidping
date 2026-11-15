@@ -75,7 +75,8 @@ func getStatusPageDef() ToolDefinition {
 		Description: "Get one status page by identifier (UID or slug). with=sections embeds the sections " +
 			"and their resources in the page; include returns separate lists next to it instead, and " +
 			"include=resources needs sectionIdentifier to name the section. state and active filter " +
-			"only include=incidents. Use list_status_pages to browse every page, and " +
+			"only include=incidents. with=sections and include=sections are refused together " +
+			"(pick one). Use list_status_pages to browse every page, and " +
 			"manage_status_page_section / _resource / _incident to change them. " +
 			"Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
