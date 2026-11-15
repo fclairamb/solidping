@@ -42,3 +42,59 @@ func (l *resendLimiter) allow(key string, now time.Time) bool {
 
 	return true
 }
+
+// destinationLimiter caps how many DISTINCT destinations one organization may
+// send verification codes to within verifyDestinationWindow (spec
+// 2026-11-15-01). The per-contact resendLimiter alone lets an account probe an
+// unbounded number of numbers by creating a new contact for each; this is the
+// cross-contact bound. Re-sending to a destination already counted in the
+// window does not consume a slot. In-memory and process-local, like
+// resendLimiter.
+type destinationLimiter struct {
+	mu   sync.Mutex
+	seen map[string]map[string]time.Time // orgUID -> destination -> first send
+}
+
+func newDestinationLimiter() *destinationLimiter {
+	return &destinationLimiter{seen: make(map[string]map[string]time.Time)}
+}
+
+// allow records destination for orgUID at now and reports whether it fits in
+// limit distinct destinations per window. Entries older than the window are
+// pruned on each call.
+func (l *destinationLimiter) allow(orgUID, destination string, limit int, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	cutoff := now.Add(-verifyDestinationWindow)
+
+	for org, destinations := range l.seen {
+		for dest, at := range destinations {
+			if !at.After(cutoff) {
+				delete(destinations, dest)
+			}
+		}
+
+		if len(destinations) == 0 {
+			delete(l.seen, org)
+		}
+	}
+
+	destinations := l.seen[orgUID]
+	if _, counted := destinations[destination]; counted {
+		return true
+	}
+
+	if len(destinations) >= limit {
+		return false
+	}
+
+	if destinations == nil {
+		destinations = make(map[string]time.Time)
+		l.seen[orgUID] = destinations
+	}
+
+	destinations[destination] = now
+
+	return true
+}
