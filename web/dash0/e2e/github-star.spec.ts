@@ -105,10 +105,14 @@ test.describe("GitHub star prompt", () => {
     await openHome(page);
     await expect(page.getByTestId("github-star-prompt")).toBeVisible();
 
+    // The DISMISSAL's write, not merely the first PUT: showing the prompt
+    // writes `{shownAt}` too, and a reload while the dismissal is still in
+    // flight would cancel it.
     const saved = page.waitForResponse(
       (r) =>
         r.url().includes("/api/v1/me/ui-state/github-star") &&
         r.request().method() === "PUT" &&
+        (r.request().postData() ?? "").includes('"dismissed"') &&
         r.ok(),
     );
     await page.getByTestId("github-star-prompt-dismiss").click();
