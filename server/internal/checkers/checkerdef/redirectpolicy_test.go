@@ -3,7 +3,6 @@ package checkerdef
 import (
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -15,12 +14,12 @@ import (
 func redirectHop(t *testing.T, first, next string, header http.Header) (*http.Request, []*http.Request) {
 	t.Helper()
 
-	orig, err := http.NewRequest(http.MethodGet, first, nil)
+	orig, err := http.NewRequestWithContext(t.Context(), http.MethodGet, first, nil)
 	require.NoError(t, err)
 
 	orig.Header = header.Clone()
 
-	req, err := http.NewRequest(http.MethodGet, next, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, next, nil)
 	require.NoError(t, err)
 
 	req.Header = header.Clone()
@@ -143,7 +142,7 @@ func TestCredentialRedirectPolicy_ChainCap(t *testing.T) {
 	}
 
 	require.ErrorIs(t, err, ErrTooManyRedirects)
-	require.True(t, strings.Contains(err.Error(), "stopped after 3 redirects"))
+	require.Contains(t, err.Error(), "stopped after 3 redirects")
 	require.EqualValues(t, 3, hits.Load())
 
 	// The default cap is DefaultMaxRedirects.

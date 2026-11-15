@@ -41,7 +41,8 @@ func (h *headerRecorder) accept(w http.ResponseWriter, r *http.Request) {
 	_ = conn.Close(websocket.StatusNormalClosure, "")
 }
 
-var redirectTestHeaders = map[string]string{"X-Api-Key": "k", "Authorization": "Bearer t"} //nolint:gochecknoglobals // test
+//nolint:gochecknoglobals // read-only test fixture
+var redirectTestHeaders = map[string]string{"X-Api-Key": "k", "Authorization": "Bearer t"}
 
 // TestWebSocketChecker_CrossOriginRedirectDropsHeaders: a handshake
 // redirected to another origin does not carry the configured headers
