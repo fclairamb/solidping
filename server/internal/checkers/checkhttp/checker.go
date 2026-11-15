@@ -28,9 +28,9 @@ import (
 var ()
 
 const (
-	maxRedirects  = 10                          // Maximum number of HTTP redirects to follow
-	maxBodySizeMB = 10                          // Maximum response body size in MB
-	maxBodySize   = maxBodySizeMB * 1024 * 1024 // Maximum response body size in bytes
+	maxRedirects  = checkerdef.DefaultMaxRedirects // Maximum number of HTTP redirects to follow
+	maxBodySizeMB = 10                             // Maximum response body size in MB
+	maxBodySize   = maxBodySizeMB * 1024 * 1024    // Maximum response body size in bytes
 
 	// errJSONAssertionFailed is the output message for a violated
 	// `json_path_assertions` tree; the tree itself rides along under the
@@ -64,7 +64,7 @@ const (
 	outputKeyRedirectChain = "redirect_chain"
 	// outputKeyDroppedSecretHeaders lists the secret header names withheld
 	// from a cross-host redirect hop (names only, never values).
-	outputKeyDroppedSecretHeaders = "redirect_dropped_secret_headers"
+	outputKeyDroppedSecretHeaders = checkerdef.OutputKeyRedirectDroppedSecretHeaders
 	// outputKeyRedirectBodyWithheld is true when a cross-origin 307/308 would
 	// have replayed the request body: the hop was not followed and the result
 	// reports the redirect response itself (spec 2026-11-14-02).

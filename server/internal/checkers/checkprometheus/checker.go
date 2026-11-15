@@ -84,7 +84,11 @@ func (c *PrometheusChecker) Execute(
 
 	start := time.Now()
 
-	resolved, fetchErr := fetchValue(ctx, cfg)
+	// Configured headers carry the endpoint's credentials: a redirect to
+	// another origin does not get them (spec 2026-11-15-02).
+	redirects := checkerdef.NewCredentialRedirectPolicy(checkerdef.HeaderNames(cfg.Headers))
+
+	resolved, fetchErr := fetchValue(ctx, cfg, redirects)
 	duration := time.Since(start)
 
 	var result *checkerdef.Result
@@ -99,6 +103,7 @@ func (c *PrometheusChecker) Execute(
 	}
 
 	fallback.Fallback().Apply(result)
+	redirects.ReportDropped(result.Output)
 
 	return result, nil
 }
@@ -113,28 +118,39 @@ type resolution struct {
 }
 
 // fetchValue resolves the single numeric value for this execution.
-func fetchValue(ctx context.Context, cfg *PrometheusConfig) (*resolution, error) {
+func fetchValue(
+	ctx context.Context, cfg *PrometheusConfig, redirects *checkerdef.CredentialRedirectPolicy,
+) (*resolution, error) {
 	if cfg.EffectiveMode() == ModePromQL {
-		return fetchPromQL(ctx, cfg)
+		return fetchPromQL(ctx, cfg, redirects)
 	}
 
-	return fetchScrape(ctx, cfg)
+	return fetchScrape(ctx, cfg, redirects)
 }
 
 // newClient builds the HTTP client. The transport comes from the shared
 // checkerdef helper, so a `tunnelCheckUid` (SSH port-forward) and a pinned
 // `ipVersion` are honored here exactly as they are for the HTTP check — no
 // bespoke dialing path in this package.
-func newClient(ctx context.Context, cfg *PrometheusConfig) *http.Client {
+//
+// Redirects follow the shared credential policy: a cross-origin hop (another
+// host or port, or an https -> http downgrade) carries neither the configured
+// headers, nor Authorization/Cookie, nor a Referer.
+func newClient(
+	ctx context.Context, cfg *PrometheusConfig, redirects *checkerdef.CredentialRedirectPolicy,
+) *http.Client {
 	return &http.Client{
-		Timeout: cfg.EffectiveTimeout(),
+		Timeout:       cfg.EffectiveTimeout(),
+		CheckRedirect: redirects.CheckRedirect,
 		// Tunnel dialer, pinned family and egress guard, all off ctx.
 		Transport: checkerdef.HTTPTransportFor(ctx, false),
 	}
 }
 
 // doGet issues the GET with the configured headers applied.
-func doGet(ctx context.Context, cfg *PrometheusConfig, target string) (*http.Response, error) {
+func doGet(
+	ctx context.Context, cfg *PrometheusConfig, redirects *checkerdef.CredentialRedirectPolicy, target string,
+) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -151,7 +167,7 @@ func doGet(ctx context.Context, cfg *PrometheusConfig, target string) (*http.Res
 		req.Header.Set(key, value)
 	}
 
-	resp, err := newClient(ctx, cfg).Do(req)
+	resp, err := newClient(ctx, cfg, redirects).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -166,8 +182,10 @@ var (
 )
 
 // fetchScrape scrapes the endpoint and resolves the configured selector.
-func fetchScrape(ctx context.Context, cfg *PrometheusConfig) (*resolution, error) {
-	resp, err := doGet(ctx, cfg, cfg.URL)
+func fetchScrape(
+	ctx context.Context, cfg *PrometheusConfig, redirects *checkerdef.CredentialRedirectPolicy,
+) (*resolution, error) {
+	resp, err := doGet(ctx, cfg, redirects, cfg.URL)
 	if err != nil {
 		return nil, err
 	}
