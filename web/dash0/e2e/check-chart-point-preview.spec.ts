@@ -7,6 +7,27 @@ import { test, expect, mockSloCoverage, type Page } from "./fixtures";
  * - Clicking the "More details →" link in the preview navigates to the result page.
  */
 
+/**
+ * Wait until the blocks above the chart have reached their final height.
+ *
+ * Two of them change size after the page has loaded, and both push the chart
+ * down or up. The "where is my new check visible" hint (spec 2026-10-12-05)
+ * appears once its status-page lookup returns: +82 px. The "waiting for the
+ * first run" line becomes the last-check line when the worker's first result
+ * lands: -28 px. A dot click that races either shift misses: Playwright
+ * clicks where the dot WAS (the card header), or recharts sees a click before
+ * the mousemove at the dot's new position has set its active point. The pinned
+ * box then never opens.
+ */
+async function waitForSettledLayout(page: Page) {
+  await expect(page.getByTestId("check-publication-hint")).toBeVisible({
+    timeout: 15000,
+  });
+  await expect(page.getByTestId("check-meta-last-check")).toBeVisible({
+    timeout: 30000,
+  });
+}
+
 test.describe("Chart point preview", () => {
   // Helper: navigate to a check detail page with mocked results data so the
   // chart renders at least one dot we can interact with.
@@ -78,6 +99,7 @@ test.describe("Chart point preview", () => {
 
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
+    await waitForSettledLayout(page);
 
     return resultUid;
   }
@@ -230,6 +252,7 @@ test.describe("Chart point preview", () => {
 
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
+    await waitForSettledLayout(page);
     await expect(page.locator(".recharts-wrapper")).toBeVisible({ timeout: 15000 });
 
     // The gradient carries a red (COLOR_DOWN) stop despite the density gate
