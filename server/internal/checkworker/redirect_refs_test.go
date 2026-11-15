@@ -22,6 +22,8 @@ import (
 // path from StoredConfig, and for env from the resolver itself.
 //
 // t.Setenv forbids t.Parallel.
+//
+//nolint:paralleltest // t.Setenv forbids t.Parallel, subtests included.
 func TestMaterializeConfigRecordsResolvedReferenceValues(t *testing.T) {
 	t.Setenv("SP_TEST_REDIRECT_REF_ENV", "env-value")
 
