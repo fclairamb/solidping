@@ -9302,6 +9302,13 @@ export function useUiState<T = Record<string, unknown>>(
 export function useSetUiState<T = Record<string, unknown>>(key: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    // A PUT replaces the whole entry, so two writes to one key must reach the
+    // server in the order they were made. Without a scope they run in
+    // parallel, and the GitHub star prompt's "shown" write could land after
+    // the "dismissed" one that followed it and erase the outcome: the prompt
+    // then came back on the user's other devices. Same-scope mutations run
+    // one at a time, in call order.
+    scope: { id: `ui-state:${key}` },
     mutationFn: (value: T) =>
       apiFetch<{ value: T }>(`/api/v1/me/ui-state/${encodeURIComponent(key)}`, {
         method: "PUT",

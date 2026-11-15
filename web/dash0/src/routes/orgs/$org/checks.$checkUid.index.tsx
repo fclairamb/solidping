@@ -808,13 +808,19 @@ function CheckDetailPage() {
     }
   };
 
-  const { data: activeIncidents } = useIncidents(org, {
-    checkUid: check?.uid,
-    state: "active",
-    size: 100,
-    enabled: !!check?.uid,
-  });
+  const { data: activeIncidents, isLoading: activeIncidentsLoading } =
+    useIncidents(org, {
+      checkUid: check?.uid,
+      state: "active",
+      size: 100,
+      enabled: !!check?.uid,
+    });
   const openIncidentCount = activeIncidents?.data?.length ?? 0;
+  // Until the open-incident count is known, a click on "Disable" cannot tell
+  // whether to ask about resolving them: it would disable the check straight
+  // away and leave its incidents open. Hold the button until it is known (a
+  // failed fetch ends the loading state, and the plain disable is used).
+  const disableAwaitsIncidents = !!check?.enabled && activeIncidentsLoading;
 
   // Disabling a check with open incidents asks whether to close them too:
   // a disabled check has no jobs, so nothing else ever would.
@@ -1125,7 +1131,7 @@ function CheckDetailPage() {
                   ? (t("checks:detail.disable") ?? "Disable")
                   : (t("checks:detail.enable") ?? "Enable")
               }
-              disabled={updateCheck.isPending}
+              disabled={updateCheck.isPending || disableAwaitsIncidents}
               onClick={handleDisableClick}
               data-testid="check-toggle-enabled"
             >
