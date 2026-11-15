@@ -338,3 +338,78 @@ func TestExecuteManagement_OversizedNodesAnswerFails(t *testing.T) {
 	r.Contains(result.Output["nodes_error"], "management API response too large")
 	r.Less(written.Load(), int64(managementReadMargin))
 }
+
+// redirectTrap counts the requests it receives and whether one carried
+// Authorization: the off-origin target of a redirected management call.
+type redirectTrap struct {
+	hits     atomic.Int32
+	withAuth atomic.Int32
+}
+
+func (rt *redirectTrap) start(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rt.hits.Add(1)
+
+		if r.Header.Get("Authorization") != "" {
+			rt.withAuth.Add(1)
+		}
+
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	return srv
+}
+
+// TestExecuteManagement_RedirectIsNotFollowed: a management endpoint answering
+// a redirect to another origin never hands it the Basic auth: the redirect is
+// not followed and reported as a non-200 (spec 2026-11-15-02).
+func TestExecuteManagement_RedirectIsNotFollowed(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	trap := &redirectTrap{}
+	other := trap.start(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		http.Redirect(w, req, other.URL+req.URL.Path, http.StatusFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	result := runManagementCheck(t, srv, map[string]any{"memoryUsedCritical": "90%"})
+
+	r.Equal(checkerdef.StatusDown, result.Status)
+	r.Equal(http.StatusFound, result.Output["status_code"])
+	r.Zero(trap.hits.Load(), "the redirect target must not be reached")
+	r.Zero(trap.withAuth.Load())
+}
+
+// TestExecuteManagement_NodesRedirectIsNotFollowed covers the /api/nodes call.
+func TestExecuteManagement_NodesRedirectIsNotFollowed(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	trap := &redirectTrap{}
+	other := trap.start(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasSuffix(req.URL.Path, "/api/nodes") {
+			http.Redirect(w, req, other.URL+req.URL.Path, http.StatusTemporaryRedirect)
+
+			return
+		}
+
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	result := runManagementCheck(t, srv, map[string]any{"memoryUsedCritical": "90%"})
+
+	r.Equal(checkerdef.StatusDown, result.Status)
+	r.Contains(result.Output["nodes_error"], "status 307")
+	r.Zero(trap.hits.Load(), "the redirect target must not be reached")
+}

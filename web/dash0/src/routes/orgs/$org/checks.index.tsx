@@ -56,7 +56,8 @@ import {
   type ConvertSource,
   type EscalationPolicy,
 } from "@/api/hooks";
-import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
+import { useEmailAddressDomain } from "@/api/email-inbox";
+import { EmailCheckTarget } from "@/components/checks/check-endpoints";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Input } from "@/components/ui/input";
@@ -506,13 +507,7 @@ function CheckRow({
       if (!token || !emailDomain) {
         return check.slug || "email";
       }
-      const full = emailCheckAddress(token, emailDomain);
-      const truncated = `${token.slice(0, 8)}…@${emailDomain}`;
-      return (
-        <span title={full} className="font-mono text-xs">
-          {truncated}
-        </span>
-      );
+      return <EmailCheckTarget token={token} domain={emailDomain} />;
     }
 
     return (
