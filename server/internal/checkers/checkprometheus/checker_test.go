@@ -881,3 +881,85 @@ func TestScrape_DualStackFallbackWarns(t *testing.T) {
 	require.Equal(t, checkerdef.StatusWarning, result.Status, "output: %v", result.Output)
 	require.Contains(t, result.Output, checkerdef.OutputKeyIPFallback)
 }
+
+// redirectingServer answers every request with a 302 to target.
+func redirectingServer(t *testing.T, target string) *httptest.Server {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target, http.StatusFound)
+	}))
+	t.Cleanup(server.Close)
+
+	return server
+}
+
+// TestScrape_CrossOriginRedirectDropsHeaders: a 302 to another origin does not
+// carry the configured headers, Authorization or a Referer (spec 2026-11-15-02).
+func TestScrape_CrossOriginRedirectDropsHeaders(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	target, lastHeader := metricsServer(t, sampleExposition)
+	origin := redirectingServer(t, target.URL+"/metrics")
+
+	result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
+		URL: origin.URL + "/metrics?token=q", Metric: "process_open_fds", Operator: ">", CriticalValue: f64(1e9),
+		Headers: map[string]string{"X-Api-Key": "k", "Authorization": "Bearer t"},
+	})
+
+	header := lastHeader()
+	r.NotNil(header, "the redirect target must have been reached")
+	r.Empty(header.Get("X-Api-Key"))
+	r.Empty(header.Get("Authorization"))
+	r.Empty(header.Get("Referer"))
+	r.NotEmpty(header.Get("User-Agent"))
+
+	r.Equal(checkerdef.StatusUp, result.Status)
+	r.Equal([]string{"Authorization", "X-Api-Key"},
+		result.Output[checkerdef.OutputKeyRedirectDroppedSecretHeaders])
+}
+
+// TestScrape_SameOriginRedirectKeepsHeaders is the positive control: a
+// redirect on the same origin still carries both headers and the metric is
+// read.
+func TestScrape_SameOriginRedirectKeepsHeaders(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	var (
+		mu     sync.Mutex
+		header http.Header
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/real" {
+			http.Redirect(w, req, "/real", http.StatusFound)
+
+			return
+		}
+
+		mu.Lock()
+		header = req.Header.Clone()
+		mu.Unlock()
+
+		_, _ = w.Write([]byte(sampleExposition))
+	}))
+	t.Cleanup(server.Close)
+
+	result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
+		URL: server.URL + "/metrics", Metric: "process_open_fds", Operator: ">", CriticalValue: f64(1e9),
+		Headers: map[string]string{"X-Api-Key": "k", "Authorization": "Bearer t"},
+	})
+
+	r.Equal(checkerdef.StatusUp, result.Status)
+	r.NotContains(result.Output, checkerdef.OutputKeyRedirectDroppedSecretHeaders)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	r.Equal("k", header.Get("X-Api-Key"))
+	r.Equal("Bearer t", header.Get("Authorization"))
+}

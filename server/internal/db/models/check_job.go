@@ -134,6 +134,12 @@ type CheckJob struct {
 	// persisted and never read off the wire, so a config cannot set it.
 	StoredConfig JSONMap `bun:"-"`
 
+	// ResolvedRefValues are the values the ${env:…} / ${param:…} references
+	// of the config resolved to, set by the worker's materializeConfig (spec
+	// 2026-11-15-01) and handed to the checker on its context. Secrets:
+	// transient, never persisted, serialized or logged.
+	ResolvedRefValues []string `bun:"-" json:"-"`
+
 	// ClaimedAt is when this process took the lease on the row. Set by the
 	// claim; transient, never persisted and never read off the wire (an agent
 	// result rebuilds the job from the database, so it is nil there). The

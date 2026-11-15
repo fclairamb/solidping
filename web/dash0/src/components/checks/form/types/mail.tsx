@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { NO_CAPTURE_CLASS } from "@/lib/no-capture";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -287,7 +288,7 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
               </Select>
             )}
             {state.deliveryTo && (
-              <p className="text-xs text-muted-foreground" data-testid="check-smtp-delivery-to">
+              <p className={`text-xs text-muted-foreground ${NO_CAPTURE_CLASS}`} data-testid="check-smtp-delivery-to">
                 {t("mail.probeEmailAddressedTo", { address: state.deliveryTo })}
               </p>
             )}

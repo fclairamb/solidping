@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"database/sql"
 	"regexp"
 	"testing"
 
@@ -129,4 +130,23 @@ func TestEmailTokenUniqueMigration(t *testing.T) {
 
 	r.Error(rig.insert("chk-dup", sharedEmailToken, "2026-11-01 13:00:00", false),
 		"the migration must leave the unique index in place")
+}
+
+// TestGetCheckByEmailTokenSkipsDeletedOrganization: a live check of a deleted
+// organization is not found by its token (spec 2026-11-15-03).
+func TestGetCheckByEmailTokenSkipsDeletedOrganization(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	rig := newEmailTokenRig(t)
+
+	r.NoError(rig.insert("chk-a", sharedEmailToken, "2026-11-01 10:00:00", false))
+
+	found, err := rig.svc.GetCheckByEmailToken(t.Context(), sharedEmailToken)
+	r.NoError(err)
+	r.Equal("chk-a", found.UID)
+
+	r.NoError(rig.svc.DeleteOrganization(t.Context(), "org-1"))
+
+	_, err = rig.svc.GetCheckByEmailToken(t.Context(), sharedEmailToken)
+	r.ErrorIs(err, sql.ErrNoRows)
 }

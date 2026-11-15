@@ -2808,3 +2808,122 @@ func TestHTTPChecker_Execute_BodyCrossOriginRedirect(t *testing.T) {
 		require.Equal(t, body, got)
 	})
 }
+
+// TestHTTPChecker_Execute_ReferenceHeadersCrossOriginRedirect: a plain header
+// holding the resolved value of a ${param:…} / ${env:…} reference is treated
+// like a secret header on a redirect to another origin (spec 2026-11-15-01).
+func TestHTTPChecker_Execute_ReferenceHeadersCrossOriginRedirect(t *testing.T) {
+	t.Parallel()
+
+	const refValue = "resolved-api-key"
+
+	type received struct {
+		mu  sync.Mutex
+		hdr http.Header
+	}
+
+	newOther := func(t *testing.T) (*httptest.Server, *received) {
+		t.Helper()
+
+		rec := &received{}
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			rec.mu.Lock()
+			rec.hdr = req.Header.Clone()
+			rec.mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+		}))
+		t.Cleanup(srv.Close)
+
+		return srv, rec
+	}
+
+	newOrigin := func(t *testing.T, target string) *httptest.Server {
+		t.Helper()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			http.Redirect(w, req, target, http.StatusFound)
+		}))
+		t.Cleanup(srv.Close)
+
+		return srv
+	}
+
+	cfg := func(url string) *HTTPConfig {
+		return &HTTPConfig{
+			URL:     url,
+			Headers: map[string]string{"X-Api-Key": refValue, "X-Trace": "1"},
+		}
+	}
+
+	t.Run("cross-origin hop drops the referenced header", func(t *testing.T) {
+		t.Parallel()
+
+		other, rec := newOther(t)
+		origin := newOrigin(t, other.URL)
+
+		ctx := checkerdef.WithResolvedReferenceValues(context.Background(), []string{refValue})
+		result, err := (&HTTPChecker{}).Execute(ctx, cfg(origin.URL))
+		require.NoError(t, err)
+		require.Equal(t, checkerdef.StatusUp, result.Status)
+
+		rec.mu.Lock()
+		defer rec.mu.Unlock()
+
+		require.Empty(t, rec.hdr.Get("X-Api-Key"))
+		require.Equal(t, "1", rec.hdr.Get("X-Trace"))
+		require.Equal(t, []string{"X-Api-Key"}, result.Output["redirect_dropped_secret_headers"])
+		require.NotContains(t, fmt.Sprint(result.Output), refValue)
+	})
+
+	t.Run("without a registered value the header follows", func(t *testing.T) {
+		t.Parallel()
+
+		other, rec := newOther(t)
+		origin := newOrigin(t, other.URL)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), cfg(origin.URL))
+		require.NoError(t, err)
+		require.Equal(t, checkerdef.StatusUp, result.Status)
+
+		rec.mu.Lock()
+		defer rec.mu.Unlock()
+
+		require.Equal(t, refValue, rec.hdr.Get("X-Api-Key"))
+		require.NotContains(t, result.Output, "redirect_dropped_secret_headers")
+	})
+
+	t.Run("same-origin hop keeps the referenced header", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			mu  sync.Mutex
+			got string
+			srv *httptest.Server
+		)
+
+		srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.URL.Path == "/next" {
+				mu.Lock()
+				got = req.Header.Get("X-Api-Key")
+				mu.Unlock()
+				w.WriteHeader(http.StatusOK)
+
+				return
+			}
+
+			http.Redirect(w, req, srv.URL+"/next", http.StatusFound)
+		}))
+		t.Cleanup(srv.Close)
+
+		ctx := checkerdef.WithResolvedReferenceValues(context.Background(), []string{refValue})
+		result, err := (&HTTPChecker{}).Execute(ctx, cfg(srv.URL))
+		require.NoError(t, err)
+		require.Equal(t, checkerdef.StatusUp, result.Status)
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		require.Equal(t, refValue, got)
+		require.NotContains(t, result.Output, "redirect_dropped_secret_headers")
+	})
+}
