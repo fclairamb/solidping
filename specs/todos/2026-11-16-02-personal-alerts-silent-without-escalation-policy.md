@@ -104,6 +104,11 @@ setting belongs to, nor warn when one of them is dead:
    `specs/done/2026/07/2026-07-19-01-escalation-org-default-and-assignment-picker.md`).
    Trade-off: more surface in this spec; drop it if it grows past the budget.
 
+## Resolved open questions
+
+1. Do not seed a default escalation policy at org creation: warn only. (autopilot: recommended answer)
+2. For admins, the warning offers a secondary button that creates a single-step `all_admins` policy and sets it as the org default, after a confirmation showing the blast radius (reuse the org-default confirmation). Drop it if it grows past the budget. (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes #905. The implementing PR body **must** carry a
