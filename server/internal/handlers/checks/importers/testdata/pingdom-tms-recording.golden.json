@@ -1,0 +1,39 @@
+{
+  "document": {
+    "version": 1,
+    "exportedAt": "",
+    "organization": "pingdom",
+    "checks": [
+      {
+        "name": "Acme checkout recording",
+        "slug": "acme-checkout-recording",
+        "type": "js",
+        "config": {
+          "script": "// Generated from Pingdom transaction check \"Acme checkout recording\" (recording).\nvar page = browser.open();\nfunction must(r, what) { if (!r.ok) { throw new Error(what + \": \" + r.error); } }\nfunction waitText(what, sel, value, isRegex, want, seconds) {\n  var tries = Math.max(1, Math.ceil(seconds * 2));\n  var has = false;\n  for (var i = 0; i \u003c tries; i++) {\n    var t = page.text(sel);\n    has = t.ok \u0026\u0026 (isRegex ? new RegExp(value).test(t.text) : t.text.indexOf(value) \u003e= 0);\n    if (has === want) { return; }\n    if (i \u003c tries - 1) { sleep(500); }\n  }\n  throw new Error(what + \": \" + (want ? \"text not found\" : \"text still present\") + \" in \" + sel);\n}\nmust(page.basicAuth(secrets.PINGDOM_BASIC_USER, secrets.PINGDOM_BASIC_PASSWORD), \"basic_auth\");\nmust(page.goto(\"https://shop.acme.example\"), \"step 1: wpm_go_to https://shop.acme.example\");\nmust(page.click(\"auto=Buy\"), \"step 2: wpm_click Buy\");\nmust(page.fill(\"auto=Qty\", \"2\"), \"step 3: wpm_fill Qty\");\nmust(page.select(\"auto=size\", \"L\"), \"step 4: wpm_select_dropdown size\");\nsleep(2000);\nwaitText(\"step 6: wpm_contains_timeout body\", \"auto=body\", \"Order \\\\d+\", true, true, 5);\nwaitText(\"step 7: wpm_not_contains_timeout body\", \"auto=body\", \"Error\", false, false, 1);\n// TODO step 8: \"wpm_click_xy\" has no SolidPing equivalent (coordinate, hover and tab steps are not supported)\nreturn { status: \"up\", output: { url: page.url() } };\n",
+          "secrets": {
+            "PINGDOM_BASIC_PASSWORD": "rec-pw-9",
+            "PINGDOM_BASIC_USER": "recUser"
+          }
+        },
+        "labels": {
+          "recorded": "true"
+        },
+        "enabled": false,
+        "period": "5m",
+        "degradedEnabled": false
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "item": "Acme checkout recording",
+      "field": "steps",
+      "message": "step 8 (\"wpm_click_xy\") has no SolidPing equivalent (coordinate, hover and tab steps are not supported) — the check was created paused"
+    },
+    {
+      "item": "Acme checkout recording",
+      "field": "region",
+      "message": "region \"eu\" has no SolidPing counterpart — pick regions on the check"
+    }
+  ]
+}

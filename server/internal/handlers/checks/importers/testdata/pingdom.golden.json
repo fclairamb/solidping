@@ -185,7 +185,7 @@
     {
       "item": "Acme Checkout Flow",
       "field": "type",
-      "message": "check skipped: Pingdom type \"transaction\" has no SolidPing counterpart (transaction checks are not imported)"
+      "message": "check skipped: Pingdom type \"transaction\" has no SolidPing counterpart (legacy transaction checks are not imported; transaction checks are read from the TMS API)"
     }
   ]
 }
