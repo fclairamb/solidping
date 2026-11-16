@@ -120,8 +120,7 @@
         "config": {
           "expect_greeting": "220",
           "host": "mail.acme.example",
-          "port": 465,
-          "tls": true
+          "port": 465
         },
         "enabled": true,
         "period": "5m",

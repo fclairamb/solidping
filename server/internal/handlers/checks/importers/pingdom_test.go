@@ -212,3 +212,20 @@ func TestConvertEndpointPingdomBadTokenIsAValidationError(t *testing.T) {
 	r.NotContains(rec.Body.String(), pingdomTestToken)
 	r.Equal(0, harness.countChecks(t))
 }
+
+func TestPingdomConverterSMTPEncryptionOffImplicitPortUsesStartTLS(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	payload := `[{"check":{"id":1,"name":"Acme SMTP","hostname":"mail.acme.example","resolution":5,` +
+		`"type":{"smtp":{"port":587,"encryption":true}}}}]`
+
+	conv := importers.NewPingdomConverter(importers.PingdomOptions{})
+	result, err := conv.Convert([]byte(payload))
+	r.NoError(err)
+	r.Len(result.Document.Checks, 1)
+
+	cfg := result.Document.Checks[0].Config
+	r.Equal(true, cfg["starttls"])
+	r.NotContains(cfg, "tls")
+}

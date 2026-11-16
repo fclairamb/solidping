@@ -458,13 +458,13 @@ func convertPingdomCheck(raw json.RawMessage, slugs *slugSet, warn *warnings) (c
 		check.Config = pingdomExchangeConfig(host, &settings)
 	case pingdomSMTP:
 		check.Type = string(checkerdef.CheckTypeSMTP)
-		check.Config = pingdomMailConfig(host, &settings, name, warn)
+		check.Config = pingdomMailConfig(host, true, &settings, name, warn)
 	case pingdomPOP3:
 		check.Type = string(checkerdef.CheckTypePOP3)
-		check.Config = pingdomMailConfig(host, &settings, name, warn)
+		check.Config = pingdomMailConfig(host, false, &settings, name, warn)
 	case pingdomIMAP:
 		check.Type = string(checkerdef.CheckTypeIMAP)
-		check.Config = pingdomMailConfig(host, &settings, name, warn)
+		check.Config = pingdomMailConfig(host, false, &settings, name, warn)
 	default:
 		warn.addf(name, "type", "check skipped: Pingdom type %q has no SolidPing counterpart "+
 			"(transaction checks are not imported)", typeName)
@@ -626,8 +626,12 @@ func pingdomDNSConfig(host string, settings *pingdomSettings) map[string]any {
 	return cfg
 }
 
+const smtpImplicitTLSPort = 465
+
 // pingdomMailConfig builds the smtp/pop3/imap config.
-func pingdomMailConfig(host string, settings *pingdomSettings, name string, warn *warnings) map[string]any {
+func pingdomMailConfig(
+	host string, isSMTP bool, settings *pingdomSettings, name string, warn *warnings,
+) map[string]any {
 	cfg := map[string]any{cfgKeyHost: host}
 	if settings.Port > 0 {
 		cfg[cfgKeyPort] = settings.Port
@@ -638,7 +642,15 @@ func pingdomMailConfig(host string, settings *pingdomSettings, name string, warn
 	}
 
 	if settings.Encryption {
-		cfg["tls"] = true
+		if isSMTP {
+			// The SMTP checker has no tls field: port 465 is implicit TLS by itself,
+			// any other port needs starttls.
+			if settings.Port != smtpImplicitTLSPort {
+				cfg["starttls"] = true
+			}
+		} else {
+			cfg["tls"] = true
+		}
 	}
 
 	if settings.Username != "" || settings.Password != "" || settings.Auth != "" {

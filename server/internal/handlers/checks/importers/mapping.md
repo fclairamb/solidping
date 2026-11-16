@@ -259,7 +259,7 @@ no type-specific settings, so its HTTP checks default to the `/` path.
 | `type.tcp` / `type.udp` | `tcp` / `udp` (`stringtosend` → `send_data`, `stringtoexpect` → `expect_data`) |
 | `type.ping` | `icmp` |
 | `type.dns` | `dns` (`hostname`, `expectedip` → `expected_ips`, `nameserver` + `:53`) |
-| `type.smtp` / `pop3` / `imap` | `smtp` / `pop3` / `imap` (`stringtoexpect` → `expect_greeting`, `encryption` → `tls`) |
+| `type.smtp` / `pop3` / `imap` | `smtp` / `pop3` / `imap` (`stringtoexpect` → `expect_greeting`, `encryption` → `tls` for pop3/imap; for smtp, port 465 is implicit TLS already so nothing is set, any other port gets `starttls`) |
 | any other type (transaction/TMS) | skipped + warning |
 | `resolution` (minutes) | period, clamped by `normalizeChecks` |
 | `sendnotificationwhendown` (n) | `confirmationPeriodSeconds` = n × period |
