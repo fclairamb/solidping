@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.51.0](https://github.com/fclairamb/solidping/compare/v0.50.2...v0.51.0) (2026-11-16)
+
+
+### Features
+
+* Pingdom check importer, insights period selector, job retry log levels ([#904](https://github.com/fclairamb/solidping/issues/904)) ([7914164](https://github.com/fclairamb/solidping/commit/7914164d76a483b7923dcee551a260ee7aa8717b))
+
+
+### Bug Fixes
+
+* **security:** bound status page historyDays, mask config tokens in replay, JS websocket redirect policy, docs JWT placeholders ([#903](https://github.com/fclairamb/solidping/issues/903)) ([6b432e0](https://github.com/fclairamb/solidping/commit/6b432e07442dbcdc779cec2e6096c81f6268788d))
+* **security:** cap the pre-auth body buffer in ServiceSignature ([#894](https://github.com/fclairamb/solidping/issues/894)) ([c4da4c5](https://github.com/fclairamb/solidping/commit/c4da4c5feac08f7c99c8b6caef605db1d6751e07)), closes [#892](https://github.com/fclairamb/solidping/issues/892)
+* **security:** cross-check SAML NameID namespace (GO-2026-6909) ([#896](https://github.com/fclairamb/solidping/issues/896)) ([df0d7b6](https://github.com/fclairamb/solidping/commit/df0d7b6433655d6d8874d9d151e84d8fb28de256))
+* **security:** treat known dev JWT secrets as placeholders ([#895](https://github.com/fclairamb/solidping/issues/895)) ([1cad98a](https://github.com/fclairamb/solidping/commit/1cad98a523f5b27cae47220631394ad4c22088ee)), closes [#892](https://github.com/fclairamb/solidping/issues/892)
+
 ## [0.50.2](https://github.com/fclairamb/solidping/compare/v0.50.1...v0.50.2) (2026-11-15)
 
 
