@@ -156,13 +156,20 @@ still be recovered this way without shell access.
 ### 2. Reconnection (every time after)
 
 There is no long-lived bearer credential to steal. The agent signs each
-connection with Ed25519 over the canonical challenge
-`method + "|" + path + "|" + timestamp + "|" + nonce`
-(`agents.SignatureChallenge`) and sends four headers:
+connection with Ed25519 over the v2 canonical challenge
+`"v2|" + method + "|" + requestURI + "|" + timestamp + "|" + nonce + "|" + hex(sha256(body))`
+(`agents.SignatureChallengeV2`) — the full request URI (path AND query) and the
+exact body bytes are bound into the signature; a reconnect carries no body, so
+the hash covers the empty slice. It sends five headers:
 
 ```
-X-Sp-Agent-Uid   X-Sp-Timestamp   X-Sp-Nonce   X-Sp-Signature
+X-Sp-Agent-Uid   X-Sp-Timestamp   X-Sp-Nonce   X-Sp-Signature   X-Sp-Signature-Version: 2
 ```
+
+The legacy v1 challenge (`method|path|timestamp|nonce`, no version header) is
+still verified for agents that have not upgraded, with a deprecation warning;
+it covers neither query nor body and is slated for removal once the fleet has
+migrated.
 
 The timestamp is RFC3339. The server enforces a ±5 minute clock-skew window
 (`agents.DefaultClockSkew`) plus an in-memory nonce replay cache

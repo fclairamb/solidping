@@ -1,12 +1,17 @@
 // Package agentauth verifies the Ed25519 signed headers a deported agent puts
 // on its plain HTTP calls (attachment uploads, worker tasks). It is the same
 // scheme, skew and replay guard as the agent WebSocket reconnect, so an agent
-// needs no second credential.
+// needs no second credential. The current (v2) challenge binds the full
+// request URI and the exact body bytes; the legacy v1 challenge (path only) is
+// still accepted for agents that have not upgraded yet.
 package agentauth
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -55,8 +60,9 @@ func (a *Authenticator) SetNonceGuard(guard agents.NonceGuard) {
 
 // Authenticate verifies the signed headers exactly the way the WS reconnect
 // does: known active agent (a revoked one fails), timestamp inside the skew,
-// nonce not seen before (cluster-wide, DB-backed), Ed25519 signature over
-// method|path|timestamp|nonce.
+// nonce not seen before (cluster-wide, DB-backed), then the Ed25519 signature
+// — v2 over method|requestURI|timestamp|nonce|sha256(body) when the agent
+// advertises it, legacy v1 over method|path|timestamp|nonce otherwise.
 func (a *Authenticator) Authenticate(req *http.Request) (*models.Agent, error) {
 	agentUID := req.Header.Get(HeaderAgentUID)
 	timestamp := req.Header.Get(HeaderTimestamp)
@@ -89,11 +95,72 @@ func (a *Authenticator) Authenticate(req *http.Request) (*models.Agent, error) {
 		return nil, ErrUnauthenticated
 	}
 
-	if sigErr := agents.VerifySignature(
-		agent.Ed25519PublicKey, req.Method, req.URL.Path, timestamp, nonce, signature,
-	); sigErr != nil {
+	if sigErr := a.verifySignature(req, agent, timestamp, nonce, signature); sigErr != nil {
 		return nil, ErrUnauthenticated
 	}
 
 	return agent, nil
+}
+
+// maxSignedBodyBytes caps the body Authenticate buffers for the v2 body hash.
+// Mirrors attachments.MaxAttachmentBytes (the largest signed payload agents
+// send); the value is duplicated rather than imported because the attachments
+// handler imports this package.
+const maxSignedBodyBytes = 4 << 20
+
+// verifySignature dispatches on the challenge version the agent advertises.
+// v2 binds the full request URI (path AND query) and the exact body bytes;
+// the legacy v1 challenge (path only) is still accepted for agents that have
+// not upgraded, with a deprecation warning so operators can watch the legacy
+// channel go quiet before it is removed. Any other version is refused.
+func (a *Authenticator) verifySignature(
+	req *http.Request, agent *models.Agent, timestamp, nonce, signature string,
+) error {
+	switch req.Header.Get(agents.HeaderSignatureVersion) {
+	case agents.SignatureVersionV2:
+		body, err := readAndRestoreBody(req)
+		if err != nil {
+			return err
+		}
+
+		return agents.VerifySignatureV2(
+			agent.Ed25519PublicKey, req.Method, req.URL.RequestURI(), timestamp, nonce, body, signature,
+		)
+	case "":
+		slog.WarnContext(req.Context(),
+			"DEPRECATED: agent request authenticated with the legacy v1 signature (path only); "+
+				"the agent should upgrade to the v2 challenge binding query and body",
+			"agent", agent.UID, "path", req.URL.Path)
+
+		return agents.VerifySignature(
+			agent.Ed25519PublicKey, req.Method, req.URL.Path, timestamp, nonce, signature,
+		)
+	default:
+		return ErrUnauthenticated
+	}
+}
+
+// readAndRestoreBody buffers the request body so it can be hashed, then puts
+// it back for the handler to decode. The read is capped and happens BEFORE the
+// signature is verified, so it must not trust the caller's body size: an
+// oversized body is refused rather than buffered.
+func readAndRestoreBody(req *http.Request) ([]byte, error) {
+	if req.Body == nil {
+		return nil, nil
+	}
+
+	body, err := io.ReadAll(io.LimitReader(req.Body, maxSignedBodyBytes+1))
+	_ = req.Body.Close()
+
+	if err != nil {
+		return nil, err
+	}
+
+	if int64(len(body)) > maxSignedBodyBytes {
+		return nil, ErrUnauthenticated
+	}
+
+	req.Body = io.NopCloser(bytes.NewReader(body))
+
+	return body, nil
 }
