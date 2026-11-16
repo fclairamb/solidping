@@ -40,7 +40,28 @@ const (
 	// DefaultJWTSecret is the public placeholder auth.jwt_secret starts with. It
 	// is never a real secret: nothing may be derived from it.
 	DefaultJWTSecret = "change-me-in-production"
+
+	// DevJWTSecret is the publicly-known constant the repository's development
+	// docker-compose.yml ships. Like DefaultJWTSecret it is never a real secret:
+	// an operator who copies the dev compose into production must not end up
+	// with a world-readable JWT signing key, so it is treated as a placeholder
+	// too (see IsPlaceholderJWTSecret).
+	DevJWTSecret = "dev-secret-change-in-production"
 )
+
+// IsPlaceholderJWTSecret reports whether secret is empty or one of the
+// publicly-known placeholder values that must never sign tokens or derive
+// secrets. Every guard that refuses to trust the JWT secret (startup
+// auto-generation, OVH DLR token derivation, ...) uses this one predicate so
+// a new known-unsafe constant is refused everywhere at once.
+func IsPlaceholderJWTSecret(secret string) bool {
+	switch secret {
+	case "", DefaultJWTSecret, DevJWTSecret:
+		return true
+	default:
+		return false
+	}
+}
 
 // DiscordLoginRedirectURI is the redirect URI for "Sign in with Discord".
 func DiscordLoginRedirectURI(baseURL string) string { return baseURL + DiscordLoginCallbackPath }

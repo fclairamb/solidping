@@ -113,3 +113,19 @@ func TestWarnIgnoredDiscordRedirectEnv(t *testing.T) {
 	warnIgnoredDiscordRedirectEnv()
 	require.Contains(t, buf.String(), "SP_DISCORD_REDIRECT_URL is ignored")
 }
+
+// TestIsPlaceholderJWTSecret pins the one predicate every JWT-secret guard
+// shares: empty and both publicly-known constants are placeholders, anything
+// else is a real secret. A new known-unsafe constant added to the switch must
+// be refused everywhere at once (startup generation, OVH DLR derivation).
+func TestIsPlaceholderJWTSecret(t *testing.T) {
+	t.Parallel()
+
+	for _, secret := range []string{"", DefaultJWTSecret, DevJWTSecret} {
+		require.True(t, IsPlaceholderJWTSecret(secret), "placeholder: %q", secret)
+	}
+
+	for _, secret := range []string{"a-real-secret", "change-me-in-production2", "dev-secret"} {
+		require.False(t, IsPlaceholderJWTSecret(secret), "real secret: %q", secret)
+	}
+}
