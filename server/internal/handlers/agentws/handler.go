@@ -533,9 +533,7 @@ func (h *Handler) serveReconnect(
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Nonce already used")
 	}
 
-	if sigErr := agentcrypto.VerifySignature(
-		agent.Ed25519PublicKey, req.Method, req.URL.Path, timestamp, nonce, signature,
-	); sigErr != nil {
+	if sigErr := verifyReconnectSignature(req, agent, timestamp, nonce, signature); sigErr != nil {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid signature")
 	}
 
@@ -555,6 +553,33 @@ func (h *Handler) serveReconnect(
 	h.runAgentConnection(ctx, conn, live, agent, false, req.Header.Get(agentcrypto.HeaderBootID))
 
 	return nil
+}
+
+// verifyReconnectSignature dispatches on the challenge version the agent
+// advertises, exactly like agentauth does for the plain HTTP calls: v2 binds
+// the full request URI (a reconnect carries no body, so the hash covers the
+// empty slice), legacy v1 is accepted with a deprecation warning until the
+// fleet has upgraded, and any other version is refused.
+func verifyReconnectSignature(
+	req *http.Request, agent *models.Agent, timestamp, nonce, signature string,
+) error {
+	switch req.Header.Get(agentcrypto.HeaderSignatureVersion) {
+	case agentcrypto.SignatureVersionV2:
+		return agentcrypto.VerifySignatureV2(
+			agent.Ed25519PublicKey, req.Method, req.URL.RequestURI(), timestamp, nonce, nil, signature,
+		)
+	case "":
+		slog.WarnContext(req.Context(),
+			"DEPRECATED: agent reconnect authenticated with the legacy v1 signature (path only); "+
+				"the agent should upgrade to the v2 challenge",
+			"agent", agent.UID)
+
+		return agentcrypto.VerifySignature(
+			agent.Ed25519PublicKey, req.Method, req.URL.Path, timestamp, nonce, signature,
+		)
+	default:
+		return agentcrypto.ErrBadSignature
+	}
 }
 
 // releaseOnNewBoot frees the leases a previous process of this agent left
