@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/textproto"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -120,4 +121,95 @@ func TestSend_EOFLoggedAsWarnAndRetryable(t *testing.T) {
 	require.True(t, IsRetryableSendError(err), err.Error())
 	require.Contains(t, buf.String(), "level=WARN msg=\"failed to send email\"")
 	require.NotContains(t, buf.String(), "level=ERROR")
+}
+
+func TestIsRecipientRejection(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, IsRecipientRejection(&textproto.Error{Code: 550, Msg: "5.1.1 User unknown"}))
+	require.True(t, IsRecipientRejection(&textproto.Error{Code: 552, Msg: "5.2.2 Mailbox full"}))
+	require.False(t, IsRecipientRejection(&textproto.Error{Code: 550, Msg: "5.7.1 Relaying denied"}))
+	require.False(t, IsRecipientRejection(&textproto.Error{Code: 553, Msg: "5.1.7 Bad sender address"}))
+	require.False(t, IsRecipientRejection(&textproto.Error{Code: 535, Msg: "5.7.8 Authentication failed"}))
+	require.False(t, IsRecipientRejection(&textproto.Error{Code: 450, Msg: "4.2.1 Try again later"}))
+	require.False(t, IsRecipientRejection(&textproto.Error{Code: 554, Msg: "Transaction failed"}))
+	require.False(t, IsRecipientRejection(io.EOF))
+	require.False(t, IsRecipientRejection(nil))
+}
+
+// fakeSMTPRejectingRcpt serves one SMTP session that refuses every recipient
+// with replyToRcpt.
+func fakeSMTPRejectingRcpt(t *testing.T, enhanced bool, replyToRcpt string) int {
+	t.Helper()
+
+	lis, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = lis.Close() })
+
+	go func() {
+		conn, acceptErr := lis.Accept()
+		if acceptErr != nil {
+			return
+		}
+
+		defer func() { _ = conn.Close() }()
+
+		tp := textproto.NewConn(conn)
+		_ = tp.PrintfLine("220 acme.test ESMTP")
+
+		for {
+			line, readErr := tp.ReadLine()
+			if readErr != nil {
+				return
+			}
+
+			switch cmd := strings.ToUpper(strings.SplitN(line, " ", 2)[0]); cmd {
+			case "EHLO":
+				if enhanced {
+					_ = tp.PrintfLine("250-acme.test")
+					_ = tp.PrintfLine("250 ENHANCEDSTATUSCODES")
+				} else {
+					_ = tp.PrintfLine("250 acme.test")
+				}
+			case "RCPT":
+				_ = tp.PrintfLine("%s", replyToRcpt)
+			case "QUIT":
+				_ = tp.PrintfLine("221 bye")
+
+				return
+			default:
+				_ = tp.PrintfLine("250 OK")
+			}
+		}
+	}()
+
+	return lis.Addr().(*net.TCPAddr).Port //nolint:forcetypeassert // TCP listener
+}
+
+//nolint:paralleltest // mutates the process-wide semaphore
+func TestSend_RecipientRejectedLoggedAsWarn(t *testing.T) {
+	for _, enhanced := range []bool{true, false} {
+		resetSendSlots()
+
+		port := fakeSMTPRejectingRcpt(t, enhanced, "550 5.1.2 Mailbox does not exist")
+
+		var buf bytes.Buffer
+
+		logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		sender := NewSender(&config.EmailConfig{
+			Enabled: true, Host: "127.0.0.1", Port: port, From: "a@acme.test",
+			Protocol: "none", AuthType: "noauth",
+		}, logger)
+
+		_, err := sender.Send(t.Context(), &Message{
+			Recipients: Recipients{To: []string{"nobody@acme.test"}}, Subject: "s", Text: "t",
+		})
+		require.Error(t, err)
+		require.False(t, IsRetryableSendError(err), err.Error())
+		require.True(t, IsRecipientRejection(err), err.Error())
+		require.Contains(t, buf.String(), "level=WARN msg=\"failed to send email\"")
+		require.NotContains(t, buf.String(), "level=ERROR")
+	}
+
+	resetSendSlots()
 }
