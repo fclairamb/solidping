@@ -1,0 +1,191 @@
+{
+  "document": {
+    "version": 1,
+    "exportedAt": "",
+    "organization": "pingdom",
+    "checks": [
+      {
+        "name": "Acme Website",
+        "slug": "acme-website",
+        "type": "http",
+        "config": {
+          "body_expect": "ok",
+          "body_reject": "maintenance",
+          "headers": {
+            "X-Env": "prod"
+          },
+          "secretHeaders": {
+            "Authorization": "Bearer acme-secret"
+          },
+          "url": "https://www.acme.example/health"
+        },
+        "labels": {
+          "prod": "true",
+          "web": "true"
+        },
+        "enabled": true,
+        "period": "5m",
+        "confirmationPeriodSeconds": 600,
+        "degradedEnabled": false
+      },
+      {
+        "name": "Acme API Post",
+        "slug": "acme-api-post",
+        "type": "http",
+        "config": {
+          "body": "{\"a\":1}",
+          "method": "POST",
+          "url": "http://api.acme.example:8080/v1/ping"
+        },
+        "enabled": true,
+        "period": "5m",
+        "confirmationPeriodSeconds": 600,
+        "degradedEnabled": false
+      },
+      {
+        "name": "Acme Custom",
+        "slug": "acme-custom",
+        "type": "http",
+        "config": {
+          "url": "http://custom.acme.example/status.xml"
+        },
+        "enabled": true,
+        "period": "5m",
+        "confirmationPeriodSeconds": 600,
+        "degradedEnabled": false
+      },
+      {
+        "name": "Acme TCP",
+        "slug": "acme-tcp",
+        "type": "tcp",
+        "config": {
+          "expect_data": "PONG",
+          "host": "tcp.acme.example",
+          "port": 5432,
+          "send_data": "PING"
+        },
+        "enabled": false,
+        "period": "5m",
+        "confirmationPeriodSeconds": 600,
+        "degradedEnabled": false
+      },
+      {
+        "name": "Acme Ping",
+        "slug": "acme-ping",
+        "type": "icmp",
+        "config": {
+          "host": "ping.acme.example"
+        },
+        "enabled": true,
+        "period": "1m",
+        "confirmationPeriodSeconds": 120,
+        "degradedEnabled": false
+      },
+      {
+        "name": "Acme DNS",
+        "slug": "acme-dns",
+        "type": "dns",
+        "config": {
+          "expected_ips": [
+            "192.0.2.10"
+          ],
+          "host": "acme.example",
+          "nameserver": "8.8.8.8:53",
+          "record_type": "A"
+        },
+        "enabled": true,
+        "period": "5m",
+        "confirmationPeriodSeconds": 600,
+        "degradedEnabled": false
+      },
+      {
+        "name": "Acme UDP",
+        "slug": "acme-udp",
+        "type": "udp",
+        "config": {
+          "expect_data": "ho",
+          "host": "udp.acme.example",
+          "port": 53,
+          "send_data": "hi"
+        },
+        "enabled": true,
+        "period": "5m",
+        "confirmationPeriodSeconds": 600,
+        "degradedEnabled": false
+      },
+      {
+        "name": "Acme SMTP",
+        "slug": "acme-smtp",
+        "type": "smtp",
+        "config": {
+          "expect_greeting": "220",
+          "host": "mail.acme.example",
+          "port": 465
+        },
+        "enabled": true,
+        "period": "5m",
+        "confirmationPeriodSeconds": 600,
+        "degradedEnabled": false
+      },
+      {
+        "name": "Acme POP3",
+        "slug": "acme-pop3",
+        "type": "pop3",
+        "config": {
+          "host": "pop.acme.example",
+          "port": 995,
+          "tls": true
+        },
+        "enabled": true,
+        "period": "5m",
+        "confirmationPeriodSeconds": 600,
+        "degradedEnabled": false
+      },
+      {
+        "name": "Acme IMAP",
+        "slug": "acme-imap",
+        "type": "imap",
+        "config": {
+          "host": "imap.acme.example",
+          "port": 143
+        },
+        "enabled": true,
+        "period": "5m",
+        "confirmationPeriodSeconds": 600,
+        "degradedEnabled": false
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "item": "Acme Website",
+      "field": "requestheaders",
+      "message": "1 credential-bearing header(s) were imported into the encrypted secretHeaders field"
+    },
+    {
+      "item": "Acme Website",
+      "field": "auth",
+      "message": "basic-auth credentials were deliberately not imported (SolidPing never re-persists secrets from a foreign export) — re-enter them on the check"
+    },
+    {
+      "item": "Acme Website",
+      "field": "probe_filters",
+      "message": "probe filters are ignored — pick SolidPing regions on the check instead"
+    },
+    {
+      "item": "Acme Custom",
+      "field": "type",
+      "message": "custom HTTP checks (XML response values) are not supported — imported as a plain HTTP check on the URL"
+    },
+    {
+      "item": "Acme SMTP",
+      "field": "auth",
+      "message": "credentials were deliberately not imported (SolidPing never re-persists secrets from a foreign export) — re-enter them on the check"
+    },
+    {
+      "item": "Acme Checkout Flow",
+      "field": "type",
+      "message": "check skipped: Pingdom type \"transaction\" has no SolidPing counterpart (transaction checks are not imported)"
+    }
+  ]
+}

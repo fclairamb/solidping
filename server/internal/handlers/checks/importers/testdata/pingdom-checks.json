@@ -1,0 +1,114 @@
+{
+  "checks": [
+    {
+      "id": 101,
+      "name": "Acme Website",
+      "hostname": "www.acme.example",
+      "type": "http",
+      "resolution": 5,
+      "status": "up",
+      "tags": [
+        {
+          "name": "prod",
+          "type": "u",
+          "count": 1
+        },
+        {
+          "name": "web",
+          "type": "u",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "name": "Acme API Post",
+      "hostname": "api.acme.example",
+      "type": "http",
+      "resolution": 5,
+      "status": "up",
+      "tags": []
+    },
+    {
+      "id": 103,
+      "name": "Acme Custom",
+      "hostname": "custom.acme.example",
+      "type": "httpcustom",
+      "resolution": 5,
+      "status": "up",
+      "tags": []
+    },
+    {
+      "id": 104,
+      "name": "Acme TCP",
+      "hostname": "tcp.acme.example",
+      "type": "tcp",
+      "resolution": 5,
+      "status": "paused",
+      "tags": []
+    },
+    {
+      "id": 105,
+      "name": "Acme Ping",
+      "hostname": "ping.acme.example",
+      "type": "ping",
+      "resolution": 1,
+      "status": "up",
+      "tags": []
+    },
+    {
+      "id": 106,
+      "name": "Acme DNS",
+      "hostname": "acme.example",
+      "type": "dns",
+      "resolution": 5,
+      "status": "up",
+      "tags": []
+    },
+    {
+      "id": 107,
+      "name": "Acme UDP",
+      "hostname": "udp.acme.example",
+      "type": "udp",
+      "resolution": 5,
+      "status": "up",
+      "tags": []
+    },
+    {
+      "id": 108,
+      "name": "Acme SMTP",
+      "hostname": "mail.acme.example",
+      "type": "smtp",
+      "resolution": 5,
+      "status": "up",
+      "tags": []
+    },
+    {
+      "id": 109,
+      "name": "Acme POP3",
+      "hostname": "pop.acme.example",
+      "type": "pop3",
+      "resolution": 5,
+      "status": "up",
+      "tags": []
+    },
+    {
+      "id": 110,
+      "name": "Acme IMAP",
+      "hostname": "imap.acme.example",
+      "type": "imap",
+      "resolution": 5,
+      "status": "up",
+      "tags": []
+    },
+    {
+      "id": 111,
+      "name": "Acme Checkout Flow",
+      "hostname": "shop.acme.example",
+      "type": "transaction",
+      "resolution": 5,
+      "status": "up",
+      "tags": []
+    }
+  ]
+}

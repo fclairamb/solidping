@@ -174,12 +174,16 @@ const groupSlugRegex = /^[a-z][a-z0-9-]{2,99}$/;
 // Import sources offered by the checks-list import flow: the native SolidPing
 // export document, plus the third-party converters served by
 // POST /checks/import/convert.
-const IMPORT_SOURCES = ["solidping", "gatus", "betterstack", "uptime-kuma", "uptimerobot"] as const;
+const IMPORT_SOURCES = ["solidping", "gatus", "betterstack", "uptime-kuma", "uptimerobot", "pingdom"] as const;
 type ImportSourceId = (typeof IMPORT_SOURCES)[number];
 
 // Sources whose payload is a file the user pastes or uploads. Better Stack is
 // the odd one out: it takes an API token and the server does the fetching.
 const FILE_IMPORT_SOURCES: ImportSourceId[] = ["solidping", "gatus", "uptime-kuma", "uptimerobot"];
+
+// Pingdom accepts either a read-only API token (the server fetches) or a pasted
+// GET /checks JSON payload: both inputs are shown, the token wins when filled.
+const TOKEN_AND_PAYLOAD_SOURCES: ImportSourceId[] = ["pingdom"];
 
 // Accepted upload extensions per source.
 const IMPORT_ACCEPT: Record<ImportSourceId, string> = {
@@ -188,6 +192,7 @@ const IMPORT_ACCEPT: Record<ImportSourceId, string> = {
   betterstack: "",
   "uptime-kuma": ".json",
   uptimerobot: ".json",
+  pingdom: ".json",
 };
 
 // Normalized preview shape shared by the native import and every converter.
@@ -1584,10 +1589,10 @@ function ChecksIndexPage() {
       };
     }
 
-    const body =
-      importSource === "betterstack"
-        ? JSON.stringify({ token: importToken.trim() })
-        : importText;
+    const useToken =
+      importSource === "betterstack" ||
+      (TOKEN_AND_PAYLOAD_SOURCES.includes(importSource) && importToken.trim() !== "");
+    const body = useToken ? JSON.stringify({ token: importToken.trim() }) : importText;
     const result = await convertChecks.mutateAsync({
       source: importSource as ConvertSource,
       body,
@@ -2192,7 +2197,24 @@ function ChecksIndexPage() {
               </p>
             </div>
 
-            {FILE_IMPORT_SOURCES.includes(importSource) ? (
+            {TOKEN_AND_PAYLOAD_SOURCES.includes(importSource) && (
+              <div className="space-y-2">
+                <Label htmlFor="import-token">{t("dialog.importTokenPingdom")}</Label>
+                <PasswordInput
+                  id="import-token"
+                  data-testid="import-token"
+                  value={importToken}
+                  onChange={(e) => setImportToken(e.target.value)}
+                  placeholder="••••••••"
+                />
+                <Alert data-testid="import-token-notice">
+                  <AlertTitle>{t("dialog.importTokenNoticeTitle")}</AlertTitle>
+                  <AlertDescription>{t("dialog.importTokenNotice")}</AlertDescription>
+                </Alert>
+              </div>
+            )}
+
+            {FILE_IMPORT_SOURCES.includes(importSource) || TOKEN_AND_PAYLOAD_SOURCES.includes(importSource) ? (
               <div className="space-y-2">
                 <Label htmlFor="import-payload">{t("dialog.importPayload")}</Label>
                 <Textarea
@@ -2258,9 +2280,11 @@ function ChecksIndexPage() {
               disabled={
                 importChecks.isPending ||
                 convertChecks.isPending ||
-                (FILE_IMPORT_SOURCES.includes(importSource)
-                  ? importText.trim() === ""
-                  : importToken.trim() === "")
+                (TOKEN_AND_PAYLOAD_SOURCES.includes(importSource)
+                  ? importText.trim() === "" && importToken.trim() === ""
+                  : FILE_IMPORT_SOURCES.includes(importSource)
+                    ? importText.trim() === ""
+                    : importToken.trim() === "")
               }
             >
               {(importChecks.isPending || convertChecks.isPending) && (

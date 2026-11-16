@@ -21,6 +21,8 @@ export type SegmentedControlProps<T extends string> = {
   options: SegmentedControlOption<T>[];
   /** Accessible name for the group. */
   "aria-label"?: string;
+  /** Forwarded to the group element. */
+  "data-testid"?: string;
   className?: string;
   /**
    * "sm" (default) keeps the compact control. "md" renders the whole control
@@ -53,6 +55,7 @@ export function SegmentedControl<T extends string>({
     <div
       role="group"
       aria-label={props["aria-label"]}
+      data-testid={props["data-testid"]}
       className={cn(
         "inline-flex rounded-lg border bg-muted p-0.5 dark:bg-background",
         size === "md" ? "h-9 flex-nowrap" : "flex-wrap",

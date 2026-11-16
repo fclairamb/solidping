@@ -411,5 +411,9 @@
     "testFailed": "Échec",
     "protocolVersion": "A2A {{version}}",
     "noSkills": "La carte ne liste aucune compétence."
+  },
+  "personalChannels": {
+    "text": "Les canaux personnels (Telegram, WhatsApp, SMS, messages privés) se règlent par utilisateur et passent par les politiques d'escalade.",
+    "link": "À configurer dans Compte → Notifications"
   }
 }

@@ -1,7 +1,7 @@
 ---
 sidebar_position: 0
 title: Overview
-description: Import your existing monitors into SolidPing from Gatus, Better Stack, Uptime Kuma or UptimeRobot.
+description: Import your existing monitors into SolidPing from Gatus, Better Stack, Uptime Kuma, UptimeRobot or Pingdom.
 ---
 
 # Migrating to SolidPing
@@ -19,6 +19,7 @@ with its type, interval, target and thresholds intact.
 | Better Stack | An API token | [Migrate from Better Stack](./from-better-stack.md) |
 | Uptime Kuma | The `sp` CLI reads your `kuma.db` (2.x), or a 1.x backup JSON | [Migrate from Uptime Kuma](./from-uptime-kuma.md) |
 | UptimeRobot | The API v2 `getMonitors` JSON | [Migrate from UptimeRobot](./from-uptimerobot.md) |
+| Pingdom | A read-only API token, or the `GET /checks` JSON | [Migrate from Pingdom](./from-pingdom.md) |
 
 ## Recommended: let an AI agent do the translation
 

@@ -411,5 +411,9 @@
     "testFailed": "Fehlgeschlagen",
     "protocolVersion": "A2A {{version}}",
     "noSkills": "Die Karte listet keine Fähigkeiten auf."
+  },
+  "personalChannels": {
+    "text": "Persönliche Kanäle (Telegram, WhatsApp, SMS, Direktnachrichten) werden pro Benutzer eingerichtet und über Eskalationsrichtlinien erreicht.",
+    "link": "Einrichten unter Konto → Benachrichtigungen"
   }
 }

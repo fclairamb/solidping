@@ -1722,6 +1722,7 @@ export const CONVERT_SOURCES = [
   "betterstack",
   "uptime-kuma",
   "uptimerobot",
+  "pingdom",
 ] as const;
 export type ConvertSource = (typeof CONVERT_SOURCES)[number];
 
@@ -7247,6 +7248,11 @@ export interface NotificationRoutesResponse {
   slackMention?: SlackMentionIdentity;
   discordSuggestion?: DiscordSuggestion;
   discordMention?: DiscordMentionIdentity;
+  /** Whether an escalation policy ever pages the caller in this org. */
+  paging?: {
+    coveredBy: "org_default" | "some_checks" | "none";
+    policyCount: number;
+  };
 }
 
 export function useNotificationRoutes(org: string) {

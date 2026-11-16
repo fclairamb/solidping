@@ -1160,11 +1160,18 @@ export function CheckForm({
     passthroughSource,
   ]);
 
+  // The debounced validation call never carries the typed secrets: in browser
+  // mode they must not leave the browser except sealed (spec 2026-11-08-01),
+  // and validating their values server-side adds nothing.
+  const validationConfig = useMemo(
+    () => withoutSecretKeys(type, currentConfig, activeSecretFields ?? []),
+    [type, currentConfig, activeSecretFields],
+  );
   const { errors: serverFieldErrors, warnings: fieldWarnings } = useCheckValidationResult(
     org,
     {
       type,
-      config: currentConfig,
+      config: validationConfig,
       // A passive check has no regions (spec 2026-09-25-04), and an
       // automatically placed one lets the server choose them (2026-09-25-06).
       regions: isPassiveCheckType(type) || (showRegions && isAutoPlacement) ? [] : selectedRegions,

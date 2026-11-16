@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/textproto"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -348,11 +349,12 @@ func (s *SMTPSender) sendMessage(ctx context.Context, mailMsg *mail.Msg, msg *Me
 
 	if err != nil {
 		// Transient network errors are retried by the job worker, which logs
-		// its own line: keep ERROR for permanent failures.
+		// its own line, and a refused recipient is bad input, not a fault of
+		// ours: keep ERROR for the other permanent failures (auth, relay).
 		retryable := IsRetryableSendError(err)
 		level := slog.LevelError
 
-		if retryable {
+		if retryable || IsRecipientRejection(err) {
 			level = slog.LevelWarn
 		}
 
@@ -433,4 +435,74 @@ func IsRetryableSendError(err error) bool {
 const (
 	smtpTransientMin = 400
 	smtpPermanentMin = 500
+	smtpReplyMax     = 600
 )
+
+// enhancedStatusRe matches an RFC 3463 enhanced status code ("5.1.1").
+var enhancedStatusRe = regexp.MustCompile(`\b[245]\.\d{1,3}\.\d{1,3}\b`)
+
+// IsRecipientRejection reports whether err is a permanent SMTP reply refusing
+// the recipient (unknown or disabled mailbox): bad input that fails the same
+// way on every retry. 5xx replies about our own setup (535 authentication,
+// relay denied, rejected sender) are not recipient rejections.
+func IsRecipientRejection(err error) bool {
+	reply := smtpReply(err)
+	if reply.code < smtpPermanentMin || reply.code >= smtpReplyMax || reply.code == smtpAuthFailedCode {
+		return false
+	}
+
+	enhanced := reply.enhanced
+
+	lower := strings.ToLower(reply.text)
+	if strings.Contains(lower, "relay") || strings.Contains(lower, "auth") {
+		return false
+	}
+
+	switch {
+	case enhanced == "5.1.7" || enhanced == "5.1.8": // bad sender address
+		return false
+	case strings.HasPrefix(enhanced, "5.1.") || strings.HasPrefix(enhanced, "5.2."):
+		return true
+	case enhanced != "":
+		return false
+	default:
+		return reply.atRcptTo
+	}
+}
+
+// smtpReplyInfo is what IsRecipientRejection needs from an SMTP reply.
+type smtpReplyInfo struct {
+	code     int
+	enhanced string // RFC 3463 code, "" when absent
+	text     string
+	atRcptTo bool // the reply answered RCPT TO
+}
+
+// smtpReply extracts the SMTP reply from a go-mail or textproto error.
+func smtpReply(err error) smtpReplyInfo {
+	if err == nil {
+		return smtpReplyInfo{}
+	}
+
+	var sendErr *mail.SendError
+	if errors.As(err, &sendErr) {
+		info := smtpReplyInfo{
+			code:     sendErr.ErrorCode(),
+			enhanced: sendErr.EnhancedStatusCode(),
+			text:     sendErr.Error(),
+			atRcptTo: sendErr.Reason == mail.ErrSMTPRcptTo,
+		}
+		if info.enhanced == "" {
+			info.enhanced = enhancedStatusRe.FindString(info.text)
+		}
+
+		return info
+	}
+
+	var tpErr *textproto.Error
+	if errors.As(err, &tpErr) {
+		return smtpReplyInfo{code: tpErr.Code, enhanced: enhancedStatusRe.FindString(tpErr.Msg), text: tpErr.Msg}
+	}
+
+	return smtpReplyInfo{}
+}

@@ -35,6 +35,13 @@ type convertHarness struct {
 // points the Better Stack converter at a fake API.
 func newConvertHarness(t *testing.T, betterStackBaseURL string) *convertHarness {
 	t.Helper()
+
+	return newConvertHarnessWithPingdom(t, betterStackBaseURL, "")
+}
+
+// newConvertHarnessWithPingdom is newConvertHarness plus a fake Pingdom API root.
+func newConvertHarnessWithPingdom(t *testing.T, betterStackBaseURL, pingdomBaseURL string) *convertHarness {
+	t.Helper()
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -55,6 +62,10 @@ func newConvertHarness(t *testing.T, betterStackBaseURL string) *convertHarness 
 	handler := importers.NewHandler(checksSvc, &config.Config{})
 	if betterStackBaseURL != "" {
 		handler = handler.WithBetterStackBaseURL(betterStackBaseURL)
+	}
+
+	if pingdomBaseURL != "" {
+		handler = handler.WithPingdomBaseURL(pingdomBaseURL)
 	}
 
 	router := httpx.New()
@@ -263,7 +274,7 @@ func TestConvertEndpointRejectsUnknownSource(t *testing.T) {
 	r := require.New(t)
 
 	harness := newConvertHarness(t, "")
-	rec := harness.post(t, "pingdom", false, []byte("endpoints: []"))
+	rec := harness.post(t, "nagios", false, []byte("endpoints: []"))
 	r.Equal(http.StatusUnprocessableEntity, rec.Code)
 	r.Contains(rec.Body.String(), "source")
 }

@@ -113,27 +113,31 @@
       "gatus": "Gatus (config.yaml)",
       "betterstack": "Better Stack (API token)",
       "uptime-kuma": "Uptime Kuma (backup JSON)",
-      "uptimerobot": "UptimeRobot (getMonitors JSON)"
+      "uptimerobot": "UptimeRobot (getMonitors JSON)",
+      "pingdom": "Pingdom (API token or JSON)"
     },
     "importSourceHelp": {
       "solidping": "A document produced by the Export button, in JSON or YAML.",
       "gatus": "Paste or upload your Gatus config.yaml — the endpoints: list is converted into checks.",
       "betterstack": "We fetch your monitors and heartbeats from the Better Stack API and convert them.",
       "uptime-kuma": "Uptime Kuma 1.x: Settings → Backup → Export JSON. Version 2.x no longer offers this export.",
-      "uptimerobot": "Paste the JSON from UptimeRobot's API v2 getMonitors call — see the docs for the exact curl command."
+      "uptimerobot": "Paste the JSON from UptimeRobot's API v2 getMonitors call — see the docs for the exact curl command.",
+      "pingdom": "Create a read-only token in My Pingdom > Settings > Pingdom API > Add API token (read access), or paste the JSON of GET /api/3.1/checks."
     },
     "importPlaceholder": {
       "solidping": "Paste the exported JSON or YAML document…",
       "gatus": "Paste your Gatus config.yaml…",
       "uptime-kuma": "Paste your Uptime Kuma backup JSON…",
-      "uptimerobot": "Paste your UptimeRobot getMonitors JSON…"
+      "uptimerobot": "Paste your UptimeRobot getMonitors JSON…",
+      "pingdom": "Or paste your Pingdom checks JSON…"
     },
     "importPayload": "Configuration",
     "importUpload": "Upload a file",
     "importToken": "Better Stack API token",
     "importTokenNoticeTitle": "The token is not stored",
     "importTokenNotice": "It is sent once to read your monitors and heartbeats, and is never saved by SolidPing.",
-    "importWarnings": "{{count}} item(s) did not map exactly"
+    "importWarnings": "{{count}} item(s) did not map exactly",
+    "importTokenPingdom": "Pingdom API token (read access)"
   },
   "groupForm": {
     "title": "Edit group",

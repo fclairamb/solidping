@@ -160,6 +160,17 @@ function IntegrationsListPage() {
 
   return (
     <div className="space-y-6">
+      <p className="text-sm text-muted-foreground" data-testid="integrations-personal-channels-note">
+        {t("personalChannels.text")}{" "}
+        <Link
+          to="/orgs/$org/account/notifications"
+          params={{ org }}
+          className="underline"
+          data-testid="integrations-personal-channels-link"
+        >
+          {t("personalChannels.link")}
+        </Link>
+      </p>
       <PageHeader
         icon={Bell}
         title={t("title", "Integrations")}

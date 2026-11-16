@@ -301,6 +301,12 @@
       "added": "Notificaciones por mensaje directo de Discord añadidas",
       "addFailed": "No se pudo añadir el contacto de Discord",
       "linkFailed": "No se pudo iniciar la vinculación de Discord"
+    },
+    "paging": {
+      "none": "Ninguna política de escalado le avisa en esta organización, por lo que estos métodos no recibirán alertas.",
+      "adminLink": "Gestionar políticas de escalado",
+      "askAdmin": "Pida a un administrador que le añada a una política de escalado.",
+      "someChecks": "Solo algunos checks le avisan: una política de escalado le incluye para ellos, no para toda la organización."
     }
   },
   "device": {

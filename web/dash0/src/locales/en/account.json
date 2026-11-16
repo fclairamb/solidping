@@ -301,6 +301,12 @@
       "added": "Discord DM notifications added",
       "addFailed": "Failed to add Discord DM contact",
       "linkFailed": "Could not start the Discord link"
+    },
+    "paging": {
+      "none": "No escalation policy pages you in this organization, so these methods will not receive alerts.",
+      "adminLink": "Manage escalation policies",
+      "askAdmin": "Ask an admin to add you to an escalation policy.",
+      "someChecks": "Only some checks page you: an escalation policy targets you for them, not for the whole organization."
     }
   },
   "device": {

@@ -411,5 +411,9 @@
     "testFailed": "Failed",
     "protocolVersion": "A2A {{version}}",
     "noSkills": "The card lists no skills."
+  },
+  "personalChannels": {
+    "text": "Personal channels (Telegram, WhatsApp, SMS, direct messages) are set per user and reached through escalation policies.",
+    "link": "Set them under Account → Notifications"
   }
 }

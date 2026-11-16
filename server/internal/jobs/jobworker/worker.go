@@ -525,26 +525,36 @@ func (w *JobWorker) handleResult(
 		return outcomeSuccess, w.completeTerminal(ctx, logger, job, models.JobStatusSuccess, output)
 	}
 
-	// Permanent failures (bad input) are logged at WARN, everything else at ERROR.
 	// The error text is deliberately not logged: it may embed job config values
 	// (e.g. credentials). It is persisted in the job output / retry record instead.
 	permanent := jobdef.IsPermanent(err)
 	retryable := jobdef.IsRetryable(err)
-	if permanent {
-		logger.WarnContext(ctx, "Job failed", "job_uid", job.UID, "job_type", job.Type,
-			"permanent", permanent, "retryable", retryable)
-	} else {
-		logger.ErrorContext(ctx, "Job failed", "job_uid", job.UID, "job_type", job.Type,
-			"permanent", permanent, "retryable", retryable)
-	}
+	willRetry := retryable && job.RetryCount < jobsvc.MaxRetryCount
+	level, msg := jobFailureLog(permanent, willRetry)
+	logger.Log(ctx, level, msg, "job_uid", job.UID, "job_type", job.Type,
+		"permanent", permanent, "retryable", retryable, "retry_count", job.RetryCount)
 
-	if jobdef.IsRetryable(err) && job.RetryCount < jobsvc.MaxRetryCount {
+	if willRetry {
 		return outcomeRetried, w.handleRetry(ctx, logger, job, err)
 	}
 
 	// Non-retryable error or max retries reached: mark as failed
 	return outcomeFailed, w.completeTerminal(ctx, logger, job, models.JobStatusFailed,
 		json.RawMessage(fmt.Sprintf(`{"error": %q}`, err.Error())))
+}
+
+// jobFailureLog picks the level and message of a failed job's log line: a
+// failure about to be retried is a WARN (it will very likely succeed), so is a
+// permanent one (bad input); only a terminal unexpected failure is an ERROR.
+func jobFailureLog(permanent, willRetry bool) (slog.Level, string) {
+	switch {
+	case willRetry:
+		return slog.LevelWarn, "Job failed, will retry"
+	case permanent:
+		return slog.LevelWarn, "Job failed"
+	default:
+		return slog.LevelError, "Job failed"
+	}
 }
 
 // handleRetry marks the original 'retried' (guarded) then creates the backoff

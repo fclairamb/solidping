@@ -161,6 +161,12 @@ func (r *EmailJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 			return jobdef.NewRetryableError(fmt.Errorf("network error sending email: %w", err))
 		}
 
+		// A refused recipient (unknown mailbox) is bad input: it bounces the
+		// same way on every run, so the worker logs it once at WARN.
+		if email.IsRecipientRejection(err) {
+			return jobdef.NewPermanentError(fmt.Errorf("recipient rejected: %w", err))
+		}
+
 		return fmt.Errorf("sending email: %w", err)
 	}
 

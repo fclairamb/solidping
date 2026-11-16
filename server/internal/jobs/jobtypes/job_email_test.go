@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/textproto"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -295,6 +296,7 @@ func TestEmailJobRun_Run(t *testing.T) {
 		wantErr    bool
 		errMsg     string
 		retryable  bool
+		permanent  bool
 		checkCalls func(t *testing.T, sender *mockSender)
 	}{
 		{
@@ -399,6 +401,24 @@ func TestEmailJobRun_Run(t *testing.T) {
 			retryable: false,
 		},
 		{
+			name: "recipient rejected by the server is permanent",
+			config: EmailJobConfig{
+				To:      []string{"nobody@acme.test"},
+				Subject: "Test Subject",
+				HTML:    "<p>Hello</p>",
+			},
+			sender: &mockSender{
+				sendFunc: func(_ context.Context, _ *email.Message) (*email.SendResult, error) {
+					return nil, fmt.Errorf("sending email: %w",
+						&textproto.Error{Code: 550, Msg: "5.1.2 Mailbox does not exist"})
+				},
+			},
+			formatter: &mockFormatter{},
+			wantErr:   true,
+			retryable: false,
+			permanent: true,
+		},
+		{
 			name: "template format error",
 			config: EmailJobConfig{
 				To:       []string{"test@example.com"},
@@ -446,6 +466,7 @@ func TestEmailJobRun_Run(t *testing.T) {
 				} else {
 					assert.False(t, jobdef.IsRetryable(err), "error should not be retryable")
 				}
+				assert.Equal(t, tt.permanent, jobdef.IsPermanent(err), "permanent")
 			} else {
 				require.NoError(t, err)
 			}
