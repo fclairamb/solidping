@@ -72,7 +72,7 @@ func TestAnswerChallengeScopesCredentials(t *testing.T) {
 	r.Empty(other.Password)
 
 	proxy := session.answerChallenge(authEvent(fetch.AuthChallengeSourceProxy, "https://staging.acme.com"))
-	r.Equal(cancel, proxy.Response, "a proxy challenge is always cancelled")
+	r.Equal(cancel, proxy.Response, "a proxy challenge is always canceled")
 	r.Empty(proxy.Password)
 
 	first := session.answerChallenge(authEvent(fetch.AuthChallengeSourceServer, "https://staging.acme.com"))
@@ -119,6 +119,7 @@ func TestBasicAuthRejectedErrorNamesOnlyTheOrigin(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
+	r.ErrorIs(basicAuthRejectedError("https://acme.com:443"), ErrBasicAuthRejected)
 	r.EqualError(basicAuthRejectedError("https://acme.com:443"), "basic auth rejected by https://acme.com")
 	r.EqualError(basicAuthRejectedError("http://acme.com:80"), "basic auth rejected by http://acme.com")
 	r.EqualError(basicAuthRejectedError("http://acme.com:8080"), "basic auth rejected by http://acme.com:8080")
@@ -305,6 +306,7 @@ func TestBasicAuthLive(t *testing.T) {
 
 		_, err = session.Navigate(ctx, siteURL+"/")
 		r.Error(err)
+		r.ErrorIs(err, ErrBasicAuthRejected)
 		r.Contains(err.Error(), "basic auth rejected by "+siteURL)
 		r.NotContains(err.Error(), "wrong-user")
 		r.NotContains(err.Error(), "wrong-pass")
@@ -328,11 +330,11 @@ func TestBasicAuthLive(t *testing.T) {
 		defer session.Close()
 
 		// Credentials scoped to the second origin: the site's own challenge
-		// is cancelled, so it never receives them.
+		// is canceled, so it never receives them.
 		r.NoError(session.BasicAuth(ctx, user, password, thirdURL))
 
 		nav, err := session.Navigate(ctx, siteURL+"/")
-		r.NoError(err, "a cancelled challenge from another origin is not a rejection")
+		r.NoError(err, "a canceled challenge from another origin is not a rejection")
 		r.Equal("Denied", nav.Title)
 		r.Len(site.received(), before, "the site must not receive credentials scoped elsewhere")
 	})

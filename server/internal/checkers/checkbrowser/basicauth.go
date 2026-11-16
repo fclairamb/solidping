@@ -17,9 +17,13 @@ import (
 // maxBasicAuthAttempts is how many times one execution answers a challenge
 // from the credentials' origin. Two lets a server that challenges once more
 // after a first success (a second realm, a session renewal) through; a third
-// challenge means the credentials are wrong, and cancelling it ends the
+// challenge means the credentials are wrong, and canceling it ends the
 // navigation instead of looping on a 401.
 const maxBasicAuthAttempts = 2
+
+// ErrBasicAuthRejected is the credentials armed by BasicAuth refused by their
+// origin: every allowed attempt answered with another challenge.
+var ErrBasicAuthRejected = errors.New("basic auth rejected")
 
 // errBasicAuthOrigin is an `origin` option that is not an http(s) origin.
 var errBasicAuthOrigin = errors.New("basicAuth: origin must be an http or https origin, like https://acme.com")
@@ -29,7 +33,7 @@ var errBasicAuthOrigin = errors.New("basicAuth: origin must be an http or https 
 //
 // The credentials are scoped to ONE origin: the one given as an option, or
 // else the origin of the next Navigate. A challenge from any other origin
-// (a CDN, a third-party script, an iframe) is cancelled, so the password never
+// (a CDN, a third-party script, an iframe) is canceled, so the password never
 // leaves the site it belongs to. That is the whole reason this is a Fetch
 // auth handler and not an extra Authorization header, which Chrome would send
 // to every origin the page loads.
@@ -45,7 +49,7 @@ type basicAuth struct {
 	origin string
 	// attempts counts the challenges answered for origin.
 	attempts int
-	// rejections counts the challenges cancelled because attempts ran out.
+	// rejections counts the challenges canceled because attempts ran out.
 	// Navigate compares it before and after to tell "the credentials were
 	// refused during this navigation".
 	rejections int
@@ -145,7 +149,7 @@ func (s *Session) bindBasicAuthOrigin(rawURL string) (string, int) {
 }
 
 // basicAuthRejectedSince reports whether a challenge from the credentials'
-// origin was cancelled after the rejection count read before a navigation.
+// origin was canceled after the rejection count read before a navigation.
 func (s *Session) basicAuthRejectedSince(before int) bool {
 	s.auth.mu.Lock()
 	defer s.auth.mu.Unlock()
@@ -226,7 +230,7 @@ func basicAuthRejectedError(origin string) error {
 		display = strings.TrimSuffix(origin, ":80")
 	}
 
-	return fmt.Errorf("basic auth rejected by %s", display)
+	return fmt.Errorf("%w by %s", ErrBasicAuthRejected, display)
 }
 
 // originOf normalizes an http(s) URL or origin to scheme://host:port, the

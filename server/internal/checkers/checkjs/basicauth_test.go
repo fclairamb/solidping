@@ -3,6 +3,7 @@ package checkjs
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 // TestBasicAuthBindingForwardsArgs: page.basicAuth hands the session the
@@ -42,10 +44,10 @@ return { status: "up", output: { first: first.ok, second: second.ok } };
 	r.Equal(true, result.Output["second"])
 	r.Equal([]string{"alice:s3cr3t-value@", "bob:pw@https://staging.acme.com"}, session.basicAuths)
 
-	encoded, err := json.Marshal(result)
-	r.NoError(err)
-	r.NotContains(string(encoded), "s3cr3t-value", "the password must appear nowhere in the result")
+	r.NotContains(resultText(t, result), "s3cr3t-value", "the password must appear nowhere in the result")
 }
+
+var errBadOrigin = errors.New("basicAuth: origin must be an http or https origin")
 
 // TestBasicAuthBindingRefusalIsATargetFailure: a session error comes back as
 // { ok: false, error }, like every other page method.
@@ -54,7 +56,7 @@ return { status: "up", output: { first: first.ok, second: second.ok } };
 func TestBasicAuthBindingRefusalIsATargetFailure(t *testing.T) {
 	r := require.New(t)
 
-	installFakeBrowser(t, &fakeSession{basicAuthErr: errors.New("basicAuth: origin must be an http or https origin")})
+	installFakeBrowser(t, &fakeSession{basicAuthErr: errBadOrigin})
 
 	result := runBrowserScript(t, `
 var page = browser.open();
@@ -168,8 +170,25 @@ func TestDocExampleBrowserBasicAuthRunsAgainstARealBrowser(t *testing.T) {
 			r.Equal("basic auth rejected by "+base, result.Output["error"])
 		}
 
-		encoded, marshalErr := json.Marshal(result)
-		r.NoError(marshalErr)
-		r.NotContains(string(encoded), tc.password, "the password must appear nowhere in the result")
+		r.NotContains(resultText(t, result), tc.password, "the password must appear nowhere in the result")
 	}
+}
+
+// resultText is everything a result carries that a user can read: its output
+// and metrics as JSON, and the rest of the struct as printed by Go.
+func resultText(t *testing.T, result *checkerdef.Result) string {
+	t.Helper()
+
+	output, err := json.Marshal(result.Output)
+	require.NoError(t, err)
+
+	metrics, err := json.Marshal(result.Metrics)
+	require.NoError(t, err)
+
+	text := string(output) + string(metrics) + fmt.Sprintf("%+v", *result)
+	if result.Diagnostics != nil {
+		text += fmt.Sprintf("%+v", *result.Diagnostics)
+	}
+
+	return text
 }

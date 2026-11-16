@@ -377,7 +377,7 @@ func (s *Session) Navigate(ctx context.Context, url string) (NavResult, error) {
 		chromedp.Location(&location),
 	)
 
-	// Cancelling a challenge lets Chrome render the 401 page, which reads as a
+	// Canceling a challenge lets Chrome render the 401 page, which reads as a
 	// successful navigation: the refusal has to be reported from here. An
 	// egress refusal still wins, it is the more serious of the two.
 	if s.basicAuthRejectedSince(rejectionsBefore) && s.deniedByEgress() == nil {
