@@ -63,27 +63,51 @@ func startFakeLDAPDirectory(t *testing.T) *fakeLDAPDirectory {
 
 	d := &fakeLDAPDirectory{}
 
-	srv, err := gldap.NewServer()
-	require.NoError(t, err)
-
 	mux, err := gldap.NewMux()
 	require.NoError(t, err)
 	require.NoError(t, mux.Bind(d.handleBind))
 	require.NoError(t, mux.Search(d.handleSearch))
-	require.NoError(t, srv.Router(mux))
 
-	d.addr = fmt.Sprintf("127.0.0.1:%d", freeTCPPort(t))
+	// freeTCPPort releases the port before gldap listens on it, so a parallel
+	// test can grab it in between (and gldap reports Ready() even when its
+	// listen failed): on a lost race, the login would then reach another
+	// test's directory and fail with "invalid credentials". Retry on a new
+	// port when Run returns an error.
+	const maxAttempts = 10
 
-	go func() {
-		_ = srv.Run(d.addr)
-	}()
-	t.Cleanup(func() { _ = srv.Stop() })
+	for range maxAttempts {
+		srv, srvErr := gldap.NewServer()
+		require.NoError(t, srvErr)
+		require.NoError(t, srv.Router(mux))
 
-	for !srv.Ready() {
-		time.Sleep(5 * time.Millisecond)
+		addr := fmt.Sprintf("127.0.0.1:%d", freeTCPPort(t))
+		runErr := make(chan error, 1)
+
+		go func() { runErr <- srv.Run(addr) }()
+
+		for !srv.Ready() {
+			time.Sleep(5 * time.Millisecond)
+		}
+
+		select {
+		case err := <-runErr:
+			if err != nil {
+				_ = srv.Stop()
+
+				continue
+			}
+		case <-time.After(100 * time.Millisecond):
+		}
+
+		d.addr = addr
+		t.Cleanup(func() { _ = srv.Stop() })
+
+		return d
 	}
 
-	return d
+	require.FailNow(t, "could not start the fake LDAP directory")
+
+	return nil
 }
 
 func freeTCPPort(t *testing.T) int {

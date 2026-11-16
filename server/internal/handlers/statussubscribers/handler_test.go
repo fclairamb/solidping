@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -197,4 +198,44 @@ func TestHandlerFeedUnknownPage404(t *testing.T) {
 	rec := h.do(t, http.MethodGet,
 		"/api/v1/status-pages/"+h.org.Slug+"/no-such-page/feed.xml", nil)
 	r.Equal(http.StatusNotFound, rec.Code)
+}
+
+// A history_days written before the write path bounded it (spec
+// 2026-11-16-01) must not size the feed's window: it is clamped to 90 days,
+// like the page's own recentUpdates. Unclamped, SQLite's
+// datetime('now', '-2000000000 days') is NULL and the feed came back empty.
+func TestHandlerFeedClampsStoredHistoryDays(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHandlerSetup(t)
+	ctx := t.Context()
+
+	user := models.NewUser("feed-clamp@example.com")
+	r.NoError(h.dbSvc.CreateUser(ctx, user))
+
+	recent := models.NewStatusUpdate(h.org.UID, h.page.UID, user.UID)
+	recent.Kind = models.StatusUpdateKindInfo
+	recent.Title = "Recent maintenance"
+	recent.AuthorUID = &user.UID
+	r.NoError(h.dbSvc.CreateStatusUpdate(ctx, recent))
+
+	old := models.NewStatusUpdate(h.org.UID, h.page.UID, user.UID)
+	old.Kind = models.StatusUpdateKindInfo
+	old.Title = "Ancient maintenance"
+	old.AuthorUID = &user.UID
+	old.PublishedAt = time.Now().AddDate(0, 0, -120)
+	r.NoError(h.dbSvc.CreateStatusUpdate(ctx, old))
+
+	_, err := h.dbSvc.DB().ExecContext(ctx,
+		`update status_pages set history_days = 2000000000 where uid = ?`, h.page.UID)
+	r.NoError(err)
+
+	rec := h.do(t, http.MethodGet,
+		"/api/v1/status-pages/"+h.org.Slug+"/"+h.page.Slug+"/feed.xml", nil)
+	r.Equal(http.StatusOK, rec.Code)
+
+	body := rec.Body.String()
+	r.Contains(body, "Recent maintenance")
+	r.NotContains(body, "Ancient maintenance")
 }

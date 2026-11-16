@@ -29,6 +29,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/escalationcoverage"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	"github.com/fclairamb/solidping/server/internal/integrations/telegram"
 	"github.com/fclairamb/solidping/server/internal/support"
@@ -344,7 +345,14 @@ func (h *Handler) handleStart(
 		"chatId", chatID, "userUid", payload.UserUID, "orgUid", payload.OrgUID)
 	// Naming the org in the confirmation is the whole point: a user who
 	// connected the wrong account finds out now, not during an outage.
-	h.reply(ctx, chatID, telegram.BuildLinkedHTML(orgSlug))
+	linked := telegram.BuildLinkedHTML(orgSlug)
+
+	paging, pagingErr := escalationcoverage.Compute(ctx, h.db, payload.OrgUID, payload.UserUID)
+	if pagingErr == nil && paging.CoveredBy == escalationcoverage.CoveredByNone {
+		linked += telegram.BuildNotPagedNoteHTML()
+	}
+
+	h.reply(ctx, chatID, linked)
 }
 
 // chatIsConnectable rejects a /start that could not produce a usable contact,

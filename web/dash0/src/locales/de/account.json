@@ -301,6 +301,12 @@
       "added": "Discord-Direktnachrichten hinzugefügt",
       "addFailed": "Discord-Kontakt konnte nicht hinzugefügt werden",
       "linkFailed": "Discord-Verknüpfung konnte nicht gestartet werden"
+    },
+    "paging": {
+      "none": "Keine Eskalationsrichtlinie benachrichtigt Sie in dieser Organisation, daher erhalten diese Methoden keine Alarme.",
+      "adminLink": "Eskalationsrichtlinien verwalten",
+      "askAdmin": "Bitten Sie einen Administrator, Sie zu einer Eskalationsrichtlinie hinzuzufügen.",
+      "someChecks": "Nur einige Checks benachrichtigen Sie: Eine Eskalationsrichtlinie adressiert Sie dafür, nicht für die ganze Organisation."
     }
   },
   "device": {

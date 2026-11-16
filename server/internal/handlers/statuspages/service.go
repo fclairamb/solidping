@@ -202,6 +202,9 @@ var (
 	// ErrInvalidHistoryPeriod is returned when historyPeriod is not one of the
 	// supported enum values (24h, 7d, 30d, 90d).
 	ErrInvalidHistoryPeriod = errors.New("invalid history period")
+	// ErrInvalidHistoryDays is returned when the legacy historyDays is sent
+	// without historyPeriod and falls outside [MinHistoryDays, MaxHistoryDays].
+	ErrInvalidHistoryDays = errors.New("invalid history days")
 	// ErrInvalidAutoResolve is returned when autoResolve is not one of
 	// always | if_untouched | never.
 	ErrInvalidAutoResolve = errors.New("invalid auto-resolve policy")
@@ -357,6 +360,38 @@ func validateHistoryPeriod(period *string) error {
 	}
 
 	return nil
+}
+
+// Bounds of the legacy historyDays input and of the day count every read path
+// sizes its window, buckets and slices with. 90 is the longest period the
+// enum offers (90d); a larger stored value used to size allocations directly
+// (spec 2026-11-16-01).
+const (
+	MinHistoryDays = 1
+	MaxHistoryDays = 90
+)
+
+// validateHistoryDays rejects a legacy historyDays outside
+// [MinHistoryDays, MaxHistoryDays]. It only applies when historyPeriod is
+// absent: when the enum is present, historyDays is ignored (the enum wins).
+func validateHistoryDays(period *string, days *int) error {
+	if period != nil || days == nil {
+		return nil
+	}
+
+	if *days < MinHistoryDays || *days > MaxHistoryDays {
+		return ErrInvalidHistoryDays
+	}
+
+	return nil
+}
+
+// ClampHistoryDays bounds a stored history_days to [MinHistoryDays,
+// MaxHistoryDays]. Defense in depth for rows written before the write path
+// validated the value: every read path that sizes a window, a bucket count or
+// a slice from the column goes through it.
+func ClampHistoryDays(days int) int {
+	return min(max(days, MinHistoryDays), MaxHistoryDays)
 }
 
 // maxAutoPublishDelaySeconds bounds the debounce at a day. A longer delay is
@@ -1265,6 +1300,10 @@ func validateCreateStatusPage(req *CreateStatusPageRequest) (*string, error) {
 		return nil, err
 	}
 
+	if err := validateHistoryDays(req.HistoryPeriod, req.HistoryDays); err != nil {
+		return nil, err
+	}
+
 	if err := validateAutoPublishSettings(req.AutoResolve, req.AutoPublishDelaySeconds); err != nil {
 		return nil, err
 	}
@@ -1483,6 +1522,10 @@ func (s *Service) validateStatusPageUpdate(
 	}
 
 	if err := validateHistoryPeriod(req.HistoryPeriod); err != nil {
+		return nil, err
+	}
+
+	if err := validateHistoryDays(req.HistoryPeriod, req.HistoryDays); err != nil {
 		return nil, err
 	}
 
@@ -2719,7 +2762,7 @@ func (s *Service) loadRecentUpdates(
 
 	// days == 0 means the page's whole history window; otherwise it can only
 	// narrow it.
-	window := page.HistoryDays
+	window := ClampHistoryDays(page.HistoryDays)
 	if days > 0 && days < window {
 		window = days
 	}
@@ -3102,12 +3145,15 @@ func (s *Service) enrichWithAvailability(
 	// HistoryDays buckets is (HistoryDays-1) days before today (UTC midnight).
 	now := time.Now().UTC()
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	historyStart := todayStart.AddDate(0, 0, -(page.HistoryDays - 1))
+	// Clamped, never the raw column: a stored value near the int32 maximum
+	// used to size the allocation in buildAvailabilityData (spec 2026-11-16-01).
+	historyDays := ClampHistoryDays(page.HistoryDays)
+	historyStart := todayStart.AddDate(0, 0, -(historyDays - 1))
 
 	hints := s.uptimebarHints(ctx)
 
 	bucketsByCheck, err := uptimebar.BucketAvailability(
-		ctx, s.db, orgUID, checkUIDs, 24*time.Hour, historyStart, page.HistoryDays,
+		ctx, s.db, orgUID, checkUIDs, 24*time.Hour, historyStart, historyDays,
 		hints,
 	)
 	if err != nil {
@@ -3133,7 +3179,7 @@ func (s *Service) enrichWithAvailability(
 			merged := mergeBuckets(bucketsByCheck, memberUIDs)
 			availData := buildAvailabilityData(
 				merged, resourceRecentResults(recentByCheck, resource, memberUIDs),
-				todayStart, page.HistoryDays, page.ShowAvailability, page.ShowResponseTime,
+				todayStart, historyDays, page.ShowAvailability, page.ShowResponseTime,
 				upThreshold, degradedThreshold,
 			)
 			applyCoverage(availData, bucketsByCheck, 24*time.Hour, pickChecks(memberChecks, memberUIDs), now)
@@ -4079,6 +4125,7 @@ func buildAvailabilityData(
 	upThreshold, degradedThreshold float64,
 ) *ResourceAvailabilityData {
 	data := &ResourceAvailabilityData{}
+	historyDays = ClampHistoryDays(historyDays)
 
 	if showAvailability {
 		daily := make([]AvailabilityPoint, 0, historyDays)

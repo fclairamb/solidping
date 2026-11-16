@@ -1611,6 +1611,8 @@ func (s *Service) ensureJWTSecret(ctx context.Context) error {
 	// database / generation path below, with a loud warning.
 	if env := os.Getenv("SP_AUTH_JWT_SECRET"); env != "" {
 		if !config.IsPlaceholderJWTSecret(env) {
+			warnShortJWTSecret(ctx, "SP_AUTH_JWT_SECRET", env)
+
 			return nil
 		}
 
@@ -1621,6 +1623,8 @@ func (s *Service) ensureJWTSecret(ctx context.Context) error {
 
 	// Check if set to something other than a known placeholder
 	if !config.IsPlaceholderJWTSecret(s.config.Auth.JWTSecret) {
+		warnShortJWTSecret(ctx, "auth.jwt_secret", s.config.Auth.JWTSecret)
+
 		return nil
 	}
 
@@ -1653,6 +1657,19 @@ func (s *Service) ensureJWTSecret(ctx context.Context) error {
 	slog.InfoContext(ctx, "JWT secret auto-generated and saved to database")
 
 	return nil
+}
+
+// warnShortJWTSecret logs a warning when an operator-provided secret is shorter
+// than config.MinJWTSecretLength bytes. It never refuses the secret: an
+// operator may rely on a short one, and refusing it would lock them out.
+func warnShortJWTSecret(ctx context.Context, source, secret string) {
+	if !config.IsShortJWTSecret(secret) {
+		return
+	}
+
+	slog.WarnContext(ctx, "JWT secret is shorter than the recommended minimum; "+
+		"use a random value such as the output of `openssl rand -base64 48`, or leave it unset to auto-generate one",
+		"source", source, "length", len(secret), "minLength", config.MinJWTSecretLength)
 }
 
 // generateSecureSecret generates a cryptographically secure random string.

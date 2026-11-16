@@ -47,7 +47,32 @@ const (
 	// with a world-readable JWT signing key, so it is treated as a placeholder
 	// too (see IsPlaceholderJWTSecret).
 	DevJWTSecret = "dev-secret-change-in-production"
+
+	// DocsJWTSecret and DocsJWTSecretLong are the example values the
+	// configuration docs used to publish as copy-paste examples. Anyone who
+	// reads the docs knows them, so a copy that reached production is treated
+	// as a placeholder and replaced at the next boot.
+	DocsJWTSecret     = "your-secure-random-secret"
+	DocsJWTSecretLong = "your-secure-random-secret-at-least-32-chars"
+
+	// MinJWTSecretLength is the length, in bytes, below which a configured JWT
+	// secret is logged as weak at startup. It is not enforced: refusing a short
+	// secret an operator relies on would lock them out.
+	MinJWTSecretLength = 32
 )
+
+// KnownPlaceholderJWTSecrets lists the non-empty publicly-known JWT secret
+// values IsPlaceholderJWTSecret refuses. The docs lint test greps the docs for
+// them so a new example cannot reintroduce one.
+func KnownPlaceholderJWTSecrets() []string {
+	return []string{DefaultJWTSecret, DevJWTSecret, DocsJWTSecret, DocsJWTSecretLong}
+}
+
+// IsShortJWTSecret reports whether a real (non-placeholder) secret is shorter
+// than MinJWTSecretLength bytes.
+func IsShortJWTSecret(secret string) bool {
+	return !IsPlaceholderJWTSecret(secret) && len(secret) < MinJWTSecretLength
+}
 
 // IsPlaceholderJWTSecret reports whether secret is empty or one of the
 // publicly-known placeholder values that must never sign tokens or derive
@@ -56,7 +81,7 @@ const (
 // a new known-unsafe constant is refused everywhere at once.
 func IsPlaceholderJWTSecret(secret string) bool {
 	switch secret {
-	case "", DefaultJWTSecret, DevJWTSecret:
+	case "", DefaultJWTSecret, DevJWTSecret, DocsJWTSecret, DocsJWTSecretLong:
 		return true
 	default:
 		return false

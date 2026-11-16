@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { createFileRoute } from "@tanstack/react-router";
+import { useAuth } from "@/contexts/AuthContext";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Card,
   CardContent,
@@ -248,6 +249,8 @@ function TelegramConnect({
 }) {
   const { t } = useTranslation("account");
   const createLink = useCreateTelegramLink(org);
+  const { data: routesData } = useNotificationRoutes(org);
+  const notPaged = routesData?.paging?.coveredBy === "none";
   // With Sign in with Telegram on, a connected chat also signs in, so minting
   // a link needs a re-authentication (spec 2026-11-13-03), exactly like the
   // Discord link: the current password when the account has one, otherwise a
@@ -295,7 +298,12 @@ function TelegramConnect({
   useEffect(() => {
     if (justConnected) {
       toast.success(t("notifications.telegram.connected"));
+      if (notPaged) {
+        toast.warning(t("notifications.paging.none"));
+      }
     }
+    // notPaged is read once, at the moment the chat connects.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [justConnected, t]);
 
   const mint = async (currentPassword?: string) => {
@@ -1250,6 +1258,7 @@ function AddContactForm({
 function NotificationsPage() {
   const { t } = useTranslation("account");
   const { org } = Route.useParams();
+  const { user: authUser } = useAuth();
   const [dismissedSlack, setDismissedSlack] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
 
@@ -1326,8 +1335,40 @@ function NotificationsPage() {
     );
   }
 
+  const coveredBy = data?.paging?.coveredBy;
+
   return (
     <div className="space-y-4">
+      {coveredBy === "none" && (
+        <Alert
+          className="border-amber-500/50 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200"
+          data-testid="notifications-not-paged-alert"
+        >
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            {t("notifications.paging.none")}{" "}
+            {authUser?.isAdmin ? (
+              <Link
+                to="/orgs/$org/escalation-policies"
+                params={{ org }}
+                className="underline"
+                data-testid="notifications-not-paged-link"
+              >
+                {t("notifications.paging.adminLink")}
+              </Link>
+            ) : (
+              t("notifications.paging.askAdmin")
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+      {coveredBy === "some_checks" && (
+        <Alert data-testid="notifications-some-paged-note">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{t("notifications.paging.someChecks")}</AlertDescription>
+        </Alert>
+      )}
+
       {slackSuggestion && (
         <SlackBanner
           suggestion={slackSuggestion}
