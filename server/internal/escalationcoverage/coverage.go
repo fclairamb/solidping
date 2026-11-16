@@ -121,7 +121,9 @@ func memberIsAdmin(ctx context.Context, dbSvc db.Service, orgUID, userUID string
 	return member.Role.AtLeast(models.MemberRoleAdmin)
 }
 
-// targetMatcher decides whether a policy target reaches one member.
+// targetMatcher decides whether a policy target reaches one member. It mirrors
+// the escalation step job's fan-out (jobtypes.EscalationStepJobRun.fanOutWithSeverity),
+// which is tied to a live incident and cannot be shared: keep both in sync.
 type targetMatcher struct {
 	db      db.Service
 	userUID string
