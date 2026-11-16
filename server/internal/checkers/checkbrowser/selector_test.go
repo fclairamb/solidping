@@ -1,11 +1,15 @@
 package checkbrowser
 
 import (
+	"net"
 	"net/http"
+	neturl "net/url"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 func TestParseSelector(t *testing.T) {
@@ -170,4 +174,64 @@ var b=document.createElement("button");b.textContent="Late one";document.body.ap
 	title, err := session.Evaluate(ctx, `document.title`)
 	r.NoError(err)
 	r.Equal("submitted", title)
+}
+
+// The selector machinery tags and untags elements through page JS. Under an
+// enforcing egress guard that must stay invisible: no refusal is recorded and
+// resolve/release keep working (the guard only judges network responses).
+//
+//nolint:paralleltest // mutates the process-wide settings
+func TestSelectorTaggingDoesNotTripEgressGuard(t *testing.T) {
+	settings, ok := liveBrowserSettings()
+	if !ok {
+		t.Skip(liveBrowserSkipReason)
+	}
+
+	r := require.New(t)
+
+	withSettings(t, settings)
+	widenChromeStart(t)
+
+	fixture := liveFixtureServer(t)
+	mux, isMux := fixture.Config.Handler.(*http.ServeMux)
+	r.True(isMux)
+	mux.HandleFunc("/sel", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(selectorFixture))
+	})
+
+	base := browserReachableURL(t, fixture.URL)
+	parsed, err := neturl.Parse(base)
+	r.NoError(err)
+
+	fixtureIP := net.ParseIP(parsed.Hostname())
+	r.NotNil(fixtureIP, "the fixture URL host must be an IP literal")
+
+	// Enforcing guard (private ranges denied); only the fixture is public.
+	guard := egress.New(false, egress.WithPublicOverride(fixtureIP))
+	r.True(guard.Enforcing())
+
+	baseCtx, cancel := contextWithTimeout(t, 60*time.Second)
+	defer cancel()
+
+	ctx := egress.WithGuard(baseCtx, guard)
+
+	session, err := Open(ctx)
+	r.NoError(err)
+
+	defer session.Close()
+
+	_, err = session.Navigate(ctx, base+"/sel")
+	r.NoError(err)
+
+	got, err := session.Text(ctx, "text=Sign in")
+	r.NoError(err)
+	r.Equal("Sign in", got)
+	r.NoError(session.Fill(ctx, "label=Email address", "a@acme.com"))
+	r.NoError(session.Click(ctx, "text=Send it"))
+
+	// Tagging was released and the guard recorded nothing.
+	tagged, err := session.Evaluate(ctx, `document.querySelectorAll("[data-sp-target]").length`)
+	r.NoError(err)
+	r.EqualValues(0, tagged)
+	r.NoError(session.deniedByEgress())
 }
