@@ -98,6 +98,9 @@ type Session struct {
 	// from under an enforcing egress policy (see watchEgress). Once set, the
 	// session only ever answers with it.
 	egressDenied atomic.Pointer[egress.DeniedError]
+
+	// auth is the HTTP Basic credentials armed by BasicAuth, if any.
+	auth basicAuth
 }
 
 // NavResult is what a navigation reports back. Deliberately no HTTP status
@@ -365,12 +368,22 @@ func (s *Session) Navigate(ctx context.Context, url string) (NavResult, error) {
 		return NavResult{}, err
 	}
 
+	authOrigin, rejectionsBefore := s.bindBasicAuthOrigin(url)
+
 	err := s.run(ctx,
 		chromedp.Navigate(url),
 		chromedp.WaitReady("body"),
 		chromedp.Title(&title),
 		chromedp.Location(&location),
 	)
+
+	// Cancelling a challenge lets Chrome render the 401 page, which reads as a
+	// successful navigation: the refusal has to be reported from here. An
+	// egress refusal still wins, it is the more serious of the two.
+	if s.basicAuthRejectedSince(rejectionsBefore) && s.deniedByEgress() == nil {
+		return NavResult{}, basicAuthRejectedError(authOrigin)
+	}
+
 	if err != nil {
 		return NavResult{}, err
 	}

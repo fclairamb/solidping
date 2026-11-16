@@ -344,6 +344,7 @@ supported.
 | Call | Returns | Notes |
 |---|---|---|
 | `browser.open()` | `page` | Acquires a browser slot, opens a fresh isolated context and tab. **Throws** — see below. |
+| `page.basicAuth(username, password, { origin? })` | `{ ok, error? }` | Arms HTTP Basic credentials for the **next** `page.goto()`. Answered only for that URL's origin (or `origin`, like `"https://staging.acme.com"`), at most twice, then the navigation fails with `basic auth rejected by <origin>`. Call it before `goto`. See below. |
 | `page.goto(url)` | `{ ok, url, title, duration, error? }` | Navigates and waits for `body`. `url` must be `http`/`https`. `url` in the result is the URL **after** redirects; there is deliberately **no status code** — read one with `page.evaluate` or `http.get`. |
 | `page.waitFor(selector, { timeout? })` | `{ ok, duration, error? }` | Waits for the selector to become visible. `timeout` is a duration string (`"10s"`) or a number of ms, clamped to the script's remaining time. |
 | `page.click(selector)` | `{ ok, error? }` | Clicks the first match, scrolling it into view. |
@@ -378,6 +379,29 @@ page.fill("label=Email", env.USERNAME);
 page.fill("label=Password", secrets.PASSWORD);
 page.click("text=Sign in");
 ```
+
+**HTTP Basic authentication.** A site behind Basic auth (a staging
+environment, say) makes Chrome raise a login prompt that a headless page cannot
+answer. Call `page.basicAuth()` before `page.goto()`, with the credentials kept
+in [`secrets`](#script-parameters-env-and-secrets):
+
+```js
+var page = browser.open();
+page.basicAuth(secrets.USER, secrets.PASSWORD);
+var nav = page.goto("https://staging.acme.com/");
+if (!nav.ok) return { status: "down", output: { error: nav.error } };
+```
+
+The credentials are answered **only for one origin** (scheme, host and port):
+the origin of the next `page.goto()` URL, or the `origin` option. A challenge
+from any other origin (a CDN, an analytics script, an iframe) is cancelled, so
+the password is never sent there, and so is a proxy's. Wrong credentials are
+tried at most twice: `goto` then returns `{ ok: false, error: "basic auth
+rejected by https://staging.acme.com" }`, an error that names the origin and
+never the username or password. Do not put `user:pass@` in the URL instead:
+Chrome drops it for subresources and it shows up in `page.url()` and in
+results. A username or password that is not a string (a misspelled
+`secrets.NAME`) throws.
 
 **Target failures return, infrastructure failures throw.** A selector that
 never appeared, a page that threw, a navigation that failed — all of them come
@@ -987,6 +1011,23 @@ checks.forEach(function (result, index) {
   }
 });
 return { status: worst, metrics: metrics };
+```
+
+### Basic auth through a real browser (tested)
+
+A page behind HTTP Basic authentication, with the credentials in `secrets`.
+
+<!-- test: browser-basic-auth -->
+```js
+var page = browser.open();
+page.basicAuth(secrets.USER, secrets.PASSWORD);
+var nav = page.goto(env.BASE_URL + "/");
+if (!nav.ok) return { status: "down", output: { error: nav.error } };
+var heading = page.text("h1");
+if (!heading.ok || heading.text !== "welcome") {
+  return { status: "down", output: { heading: heading.text, error: heading.error } };
+}
+return { status: "up", metrics: { loadMs: nav.duration } };
 ```
 
 ### Form login through a real browser (tested)

@@ -58,6 +58,7 @@ var (
 //nolint:interfacebloat // see above
 type BrowserSession interface {
 	Navigate(ctx context.Context, url string) (checkbrowser.NavResult, error)
+	BasicAuth(ctx context.Context, username, password, origin string) error
 	WaitVisible(ctx context.Context, sel string) error
 	Click(ctx context.Context, sel string) error
 	Fill(ctx context.Context, sel, text string) error
@@ -193,6 +194,14 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 		})
 	})
 
+	_ = page.Set("basicAuth", func(call goja.FunctionCall) goja.Value {
+		username, password, origin := r.basicAuthArgs(call)
+
+		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
+			return nil, session.BasicAuth(r.execCtx, username, password, origin)
+		})
+	})
+
 	_ = page.Set("waitFor", func(call goja.FunctionCall) goja.Value {
 		selector := call.Argument(0).String()
 
@@ -317,6 +326,35 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 	r.setUncountedPageMethods(page)
 
 	return page
+}
+
+// basicAuthArgs reads page.basicAuth(username, password, { origin? }).
+//
+// A username or password that is not a string throws: the usual cause is a
+// misspelled `secrets.NAME`, and sending the literal "undefined" as a
+// password would turn that script bug into a confusing 401. The message names
+// the argument, never its value.
+func (r *jsRuntime) basicAuthArgs(call goja.FunctionCall) (string, string, string) {
+	for i, name := range []string{"username", "password"} {
+		if _, ok := call.Argument(i).Export().(string); !ok {
+			panic(r.vm.NewTypeError("page.basicAuth: " + name + " must be a string (is the secret defined?)"))
+		}
+	}
+
+	origin := ""
+
+	if opts, ok := call.Argument(2).Export().(map[string]any); ok {
+		if value, isSet := opts["origin"]; isSet && value != nil {
+			text, isString := value.(string)
+			if !isString {
+				panic(r.vm.NewTypeError("page.basicAuth: origin must be a string"))
+			}
+
+			origin = text
+		}
+	}
+
+	return call.Argument(0).String(), call.Argument(1).String(), origin
 }
 
 // setUncountedPageMethods attaches the two methods that do NOT spend an action:

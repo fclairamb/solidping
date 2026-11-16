@@ -50,6 +50,9 @@ type fakeSession struct {
 	filled  []string
 	pressed []string
 	goneAt  time.Time
+
+	basicAuths   []string
+	basicAuthErr error
 }
 
 func (f *fakeSession) Navigate(_ context.Context, url string) (checkbrowser.NavResult, error) {
@@ -65,6 +68,19 @@ func (f *fakeSession) Navigate(_ context.Context, url string) (checkbrowser.NavR
 	}
 
 	return result, nil
+}
+
+func (f *fakeSession) BasicAuth(_ context.Context, username, password, origin string) error {
+	f.calls.Add(1)
+
+	// Like the real Session: once closed, every page method is infrastructure.
+	if f.closes.Load() > 0 {
+		return errSocketGone
+	}
+
+	f.basicAuths = append(f.basicAuths, username+":"+password+"@"+origin)
+
+	return f.basicAuthErr
 }
 
 func (f *fakeSession) WaitVisible(ctx context.Context, _ string) error {
