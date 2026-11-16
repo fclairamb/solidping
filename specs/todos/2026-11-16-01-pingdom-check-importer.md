@@ -111,6 +111,11 @@ Mapping (to confirm against the API docs and the fixture):
    *Recommended: both*, as above. Trade-off: two code paths in the converter, but the
    pasted path is what the golden test exercises and it avoids sharing a token.
 
+## Resolved open questions
+
+1. **Basic auth on HTTP checks:** drop the credential and add a warning, like Gatus / Better Stack / Kuma. (autopilot: recommended answer)
+2. **Input modes:** accept both a fetch with a token and pasted JSON. (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes fclairamb/solidping-business#87. The implementing PR body **must**
