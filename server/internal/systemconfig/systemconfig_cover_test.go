@@ -1,7 +1,10 @@
 package systemconfig
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -218,4 +221,53 @@ func TestEnsureJWTSecretKnownPlaceholders(t *testing.T) {
 	require.NoError(t, svc2.ensureJWTSecret(ctx2))
 	require.False(t, config.IsPlaceholderJWTSecret(svc2.config.Auth.JWTSecret))
 	require.NotEmpty(t, svc2.config.Auth.JWTSecret)
+}
+
+// TestEnsureJWTSecretDocsPlaceholder covers the docs trap: the configuration
+// docs once published "your-secure-random-secret" as a copy-paste example, so
+// an env var carrying it must not become the signing key.
+func TestEnsureJWTSecretDocsPlaceholder(t *testing.T) {
+	svc, ctx, _ := newCoverService(t)
+
+	t.Setenv("SP_AUTH_JWT_SECRET", "your-secure-random-secret")
+	svc.config.Auth.JWTSecret = "your-secure-random-secret"
+	require.NoError(t, svc.ensureJWTSecret(ctx))
+
+	generated := svc.config.Auth.JWTSecret
+	require.NotEqual(t, "your-secure-random-secret", generated)
+	require.False(t, config.IsPlaceholderJWTSecret(generated))
+
+	param, err := svc.db.GetSystemParameter(ctx, string(KeyJWTSecret))
+	require.NoError(t, err)
+	require.NotNil(t, param)
+	require.Equal(t, generated, param.Value["value"])
+}
+
+// TestEnsureJWTSecretShortWarns checks a short real secret is kept (refusing
+// it would lock the operator out) but logged as a warning.
+func TestEnsureJWTSecretShortWarns(t *testing.T) {
+	var buf bytes.Buffer
+
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	svc, ctx, _ := newCoverService(t)
+
+	t.Setenv("SP_AUTH_JWT_SECRET", "short-real-secret")
+	require.NoError(t, svc.ensureJWTSecret(ctx))
+	require.Contains(t, buf.String(), "shorter than the recommended minimum")
+	require.Contains(t, buf.String(), "source=SP_AUTH_JWT_SECRET")
+
+	buf.Reset()
+	t.Setenv("SP_AUTH_JWT_SECRET", "")
+	svc.config.Auth.JWTSecret = "also-short"
+	require.NoError(t, svc.ensureJWTSecret(ctx))
+	require.Equal(t, "also-short", svc.config.Auth.JWTSecret)
+	require.Contains(t, buf.String(), "source=auth.jwt_secret")
+
+	buf.Reset()
+	svc.config.Auth.JWTSecret = strings.Repeat("k", config.MinJWTSecretLength)
+	require.NoError(t, svc.ensureJWTSecret(ctx))
+	require.NotContains(t, buf.String(), "shorter than the recommended minimum")
 }

@@ -47,9 +47,11 @@ SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP=10
 ### JWT Configuration
 
 ```bash
-# Set a strong secret for JWT signing (auto-generated if not set)
-SP_AUTH_JWT_SECRET=your-secure-random-secret-at-least-32-chars
+# Set a strong random secret for JWT signing (auto-generated if not set)
+SP_AUTH_JWT_SECRET=$(openssl rand -base64 48)
 ```
+
+Use a random value of at least 32 bytes: a shorter secret is accepted but logged as a warning at startup. The public placeholder values (`change-me-in-production` and the examples these docs once published) are never used as signing keys: SolidPing replaces them with a generated secret at boot, which ends every current session.
 
 :::warning Production
 Always set `SP_AUTH_JWT_SECRET` in production. If left unset, a random secret is generated once and stored in the database, so it is stable across restarts, but it is lost if the database is recreated, invalidating all existing sessions.
@@ -543,7 +545,7 @@ Users can secure their accounts with **TOTP** two-factor authentication (compati
 
 ```yaml
 auth:
-  jwt_secret: your-secure-random-secret
+  # jwt_secret: <output of openssl rand -base64 48>  # leave unset to auto-generate
   registration_email_pattern: "@yourcompany\\.com$"
   registration_max_pending_per_ip: 10 # 0 turns the limit off (default: 10 in SaaS mode, else 0)
   password:
