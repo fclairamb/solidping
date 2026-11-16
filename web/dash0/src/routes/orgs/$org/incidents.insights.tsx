@@ -6,8 +6,8 @@ import { useIncidentInsights, type InsightsPeriod } from "@/api/hooks";
 import { formatDuration } from "@/components/shared/relative-time";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { PageHeader } from "@/components/shared/page-header";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TimeAgo } from "@/components/ui/time-ago";
 import {
@@ -71,29 +71,23 @@ function IncidentInsightsPage() {
         description={t("insights.subtitle")}
         docsHref="/docs/features/incidents"
         actions={
-          <div
-            className="flex flex-wrap items-center gap-2"
+          <SegmentedControl<InsightsPeriod>
+            value={period}
+            onValueChange={(p) =>
+              navigate({
+                to: "/orgs/$org/incidents/insights",
+                params: { org },
+                search: { period: p },
+              })
+            }
+            aria-label={t("insights.period")}
             data-testid="insights-period-selector"
-          >
-            {PERIODS.map((p) => (
-              <Button
-                key={p}
-                size="sm"
-                variant={p === period ? "default" : "outline"}
-                data-testid={`insights-period-${p}`}
-                aria-pressed={p === period}
-                onClick={() =>
-                  navigate({
-                    to: "/orgs/$org/incidents/insights",
-                    params: { org },
-                    search: { period: p },
-                  })
-                }
-              >
-                {t(`insights.days${p.slice(0, -1)}`)}
-              </Button>
-            ))}
-          </div>
+            options={PERIODS.map((p) => ({
+              value: p,
+              label: t(`insights.days${p.slice(0, -1)}`),
+              testId: `insights-period-${p}`,
+            }))}
+          />
         }
       />
 
