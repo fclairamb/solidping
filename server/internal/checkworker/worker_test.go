@@ -991,27 +991,28 @@ func TestFastLaneFloorInvariant(t *testing.T) {
 	org := models.NewOrganization("lane-org", "")
 	require.NoError(t, svc.CreateOrganization(ctx, org))
 
-	// createSleepJob creates an enabled sleep check and stamps its job with the
+	// createSleepJob creates a sleep check and its job already stamped with the
 	// wanted lane + a matching cost EWMA, due 1s ago (no pre-exec sleep).
-	// Returns the check UID.
+	// The check is created disabled (no job is generated) and its job inserted
+	// by hand with the lane set from the start: creating it enabled and
+	// stamping the lane afterwards lets the live fetcher claim the job in
+	// between, as a fast-lane job, which then runs outside the slow-lane
+	// budget and eats the reserved slot. Returns the check UID.
 	createSleepJob := func(slug string, sleepMs int, lane uint8, costEWMAMs float64) string {
 		check := models.NewCheck(org.UID, slug, string(checkerdef.CheckTypeSleep))
 		check.Config = models.JSONMap{"sleep_ms": sleepMs}
+		check.Enabled = false
 		require.NoError(t, svc.CreateCheck(ctx, check))
 
 		due := time.Now().Add(-time.Second)
-		res, upErr := svc.DB().NewUpdate().
-			Model((*models.CheckJob)(nil)).
-			Set("lane = ?", lane).
-			Set("cost_ewma_ms = ?", costEWMAMs).
-			Set("scheduled_at = ?", due).
-			Set("effective_scheduled_at = ?", due).
-			Where("check_uid = ?", check.UID).
-			Exec(ctx)
-		require.NoError(t, upErr)
-		n, upErr := res.RowsAffected()
-		require.NoError(t, upErr)
-		require.EqualValues(t, 1, n, "sleep check must have exactly one job")
+		job := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
+		job.Type = check.Type
+		job.Config = check.Config
+		job.Lane = lane
+		job.CostEWMAMs = costEWMAMs
+		job.ScheduledAt = &due
+		job.EffectiveScheduledAt = &due
+		require.NoError(t, svc.CreateCheckJob(ctx, job))
 
 		return check.UID
 	}
