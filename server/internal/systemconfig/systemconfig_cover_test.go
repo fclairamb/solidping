@@ -182,3 +182,40 @@ func TestEnsureJWTSecret(t *testing.T) {
 	require.NoError(t, svc.ensureJWTSecret(ctx))
 	require.Empty(t, svc.config.Auth.JWTSecret)
 }
+
+// TestEnsureJWTSecretKnownPlaceholders covers the dev-compose trap: the
+// repository's development compose ships a publicly-known JWT secret, and
+// neither the config value nor the env var may keep it in place as the signing
+// secret. A real env secret still short-circuits (TestEnsureJWTSecret).
+func TestEnsureJWTSecretKnownPlaceholders(t *testing.T) {
+	svc, ctx, _ := newCoverService(t)
+
+	// Seed a real secret in the database via a first generation.
+	require.NoError(t, svc.ensureJWTSecret(ctx))
+	stored := svc.config.Auth.JWTSecret
+	require.NotEmpty(t, stored)
+
+	// The dev compose constant in config is a placeholder: reload from the DB.
+	svc.config.Auth.JWTSecret = config.DevJWTSecret
+	require.NoError(t, svc.ensureJWTSecret(ctx))
+	require.Equal(t, stored, svc.config.Auth.JWTSecret)
+
+	// A placeholder env var does NOT short-circuit: the stored secret wins.
+	t.Setenv("SP_AUTH_JWT_SECRET", config.DevJWTSecret)
+	svc.config.Auth.JWTSecret = ""
+	require.NoError(t, svc.ensureJWTSecret(ctx))
+	require.Equal(t, stored, svc.config.Auth.JWTSecret)
+
+	// Same for the historical default placeholder in the env.
+	t.Setenv("SP_AUTH_JWT_SECRET", config.DefaultJWTSecret)
+	svc.config.Auth.JWTSecret = config.DefaultJWTSecret
+	require.NoError(t, svc.ensureJWTSecret(ctx))
+	require.Equal(t, stored, svc.config.Auth.JWTSecret)
+
+	// With no stored secret and a placeholder env, a real one is generated.
+	svc2, ctx2, _ := newCoverService(t)
+	t.Setenv("SP_AUTH_JWT_SECRET", config.DevJWTSecret)
+	require.NoError(t, svc2.ensureJWTSecret(ctx2))
+	require.False(t, config.IsPlaceholderJWTSecret(svc2.config.Auth.JWTSecret))
+	require.NotEmpty(t, svc2.config.Auth.JWTSecret)
+}

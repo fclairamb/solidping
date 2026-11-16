@@ -1601,14 +1601,26 @@ func (s *Service) Initialize(ctx context.Context) error {
 }
 
 // ensureJWTSecret checks if JWT secret is set and generates one if missing.
+// Known public placeholders (config.IsPlaceholderJWTSecret) are treated as
+// unset wherever they appear — the environment included — so copying the
+// repository's dev compose (which ships a publicly-known constant) into
+// production cannot leave a world-readable signing key in place.
 func (s *Service) ensureJWTSecret(ctx context.Context) error {
-	// Check if already set in environment variable
-	if os.Getenv("SP_AUTH_JWT_SECRET") != "" {
-		return nil
+	// An explicit, non-placeholder environment secret wins over everything.
+	// A placeholder env value does NOT short-circuit: it falls through to the
+	// database / generation path below, with a loud warning.
+	if env := os.Getenv("SP_AUTH_JWT_SECRET"); env != "" {
+		if !config.IsPlaceholderJWTSecret(env) {
+			return nil
+		}
+
+		slog.WarnContext(ctx,
+			"SP_AUTH_JWT_SECRET is a known public placeholder and will not be used as the signing secret; "+
+				"using the stored secret or generating a new one")
 	}
 
-	// Check if set to something other than the default
-	if s.config.Auth.JWTSecret != "" && s.config.Auth.JWTSecret != config.DefaultJWTSecret {
+	// Check if set to something other than a known placeholder
+	if !config.IsPlaceholderJWTSecret(s.config.Auth.JWTSecret) {
 		return nil
 	}
 

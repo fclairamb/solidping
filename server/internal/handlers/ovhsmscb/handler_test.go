@@ -254,10 +254,13 @@ func TestResolveToken(t *testing.T) {
 
 	r.Empty(ResolveToken(&config.Config{}))
 
-	for _, secret := range []string{config.DefaultJWTSecret, "  " + config.DefaultJWTSecret + " "} {
+	for _, secret := range []string{
+		config.DefaultJWTSecret, "  " + config.DefaultJWTSecret + " ",
+		config.DevJWTSecret, "  " + config.DevJWTSecret + " ",
+	} {
 		def := &config.Config{}
 		def.Auth.JWTSecret = secret
-		r.Empty(ResolveToken(def), "the public default secret must never derive a token")
+		r.Empty(ResolveToken(def), "a public placeholder secret must never derive a token")
 	}
 }
 

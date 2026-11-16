@@ -1,3 +1,7 @@
+# DEVELOPMENT ONLY — hot-reload devloop (air) with the source tree mounted.
+# Never use this file as a production deployment: it ships publicly-known
+# credentials (the database passwords and the dev JWT secret below).
+# Production installs: https://solidping.io/docs/installation/docker-compose
 services:
   postgres:
     image: postgres:18.7
@@ -68,6 +72,8 @@ services:
     environment:
       - SP_DB_TYPE=postgres
       - SP_DB_URL=postgres://solidping:solidping@postgres:5432/solidping?sslmode=disable
+      # Publicly-known dev constant. ensureJWTSecret treats it as a placeholder
+      # and refuses to sign with it, but do not rely on that in production.
       - SP_AUTH_JWT_SECRET=dev-secret-change-in-production
       - SP_SERVER_LISTEN=:4000
       - SP_SERVER_JOB_WORKER_NB=1
