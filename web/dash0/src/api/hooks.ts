@@ -201,6 +201,13 @@ export interface Check {
   targetHost?: string | null;
   configPrivateKeys?: string[];
   /**
+   * Config keys whose value is sent in clear but is a credential (the
+   * heartbeat/email `token`, the SMTP send-probe `delivery_to`). Any generic
+   * renderer of `config` must show them through SecretText, out of the
+   * session replay (spec 2026-11-16-02).
+   */
+  redactedConfigKeys?: string[];
+  /**
    * Detail responses only. True when this check targets a private location and
    * its sealed credentials no longer match that location's active agent set
    * (an agent enrolled or was revoked since the credentials were saved), so

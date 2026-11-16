@@ -396,8 +396,8 @@ SP_SERVER_LISTEN=:4000
 SP_SERVER_JOB_WORKER_NB=4
 SP_SERVER_CHECK_WORKER_NB=8
 
-# Authentication
-SP_AUTH_JWT_SECRET=your-secure-random-secret
+# Authentication (leave SP_AUTH_JWT_SECRET unset to auto-generate a secret)
+SP_AUTH_JWT_SECRET=$(openssl rand -base64 48)
 SP_GOOGLE_CLIENT_ID=your-google-client-id
 SP_GOOGLE_CLIENT_SECRET=your-google-client-secret
 
@@ -424,7 +424,9 @@ server:
   shutdown_timeout: 30s
 
 auth:
-  jwt_secret: your-secure-random-secret
+  # Leave jwt_secret unset to auto-generate a secret, or set it to the output
+  # of `openssl rand -base64 48` (at least 32 bytes).
+  # jwt_secret: <output of openssl rand -base64 48>
 
 email:
   enabled: true

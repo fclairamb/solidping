@@ -51,6 +51,23 @@ async function createCheck(page: Page, type: string, name: string): Promise<stri
   return token as string;
 }
 
+/**
+ * Spec 2026-11-16-02: no text node on the page outside a `ph-no-capture`
+ * element contains the token (the Configuration card included).
+ */
+async function tokenOnlyUnderNoCapture(page: Page, token: string): Promise<string[]> {
+  return page.evaluate((t) => {
+    const leaks: string[] = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!node.textContent?.includes(t)) continue;
+      if (node.parentElement?.closest(".ph-no-capture")) continue;
+      leaks.push(node.parentElement?.outerHTML.slice(0, 200) ?? "");
+    }
+    return leaks;
+  }, token);
+}
+
 function blocked(locator: Locator): Promise<boolean> {
   return locator.evaluate((el) => el.closest(".ph-no-capture") !== null);
 }
@@ -65,6 +82,12 @@ test.describe("Check endpoints stay out of session replay", () => {
     expect(await blocked(url)).toBe(true);
     expect(await blocked(page.getByTestId("heartbeat-curl"))).toBe(true);
     expect(await blocked(page.getByRole("heading", { name }))).toBe(false);
+
+    // The Configuration card prints the token too: it stays under ph-no-capture.
+    const configToken = page.getByTestId("check-config-token-value");
+    await expect(configToken).toHaveText(token);
+    expect(await blocked(page.getByTestId("check-config-token-secret"))).toBe(true);
+    expect(await tokenOnlyUnderNoCapture(page, token)).toEqual([]);
 
     await page.getByTestId("heartbeat-url-copy").click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(`?token=${token}`);
@@ -81,6 +104,8 @@ test.describe("Check endpoints stay out of session replay", () => {
     await expect(address).toHaveText(`${token}@inbox.e2e-test.invalid`);
     expect(await blocked(address)).toBe(true);
     expect(await blocked(page.getByTestId("email-check-send-test"))).toBe(true);
+    await expect(page.getByTestId("check-config-token-value")).toHaveText(token);
+    expect(await tokenOnlyUnderNoCapture(page, token)).toEqual([]);
 
     await page.getByTestId("email-check-copy-btn").click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${token}@inbox.e2e-test.invalid`);
