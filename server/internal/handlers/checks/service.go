@@ -14,6 +14,7 @@ import (
 	"math"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -952,6 +953,12 @@ type CheckResponse struct {
 	// (●●●●●●●●) for fields it can't display. Non-secret by construction
 	// — these are key names, not values.
 	ConfigPrivateKeys []string `json:"configPrivateKeys,omitempty"`
+	// RedactedConfigKeys lists the keys of Config whose value IS sent in
+	// clear but is a credential: the checker's ExportRedactedFields() (the
+	// heartbeat/email `token`, the SMTP send-probe `delivery_to`) plus any
+	// declared SecretFields() key. The dashboard renders those values out of
+	// the session replay (spec 2026-11-16-02). Key names only, sorted.
+	RedactedConfigKeys []string `json:"redactedConfigKeys,omitempty"`
 	// NeedsReseal (detail responses only) flags a private-region check whose
 	// sealed credential blob no longer matches the region's active agent set
 	// (agent enrolled or revoked since the write), or that could not be sealed
@@ -3788,6 +3795,7 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		Config:                    publicConfig,
 		TargetHost:                checkerdef.ExtractTargetHost(publicConfig),
 		ConfigPrivateKeys:         privateKeys,
+		RedactedConfigKeys:        redactedConfigKeys(check.Type, publicConfig),
 		SecretsEncryption:         secretsEncryptionOf(check, privateKeys),
 		Regions:                   check.Regions,
 		Placement:                 check.EffectivePlacement(),
@@ -4522,6 +4530,32 @@ func redactSecretConfig(check *models.Check, privateKeys []string) (map[string]a
 	sort.Strings(keys)
 
 	return public, keys
+}
+
+// redactedConfigKeys returns the keys of publicConfig that hold a credential
+// sent in clear: the check type's ExportRedactedFields() and SecretFields(),
+// sorted, nil when none is present. The dashboard keeps those values out of
+// the session replay; the list comes from the checker so dash0 never needs a
+// hard-coded copy.
+func redactedConfigKeys(checkType string, publicConfig map[string]any) []string {
+	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(checkType))
+	if !ok {
+		return nil
+	}
+
+	candidates := append(credentials.ExportRedactedFieldsFor(cfg), credentials.SecretFieldsFor(cfg)...)
+
+	var keys []string
+
+	for _, key := range candidates {
+		if _, present := publicConfig[key]; present && !slices.Contains(keys, key) {
+			keys = append(keys, key)
+		}
+	}
+
+	sort.Strings(keys)
+
+	return keys
 }
 
 // ImportChecks imports checks from an export document.
