@@ -301,6 +301,12 @@
       "added": "Notifications par message privé Discord ajoutées",
       "addFailed": "Impossible d'ajouter le contact Discord",
       "linkFailed": "Impossible de démarrer la liaison Discord"
+    },
+    "paging": {
+      "none": "Aucune politique d'escalade ne vous alerte dans cette organisation : ces méthodes ne recevront pas d'alertes.",
+      "adminLink": "Gérer les politiques d'escalade",
+      "askAdmin": "Demandez à un administrateur de vous ajouter à une politique d'escalade.",
+      "someChecks": "Seuls certains checks vous alertent : une politique d'escalade vous cible pour eux, pas pour toute l'organisation."
     }
   },
   "device": {

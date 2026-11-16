@@ -7241,6 +7241,11 @@ export interface NotificationRoutesResponse {
   slackMention?: SlackMentionIdentity;
   discordSuggestion?: DiscordSuggestion;
   discordMention?: DiscordMentionIdentity;
+  /** Whether an escalation policy ever pages the caller in this org. */
+  paging?: {
+    coveredBy: "org_default" | "some_checks" | "none";
+    policyCount: number;
+  };
 }
 
 export function useNotificationRoutes(org: string) {

@@ -326,3 +326,17 @@ func TestToRouteResponses_DropsNilContact(t *testing.T) {
 	r.Len(out, 1, "the nil-contact route must be dropped")
 	r.Equal("route-ok", out[0].UID)
 }
+
+// A fresh org has no escalation policy: ListRoutes must say nobody pages the
+// caller, so the page can warn instead of leaving personal methods silently dead.
+func TestListRoutes_PagingNoneWithoutPolicy(t *testing.T) {
+	t.Parallel()
+
+	svc, org, user := setupUserNotificationsService(t)
+
+	resp, err := svc.ListRoutes(context.Background(), org.Slug, user)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Paging)
+	require.Equal(t, "none", string(resp.Paging.CoveredBy))
+	require.Equal(t, 0, resp.Paging.PolicyCount)
+}
