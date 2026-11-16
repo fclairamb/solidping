@@ -1,0 +1,217 @@
+[
+  {
+    "check": {
+      "id": 101,
+      "name": "Acme Website",
+      "hostname": "www.acme.example",
+      "resolution": 5,
+      "status": "up",
+      "sendnotificationwhendown": 2,
+      "tags": [
+        {
+          "name": "prod",
+          "type": "u",
+          "count": 1
+        },
+        {
+          "name": "web",
+          "type": "u",
+          "count": 1
+        }
+      ],
+      "type": {
+        "http": {
+          "url": "/health",
+          "port": 443,
+          "encryption": true,
+          "shouldcontain": "ok",
+          "shouldnotcontain": "maintenance",
+          "requestheaders": {
+            "X-Env": "prod",
+            "Authorization": "Bearer acme-secret"
+          },
+          "username": "acme",
+          "password": "pw"
+        }
+      },
+      "probe_filters": [
+        {
+          "region": "EU"
+        }
+      ]
+    }
+  },
+  {
+    "check": {
+      "id": 102,
+      "name": "Acme API Post",
+      "hostname": "api.acme.example",
+      "resolution": 5,
+      "status": "up",
+      "sendnotificationwhendown": 2,
+      "tags": [],
+      "type": {
+        "http": {
+          "url": "v1/ping",
+          "port": 8080,
+          "encryption": false,
+          "postdata": "{\"a\":1}"
+        }
+      }
+    }
+  },
+  {
+    "check": {
+      "id": 103,
+      "name": "Acme Custom",
+      "hostname": "custom.acme.example",
+      "resolution": 5,
+      "status": "up",
+      "sendnotificationwhendown": 2,
+      "tags": [],
+      "type": {
+        "httpcustom": {
+          "url": "/status.xml",
+          "port": 80,
+          "encryption": false,
+          "additionalurls": []
+        }
+      }
+    }
+  },
+  {
+    "check": {
+      "id": 104,
+      "name": "Acme TCP",
+      "hostname": "tcp.acme.example",
+      "resolution": 5,
+      "status": "paused",
+      "sendnotificationwhendown": 2,
+      "tags": [],
+      "type": {
+        "tcp": {
+          "port": 5432,
+          "stringtosend": "PING",
+          "stringtoexpect": "PONG"
+        }
+      }
+    }
+  },
+  {
+    "check": {
+      "id": 105,
+      "name": "Acme Ping",
+      "hostname": "ping.acme.example",
+      "resolution": 1,
+      "status": "up",
+      "sendnotificationwhendown": 2,
+      "tags": [],
+      "type": {
+        "ping": {}
+      }
+    }
+  },
+  {
+    "check": {
+      "id": 106,
+      "name": "Acme DNS",
+      "hostname": "acme.example",
+      "resolution": 5,
+      "status": "up",
+      "sendnotificationwhendown": 2,
+      "tags": [],
+      "type": {
+        "dns": {
+          "expectedip": "192.0.2.10",
+          "nameserver": "8.8.8.8"
+        }
+      }
+    }
+  },
+  {
+    "check": {
+      "id": 107,
+      "name": "Acme UDP",
+      "hostname": "udp.acme.example",
+      "resolution": 5,
+      "status": "up",
+      "sendnotificationwhendown": 2,
+      "tags": [],
+      "type": {
+        "udp": {
+          "port": 53,
+          "stringtosend": "hi",
+          "stringtoexpect": "ho"
+        }
+      }
+    }
+  },
+  {
+    "check": {
+      "id": 108,
+      "name": "Acme SMTP",
+      "hostname": "mail.acme.example",
+      "resolution": 5,
+      "status": "up",
+      "sendnotificationwhendown": 2,
+      "tags": [],
+      "type": {
+        "smtp": {
+          "port": 465,
+          "encryption": true,
+          "stringtoexpect": "220",
+          "username": "u",
+          "password": "p"
+        }
+      }
+    }
+  },
+  {
+    "check": {
+      "id": 109,
+      "name": "Acme POP3",
+      "hostname": "pop.acme.example",
+      "resolution": 5,
+      "status": "up",
+      "sendnotificationwhendown": 2,
+      "tags": [],
+      "type": {
+        "pop3": {
+          "port": 995,
+          "encryption": true
+        }
+      }
+    }
+  },
+  {
+    "check": {
+      "id": 110,
+      "name": "Acme IMAP",
+      "hostname": "imap.acme.example",
+      "resolution": 5,
+      "status": "up",
+      "sendnotificationwhendown": 2,
+      "tags": [],
+      "type": {
+        "imap": {
+          "port": 143,
+          "encryption": false
+        }
+      }
+    }
+  },
+  {
+    "check": {
+      "id": 111,
+      "name": "Acme Checkout Flow",
+      "hostname": "shop.acme.example",
+      "resolution": 5,
+      "status": "up",
+      "sendnotificationwhendown": 2,
+      "tags": [],
+      "type": {
+        "transaction": {}
+      }
+    }
+  }
+]

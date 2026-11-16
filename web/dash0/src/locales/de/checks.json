@@ -113,27 +113,31 @@
       "gatus": "Gatus (config.yaml)",
       "betterstack": "Better Stack (API-Token)",
       "uptime-kuma": "Uptime Kuma (Backup-JSON)",
-      "uptimerobot": "UptimeRobot (getMonitors-JSON)"
+      "uptimerobot": "UptimeRobot (getMonitors-JSON)",
+      "pingdom": "Pingdom (API-Token oder JSON)"
     },
     "importSourceHelp": {
       "solidping": "Ein über die Schaltfläche „Exportieren“ erzeugtes Dokument, als JSON oder YAML.",
       "gatus": "Fügen Sie Ihre Gatus-config.yaml ein oder laden Sie sie hoch — die endpoints:-Liste wird in Checks umgewandelt.",
       "betterstack": "Wir lesen Ihre Monitore und Heartbeats über die Better-Stack-API aus und konvertieren sie.",
       "uptime-kuma": "Uptime Kuma 1.x: Einstellungen → Backup → JSON exportieren. Version 2.x bietet diesen Export nicht mehr an.",
-      "uptimerobot": "Fügen Sie das JSON des getMonitors-Aufrufs der UptimeRobot-API v2 ein — den genauen curl-Befehl finden Sie in der Dokumentation."
+      "uptimerobot": "Fügen Sie das JSON des getMonitors-Aufrufs der UptimeRobot-API v2 ein — den genauen curl-Befehl finden Sie in der Dokumentation.",
+      "pingdom": "Erstellen Sie ein schreibgeschütztes Token unter My Pingdom > Settings > Pingdom API > Add API token (Lesezugriff) oder fügen Sie das JSON von GET /api/3.1/checks ein."
     },
     "importPlaceholder": {
       "solidping": "Exportiertes JSON- oder YAML-Dokument einfügen…",
       "gatus": "Gatus-config.yaml einfügen…",
       "uptime-kuma": "Uptime-Kuma-Backup-JSON einfügen…",
-      "uptimerobot": "UptimeRobot-getMonitors-JSON einfügen…"
+      "uptimerobot": "UptimeRobot-getMonitors-JSON einfügen…",
+      "pingdom": "Oder fügen Sie das JSON Ihrer Pingdom-Checks ein…"
     },
     "importPayload": "Konfiguration",
     "importUpload": "Datei hochladen",
     "importToken": "Better-Stack-API-Token",
     "importTokenNoticeTitle": "Das Token wird nicht gespeichert",
     "importTokenNotice": "Es wird einmalig gesendet, um Ihre Monitore und Heartbeats zu lesen, und von SolidPing nie gespeichert.",
-    "importWarnings": "{{count}} Element(e) konnten nicht exakt übernommen werden"
+    "importWarnings": "{{count}} Element(e) konnten nicht exakt übernommen werden",
+    "importTokenPingdom": "Pingdom-API-Token (Lesezugriff)"
   },
   "groupForm": {
     "title": "Gruppe bearbeiten",

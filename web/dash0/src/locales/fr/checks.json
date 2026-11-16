@@ -113,27 +113,31 @@
       "gatus": "Gatus (config.yaml)",
       "betterstack": "Better Stack (jeton d'API)",
       "uptime-kuma": "Uptime Kuma (sauvegarde JSON)",
-      "uptimerobot": "UptimeRobot (JSON getMonitors)"
+      "uptimerobot": "UptimeRobot (JSON getMonitors)",
+      "pingdom": "Pingdom (jeton d'API ou JSON)"
     },
     "importSourceHelp": {
       "solidping": "Un document produit par le bouton Exporter, en JSON ou YAML.",
       "gatus": "Collez ou envoyez votre config.yaml Gatus — la liste endpoints: est convertie en checks.",
       "betterstack": "Nous récupérons vos moniteurs et heartbeats via l'API Better Stack, puis nous les convertissons.",
       "uptime-kuma": "Uptime Kuma 1.x : Paramètres → Sauvegarde → Exporter le JSON. La version 2.x ne propose plus cet export.",
-      "uptimerobot": "Collez le JSON obtenu via l'appel getMonitors de l'API v2 d'UptimeRobot — voir la documentation pour la commande curl exacte."
+      "uptimerobot": "Collez le JSON obtenu via l'appel getMonitors de l'API v2 d'UptimeRobot — voir la documentation pour la commande curl exacte.",
+      "pingdom": "Créez un jeton en lecture seule dans My Pingdom > Settings > Pingdom API > Add API token (accès en lecture), ou collez le JSON de GET /api/3.1/checks."
     },
     "importPlaceholder": {
       "solidping": "Collez le document JSON ou YAML exporté…",
       "gatus": "Collez votre config.yaml Gatus…",
       "uptime-kuma": "Collez la sauvegarde JSON Uptime Kuma…",
-      "uptimerobot": "Collez le JSON getMonitors d'UptimeRobot…"
+      "uptimerobot": "Collez le JSON getMonitors d'UptimeRobot…",
+      "pingdom": "Ou collez le JSON de vos checks Pingdom…"
     },
     "importPayload": "Configuration",
     "importUpload": "Envoyer un fichier",
     "importToken": "Jeton d'API Better Stack",
     "importTokenNoticeTitle": "Le jeton n'est pas conservé",
     "importTokenNotice": "Il est envoyé une seule fois pour lire vos moniteurs et heartbeats, et n'est jamais enregistré par SolidPing.",
-    "importWarnings": "{{count}} élément(s) n'ont pas été convertis à l'identique"
+    "importWarnings": "{{count}} élément(s) n'ont pas été convertis à l'identique",
+    "importTokenPingdom": "Jeton d'API Pingdom (accès en lecture)"
   },
   "groupForm": {
     "title": "Modifier le groupe",

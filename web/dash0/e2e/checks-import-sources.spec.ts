@@ -143,4 +143,50 @@ test.describe("Checks import sources", () => {
     await page.getByTestId("import-token").fill("bstk_not_a_real_token");
     await expect(page.getByTestId("import-preview-button")).toBeEnabled();
   });
+
+  test("Pingdom offers a token field and a paste option, and sends the token", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    let sentBody = "";
+
+    await page.route("**/checks/import/convert*", async (route) => {
+      sentBody = route.request().postData() ?? "";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          source: "pingdom",
+          converted: 1,
+          manifest: "pingdom",
+          dryRun: true,
+          created: 1,
+          updated: 0,
+          unchanged: 0,
+          unmanaged: 0,
+          plan: [],
+          errors: [],
+          warnings: [],
+        }),
+      });
+    });
+
+    await page.goto("orgs/test/checks");
+    await page.getByTestId("checks-more-actions").click();
+    await page.getByTestId("import-button").click();
+    await page.getByTestId("import-source").click();
+    await page.getByTestId("import-source-pingdom").click();
+
+    await expect(page.getByTestId("import-token")).toBeVisible();
+    await expect(page.getByTestId("import-payload")).toBeVisible();
+    await expect(page.getByTestId("import-token-notice")).toContainText("The token is not stored");
+    await expect(page.getByTestId("import-preview-button")).toBeDisabled();
+
+    await page.getByTestId("import-token").fill("pd_not_a_real_token");
+    await expect(page.getByTestId("import-preview-button")).toBeEnabled();
+    await page.getByTestId("import-preview-button").click();
+
+    await expect(page.getByTestId("import-preview")).toBeVisible();
+    expect(JSON.parse(sentBody)).toEqual({ token: "pd_not_a_real_token" });
+  });
 });

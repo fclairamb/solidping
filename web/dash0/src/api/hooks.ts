@@ -1715,6 +1715,7 @@ export const CONVERT_SOURCES = [
   "betterstack",
   "uptime-kuma",
   "uptimerobot",
+  "pingdom",
 ] as const;
 export type ConvertSource = (typeof CONVERT_SOURCES)[number];
 

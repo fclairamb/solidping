@@ -237,3 +237,36 @@ the one exception: a **basic** HTTP auth credential (`http_auth_type: 1`) is
 carried into the check's encrypted `basicAuth` field, per this converter's
 spec. Digest auth (`http_auth_type: 2`) and any other scheme are *not*
 imported and warn instead.
+
+## Pingdom (API 3.1)
+
+Source id `pingdom`. Two input modes: a request body `{"token": "..."}` makes the
+server fetch `GET /api/3.1/checks?include_tags=true` and then
+`GET /api/3.1/checks/{id}` per check (4 in flight, Bearer token, fixed base URL,
+HTTP 429 reported as a rate-limit error); otherwise the body is treated as a
+pasted `GET /checks` response (`{"checks": [...]}`), an array of
+`GET /checks/{id}` responses, or a single one. The token is used for the fetch
+only and is never stored, logged, or echoed in an error. A pasted list carries
+no type-specific settings, so its HTTP checks default to the `/` path.
+
+| Pingdom | SolidPing |
+|---|---|
+| `type.http` (`encryption` → https, `port`, `url` path) | `http` on `scheme://hostname[:port]/url` |
+| `shouldcontain` / `shouldnotcontain` | `body_expect` / `body_reject` |
+| `requestheaders` | `headers`; credential-looking names go to the encrypted `secretHeaders` |
+| `postdata` | `method: POST` + `body` |
+| `type.httpcustom` | `http` on the URL + warning (custom XML response values unsupported) |
+| `type.tcp` / `type.udp` | `tcp` / `udp` (`stringtosend` → `send_data`, `stringtoexpect` → `expect_data`) |
+| `type.ping` | `icmp` |
+| `type.dns` | `dns` (`hostname`, `expectedip` → `expected_ips`, `nameserver` + `:53`) |
+| `type.smtp` / `pop3` / `imap` | `smtp` / `pop3` / `imap` (`stringtoexpect` → `expect_greeting`, `encryption` → `tls`) |
+| any other type (transaction/TMS) | skipped + warning |
+| `resolution` (minutes) | period, clamped by `normalizeChecks` |
+| `sendnotificationwhendown` (n) | `confirmationPeriodSeconds` = n × period |
+| `status: paused` | imported disabled |
+| `tags[].name` | labels (slugified key, value `true`) |
+| `probe_filters` | ignored + warning |
+| `auth` / `username` / `password` | **dropped + warning**, like Gatus / Better Stack / Kuma |
+| alert contacts, integrations, maintenance | not imported |
+
+Managed label: `solidping-managed=pingdom`.

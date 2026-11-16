@@ -17,6 +17,9 @@ import (
 // configs and Kuma backups are text; 16 MiB is generous).
 const maxConvertBodySize = 16 << 20
 
+// fieldToken is the request-body field carrying an API token.
+const fieldToken = "token"
+
 // queryTrue is the literal a boolean query flag must equal to be enabled.
 const queryTrue = "true"
 
@@ -57,6 +60,8 @@ type Handler struct {
 	svc *checks.Service
 	// betterStackBaseURL overrides the Better Stack API root (tests, proxies).
 	betterStackBaseURL string
+	// pingdomBaseURL overrides the Pingdom API root (tests only).
+	pingdomBaseURL string
 }
 
 // NewHandler builds the importers handler.
@@ -72,6 +77,15 @@ func NewHandler(service *checks.Service, cfg *config.Config) *Handler {
 func (h *Handler) WithBetterStackBaseURL(baseURL string) *Handler {
 	clone := *h
 	clone.betterStackBaseURL = baseURL
+
+	return &clone
+}
+
+// WithPingdomBaseURL returns a copy of the handler pointed at another Pingdom
+// API root. Test seam only: never reachable from a request body.
+func (h *Handler) WithPingdomBaseURL(baseURL string) *Handler {
+	clone := *h
+	clone.pingdomBaseURL = baseURL
 
 	return &clone
 }
@@ -94,6 +108,8 @@ func (h *Handler) converterFor(source string) (Converter, error) {
 		return &UptimeRobotConverter{}, nil
 	case SourceBetterStack:
 		return NewBetterStackConverter(BetterStackOptions{BaseURL: h.betterStackBaseURL}), nil
+	case SourcePingdom:
+		return NewPingdomConverter(PingdomOptions{BaseURL: h.pingdomBaseURL}), nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnknownSource, source)
 	}
@@ -196,13 +212,22 @@ func (h *Handler) writeConversionError(writer http.ResponseWriter, request *http
 	switch {
 	case errors.Is(err, ErrBetterStackTokenRequired):
 		return h.WriteValidationError(writer, "A Better Stack API token is required",
-			[]base.ValidationErrorField{{Name: "token", Message: "must not be empty"}})
+			[]base.ValidationErrorField{{Name: fieldToken, Message: "must not be empty"}})
 	case errors.Is(err, ErrBetterStackUnauthorized):
 		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"Better Stack rejected the API token", err)
 	case errors.Is(err, ErrBetterStackUnreachable), errors.Is(err, ErrBetterStackAPI):
 		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"Could not read the Better Stack account: "+err.Error(), err)
+	case errors.Is(err, ErrPingdomTokenRequired):
+		return h.WriteValidationError(writer, "A Pingdom API token or pasted JSON is required",
+			[]base.ValidationErrorField{{Name: fieldToken, Message: "must not be empty"}})
+	case errors.Is(err, ErrPingdomUnauthorized):
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"Pingdom rejected the API token", err)
+	case errors.Is(err, ErrPingdomUnreachable), errors.Is(err, ErrPingdomAPI), errors.Is(err, ErrPingdomRateLimited):
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"Could not read the Pingdom account: "+err.Error(), err)
 	default:
 		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	}

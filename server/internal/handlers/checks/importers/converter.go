@@ -36,6 +36,8 @@ const (
 	SourceUptimeKuma = "uptime-kuma"
 	// SourceUptimeRobot is the UptimeRobot API v2 getMonitors JSON source.
 	SourceUptimeRobot = "uptimerobot"
+	// SourcePingdom is the Pingdom API 3.1 source (token fetch or pasted JSON).
+	SourcePingdom = "pingdom"
 )
 
 // Config keys shared by several converters. Extracted so the same literal is
@@ -422,5 +424,5 @@ const dnsDefaultPort = 53
 
 // SupportedSources lists every source identifier the convert endpoint accepts.
 func SupportedSources() []string {
-	return []string{SourceGatus, SourceBetterStack, SourceUptimeKuma, SourceUptimeRobot}
+	return []string{SourceGatus, SourceBetterStack, SourceUptimeKuma, SourceUptimeRobot, SourcePingdom}
 }
