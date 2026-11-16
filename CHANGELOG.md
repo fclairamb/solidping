@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.51.0](https://github.com/fclairamb/solidping/compare/v0.50.2...v0.51.0) (2026-11-16)
+
+
+### Features
+
+* **import:** import your checks from Pingdom ([#904](https://github.com/fclairamb/solidping/issues/904)) ([7914164](https://github.com/fclairamb/solidping/commit/7914164d76a483b7923dcee551a260ee7aa8717b))
+* **insights:** choose the period the insights cover ([#904](https://github.com/fclairamb/solidping/issues/904)) ([7914164](https://github.com/fclairamb/solidping/commit/7914164d76a483b7923dcee551a260ee7aa8717b))
+* **jobs:** retried jobs log at a level that matches their outcome ([#904](https://github.com/fclairamb/solidping/issues/904)) ([7914164](https://github.com/fclairamb/solidping/commit/7914164d76a483b7923dcee551a260ee7aa8717b))
+
+
+### Bug Fixes
+
+* **security:** SAML logins cross-check the NameID namespace (GO-2026-6909) ([#896](https://github.com/fclairamb/solidping/issues/896)) ([df0d7b6](https://github.com/fclairamb/solidping/commit/df0d7b6433655d6d8874d9d151e84d8fb28de256))
+* **security:** known development JWT secrets, including the ones shown in the docs, are rejected as placeholders ([#895](https://github.com/fclairamb/solidping/issues/895), [#903](https://github.com/fclairamb/solidping/issues/903)) ([1cad98a](https://github.com/fclairamb/solidping/commit/1cad98a523f5b27cae47220631394ad4c22088ee), [6b432e0](https://github.com/fclairamb/solidping/commit/6b432e07442dbcdc779cec2e6096c81f6268788d)), closes [#892](https://github.com/fclairamb/solidping/issues/892)
+* **security:** the pre-authentication body buffer of ServiceSignature is capped ([#894](https://github.com/fclairamb/solidping/issues/894)) ([c4da4c5](https://github.com/fclairamb/solidping/commit/c4da4c5feac08f7c99c8b6caef605db1d6751e07)), closes [#892](https://github.com/fclairamb/solidping/issues/892)
+* **security:** status pages bound `historyDays`, replays mask the tokens of check configs, and JavaScript checks apply the redirect policy to websockets ([#903](https://github.com/fclairamb/solidping/issues/903)) ([6b432e0](https://github.com/fclairamb/solidping/commit/6b432e07442dbcdc779cec2e6096c81f6268788d))
+
 ## [0.50.2](https://github.com/fclairamb/solidping/compare/v0.50.1...v0.50.2) (2026-11-15)
 
 
