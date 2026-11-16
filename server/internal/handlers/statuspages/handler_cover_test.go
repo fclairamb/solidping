@@ -98,6 +98,10 @@ func TestStatusPageHandlerAdminFlow(t *testing.T) {
 			`{"name":"P","slug":"cov-v","historyPeriod":"7y"}`, http.StatusUnprocessableEntity,
 		},
 		{
+			"create bad history days", http.MethodPost, base,
+			`{"name":"P","slug":"cov-v","historyDays":2000000000}`, http.StatusUnprocessableEntity,
+		},
+		{
 			"create bad auto resolve", http.MethodPost, base,
 			`{"name":"P","slug":"cov-v","autoResolve":"sometimes"}`, http.StatusUnprocessableEntity,
 		},
@@ -121,6 +125,7 @@ func TestStatusPageHandlerAdminFlow(t *testing.T) {
 		{"update missing", http.MethodPatch, base + "/nope", `{"name":"x"}`, http.StatusNotFound},
 		{"update bad slug", http.MethodPatch, page, `{"slug":"A B"}`, http.StatusUnprocessableEntity},
 		{"update bad history", http.MethodPatch, page, `{"historyPeriod":"7y"}`, http.StatusUnprocessableEntity},
+		{"update bad history days", http.MethodPatch, page, `{"historyDays":0}`, http.StatusUnprocessableEntity},
 		{"update bad domain", http.MethodPatch, page, `{"customDomain":"not a domain"}`, http.StatusUnprocessableEntity},
 		{"update ok", http.MethodPatch, page, `{"name":"Cover 2","description":"d"}`, http.StatusOK},
 		{"update clear domain", http.MethodPatch, page, `{"customDomain":null}`, http.StatusOK},

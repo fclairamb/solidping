@@ -334,3 +334,43 @@ func TestStatusPageResourceToolsCrossOrg(t *testing.T) {
 		})
 	}
 }
+
+// TestStatusPageToolsRefuseOutOfRangeHistoryDays: both MCP write tools refuse a
+// historyDays outside 1..90 (spec 2026-11-16-01), and accept an in-range one.
+func TestStatusPageToolsRefuseOutOfRangeHistoryDays(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newCoverEnv(t)
+	ctx := t.Context()
+
+	for _, days := range []any{0, -1, 91, 2000000000} {
+		res := env.handler.toolCreateStatusPage(ctx, env.org.Slug, map[string]any{
+			schemaKeyName: "Acme", schemaKeySlug: "acme-bad", propHistoryDays: days,
+		})
+		r.True(res.IsError, "create with historyDays=%v must be refused", days)
+		r.Contains(res.Content[0].Text, statuspages.ErrInvalidHistoryDays.Error())
+	}
+
+	created := env.handler.toolCreateStatusPage(ctx, env.org.Slug, map[string]any{
+		schemaKeyName: "Acme", schemaKeySlug: "acme", propHistoryDays: 30,
+	})
+	r.False(created.IsError, "historyDays=30 must be accepted: %v", created.Content)
+
+	for _, days := range []any{0, -1, 91, 2000000000} {
+		res := env.handler.toolUpdateStatusPage(ctx, env.org.Slug, map[string]any{
+			propIdentifier: "acme", propHistoryDays: days,
+		})
+		r.True(res.IsError, "update with historyDays=%v must be refused", days)
+		r.Contains(res.Content[0].Text, statuspages.ErrInvalidHistoryDays.Error())
+	}
+
+	schema, ok := createStatusPageDef().InputSchema.(map[string]any)
+	r.True(ok)
+	props, ok := schema["properties"].(map[string]any)
+	r.True(ok)
+	prop, ok := props[propHistoryDays].(map[string]any)
+	r.True(ok)
+	r.Equal(statuspages.MaxHistoryDays, prop["maximum"])
+	r.Equal(statuspages.MinHistoryDays, prop["minimum"])
+}

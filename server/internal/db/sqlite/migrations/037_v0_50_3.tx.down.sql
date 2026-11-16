@@ -1,0 +1,2 @@
+-- SECTION: status-page-history-days-bound
+-- Data repair only: the out-of-range values it replaced are not restored.

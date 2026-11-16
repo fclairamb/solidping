@@ -19,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/securityheaders"
@@ -478,10 +479,14 @@ func (h *Handler) Feed(writer http.ResponseWriter, req *http.Request) error {
 			base.ErrorCodeStatusPageLocked, "This status page is password protected")
 	}
 
+	// Same bound as the page's own recentUpdates: a row written before the
+	// write path validated history_days must not size the feed's window.
 	historyDays := page.HistoryDays
 	if historyDays <= 0 {
-		historyDays = 90
+		historyDays = statuspages.MaxHistoryDays
 	}
+
+	historyDays = statuspages.ClampHistoryDays(historyDays)
 
 	updates, err := h.dbService.ListPublicStatusUpdates(ctx, page.UID, historyDays)
 	if err != nil {

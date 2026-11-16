@@ -37,6 +37,7 @@ const (
 	fieldVisibility     = "visibility"
 	fieldPassword       = "password"
 	fieldHistoryPeriod  = "historyPeriod"
+	fieldHistoryDays    = "historyDays"
 	fieldCustomCSS      = "customCss"
 	fieldCheckUID       = "checkUid"
 	fieldCheckGroupUID  = "checkGroupUid"
@@ -45,6 +46,7 @@ const (
 	respKeyData         = "data"
 	msgInvalidJSON      = "Invalid JSON format"
 	historyPeriodMsg    = "History period must be one of: 24h, 7d, 30d, 90d"
+	historyDaysMsg      = "History days must be between 1 and 90"
 	customCSSSizeMsg    = "Custom CSS must be at most 64 KB"
 	passwordTooShortMsg = "The status page password must be at least 6 characters"
 	customCSSImportMsg  = "Custom CSS must not contain the text @import, not even in a comment: " +
@@ -910,6 +912,10 @@ func (h *Handler) handleCreatePageError(writer http.ResponseWriter, request *htt
 		return h.WriteValidationError(writer, "Invalid history period", []base.ValidationErrorField{
 			{Name: fieldHistoryPeriod, Message: historyPeriodMsg},
 		})
+	case errors.Is(err, ErrInvalidHistoryDays):
+		return h.WriteValidationError(writer, "Invalid history days", []base.ValidationErrorField{
+			{Name: fieldHistoryDays, Message: historyDaysMsg},
+		})
 	case errors.Is(err, ErrCheckUIDInvalid):
 		return h.WriteValidationError(writer, "Invalid check uid", []base.ValidationErrorField{
 			{Name: fieldCheckUIDs, Message: err.Error()},
@@ -962,6 +968,10 @@ func (h *Handler) handleUpdatePageError(writer http.ResponseWriter, request *htt
 	case errors.Is(err, ErrInvalidHistoryPeriod):
 		return h.WriteValidationError(writer, "Invalid history period", []base.ValidationErrorField{
 			{Name: fieldHistoryPeriod, Message: historyPeriodMsg},
+		})
+	case errors.Is(err, ErrInvalidHistoryDays):
+		return h.WriteValidationError(writer, "Invalid history days", []base.ValidationErrorField{
+			{Name: fieldHistoryDays, Message: historyDaysMsg},
 		})
 	default:
 		return h.WriteInternalError(writer, request, err)

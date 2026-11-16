@@ -589,6 +589,18 @@ Handle fields: `ok`, `error`, `class`, `connectDuration`, `tunneled`, and
 reached a server. A `401` on the upgrade and a connection that reached nothing
 are different incidents, and this is what tells them apart.
 
+**Handshake redirects.** A handshake that answers with a redirect is followed
+with the same rule as `http.*`, up to 10 hops (an 11th fails with a
+`too many redirects` error instead of looping until the timeout). A hop to
+another origin (another host, port or scheme, an `ws` -> `wss` upgrade excepted)
+never carries `Authorization`, `Proxy-Authorization`, `Cookie` or `Referer`,
+and, when the check has `secrets`, it carries none of the script's `headers`
+except the generic ones listed for `http.*` above whose value holds no secret. A
+redirect from `wss` to `ws` is refused, on any host. The names of the headers a
+hop dropped (never their values) are in the handle's `redirectDroppedHeaders`
+and in the check's output as `redirect_dropped_secret_headers`, so a handshake
+that fails at the new origin for lack of its key explains itself.
+
 | Call | Returns | Notes |
 |---|---|---|
 | `send(data, { type?, encoding?, timeout? })` | `{ ok, bytes, duration, error? }` | `type` is `text` (default) or `binary`; `encoding` decodes `data` first, so a binary frame is `send("cafe", { type: "binary", encoding: "hex" })`. |

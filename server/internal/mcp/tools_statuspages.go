@@ -189,7 +189,7 @@ func createStatusPageDef() ToolDefinition {
 			propIsDefault:        boolProp("Whether this is the org's default status page (only one allowed)."),
 			propShowAvailability: boolProp("Display availability percentage on the public page."),
 			propShowResponseTime: boolProp("Display response-time charts on the public page."),
-			propHistoryDays:      intProp("Days of history to show on the page (default 90)."),
+			propHistoryDays:      historyDaysProp(),
 			propLanguage:         stringProp("Language code, e.g. \"en\" or \"fr\"."),
 			propCustomCSS: withMaxLength(stringProp(
 				"Custom CSS injected into the public page as a <style> element. Overrides the theme's CSS "+
@@ -270,7 +270,7 @@ func updateStatusPageDef() ToolDefinition {
 			schemaKeyEnabled:     boolProp("Enable or disable the public-facing page."),
 			propShowAvailability: boolProp("Toggle availability percentage on the public page."),
 			propShowResponseTime: boolProp("Toggle response-time charts on the public page."),
-			propHistoryDays:      intProp("Days of history to show on the page (default 90)."),
+			propHistoryDays:      historyDaysProp(),
 			propLanguage:         stringProp("Language code, e.g. \"en\" or \"fr\"."),
 			propCustomCSS: withMaxLength(stringProp(
 				"Custom CSS injected into the public page as a <style> element (see create_status_page). "+
@@ -821,4 +821,14 @@ func resourceResponseOutputProps() map[string]any {
 
 func resourceOutputSchema() map[string]any {
 	return objectSchema(resourceResponseOutputProps(), []string{propUID})
+}
+
+// historyDaysProp is the historyDays input schema, bounded like the REST API:
+// the service refuses a value outside 1..90 (spec 2026-11-16-01).
+func historyDaysProp() map[string]any {
+	prop := intProp("Days of history to show on the page, 1 to 90 (default 90).")
+	prop["minimum"] = statuspages.MinHistoryDays
+	prop["maximum"] = statuspages.MaxHistoryDays
+
+	return prop
 }

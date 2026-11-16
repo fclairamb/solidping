@@ -22,6 +22,13 @@ const (
 	wsTypeBinary = "binary"
 )
 
+// The URL schemes a handshake redirect hop carries: coder/websocket rewrites
+// ws/wss to http/https before CheckRedirect sees the request.
+const (
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
+)
+
 // registerWebSocket exposes `websocket.connect(url, options)`.
 //
 // The global collides with the `solidping.websocket()` sub-check wrapper only
@@ -70,18 +77,26 @@ func (h *wsHandle) dial(url string, opts map[string]any) map[string]any {
 
 	defer cancel()
 
-	dialOpts, tunneled := h.dialOptions(opts)
+	var dropped []string
+
+	dialOpts, tunneled := h.dialOptions(opts, &dropped)
 
 	start := time.Now()
 
 	conn, resp, err := websocket.Dial(ctx, url, dialOpts)
+	// The check's output names the dropped headers whatever the outcome: a
+	// handshake that fails because B never got its key explains itself.
+	h.runtime.recordDroppedHeaders(dropped)
 
 	if resp != nil && resp.Body != nil {
 		defer func() { _ = resp.Body.Close() }()
 	}
 
 	if err != nil {
-		return h.handshakeFailure(ctx, err, resp, tunneled)
+		fields := h.handshakeFailure(ctx, err, resp, tunneled)
+		addRedirectDroppedHeaders(fields, dropped)
+
+		return fields
 	}
 
 	h.conn = conn
@@ -100,14 +115,19 @@ func (h *wsHandle) dial(url string, opts map[string]any) map[string]any {
 		fields[jsKeyTunneled] = true
 	}
 
+	addRedirectDroppedHeaders(fields, dropped)
+
 	return fields
 }
 
 // dialOptions mirrors WebSocketChecker.dial: headers verbatim, a private
 // transport ONLY when verification is off or a tunnel dialer is present, and
-// coder/websocket's default client otherwise.
-func (h *wsHandle) dialOptions(opts map[string]any) (*websocket.DialOptions, bool) {
+// http.DefaultTransport otherwise. The client always carries wsRedirectPolicy,
+// which appends to *dropped the header names a cross-origin hop withheld.
+func (h *wsHandle) dialOptions(opts map[string]any, dropped *[]string) (*websocket.DialOptions, bool) {
 	dialOpts := &websocket.DialOptions{}
+
+	var scriptHeaders []string
 
 	if headers, ok := opts["headers"].(map[string]any); ok && len(headers) > 0 {
 		header := http.Header{}
@@ -115,6 +135,7 @@ func (h *wsHandle) dialOptions(opts map[string]any) (*websocket.DialOptions, boo
 		for name, value := range headers {
 			if str, ok := value.(string); ok {
 				header.Set(name, str)
+				scriptHeaders = append(scriptHeaders, http.CanonicalHeaderKey(name))
 			}
 		}
 
@@ -154,20 +175,99 @@ func (h *wsHandle) dialOptions(opts map[string]any) (*websocket.DialOptions, boo
 		needClient = true
 	}
 
-	// An allowlisted run checks the handshake request, and any redirect it
-	// follows, before it is sent.
-	if list := egress.HostAllowlistFrom(h.runtime.execCtx); list != nil {
-		base := http.DefaultTransport
-		if needClient {
-			base = transport
-		}
+	base := http.DefaultTransport
+	if needClient {
+		base = transport
+	}
 
-		dialOpts.HTTPClient = &http.Client{Transport: list.RoundTripper(base)}
-	} else if needClient {
-		dialOpts.HTTPClient = &http.Client{Transport: transport}
+	// The client always exists: without a CheckRedirect of ours,
+	// coder/websocket follows handshake redirects with net/http's header
+	// policy and no hop limit (spec 2026-11-16-03). An allowlisted run also
+	// checks the handshake request, and any redirect it follows, before it is
+	// sent (a nil allowlist returns base unchanged).
+	dialOpts.HTTPClient = &http.Client{
+		Transport:     egress.HostAllowlistFrom(h.runtime.execCtx).RoundTripper(base),
+		CheckRedirect: wsRedirectPolicy(scriptHeaders, h.runtime.redirectSecrets(), dropped),
 	}
 
 	return dialOpts, tunneled
+}
+
+// errWSRedirectDowngrade refuses a handshake redirect from https (wss) to
+// http (ws): the rest of the handshake, and every frame after it, would go in
+// clear text.
+var errWSRedirectDowngrade = errors.New("redirect refused: scheme downgrade from wss to ws")
+
+// wsCredentialHeaders are withheld from every cross-origin handshake hop,
+// secrets or not: net/http keeps Authorization and Cookie on a subdomain or
+// same-host port change.
+//
+//nolint:gochecknoglobals // read-only lookup
+var wsCredentialHeaders = []string{"Authorization", "Proxy-Authorization", "Cookie"}
+
+// wsRedirectPolicy is the websocket.connect handshake's CheckRedirect, the
+// http.* binding's rule (redirectPolicy) applied to a handshake. coder/websocket
+// calls it after rewriting a ws/wss Location to http/https. It:
+//
+//   - caps the chain at checkerdef.DefaultMaxRedirects;
+//   - refuses a downgrade from https to http anywhere in the chain;
+//   - applies checkerdef.ApplyRedirectHop against the first request (no
+//     Referer on a cross-origin hop);
+//   - on a cross-origin hop, drops Authorization, Proxy-Authorization and
+//     Cookie, and, for a check holding secrets, the script's headers that
+//     stripRedirectHeaders would drop from an http.* request.
+//
+// Only the script's headers are candidates for the secret rule: the
+// Upgrade/Sec-WebSocket-* headers coder/websocket adds must survive, or the
+// redirected handshake could never succeed.
+func wsRedirectPolicy(
+	scriptHeaders []string, secrets map[string]string, dropped *[]string,
+) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if len(via) >= checkerdef.DefaultMaxRedirects {
+			return fmt.Errorf("%w: stopped after %d redirects", checkerdef.ErrTooManyRedirects, len(via))
+		}
+
+		if req.URL.Scheme == schemeHTTP {
+			for _, prev := range via {
+				if prev.URL.Scheme == schemeHTTPS {
+					return errWSRedirectDowngrade
+				}
+			}
+		}
+
+		if hop := checkerdef.ApplyRedirectHop(via[0].URL, req); !hop.CrossOrigin {
+			return nil
+		}
+
+		original := via[0].Header
+
+		for _, name := range wsCredentialHeaders {
+			// net/http may already have stripped it on a host change: report
+			// what the script sent, not what was left.
+			if len(original.Values(name)) > 0 || len(req.Header.Values(name)) > 0 {
+				req.Header.Del(name)
+
+				*dropped = append(*dropped, name)
+			}
+		}
+
+		candidates := http.Header{}
+
+		for _, name := range scriptHeaders {
+			if values := req.Header.Values(name); len(values) > 0 {
+				candidates[name] = values
+			}
+		}
+
+		for _, name := range stripRedirectHeaders(candidates, secrets) {
+			req.Header.Del(name)
+
+			*dropped = append(*dropped, name)
+		}
+
+		return nil
+	}
 }
 
 // handshakeFailure keeps the rejecting HTTP status when the server answered at

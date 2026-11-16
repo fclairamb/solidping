@@ -4,12 +4,18 @@ import { ExternalLink } from "lucide-react";
 import type { Check } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { SecretText } from "@/components/ui/secret-text";
 import { aiBlockOf } from "./ai-authored-detail";
 
 // Read-only rendering of a check's config, laid out like the edit form: short
 // values as label/value rows, lists such as expectedStatusCodes as chips, the js script in the same CodeMirror editor
 // (read-only), maps such as env as key/value rows, multi-line text as a code
 // block. The `ai` block of an AI-authored check is left to AIAuthoredDetail.
+//
+// A key the server lists in `redactedConfigKeys` (the heartbeat/email `token`,
+// the SMTP send-probe `delivery_to`) holds a credential sent in clear: its
+// value renders inside SecretText, so the session replay never records it
+// (spec 2026-11-16-02). The other rows stay as they are.
 
 type Scalar = string | number | boolean | null;
 
@@ -71,8 +77,27 @@ function Block({ name, children }: { name: string; children: React.ReactNode }) 
   );
 }
 
+/** Wraps a config value in SecretText when its key is a credential. */
+function MaybeSecret({
+  name,
+  secret,
+  children,
+}: {
+  name: string;
+  secret: boolean;
+  children: React.ReactNode;
+}) {
+  if (!secret) return <>{children}</>;
+  return (
+    <SecretText as="div" className="min-w-0" data-testid={`check-config-${name}-secret`}>
+      {children}
+    </SecretText>
+  );
+}
+
 export function CheckConfigView({ check }: { check: Check }) {
   const config = check.config ?? {};
+  const secretKeys = new Set(check.redactedConfigKeys ?? []);
   const skipAI = aiBlockOf(check) !== undefined;
   const entries = Object.entries(config).filter(([key]) => !(skipAI && key === "ai"));
   // The script leads, as in the edit form.
@@ -101,18 +126,20 @@ export function CheckConfigView({ check }: { check: Check }) {
           {rows.map(([key, value]) => (
             <div key={key} className="contents">
               <dt className="text-muted-foreground">{key}</dt>
-              <dd className="min-w-0">
-                {isScalarList(value) ? (
-                  <div className="flex flex-wrap gap-1" data-testid={`check-config-${key}-chips`}>
-                    {value.map((item, idx) => (
-                      <Badge key={idx} variant="secondary" className="font-mono">
-                        {String(item)}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : (
-                  <ScalarValue value={value as Scalar} />
-                )}
+              <dd className="min-w-0" data-testid={`check-config-${key}-value`}>
+                <MaybeSecret name={key} secret={secretKeys.has(key)}>
+                  {isScalarList(value) ? (
+                    <div className="flex flex-wrap gap-1" data-testid={`check-config-${key}-chips`}>
+                      {value.map((item, idx) => (
+                        <Badge key={idx} variant="secondary" className="font-mono">
+                          {String(item)}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <ScalarValue value={value as Scalar} />
+                  )}
+                </MaybeSecret>
               </dd>
             </div>
           ))}
@@ -123,26 +150,28 @@ export function CheckConfigView({ check }: { check: Check }) {
         .filter(([key]) => key !== "script")
         .map(([key, value]) => (
           <Block key={key} name={key}>
-            {typeof value === "string" ? (
-              <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-3 font-mono text-xs">
-                {value}
-              </pre>
-            ) : isScalarMap(value) ? (
-              <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-4 gap-y-1 rounded-md border bg-muted/40 p-3 font-mono text-xs">
-                {Object.entries(value).map(([innerKey, innerValue]) => (
-                  <div key={innerKey} className="contents">
-                    <dt className="text-muted-foreground">{innerKey}</dt>
-                    <dd className="min-w-0">
-                      <ScalarValue value={innerValue} />
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            ) : (
-              <pre className="max-h-80 overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs">
-                {JSON.stringify(value, null, 2)}
-              </pre>
-            )}
+            <MaybeSecret name={key} secret={secretKeys.has(key)}>
+              {typeof value === "string" ? (
+                <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-3 font-mono text-xs">
+                  {value}
+                </pre>
+              ) : isScalarMap(value) ? (
+                <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-4 gap-y-1 rounded-md border bg-muted/40 p-3 font-mono text-xs">
+                  {Object.entries(value).map(([innerKey, innerValue]) => (
+                    <div key={innerKey} className="contents">
+                      <dt className="text-muted-foreground">{innerKey}</dt>
+                      <dd className="min-w-0">
+                        <ScalarValue value={innerValue} />
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <pre className="max-h-80 overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs">
+                  {JSON.stringify(value, null, 2)}
+                </pre>
+              )}
+            </MaybeSecret>
           </Block>
         ))}
     </div>
