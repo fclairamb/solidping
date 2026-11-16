@@ -207,6 +207,9 @@ type fanOutStats struct {
 // (which we do not surface yet); Slack/Discord per-user DMs require a
 // per-org bot which is its own spec. Targeting Slack channels remains
 // available via the `connection` target type.
+// Which targets reach which member (user, all_admins for admins, schedule
+// membership) is mirrored by escalationcoverage.targetMatcher; keep them in sync.
+//
 // fanOutWithSeverity is the severity-aware fan-out. A non-nil filter
 // means "only deliver via channel-types in this set"; nil means
 // "deliver via the target's own channel as before". Skipped deliveries

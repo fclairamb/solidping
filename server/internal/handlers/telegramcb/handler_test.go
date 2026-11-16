@@ -628,3 +628,43 @@ func TestHandleStart_RefusesAZeroChatID(t *testing.T) {
 	r.NoError(err)
 	r.Empty(contacts)
 }
+
+func TestHandleStart_ConfirmationNotesWhenNoPolicyPagesUser(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupEnv(t)
+
+	rec := env.post(t, testWebhookSecret, startBody(env.mintToken(t)))
+	r.Equal(http.StatusOK, rec.Code)
+
+	msgs := env.sender.messages()
+	r.Len(msgs, 1)
+	r.Contains(msgs[0], telegram.BuildNotPagedNoteHTML())
+}
+
+func TestHandleStart_ConfirmationOmitsNoteWhenPolicyPagesUser(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupEnv(t)
+	ctx := context.Background()
+
+	pol := models.NewEscalationPolicy(env.org.UID, "default")
+	r.NoError(env.db.CreateEscalationPolicy(ctx, pol))
+
+	step := models.NewEscalationPolicyStep(pol.UID, 0, 0)
+	target := models.NewEscalationPolicyTarget(step.UID, models.EscalationTargetUser, &env.user.UID, 0)
+	r.NoError(env.db.ReplaceEscalationPolicySteps(ctx, pol.UID,
+		[]*models.EscalationPolicyStep{step}, map[int][]*models.EscalationPolicyTarget{0: {target}}))
+	r.NoError(env.db.UpdateOrganization(ctx, env.org.UID,
+		models.OrganizationUpdate{DefaultEscalationPolicyUID: &pol.UID}))
+
+	rec := env.post(t, testWebhookSecret, startBody(env.mintToken(t)))
+	r.Equal(http.StatusOK, rec.Code)
+
+	msgs := env.sender.messages()
+	r.Len(msgs, 1)
+	r.Contains(msgs[0], "tg-org")
+	r.NotContains(msgs[0], telegram.BuildNotPagedNoteHTML())
+}

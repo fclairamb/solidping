@@ -411,5 +411,9 @@
     "testFailed": "Error",
     "protocolVersion": "A2A {{version}}",
     "noSkills": "La tarjeta no lista ninguna habilidad."
+  },
+  "personalChannels": {
+    "text": "Los canales personales (Telegram, WhatsApp, SMS, mensajes directos) se configuran por usuario y se alcanzan mediante políticas de escalado.",
+    "link": "Configúrelos en Cuenta → Notificaciones"
   }
 }

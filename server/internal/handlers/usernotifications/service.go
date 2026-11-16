@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/escalationcoverage"
 	"github.com/fclairamb/solidping/server/internal/identitylink"
 	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
@@ -116,6 +117,9 @@ type ListRoutesResponse struct {
 	// DiscordMention is present only when the org actually has a Discord bot
 	// integration, for the same reason SlackMention is.
 	DiscordMention *DiscordMentionIdentity `json:"discordMention,omitempty"`
+	// Paging says whether an escalation policy ever pages the caller in this
+	// org. Personal methods only fire through one.
+	Paging *escalationcoverage.Paging `json:"paging,omitempty"`
 }
 
 // CreateContactRequest is the body for POST /notification-contacts.
@@ -265,6 +269,12 @@ func (s *Service) ListRoutes(
 	resp.SlackMention = s.buildSlackMention(ctx, user, orgUID)
 	resp.DiscordSuggestion = s.buildDiscordSuggestion(ctx, user, routes)
 	resp.DiscordMention = s.buildDiscordMention(ctx, user, orgUID)
+
+	if paging, pagingErr := escalationcoverage.Compute(ctx, s.db, orgUID, user.UID); pagingErr != nil {
+		slog.WarnContext(ctx, "escalation coverage failed", "orgUid", orgUID, "error", pagingErr)
+	} else {
+		resp.Paging = paging
+	}
 
 	return resp, nil
 }

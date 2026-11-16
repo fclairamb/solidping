@@ -157,6 +157,14 @@ func BuildLinkedHTML(orgSlug string) string {
 		"Send /stop at any time to disconnect."
 }
 
+// BuildNotPagedNoteHTML is appended to the link confirmation when no escalation
+// policy pages the member in that org: a connected chat only receives alerts
+// once a policy targets the member.
+func BuildNotPagedNoteHTML() string {
+	return "\n\n⚠️ No escalation policy pages you in this organization yet, " +
+		"so this chat will not receive alerts until an admin adds you to one."
+}
+
 // BuildTestHTML is the message behind the dashboard's "Test" button. It says
 // which way the delivery went, because that is the only thing the test proves:
 // the chat is connected and the bot can reach it.

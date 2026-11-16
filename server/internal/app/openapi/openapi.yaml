@@ -14975,6 +14975,25 @@ components:
             $ref: "#/components/schemas/NotificationRoute"
         slackSuggestion:
           $ref: "#/components/schemas/NotificationSlackSuggestion"
+        paging:
+          $ref: "#/components/schemas/NotificationPagingCoverage"
+
+    NotificationPagingCoverage:
+      type: object
+      description: >-
+        Whether an escalation policy ever pages the caller in this organization.
+        Personal methods (Telegram, WhatsApp, SMS, DMs) only fire through one.
+      required: [coveredBy, policyCount]
+      properties:
+        coveredBy:
+          type: string
+          enum: [org_default, some_checks, none]
+          description: >-
+            org_default when the org default policy pages the caller, some_checks
+            when only policies assigned to some checks or groups do, none otherwise.
+        policyCount:
+          type: integer
+          description: Number of live escalation policies in the organization.
 
     NotificationRoute:
       type: object
