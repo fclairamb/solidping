@@ -468,7 +468,10 @@ type serviceAuthContextKey struct{}
 //     id, skew, mismatch) is logged, never returned.
 //
 // Verifying the body hash means the raw bytes must be read here and handed
-// back to the handler, so the body is buffered and restored.
+// back to the handler, so the body is buffered and restored. The buffer is
+// capped (maxServiceSignedBodyBytes): this read happens BEFORE the signature
+// is verified, so an uncapped read would let any caller presenting a signature
+// header make the server allocate an arbitrarily large body in memory.
 //
 // Place this before ServiceTokenBypass and RequireAuth on the group.
 func (m *AuthMiddleware) ServiceSignature(
@@ -488,7 +491,7 @@ func (m *AuthMiddleware) ServiceSignature(
 				return m.writeServiceAuthDenied(writer)
 			}
 
-			body, err := readAndRestoreBody(req)
+			body, err := readAndRestoreBody(writer, req)
 			if err != nil {
 				slog.WarnContext(req.Context(), "service signature: cannot read request body",
 					"path", req.URL.Path, "error", err)
@@ -521,14 +524,25 @@ func (m *AuthMiddleware) writeServiceAuthDenied(writer http.ResponseWriter) erro
 	return m.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 }
 
+// maxServiceSignedBodyBytes caps the body ServiceSignature buffers before the
+// signature has been verified. Entitlements writes are small JSON documents;
+// 4 MiB is generous. The cap matters because the read is pre-authentication:
+// HasSignature only checks that the header is present, so without it any
+// anonymous caller could force an arbitrarily large allocation (memory
+// exhaustion). A body over the cap fails the read and collapses into the same
+// generic 401 as every other signature rejection.
+const maxServiceSignedBodyBytes = 4 << 20
+
 // readAndRestoreBody consumes the request body so it can be hashed, then puts
-// it back for the handler to decode.
-func readAndRestoreBody(req *http.Request) ([]byte, error) {
+// it back for the handler to decode. The read is bounded by
+// maxServiceSignedBodyBytes: it runs before authentication, so it must not
+// trust the caller's announced (or unannounced) body size.
+func readAndRestoreBody(writer http.ResponseWriter, req *http.Request) ([]byte, error) {
 	if req.Body == nil {
 		return nil, nil
 	}
 
-	body, err := io.ReadAll(req.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(writer, req.Body, maxServiceSignedBodyBytes))
 	_ = req.Body.Close()
 
 	if err != nil {
