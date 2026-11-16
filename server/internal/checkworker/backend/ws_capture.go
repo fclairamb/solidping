@@ -137,12 +137,16 @@ func (b *WSBackend) uploadAttachment(ctx context.Context, topic, contentType str
 		return err
 	}
 
-	signature, err := identity.Sign(http.MethodPost, attachmentsPath, timestamp, nonce)
+	// The signature binds the FULL request URI (topic query included) and the
+	// exact capture bytes, so neither can be rewritten in transit.
+	requestURI := attachmentsPath + "?topic=" + url.QueryEscape(topic)
+
+	signature, err := identity.SignV2(http.MethodPost, requestURI, timestamp, nonce, body)
 	if err != nil {
 		return fmt.Errorf("sign attachment upload: %w", err)
 	}
 
-	endpoint := httpBaseURL(b.serverURL) + attachmentsPath + "?topic=" + url.QueryEscape(topic)
+	endpoint := httpBaseURL(b.serverURL) + requestURI
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -156,6 +160,7 @@ func (b *WSBackend) uploadAttachment(ctx context.Context, topic, contentType str
 	req.Header.Set("X-Sp-Timestamp", timestamp)
 	req.Header.Set("X-Sp-Nonce", nonce)
 	req.Header.Set("X-Sp-Signature", signature)
+	req.Header.Set(agents.HeaderSignatureVersion, agents.SignatureVersionV2)
 
 	resp, err := b.httpClient.Do(req)
 	if err != nil {

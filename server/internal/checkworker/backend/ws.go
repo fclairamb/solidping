@@ -824,7 +824,7 @@ func (b *WSBackend) dialReconnect(ctx context.Context) error {
 		return err
 	}
 
-	signature, err := identity.Sign(http.MethodGet, wsPath, timestamp, nonce)
+	signature, err := identity.SignV2(http.MethodGet, wsPath, timestamp, nonce, nil)
 	if err != nil {
 		return fmt.Errorf("sign reconnect: %w", err)
 	}
@@ -834,6 +834,7 @@ func (b *WSBackend) dialReconnect(ctx context.Context) error {
 	headers.Set("X-Sp-Timestamp", timestamp)
 	headers.Set("X-Sp-Nonce", nonce)
 	headers.Set("X-Sp-Signature", signature)
+	headers.Set(agents.HeaderSignatureVersion, agents.SignatureVersionV2)
 	headers.Set(agents.HeaderBootID, b.bootID)
 
 	conn, err := b.dial(ctx, headers)

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync"
 	"testing"
 	"time"
@@ -349,15 +350,17 @@ func TestUploadRequestPostsTheCapture(t *testing.T) {
 		"the upload must declare the capture's REAL type, not a hardcoded image/png")
 	r.Equal("agent-1", uploads[0].agentUID)
 
-	// The upload is authenticated by the SAME Ed25519 challenge the WS
-	// reconnect uses — no second credential exists for an agent.
+	// The upload is authenticated by the SAME Ed25519 credential the WS
+	// reconnect uses — no second credential exists for an agent — with the v2
+	// challenge binding the topic query and the exact capture bytes.
 	sig, err := base64.StdEncoding.DecodeString(uploads[0].signature)
 	r.NoError(err)
 	r.NotNil(pub)
 	r.True(ed25519.Verify(pub,
-		agents.SignatureChallenge(http.MethodPost, "/api/v1/agent/attachments",
-			uploads[0].timestamp, uploads[0].nonce), sig),
-		"the upload must carry a valid agent signature")
+		agents.SignatureChallengeV2(http.MethodPost,
+			"/api/v1/agent/attachments?topic="+url.QueryEscape(uploads[0].topic),
+			uploads[0].timestamp, uploads[0].nonce, uploads[0].body), sig),
+		"the upload must carry a valid v2 agent signature over query and body")
 }
 
 // TestCaptureIsServedAtMostOnce is the "nothing is retried forever" negative,

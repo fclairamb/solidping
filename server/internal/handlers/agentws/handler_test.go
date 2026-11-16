@@ -1287,3 +1287,60 @@ func TestClaimCarriesNextEligibleHint(t *testing.T) {
 	r.GreaterOrEqual(nextIn, 5*time.Second-elapsed-100*time.Millisecond,
 		"the agent fetcher must receive the server's eligibility hint")
 }
+
+// TestReconnectWithV2Signature: the current challenge (v2 — full request URI
+// plus the empty-body hash) authenticates a reconnect, and a v2 signature
+// cannot be downgraded to the legacy path-only verifier by dropping the
+// version header. The legacy path itself stays covered by
+// TestReconnectWithSignedHeaders.
+func TestReconnectWithV2Signature(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	e.createCheck("web", []string{testRegion})
+
+	conn, keys, enrolled := e.enroll(e.mintToken(), "dc1-agent")
+	_ = conn.Close(websocket.StatusNormalClosure, "bye")
+
+	v2Headers := func(nonce string) http.Header {
+		timestamp := time.Now().UTC().Format(time.RFC3339)
+		signature, signErr := keys.SignV2(http.MethodGet, "/api/v1/agent/ws", timestamp, nonce, nil)
+		r.NoError(signErr)
+
+		headers := http.Header{}
+		headers.Set("X-Sp-Agent-Uid", enrolled.AgentUID)
+		headers.Set("X-Sp-Timestamp", timestamp)
+		headers.Set("X-Sp-Nonce", nonce)
+		headers.Set("X-Sp-Signature", signature)
+		headers.Set(agentcrypto.HeaderSignatureVersion, agentcrypto.SignatureVersionV2)
+
+		return headers
+	}
+
+	// Fresh v2 reconnect works.
+	conn2, _, err := e.dial(v2Headers("nonce-v2-1"))
+	r.NoError(err)
+	t.Cleanup(func() { _ = conn2.CloseNow() })
+
+	var hello agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn2, &hello))
+	r.Equal(agentcrypto.MsgTypeHello, hello.Type)
+	r.Equal(enrolled.AgentUID, hello.AgentUID)
+
+	// Dropping the version header presents the v2 signature to the legacy
+	// path-only verifier -> 401 (no downgrade).
+	downgraded := v2Headers("nonce-v2-2")
+	downgraded.Del(agentcrypto.HeaderSignatureVersion)
+	_, status, dialErr := e.dial(downgraded)
+	r.Error(dialErr)
+	r.Equal(http.StatusUnauthorized, status)
+
+	// Unknown version -> 401.
+	unknown := v2Headers("nonce-v2-3")
+	unknown.Set(agentcrypto.HeaderSignatureVersion, "99")
+	_, status, dialErr = e.dial(unknown)
+	r.Error(dialErr)
+	r.Equal(http.StatusUnauthorized, status)
+}
