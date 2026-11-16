@@ -35,6 +35,7 @@ var (
 	ErrSAMLIDPMetadata      = errors.New("failed to fetch/parse SAML IdP metadata")
 	ErrSAMLInvalidState     = errors.New("invalid or expired SAML relay state")
 	ErrSAMLAssertionInvalid = errors.New("SAML assertion validation failed")
+	ErrSAMLNameIDNamespace  = errors.New("SAML NameID does not come from the SAML assertion namespace")
 	ErrSAMLNoEmail          = errors.New("SAML assertion did not include a usable email address")
 	ErrSAMLNoSSOEndpoint    = errors.New("SAML IdP metadata has no HTTP-Redirect SSO endpoint")
 
@@ -518,9 +519,10 @@ func (s *SAMLService) ValidateRelayState(ctx context.Context, relayState string)
 // certificate), Conditions NotBefore/NotOnOrAfter, Audience restriction
 // (must name this SP), SubjectConfirmationData Recipient (must be our ACS
 // URL) and NotOnOrAfter, and InResponseTo matched against the request ID we
-// actually issued (replay/CSRF protection) — see SAMLService's doc comment
-// for why linking the resulting identity by email is safe once that
-// validation has passed.
+// actually issued (replay/CSRF protection). validateNameIDNamespace then
+// cross-checks the extracted NameID against the raw XML (GO-2026-6909) —
+// see SAMLService's doc comment for why linking the resulting identity by
+// email is safe once that validation has passed.
 func (s *SAMLService) HandleACS(
 	ctx context.Context, httpReq *http.Request, state *SAMLRelayState,
 ) (*SAMLResult, error) {
@@ -532,6 +534,14 @@ func (s *SAMLService) HandleACS(
 	assertion, err := spClient.ParseResponse(httpReq, []string{state.RequestID})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrSAMLAssertionInvalid, err)
+	}
+
+	// GO-2026-6909: crewjam/saml reads Subject.NameID namespace-blind, so a
+	// signature-valid assertion can carry a spoofed NameID. Cross-check it
+	// against the raw XML before anything downstream trusts it (provider link
+	// id, email fallback in mapAssertion).
+	if nsErr := validateNameIDNamespace(httpReq, assertion); nsErr != nil {
+		return nil, fmt.Errorf("%w: %w", ErrSAMLAssertionInvalid, nsErr)
 	}
 
 	userInfo := s.mapAssertion(assertion)
@@ -560,6 +570,80 @@ func (s *SAMLService) HandleACS(
 	}
 
 	return login.Outcome(org.Slug, user.UID), nil
+}
+
+// rawSAMLResponse is a namespace-aware view of the POSTed SAMLResponse, used
+// ONLY to cross-check the NameID crewjam/saml extracted. The tags spell out
+// the SAML 2.0 assertion namespace (urn:oasis:names:tc:SAML:2.0:assertion) so
+// encoding/xml matches elements by namespace URI and local name — never by
+// prefix or bare local name. It deliberately models nothing else: signature
+// and conditions validation stay with ParseResponse.
+type rawSAMLResponse struct {
+	Assertions []struct {
+		Subject struct {
+			NameID struct {
+				Value string `xml:",chardata"`
+			} `xml:"urn:oasis:names:tc:SAML:2.0:assertion NameID"`
+		} `xml:"urn:oasis:names:tc:SAML:2.0:assertion Subject"`
+	} `xml:"urn:oasis:names:tc:SAML:2.0:assertion Assertion"`
+	// Presence marker: an encrypted assertion's plaintext is not inspectable
+	// here, so the cross-check is skipped for it (see validateNameIDNamespace).
+	EncryptedAssertions []struct{} `xml:"urn:oasis:names:tc:SAML:2.0:assertion EncryptedAssertion"`
+}
+
+// validateNameIDNamespace guards against GO-2026-6909: crewjam/saml's Subject
+// uses the bare XML tag xml:"NameID", which matches a <NameID> element in ANY
+// namespace. A signed assertion that omits <saml:NameID> but carries a
+// foreign-namespace <NameID> inside <saml:Subject> populates
+// Subject.NameID.Value from the foreign element — and mapAssertion trusts
+// that value (provider link id, email fallback), which would let a spoofed
+// NameID link to or create another account.
+//
+// The check re-parses the raw response namespace-aware and requires the
+// extracted value to equal a <NameID> in the SAML assertion namespace:
+//
+//   - visible plaintext assertion, values differ (including "no saml:NameID
+//     at all" vs a non-empty extracted value) → refuse, fail closed;
+//   - encrypted assertion, or no inspectable response (absent, undecodable,
+//     unparseable) → skip: ParseResponse already validated the signature and
+//     conditions, and this guard only adds the namespace cross-check. It must
+//     not invent new rejection reasons for responses it cannot see into.
+//
+// It runs AFTER ParseResponse, so the form is already parsed and the
+// signature/conditions/audience checks have passed.
+func validateNameIDNamespace(httpReq *http.Request, assertion *saml.Assertion) error {
+	if assertion == nil || assertion.Subject == nil || assertion.Subject.NameID == nil {
+		return nil
+	}
+
+	raw := httpReq.PostFormValue("SAMLResponse")
+	if raw == "" {
+		return nil
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		//nolint:nilerr // fail-open by design: ParseResponse is the authority; this guard only cross-checks
+		return nil
+	}
+
+	var doc rawSAMLResponse
+	if err := xml.Unmarshal(decoded, &doc); err != nil {
+		//nolint:nilerr // fail-open by design: same contract as the base64 branch above
+		return nil
+	}
+
+	if len(doc.EncryptedAssertions) > 0 {
+		return nil
+	}
+
+	for i := range doc.Assertions {
+		if doc.Assertions[i].Subject.NameID.Value == assertion.Subject.NameID.Value {
+			return nil
+		}
+	}
+
+	return ErrSAMLNameIDNamespace
 }
 
 // mapAssertion extracts email/name/NameID from a validated assertion, using
@@ -672,8 +756,9 @@ func (s *SAMLService) findOrCreateUser(ctx context.Context, userInfo *samlUserIn
 
 	// Create new user if not found. The email is trusted here because the
 	// assertion has already passed full signature/Conditions/Audience
-	// validation against an admin-configured IdP — see SAMLService's doc
-	// comment for the full rationale.
+	// validation against an admin-configured IdP, and the NameID it may come
+	// from has passed the namespace cross-check (validateNameIDNamespace,
+	// GO-2026-6909) — see SAMLService's doc comment for the full rationale.
 	if user == nil {
 		created = true
 		user = models.NewUser(userInfo.Email)

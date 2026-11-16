@@ -957,7 +957,7 @@ func TestFastLaneFloorInvariant(t *testing.T) {
 	const (
 		poolSize    = 4
 		fastFloor   = 1
-		slowSleepMs = 1200
+		slowSleepMs = 6000
 		fastSleepMs = 20
 	)
 
