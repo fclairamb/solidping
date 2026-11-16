@@ -21,6 +21,8 @@ The JS surface also lacks three actions Pingdom "script" checks use: check/unche
    - `label=`: the form control associated with a `<label>` (via `for=`, nesting, or `aria-label` / `aria-labelledby`), also `placeholder` as last resort;
    - `name=`: `[name="…"]`;
    - `auto=`: try CSS (if it parses), then `name=`, then `label=`, then `text=`, first strategy that yields a match wins. Meant for imports, documented as such.
+   - **Chrome DevTools Recorder syntax** too (needed by spec `chrome-recorder-import` of this PR), so imported selectors are kept verbatim: `aria/<name>` (accessible name, optionally `aria/<name>[role="button"]`: computed with the CDP `Accessibility` domain or `DOM.queryAXTree`, not re-implemented in JS), `xpath/<expr>` (`document.evaluate`), `pierce/<css>` (CSS that descends into open shadow roots), `text/<text>` (same as `text=`).
+   - **A list of selectors as fallbacks**: every selector-taking method also accepts an array, e.g. `page.click(["aria/Se connecter", "#login > button", "xpath///button[2]"])`. Tried in order; the first entry that resolves to exactly one visible element wins. An entry that matches several elements is skipped (not an error) when a later one is unique; the error lists every entry and its match count when none qualifies. This mirrors the Recorder's own replay semantics.
 2. **Resolution**: a JS function evaluated in the page finds the matching elements, keeps only **visible** ones, requires **exactly one**, tags it with a per-call attribute (`data-sp-target="<nonce>"`), and returns the CSS selector `[data-sp-target="<nonce>"]`; the existing `chromedp.ByQuery` actions then run unchanged. The attribute is removed after the action (best effort).
    - Text matching: whitespace-normalised, case-insensitive; exact match first, then "contains" only if exact found nothing.
    - 0 matches: error `no element matches text="…"`; >1: error `text="…" matches 3 elements, make it more specific`. Never click the first of several.
@@ -36,6 +38,8 @@ The JS surface also lacks three actions Pingdom "script" checks use: check/unche
 - `checkbrowser` (E2E-tagged, real Chrome, like the existing session tests): each prefix on a fixture page; `text=` exact beats contains; hidden duplicate ignored; ambiguous match → error naming the count; no match → error; `auto=` order; unprefixed `"h1"` still behaves as CSS (regression for the inline `<style>` case, `session.go:520`).
 - `checkjs/browser_test.go` (fake session): new bindings pass selector/option through; `check` on an already-checked box does not click.
 - `select` on a React-controlled `<select>` fixture fires `change`.
+- `aria/` with and without `[role=…]`; `xpath/`; `pierce/` reaching a button inside an open shadow root.
+- Selector array: first entry stale (0 match) → second used; first ambiguous, second unique → second used; all fail → one error listing each entry's count.
 
 ## To verify
 - Where the JS browser API is documented for users (docs site vs `samples.go`), so the new syntax lands next to the existing one.
