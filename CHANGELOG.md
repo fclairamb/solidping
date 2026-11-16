@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.50.2](https://github.com/fclairamb/solidping/compare/v0.50.1...v0.50.2) (2026-11-15)
+
+
+### Bug Fixes
+
+* **incidents:** incidents that recover on their own now show up in the insights, and disabled checks no longer weigh on a status page's overall status ([#893](https://github.com/fclairamb/solidping/issues/893)) ([450955d](https://github.com/fclairamb/solidping/commit/450955d69610f9e65107fd581d4f8578a2b30a97))
+* **deps:** update the OpenTelemetry log SDK to v1.47.0 ([#889](https://github.com/fclairamb/solidping/issues/889)) ([55775c6](https://github.com/fclairamb/solidping/commit/55775c6101c010df0702765e9bd14354ba9487c1))
+
 ## [0.50.1](https://github.com/fclairamb/solidping/compare/v0.50.0...v0.50.1) (2026-11-15)
 
 
