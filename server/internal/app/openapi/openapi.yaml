@@ -16029,7 +16029,7 @@ components:
           maximum: 90
           description: >-
             Deprecated, use historyPeriod. Only read when historyPeriod is
-            absent; a value outside 1..90 is `400 VALIDATION_ERROR`.
+            absent; a value outside 1..90 is `422 VALIDATION_ERROR`.
         historyPeriod:
           type: string
         language:
@@ -16136,7 +16136,7 @@ components:
           maximum: 90
           description: >-
             Deprecated, use historyPeriod. Only read when historyPeriod is
-            absent; a value outside 1..90 is `400 VALIDATION_ERROR`.
+            absent; a value outside 1..90 is `422 VALIDATION_ERROR`.
         historyPeriod:
           type: string
         language:

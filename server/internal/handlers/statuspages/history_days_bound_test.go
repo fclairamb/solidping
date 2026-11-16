@@ -193,11 +193,11 @@ func TestClampHistoryDays(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	r.Equal(1, clampHistoryDays(-5))
-	r.Equal(1, clampHistoryDays(0))
-	r.Equal(45, clampHistoryDays(45))
-	r.Equal(90, clampHistoryDays(91))
-	r.Equal(90, clampHistoryDays(2000000000))
+	r.Equal(1, ClampHistoryDays(-5))
+	r.Equal(1, ClampHistoryDays(0))
+	r.Equal(45, ClampHistoryDays(45))
+	r.Equal(90, ClampHistoryDays(91))
+	r.Equal(90, ClampHistoryDays(2000000000))
 }
 
 func TestValidateHistoryDays(t *testing.T) {

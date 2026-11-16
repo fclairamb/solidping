@@ -386,11 +386,11 @@ func validateHistoryDays(period *string, days *int) error {
 	return nil
 }
 
-// clampHistoryDays bounds a stored history_days to [MinHistoryDays,
+// ClampHistoryDays bounds a stored history_days to [MinHistoryDays,
 // MaxHistoryDays]. Defense in depth for rows written before the write path
 // validated the value: every read path that sizes a window, a bucket count or
 // a slice from the column goes through it.
-func clampHistoryDays(days int) int {
+func ClampHistoryDays(days int) int {
 	return min(max(days, MinHistoryDays), MaxHistoryDays)
 }
 
@@ -2762,7 +2762,7 @@ func (s *Service) loadRecentUpdates(
 
 	// days == 0 means the page's whole history window; otherwise it can only
 	// narrow it.
-	window := clampHistoryDays(page.HistoryDays)
+	window := ClampHistoryDays(page.HistoryDays)
 	if days > 0 && days < window {
 		window = days
 	}
@@ -3147,7 +3147,7 @@ func (s *Service) enrichWithAvailability(
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	// Clamped, never the raw column: a stored value near the int32 maximum
 	// used to size the allocation in buildAvailabilityData (spec 2026-11-16-01).
-	historyDays := clampHistoryDays(page.HistoryDays)
+	historyDays := ClampHistoryDays(page.HistoryDays)
 	historyStart := todayStart.AddDate(0, 0, -(historyDays - 1))
 
 	hints := s.uptimebarHints(ctx)
@@ -4125,7 +4125,7 @@ func buildAvailabilityData(
 	upThreshold, degradedThreshold float64,
 ) *ResourceAvailabilityData {
 	data := &ResourceAvailabilityData{}
-	historyDays = clampHistoryDays(historyDays)
+	historyDays = ClampHistoryDays(historyDays)
 
 	if showAvailability {
 		daily := make([]AvailabilityPoint, 0, historyDays)
