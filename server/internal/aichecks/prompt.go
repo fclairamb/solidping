@@ -35,6 +35,9 @@ Globals:
   page.goto(url) -> { ok, url, title, duration, error? }
   page.waitFor(selector, { timeout? }) -> { ok, duration, error? }
   page.click(selector) / page.fill(selector, text) / page.press(selector, key) -> { ok, error? }
+  page.check(selector) / page.uncheck(selector) / page.select(selector, option) / page.submit(selector)
+    -> { ok, error? }
+  (selector: CSS, or prefixed text=, label=, name=, auto=)
   page.text(selector) -> { ok, text, error? }
   click, fill, press and text wait for their selector until the whole run budget is
   spent: call page.waitFor(selector, { timeout: "5s" }) first, so a missing element

@@ -102,6 +102,34 @@ func (f *fakeSession) Press(_ context.Context, sel, key string) error {
 	return f.pressErr
 }
 
+func (f *fakeSession) Check(_ context.Context, sel string) error {
+	f.calls.Add(1)
+	f.pressed = append(f.pressed, "check:"+sel)
+
+	return nil
+}
+
+func (f *fakeSession) Uncheck(_ context.Context, sel string) error {
+	f.calls.Add(1)
+	f.pressed = append(f.pressed, "uncheck:"+sel)
+
+	return nil
+}
+
+func (f *fakeSession) Select(_ context.Context, sel, option string) error {
+	f.calls.Add(1)
+	f.pressed = append(f.pressed, "select:"+sel+"="+option)
+
+	return nil
+}
+
+func (f *fakeSession) Submit(_ context.Context, sel string) error {
+	f.calls.Add(1)
+	f.pressed = append(f.pressed, "submit:"+sel)
+
+	return nil
+}
+
 func (f *fakeSession) Text(_ context.Context, _ string) (string, error) {
 	f.calls.Add(1)
 
@@ -972,4 +1000,30 @@ func TestFailedScreenshotReportsWhy(t *testing.T) {
 	if plain.Diagnostics != nil {
 		require.Empty(t, plain.Diagnostics.ScreenshotError)
 	}
+}
+
+// TestBrowserNewBindingsPassSelectorsThrough: check/uncheck/select/submit and
+// prefixed selectors reach the session untouched.
+//
+//nolint:paralleltest // mutates the package-level OpenBrowser seam
+func TestBrowserNewBindingsPassSelectorsThrough(t *testing.T) {
+	r := require.New(t)
+
+	session := &fakeSession{}
+	installFakeBrowser(t, session)
+
+	result := runBrowserScript(t, `
+var page = browser.open();
+var a = page.check("label=Remember me");
+var b = page.uncheck("name=news");
+var c = page.select("label=Country", "France");
+var d = page.submit("text=Sign in");
+return { status: a.ok && b.ok && c.ok && d.ok ? "up" : "down" };
+`, 5*time.Second)
+
+	r.Equal("up", result.Status.String(), "output: %#v", result.Output)
+	r.Equal([]string{
+		"check:label=Remember me", "uncheck:name=news",
+		"select:label=Country=France", "submit:text=Sign in",
+	}, session.pressed)
 }

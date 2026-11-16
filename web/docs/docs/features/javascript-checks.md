@@ -349,12 +349,35 @@ supported.
 | `page.click(selector)` | `{ ok, error? }` | Clicks the first match, scrolling it into view. |
 | `page.fill(selector, text)` | `{ ok, error? }` | Clears the field and **sends keys**, so a React/Vue controlled input sees real input events. |
 | `page.press(selector, key)` | `{ ok, error? }` | Sends one key — `"Enter"`, `"Tab"`, `"Escape"`, an arrow, or a single character. |
+| `page.check(selector)` / `page.uncheck(selector)` | `{ ok, error? }` | Puts a checkbox/radio in the requested state: clicks only if the state differs, then asserts it. |
+| `page.select(selector, option)` | `{ ok, error? }` | Chooses an option of a `<select>`, matched by value then by visible text, and fires `input` + `change`. |
+| `page.submit(selector)` | `{ ok, error? }` | Calls `requestSubmit()` on the form (or the form owning the element), so validation and submit handlers run. |
 | `page.text(selector)` | `{ ok, text, error? }` | Visible text of the first match, capped at 1 MB. |
 | `page.evaluate(expression)` | `{ ok, value, error? }` | Runs the expression **inside the page** (real DOM, page origin) and returns its JSON-serialisable value; a returned Promise is awaited. A throw inside the page is `{ ok: false, error }`. Capped at 1 MB. |
 | `page.url()` | `string` | Current top-frame URL — how you assert you landed on `/dashboard`. |
 | `page.cookies()` | `[{ name, value, domain, path, secure, httpOnly, expires }]` | The page's cookies, so a browser-established session can be handed to `http.*` — see the example below. |
 | `page.screenshot()` | `{ ok, error? }` | Attaches a capture of the page to the result — see below. |
 | `page.close()` | `undefined` | Disposes the page and releases the slot. Called for you when the script ends; calling it twice is a no-op. |
+
+**Selectors.** Every `selector` argument accepts a Playwright-style prefix:
+
+| Prefix | Meaning |
+|---|---|
+| none, or `css=` | CSS selector (`"button"` is the CSS tag) |
+| `text=` | Visible text of a button, link, `[role=button]`, `input[type=submit\|button]` (its value), then any element's own text |
+| `label=` | The form control of a `<label>` (`for=`, nesting, `aria-label`, `aria-labelledby`), `placeholder` as a last resort |
+| `name=` | `[name="..."]` |
+| `auto=` | Tries CSS, then `name=`, `label=`, `text=`; first strategy with a match wins. Meant for imports |
+
+Matching ignores case and extra whitespace; an exact match wins over a "contains" match. Only visible elements count, and exactly one must match: no match is an error, and so is an ambiguous one (`text="Save" matches 3 elements, make it more specific`).
+
+```js
+var page = browser.open();
+page.goto(env.BASE_URL + "/login");
+page.fill("label=Email", env.USERNAME);
+page.fill("label=Password", secrets.PASSWORD);
+page.click("text=Sign in");
+```
 
 **Target failures return, infrastructure failures throw.** A selector that
 never appeared, a page that threw, a navigation that failed — all of them come

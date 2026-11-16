@@ -62,6 +62,10 @@ type BrowserSession interface {
 	Click(ctx context.Context, sel string) error
 	Fill(ctx context.Context, sel, text string) error
 	Press(ctx context.Context, sel, key string) error
+	Check(ctx context.Context, sel string) error
+	Uncheck(ctx context.Context, sel string) error
+	Select(ctx context.Context, sel, option string) error
+	Submit(ctx context.Context, sel string) error
 	Text(ctx context.Context, sel string) (string, error)
 	Evaluate(ctx context.Context, expr string) (any, error)
 	URL(ctx context.Context) (string, error)
@@ -235,6 +239,28 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
 			return nil, session.Press(r.execCtx, selector, key)
+		})
+	})
+
+	for name, action := range map[string]func(BrowserSession, context.Context, string) error{
+		"check":   BrowserSession.Check,
+		"uncheck": BrowserSession.Uncheck,
+		"submit":  BrowserSession.Submit,
+	} {
+		_ = page.Set(name, func(call goja.FunctionCall) goja.Value {
+			selector := call.Argument(0).String()
+
+			return r.pageAction(func(session BrowserSession) (map[string]any, error) {
+				return nil, action(session, r.execCtx, selector)
+			})
+		})
+	}
+
+	_ = page.Set("select", func(call goja.FunctionCall) goja.Value {
+		selector, option := call.Argument(0).String(), call.Argument(1).String()
+
+		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
+			return nil, session.Select(r.execCtx, selector, option)
 		})
 	})
 
