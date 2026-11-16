@@ -253,7 +253,7 @@ function TelegramConnect({
   // Discord link: the current password when the account has one, otherwise a
   // recent sign-in.
   const loginEnabled = useTelegramLoginEnabled();
-  const { data: me } = useQuery({
+  const { data: me, refetch: refetchMe } = useQuery({
     queryKey: ["telegramLinkMe"],
     queryFn: () => apiFetch<{ hasPassword: boolean }>("/api/v1/auth/me"),
     enabled: loginEnabled,
@@ -310,7 +310,11 @@ function TelegramConnect({
     setError(null);
     setSignInRequired(false);
 
-    if (loginEnabled && me?.hasPassword) {
+    // Wait for /auth/me when it has not answered yet, so the password is asked
+    // for before anything is requested rather than after a refused attempt.
+    const profile = loginEnabled && !me ? (await refetchMe()).data : me;
+
+    if (loginEnabled && profile?.hasPassword) {
       setShowReauth(true);
       return;
     }
