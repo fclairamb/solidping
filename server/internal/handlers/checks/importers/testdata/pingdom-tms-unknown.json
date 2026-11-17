@@ -1,0 +1,5 @@
+{"id": 103, "name": "Weird flow\nwith newline", "active": true, "interval": 5, "type": "script",
+ "steps": [
+  {"fn": "go_to", "args": {"url": "javascript:alert(1)"}},
+  {"fn": "teleport\n}); evil(); //", "args": {}}
+ ]}

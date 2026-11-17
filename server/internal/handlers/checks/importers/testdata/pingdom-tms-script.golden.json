@@ -1,0 +1,41 @@
+{
+  "document": {
+    "version": 1,
+    "exportedAt": "",
+    "organization": "pingdom",
+    "checks": [
+      {
+        "name": "Acme signup flow",
+        "slug": "acme-signup-flow",
+        "type": "js",
+        "config": {
+          "script": "// Generated from Pingdom transaction check \"Acme signup flow\" (script).\nvar page = browser.open();\nfunction must(r, what) { if (!r.ok) { throw new Error(what + \": \" + r.error); } }\nfunction exists(sel) {\n  var r = page.text(sel);\n  return r.ok || /matches \\d+ elements/.test(r.error || \"\");\n}\nfunction waitText(what, sel, value, isRegex, want, seconds) {\n  var tries = Math.max(1, Math.ceil(seconds * 2));\n  var has = false;\n  for (var i = 0; i \u003c tries; i++) {\n    var t = page.text(sel);\n    has = t.ok \u0026\u0026 (isRegex ? new RegExp(value).test(t.text) : t.text.indexOf(value) \u003e= 0);\n    if (has === want) { return; }\n    if (i \u003c tries - 1) { sleep(500); }\n  }\n  throw new Error(what + \": \" + (want ? \"text not found\" : \"text still present\") + \" in \" + sel);\n}\nfunction urlIs(what, expected) {\n  var got = page.url();\n  if (got.replace(/\\/+$/, \"\") !== expected.replace(/\\/+$/, \"\")) {\n    throw new Error(what + \": url is \" + got + \", expected \" + expected);\n  }\n}\nvar FIND = \"function(q) {\\n  var n = function(s) { return (s || \\\"\\\").replace(/\\\\s+/g, \\\" \\\").trim().toLowerCase(); };\\n  try { var e = document.querySelector(q); if (e) { return e; } } catch (x) {}\\n  var byName = document.querySelector('[name=\\\"' + q.replace(/\\\"/g, '\\\\\\\\\\\"') + '\\\"]');\\n  if (byName) { return byName; }\\n  var labels = document.querySelectorAll(\\\"label\\\");\\n  for (var i = 0; i \u003c labels.length; i++) {\\n    if (n(labels[i].textContent) === n(q) \u0026\u0026 labels[i].control) { return labels[i].control; }\\n  }\\n  return null;\\n}\";\nfunction inPage(body, q, v) {\n  var call = \"})(\" + FIND + \",\" + JSON.stringify(q) + \",\" + JSON.stringify(v) + \")\";\n  var r = page.evaluate(\"(function(find, q, v) {\" + body + call);\n  if (!r.ok) { throw new Error(\"page evaluation failed: \" + r.error); }\n  return r.value;\n}\nfunction pickedOption(opt, want) {\n  if (!opt) { return false; }\n  var n = function(s) { return String(s).replace(/\\s+/g, \" \").trim().toLowerCase(); };\n  return n(opt[0]) === n(want) || opt[1] === want;\n}\nmust(page.basicAuth(secrets.PINGDOM_BASIC_USER, secrets.PINGDOM_BASIC_PASSWORD), \"basic_auth\");\nstep(\"Go to \\\"acme.example/start\\\"\", function () {\n  must(page.goto(\"https://acme.example/start\"), \"step 2: go_to https://acme.example/start\");\n});\nstep(\"Click \\\"START FREE TRIAL\\\"\", function () {\n  must(page.click(\"auto=START FREE TRIAL\"), \"step 3: click START FREE TRIAL\");\n});\nstep(\"Fill \\\"Email\\\"\", function () {\n  must(page.fill(\"auto=Email\", \"a\\\"b@acme.example\"), \"step 4: fill Email\");\n});\nstep(\"Check \\\"terms\\\"\", function () {\n  must(page.check(\"auto=terms\"), \"step 5: check terms\");\n});\nstep(\"Uncheck \\\"newsletter\\\"\", function () {\n  must(page.uncheck(\"auto=newsletter\"), \"step 6: uncheck newsletter\");\n});\nstep(\"Select radio \\\"plan\\\"\", function () {\n  must(page.check(\"auto=plan\"), \"step 7: select_radio plan\");\n});\nstep(\"Select \\\"country\\\"\", function () {\n  must(page.select(\"auto=country\", \"France\"), \"step 8: select country\");\n});\nstep(\"Submit \\\"signup\\\"\", function () {\n  must(page.submit(\"auto=signup\"), \"step 9: submit signup\");\n});\nstep(\"Sleep\", function () {\n  sleep(500);\n});\nstep(\"Wait for element \\\"#welcome\\\"\", function () {\n  must(page.waitFor(\"auto=#welcome\"), \"step 11: wait_for_element #welcome\");\n});\nstep(\"Wait for contains \\\"#welcome\\\"\", function () {\n  waitText(\"step 12: wait_for_contains #welcome\", \"auto=#welcome\", \"Welcome\", false, true, 10);\n});\nstep(\"Url \\\"https://acme.example/welcome/\\\"\", function () {\n  urlIs(\"step 13: url https://acme.example/welcome/\", \"https://acme.example/welcome/\");\n});\nstep(\"Exists \\\"#welcome\\\"\", function () {\n  if (!exists(\"auto=#welcome\")) { throw new Error(\"step 14: exists: element #welcome not found\"); }\n});\nstep(\"Not exists \\\"#error\\\"\", function () {\n  if (exists(\"auto=#error\")) { throw new Error(\"step 15: not_exists: element #error still present\"); }\n});\nstep(\"Contains \\\"body\\\"\", function () {\n  waitText(\"step 16: contains body\", \"auto=body\", \"Thanks\", false, true, 0);\n});\nstep(\"Not contains \\\"body\\\"\", function () {\n  waitText(\"step 17: not_contains body\", \"auto=body\", \"Oops\", false, false, 0);\n});\nstep(\"Field contains \\\"Email\\\"\", function () {\n  if ((String(inPage(\"var e = find(q); return e ? String(e.value) : \\\"\\\";\", \"Email\", null)).indexOf(\"acme\") \u003e= 0) !== true) { throw new Error(\"step 18: field_contains Email value check failed\"); }\n});\nstep(\"Field not contains \\\"Email\\\"\", function () {\n  if ((String(inPage(\"var e = find(q); return e ? String(e.value) : \\\"\\\";\", \"Email\", null)).indexOf(\"nope\") \u003e= 0) !== false) { throw new Error(\"step 19: field_not_contains Email value check failed\"); }\n});\nstep(\"Is checked \\\"terms\\\"\", function () {\n  if (inPage(\"var e = find(q); return e ? !!e.checked : null;\", \"terms\", null) !== true) { throw new Error(\"step 20: is_checked terms checked state mismatch\"); }\n});\nstep(\"Is not checked \\\"newsletter\\\"\", function () {\n  if (inPage(\"var e = find(q); return e ? !!e.checked : null;\", \"newsletter\", null) !== false) { throw new Error(\"step 21: is_not_checked newsletter checked state mismatch\"); }\n});\nstep(\"Radio selected \\\"plan\\\"\", function () {\n  if (inPage(\"return !!document.querySelector('input[type=radio][name=\\\"' + q.replace(/\\\"/g, '\\\\\\\\\\\"') + '\\\"]:checked');\", \"plan\", null) !== true) { throw new Error(\"step 22: radio_selected plan is not selected\"); }\n});\nstep(\"Dropdown selected \\\"country\\\"\", function () {\n  if (pickedOption(inPage(\"var e = find(q); if (!e || !e.options || e.selectedIndex \u003c 0) { return null; } var o = e.options[e.selectedIndex]; return [o.text, o.value];\", \"country\", null), \"France\") !== true) { throw new Error(\"step 23: dropdown_selected country option check failed\"); }\n});\nstep(\"Dropdown not selected \\\"country\\\"\", function () {\n  if (pickedOption(inPage(\"var e = find(q); if (!e || !e.options || e.selectedIndex \u003c 0) { return null; } var o = e.options[e.selectedIndex]; return [o.text, o.value];\", \"country\", null), \"Spain\") !== false) { throw new Error(\"step 24: dropdown_not_selected country option check failed\"); }\n});\nreturn { status: \"up\", output: { url: page.url() } };\n",
+          "secrets": {
+            "PINGDOM_BASIC_PASSWORD": "s3cr3t-pw",
+            "PINGDOM_BASIC_USER": "stagingUser"
+          }
+        },
+        "labels": {
+          "signup": "true",
+          "tms": "true"
+        },
+        "enabled": true,
+        "period": "10m",
+        "confirmationPeriodSeconds": 1200,
+        "degradedEnabled": false
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "item": "Acme signup flow",
+      "field": "steps",
+      "message": "step 7 (select_radio) resolves the radio \"plan\" with auto=; if several radios share that name the step fails as ambiguous — use label= instead"
+    },
+    {
+      "item": "Acme signup flow",
+      "field": "region",
+      "message": "region \"us-west\" has no SolidPing counterpart — pick regions on the check"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "title": "Acme login",
+  "steps": [
+    {"type": "setViewport", "width": 1280, "height": 720, "deviceScaleFactor": 1, "isMobile": false, "hasTouch": false, "isLandscape": false},
+    {"type": "navigate", "url": "https://app.acme.example/login", "assertedEvents": [{"type": "navigation", "url": "https://app.acme.example/login", "title": "Sign in"}]},
+    {"type": "click", "target": "main", "selectors": [["aria/Email"], ["#email"], ["xpath///*[@id=\"email\"]"], ["pierce/#email"]], "offsetY": 12, "offsetX": 40},
+    {"type": "change", "value": "ops@acme.example", "selectors": [["aria/Email"], ["#email"]], "target": "main"},
+    {"type": "click", "selectors": [["aria/Password"], ["#password"]], "offsetY": 10, "offsetX": 30},
+    {"type": "change", "value": "s3cret-Passw0rd!", "selectors": [["aria/Password"], ["#password"]], "target": "main"},
+    {"type": "keyDown", "target": "main", "key": "Enter"},
+    {"type": "keyUp", "key": "Enter", "target": "main", "assertedEvents": [{"type": "navigation", "url": "https://app.acme.example/dashboard", "title": "Dashboard"}]},
+    {"type": "waitForElement", "selectors": [["aria/Welcome back"], ["h1.welcome"]], "timeout": 8000},
+    {"type": "hover", "selectors": [["#menu"]]}
+  ]
+}

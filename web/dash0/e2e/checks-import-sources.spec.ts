@@ -34,6 +34,16 @@ checks:
       url: https://e2e-yaml.example.com/health
 `;
 
+const RECORDER_FLOW = JSON.stringify({
+  title: "e2e recorder flow",
+  steps: [
+    { type: "navigate", url: "https://e2e-recorder.example.com/login" },
+    { type: "change", value: "ops@e2e.example", selectors: [["aria/Email"], ["#email"]] },
+    { type: "change", value: "hunter2-e2e", selectors: [["aria/Password"], ["#password"]] },
+    { type: "click", selectors: [["aria/Sign in"], ["#submit"]] },
+  ],
+});
+
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
     data: { org: "test", email: "test@test.com", password: "test" },
@@ -188,5 +198,40 @@ test.describe("Checks import sources", () => {
 
     await expect(page.getByTestId("import-preview")).toBeVisible();
     expect(JSON.parse(sentBody)).toEqual({ token: "pd_not_a_real_token" });
+  });
+
+  test("imports a Chrome Recorder export as a JS browser check", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    await deleteCheckBySlug(page, token, "e2e-recorder-flow");
+
+    await page.goto("orgs/test/checks");
+    await page.getByTestId("checks-more-actions").click();
+    await page.getByTestId("import-button").click();
+    await page.getByTestId("import-source").click();
+    await page.getByTestId("import-source-chrome-recorder").click();
+
+    await page.getByTestId("import-payload").fill(RECORDER_FLOW);
+    await page.getByTestId("import-preview-button").click();
+
+    await expect(page.getByTestId("import-preview")).toBeVisible();
+    await expect(page.getByTestId("import-preview-created")).toHaveText("1");
+    // The password is moved to the encrypted secrets, and the user is told.
+    await expect(page.getByTestId("import-preview-warnings")).toContainText("RECORDER_SECRET_1");
+
+    await page.getByTestId("import-confirm-button").click();
+    await expect(
+      page.locator('[data-testid="check-row-name"][data-check-name="e2e recorder flow"]').first(),
+    ).toBeVisible({ timeout: 10000 });
+
+    const resp = await page.request.get(`${API_BASE}/api/v1/orgs/test/checks/e2e-recorder-flow`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(JSON.stringify(await resp.json())).not.toContain("hunter2-e2e");
+
+    await deleteCheckBySlug(page, token, "e2e-recorder-flow");
   });
 });

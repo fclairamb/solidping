@@ -33,6 +33,10 @@ type RunResult struct {
 	DurationMs int64          `json:"durationMs"`
 	Output     map[string]any `json:"output,omitempty"`
 	Metrics    map[string]any `json:"metrics,omitempty"`
+
+	// Screenshot is the capture the run kept, if any. Not serialized: the
+	// model must not receive image bytes; the test-run endpoint serves it.
+	Screenshot *checkerdef.Screenshot `json:"-"`
 }
 
 // Up reports a passing run.
@@ -78,6 +82,24 @@ func (r *Runner) run(
 	ctx context.Context, script string, env, secrets map[string]string, allowed []string, held bool,
 	timeout time.Duration,
 ) (*RunResult, error) {
+	return r.runScript(ctx, script, env, secrets, allowed, held, timeout, false)
+}
+
+// Test runs the script of a check being edited, once, as its author would
+// have it run: the author's own secrets are not held to a host allowlist (a
+// saved check is not either), unlike the authoring loop where a model
+// writes the script. The result carries the kept capture.
+func (r *Runner) Test(
+	ctx context.Context, script string, env, secrets map[string]string, timeout time.Duration,
+) (*RunResult, error) {
+	return r.runScript(ctx, script, env, secrets, nil, false, timeout, true)
+}
+
+// runScript is run, with open lifting the secrets' allowlist.
+func (r *Runner) runScript(
+	ctx context.Context, script string, env, secrets map[string]string, allowed []string, held bool,
+	timeout time.Duration, open bool,
+) (*RunResult, error) {
 	if timeout <= 0 || timeout > toolScriptTimeout {
 		timeout = toolScriptTimeout
 	}
@@ -94,7 +116,7 @@ func (r *Runner) run(
 	}
 
 	var allowlist *egress.HostAllowlist
-	if held || hasSecretValues(secrets) {
+	if !open && (held || hasSecretValues(secrets)) {
 		allowlist = egress.NewHostAllowlist(allowed)
 		ctx = egress.WithHostAllowlist(ctx, allowlist)
 	}
@@ -113,6 +135,10 @@ func (r *Runner) run(
 		DurationMs: result.Duration.Milliseconds(),
 		Output:     result.Output,
 		Metrics:    result.Metrics,
+	}
+
+	if result.Diagnostics != nil {
+		out.Screenshot = result.Diagnostics.Screenshot
 	}
 
 	scrubResult(out, secrets)

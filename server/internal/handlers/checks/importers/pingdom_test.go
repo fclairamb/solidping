@@ -9,8 +9,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/dop251/goja"
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	jsconfig "github.com/fclairamb/solidping/server/internal/checkers/checkjs/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks/importers"
 )
 
@@ -228,4 +231,223 @@ func TestPingdomConverterSMTPEncryptionOffImplicitPortUsesStartTLS(t *testing.T)
 	cfg := result.Document.Checks[0].Config
 	r.Equal(true, cfg["starttls"])
 	r.NotContains(cfg, "tls")
+}
+
+// pingdomTMSServer fakes the Pingdom TMS endpoints, paginating the list.
+func pingdomTMSServer(t *testing.T, listStatus int) (*httptest.Server, *pingdomServer) {
+	t.Helper()
+
+	srv := newPingdomServer(t, 0)
+	details := map[string][]byte{
+		"101": readFixture(t, "pingdom-tms-script.json"),
+		"102": readFixture(t, "pingdom-tms-recording.json"),
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/3.1/checks", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"checks":[]}`))
+	})
+	mux.HandleFunc("/api/3.1/tms/check", func(w http.ResponseWriter, r *http.Request) {
+		srv.record(r)
+
+		if listStatus != 0 {
+			w.WriteHeader(listStatus)
+
+			return
+		}
+
+		ids := []string{"101", "102"}
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+
+		var page []string
+
+		for i := offset; i < offset+limit && i < len(ids); i++ {
+			page = append(page, `{"id":`+ids[i]+`,"name":"x","type":"script"}`)
+		}
+
+		_, _ = w.Write([]byte(`{"checks":[` + strings.Join(page, ",") + `]}`))
+	})
+	mux.HandleFunc("/api/3.1/tms/check/", func(w http.ResponseWriter, r *http.Request) {
+		srv.record(r)
+
+		body, ok := details[strings.TrimPrefix(r.URL.Path, "/api/3.1/tms/check/")]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+
+			return
+		}
+
+		_, _ = w.Write(body)
+	})
+
+	tms := httptest.NewServer(mux)
+	t.Cleanup(tms.Close)
+
+	return tms, srv
+}
+
+func TestPingdomTMSFetchPaginatesAndSendsBearer(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	tms, rec := pingdomTMSServer(t, 0)
+	conv := importers.NewPingdomConverter(importers.PingdomOptions{BaseURL: tms.URL, TMSPageSize: 1})
+
+	result, err := conv.Convert(pingdomTokenBody(t))
+	r.NoError(err)
+	r.Len(result.Document.Checks, 2)
+	r.Equal("js", result.Document.Checks[0].Type)
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+
+	r.Contains(rec.paths, "/api/3.1/tms/check?limit=1&offset=0")
+	r.Contains(rec.paths, "/api/3.1/tms/check?limit=1&offset=1")
+	r.Contains(rec.paths, "/api/3.1/tms/check?limit=1&offset=2")
+	r.Contains(rec.paths, "/api/3.1/tms/check/101")
+	r.Contains(rec.paths, "/api/3.1/tms/check/102")
+
+	for _, auth := range rec.auths {
+		r.Equal("Bearer "+pingdomTestToken, auth)
+	}
+}
+
+func TestPingdomTMSUnauthorizedIsAClearError(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	tms, _ := pingdomTMSServer(t, http.StatusUnauthorized)
+	conv := importers.NewPingdomConverter(importers.PingdomOptions{BaseURL: tms.URL})
+
+	_, err := conv.Convert(pingdomTokenBody(t))
+	r.ErrorIs(err, importers.ErrPingdomUnauthorized)
+	r.NotContains(err.Error(), pingdomTestToken)
+}
+
+func TestPingdomTMSGoldenScript(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	conv := importers.NewPingdomConverter(importers.PingdomOptions{})
+	result, err := conv.Convert(readFixture(t, "pingdom-tms-script.json"))
+	r.NoError(err)
+	assertGolden(t, "pingdom-tms-script", result)
+
+	check := result.Document.Checks[0]
+	r.True(check.Enabled)
+	r.Equal("10m", check.Period)
+	r.Equal("true", check.Labels["tms"])
+}
+
+func TestPingdomTMSGoldenRecordingWithUntranslatableStep(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	conv := importers.NewPingdomConverter(importers.PingdomOptions{})
+	result, err := conv.Convert(readFixture(t, "pingdom-tms-recording.json"))
+	r.NoError(err)
+	assertGolden(t, "pingdom-tms-recording", result)
+
+	check := result.Document.Checks[0]
+	r.False(check.Enabled, "an untranslatable flow is created paused")
+	r.Contains(check.Config["script"], "// TODO step 8")
+	r.NotEmpty(result.Warnings)
+}
+
+func TestPingdomTMSUnknownFnAndHostileValuesStayInert(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	conv := importers.NewPingdomConverter(importers.PingdomOptions{})
+	result, err := conv.Convert(readFixture(t, "pingdom-tms-unknown.json"))
+	r.NoError(err)
+
+	check := result.Document.Checks[0]
+	r.False(check.Enabled)
+
+	script, _ := check.Config["script"].(string)
+	for _, line := range strings.Split(script, "\n") {
+		r.NotContains(line, "evil();\n")
+		if strings.Contains(line, "evil()") {
+			r.True(strings.HasPrefix(line, "//"), "hostile text must stay inside a comment: %q", line)
+			r.NotContains(line, "\r")
+		}
+	}
+
+	r.GreaterOrEqual(len(result.Warnings), 2)
+}
+
+func TestPingdomTMSBasicAuthGoesToSecretsNotScriptNorManifest(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	conv := importers.NewPingdomConverter(importers.PingdomOptions{})
+
+	for _, fixture := range []string{"pingdom-tms-script.json", "pingdom-tms-recording.json"} {
+		result, err := conv.Convert(readFixture(t, fixture))
+		r.NoError(err)
+
+		check := result.Document.Checks[0]
+		secrets, ok := check.Config["secrets"].(map[string]any)
+		r.True(ok, fixture)
+		r.NotEmpty(secrets["PINGDOM_BASIC_USER"])
+		r.NotEmpty(secrets["PINGDOM_BASIC_PASSWORD"])
+
+		script, _ := check.Config["script"].(string)
+		for _, secret := range secrets {
+			r.NotContains(script, secret)
+		}
+
+		r.Contains(script, "page.basicAuth(secrets.PINGDOM_BASIC_USER, secrets.PINGDOM_BASIC_PASSWORD)")
+		r.Less(strings.Index(script, "page.basicAuth"), strings.Index(script, "page.goto"),
+			"basicAuth is armed before the first navigation")
+	}
+}
+
+func TestPingdomTMSGeneratedScriptPassesJSConfigValidation(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	conv := importers.NewPingdomConverter(importers.PingdomOptions{})
+
+	for _, fixture := range []string{"pingdom-tms-script.json", "pingdom-tms-recording.json", "pingdom-tms-unknown.json"} {
+		result, err := conv.Convert(readFixture(t, fixture))
+		r.NoError(err)
+
+		spec := &checkerdef.CheckSpec{Config: result.Document.Checks[0].Config}
+		r.NoError(jsconfig.ValidateSpec(spec), fixture)
+
+		script, _ := result.Document.Checks[0].Config["script"].(string)
+		_, compileErr := goja.Compile("tms.js", "(function(){"+script+"\n})", false)
+		r.NoError(compileErr, fixture)
+	}
+}
+
+func TestPingdomTMSListWithoutStepsIsSkippedWithWarning(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	conv := importers.NewPingdomConverter(importers.PingdomOptions{})
+	_, err := conv.Convert([]byte(`{"checks":[{"id":1,"name":"t","type":"script"}]}`))
+	r.ErrorIs(err, importers.ErrEmptyInput)
+}
+
+func TestConvertEndpointPingdomTMSAppliesAndKeepsSecretsOutOfTheResponse(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	harness := newConvertHarnessWithPingdom(t, "", "")
+	body := readFixture(t, "pingdom-tms-script.json")
+
+	rec := harness.post(t, "pingdom", false, body)
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+	r.NotContains(rec.Body.String(), "s3cr3t-pw", "the basic auth password must not be echoed")
+	r.NotContains(rec.Body.String(), "stagingUser")
+
+	result := decodeConvert(t, rec)
+	r.Empty(result.Errors)
+	r.Equal(1, result.Created)
+	r.NotContains(result.Manifest, "s3cr3t-pw")
+	r.Equal(1, harness.countChecks(t))
 }

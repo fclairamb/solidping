@@ -33,6 +33,11 @@ place (they carry the `solidping-managed=pingdom` label).
 
 ## What is not converted
 
-- Transaction (TMS) checks are skipped, with a warning.
+- Transaction (TMS) checks (both "script" and "recording" types) are imported as
+  [JavaScript browser checks](../javascript-checks.md): each step becomes a
+  line of a generated script. Steps with no equivalent (`wpm_click_xy`, mouse
+  moves, tab closing, unknown functions) leave a `// TODO` line and a warning,
+  and the check is created paused. `basic_auth` credentials go to the check's
+  encrypted secrets, not the script. Pingdom regions are not mapped.
 - Basic-auth credentials are **not** imported (a warning lists them): re-enter them on the check.
 - Probe filters, alert contacts, integrations and maintenance windows.

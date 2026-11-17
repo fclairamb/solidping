@@ -44,12 +44,16 @@ type fakeSession struct {
 	cookieErr error
 	shot      []byte
 	shotErr   error
+	shots     atomic.Int32
 
 	calls   atomic.Int32
 	closes  atomic.Int32
 	filled  []string
 	pressed []string
 	goneAt  time.Time
+
+	basicAuths   []string
+	basicAuthErr error
 }
 
 func (f *fakeSession) Navigate(_ context.Context, url string) (checkbrowser.NavResult, error) {
@@ -65,6 +69,19 @@ func (f *fakeSession) Navigate(_ context.Context, url string) (checkbrowser.NavR
 	}
 
 	return result, nil
+}
+
+func (f *fakeSession) BasicAuth(_ context.Context, username, password, origin string) error {
+	f.calls.Add(1)
+
+	// Like the real Session: once closed, every page method is infrastructure.
+	if f.closes.Load() > 0 {
+		return errSocketGone
+	}
+
+	f.basicAuths = append(f.basicAuths, username+":"+password+"@"+origin)
+
+	return f.basicAuthErr
 }
 
 func (f *fakeSession) WaitVisible(ctx context.Context, _ string) error {
@@ -102,6 +119,34 @@ func (f *fakeSession) Press(_ context.Context, sel, key string) error {
 	return f.pressErr
 }
 
+func (f *fakeSession) Check(_ context.Context, sel string) error {
+	f.calls.Add(1)
+	f.pressed = append(f.pressed, "check:"+sel)
+
+	return nil
+}
+
+func (f *fakeSession) Uncheck(_ context.Context, sel string) error {
+	f.calls.Add(1)
+	f.pressed = append(f.pressed, "uncheck:"+sel)
+
+	return nil
+}
+
+func (f *fakeSession) Select(_ context.Context, sel, option string) error {
+	f.calls.Add(1)
+	f.pressed = append(f.pressed, "select:"+sel+"="+option)
+
+	return nil
+}
+
+func (f *fakeSession) Submit(_ context.Context, sel string) error {
+	f.calls.Add(1)
+	f.pressed = append(f.pressed, "submit:"+sel)
+
+	return nil
+}
+
 func (f *fakeSession) Text(_ context.Context, _ string) (string, error) {
 	f.calls.Add(1)
 
@@ -132,6 +177,7 @@ func (f *fakeSession) Cookies(_ context.Context) ([]checkbrowser.Cookie, error) 
 
 func (f *fakeSession) Screenshot(_ context.Context) (checkbrowser.Capture, error) {
 	f.calls.Add(1)
+	f.shots.Add(1)
 
 	return checkbrowser.Capture{Image: f.shot, Format: checkbrowser.ScreenshotFormat}, f.shotErr
 }
@@ -972,4 +1018,51 @@ func TestFailedScreenshotReportsWhy(t *testing.T) {
 	if plain.Diagnostics != nil {
 		require.Empty(t, plain.Diagnostics.ScreenshotError)
 	}
+}
+
+// TestBrowserNewBindingsPassSelectorsThrough: check/uncheck/select/submit and
+// prefixed selectors reach the session untouched.
+//
+//nolint:paralleltest // mutates the package-level OpenBrowser seam
+func TestBrowserNewBindingsPassSelectorsThrough(t *testing.T) {
+	r := require.New(t)
+
+	session := &fakeSession{}
+	installFakeBrowser(t, session)
+
+	result := runBrowserScript(t, `
+var page = browser.open();
+var a = page.check("label=Remember me");
+var b = page.uncheck("name=news");
+var c = page.select("label=Country", "France");
+var d = page.submit("text=Sign in");
+return { status: a.ok && b.ok && c.ok && d.ok ? "up" : "down" };
+`, 5*time.Second)
+
+	r.Equal("up", result.Status.String(), "output: %#v", result.Output)
+	r.Equal([]string{
+		"check:label=Remember me", "uncheck:name=news",
+		"select:label=Country=France", "submit:text=Sign in",
+	}, session.pressed)
+}
+
+// TestBrowserSelectorArraysAreEncodedAsLists: an array argument reaches the
+// session as one encoded fallback list.
+//
+//nolint:paralleltest // mutates the package-level OpenBrowser seam
+func TestBrowserSelectorArraysAreEncodedAsLists(t *testing.T) {
+	r := require.New(t)
+
+	session := &fakeSession{}
+	installFakeBrowser(t, session)
+
+	result := runBrowserScript(t, `
+var page = browser.open();
+var a = page.check(["aria/Remember", "#cb"]);
+var b = page.submit("aria/Go[role=\"button\"]");
+return { status: a.ok && b.ok ? "up" : "down" };
+`, 5*time.Second)
+
+	r.Equal("up", result.Status.String(), "output: %#v", result.Output)
+	r.Equal([]string{`check:["aria/Remember","#cb"]`, `submit:aria/Go[role="button"]`}, session.pressed)
 }
