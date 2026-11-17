@@ -40,7 +40,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/posthog/posthog-go"
+	"github.com/posthog/posthog-go/v2"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/scrub"
