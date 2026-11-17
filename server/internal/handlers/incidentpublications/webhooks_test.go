@@ -78,7 +78,7 @@ func TestPublicationWebhooksFireOnEveryLifecycleStep(t *testing.T) {
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	clk := clock.NewFake(time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC))
+	clk := clock.NewFake(time.Now().UTC().Truncate(time.Second))
 	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
 	org := models.NewOrganization("acme", "Acme")
@@ -172,7 +172,7 @@ func TestPublicationWebhooksAreSilentWithoutAConnection(t *testing.T) {
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	clk := clock.NewFake(time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC))
+	clk := clock.NewFake(time.Now().UTC().Truncate(time.Second))
 	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
 	org := models.NewOrganization("acme", "Acme")
