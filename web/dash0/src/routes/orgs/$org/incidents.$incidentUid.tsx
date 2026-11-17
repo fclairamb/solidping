@@ -117,6 +117,7 @@ import { notificationStatusVariant, sourceLabel } from "@/lib/notifications";
 import { channelTypeLabel } from "@/lib/channel-labels";
 import { cn } from "@/lib/utils";
 import { statusUpdateKindTone } from "@/lib/status-update-kind";
+import { localizeGenerated } from "@/lib/localized-text";
 
 export const Route = createFileRoute("/orgs/$org/incidents/$incidentUid")({
   component: IncidentDetailPage,
@@ -534,7 +535,7 @@ function StatusUpdatesPanel({
                   <KindBadgeInline kind={u.kind} />
                   <div className="min-w-0">
                     <div className="font-medium text-sm truncate">
-                      {u.title}
+                      {localizeGenerated(t, u.titleI18n, u.title)}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       <TimeAgo
@@ -918,7 +919,8 @@ function IncidentDetailPage() {
                   #{incident.number}
                 </span>
               ) : null}
-              {incident.title ||
+              {(incident.title &&
+                localizeGenerated(t, incident.titleI18n, incident.title)) ||
                 incident.checkName ||
                 incident.checkSlug ||
                 t("fallbackTitle")}

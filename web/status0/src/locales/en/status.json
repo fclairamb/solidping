@@ -117,5 +117,21 @@
       "30d": "30-day uptime",
       "90d": "90-day uptime"
     }
+  },
+  "publication": {
+    "openedTitle": "{{name}} is experiencing issues",
+    "openedBody": "We are investigating an issue affecting {{name}}.",
+    "groupOpenedTitle": "Some services are experiencing issues",
+    "resolvedTitle": "{{name}} has recovered",
+    "resolvedBody": "{{name}} is operating normally again. This incident is resolved.",
+    "monitoringTitle": "{{name}} has recovered",
+    "monitoringBody": "The affected component has recovered. We are monitoring the situation.",
+    "relapseTitle": "{{name}} is experiencing issues again",
+    "relapseBody": "{{name}} is affected again. We are investigating.",
+    "alsoAffectingTitle": "This incident is also affecting {{name}}",
+    "alsoAffectingBody": "{{name}} is now affected by this incident as well.",
+    "removedTitle": "{{name}} is no longer monitored",
+    "removedGenericTitle": "The affected service is no longer monitored",
+    "removedBody": "The monitored resource was removed. This incident is resolved."
   }
 }

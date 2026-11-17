@@ -117,5 +117,21 @@
       "30d": "disponibilidad de 30 días",
       "90d": "disponibilidad de 90 días"
     }
+  },
+  "publication": {
+    "openedTitle": "{{name}} está experimentando problemas",
+    "openedBody": "Estamos investigando una incidencia que afecta a {{name}}.",
+    "groupOpenedTitle": "Algunos servicios están experimentando problemas",
+    "resolvedTitle": "{{name}} se ha recuperado",
+    "resolvedBody": "{{name}} vuelve a funcionar con normalidad. La incidencia está resuelta.",
+    "monitoringTitle": "{{name}} se ha recuperado",
+    "monitoringBody": "El componente afectado se ha recuperado. Estamos supervisando la situación.",
+    "relapseTitle": "{{name}} vuelve a experimentar problemas",
+    "relapseBody": "{{name}} está afectado de nuevo. Estamos investigando.",
+    "alsoAffectingTitle": "Esta incidencia también afecta a {{name}}",
+    "alsoAffectingBody": "{{name}} también está afectado por esta incidencia.",
+    "removedTitle": "{{name}} ya no se supervisa",
+    "removedGenericTitle": "El servicio afectado ya no se supervisa",
+    "removedBody": "El recurso supervisado se ha eliminado. La incidencia está resuelta."
   }
 }

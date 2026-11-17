@@ -369,5 +369,34 @@
     "empty": "Kein Incident in diesem Zeitraum",
     "truncated": "Es werden nur die 5.000 neuesten Incidents berücksichtigt, die Zahlen sind daher unvollständig.",
     "noData": "Keine Daten"
+  },
+  "generated": {
+    "incident": {
+      "title": {
+        "down": "{{name}} ist ausgefallen",
+        "downUnnamed": "Der Check ist ausgefallen",
+        "degradedFailures": "{{name}} ist beeinträchtigt: {{failures}} Fehler in den letzten {{probes}} Probes",
+        "degradedFailuresAvailability": "{{name}} ist beeinträchtigt: {{failures}} Fehler in den letzten {{probes}} Probes ({{availability, number(minimumFractionDigits: 1; maximumFractionDigits: 1)}} % verfügbar)",
+        "degradedSlow": "{{name}} ist beeinträchtigt: {{slow}} der letzten {{probes}} Probes waren langsamer als {{thresholdMs}} ms",
+        "sloFastBurn": "Schneller Verbrauch: Fehlerbudget von {{name}} wird mit {{rate, number(minimumFractionDigits: 1; maximumFractionDigits: 1)}}x verbraucht",
+        "sloSlowBurn": "Langsamer Verbrauch: Fehlerbudget von {{name}} wird mit {{rate, number(minimumFractionDigits: 1; maximumFractionDigits: 1)}}x verbraucht"
+      }
+    },
+    "publication": {
+      "openedTitle": "{{name}} hat Probleme",
+      "openedBody": "Wir untersuchen eine Störung, die {{name}} betrifft.",
+      "groupOpenedTitle": "Einige Dienste haben Probleme",
+      "resolvedTitle": "{{name}} ist wiederhergestellt",
+      "resolvedBody": "{{name}} funktioniert wieder normal. Die Störung ist behoben.",
+      "monitoringTitle": "{{name}} ist wiederhergestellt",
+      "monitoringBody": "Die betroffene Komponente ist wiederhergestellt. Wir beobachten die Lage.",
+      "relapseTitle": "{{name}} hat erneut Probleme",
+      "relapseBody": "{{name}} ist erneut betroffen. Wir untersuchen das Problem.",
+      "alsoAffectingTitle": "Diese Störung betrifft auch {{name}}",
+      "alsoAffectingBody": "{{name}} ist nun ebenfalls von dieser Störung betroffen.",
+      "removedTitle": "{{name}} wird nicht mehr überwacht",
+      "removedGenericTitle": "Der betroffene Dienst wird nicht mehr überwacht",
+      "removedBody": "Die überwachte Ressource wurde entfernt. Die Störung ist behoben."
+    }
   }
 }

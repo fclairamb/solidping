@@ -257,7 +257,8 @@ func (s *Service) AutoPublish(ctx context.Context, orgUID, incidentUID, statusPa
 	title := s.templatedTitle(ctx, orgUID, page, incident)
 	now := s.clock.Now()
 
-	pub := models.NewIncidentPublication(orgUID, page.UID, title, now)
+	pub := models.NewIncidentPublication(orgUID, page.UID, title.Value, now)
+	pub.PublicTitleI18n = title.I18n
 	pub.IncidentUID = &incident.UID
 	pub.AutoCreated = true
 
@@ -274,12 +275,9 @@ func (s *Service) AutoPublish(ctx context.Context, orgUID, incidentUID, statusPa
 	tpl := templatesFor(page.Language)
 
 	name := s.affectedName(ctx, orgUID, page, incident)
-	if name == "" {
-		name = tpl.GroupOpenedTitle
-	}
 
 	s.postUpdate(ctx, page, pub, models.StatusUpdateKindInvestigating,
-		title, fmt.Sprintf(tpl.OpenedBody, name), nil)
+		title, tpl.render(keyOpenedBody, name), nil)
 
 	s.emit(ctx, orgUID, models.EventTypeStatusPageIncidentPublished, pub, "")
 	s.publishHint(ctx, orgUID)
@@ -424,9 +422,9 @@ func (s *Service) resolveRemoved(
 ) bool {
 	tpl := templatesFor(page.Language)
 
-	title := tpl.RemovedGenericTitle
+	title := tpl.render(keyRemovedGenericTitle, "")
 	if name := s.affectedName(ctx, incident.OrganizationUID, page, incident); name != "" {
-		title = fmt.Sprintf(tpl.RemovedTitle, name)
+		title = tpl.render(keyRemovedTitle, name)
 	}
 
 	now := s.clock.Now()
@@ -445,7 +443,7 @@ func (s *Service) resolveRemoved(
 	pub.PublicState = resolved
 	pub.ResolvedAt = &now
 
-	s.postUpdate(ctx, page, pub, models.StatusUpdateKindResolved, title, tpl.RemovedBody, nil)
+	s.postUpdate(ctx, page, pub, models.StatusUpdateKindResolved, title, tpl.render(keyRemovedBody, ""), nil)
 
 	s.emit(ctx, incident.OrganizationUID, models.EventTypeStatusPageIncidentResolved, pub, "")
 	s.publishHint(ctx, incident.OrganizationUID)
@@ -470,15 +468,12 @@ func (s *Service) applyResolvePolicy(
 	tpl := templatesFor(page.Language)
 
 	name := s.affectedName(ctx, incident.OrganizationUID, page, incident)
-	if name == "" {
-		name = tpl.GroupOpenedTitle
-	}
 
 	now := s.clock.Now()
 
 	if policy == models.AutoResolveIfUntouched && touched {
 		s.postUpdate(ctx, page, pub, models.StatusUpdateKindMonitoring,
-			fmt.Sprintf(tpl.MonitoringTitle, name), tpl.MonitoringBody, nil)
+			tpl.render(keyMonitoringTitle, name), tpl.render(keyMonitoringBody, name), nil)
 
 		s.emit(ctx, incident.OrganizationUID, models.EventTypeStatusPageIncidentUpdated, pub, "")
 		s.publishHint(ctx, incident.OrganizationUID)
@@ -501,7 +496,7 @@ func (s *Service) applyResolvePolicy(
 	pub.ResolvedAt = &now
 
 	s.postUpdate(ctx, page, pub, models.StatusUpdateKindResolved,
-		fmt.Sprintf(tpl.ResolvedTitle, name), fmt.Sprintf(tpl.ResolvedBody, name), nil)
+		tpl.render(keyResolvedTitle, name), tpl.render(keyResolvedBody, name), nil)
 
 	s.emit(ctx, incident.OrganizationUID, models.EventTypeStatusPageIncidentResolved, pub, "")
 	s.publishHint(ctx, incident.OrganizationUID)
@@ -575,12 +570,9 @@ func (s *Service) OnIncidentReopened(ctx context.Context, incident *models.Incid
 		tpl := templatesFor(page.Language)
 
 		name := s.affectedName(ctx, incident.OrganizationUID, page, incident)
-		if name == "" {
-			name = tpl.GroupOpenedTitle
-		}
 
 		s.postUpdate(ctx, page, pub, models.StatusUpdateKindInvestigating,
-			fmt.Sprintf(tpl.RelapseTitle, name), fmt.Sprintf(tpl.RelapseBody, name), nil)
+			tpl.render(keyRelapseTitle, name), tpl.render(keyRelapseBody, name), nil)
 
 		s.emit(ctx, incident.OrganizationUID, models.EventTypeStatusPageIncidentUpdated, pub, "")
 		s.publishHint(ctx, incident.OrganizationUID)
