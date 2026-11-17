@@ -377,6 +377,7 @@
     }
   },
   "suppressions": {
+    "adminOnly": "Seuls les administrateurs de l'organisation peuvent voir qui s'est désabonné.",
     "title": "Destinataires désabonnés",
     "resubscribed": "{{email}} réabonné",
     "resubscribeFailed": "Échec du réabonnement",

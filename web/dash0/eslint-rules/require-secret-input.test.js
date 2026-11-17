@@ -15,10 +15,15 @@ tester.run("require-secret-input", rule, {
     { filename, code: `const a = <Textarea id="kubeconfig" data-secret-input />;` },
     { filename, code: `const a = <PasswordInput id="password" />;` },
     { filename, code: `const a = <Input id="name" data-testid="integration-name" />;` },
+    { filename, code: `const a = <Textarea id="import-payload" data-secret-input />;` },
+    { filename, code: `const a = <Input id="import-name" />;` },
+    { filename, code: `const a = <Textarea id="description" />;` },
   ],
   invalid: [
     { filename, code: `const a = <Textarea id="kubeconfig" />;`, errors: [{ messageId: "missing" }] },
     { filename, code: `const a = <Input data-testid="webhook-url" />;`, errors: [{ messageId: "missing" }] },
     { filename, code: "const a = <Input data-testid={`provider-${k}-token`} />;", errors: [{ messageId: "missing" }] },
+    { filename, code: `const a = <Textarea id="import-payload" />;`, errors: [{ messageId: "missing" }] },
+    { filename, code: `const a = <Textarea data-testid="gatus-config" />;`, errors: [{ messageId: "missing" }] },
   ],
 });

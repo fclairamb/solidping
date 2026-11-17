@@ -97,14 +97,15 @@ subscription. Auth: required
 Read + delete only — entries are *created* by bounce/complaint feedback and by
 the public unsubscribe surface below, never through this authenticated API.
 
-### GET /api/v1/orgs/:org/email-suppressions
-List suppressed addresses for the org. Auth: required
+Both routes are org admin (or owner) only: the rows are recipients' email
+addresses (mostly third parties) and what they opted out of. Viewers and `user`
+members get `403 FORBIDDEN`.
 
-### GET /api/v1/orgs/:org/email-suppressions/:uid
-Get one suppression entry. Auth: required
+### GET /api/v1/orgs/:org/email-suppressions
+List suppressed addresses for the org. Auth: required, role: admin
 
 ### DELETE /api/v1/orgs/:org/email-suppressions/:uid
-Remove a suppression (re-enable delivery to that address). Auth: required
+Remove a suppression (re-enable delivery to that address). Auth: required, role: admin
 
 ## Unsubscribe (public, top-level)
 

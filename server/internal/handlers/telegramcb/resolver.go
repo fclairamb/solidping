@@ -10,11 +10,18 @@ import (
 
 // linkedOrg is one organization a chat can act in: the verified contact that
 // binds them, plus the org's identity resolved once so the command handlers do
-// not each re-look-it-up.
+// not each re-look-it-up, and the linked member's role in it.
 type linkedOrg struct {
 	contact *models.UserContact
 	orgUID  string
 	orgSlug string
+	role    models.MemberRole
+}
+
+// canWrite reports whether the linked member may acknowledge and comment: the
+// same `user` floor the web write routes enforce. Viewers keep the reads.
+func (o *linkedOrg) canWrite() bool {
+	return o.role.AtLeast(models.MemberRoleUser)
 }
 
 // linkedOrgs returns the organizations this chat is linked in, oldest link
@@ -25,30 +32,84 @@ type linkedOrg struct {
 // (ORDER BY created_at, uid), so "first" is stable across calls rather than
 // whatever the engine felt like returning.
 //
+// A contact only counts while its owner is still a live user with a live,
+// JOINED membership in the contact's org, re-checked on every update. The
+// contact is cleaned up when a membership ends, but this guard is what holds
+// if a cleanup is ever missed: a removed member's chat answers exactly like an
+// unlinked one, and learns nothing about the org.
+//
 // Deduplicated by organization: two SolidPing accounts in the SAME org can both
 // link the same chat, and that must not make the org answer twice or count as
-// two orgs for the purposes of qualifying references.
+// two orgs for the purposes of qualifying references. The most privileged of
+// them is the one the org acts as.
 func (h *Handler) linkedOrgs(ctx context.Context, chatID string) []linkedOrg {
 	contacts := h.linkedContacts(ctx, chatID)
 
 	orgs := make([]linkedOrg, 0, len(contacts))
-	seen := make(map[string]bool, len(contacts))
+	index := make(map[string]int, len(contacts))
 
 	for _, contact := range contacts {
-		if seen[contact.OrganizationUID] {
+		role, member := h.memberRole(ctx, contact)
+		if !member {
 			continue
 		}
 
-		seen[contact.OrganizationUID] = true
+		if i, seen := index[contact.OrganizationUID]; seen {
+			if role.Rank() > orgs[i].role.Rank() {
+				orgs[i].contact = contact
+				orgs[i].role = role
+			}
+
+			continue
+		}
+
+		index[contact.OrganizationUID] = len(orgs)
 
 		orgs = append(orgs, linkedOrg{
 			contact: contact,
 			orgUID:  contact.OrganizationUID,
 			orgSlug: h.orgSlug(ctx, contact.OrganizationUID),
+			role:    role,
 		})
 	}
 
 	return orgs
+}
+
+// memberRole returns the role of the contact's owner in the contact's org, and
+// false when the owner is no longer a live, joined member there (removed,
+// still only invited, or the account itself is gone).
+func (h *Handler) memberRole(ctx context.Context, contact *models.UserContact) (models.MemberRole, bool) {
+	if user, err := h.db.GetUser(ctx, contact.UserUID); err != nil || user == nil {
+		h.log.InfoContext(ctx, "ignoring telegram contact of a missing user",
+			"contactUid", contact.UID, "orgUid", contact.OrganizationUID)
+
+		return "", false
+	}
+
+	member, err := h.db.GetMemberByUserAndOrg(ctx, contact.UserUID, contact.OrganizationUID)
+	if err != nil || member == nil || member.JoinedAt == nil {
+		h.log.InfoContext(ctx, "ignoring telegram contact of a former member",
+			"contactUid", contact.UID, "orgUid", contact.OrganizationUID)
+
+		return "", false
+	}
+
+	return member.Role, true
+}
+
+// refuseReadOnly answers the read-only message and reports true when the
+// linked member of org may not write.
+func (h *Handler) refuseReadOnly(ctx context.Context, chatID string, org *linkedOrg) bool {
+	if org.canWrite() {
+		return false
+	}
+
+	h.log.InfoContext(ctx, "telegram write refused for a read-only member",
+		"chatId", chatID, "orgUid", org.orgUID, "role", string(org.role))
+	h.reply(ctx, chatID, telegram.BuildReadOnlyRoleHTML(org.orgSlug))
+
+	return true
 }
 
 // requireLinkedOrgs resolves the orgs a command may act in, or answers the

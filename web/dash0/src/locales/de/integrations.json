@@ -377,6 +377,7 @@
     }
   },
   "suppressions": {
+    "adminOnly": "Nur Organisationsadministratoren können sehen, wer sich abgemeldet hat.",
     "title": "Abgemeldete Empfänger",
     "resubscribed": "{{email}} wieder angemeldet",
     "resubscribeFailed": "Wiederanmeldung fehlgeschlagen",

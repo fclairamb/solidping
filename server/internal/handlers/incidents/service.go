@@ -38,6 +38,12 @@ var (
 	ErrSnoozeInvalidDur     = errors.New("snooze duration is not a valid Go duration")
 	ErrCommentEmpty         = errors.New("comment text must not be empty")
 	ErrCommentTooLong       = errors.New("comment text exceeds the maximum length")
+	// ErrNotOrgMember: the linked chat's user has no live, joined membership
+	// in the org (removed, never joined, or the account is gone).
+	ErrNotOrgMember = errors.New("user is not a member of the organization")
+	// ErrRoleReadOnly: the user's role in the org is below `user`, the write
+	// floor every incident write enforces on the web side.
+	ErrRoleReadOnly = errors.New("user role is read-only in the organization")
 )
 
 // MaxCommentLength caps the size of a single incident comment body. Comments
@@ -3249,12 +3255,42 @@ func (s *Service) AcknowledgeIncidentFromPhone(
 func (s *Service) AcknowledgeIncidentFromTelegram(
 	ctx context.Context, orgUID, incidentUID, userUID, actor string,
 ) (*models.Incident, error) {
+	if err := s.requireChatWriter(ctx, orgUID, userUID); err != nil {
+		return nil, err
+	}
+
 	return s.acknowledgeIncidentByOrgUID(ctx, orgUID, &AcknowledgeIncidentRequest{
 		IncidentUID:    incidentUID,
 		AcknowledgedBy: userUID,
 		TelegramActor:  actor,
 		Via:            "telegram",
 	})
+}
+
+// requireChatWriter is the write floor of a chat-ops write attributed to a
+// SolidPing user: a live account with a live, joined membership in the org, at
+// role `user` or above. It mirrors what the web acknowledge/comment routes get
+// from the org middleware, so a linked chat can never do more than its owner
+// could in the dashboard — and keeps doing nothing once they are removed.
+func (s *Service) requireChatWriter(ctx context.Context, orgUID, userUID string) error {
+	if userUID == "" {
+		return ErrNotOrgMember
+	}
+
+	if user, err := s.db.GetUser(ctx, userUID); err != nil || user == nil {
+		return ErrNotOrgMember
+	}
+
+	member, err := s.db.GetMemberByUserAndOrg(ctx, userUID, orgUID)
+	if err != nil || member == nil || member.JoinedAt == nil {
+		return ErrNotOrgMember
+	}
+
+	if !member.Role.AtLeast(models.MemberRoleUser) {
+		return ErrRoleReadOnly
+	}
+
+	return nil
 }
 
 // AddCommentRequest carries the data needed to append a comment to an
@@ -3417,6 +3453,10 @@ func (s *Service) AddCommentFromDiscordCommand(
 func (s *Service) AddCommentFromTelegram(
 	ctx context.Context, orgUID, incidentUID, text, userUID, actor, chatID string,
 ) (*models.Event, error) {
+	if err := s.requireChatWriter(ctx, orgUID, userUID); err != nil {
+		return nil, err
+	}
+
 	return s.addCommentByOrgUID(ctx, orgUID, &AddCommentRequest{
 		IncidentUID:    incidentUID,
 		Text:           text,
