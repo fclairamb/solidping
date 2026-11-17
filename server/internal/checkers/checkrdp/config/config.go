@@ -306,7 +306,7 @@ func (c *RDPConfig) MinPeriodHintSource() string {
 //nolint:cyclop // SSH-style config validation has many interdependent fields
 func (c *RDPConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
+		return checkerdef.NewRequiredConfigError("host")
 	}
 
 	if c.Port == 0 {

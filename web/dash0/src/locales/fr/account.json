@@ -135,7 +135,8 @@
       "lastAuthMethod": "Ajoutez une autre clé d'accès ou définissez un mot de passe avant de supprimer celle-ci.",
       "unsupported": "Ce navigateur ne prend pas en charge les clés d'accès.",
       "removeFailed": "Impossible de supprimer la clé d'accès.",
-      "renameFailed": "Impossible de renommer la clé d'accès."
+      "renameFailed": "Impossible de renommer la clé d'accès.",
+      "defaultLabel": "Clé de sécurité"
     },
     "totp": {
       "title": "Authentification à deux facteurs (TOTP)",

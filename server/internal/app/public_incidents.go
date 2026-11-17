@@ -38,6 +38,7 @@ func (a publicIncidentAdapter) ListPublicIncidents(
 		entry := statuspages.PublicIncident{
 			UID:               inc.UID,
 			Title:             inc.Title,
+			TitleI18n:         inc.TitleI18n,
 			State:             inc.State,
 			Severity:          inc.Severity,
 			StartedAt:         inc.StartedAt,
@@ -52,6 +53,8 @@ func (a publicIncidentAdapter) ListPublicIncidents(
 				Kind:         upd.Kind,
 				Title:        upd.Title,
 				BodyMarkdown: upd.BodyMarkdown,
+				TitleI18n:    upd.TitleI18n,
+				BodyI18n:     upd.BodyI18n,
 				PublishedAt:  upd.PublishedAt,
 			})
 		}

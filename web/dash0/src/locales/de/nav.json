@@ -176,5 +176,7 @@
     "publicStatus": "Öffentlicher Status",
     "administration": "Administration"
   },
-  "history": "Verlauf"
+  "history": "Verlauf",
+  "notifications": "Benachrichtigungen",
+  "notification": "Benachrichtigung"
 }

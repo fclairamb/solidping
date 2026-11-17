@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { apiFetch } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -37,6 +38,7 @@ function SlackInstallComplete() {
   const navigate = useNavigate();
   const { loginWithOAuth } = useAuth();
   const ranRef = useRef(false);
+  const { t } = useTranslation("integrations");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -75,18 +77,18 @@ function SlackInstallComplete() {
           });
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Unexpected error");
+        setError(err instanceof Error ? err.message : t("slackInstall.unexpectedError"));
         window.location.href = `${installErrorPage}?reason=oauth_failed`;
       }
     })();
-  }, [code, loginWithOAuth, navigate]);
+  }, [code, loginWithOAuth, navigate, t]);
 
   return (
     <div className="flex min-h-screen items-center justify-center">
       <div className="flex flex-col items-center gap-3 text-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         <p className="text-sm text-muted-foreground">
-          {error ?? "Finishing your Slack install…"}
+          {error ?? t("slackInstall.finishing")}
         </p>
       </div>
     </div>

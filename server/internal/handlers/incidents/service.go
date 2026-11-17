@@ -1519,9 +1519,10 @@ func (s *Service) createIncident(
 	s.recordFlap(ctx, check)
 
 	// Generate title
-	title := s.generateIncidentTitle(check)
+	title, titleI18n := s.generateIncidentTitle(check)
 
 	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
+	incident.TitleI18n = titleI18n
 	incident.Details = withFailedComponents(check, result, failureDetails(result))
 	if regions := s.regionsSnapshot(ctx, check, result, eval); regions != nil {
 		incident.Details[regionsDetailsKey] = regions
@@ -1851,16 +1852,35 @@ func (s *Service) reopenIncident(
 	return nil
 }
 
-// generateIncidentTitle generates a title for an incident.
-func (s *Service) generateIncidentTitle(check *models.Check) string {
+// generateIncidentTitle returns the stored English title and the recipe the
+// dashboard renders it from in the reader's language (incident.title.* keys
+// in dash0's locales).
+func (s *Service) generateIncidentTitle(check *models.Check) (string, *models.LocalizedText) {
+	name := ""
 	if check.Slug != nil && *check.Slug != "" {
-		return *check.Slug + " is down"
+		name = *check.Slug
+	} else if check.Name != nil && *check.Name != "" {
+		name = *check.Name
 	}
-	if check.Name != nil && *check.Name != "" {
-		return *check.Name + " is down"
+
+	if name == "" {
+		return "Check is down", models.NewLocalizedText(TitleKeyDownUnnamed, nil)
 	}
-	return "Check is down"
+
+	return name + " is down", models.NewLocalizedText(TitleKeyDown, &models.LocalizedParams{Name: name})
 }
+
+// Message keys of generated incident titles. dash0 renders them; the stored
+// English title is the fallback for every other reader.
+const (
+	TitleKeyDown                         = "incident.title.down"
+	TitleKeyDownUnnamed                  = "incident.title.downUnnamed"
+	TitleKeyDegradedFailures             = "incident.title.degradedFailures"
+	TitleKeyDegradedFailuresAvailability = "incident.title.degradedFailuresAvailability"
+	TitleKeyDegradedSlow                 = "incident.title.degradedSlow"
+	TitleKeySLOFastBurn                  = "incident.title.sloFastBurn"
+	TitleKeySLOSlowBurn                  = "incident.title.sloSlowBurn"
+)
 
 // emitEvent creates an event for the incident lifecycle. When the payload
 // carries a non-empty `actor_uid` string, the recorded event is attributed
@@ -2377,9 +2397,12 @@ type IncidentResponse struct {
 	// or last reopened — 0 (omitted) means it opened at the base level, not
 	// escalated by the adaptive-recovery flapping layer. See
 	// models.Incident.FlapLevel.
-	FlapLevel           int                      `json:"flapLevel,omitempty"`
-	LastReopenedAt      *time.Time               `json:"lastReopenedAt,omitempty"`
-	Title               *string                  `json:"title,omitempty"`
+	FlapLevel      int        `json:"flapLevel,omitempty"`
+	LastReopenedAt *time.Time `json:"lastReopenedAt,omitempty"`
+	Title          *string    `json:"title,omitempty"`
+	// TitleI18n is the recipe of a generated title, for rendering it in the
+	// reader's language. Absent on titles a person wrote.
+	TitleI18n           *models.LocalizedText    `json:"titleI18n,omitempty"`
 	Description         *string                  `json:"description,omitempty"`
 	Check               *CheckResponse           `json:"check,omitempty"`
 	CheckGroupUID       *string                  `json:"checkGroupUid,omitempty"`
@@ -2463,6 +2486,7 @@ func incidentToResponse(inc *models.Incident) IncidentResponse {
 		FlapLevel:           inc.FlapLevel,
 		LastReopenedAt:      inc.LastReopenedAt,
 		Title:               inc.Title,
+		TitleI18n:           inc.TitleI18n,
 		Description:         inc.Description,
 		CheckGroupUID:       inc.CheckGroupUID,
 		CausedByIncidentUID: inc.CausedByIncidentUID,

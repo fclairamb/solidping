@@ -109,8 +109,12 @@ type Incident struct {
 	FlapLevel      int        `bun:"flap_level,notnull"`
 	LastReopenedAt *time.Time `bun:"last_reopened_at"`
 	Title          *string    `bun:"title"`
-	Description    *string    `bun:"description"`
-	Details        JSONMap    `bun:"details,type:jsonb,nullzero"`
+	// TitleI18n is the recipe of a generated title ("<check> is down"), so
+	// the dashboard shows it in the reader's language. nil for titles written
+	// by a person or stored before the column existed.
+	TitleI18n   *LocalizedText `bun:"title_i18n,type:jsonb,nullzero"`
+	Description *string        `bun:"description"`
+	Details     JSONMap        `bun:"details,type:jsonb,nullzero"`
 	// CheckGroupUID is set on group incidents — NULL keeps the existing per-check semantics.
 	CheckGroupUID *string `bun:"check_group_uid"`
 	// CausedByIncidentUID points to the root-cause incident this one was rolled up under.

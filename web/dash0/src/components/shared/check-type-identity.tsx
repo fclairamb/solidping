@@ -64,6 +64,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import type { TranslateFn } from "@/lib/i18n-types";
 
 export type CheckTypeIconComponent = LucideIcon | ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -240,14 +241,31 @@ const CHECK_TYPE_BADGE_BASE = "text-[10px] font-mono font-medium uppercase px-1.
 const TRANSLATABLE_LABEL_KEYS: Record<string, string> = {
   "A2S Game Server": "types.a2s",
   Browser: "types.browser",
+  Crawl: "types.crawl",
   Domain: "types.domain",
   Email: "types.email",
   "Freebox Line": "types.freebox_line",
+  Health: "types.health",
   Heartbeat: "types.heartbeat",
   "Private location": "types.private-location",
   Sleep: "types.sleep",
   Unknown: "status.unknown",
+  "Vendor status page": "types.vendor-status",
 };
+
+/**
+ * The check type's label in the UI language: ordinary words are translated,
+ * protocol and product names (HTTP, Redis...) are not. `t` must be bound to
+ * the checks namespace.
+ */
+export function translatedCheckTypeLabel(
+  t: TranslateFn,
+  type: string | undefined,
+): string {
+  const identity = getCheckTypeIdentity(type);
+  const translationKey = TRANSLATABLE_LABEL_KEYS[identity.label];
+  return translationKey ? t(translationKey) : identity.label;
+}
 
 export function CheckTypeBadge({
   type,
@@ -261,8 +279,7 @@ export function CheckTypeBadge({
 }) {
   const { t } = useTranslation("checks");
   const identity = getCheckTypeIdentity(type);
-  const translationKey = TRANSLATABLE_LABEL_KEYS[identity.label];
-  const label = translationKey ? t(translationKey) : identity.label;
+  const label = translatedCheckTypeLabel(t, type);
   return (
     <Badge
       variant="outline"

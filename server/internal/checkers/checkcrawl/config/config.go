@@ -363,7 +363,7 @@ func ValidateMaxPagesPresent(configMap map[string]any) error {
 
 func validateStartURL(raw string) error {
 	if raw == "" {
-		return checkerdef.NewConfigError(keyURL, "is required")
+		return checkerdef.NewRequiredConfigError(keyURL)
 	}
 
 	parsed, err := url.Parse(raw)

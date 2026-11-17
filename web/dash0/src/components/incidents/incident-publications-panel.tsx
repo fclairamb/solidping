@@ -42,6 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { localizeGenerated } from "@/lib/localized-text";
 
 // The three severities the API accepts. Rendered from one list so the picker
 // and the badge on an already-published incident can never drift apart — the
@@ -125,7 +126,7 @@ export function IncidentPublicationsPanel({
                     }}
                     className="text-sm font-medium hover:underline break-words"
                   >
-                    {publication.title}
+                    {localizeGenerated(t, publication.titleI18n, publication.title)}
                   </Link>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={stateBadgeVariant(publication.state)}>

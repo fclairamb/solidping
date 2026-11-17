@@ -139,7 +139,7 @@ func (c *BrowserConfig) GetConfig() map[string]any {
 // path refuses (spec 2026-09-12-06 §1).
 func ValidateNavigationURL(rawURL string) error {
 	if rawURL == "" {
-		return checkerdef.NewConfigError("url", "is required")
+		return checkerdef.NewRequiredConfigError("url")
 	}
 
 	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {

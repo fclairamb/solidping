@@ -266,7 +266,7 @@ func (c *SMTPConfig) getConfigSendMode(cfg map[string]any) {
 // Validate checks if the configuration is valid.
 func (c *SMTPConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError(checkerdef.OutputKeyHost, "is required")
+		return checkerdef.NewRequiredConfigError(checkerdef.OutputKeyHost)
 	}
 
 	if c.Port < 0 || c.Port > 65535 {

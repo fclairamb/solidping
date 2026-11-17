@@ -116,15 +116,15 @@ func (c *KubernetesConfig) GetConfig() map[string]any {
 // network call — wire validation happens during Execute.
 func (c *KubernetesConfig) Validate() error {
 	if c.ClusterUID == "" {
-		return checkerdef.NewConfigError(keyClusterUID, "is required")
+		return checkerdef.NewRequiredConfigError(keyClusterUID)
 	}
 
 	if c.Namespace == "" {
-		return checkerdef.NewConfigError(keyNamespace, "is required")
+		return checkerdef.NewRequiredConfigError(keyNamespace)
 	}
 
 	if c.Name == "" {
-		return checkerdef.NewConfigError(keyName, "is required")
+		return checkerdef.NewRequiredConfigError(keyName)
 	}
 
 	switch c.Kind {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { apiFetch } from "@/api/client";
+import i18n from "@/i18n";
 
 /** How a finding should be treated. Absent means `"error"` — the field was
  * added by spec 2026-08-26-05 to a shape that predates it, and a producer that
@@ -14,6 +15,21 @@ export interface FieldError {
    * client may branch on, since messages get reworded. See
    * {@link VALIDATION_CODES}. */
   code?: string;
+  /** The specific config rule behind an INVALID_CONFIG finding ("required"),
+   * so the message can be shown in the UI language. */
+  rule?: string;
+}
+
+/**
+ * Shows a server finding in the UI language when its rule is known. The
+ * server's message is English ("host: is required"); it stays the fallback
+ * for a rule this build has no translation for.
+ */
+export function localizeFieldError(field: FieldError): FieldError {
+  if (field.rule === "required") {
+    return { ...field, message: i18n.t("checks:validation.fieldRequired") };
+  }
+  return field;
 }
 
 /** The finding codes this UI actually branches on. */
@@ -134,8 +150,8 @@ export function useCheckValidationResult(
           }
         );
 
-        setErrors(resp.valid ? [] : (resp.fields ?? []));
-        setWarnings(resp.warnings ?? []);
+        setErrors(resp.valid ? [] : (resp.fields ?? []).map(localizeFieldError));
+        setWarnings((resp.warnings ?? []).map(localizeFieldError));
       } catch {
         // Silently ignore validation errors (network issues, etc.)
         setErrors([]);

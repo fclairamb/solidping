@@ -136,11 +136,11 @@ func (c *MySQLConfig) GetConfig() map[string]any {
 // Validate checks if the configuration is valid.
 func (c *MySQLConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
+		return checkerdef.NewRequiredConfigError("host")
 	}
 
 	if c.Username == "" {
-		return checkerdef.NewConfigError("username", "is required")
+		return checkerdef.NewRequiredConfigError("username")
 	}
 
 	fields := []struct{ name, value string }{

@@ -355,7 +355,7 @@ func (c *JSConfig) minPeriodHint() (time.Duration, string) {
 // Validate checks that the configuration fields are within acceptable bounds.
 func (c *JSConfig) Validate() error {
 	if c.Script == "" {
-		return checkerdef.NewConfigError(fieldScript, "is required")
+		return checkerdef.NewRequiredConfigError(fieldScript)
 	}
 
 	if len(c.Script) > maxScriptSize {

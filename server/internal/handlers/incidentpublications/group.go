@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"sort"
 	"time"
 
@@ -314,8 +313,8 @@ func (s *Service) noteAlsoAffecting(
 	tpl := templatesFor(page.Language)
 
 	s.postUpdate(ctx, page, pub, models.StatusUpdateKindInfo,
-		fmt.Sprintf(tpl.AlsoAffectingTitle, names[0]),
-		fmt.Sprintf(tpl.AlsoAffectingBody, names[0]), nil)
+		tpl.render(keyAlsoAffectingTitle, names[0]),
+		tpl.render(keyAlsoAffectingBody, names[0]), nil)
 
 	s.emit(ctx, orgUID, models.EventTypeStatusPageIncidentUpdated, pub, "")
 }

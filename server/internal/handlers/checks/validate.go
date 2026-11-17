@@ -355,11 +355,21 @@ func (f *validateFindings) addError(name, code, message string) {
 // parameter name a *ConfigError names over the caller's fallback.
 func (f *validateFindings) addErrorFrom(err error, fallbackName, code string) {
 	name := fallbackName
-	if configErr := checkerdef.IsConfigError(err); configErr != nil && configErr.Parameter != "" {
-		name = configErr.Parameter
+	rule := ""
+
+	if configErr := checkerdef.IsConfigError(err); configErr != nil {
+		if configErr.Parameter != "" {
+			name = configErr.Parameter
+		}
+
+		rule = configErr.Rule
 	}
 
 	f.addError(name, code, err.Error())
+
+	if rule != "" {
+		f.fields[len(f.fields)-1].Rule = rule
+	}
 }
 
 func (f *validateFindings) addWarning(name, code, message string) {

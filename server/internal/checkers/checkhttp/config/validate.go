@@ -23,7 +23,7 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 
 	// Validate URL
 	if cfg.URL == "" {
-		return checkerdef.NewConfigError("url", "is required")
+		return checkerdef.NewRequiredConfigError("url")
 	}
 
 	if !strings.HasPrefix(cfg.URL, "http://") && !strings.HasPrefix(cfg.URL, "https://") {

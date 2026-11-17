@@ -369,5 +369,34 @@
     "empty": "No incident in this period",
     "truncated": "Only the 5,000 most recent incidents are included, so these numbers are partial.",
     "noData": "No data"
+  },
+  "generated": {
+    "incident": {
+      "title": {
+        "down": "{{name}} is down",
+        "downUnnamed": "Check is down",
+        "degradedFailures": "{{name}} is degraded: {{failures}} failures in the last {{probes}} probes",
+        "degradedFailuresAvailability": "{{name}} is degraded: {{failures}} failures in the last {{probes}} probes ({{availability, number(minimumFractionDigits: 1; maximumFractionDigits: 1)}}% available)",
+        "degradedSlow": "{{name}} is degraded: {{slow}} of the last {{probes}} probes were slower than {{thresholdMs}}ms",
+        "sloFastBurn": "Fast burn: {{name}} error budget burning at {{rate, number(minimumFractionDigits: 1; maximumFractionDigits: 1)}}x",
+        "sloSlowBurn": "Slow burn: {{name}} error budget burning at {{rate, number(minimumFractionDigits: 1; maximumFractionDigits: 1)}}x"
+      }
+    },
+    "publication": {
+      "openedTitle": "{{name}} is experiencing issues",
+      "openedBody": "We are investigating an issue affecting {{name}}.",
+      "groupOpenedTitle": "Some services are experiencing issues",
+      "resolvedTitle": "{{name}} has recovered",
+      "resolvedBody": "{{name}} is operating normally again. This incident is resolved.",
+      "monitoringTitle": "{{name}} has recovered",
+      "monitoringBody": "The affected component has recovered. We are monitoring the situation.",
+      "relapseTitle": "{{name}} is experiencing issues again",
+      "relapseBody": "{{name}} is affected again. We are investigating.",
+      "alsoAffectingTitle": "This incident is also affecting {{name}}",
+      "alsoAffectingBody": "{{name}} is now affected by this incident as well.",
+      "removedTitle": "{{name}} is no longer monitored",
+      "removedGenericTitle": "The affected service is no longer monitored",
+      "removedBody": "The monitored resource was removed. This incident is resolved."
+    }
   }
 }

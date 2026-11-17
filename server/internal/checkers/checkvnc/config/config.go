@@ -261,7 +261,7 @@ func (c *VNCConfig) SecretFields() []string {
 // rdp): attaching to a VNC console has no logon side effects.
 func (c *VNCConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError(keyHost, "is required")
+		return checkerdef.NewRequiredConfigError(keyHost)
 	}
 
 	if c.Port == 0 {
