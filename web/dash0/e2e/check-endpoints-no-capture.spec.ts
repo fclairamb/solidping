@@ -121,3 +121,26 @@ test.describe("Check endpoints stay out of session replay", () => {
     expect(await row.evaluate((el, t) => el.outerHTML.includes(t), token)).toBe(false);
   });
 });
+
+// Spec 2026-11-17-08: the import dialog's payload textarea takes monitoring
+// exports (Uptime Kuma backups, Gatus configs) that hold credentials.
+test.describe("Check import payload stays out of session replay", () => {
+  test("payload textarea is blocked, its label is not", async ({ authenticatedPage: page }) => {
+    await page.goto("orgs/test/checks");
+    await page.getByTestId("checks-more-actions").click();
+    await page.getByTestId("import-button").click();
+    await page.getByTestId("import-source").click();
+    await page.getByTestId("import-source-uptime-kuma").click();
+
+    const payload = page.getByTestId("import-payload");
+    await expect(payload).toBeVisible();
+    await expect(payload).toHaveClass(/\bph-no-capture\b/);
+    await payload.fill('{"monitorList":[{"basic_auth_pass":"not-a-real-password"}]}');
+    expect(await blocked(payload)).toBe(true);
+
+    // Positive control: the label next to it stays capturable.
+    const label = page.locator('label[for="import-payload"]');
+    await expect(label).toBeVisible();
+    expect(await blocked(label)).toBe(false);
+  });
+});

@@ -334,8 +334,9 @@ func (s *Service) AddMember(
 
 // Field names shared by the validation messages and the audit payloads.
 const (
-	fieldRole  = "role"
-	fieldEmail = "email"
+	fieldRole            = "role"
+	fieldEmail           = "email"
+	fieldContactsRemoved = "contactsRemoved"
 )
 
 // auditMemberTarget names a membership for the audit trail. The target is the
@@ -523,7 +524,11 @@ func (s *Service) RemoveMember(
 		}
 	}
 
-	if err := s.db.DeleteOrganizationMember(ctx, memberUID); err != nil {
+	// The membership, the person's contacts in this org and their notification
+	// routes end together: a contact outliving its membership would keep a
+	// linked chat (Telegram, ...) acting in an org they no longer belong to.
+	contactsRemoved, err := s.db.RemoveOrganizationMember(ctx, memberUID)
+	if err != nil {
 		return err
 	}
 
@@ -531,7 +536,7 @@ func (s *Service) RemoveMember(
 	// failed user lookup must not turn a successful removal into an error.
 	user, _ := s.db.GetUser(ctx, member.UserUID)
 
-	payload := models.JSONMap{fieldRole: string(member.Role)}
+	payload := models.JSONMap{fieldRole: string(member.Role), fieldContactsRemoved: contactsRemoved}
 	if user != nil {
 		payload[fieldEmail] = user.Email
 	}

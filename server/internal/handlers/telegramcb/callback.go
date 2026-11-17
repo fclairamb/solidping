@@ -57,6 +57,14 @@ func (h *Handler) handleCallbackQuery(ctx context.Context, query *telegram.Callb
 		return
 	}
 
+	if !org.canWrite() {
+		h.log.InfoContext(ctx, "telegram ack callback refused for a read-only member",
+			"chatId", chatID, "orgUid", org.orgUID, "role", string(org.role))
+		h.answer(ctx, query.ID, telegram.ReadOnlyRoleToast(org.orgSlug))
+
+		return
+	}
+
 	h.ackFromCallback(ctx, query, org, qualifyRefs(orgs), chatID, incident)
 }
 
