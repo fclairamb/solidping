@@ -15,6 +15,40 @@ const base: PreferencesSyncInput = {
 };
 
 describe("planPreferencesSync", () => {
+  it("saves a ?lang= language in place of the saved one", () => {
+    expect(
+      planPreferencesSync({
+        ...base,
+        server: { locale: "fr", timezone: "Europe/Paris" },
+        uiLanguage: "de",
+        requestedLanguage: "de",
+      }),
+    ).toEqual({ patches: [{ locale: "de" }] });
+  });
+
+  it("does not rewrite a ?lang= language already saved", () => {
+    expect(
+      planPreferencesSync({
+        ...base,
+        server: { locale: "es", timezone: "Europe/Paris" },
+        uiLanguage: "es",
+        requestedLanguage: "es",
+      }),
+    ).toEqual({});
+  });
+
+  it("keeps a ?lang= language without saving it when the session cannot write", () => {
+    expect(
+      planPreferencesSync({
+        ...base,
+        server: { locale: "fr", timezone: "Europe/Paris" },
+        uiLanguage: "de",
+        requestedLanguage: "de",
+        mode: "adoptOnly",
+      }),
+    ).toEqual({});
+  });
+
   it("does nothing when the server already matches the browser", () => {
     expect(planPreferencesSync(base)).toEqual({});
   });

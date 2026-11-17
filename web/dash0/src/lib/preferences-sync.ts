@@ -59,6 +59,11 @@ export interface PreferencesSyncInput {
   server: UserPreferences | undefined;
   /** The dashboard's current language (`i18n.resolvedLanguage`). */
   uiLanguage: string | undefined;
+  /**
+   * The language this page load was opened with through `?lang=`: an explicit
+   * pick, saved in place of the stored language rather than overridden by it.
+   */
+  requestedLanguage?: string | null;
   /** The browser's IANA timezone. */
   browserTimezone: string | undefined;
   mode: PreferencesSyncMode;
@@ -79,7 +84,8 @@ export interface PreferencesSyncPlan {
 /**
  * Decides what AuthProvider does when a session's preferences arrive (spec
  * 2026-10-21-01, decision 5):
- * - a saved language wins: the dashboard switches to it;
+ * - a `?lang=` language wins over everything: saved when it differs;
+ * - otherwise a saved language wins: the dashboard switches to it;
  * - no saved language: the dashboard's current one is saved;
  * - the timezone always follows the browser, saved whenever it differs.
  */
@@ -92,7 +98,12 @@ export function planPreferencesSync(input: PreferencesSyncInput): PreferencesSyn
   const patches: PreferencesPatch[] = [];
   const saved = supportedLanguage(input.server.locale);
   const current = supportedLanguage(input.uiLanguage);
-  if (saved) {
+  const requested = supportedLanguage(input.requestedLanguage);
+  if (requested) {
+    if (input.mode === "full" && requested !== saved) {
+      patches.push({ locale: requested });
+    }
+  } else if (saved) {
     if (saved !== current) {
       plan.changeLanguage = saved;
     }
