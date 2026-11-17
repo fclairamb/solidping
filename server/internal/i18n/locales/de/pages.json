@@ -11,7 +11,7 @@
       "title": "Abmeldung bestätigt",
       "org": "<strong>{email}</strong> erhält keine E-Mail-Benachrichtigungen dieser Organisation mehr.",
       "check": "<strong>{email}</strong> erhält keine Benachrichtigungen für {check} mehr.",
-      "thisCheck": "<strong>{email}</strong> erhält keine Benachrichtigungen für diese Prüfung mehr.",
+      "thisCheck": "<strong>{email}</strong> erhält keine Benachrichtigungen für diesen Check mehr.",
       "othersUnaffected": "Andere Empfänger dieser Benachrichtigungen sind nicht betroffen.",
       "changedMind": "Haben Sie es sich anders überlegt?",
       "undo": "Abmeldung rückgängig machen"

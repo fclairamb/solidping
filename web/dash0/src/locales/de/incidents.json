@@ -6,7 +6,7 @@
   "resolvedOnly": "Nur gelöste",
   "table": {
     "incident": "Vorfall",
-    "check": "Prüfung",
+    "check": "Check",
     "started": "Begonnen",
     "duration": "Dauer",
     "failures": "Fehler",
@@ -52,7 +52,7 @@
   },
   "escalated": "Eskaliert",
   "escalatedTo": "Eskaliert → #{{number}}",
-  "escalatedHint": "Während dieses Vorfalls wurde auf dieser Prüfung ein echter Ausfall eröffnet",
+  "escalatedHint": "Während dieses Vorfalls wurde auf diesem Check ein echter Ausfall eröffnet",
   "fallbackTitle": "Vorfall",
   "actions": {
     "back": "Zurück zu den Vorfällen",
@@ -109,15 +109,15 @@
     "failureCount": "Anzahl Fehler",
     "relapseCount": "Anzahl Rückfälle",
     "descriptionLabel": "Beschreibung",
-    "checkLabel": "Prüfung",
+    "checkLabel": "Check",
     "state": "Status",
-    "checkTypeLabel": "Prüfungstyp",
+    "checkTypeLabel": "Check-Typ",
     "totalDuration": "Gesamtdauer",
     "ongoing": "(läuft noch)",
     "failureDetails": {
       "title": "Erster Fehler",
       "description": "Momentaufnahme des Ergebnisses, das diesen Vorfall ausgelöst hat — erfasst, bevor Rohergebnisse die Aufbewahrungsfrist überschreiten.",
-      "unknown": "Prüfung fehlgeschlagen",
+      "unknown": "Check fehlgeschlagen",
       "firstFailure": "Erster Fehler",
       "latestRelapse": "Letzter Rückfall",
       "status": "Status",
@@ -155,7 +155,7 @@
     },
     "traceroute": {
       "title": "Netzwerkpfad beim Ausfall",
-      "description": "Ein Traceroute im MTR-Stil, aufgenommen unmittelbar nach dem Öffnen dieses Vorfalls, von der Prüfregion zur Adresse, die der fehlgeschlagene Check angewählt hatte.",
+      "description": "Ein Traceroute im MTR-Stil, aufgenommen unmittelbar nach dem Öffnen dieses Vorfalls, von der Check-Region zur Adresse, die der fehlgeschlagene Check angewählt hatte.",
       "loadFailed": "Die Pfadaufnahme konnte nicht geladen werden. Ihr Download-Link ist kurzlebig — laden Sie den Vorfall neu, um einen frischen zu signieren.",
       "modes": {
         "icmp": "ICMP (privilegiert)",
@@ -181,7 +181,7 @@
       "unreachableBadge": "nicht erreichbar",
       "lossValue": "{{pct}} %",
       "msValue": "{{ms}} ms",
-      "caption": "Aufgenommen um {{startedAt}}, in {{durationMs}} ms — nachdem die fehlgeschlagene Prüfung bereits gemeldet war, hat sie den Vorfall also nie verzögert."
+      "caption": "Aufgenommen um {{startedAt}}, in {{durationMs}} ms — nachdem der fehlgeschlagene Check bereits gemeldet war, hat die Aufnahme den Vorfall also nie verzögert."
     }
   },
   "timeline": {
@@ -192,8 +192,8 @@
     "escalated": "Eskaliert",
     "reopenedRelapse": "Wieder geöffnet (Rückfall Nr. {{count}})",
     "resolved": "Aufgelöst",
-    "resolvedCheckDeleted": "Geschlossen, weil die Prüfung gelöscht wurde",
-    "resolvedCheckDisabled": "Geschlossen, weil die Prüfung deaktiviert wurde",
+    "resolvedCheckDeleted": "Geschlossen, weil der Check gelöscht wurde",
+    "resolvedCheckDisabled": "Geschlossen, weil der Check deaktiviert wurde",
     "monitoringInterrupted": "Überwachung unterbrochen",
     "monitoringInterruptedSince": "Überwachung unterbrochen seit {{time}}",
     "monitoringResumed": "Überwachung fortgesetzt",
@@ -244,7 +244,7 @@
     "blastRadiusEmpty": "Aktuell sind keine Kind-Vorfälle unter diesem zusammengefasst.",
     "rolledUpBadge": "zusammengefasst",
     "pagingColumn": "Benachrichtigung",
-    "checkLink": "Prüfung öffnen",
+    "checkLink": "Check öffnen",
     "showRolledUp": "Zusammengefasste Vorfälle anzeigen",
     "pagingSuppressed": "Benachrichtigung unterdrückt",
     "rolledUpInactive": "zusammengefasst"
@@ -323,7 +323,7 @@
     "autopilotTitle": "Dieser Vorfall läuft im Autopilot",
     "autopilotDescription": "Er wurde automatisch veröffentlicht und löst sich selbst auf, sobald der zugrunde liegende Vorfall behoben ist. Sobald Sie ihn bearbeiten oder ein Update posten, gehört er Ihnen — die Automatisierung meldet dann nur noch die Wiederherstellung und überlässt Ihnen die endgültige Auflösung.",
     "publicDetails": "Öffentliche Details",
-    "publicDetailsDescription": "Alles hier wird Kunden angezeigt. Fügen Sie niemals Prüfausgaben, Fehlermeldungen, interne Hostnamen oder IP-Adressen ein.",
+    "publicDetailsDescription": "Alles hier wird Kunden angezeigt. Fügen Sie niemals Check-Ausgaben, Fehlermeldungen, interne Hostnamen oder IP-Adressen ein.",
     "updated": "Vorfall aktualisiert",
     "postUpdate": "Update posten",
     "postUpdateDescription": "Updates können nur hinzugefügt werden: kein Bearbeiten, kein Löschen. Die Wahl von „Untersuchung läuft“, „Identifiziert“, „Überwachung“ oder „Behoben“ versetzt den Vorfall zugleich in diesen Zustand.",

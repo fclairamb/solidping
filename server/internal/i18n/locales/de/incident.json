@@ -1,5 +1,5 @@
 {
-  "unknownCheck": "Unbekannte Prüfung",
+  "unknownCheck": "Unbekannter Check",
   "someone": "Jemand",
   "checkLink": "<a href=\"{url}\">{check}</a>",
   "channel": {
@@ -19,8 +19,8 @@
   "pill": {
     "down": "Ausgefallen",
     "recovered": "Wiederhergestellt",
-    "checkDeleted": "Prüfung gelöscht",
-    "checkDisabled": "Prüfung deaktiviert",
+    "checkDeleted": "Check gelöscht",
+    "checkDisabled": "Check deaktiviert",
     "escalated": "Eskaliert",
     "reopened": "Wiedereröffnet",
     "comment": "Kommentar",
@@ -41,7 +41,7 @@
     "incidentId": "Vorfall-ID",
     "failureCount": "Anzahl Fehler",
     "relapseCount": "Anzahl Rückfälle",
-    "failedChecks": "Fehlgeschlagene Prüfungen",
+    "failedChecks": "Fehlgeschlagene Checks",
     "cause": "Ursache",
     "downFrom": "Ausgefallen seit",
     "backAt": "Wieder verfügbar am",
@@ -70,7 +70,7 @@
     "slowProbes": "Langsame Probes",
     "window": "Fenster",
     "currentStatus": "Aktueller Status",
-    "monitor": "Prüfung",
+    "monitor": "Check",
     "chartWindow": "Diagramm für dieses Fenster"
   },
   "regions": {
@@ -89,23 +89,23 @@
     "title": "{check} läuft wieder",
     "titleAfter": "{check} läuft nach {duration} Ausfall wieder",
     "downFor": "{duration} lang ausgefallen.",
-    "passing": "Die Prüfungen sind wieder erfolgreich. Es ist nichts mehr zu tun.",
+    "passing": "Die Checks sind wieder erfolgreich. Es ist nichts mehr zu tun.",
     "leadDuration": "Der Ausfall hat <strong>{duration}</strong> gedauert. Es ist nichts mehr zu tun.",
     "deletedSubject": "{check} wurde gelöscht, Vorfall geschlossen",
     "deletedTitle": "{check} wurde gelöscht",
     "deletedPreheader": "{check} wurde gelöscht, daher wurde der Vorfall geschlossen.",
-    "deletedBody": "Die Prüfung wurde gelöscht, daher wurde dieser Vorfall geschlossen. Das heißt nicht, dass der Dienst wieder läuft.",
+    "deletedBody": "Der Check wurde gelöscht, daher wurde dieser Vorfall geschlossen. Das heißt nicht, dass der Dienst wieder läuft.",
     "disabledSubject": "{check} wurde deaktiviert, Vorfall geschlossen",
     "disabledTitle": "{check} wurde deaktiviert",
     "disabledPreheader": "{check} wurde deaktiviert, daher wurde der Vorfall geschlossen.",
-    "disabledBody": "Die Prüfung wurde deaktiviert, daher wurde dieser Vorfall geschlossen. Sie hat sich nicht unbedingt erholt.",
+    "disabledBody": "Der Check wurde deaktiviert, daher wurde dieser Vorfall geschlossen. Er hat sich nicht unbedingt erholt.",
     "textTitle": "{check} wiederhergestellt",
     "textBody": "Der Vorfall für {check} wurde gelöst."
   },
   "escalated": {
     "subject": "{check} ist weiterhin ausgefallen, Vorfall eskaliert",
-    "preheader_one": "Nach {count} fehlgeschlagenen Prüfung weiterhin ausgefallen, daher wurde der Vorfall eskaliert.",
-    "preheader_other": "Nach {count} fehlgeschlagenen Prüfungen weiterhin ausgefallen, daher wurde der Vorfall eskaliert.",
+    "preheader_one": "Nach {count} fehlgeschlagenen Check weiterhin ausgefallen, daher wurde der Vorfall eskaliert.",
+    "preheader_other": "Nach {count} fehlgeschlagenen Checks weiterhin ausgefallen, daher wurde der Vorfall eskaliert.",
     "title": "{check} ist weiterhin ausgefallen",
     "lead": "Niemand hat den Vorfall rechtzeitig bestätigt, daher wurde er eskaliert.",
     "textTitle": "Vorfall für {check} eskaliert",
@@ -114,9 +114,9 @@
   "reopened": {
     "title": "{check} ist erneut ausgefallen",
     "preheader": "{check} ist nach einer kurzen Erholung erneut ausgefallen.",
-    "lead": "Nach einer kurzen Erholung schlagen die Prüfungen erneut fehl.",
-    "leadRelapses_one": "Nach einer kurzen Erholung schlagen die Prüfungen erneut fehl ({count} Rückfall bisher).",
-    "leadRelapses_other": "Nach einer kurzen Erholung schlagen die Prüfungen erneut fehl ({count} Rückfälle bisher).",
+    "lead": "Nach einer kurzen Erholung schlagen die Checks erneut fehl.",
+    "leadRelapses_one": "Nach einer kurzen Erholung schlagen die Checks erneut fehl ({count} Rückfall bisher).",
+    "leadRelapses_other": "Nach einer kurzen Erholung schlagen die Checks erneut fehl ({count} Rückfälle bisher).",
     "textTitle": "Vorfall für {check} wiedereröffnet (Rückfall Nr. {relapse})",
     "textBody": "Der Vorfall für {check} wurde nach einer kurzen Erholung wiedereröffnet."
   },
@@ -132,7 +132,7 @@
   "acknowledged": {
     "title": "{actor} kümmert sich um {check}",
     "preheader": "{actor} hat den Vorfall übernommen. Die Eskalation ist gestoppt, der Vorfall bleibt offen.",
-    "lead": "Die Eskalation ist gestoppt. Der Vorfall bleibt offen, bis die Prüfungen wieder erfolgreich sind.",
+    "lead": "Die Eskalation ist gestoppt. Der Vorfall bleibt offen, bis die Checks wieder erfolgreich sind.",
     "textTitle": "Vorfall für {check} bestätigt",
     "textBody": "{actor} hat den Vorfall für {check} bestätigt. Die Eskalation ist gestoppt: Niemand sonst muss ihn übernehmen.",
     "textBodyVia": "{actor} hat den Vorfall für {check} {via} bestätigt. Die Eskalation ist gestoppt: Niemand sonst muss ihn übernehmen.",
@@ -223,7 +223,7 @@
   "degradedCreated": {
     "subject": "{check} ist beeinträchtigt: {reason}",
     "title": "{check} ist beeinträchtigt",
-    "lead": "Die Prüfungen schlagen immer wieder fehl oder werden langsam, aber nie lange genug, um als Ausfall zu gelten.",
+    "lead": "Die Checks schlagen immer wieder fehl oder werden langsam, aber nie lange genug, um als Ausfall zu gelten.",
     "openChart": "Diagramm öffnen",
     "notOutage": "Dies ist kein Ausfall: Auf jeden Fehler folgte ein Erfolg, bevor die Bestätigungsfrist abgelaufen war."
   },
@@ -236,8 +236,8 @@
     "turnedOffLead": "Die offene Beeinträchtigungsphase wurde geschlossen. Das heißt nicht, dass der Dienst wieder stabil ist.",
     "leadDuration": "Die Instabilität hat <strong>{duration}</strong> gedauert. Es ist nichts mehr zu tun.",
     "lead": "Es ist nichts mehr zu tun.",
-    "turnedOffText": "Die Beeinträchtigungserkennung wurde für diese Prüfung deaktiviert, daher wurde die offene Beeinträchtigungsphase geschlossen. Das heißt nicht, dass der Dienst wieder stabil ist.",
+    "turnedOffText": "Die Beeinträchtigungserkennung wurde für diesen Check deaktiviert, daher wurde die offene Beeinträchtigungsphase geschlossen. Das heißt nicht, dass der Dienst wieder stabil ist.",
     "textBody": "Die Beeinträchtigungsbedingung ist lange genug nicht mehr erfüllt, um die Phase zu schließen.",
-    "historyKept": "Die erfassten Fehler und langsamen Antworten bleiben im Verlauf der Prüfung erhalten: Nur das Muster hat aufgehört."
+    "historyKept": "Die erfassten Fehler und langsamen Antworten bleiben im Verlauf des Checks erhalten: Nur das Muster hat aufgehört."
   }
 }

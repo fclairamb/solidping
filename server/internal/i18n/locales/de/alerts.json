@@ -1,14 +1,14 @@
 {
   "emphasis": "<strong>{text}</strong>",
   "link": "<a href=\"{url}\">{text}</a>",
-  "openChecks": "Ihre Prüfungen öffnen",
+  "openChecks": "Ihre Checks öffnen",
   "escalation": {
     "subject": "{check} ist weiterhin ausgefallen, an Sie eskaliert",
     "pill": "Eskaliert",
     "heading": "{check} ist weiterhin ausgefallen",
     "lead": "Niemand hat den Vorfall rechtzeitig bestätigt, daher wurde er an Sie eskaliert.",
     "failedChecks": "Anzahl Fehler",
-    "unknownCheck": "Unbekannte Prüfung"
+    "unknownCheck": "Unbekannter Check"
   },
   "pagingNudge": {
     "subject": "Richten Sie Ihre Benachrichtigungen für {org} ein",
@@ -36,28 +36,28 @@
     "alertSubjectNoCheck": "[SolidPing] Alarm"
   },
   "regionOffline": {
-    "subject_one": "Region {region} ist offline: {count} Ihrer Prüfungen läuft nicht",
-    "subject_other": "Region {region} ist offline: {count} Ihrer Prüfungen laufen nicht",
-    "preheader": "Seit dem {since} werden Prüfungen, die nur von {region} aus laufen, nicht ausgeführt.",
+    "subject_one": "Region {region} ist offline: {count} Ihrer Checks läuft nicht",
+    "subject_other": "Region {region} ist offline: {count} Ihrer Checks laufen nicht",
+    "preheader": "Seit dem {since} werden Checks, die nur von {region} aus laufen, nicht ausgeführt.",
     "pill": "Region offline",
     "heading": "Region {region} ist offline",
     "since": "Die SolidPing-Region {region} ist seit dem {since} offline.",
-    "blind_one": "{count} Ihrer Prüfungen in {org} läuft nur von dieser Region aus und wird daher gerade nicht ausgeführt:",
-    "blind_other": "{count} Ihrer Prüfungen in {org} laufen nur von dieser Region aus und werden daher gerade nicht ausgeführt:",
+    "blind_one": "{count} Ihrer Checks in {org} läuft nur von dieser Region aus und wird daher gerade nicht ausgeführt:",
+    "blind_other": "{count} Ihrer Checks in {org} laufen nur von dieser Region aus und werden daher gerade nicht ausgeführt:",
     "more_one": "…und {count} weitere.",
     "more_other": "…und {count} weitere.",
-    "reduced_one": "{count} weitere Prüfung läuft in ihren übrigen Regionen weiter.",
-    "reduced_other": "{count} weitere Prüfungen laufen in ihren übrigen Regionen weiter.",
-    "nothingToDo": "Sie müssen nichts tun. Das SolidPing-Team wurde benachrichtigt, und Sie erhalten eine zweite E-Mail, sobald die Region wieder verfügbar ist. Bis dahin zeigen diese Prüfungen statt eines Status „keine Daten“ an.",
-    "nothingToDoOneCheck": "Sie müssen nichts tun. Das SolidPing-Team wurde benachrichtigt, und Sie erhalten eine zweite E-Mail, sobald die Region wieder verfügbar ist. Bis dahin zeigt diese Prüfung statt eines Status „keine Daten“ an."
+    "reduced_one": "{count} weiterer Check läuft in seinen übrigen Regionen weiter.",
+    "reduced_other": "{count} weitere Checks laufen in ihren übrigen Regionen weiter.",
+    "nothingToDo": "Sie müssen nichts tun. Das SolidPing-Team wurde benachrichtigt, und Sie erhalten eine zweite E-Mail, sobald die Region wieder verfügbar ist. Bis dahin zeigen diese Checks statt eines Status „keine Daten“ an.",
+    "nothingToDoOneCheck": "Sie müssen nichts tun. Das SolidPing-Team wurde benachrichtigt, und Sie erhalten eine zweite E-Mail, sobald die Region wieder verfügbar ist. Bis dahin zeigt dieser Check statt eines Status „keine Daten“ an."
   },
   "regionRecovered": {
-    "subject": "Region {region} ist wieder online, Ihre Prüfungen werden fortgesetzt",
-    "preheader": "Die Region war {duration} offline. Ihre Prüfungen laufen wieder.",
+    "subject": "Region {region} ist wieder online, Ihre Checks werden fortgesetzt",
+    "preheader": "Die Region war {duration} offline. Ihre Checks laufen wieder.",
     "pill": "Region wieder online",
     "heading": "Region {region} ist wieder online",
-    "moved": "Die Prüfungen von {org}, die nur von {region} aus liefen, hängen nicht mehr davon ab und werden wieder ausgeführt.",
-    "back": "Die SolidPing-Region {region} ist wieder online, und die Prüfungen von {org}, die nur dort liefen, werden wieder ausgeführt.",
+    "moved": "Die Checks von {org}, die nur von {region} aus liefen, hängen nicht mehr davon ab und werden wieder ausgeführt.",
+    "back": "Die SolidPing-Region {region} ist wieder online, und die Checks von {org}, die nur dort liefen, werden wieder ausgeführt.",
     "offline": "Offline",
     "offlineFor": "Offline-Dauer",
     "offlineSince": "Offline ab",

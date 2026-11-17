@@ -1,6 +1,7 @@
 {
   "common.header.logoAlt": {"fr": "same word", "de": "same word"},
   "common.footer.dashboard": {"de": "German uses the English word, as dash0 does"},
+  "common.labels.check": {"de": "German says Check, as dash0 and www.solidping.io/de do"},
   "common.labels.incident": {"fr": "same word"},
   "common.months.long.apr": {"de": "same word"},
   "common.months.long.aug": {"de": "same word"},

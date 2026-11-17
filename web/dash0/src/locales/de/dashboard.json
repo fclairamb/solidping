@@ -5,10 +5,10 @@
   "refresh": "Aktualisieren",
   "welcome": {
     "title": "Willkommen bei SolidPing",
-    "subtitle": "Erstellen Sie Ihre erste Prüfung, um die Überwachung zu starten.",
-    "firstCheckSubtitle": "Wählen Sie einen Prüftyp und geben Sie das Ziel an.",
-    "cta": "Erste Prüfung erstellen",
-    "create": "Prüfung erstellen",
+    "subtitle": "Erstellen Sie Ihren ersten Check, um die Überwachung zu starten.",
+    "firstCheckSubtitle": "Wählen Sie einen Check-Typ und geben Sie das Ziel an.",
+    "cta": "Ersten Check erstellen",
+    "create": "Check erstellen",
     "creating": "Erstellung...",
     "advancedHint": "Mehr Kontrolle?",
     "advancedLink": "Vollständigen Editor öffnen",
@@ -16,7 +16,7 @@
     "or": "oder",
     "mcp": {
       "title": "Lassen Sie die KI alles einrichten",
-      "description": "Verbinden Sie Claude, Cursor oder VS Code mit dem MCP-Server von SolidPing und lassen Sie alle Ihre Prüfungen erstellen und konfigurieren.",
+      "description": "Verbinden Sie Claude, Cursor oder VS Code mit dem MCP-Server von SolidPing und lassen Sie alle Ihre Checks erstellen und konfigurieren.",
       "cta": "MCP einrichten"
     },
     "quick": {
@@ -27,7 +27,7 @@
     "quickLabel": {
       "http": "URL zur Überwachung",
       "icmp": "Host für Ping",
-      "ssl": "Domain für SSL-Prüfung"
+      "ssl": "Domain für SSL-Check"
     },
     "validation": {
       "empty": {
@@ -92,21 +92,21 @@
   },
   "banner": {
     "allGreen": "Alle Systeme betriebsbereit",
-    "allGreenSub_one": "{{count}} Prüfung überwacht, {{availability}}% Verfügbarkeit über 24 Std.",
-    "allGreenSub_other": "{{count}} Prüfungen überwacht, {{availability}}% Verfügbarkeit über 24 Std.",
-    "allGreenSub_7d_one": "{{count}} Prüfung überwacht, {{availability}}% Verfügbarkeit über 7 Tage",
-    "allGreenSub_7d_other": "{{count}} Prüfungen überwacht, {{availability}}% Verfügbarkeit über 7 Tage",
-    "allGreenSub_30d_one": "{{count}} Prüfung überwacht, {{availability}}% Verfügbarkeit über 30 Tage",
-    "allGreenSub_30d_other": "{{count}} Prüfungen überwacht, {{availability}}% Verfügbarkeit über 30 Tage",
-    "allGreenSubNoData_one": "{{count}} Prüfung überwacht, noch keine Verfügbarkeitsdaten",
-    "allGreenSubNoData_other": "{{count}} Prüfungen überwacht, noch keine Verfügbarkeitsdaten",
+    "allGreenSub_one": "{{count}} Check überwacht, {{availability}}% Verfügbarkeit über 24 Std.",
+    "allGreenSub_other": "{{count}} Checks überwacht, {{availability}}% Verfügbarkeit über 24 Std.",
+    "allGreenSub_7d_one": "{{count}} Check überwacht, {{availability}}% Verfügbarkeit über 7 Tage",
+    "allGreenSub_7d_other": "{{count}} Checks überwacht, {{availability}}% Verfügbarkeit über 7 Tage",
+    "allGreenSub_30d_one": "{{count}} Check überwacht, {{availability}}% Verfügbarkeit über 30 Tage",
+    "allGreenSub_30d_other": "{{count}} Checks überwacht, {{availability}}% Verfügbarkeit über 30 Tage",
+    "allGreenSubNoData_one": "{{count}} Check überwacht, noch keine Verfügbarkeitsdaten",
+    "allGreenSubNoData_other": "{{count}} Checks überwacht, noch keine Verfügbarkeitsdaten",
     "issues": "Probleme erkannt",
-    "issuesSubDown_one": "{{count}} Prüfung ausgefallen",
-    "issuesSubDown_other": "{{count}} Prüfungen ausgefallen",
+    "issuesSubDown_one": "{{count}} Check ausgefallen",
+    "issuesSubDown_other": "{{count}} Checks ausgefallen",
     "issuesSubIncidents_one": "{{count}} aktiver Vorfall",
     "issuesSubIncidents_other": "{{count}} aktive Vorfälle",
-    "warning": "Einige Prüfungen beeinträchtigt",
-    "warningSub": "Zeitüberschreitungen bei {{count}} Prüfungen erkannt",
+    "warning": "Einige Checks beeinträchtigt",
+    "warningSub": "Zeitüberschreitungen bei {{count}} Checks erkannt",
     "slaOperational": "SLA 24 Std. betriebsbereit",
     "slaOperational_7d": "SLA 7 Tage betriebsbereit",
     "slaOperational_30d": "SLA 30 Tage betriebsbereit",
@@ -114,7 +114,7 @@
     "degradedPerformance": "Beeinträchtigte Leistung"
   },
   "kpi": {
-    "monitored": "Überwachte Prüfungen",
+    "monitored": "Überwachte Checks",
     "monitoredDisabled": "{{count}} deaktiviert",
     "down": "Derzeit ausgefallen",
     "downSubNone": "Alle aktiv",
@@ -137,9 +137,9 @@
     "badgeNeedsAction": "Handlungsbedarf"
   },
   "glance": {
-    "title": "Prüfungen auf einen Blick",
-    "footer_one": "{{count}} Prüfung anzeigen →",
-    "footer_other": "Alle {{count}} Prüfungen anzeigen →",
+    "title": "Checks auf einen Blick",
+    "footer_one": "{{count}} Check anzeigen →",
+    "footer_other": "Alle {{count}} Checks anzeigen →",
     "since": "seit {{time}}",
     "description": "Zustand der Flotte auf einen Blick und Live-Antwortzeiten",
     "viewAll": "Alle anzeigen ({{count}})"

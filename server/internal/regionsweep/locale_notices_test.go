@@ -106,8 +106,8 @@ func TestRegionNoticesAreWrittenInTheReadersLanguage(t *testing.T) {
 				"[SolidPing watchdog] Region eu-west ist offline",
 				"Die Region „eu-west“ ist OFFLINE (seit dem 5. Juli, 12:00 CEST kein aktiver Worker): " +
 					"419 Aufträge zugewiesen, davon 345 überfällig.",
-				"57 Prüfungen aus 3 Organisationen laufen nur in dieser Region",
-				"Abhilfe: Nehmen Sie einen Worker für „eu-west“ wieder in Betrieb oder verschieben Sie die Prüfungen mit " +
+				"57 Checks aus 3 Organisationen laufen nur in dieser Region",
+				"Abhilfe: Nehmen Sie einen Worker für „eu-west“ wieder in Betrieb oder verschieben Sie die Checks mit " +
 					`POST /api/v1/system/regions/migrate {"from":"eu-west","to":"<live-region>"}.`,
 			},
 			noticeStalled: {"Die Region „eu-west“ hängt: 2 aktive Worker, aber 41 Aufträge überfällig"},
