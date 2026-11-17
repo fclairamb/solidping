@@ -227,7 +227,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.48.0
 	github.com/aws/aws-sdk-go-v2/config v1.33.19
 	github.com/aws/aws-sdk-go-v2/credentials v1.21.1
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.10
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.115.0
 	github.com/aws/smithy-go v1.28.9
 	github.com/beevik/ntp v1.6.0
 	github.com/caddyserver/certmagic v0.25.6
@@ -274,7 +274,7 @@ require (
 	github.com/likexian/whois-parser v1.24.21
 	github.com/lmittmann/tint v1.2.1
 	github.com/mattn/go-sqlite3 v1.14.53
-	github.com/microsoft/go-mssqldb v1.11.2
+	github.com/microsoft/go-mssqldb v1.12.0
 	github.com/miekg/dns v1.1.73
 	github.com/moby/moby/api v1.57.0
 	github.com/moby/moby/client v0.6.3
@@ -285,7 +285,6 @@ require (
 	github.com/pkg/sftp v1.13.12
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/posthog/posthog-go v1.44.1
-	github.com/posthog/posthog-go/v2 v2.0.0
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
