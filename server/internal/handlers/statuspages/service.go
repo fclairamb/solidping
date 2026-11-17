@@ -561,15 +561,19 @@ func (s *Service) uptimebarHints(ctx context.Context) uptimebar.Hints {
 
 // StatusUpdatePublicResponse represents a status update for public display.
 type StatusUpdatePublicResponse struct {
-	UID          string    `json:"uid"`
-	SectionUID   *string   `json:"sectionUid,omitempty"`
-	CheckUID     *string   `json:"checkUid,omitempty"`
-	IncidentUID  *string   `json:"incidentUid,omitempty"`
-	Title        string    `json:"title"`
-	BodyMarkdown string    `json:"bodyMarkdown"`
-	LinkURL      *string   `json:"linkUrl,omitempty"`
-	Kind         string    `json:"kind"`
-	PublishedAt  time.Time `json:"publishedAt"`
+	UID          string  `json:"uid"`
+	SectionUID   *string `json:"sectionUid,omitempty"`
+	CheckUID     *string `json:"checkUid,omitempty"`
+	IncidentUID  *string `json:"incidentUid,omitempty"`
+	Title        string  `json:"title"`
+	BodyMarkdown string  `json:"bodyMarkdown"`
+	// TitleI18n / BodyI18n are the recipes of a machine-written update, so
+	// the page renders it in the visitor's language.
+	TitleI18n   *models.LocalizedText `json:"titleI18n,omitempty"`
+	BodyI18n    *models.LocalizedText `json:"bodyI18n,omitempty"`
+	LinkURL     *string               `json:"linkUrl,omitempty"`
+	Kind        string                `json:"kind"`
+	PublishedAt time.Time             `json:"publishedAt"`
 }
 
 // PublicIncidentProvider supplies the active incident publications rendered on
@@ -588,6 +592,7 @@ type PublicIncidentProvider interface {
 type PublicIncident struct {
 	UID               string                 `json:"uid"`
 	Title             string                 `json:"title"`
+	TitleI18n         *models.LocalizedText  `json:"titleI18n,omitempty"`
 	State             string                 `json:"state"`
 	Severity          *string                `json:"severity,omitempty"`
 	StartedAt         time.Time              `json:"startedAt"`
@@ -598,11 +603,13 @@ type PublicIncident struct {
 
 // PublicIncidentUpdate is one narrative entry on a public incident.
 type PublicIncidentUpdate struct {
-	UID          string    `json:"uid"`
-	Kind         string    `json:"kind"`
-	Title        string    `json:"title"`
-	BodyMarkdown string    `json:"bodyMarkdown"`
-	PublishedAt  time.Time `json:"publishedAt"`
+	UID          string                `json:"uid"`
+	Kind         string                `json:"kind"`
+	Title        string                `json:"title"`
+	BodyMarkdown string                `json:"bodyMarkdown"`
+	TitleI18n    *models.LocalizedText `json:"titleI18n,omitempty"`
+	BodyI18n     *models.LocalizedText `json:"bodyI18n,omitempty"`
+	PublishedAt  time.Time             `json:"publishedAt"`
 }
 
 // StatusPageResponse represents a status page in API responses.
@@ -2788,6 +2795,8 @@ func (s *Service) loadRecentUpdates(
 			IncidentUID:  upd.IncidentUID,
 			Title:        upd.Title,
 			BodyMarkdown: upd.BodyMarkdown,
+			TitleI18n:    upd.TitleI18n,
+			BodyI18n:     upd.BodyI18n,
 			LinkURL:      upd.LinkURL,
 			Kind:         upd.Kind,
 			PublishedAt:  upd.PublishedAt,

@@ -367,7 +367,7 @@ function SecurityPage() {
               <div className="space-y-0.5">
                 <div className="font-medium">{p.name}</div>
                 <div className="text-xs text-muted-foreground">
-                  {p.aaguidLabel ?? "Security key"} ·{" "}
+                  {p.aaguidLabel ?? t("account:security.passkeys.defaultLabel")} ·{" "}
                   {t("account:security.passkeys.added")}{" "}
                   {new Date(p.createdAt).toLocaleDateString()}
                   {p.lastUsedAt

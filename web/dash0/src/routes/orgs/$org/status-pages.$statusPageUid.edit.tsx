@@ -48,9 +48,9 @@ function StatusPageEditPage() {
       <QueryErrorView
         error={error}
         org={org}
-        resource="Status Page"
+        resource={t("common:resources.statusPage")}
         backTo="/orgs/$org/status-pages"
-        backLabel="Back to Status Pages"
+        backLabel={t("common:backToList", { list: t("nav:statusPages") })}
         onRetry={() => refetch()}
       />
     );

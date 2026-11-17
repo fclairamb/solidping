@@ -155,7 +155,7 @@ func (c *SSHConfig) GetConfig() map[string]any {
 //nolint:cyclop // SSH config validation has many interdependent fields
 func (c *SSHConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
+		return checkerdef.NewRequiredConfigError("host")
 	}
 
 	if c.Port != 0 && (c.Port < 1 || c.Port > 65535) {

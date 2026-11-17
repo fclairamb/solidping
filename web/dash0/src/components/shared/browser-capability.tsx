@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AppWindow } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -47,12 +48,7 @@ const colors: Record<BrowserCapability, string> = {
   unknown: "text-muted-foreground",
 };
 
-const hints: Record<BrowserCapability, string> = {
-  yes: "At least one live worker in this region reports a headless browser available for browser checks.",
-  no: "No live worker in this region currently reports a headless browser. You can still select it — the check is only rejected if the worker really has no browser when it runs.",
-  unknown:
-    "Not reported yet — this region has no live worker reporting its capabilities, or is running an older agent. It may well support browser checks.",
-};
+// Hints: checks:regionCapability.browser.hint.<capability>.
 
 /**
  * Renders the capability as a single icon whose color encodes the state —
@@ -78,6 +74,8 @@ export function BrowserCapabilityIcon({
   // click from reaching an enclosing <label> (the region picker row), which
   // would toggle the region.
   const [open, setOpen] = useState(false);
+  const { t } = useTranslation("checks");
+  const hint = t(`regionCapability.browser.hint.${capability}`);
 
   if (capability === "unknown" && hideUnknown) {
     return null;
@@ -97,10 +95,10 @@ export function BrowserCapabilityIcon({
             className={cn("h-3.5 w-3.5", colors[capability], className)}
             data-testid={testId}
             data-browser={capability}
-            aria-label={hints[capability]}
+            aria-label={hint}
           />
         </TooltipTrigger>
-        <TooltipContent className="max-w-xs">{hints[capability]}</TooltipContent>
+        <TooltipContent className="max-w-xs">{hint}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

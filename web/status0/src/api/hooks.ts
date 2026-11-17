@@ -12,6 +12,7 @@ import { ApiError, NetworkError, apiFetch } from "./client";
 // runtime), so nothing exercised this path until the include-URL unit test
 // (hooks.test.ts) needed a REAL value from this module and hit it.
 import { withKiosk } from "../lib/kiosk";
+import type { LocalizedText } from "../lib/localized-text";
 
 export interface ResourceCheckInfo {
   name?: string;
@@ -127,6 +128,9 @@ export interface StatusUpdatePublicResponse {
   incidentUid?: string;
   title: string;
   bodyMarkdown: string;
+  /** Recipes of a machine-written update, rendered in the visitor's language. */
+  titleI18n?: LocalizedText;
+  bodyI18n?: LocalizedText;
   linkUrl?: string;
   kind: string;
   publishedAt: string;
@@ -153,6 +157,8 @@ export interface StatusCounts {
 export interface PublicIncident {
   uid: string;
   title: string;
+  /** Recipe of a templated title; absent once a person retitled it. */
+  titleI18n?: LocalizedText;
   /** "investigating" | "identified" | "monitoring" | "resolved" */
   state: string;
   /** "minor" | "major" | "critical", or absent when the operator set none. */
@@ -170,6 +176,8 @@ export interface PublicIncidentUpdate {
   kind: string;
   title: string;
   bodyMarkdown: string;
+  titleI18n?: LocalizedText;
+  bodyI18n?: LocalizedText;
   publishedAt: string;
 }
 

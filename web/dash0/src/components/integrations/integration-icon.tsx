@@ -1,3 +1,4 @@
+import i18n from "@/i18n";
 import {
   Bell,
   BellRing,
@@ -59,6 +60,13 @@ export function integrationIconComponent(type: ConnectionType) {
   return ICONS[type] ?? Webhook;
 }
 
+/** A channel label that is an ordinary word rather than a brand, in the UI
+ * language. A plain function (not a hook) like the rest of this module, so it
+ * reads the shared i18n instance. */
+function channelLabel(key: string): string {
+  return i18n.t(`integrations:channelLabels.${key}`);
+}
+
 export function integrationLabel(type: ConnectionType): string {
   switch (type) {
     case "slack":
@@ -70,7 +78,7 @@ export function integrationLabel(type: ConnectionType): string {
     case "webhook":
       return "Webhook";
     case "email":
-      return "Email";
+      return channelLabel("email");
     case "googlechat":
       return "Google Chat";
     case "mattermost":
@@ -94,7 +102,7 @@ export function integrationLabel(type: ConnectionType): string {
     case "freebox":
       return "Freebox";
     case "webpush":
-      return "Browser push";
+      return channelLabel("webpush");
     case "kubernetes":
       return "Kubernetes";
     case "twilio":
@@ -154,19 +162,19 @@ export function DirectChannelIcon({
 export function directChannelLabel(contactType: string): string {
   switch (contactType) {
     case "email":
-      return "Email";
+      return channelLabel("email");
     case "phone":
-      return "Phone (SMS)";
+      return channelLabel("phone");
     case "whatsapp":
       return "WhatsApp";
     case "telegram":
       return "Telegram";
     case "slack_user":
-      return "Slack DM";
+      return channelLabel("slackDm");
     case "discord":
-      return "Discord DM";
+      return channelLabel("discordDm");
     case "webpush":
-      return "Browser push";
+      return channelLabel("webpush");
     default:
       return contactType;
   }

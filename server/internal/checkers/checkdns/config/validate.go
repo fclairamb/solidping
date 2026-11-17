@@ -19,7 +19,7 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 
 	// Validate Host (domain to query)
 	if cfg.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
+		return checkerdef.NewRequiredConfigError("host")
 	}
 
 	// Validate Timeout if set

@@ -193,5 +193,19 @@
   "removeItem": "Retirer {{item}}",
   "githubStar": {
     "sidebar": "Mettre une étoile sur GitHub"
+  },
+  "backToList": "Retour : {{list}}",
+  "resources": {
+    "check": "Contrôle",
+    "statusPage": "Page de statut",
+    "incidentPublication": "Publication d'incident",
+    "statusUpdate": "Mise à jour"
+  },
+  "apiErrors": {
+    "generic": "Une erreur est survenue",
+    "rateLimited": "Trop de requêtes",
+    "sessionExpired": "Session expirée",
+    "sessionChanged": "La session a changé",
+    "network": "La connexion réseau a échoué"
   }
 }

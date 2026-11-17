@@ -11,43 +11,93 @@
 // PUBLIC display name, which the page already renders.
 package incidentpublications
 
-import "github.com/fclairamb/solidping/server/internal/i18n"
+import (
+	"fmt"
+	"strings"
 
-// templateSet is one language's worth of public narrative strings. The `%s`
-// slot is always the resource's public display name — never a check slug,
-// never an incident title, never probe output.
-type templateSet struct {
-	// OpenedTitle is the publication's public title, e.g. "Payments API is
+	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/i18n"
+)
+
+// templateKey names one public narrative template. The value is also the
+// message key suffix dash0 and status0 render it from ("publication." + key),
+// so a visitor reading the page in another language than the page's own gets
+// the same sentence in theirs. Never rename one: it is stored in
+// incident_publications.public_title_i18n and status_updates.*_i18n.
+type templateKey string
+
+// The `%s` slot of every template is the resource's public display name —
+// never a check slug, never an incident title, never probe output.
+const (
+	// keyOpenedTitle is the publication's public title, e.g. "Payments API is
 	// experiencing issues".
-	OpenedTitle string
-	// OpenedBody is the first `investigating` update.
-	OpenedBody string
-	// GroupOpenedTitle is used when the affected component could not be named
-	// (a group resource with no public name, or a multi-resource incident).
-	GroupOpenedTitle string
-	// ResolvedTitle / ResolvedBody close an untouched auto-publication.
-	ResolvedTitle string
-	ResolvedBody  string
-	// MonitoringTitle / MonitoringBody are posted instead of a resolve when a
-	// human has taken the narrative over (`if_untouched` policy): the
+	keyOpenedTitle templateKey = "openedTitle"
+	// keyOpenedBody is the first `investigating` update.
+	keyOpenedBody templateKey = "openedBody"
+	// keyGroupOpenedTitle is used when the affected component could not be
+	// named (a group resource with no public name, or a multi-resource
+	// incident). It also stands in for the name in the other templates then.
+	keyGroupOpenedTitle templateKey = "groupOpenedTitle"
+	// keyResolvedTitle / keyResolvedBody close an untouched auto-publication.
+	keyResolvedTitle templateKey = "resolvedTitle"
+	keyResolvedBody  templateKey = "resolvedBody"
+	// keyMonitoringTitle / keyMonitoringBody are posted instead of a resolve
+	// when a human has taken the narrative over (`if_untouched` policy): the
 	// automation reports the recovery and leaves the final word to them.
-	MonitoringTitle string
-	MonitoringBody  string
-	// RelapseTitle / RelapseBody reopen a publication after a relapse.
-	RelapseTitle string
-	RelapseBody  string
-	// AlsoAffectingTitle / AlsoAffectingBody announce a new member joining a
-	// group incident.
-	AlsoAffectingTitle string
-	AlsoAffectingBody  string
-	// RemovedTitle / RemovedBody close a publication whose check was deleted:
-	// there is nothing left to recover, so the entry is resolved whatever the
-	// page's auto_resolve policy says. RemovedGenericTitle replaces
-	// RemovedTitle when the resource can no longer be named (its page row
-	// usually leaves with the check).
-	RemovedTitle        string
-	RemovedGenericTitle string
-	RemovedBody         string
+	keyMonitoringTitle templateKey = "monitoringTitle"
+	keyMonitoringBody  templateKey = "monitoringBody"
+	// keyRelapseTitle / keyRelapseBody reopen a publication after a relapse.
+	keyRelapseTitle templateKey = "relapseTitle"
+	keyRelapseBody  templateKey = "relapseBody"
+	// keyAlsoAffectingTitle / keyAlsoAffectingBody announce a new member
+	// joining a group incident.
+	keyAlsoAffectingTitle templateKey = "alsoAffectingTitle"
+	keyAlsoAffectingBody  templateKey = "alsoAffectingBody"
+	// keyRemovedTitle / keyRemovedBody close a publication whose check was
+	// deleted: there is nothing left to recover, so the entry is resolved
+	// whatever the page's auto_resolve policy says. keyRemovedGenericTitle
+	// replaces keyRemovedTitle when the resource can no longer be named (its
+	// page row usually leaves with the check).
+	keyRemovedTitle        templateKey = "removedTitle"
+	keyRemovedGenericTitle templateKey = "removedGenericTitle"
+	keyRemovedBody         templateKey = "removedBody"
+)
+
+// I18nKeyPrefix prefixes every templateKey in the stored recipes and in the
+// frontends' locale files.
+const I18nKeyPrefix = "publication."
+
+// templateSet is one language's worth of public narrative strings.
+type templateSet map[templateKey]string
+
+// renderedText is one templated sentence: the literal text in the page
+// language (what mails, feeds and webhooks carry) and the recipe a client
+// renders in its reader's language.
+type renderedText struct {
+	Value string
+	I18n  *models.LocalizedText
+}
+
+// render fills template key with name. An empty name means the component
+// could not be named: the group title stands in for it, and the recipe
+// carries no name so the client substitutes its own translation of that
+// title.
+func (t templateSet) render(key templateKey, name string) renderedText {
+	format := t[key]
+
+	var params *models.LocalizedParams
+
+	if strings.Contains(format, "%s") {
+		if name == "" {
+			name = t[keyGroupOpenedTitle]
+		} else {
+			params = &models.LocalizedParams{Name: name}
+		}
+
+		format = fmt.Sprintf(format, name)
+	}
+
+	return renderedText{Value: format, I18n: models.NewLocalizedText(I18nKeyPrefix+string(key), params)}
 }
 
 // The Spanish entries below trip the English-only spell checker on words like
@@ -56,68 +106,68 @@ type templateSet struct {
 //nolint:gochecknoglobals,misspell // static translation table, treated as a constant.
 var publicTemplates = map[string]templateSet{
 	"en": {
-		OpenedTitle:         "%s is experiencing issues",
-		OpenedBody:          "We are investigating an issue affecting %s.",
-		GroupOpenedTitle:    "Some services are experiencing issues",
-		ResolvedTitle:       "%s has recovered",
-		ResolvedBody:        "%s is operating normally again. This incident is resolved.",
-		MonitoringTitle:     "%s has recovered",
-		MonitoringBody:      "The affected component has recovered. We are monitoring the situation.",
-		RelapseTitle:        "%s is experiencing issues again",
-		RelapseBody:         "%s is affected again. We are investigating.",
-		AlsoAffectingTitle:  "This incident is also affecting %s",
-		AlsoAffectingBody:   "%s is now affected by this incident as well.",
-		RemovedTitle:        "%s is no longer monitored",
-		RemovedGenericTitle: "The affected service is no longer monitored",
-		RemovedBody:         "The monitored resource was removed. This incident is resolved.",
+		keyOpenedTitle:         "%s is experiencing issues",
+		keyOpenedBody:          "We are investigating an issue affecting %s.",
+		keyGroupOpenedTitle:    "Some services are experiencing issues",
+		keyResolvedTitle:       "%s has recovered",
+		keyResolvedBody:        "%s is operating normally again. This incident is resolved.",
+		keyMonitoringTitle:     "%s has recovered",
+		keyMonitoringBody:      "The affected component has recovered. We are monitoring the situation.",
+		keyRelapseTitle:        "%s is experiencing issues again",
+		keyRelapseBody:         "%s is affected again. We are investigating.",
+		keyAlsoAffectingTitle:  "This incident is also affecting %s",
+		keyAlsoAffectingBody:   "%s is now affected by this incident as well.",
+		keyRemovedTitle:        "%s is no longer monitored",
+		keyRemovedGenericTitle: "The affected service is no longer monitored",
+		keyRemovedBody:         "The monitored resource was removed. This incident is resolved.",
 	},
 	"fr": {
-		OpenedTitle:         "%s rencontre des difficultés",
-		OpenedBody:          "Nous investiguons un incident affectant %s.",
-		GroupOpenedTitle:    "Certains services rencontrent des difficultés",
-		ResolvedTitle:       "%s a été rétabli",
-		ResolvedBody:        "%s fonctionne de nouveau normalement. L'incident est résolu.",
-		MonitoringTitle:     "%s a été rétabli",
-		MonitoringBody:      "Le composant affecté a été rétabli. Nous surveillons la situation.",
-		RelapseTitle:        "%s rencontre de nouveau des difficultés",
-		RelapseBody:         "%s est de nouveau affecté. Nous investiguons.",
-		AlsoAffectingTitle:  "Cet incident affecte également %s",
-		AlsoAffectingBody:   "%s est désormais également affecté par cet incident.",
-		RemovedTitle:        "%s n'est plus surveillé",
-		RemovedGenericTitle: "Le service affecté n'est plus surveillé",
-		RemovedBody:         "La ressource surveillée a été retirée. L'incident est résolu.",
+		keyOpenedTitle:         "%s rencontre des difficultés",
+		keyOpenedBody:          "Nous investiguons un incident affectant %s.",
+		keyGroupOpenedTitle:    "Certains services rencontrent des difficultés",
+		keyResolvedTitle:       "%s a été rétabli",
+		keyResolvedBody:        "%s fonctionne de nouveau normalement. L'incident est résolu.",
+		keyMonitoringTitle:     "%s a été rétabli",
+		keyMonitoringBody:      "Le composant affecté a été rétabli. Nous surveillons la situation.",
+		keyRelapseTitle:        "%s rencontre de nouveau des difficultés",
+		keyRelapseBody:         "%s est de nouveau affecté. Nous investiguons.",
+		keyAlsoAffectingTitle:  "Cet incident affecte également %s",
+		keyAlsoAffectingBody:   "%s est désormais également affecté par cet incident.",
+		keyRemovedTitle:        "%s n'est plus surveillé",
+		keyRemovedGenericTitle: "Le service affecté n'est plus surveillé",
+		keyRemovedBody:         "La ressource surveillée a été retirée. L'incident est résolu.",
 	},
 	"de": {
-		OpenedTitle:         "%s hat Probleme",
-		OpenedBody:          "Wir untersuchen eine Störung, die %s betrifft.",
-		GroupOpenedTitle:    "Einige Dienste haben Probleme",
-		ResolvedTitle:       "%s ist wiederhergestellt",
-		ResolvedBody:        "%s funktioniert wieder normal. Die Störung ist behoben.",
-		MonitoringTitle:     "%s ist wiederhergestellt",
-		MonitoringBody:      "Die betroffene Komponente ist wiederhergestellt. Wir beobachten die Lage.",
-		RelapseTitle:        "%s hat erneut Probleme",
-		RelapseBody:         "%s ist erneut betroffen. Wir untersuchen das Problem.",
-		AlsoAffectingTitle:  "Diese Störung betrifft auch %s",
-		AlsoAffectingBody:   "%s ist nun ebenfalls von dieser Störung betroffen.",
-		RemovedTitle:        "%s wird nicht mehr überwacht",
-		RemovedGenericTitle: "Der betroffene Dienst wird nicht mehr überwacht",
-		RemovedBody:         "Die überwachte Ressource wurde entfernt. Die Störung ist behoben.",
+		keyOpenedTitle:         "%s hat Probleme",
+		keyOpenedBody:          "Wir untersuchen eine Störung, die %s betrifft.",
+		keyGroupOpenedTitle:    "Einige Dienste haben Probleme",
+		keyResolvedTitle:       "%s ist wiederhergestellt",
+		keyResolvedBody:        "%s funktioniert wieder normal. Die Störung ist behoben.",
+		keyMonitoringTitle:     "%s ist wiederhergestellt",
+		keyMonitoringBody:      "Die betroffene Komponente ist wiederhergestellt. Wir beobachten die Lage.",
+		keyRelapseTitle:        "%s hat erneut Probleme",
+		keyRelapseBody:         "%s ist erneut betroffen. Wir untersuchen das Problem.",
+		keyAlsoAffectingTitle:  "Diese Störung betrifft auch %s",
+		keyAlsoAffectingBody:   "%s ist nun ebenfalls von dieser Störung betroffen.",
+		keyRemovedTitle:        "%s wird nicht mehr überwacht",
+		keyRemovedGenericTitle: "Der betroffene Dienst wird nicht mehr überwacht",
+		keyRemovedBody:         "Die überwachte Ressource wurde entfernt. Die Störung ist behoben.",
 	},
 	"es": {
-		OpenedTitle:         "%s está experimentando problemas",
-		OpenedBody:          "Estamos investigando una incidencia que afecta a %s.",
-		GroupOpenedTitle:    "Algunos servicios están experimentando problemas",
-		ResolvedTitle:       "%s se ha recuperado",
-		ResolvedBody:        "%s vuelve a funcionar con normalidad. La incidencia está resuelta.",
-		MonitoringTitle:     "%s se ha recuperado",
-		MonitoringBody:      "El componente afectado se ha recuperado. Estamos supervisando la situación.",
-		RelapseTitle:        "%s vuelve a experimentar problemas",
-		RelapseBody:         "%s está afectado de nuevo. Estamos investigando.",
-		AlsoAffectingTitle:  "Esta incidencia también afecta a %s",
-		AlsoAffectingBody:   "%s también está afectado por esta incidencia.",
-		RemovedTitle:        "%s ya no se supervisa",
-		RemovedGenericTitle: "El servicio afectado ya no se supervisa",
-		RemovedBody:         "El recurso supervisado se ha eliminado. La incidencia está resuelta.",
+		keyOpenedTitle:         "%s está experimentando problemas",
+		keyOpenedBody:          "Estamos investigando una incidencia que afecta a %s.",
+		keyGroupOpenedTitle:    "Algunos servicios están experimentando problemas",
+		keyResolvedTitle:       "%s se ha recuperado",
+		keyResolvedBody:        "%s vuelve a funcionar con normalidad. La incidencia está resuelta.",
+		keyMonitoringTitle:     "%s se ha recuperado",
+		keyMonitoringBody:      "El componente afectado se ha recuperado. Estamos supervisando la situación.",
+		keyRelapseTitle:        "%s vuelve a experimentar problemas",
+		keyRelapseBody:         "%s está afectado de nuevo. Estamos investigando.",
+		keyAlsoAffectingTitle:  "Esta incidencia también afecta a %s",
+		keyAlsoAffectingBody:   "%s también está afectado por esta incidencia.",
+		keyRemovedTitle:        "%s ya no se supervisa",
+		keyRemovedGenericTitle: "El servicio afectado ya no se supervisa",
+		keyRemovedBody:         "El recurso supervisado se ha eliminado. La incidencia está resuelta.",
 	},
 }
 

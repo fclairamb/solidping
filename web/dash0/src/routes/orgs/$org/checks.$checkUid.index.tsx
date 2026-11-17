@@ -113,7 +113,7 @@ import {
 import {
   CheckTypeBadge,
   CheckTypeIcon,
-  getCheckTypeIdentity,
+  translatedCheckTypeLabel,
 } from "@/components/shared/check-type-identity";
 import { EmailEndpoint, HeartbeatEndpoint } from "@/components/checks/check-endpoints";
 import { formatDurationCoarse } from "@/components/shared/relative-time";
@@ -1283,7 +1283,7 @@ function CheckDetailPage() {
                   >
                     <BookOpen className="mr-2 h-4 w-4" />
                     {t("checks:detail.typeDocs", {
-                      type: getCheckTypeIdentity(check.type).label,
+                      type: translatedCheckTypeLabel(t, check.type),
                     })}
                   </a>
                 </DropdownMenuItem>

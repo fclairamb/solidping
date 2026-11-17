@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"sort"
 	"time"
 
@@ -266,6 +267,7 @@ func (s *Service) openIncident(
 		AnchorCheck:     anchor,
 		StartedAt:       now,
 		Title:           burnTitle(row, policy, snapshot),
+		TitleI18n:       burnTitleI18n(row, policy, snapshot),
 		Snapshot:        snapshot,
 	})
 
@@ -391,6 +393,21 @@ func burnTitle(row *models.SLO, policy *models.SLOAlertPolicy, snapshot *inciden
 	}
 
 	return fmt.Sprintf("%s: %s error budget burning at %.1fx", label, row.Name, snapshot.LongBurnRate)
+}
+
+// burnTitleI18n is the recipe of burnTitle, for the dashboard. The rate is
+// rounded to the one decimal burnTitle prints.
+func burnTitleI18n(
+	row *models.SLO, policy *models.SLOAlertPolicy, snapshot *incidents.BurnSnapshot,
+) *models.LocalizedText {
+	key := incidents.TitleKeySLOSlowBurn
+	if policy.Kind == models.SLOAlertPolicyKindFast {
+		key = incidents.TitleKeySLOFastBurn
+	}
+
+	rate := math.Round(snapshot.LongBurnRate*10) / 10
+
+	return models.NewLocalizedText(key, &models.LocalizedParams{Name: row.Name, Rate: &rate})
 }
 
 func deref(value *float64) float64 {

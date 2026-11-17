@@ -92,7 +92,7 @@ func (c *VendorStatusConfig) GetConfig() map[string]any {
 // Validate applies the vendor-status rules.
 func (c *VendorStatusConfig) Validate() error {
 	if c.URL == "" {
-		return checkerdef.NewConfigError(keyURL, "is required")
+		return checkerdef.NewRequiredConfigError(keyURL)
 	}
 
 	if !strings.HasPrefix(c.URL, "https://") {
