@@ -62,7 +62,7 @@ func newDelSetup(t *testing.T, dbSvc db.Service, policy models.AutoResolvePolicy
 	section := models.NewStatusPageSection(page.UID, "Services", "services", 1)
 	r.NoError(dbSvc.CreateStatusPageSection(ctx, section))
 
-	clk := clock.NewFake(time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC))
+	clk := clock.NewFake(time.Now().UTC().Truncate(time.Second))
 	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
 	pubs := incidentpublications.NewService(dbSvc, clk, nil)
