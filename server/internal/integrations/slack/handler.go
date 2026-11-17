@@ -1,12 +1,15 @@
 package slack
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sync"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
@@ -65,6 +68,10 @@ type Handler struct {
 	// responseURLClient, when set, replaces responseURLHTTPClient for the
 	// /solidping check follow-up. Tests inject a recording transport here.
 	responseURLClient *http.Client
+
+	// events tracks the Events API deliveries handled in the background, so
+	// tests can wait for them.
+	events sync.WaitGroup
 }
 
 // responseClient returns the client used to post to a response_url.
@@ -282,21 +289,48 @@ func (h *Handler) HandleEvents(writer http.ResponseWriter, req *http.Request) er
 		})
 	}
 
-	// Handle actual events
-	if event.Type == "event_callback" {
-		if err := h.handleEvent(req.Context(), &event); err != nil {
-			slog.ErrorContext(req.Context(), "Failed to handle event",
-				"event_type", event.Event.Type,
-				"error", err,
-			)
-			// Return 200 to Slack to prevent retries
-		}
-	}
-
 	// Always return 200 to acknowledge receipt
 	writer.WriteHeader(http.StatusOK)
 
+	// Handle actual events after the acknowledgement, in the background: Slack
+	// drops the connection when the 200 takes over 3 s, which cancels the
+	// request context and every Slack API call (chat.unfurl…) made with it.
+	if event.Type == "event_callback" {
+		h.handleEventAsync(req.Context(), &event)
+	}
+
 	return nil
+}
+
+// eventHandlingTimeout bounds the background handling of one Events API
+// delivery, now detached from the request context.
+const eventHandlingTimeout = 30 * time.Second
+
+// handleEventAsync handles an Events API delivery on a context detached from
+// the request, bounded by eventHandlingTimeout. A failure is logged, never
+// returned: Slack has already been acknowledged, so it does not retry.
+func (h *Handler) handleEventAsync(reqCtx context.Context, event *Event) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(reqCtx), eventHandlingTimeout)
+
+	h.events.Add(1)
+
+	go func() {
+		defer h.events.Done()
+		defer cancel()
+
+		if err := h.handleEvent(ctx, event); err != nil {
+			level := slog.LevelError
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				// Our own timeout, not a Slack or SolidPing fault.
+				level = slog.LevelWarn
+			}
+
+			slog.Log(ctx, level, "Failed to handle event",
+				"event_type", event.Event.Type,
+				"error", err,
+			)
+		}
+	}()
 }
 
 // HandleCommand handles incoming slash commands.
