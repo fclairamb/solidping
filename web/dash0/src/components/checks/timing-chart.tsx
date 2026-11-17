@@ -14,6 +14,7 @@ import {
   type MouseHandlerDataParam,
 } from "recharts";
 import { format } from "date-fns";
+import { useDateFnsLocale } from "@/lib/date-locale";
 
 import { useChartWindowResults } from "@/api/hooks";
 import type { TimeRange, ZoomWindow } from "@/lib/chart-window";
@@ -69,6 +70,7 @@ export function TimingChart({
   onZoomChange,
 }: TimingChartProps) {
   const { t } = useTranslation("checks");
+  const dateLocale = useDateFnsLocale();
   const zoom = zoomWindow(zoomFrom, zoomTo);
   const { data, isLoading, isEmptyPending } = useChartWindowResults(
     org,
@@ -164,7 +166,7 @@ export function TimingChart({
             dataKey="ts"
             type="number"
             domain={["dataMin", "dataMax"]}
-            tickFormatter={(v: number) => format(new Date(v), fmt)}
+            tickFormatter={(v: number) => format(new Date(v), fmt, { locale: dateLocale })}
             className="text-xs"
             tick={{ fill: "var(--muted-foreground)" }}
           />
@@ -185,7 +187,7 @@ export function TimingChart({
             labelStyle={{ color: "var(--muted-foreground)" }}
             itemStyle={{ color: "var(--popover-foreground)" }}
             itemSorter={(item) => PHASE_ORDER.indexOf(String(item.dataKey))}
-            labelFormatter={(v) => format(new Date(Number(v)), "PPpp")}
+            labelFormatter={(v) => format(new Date(Number(v)), "PPpp", { locale: dateLocale })}
             formatter={(value, name) => [
               `${Math.round(Number(value) * 100) / 100} ms`,
               t(`timing.phase.${String(name)}`),

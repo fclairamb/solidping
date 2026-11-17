@@ -13,6 +13,8 @@ import {
   type MouseHandlerDataParam,
 } from "recharts";
 import { format, startOfMinute } from "date-fns";
+import type { Locale } from "date-fns";
+import { useDateFnsLocale } from "@/lib/date-locale";
 import {
   useChartWindowResults,
   useCheckAvailabilityBuckets,
@@ -142,15 +144,15 @@ interface GapRegion {
 }
 
 /** Choose x-axis format based on the actual time span */
-function adaptiveFormat(tsMs: number, spanMs: number): string {
+function adaptiveFormat(tsMs: number, spanMs: number, locale: Locale): string {
   const date = new Date(tsMs);
   const ONE_HOUR = 3_600_000;
   const ONE_DAY = 24 * ONE_HOUR;
 
   if (spanMs < ONE_HOUR) return format(date, "HH:mm:ss");
   if (spanMs < ONE_DAY) return format(date, "HH:mm");
-  if (spanMs < 7 * ONE_DAY) return format(date, "EEE HH:mm");
-  return format(date, "MMM d");
+  if (spanMs < 7 * ONE_DAY) return format(date, "EEE HH:mm", { locale });
+  return format(date, "MMM d", { locale });
 }
 
 /** Shared ms/s duration formatting convention — also used by the Recent
@@ -449,6 +451,7 @@ export function ResponseTimeChart({
   degradedSpans,
 }: ResponseTimeChartProps) {
   const { t } = useTranslation("checks");
+  const dateLocale = useDateFnsLocale();
   const [timeRange, setTimeRange] = useState<TimeRange>(initialPeriod ?? "day");
   const [fullRange, setFullRange] = useState(initialFullRange ?? false);
   // A zoom is active only for a well-formed forward window.
@@ -1185,7 +1188,7 @@ export function ResponseTimeChart({
                   scale="time"
                   domain={[domainMin, domainMax]}
                   ticks={ticks}
-                  tickFormatter={(v) => adaptiveFormat(v, formatSpanMs)}
+                  tickFormatter={(v) => adaptiveFormat(v, formatSpanMs, dateLocale)}
                   minTickGap={50}
                   className="text-xs"
                   tick={{ fill: "var(--muted-foreground)" }}
@@ -1251,7 +1254,7 @@ export function ResponseTimeChart({
                             </p>
                           )}
                           <p className="text-muted-foreground">
-                            {format(new Date(data.ts), "MMM d, HH:mm:ss")}
+                            {format(new Date(data.ts), "MMM d, HH:mm:ss", { locale: dateLocale })}
                           </p>
                           <p className="font-medium">
                             {formatMs(data.durationMs)}
@@ -1277,7 +1280,7 @@ export function ResponseTimeChart({
                     return (
                       <div className="rounded-md border bg-popover p-2 text-sm shadow-md">
                         <p className="text-muted-foreground">
-                          {format(new Date(data.ts), "MMM d, HH:mm:ss")}
+                          {format(new Date(data.ts), "MMM d, HH:mm:ss", { locale: dateLocale })}
                         </p>
                         <p className="font-medium">
                           {formatMs(data.durationMs)}
