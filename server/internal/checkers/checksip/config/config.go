@@ -193,7 +193,7 @@ func (c *SIPConfig) GetConfig() map[string]any {
 //nolint:cyclop // Validation covers several independent fields
 func (c *SIPConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError(checkerdef.OutputKeyHost, "is required")
+		return checkerdef.NewRequiredConfigError(checkerdef.OutputKeyHost)
 	}
 
 	if c.Port != 0 && (c.Port < 1 || c.Port > 65535) {

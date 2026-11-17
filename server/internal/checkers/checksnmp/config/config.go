@@ -203,11 +203,11 @@ func setIfNonEmpty(cfg map[string]any, key, val string) {
 // Validate checks if the configuration is valid.
 func (c *SNMPConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
+		return checkerdef.NewRequiredConfigError("host")
 	}
 
 	if c.OID == "" {
-		return checkerdef.NewConfigError("oid", "is required")
+		return checkerdef.NewRequiredConfigError("oid")
 	}
 
 	if c.Port < 0 || c.Port > 65535 {

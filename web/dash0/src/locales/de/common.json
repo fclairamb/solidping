@@ -193,5 +193,19 @@
   "removeItem": "{{item}} entfernen",
   "githubStar": {
     "sidebar": "Auf GitHub mit Stern markieren"
+  },
+  "backToList": "Zurück zu {{list}}",
+  "resources": {
+    "check": "Check",
+    "statusPage": "Statusseite",
+    "incidentPublication": "Störungsmeldung",
+    "statusUpdate": "Meldung"
+  },
+  "apiErrors": {
+    "generic": "Ein Fehler ist aufgetreten",
+    "rateLimited": "Zu viele Anfragen",
+    "sessionExpired": "Sitzung abgelaufen",
+    "sessionChanged": "Sitzung gewechselt",
+    "network": "Netzwerkverbindung fehlgeschlagen"
   }
 }

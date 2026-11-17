@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -220,18 +219,21 @@ func (s *Service) SetLogger(l *slog.Logger) {
 
 // PublicationResponse is the operator-facing shape of a publication.
 type PublicationResponse struct {
-	UID           string     `json:"uid"`
-	StatusPageUID string     `json:"statusPageUid"`
-	IncidentUID   *string    `json:"incidentUid,omitempty"`
-	Title         string     `json:"title"`
-	State         string     `json:"state"`
-	Severity      *string    `json:"severity,omitempty"`
-	AutoCreated   bool       `json:"autoCreated"`
-	HumanTouched  bool       `json:"humanTouched"`
-	PublishedAt   time.Time  `json:"publishedAt"`
-	ResolvedAt    *time.Time `json:"resolvedAt,omitempty"`
-	CreatedAt     time.Time  `json:"createdAt"`
-	UpdatedAt     time.Time  `json:"updatedAt"`
+	UID           string  `json:"uid"`
+	StatusPageUID string  `json:"statusPageUid"`
+	IncidentUID   *string `json:"incidentUid,omitempty"`
+	Title         string  `json:"title"`
+	// TitleI18n is the recipe of a templated title, for rendering it in the
+	// reader's language. Absent once a person retitled the publication.
+	TitleI18n    *models.LocalizedText `json:"titleI18n,omitempty"`
+	State        string                `json:"state"`
+	Severity     *string               `json:"severity,omitempty"`
+	AutoCreated  bool                  `json:"autoCreated"`
+	HumanTouched bool                  `json:"humanTouched"`
+	PublishedAt  time.Time             `json:"publishedAt"`
+	ResolvedAt   *time.Time            `json:"resolvedAt,omitempty"`
+	CreatedAt    time.Time             `json:"createdAt"`
+	UpdatedAt    time.Time             `json:"updatedAt"`
 	// Updates is the append-only narrative, oldest first. Populated on the
 	// single-publication reads and on the public projection.
 	Updates []PublicationUpdateResponse `json:"updates,omitempty"`
@@ -252,11 +254,14 @@ type PublicationResponse struct {
 
 // PublicationUpdateResponse is one narrative entry.
 type PublicationUpdateResponse struct {
-	UID          string    `json:"uid"`
-	Kind         string    `json:"kind"`
-	Title        string    `json:"title"`
-	BodyMarkdown string    `json:"bodyMarkdown"`
-	PublishedAt  time.Time `json:"publishedAt"`
+	UID          string `json:"uid"`
+	Kind         string `json:"kind"`
+	Title        string `json:"title"`
+	BodyMarkdown string `json:"bodyMarkdown"`
+	// TitleI18n / BodyI18n are the recipes of a machine-written update.
+	TitleI18n   *models.LocalizedText `json:"titleI18n,omitempty"`
+	BodyI18n    *models.LocalizedText `json:"bodyI18n,omitempty"`
+	PublishedAt time.Time             `json:"publishedAt"`
 	// AuthorUID is nil for machine-generated updates.
 	AuthorUID *string `json:"authorUid,omitempty"`
 }
@@ -312,6 +317,7 @@ func toResponse(pub *models.IncidentPublication) PublicationResponse {
 		StatusPageUID: pub.StatusPageUID,
 		IncidentUID:   pub.IncidentUID,
 		Title:         pub.PublicTitle,
+		TitleI18n:     pub.PublicTitleI18n,
 		State:         string(pub.PublicState),
 		Severity:      pub.Severity,
 		AutoCreated:   pub.AutoCreated,
@@ -659,7 +665,7 @@ func (s *Service) CreatePublication(
 			return PublicationResponse{}, err
 		}
 
-		s.postUpdate(ctx, page, pub, state.UpdateKind(), req.Title, *req.BodyMarkdown, &actorUID)
+		s.postPlainUpdate(ctx, page, pub, state.UpdateKind(), req.Title, *req.BodyMarkdown, &actorUID)
 	}
 
 	s.emit(ctx, org.UID, models.EventTypeStatusPageIncidentPublished, pub, actorUID)
@@ -690,12 +696,9 @@ func (s *Service) closeRetroactiveCreate(
 		tpl := templatesFor(page.Language)
 
 		name := s.affectedName(ctx, incident.OrganizationUID, page, incident)
-		if name == "" {
-			name = tpl.GroupOpenedTitle
-		}
 
 		s.postUpdate(ctx, page, pub, models.StatusUpdateKindResolved,
-			fmt.Sprintf(tpl.ResolvedTitle, name), fmt.Sprintf(tpl.ResolvedBody, name), &actorUID)
+			tpl.render(keyResolvedTitle, name), tpl.render(keyResolvedBody, name), &actorUID)
 	}
 
 	s.emit(ctx, incident.OrganizationUID, models.EventTypeStatusPageIncidentResolved, pub, actorUID)
@@ -743,7 +746,7 @@ func (s *Service) UpdatePublication(
 		}
 
 		update.PublicTitle = req.Title
-		pub.PublicTitle = *req.Title
+		pub.PublicTitle, pub.PublicTitleI18n = *req.Title, nil // a retitle drops the recipe
 	}
 
 	if req.Severity != nil {
@@ -855,7 +858,7 @@ func (s *Service) AppendUpdate(
 
 	pub.HumanTouchedAt = &now
 
-	written := s.postUpdate(ctx, page, pub, kind, title, req.BodyMarkdown, &actorUID)
+	written := s.postPlainUpdate(ctx, page, pub, kind, title, req.BodyMarkdown, &actorUID)
 	if written == nil {
 		return PublicationUpdateResponse{}, ErrUpdateWriteFailed
 	}
@@ -873,6 +876,8 @@ func (s *Service) AppendUpdate(
 		Kind:         string(written.Kind),
 		Title:        written.Title,
 		BodyMarkdown: written.BodyMarkdown,
+		TitleI18n:    written.TitleI18n,
+		BodyI18n:     written.BodyI18n,
 		PublishedAt:  written.PublishedAt,
 		AuthorUID:    written.AuthorUID,
 	}, nil
@@ -936,24 +941,25 @@ func (s *Service) PublishIncident(
 		return PublicationResponse{}, ErrAlreadyPublished
 	}
 
-	title := ""
+	title := renderedText{}
 	if req.Title != nil {
-		title = *req.Title
+		title.Value = *req.Title
 	}
 
-	if title == "" {
+	if title.Value == "" {
 		// Never fall back to incident.Title: that string is generated from the
 		// check SLUG and is internal vocabulary. Template from the page's own
 		// public resource name instead.
 		title = s.templatedTitle(ctx, org.UID, page, incident)
 	}
 
-	if err := validateTitle(title); err != nil {
+	if err := validateTitle(title.Value); err != nil {
 		return PublicationResponse{}, err
 	}
 
 	now := s.clock.Now()
-	pub := models.NewIncidentPublication(org.UID, page.UID, title, now)
+	pub := models.NewIncidentPublication(org.UID, page.UID, title.Value, now)
+	pub.PublicTitleI18n = title.I18n
 	pub.IncidentUID = &incident.UID
 	pub.Severity = req.Severity
 	// Deliberately NOT human-touched: linking an incident to a page is not
@@ -973,7 +979,7 @@ func (s *Service) PublishIncident(
 	tpl := templatesFor(page.Language)
 	name := s.affectedName(ctx, org.UID, page, incident)
 	s.postUpdate(ctx, page, pub, models.StatusUpdateKindInvestigating,
-		title, fmt.Sprintf(tpl.OpenedBody, name), &actorUID)
+		title, tpl.render(keyOpenedBody, name), &actorUID)
 
 	s.emit(ctx, org.UID, models.EventTypeStatusPageIncidentPublished, pub, actorUID)
 
@@ -1022,12 +1028,9 @@ func (s *Service) resolveRetroactively(
 	tpl := templatesFor(page.Language)
 
 	name := s.affectedName(ctx, incident.OrganizationUID, page, incident)
-	if name == "" {
-		name = tpl.GroupOpenedTitle
-	}
 
 	s.postUpdate(ctx, page, pub, models.StatusUpdateKindResolved,
-		fmt.Sprintf(tpl.ResolvedTitle, name), fmt.Sprintf(tpl.ResolvedBody, name), &actorUID)
+		tpl.render(keyResolvedTitle, name), tpl.render(keyResolvedBody, name), &actorUID)
 
 	s.emit(ctx, incident.OrganizationUID, models.EventTypeStatusPageIncidentResolved, pub, actorUID)
 }
@@ -1116,6 +1119,8 @@ func (s *Service) loadUpdates(
 			Kind:         string(upd.Kind),
 			Title:        upd.Title,
 			BodyMarkdown: upd.BodyMarkdown,
+			TitleI18n:    upd.TitleI18n,
+			BodyI18n:     upd.BodyI18n,
 			PublishedAt:  upd.PublishedAt,
 			AuthorUID:    upd.AuthorUID,
 		})
@@ -1124,13 +1129,23 @@ func (s *Service) loadUpdates(
 	return out
 }
 
+// postPlainUpdate is postUpdate for text a person wrote: no recipe.
+func (s *Service) postPlainUpdate(
+	ctx context.Context, page *models.StatusPage, pub *models.IncidentPublication,
+	kind models.StatusUpdateKind, title, body string, authorUID *string,
+) *models.StatusUpdate {
+	return s.postUpdate(ctx, page, pub, kind, renderedText{Value: title}, renderedText{Value: body}, authorUID)
+}
+
 // postUpdate writes one status_updates row for the publication and fans it out
 // to subscribers under the storm cap. Returns the written row, or nil on
 // failure — a failed narrative post is logged and never fails the caller,
 // because losing an update is better than losing the state transition.
+// Templated text also keeps its recipes, so the page renders it in each
+// visitor's language.
 func (s *Service) postUpdate(
 	ctx context.Context, page *models.StatusPage, pub *models.IncidentPublication,
-	kind models.StatusUpdateKind, title, body string, authorUID *string,
+	kind models.StatusUpdateKind, title, body renderedText, authorUID *string,
 ) *models.StatusUpdate {
 	author := ""
 	if authorUID != nil {
@@ -1139,8 +1154,10 @@ func (s *Service) postUpdate(
 
 	update := models.NewStatusUpdate(pub.OrganizationUID, page.UID, author)
 	update.Kind = kind
-	update.Title = title
-	update.BodyMarkdown = body
+	update.Title = title.Value
+	update.TitleI18n = title.I18n
+	update.BodyMarkdown = body.Value
+	update.BodyI18n = body.I18n
 	update.IncidentUID = pub.IncidentUID
 	update.IncidentPublicationUID = &pub.UID
 	update.PublishedAt = s.clock.Now()
@@ -1345,6 +1362,7 @@ func isUniqueViolation(err error) bool {
 type PublicIncident struct {
 	UID               string                 `json:"uid"`
 	Title             string                 `json:"title"`
+	TitleI18n         *models.LocalizedText  `json:"titleI18n,omitempty"`
 	State             string                 `json:"state"`
 	Severity          *string                `json:"severity,omitempty"`
 	StartedAt         time.Time              `json:"startedAt"`
@@ -1355,11 +1373,13 @@ type PublicIncident struct {
 
 // PublicIncidentUpdate is one narrative entry on the public page.
 type PublicIncidentUpdate struct {
-	UID          string    `json:"uid"`
-	Kind         string    `json:"kind"`
-	Title        string    `json:"title"`
-	BodyMarkdown string    `json:"bodyMarkdown"`
-	PublishedAt  time.Time `json:"publishedAt"`
+	UID          string                `json:"uid"`
+	Kind         string                `json:"kind"`
+	Title        string                `json:"title"`
+	BodyMarkdown string                `json:"bodyMarkdown"`
+	TitleI18n    *models.LocalizedText `json:"titleI18n,omitempty"`
+	BodyI18n     *models.LocalizedText `json:"bodyI18n,omitempty"`
+	PublishedAt  time.Time             `json:"publishedAt"`
 }
 
 // ListPublicIncidents returns the publications to render on a status page.
@@ -1395,6 +1415,7 @@ func (s *Service) ListPublicIncidents(
 		entry := PublicIncident{
 			UID:               pub.UID,
 			Title:             pub.PublicTitle,
+			TitleI18n:         pub.PublicTitleI18n,
 			State:             string(pub.PublicState),
 			Severity:          pub.Severity,
 			StartedAt:         pub.PublishedAt,
@@ -1409,6 +1430,8 @@ func (s *Service) ListPublicIncidents(
 				Kind:         updates[idx].Kind,
 				Title:        updates[idx].Title,
 				BodyMarkdown: updates[idx].BodyMarkdown,
+				TitleI18n:    updates[idx].TitleI18n,
+				BodyI18n:     updates[idx].BodyI18n,
 				PublishedAt:  updates[idx].PublishedAt,
 			})
 		}
@@ -1564,15 +1587,15 @@ func (s *Service) affectedName(
 // internal vocabulary.
 func (s *Service) templatedTitle(
 	ctx context.Context, orgUID string, page *models.StatusPage, incident *models.Incident,
-) string {
+) renderedText {
 	tpl := templatesFor(page.Language)
 
 	name := s.affectedName(ctx, orgUID, page, incident)
 	if name == "" {
-		return tpl.GroupOpenedTitle
+		return tpl.render(keyGroupOpenedTitle, "")
 	}
 
-	return fmt.Sprintf(tpl.OpenedTitle, name)
+	return tpl.render(keyOpenedTitle, name)
 }
 
 // PublicIncidentsView is the public incident history plus the visibility of

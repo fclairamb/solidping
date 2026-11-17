@@ -373,7 +373,7 @@ func (c *PrometheusConfig) Validate() error {
 // validateTarget validates the url and the mode-appropriate selector fields.
 func (c *PrometheusConfig) validateTarget() error {
 	if c.URL == "" {
-		return checkerdef.NewConfigError(keyURL, "is required")
+		return checkerdef.NewRequiredConfigError(keyURL)
 	}
 
 	if !strings.HasPrefix(c.URL, "http://") && !strings.HasPrefix(c.URL, "https://") {

@@ -95,7 +95,7 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 	}
 
 	if cfg.Region == "" {
-		return checkerdef.NewConfigError(ConfigKeyRegion, "is required")
+		return checkerdef.NewRequiredConfigError(ConfigKeyRegion)
 	}
 
 	if !IsPrivateRegion(cfg.Region) {

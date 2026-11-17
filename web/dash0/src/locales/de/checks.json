@@ -47,7 +47,9 @@
     "created": "Ausstehend",
     "degraded": "Beeinträchtigt",
     "abandoned": "Abgebrochen",
-    "unknown": "Unbekannt"
+    "unknown": "Unbekannt",
+    "timeout": "Zeitüberschreitung",
+    "error": "Fehler"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} aktiv",
@@ -411,7 +413,8 @@
     "lookupMethodAuto": "Automatisch (RDAP, WHOIS als Fallback)",
     "lookupMethodRdap": "Nur RDAP",
     "lookupMethodWhois": "Nur WHOIS",
-    "lookupMethodHelp": "Automatisch versucht zuerst RDAP und weicht bei jedem Fehler auf WHOIS aus. Nur RDAP und Nur WHOIS weichen nie aus."
+    "lookupMethodHelp": "Automatisch versucht zuerst RDAP und weicht bei jedem Fehler auf WHOIS aus. Nur RDAP und Nur WHOIS weichen nie aus.",
+    "invalidFields": "Einige Felder sind ungültig: {{fields}}"
   },
   "types": {
     "http": "HTTP",
@@ -1525,7 +1528,8 @@
     "vendorStatusUrl": "Die URL der Statusseite ist erforderlich",
     "vendorStatusHttps": "Die URL der Statusseite muss mit https:// beginnen",
     "pluginInvalidJson": "Die Konfiguration ist kein gültiges JSON: {{detail}}",
-    "pluginNotAnObject": "Die Konfiguration muss ein JSON-Objekt sein."
+    "pluginNotAnObject": "Die Konfiguration muss ein JSON-Objekt sein.",
+    "fieldRequired": "Dieses Feld ist erforderlich"
   },
   "health": {
     "format": "Health-Format",
@@ -1810,6 +1814,27 @@
       "ok": "erfolgreich",
       "failed": "fehlgeschlagen",
       "skipped": "übersprungen"
+    }
+  },
+  "regionCapability": {
+    "ipv6": {
+      "label": {
+        "yes": "IPv6",
+        "no": "Kein IPv6",
+        "unknown": "IPv6 unbekannt"
+      },
+      "hint": {
+        "yes": "Mindestens ein aktiver Worker in dieser Region meldet IPv6-Egress.",
+        "no": "Derzeit meldet kein aktiver Worker in dieser Region IPv6-Egress. Sie können sie trotzdem auswählen — der Check wird nur abgelehnt, wenn der Worker bei der Ausführung wirklich keine IPv6-Route hat.",
+        "unknown": "Noch nicht gemeldet — diese Region hat keinen aktiven Worker, der seine Egress-Familien meldet, oder nutzt einen älteren Agent. Sie unterstützt IPv6 möglicherweise."
+      }
+    },
+    "browser": {
+      "hint": {
+        "yes": "Mindestens ein aktiver Worker in dieser Region meldet einen Headless-Browser für Browser-Checks.",
+        "no": "Derzeit meldet kein aktiver Worker in dieser Region einen Headless-Browser. Sie können sie trotzdem auswählen — der Check wird nur abgelehnt, wenn der Worker bei der Ausführung wirklich keinen Browser hat.",
+        "unknown": "Noch nicht gemeldet — diese Region hat keinen aktiven Worker, der seine Fähigkeiten meldet, oder nutzt einen älteren Agent. Sie unterstützt Browser-Checks möglicherweise."
+      }
     }
   }
 }

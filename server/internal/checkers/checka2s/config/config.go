@@ -104,7 +104,7 @@ func (c *A2SConfig) GetConfig() map[string]any {
 // Validate checks if the configuration is valid.
 func (c *A2SConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError(checkerdef.OutputKeyHost, "is required")
+		return checkerdef.NewRequiredConfigError(checkerdef.OutputKeyHost)
 	}
 
 	if c.Port < 0 || c.Port > 65535 {

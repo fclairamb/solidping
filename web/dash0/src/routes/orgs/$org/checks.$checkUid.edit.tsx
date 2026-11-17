@@ -115,9 +115,9 @@ function CheckEditPage() {
       <QueryErrorView
         error={error}
         org={org}
-        resource="Check"
+        resource={t("common:resources.check")}
         backTo="/orgs/$org/checks"
-        backLabel="Back to Checks"
+        backLabel={t("common:backToList", { list: t("nav:checks") })}
         onRetry={() => refetch()}
       />
     );

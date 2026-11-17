@@ -134,8 +134,12 @@ type IncidentPublication struct {
 	// PublicTitle is templated at creation from the resource's PUBLIC display
 	// name and is freely editable afterwards. It is never derived from the
 	// incident title, which is internal.
-	PublicTitle string           `bun:"public_title,notnull"`
-	PublicState PublicationState `bun:"public_state,notnull"`
+	PublicTitle string `bun:"public_title,notnull"`
+	// PublicTitleI18n is the recipe PublicTitle was templated from, so a
+	// visitor reading the page in another language gets the title in theirs.
+	// nil once a person retitled the publication (or for a hand-typed title).
+	PublicTitleI18n *LocalizedText   `bun:"public_title_i18n,type:jsonb,nullzero"`
+	PublicState     PublicationState `bun:"public_state,notnull"`
 	// Severity is the display-only public badge. nil = no badge.
 	Severity *string `bun:"severity"`
 	// AutoCreated marks a publication minted by the auto-publish pipeline.
@@ -191,6 +195,7 @@ func (p *IncidentPublication) IsResolved() bool {
 // IncidentPublicationUpdate is the tri-state patch applied to a publication
 // row. A nil pointer leaves the column untouched; a Clear* flag writes NULL.
 type IncidentPublicationUpdate struct {
+	// PublicTitle also clears PublicTitleI18n: a new title has no recipe.
 	PublicTitle     *string
 	PublicState     *PublicationState
 	Severity        *string

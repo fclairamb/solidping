@@ -29,6 +29,7 @@ export type IdenticalAllowlist = Readonly<Record<string, readonly AllowlistLang[
 
 export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   // Brand, product, protocol and format names: never translated.
+  "checks:regionCapability.ipv6.label.yes": ["fr", "de", "es"], // "IPv6"
   "account:sessions.methodOauth": ["fr", "de", "es"], // "OAuth"
   "account:sessions.methodLdap": ["fr", "de", "es"], // "LDAP"
   "account:sessions.methodGoogle": ["fr", "de", "es"], // "Google"
@@ -206,6 +207,7 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   // de says "Check" / "Checks", like Checkmk, Icinga and www.solidping.io/de (2026-11-17).
   "badges:check": ["de"], // "Check"
   "checks:scheduling.table.check": ["de"], // "Check"
+  "common:resources.check": ["de"], // "Check"
   "checks:title": ["de"], // "Checks"
   "events:audit.families.check": ["de"], // "Checks"
   "events:audit.targetTypes.check": ["de"], // "Check"
@@ -227,6 +229,8 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   "statusPages:resources.kindCheck": ["de"], // "Check"
   "statusUpdates:form.check": ["de"], // "Check (optional)"
   // Words spelled the same in the target language.
+  "nav:notification": ["fr"], // "Notification"
+  "nav:notifications": ["fr"], // "Notifications"
   "account:security.passkeys.title": ["de"], // "Passkeys"
   "account:security.totp.status": ["de"], // "Status"
   "account:profile.name": ["de"], // "Name"

@@ -26,6 +26,7 @@ import {
   type FailingResource,
   type TvState,
 } from "@/lib/tv-board";
+import { localizeGenerated } from "@/lib/localized-text";
 
 /**
  * TV mode — the wallboard rendering of a status page (spec 2026-08-29-08).
@@ -183,7 +184,7 @@ function ActiveIncidentCard({
   cardClass: string;
   formatDuration: (ms: number) => string;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const severity = severityStyle(incident.severity);
   const ongoing = elapsedMs(incident.startedAt, now);
 
@@ -198,7 +199,7 @@ function ActiveIncidentCard({
           className="min-w-0 break-words text-2xl font-semibold sm:text-3xl"
           data-testid="tv-active-incident-title"
         >
-          {incident.title}
+          {localizeGenerated(t, (key) => i18n.exists(key), incident.titleI18n, incident.title)}
         </h3>
         {severity && (
           <span
@@ -321,7 +322,7 @@ export function TvBoard({
   stale: boolean;
   lastUpdatedAt: number | undefined;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const now = useNow();
   const cursorIdle = useIdleCursor();
   const formatDuration = useDurationText();
@@ -568,7 +569,7 @@ export function TvBoard({
                 data-testid="tv-resolved-incident"
               >
                 <h4 className="truncate text-lg font-medium sm:text-xl">
-                  {incident.title}
+                  {localizeGenerated(t, (key) => i18n.exists(key), incident.titleI18n, incident.title)}
                 </h4>
                 <p className="text-base opacity-70 sm:text-lg" translate="no">
                   {ago === null

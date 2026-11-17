@@ -193,5 +193,19 @@
   "removeItem": "Remove {{item}}",
   "githubStar": {
     "sidebar": "Star on GitHub"
+  },
+  "backToList": "Back to {{list}}",
+  "resources": {
+    "check": "Check",
+    "statusPage": "Status page",
+    "incidentPublication": "Incident publication",
+    "statusUpdate": "Status update"
+  },
+  "apiErrors": {
+    "generic": "An error occurred",
+    "rateLimited": "Too many requests",
+    "sessionExpired": "Session expired",
+    "sessionChanged": "Session changed",
+    "network": "Network connection failed"
   }
 }

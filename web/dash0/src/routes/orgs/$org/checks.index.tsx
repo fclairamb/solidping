@@ -122,7 +122,7 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { FacetedFilter } from "@/components/shared/faceted-filter";
 import { checkLabel, tunnelCheckUidOf } from "@/components/checks/tunnel";
-import { CheckTypeBadge, getCheckTypeIdentity } from "@/components/shared/check-type-identity";
+import { CheckTypeBadge, translatedCheckTypeLabel } from "@/components/shared/check-type-identity";
 import { ApiError, apiFetch, getApiErrorField } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
@@ -1135,9 +1135,9 @@ function ChecksIndexPage() {
   const typeOptions = useMemo(
     () =>
       (checkTypes ?? [])
-        .map((ct) => ({ value: ct.type, label: getCheckTypeIdentity(ct.type).label }))
+        .map((ct) => ({ value: ct.type, label: translatedCheckTypeLabel(t, ct.type) }))
         .sort((a, b) => a.label.localeCompare(b.label)),
-    [checkTypes],
+    [checkTypes, t],
   );
   const setTypeValues = (next: string[]) => {
     void navigate({
