@@ -92,4 +92,27 @@ test.describe("region picker IPv6 capability", () => {
     await noV6Checkbox.click();
     await expect(noV6Checkbox).toHaveAttribute("data-state", before === "checked" ? "unchecked" : "checked");
   });
+
+  test("clicking a capability badge does not toggle the region", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    await mockRegions(page);
+
+    await page.goto("orgs/test/checks/new?checkType=tcp");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+    await choosePinnedRegions(page);
+
+    const checkbox = page.getByTestId("region-checkbox-has-v6");
+    const before = await checkbox.getAttribute("data-state");
+
+    // Two quick clicks used to select then deselect the region.
+    await page.getByTestId("region-ipv6-has-v6").click();
+    await expect(checkbox).toHaveAttribute("data-state", before!);
+    await page.getByTestId("region-ipv6-has-v6").click();
+    await expect(checkbox).toHaveAttribute("data-state", before!);
+
+    // The region name still toggles it.
+    await page.getByTestId("region-name-has-v6").click();
+    await expect(checkbox).toHaveAttribute("data-state", before === "checked" ? "unchecked" : "checked");
+  });
 });

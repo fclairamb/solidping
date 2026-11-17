@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/likexian/whois"
 	whoisparser "github.com/likexian/whois-parser"
 
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdomain/config"
@@ -30,12 +29,14 @@ var errWHOISNoExpirationDate = errors.New("could not find expiration date in WHO
 
 // DomainChecker implements the Checker interface for domain expiration checks.
 type DomainChecker struct {
-	// rdapClient and whoisFunc are test seams: nil (the production default)
-	// uses defaultRDAPClient.lookup / whois.Whois. registry.GetChecker
-	// constructs a fresh &DomainChecker{} per call, so these must stay
-	// optional overrides rather than required constructor args.
-	rdapClient *rdapClient
-	whoisFunc  func(domain string) (string, error)
+	// rdapClient, whoisFunc and whoisServer are test seams: zero values (the
+	// production default) use defaultRDAPClient.lookup / queryWHOIS against
+	// the IANA referral. registry.GetChecker constructs a fresh
+	// &DomainChecker{} per call, so these must stay optional overrides rather
+	// than required constructor args.
+	rdapClient  *rdapClient
+	whoisFunc   func(ctx context.Context, domain string) (string, error)
+	whoisServer string
 }
 
 // Type returns the check type identifier.
@@ -67,13 +68,13 @@ func (c *DomainChecker) lookupRDAP(ctx context.Context, domain string) (*rdapRes
 	return client.lookup(ctx, domain)
 }
 
-func (c *DomainChecker) lookupWHOIS(domain string) (*whoisparser.WhoisInfo, error) {
+func (c *DomainChecker) lookupWHOIS(ctx context.Context, domain string) (*whoisparser.WhoisInfo, error) {
 	rawFunc := c.whoisFunc
 	if rawFunc == nil {
-		rawFunc = func(d string) (string, error) { return whois.Whois(d) }
+		rawFunc = func(ctx context.Context, d string) (string, error) { return queryWHOIS(ctx, d, c.whoisServer) }
 	}
 
-	raw, err := rawFunc(domain)
+	raw, err := rawFunc(ctx, domain)
 	if err != nil {
 		return nil, fmt.Errorf("WHOIS lookup failed: %w", err)
 	}
@@ -103,7 +104,13 @@ func (c *DomainChecker) Execute(ctx context.Context, config checkerdef.Config) (
 	duration := time.Since(start)
 
 	if lookupErr != nil {
-		return errorResult(cfg.Domain, duration, lookupErr.Error()), nil
+		result := errorResult(cfg.Domain, duration, lookupErr.Error())
+		if ctx.Err() != nil || errors.Is(lookupErr, context.DeadlineExceeded) {
+			// The check ran out of time: report it as such, not as a down domain.
+			result.Status = checkerdef.StatusTimeout
+		}
+
+		return result, nil
 	}
 
 	daysRemaining := int(time.Until(expiryDate).Hours() / hoursPerDay)
@@ -149,7 +156,7 @@ func (c *DomainChecker) lookupExpiration(
 		return res.ExpiryDate, res.Registrar, MethodRDAP, nil
 
 	case MethodWHOIS:
-		expiry, registrar, err := c.lookupExpirationWHOIS(cfg.Domain)
+		expiry, registrar, err := c.lookupExpirationWHOIS(ctx, cfg.Domain)
 
 		return expiry, registrar, MethodWHOIS, err
 
@@ -158,7 +165,7 @@ func (c *DomainChecker) lookupExpiration(
 			return res.ExpiryDate, res.Registrar, MethodRDAP, nil
 		}
 
-		expiry, registrar, err := c.lookupExpirationWHOIS(cfg.Domain)
+		expiry, registrar, err := c.lookupExpirationWHOIS(ctx, cfg.Domain)
 
 		return expiry, registrar, MethodWHOIS, err
 	}
@@ -166,8 +173,8 @@ func (c *DomainChecker) lookupExpiration(
 
 // lookupExpirationWHOIS performs the WHOIS lookup and parses its expiration
 // date, shared by the explicit "whois" method and "auto"'s fallback path.
-func (c *DomainChecker) lookupExpirationWHOIS(domain string) (time.Time, string, error) {
-	parsed, whoisErr := c.lookupWHOIS(domain)
+func (c *DomainChecker) lookupExpirationWHOIS(ctx context.Context, domain string) (time.Time, string, error) {
+	parsed, whoisErr := c.lookupWHOIS(ctx, domain)
 	if whoisErr != nil {
 		return time.Time{}, "", whoisErr
 	}

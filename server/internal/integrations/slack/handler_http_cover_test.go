@@ -80,6 +80,7 @@ func TestHandlerHTTPEntryPoints(t *testing.T) {
 
 			rec := httptest.NewRecorder()
 			_ = tt.call(rec, tt.req)
+			h.events.Wait()
 			require.Equal(t, tt.wantCode, rec.Code)
 			require.Contains(t, rec.Body.String(), tt.wantBody)
 		})

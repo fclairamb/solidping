@@ -133,6 +133,9 @@ type Handler struct {
 	// field rather than a constant only so tests can run probe cycles in
 	// milliseconds; see SetPingInterval.
 	pingInterval time.Duration
+	// legacyWarn throttles the v1 reconnect deprecation WARN to one line per
+	// agent per interval (nil: every reconnect logs).
+	legacyWarn *agentcrypto.DeprecationThrottle
 
 	// Shutdown machinery (spec 2026-09-28-03 §4). shutdownCtx is canceled by
 	// Close and cancels every live connection's loop; connsWG counts live
@@ -192,6 +195,7 @@ func NewHandler(
 		conns:        newConnRegistry(),
 		logger:       slog.Default().With("component", "agent_ws"),
 		pingInterval: defaultPingInterval,
+		legacyWarn:   agentcrypto.NewDeprecationThrottle(agentcrypto.DefaultDeprecationLogInterval),
 	}
 }
 
@@ -533,7 +537,7 @@ func (h *Handler) serveReconnect(
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Nonce already used")
 	}
 
-	if sigErr := verifyReconnectSignature(req, agent, timestamp, nonce, signature); sigErr != nil {
+	if sigErr := h.verifyReconnectSignature(req, agent, timestamp, nonce, signature); sigErr != nil {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid signature")
 	}
 
@@ -558,9 +562,10 @@ func (h *Handler) serveReconnect(
 // verifyReconnectSignature dispatches on the challenge version the agent
 // advertises, exactly like agentauth does for the plain HTTP calls: v2 binds
 // the full request URI (a reconnect carries no body, so the hash covers the
-// empty slice), legacy v1 is accepted with a deprecation warning until the
-// fleet has upgraded, and any other version is refused.
-func verifyReconnectSignature(
+// empty slice), legacy v1 is accepted until the fleet has upgraded (counted
+// in a metric, with a deprecation warning at most once per agent per hour),
+// and any other version is refused.
+func (h *Handler) verifyReconnectSignature(
 	req *http.Request, agent *models.Agent, timestamp, nonce, signature string,
 ) error {
 	switch req.Header.Get(agentcrypto.HeaderSignatureVersion) {
@@ -569,14 +574,22 @@ func verifyReconnectSignature(
 			agent.Ed25519PublicKey, req.Method, req.URL.RequestURI(), timestamp, nonce, nil, signature,
 		)
 	case "":
-		slog.WarnContext(req.Context(),
-			"DEPRECATED: agent reconnect authenticated with the legacy v1 signature (path only); "+
-				"the agent should upgrade to the v2 challenge",
-			"agent", agent.UID)
-
-		return agentcrypto.VerifySignature(
+		if err := agentcrypto.VerifySignature(
 			agent.Ed25519PublicKey, req.Method, req.URL.Path, timestamp, nonce, signature,
-		)
+		); err != nil {
+			return err
+		}
+
+		prommetrics.RecordAgentLegacySignature(prommetrics.AgentLegacySignatureReconnect)
+
+		if ok, suppressed := h.legacyWarn.Allow(agent.UID); ok {
+			h.logger.WarnContext(req.Context(),
+				"DEPRECATED: agent reconnect authenticated with the legacy v1 signature (path only); "+
+					"the agent should upgrade to the v2 challenge",
+				"agent", agent.UID, "suppressed", suppressed)
+		}
+
+		return nil
 	default:
 		return agentcrypto.ErrBadSignature
 	}

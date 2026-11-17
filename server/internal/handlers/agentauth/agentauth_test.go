@@ -5,15 +5,19 @@ import (
 	"context"
 	"database/sql"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
 )
 
 // fakeAgentStore serves one enrolled agent (or nothing for an unknown uid).
@@ -152,6 +156,32 @@ func TestAuthenticateLegacyV1StillAccepted(t *testing.T) {
 	agent, err := env.auth.Authenticate(req)
 	r.NoError(err)
 	r.Equal("agent-1", agent.UID)
+}
+
+// TestAuthenticateLegacyV1WarnThrottled: a legacy agent polls several times
+// a minute, and every v1 request used to log its own deprecation WARN
+// (thousands a day per agent). The WARN now goes out once per agent per
+// interval while every request is still counted in the metric. Not parallel:
+// it reads a process-wide counter that the parallel tests also bump.
+func TestAuthenticateLegacyV1WarnThrottled(t *testing.T) { //nolint:paralleltest // process-wide counter
+	r := require.New(t)
+
+	env := newAuthEnv(t)
+
+	var logs bytes.Buffer
+	env.auth.logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	counter := prommetrics.AgentLegacySignatureRequests.WithLabelValues(prommetrics.AgentLegacySignatureHTTP)
+	before := testutil.ToFloat64(counter)
+
+	for i := range 3 {
+		req := env.signedRequest(t, []byte("capture-bytes"), "", "nonce-"+string(rune('a'+i)))
+		_, err := env.auth.Authenticate(req)
+		r.NoError(err)
+	}
+
+	r.Equal(1, strings.Count(logs.String(), "DEPRECATED: agent request"), "logs: %s", logs.String())
+	r.InDelta(before+3, testutil.ToFloat64(counter), 0.001)
 }
 
 // TestAuthenticateVersionDispatch: an unknown version is refused, and a v2
