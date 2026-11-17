@@ -475,31 +475,44 @@ func (s *Session) setChecked(ctx context.Context, sel string, want bool) error {
 		read := `(function(){var e=` + tgt.elem + `;` +
 			`return e ? !!e.checked : null})()`
 
-		var state *bool
-		if err := s.run(ctx, chromedp.Evaluate(read, &state)); err != nil {
+		return ensureChecked(sel, want,
+			func() (*bool, error) {
+				var state *bool
+
+				return state, s.run(ctx, chromedp.Evaluate(read, &state))
+			},
+			func() error { return s.run(ctx, chromedp.Click(tgt.sel, tgt.opt)) },
+		)
+	})
+}
+
+// ensureChecked reads the box's state, clicks only when it differs from want,
+// then asserts the state. read returns nil for an element that is gone.
+func ensureChecked(sel string, want bool, read func() (*bool, error), click func() error) error {
+	state, err := read()
+	if err != nil {
+		return err
+	}
+
+	if state == nil {
+		return fmt.Errorf("%w: %q is gone", errSelector, sel)
+	}
+
+	if *state != want {
+		if err = click(); err != nil {
 			return err
 		}
 
-		if state == nil {
-			return fmt.Errorf("%w: %q is gone", errSelector, sel)
+		if state, err = read(); err != nil {
+			return err
 		}
+	}
 
-		if *state != want {
-			if err := s.run(ctx, chromedp.Click(tgt.sel, tgt.opt)); err != nil {
-				return err
-			}
+	if state == nil || *state != want {
+		return fmt.Errorf("%w: %q is not %s after the click", errSelector, sel, checkedWord(want))
+	}
 
-			if err := s.run(ctx, chromedp.Evaluate(read, &state)); err != nil {
-				return err
-			}
-		}
-
-		if state == nil || *state != want {
-			return fmt.Errorf("%w: %q is not %s after the click", errSelector, sel, checkedWord(want))
-		}
-
-		return nil
-	})
+	return nil
 }
 
 func checkedWord(want bool) string {
@@ -519,8 +532,10 @@ const selectJS = `(function(e, want) {
   var opt = opts.filter(function(o) { return o.value === want; })[0] ||
     opts.filter(function(o) { return norm(o.text) === norm(want); })[0];
   if (!opt) return "no option matches " + JSON.stringify(want);
-  // The native setter, so a React-controlled <select> sees the change.
-  e.value = opt.value;
+  // The prototype's native setter, so a framework that shadows the instance's
+  // value property (React's value tracker) still sees the change.
+  var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
+  setter.call(e, opt.value);
   opt.selected = true;
   e.dispatchEvent(new Event("input", {bubbles: true}));
   e.dispatchEvent(new Event("change", {bubbles: true}));

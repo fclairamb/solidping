@@ -48,6 +48,7 @@ const selectorFixture = `<html><head><style>h1 { color: red }</style></head><bod
 <input id="ph" placeholder="Phone number">
 <label><input id="cb" type="checkbox" name="remember"> Remember me</label>
 <select id="sel" name="country"><option value="fr">France</option><option value="de">Germany</option></select>
+<select id="rsel" name="framework"><option value="a">Alpha</option><option value="b">Beta</option></select>
 <button type="submit" id="go">Sign in</button>
 </form>
 <button id="a1">Save</button><button id="a2">Save draft</button>
@@ -63,6 +64,28 @@ document.getElementById('sel').addEventListener('change', function(e){
 document.getElementById('cb').addEventListener('click', function(){
   body.setAttribute('data-clicks', (+body.getAttribute('data-clicks')||0)+1);
 });
+// A React-like controlled select: an instance-level value property tracks
+// every write made through it (as React's value tracker does), and the
+// listener only acts when the NATIVE value differs from the tracked one.
+(function(){
+  var el = document.getElementById('rsel');
+  var native = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+  var tracked = native.get.call(el);
+  Object.defineProperty(el, 'value', {
+    configurable: true,
+    get: function(){ return native.get.call(this); },
+    set: function(v){ tracked = String(v); native.set.call(this, v); }
+  });
+  function onEvent(){
+    var current = native.get.call(el);
+    if (current !== tracked) {
+      tracked = current;
+      body.setAttribute('data-react', current);
+    }
+  }
+  el.addEventListener('input', onEvent);
+  el.addEventListener('change', onEvent);
+})();
 </script>
 </body></html>`
 
@@ -172,6 +195,13 @@ var b=document.createElement("button");b.textContent="Late one";document.body.ap
 	r.Equal("de", got)
 	r.NoError(session.Select(ctx, "css=#sel", "fr"))
 	r.ErrorContains(session.Select(ctx, "css=#sel", "Spain"), "no option matches")
+
+	// a framework-controlled select (value tracker) must notice the change.
+	r.NoError(session.Select(ctx, "name=framework", "Beta"))
+
+	react, err := session.Evaluate(ctx, `document.body.getAttribute("data-react")`)
+	r.NoError(err)
+	r.Equal("b", react)
 
 	// submit through requestSubmit, from the form or a field in it.
 	r.NoError(session.Submit(ctx, "label=Email address"))
@@ -357,4 +387,44 @@ func TestRecorderSelectorsLive(t *testing.T) {
 
 	// waitFor over a list.
 	r.NoError(session.WaitVisible(ctx, EncodeSelectorList([]string{"#gone", "#r1"})))
+}
+
+// TestEnsureCheckedClicksOnlyWhenTheStateDiffers is the Chrome-free proof of
+// the check/uncheck rule: an already-checked box is not clicked.
+func TestEnsureCheckedClicksOnlyWhenTheStateDiffers(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		start      bool
+		want       bool
+		wantClicks int
+	}{
+		{"already checked", true, true, 0},
+		{"already unchecked", false, false, 0},
+		{"needs check", false, true, 1},
+		{"needs uncheck", true, false, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			state, clicks := tc.start, 0
+			err := ensureChecked("#cb", tc.want,
+				func() (*bool, error) { v := state; return &v, nil },
+				func() error { clicks++; state = !state; return nil },
+			)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantClicks, clicks)
+		})
+	}
+
+	// A click that does not flip the box fails; a vanished element fails.
+	stuck := false
+	err := ensureChecked("#cb", true,
+		func() (*bool, error) { return &stuck, nil }, func() error { return nil })
+	require.ErrorContains(t, err, "is not checked after the click")
+
+	err = ensureChecked("#cb", true,
+		func() (*bool, error) { return nil, nil }, func() error { return nil }) //nolint:nilnil // a gone element
+	require.ErrorContains(t, err, "is gone")
 }
