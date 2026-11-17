@@ -232,6 +232,8 @@ func TestAddComment_TelegramSourceAttributesToUser(t *testing.T) {
 
 	user := models.NewUser("tg@example.com")
 	r.NoError(s.dbSvc.CreateUser(ctx, user))
+	r.NoError(s.dbSvc.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(s.org.UID, user.UID, models.MemberRoleUser)))
 
 	event, err := s.svc.AddCommentFromTelegram(
 		ctx, s.org.UID, s.incident.UID, "rebooting the box", user.UID, "Bob", "12345",
