@@ -1211,20 +1211,19 @@ func (s *Service) RemoveOrganizationMember(ctx context.Context, uid string) (int
 	now := time.Now()
 
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// One statement, no separate read: RETURNING hands back whose
+		// membership it was.
 		member := new(models.OrganizationMember)
-		if err := tx.NewSelect().Model(member).Where("uid = ?", uid).Scan(ctx); err != nil {
+		if err := tx.NewUpdate().
+			Model(member).
+			Where("uid = ?", uid).
+			Set("deleted_at = ?", now).
+			Returning("user_uid, organization_uid").
+			Scan(ctx); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil
 			}
 
-			return fmt.Errorf("load membership: %w", err)
-		}
-
-		if _, err := tx.NewUpdate().
-			Model((*models.OrganizationMember)(nil)).
-			Where("uid = ?", uid).
-			Set("deleted_at = ?", now).
-			Exec(ctx); err != nil {
 			return fmt.Errorf("soft-delete membership: %w", err)
 		}
 

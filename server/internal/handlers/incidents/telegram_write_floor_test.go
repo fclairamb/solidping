@@ -25,8 +25,10 @@ func TestTelegramWritesEnforceTheMemberFloor(t *testing.T) {
 	}{
 		{name: "viewer is read-only", role: models.MemberRoleViewer, joined: true, wantErr: incidents.ErrRoleReadOnly},
 		{name: "non-member", wantErr: incidents.ErrNotOrgMember},
-		{name: "removed member", role: models.MemberRoleUser, joined: true, removed: true,
-			wantErr: incidents.ErrNotOrgMember},
+		{
+			name: "removed member", role: models.MemberRoleUser, joined: true, removed: true,
+			wantErr: incidents.ErrNotOrgMember,
+		},
 		{name: "pending invite", role: models.MemberRoleUser, wantErr: incidents.ErrNotOrgMember},
 		{name: "user may write", role: models.MemberRoleUser, joined: true},
 	}
