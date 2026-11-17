@@ -1188,13 +1188,65 @@ func (s *Service) UpdateOrganizationMember(
 }
 
 func (s *Service) DeleteOrganizationMember(ctx context.Context, uid string) error {
-	_, err := s.db.NewUpdate().
-		Model((*models.OrganizationMember)(nil)).
-		Where("uid = ?", uid).
-		Set("deleted_at = ?", time.Now()).
-		Exec(ctx)
+	_, err := s.RemoveOrganizationMember(ctx, uid)
 
 	return err
+}
+
+// RemoveOrganizationMember soft-deletes a membership together with the user's
+// contacts and notification routes in that org, in one transaction.
+func (s *Service) RemoveOrganizationMember(ctx context.Context, uid string) (int, error) {
+	removed := 0
+	now := time.Now()
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// One statement, no separate read: RETURNING hands back whose
+		// membership it was.
+		member := new(models.OrganizationMember)
+		if err := tx.NewUpdate().
+			Model(member).
+			Where("uid = ?", uid).
+			Set("deleted_at = ?", now).
+			Returning("user_uid, organization_uid").
+			Scan(ctx); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil
+			}
+
+			return fmt.Errorf("soft-delete membership: %w", err)
+		}
+
+		if _, err := tx.NewDelete().
+			Model((*models.UserNotificationRoute)(nil)).
+			Where("user_uid = ?", member.UserUID).
+			Where("org_uid = ?", member.OrganizationUID).
+			Exec(ctx); err != nil {
+			return fmt.Errorf("delete notification routes: %w", err)
+		}
+
+		res, err := tx.NewUpdate().
+			Model((*models.UserContact)(nil)).
+			Where("user_uid = ?", member.UserUID).
+			Where("organization_uid = ?", member.OrganizationUID).
+			Where("deleted_at IS NULL").
+			Set("deleted_at = ?", now).
+			Set("updated_at = ?", now).
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("soft-delete contacts: %w", err)
+		}
+
+		if n, rowsErr := res.RowsAffected(); rowsErr == nil {
+			removed = int(n)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("remove organization member: %w", err)
+	}
+
+	return removed, nil
 }
 
 // CountAdminsByOrg counts the members who hold at least the admin role. Owners

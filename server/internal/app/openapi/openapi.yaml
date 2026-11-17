@@ -10228,6 +10228,7 @@ paths:
       tags: [Email Suppressions]
       summary: List email suppressions
       operationId: listEmailSuppressions
+      description: Org admin (or owner) only. Viewers and `user` members get 403 FORBIDDEN.
       security:
         - bearerAuth: []
       parameters:
@@ -10251,6 +10252,7 @@ paths:
       tags: [Email Suppressions]
       summary: Remove an email suppression (re-subscribe)
       operationId: deleteEmailSuppression
+      description: Org admin (or owner) only. Viewers and `user` members get 403 FORBIDDEN.
       security:
         - bearerAuth: []
       parameters:

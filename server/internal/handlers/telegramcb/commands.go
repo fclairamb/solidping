@@ -148,7 +148,7 @@ func (h *Handler) listOrgIncidents(
 
 	for _, incident := range incidents {
 		line := h.incidentLine(ctx, org, qualify, incident)
-		keyboard := telegram.IncidentKeyboard(incident.UID, line.IncidentURL, !line.Acked)
+		keyboard := telegram.IncidentKeyboard(incident.UID, line.IncidentURL, !line.Acked && org.canWrite())
 
 		h.replyWithKeyboard(ctx, chatID, telegram.BuildIncidentLineHTML(&line), keyboard)
 	}
@@ -169,7 +169,8 @@ func (h *Handler) handleIncidentDetail(ctx context.Context, chatID, arg string) 
 	}
 
 	view := h.incidentDetailView(ctx, org, qualifyRefs(orgs), incident)
-	canAck := incident.State != models.IncidentStateResolved && incident.AcknowledgedAt == nil
+	canAck := org.canWrite() &&
+		incident.State != models.IncidentStateResolved && incident.AcknowledgedAt == nil
 	keyboard := telegram.IncidentKeyboard(incident.UID, view.IncidentURL, canAck)
 
 	h.replyWithKeyboard(ctx, chatID, telegram.BuildIncidentDetailHTML(view), keyboard)
@@ -192,6 +193,10 @@ func (h *Handler) handleAck(
 
 	org, incident, resolved := h.resolveAckTarget(ctx, chatID, orgs, arg)
 	if !resolved {
+		return
+	}
+
+	if h.refuseReadOnly(ctx, chatID, org) {
 		return
 	}
 

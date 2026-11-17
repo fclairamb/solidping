@@ -377,6 +377,7 @@
     }
   },
   "suppressions": {
+    "adminOnly": "Only organization administrators can see who unsubscribed.",
     "title": "Unsubscribed recipients",
     "resubscribed": "{{email}} re-subscribed",
     "resubscribeFailed": "Failed to re-subscribe",

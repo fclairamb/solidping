@@ -73,6 +73,7 @@ func Run(t *testing.T, svc db.Service) {
 		{"bulk_results", runBulkResults},
 		{"agents", runAgents},
 		{"user_contacts", runUserContacts},
+		{"member_removal_contacts", runMemberRemovalContacts},
 		{"incident_notifications", runIncidentNotifications},
 		{"publications_and_status_updates", runPublicationsAndStatusUpdates},
 		{"check_updates_and_filters", runCheckUpdatesAndFilters},

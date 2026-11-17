@@ -2220,6 +2220,8 @@ function ChecksIndexPage() {
                 <Textarea
                   id="import-payload"
                   data-testid="import-payload"
+                  // Monitoring exports carry credentials (spec 2026-11-17-08).
+                  data-secret-input
                   rows={8}
                   className="font-mono text-xs"
                   value={importText}

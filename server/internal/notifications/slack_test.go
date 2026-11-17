@@ -280,6 +280,10 @@ func (m *mockDBService) DeleteOrganizationMember(_ context.Context, _ string) er
 	panic("not implemented")
 }
 
+func (m *mockDBService) RemoveOrganizationMember(_ context.Context, _ string) (int, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CountAdminsByOrg(_ context.Context, _ string) (int, error) {
 	panic("not implemented")
 }

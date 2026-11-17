@@ -79,6 +79,8 @@ func setupMultiOrgEnv(t *testing.T) *multiOrgEnv {
 
 	userB := models.NewUser("oncall-b@example.com")
 	require.NoError(t, env.db.CreateUser(ctx, userB))
+	require.NoError(t, env.db.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(orgB.UID, userB.UID, models.MemberRoleUser)))
 
 	now := time.Now()
 	// Org A is linked an hour earlier, so it sorts first.

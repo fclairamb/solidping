@@ -205,7 +205,19 @@ type Service interface {
 	// loaded. An empty userUIDs returns an empty slice without querying.
 	ListMembersByUsers(ctx context.Context, userUIDs []string) ([]*models.OrganizationMember, error)
 	UpdateOrganizationMember(ctx context.Context, uid string, update models.OrganizationMemberUpdate) error
+	// DeleteOrganizationMember soft-deletes a membership. It is
+	// RemoveOrganizationMember with the removed-contact count discarded, so
+	// every deleter (member removal, org deletion, demo cleanup) also ends the
+	// person's contacts and notification routes in that org.
 	DeleteOrganizationMember(ctx context.Context, uid string) error
+	// RemoveOrganizationMember soft-deletes a membership and, in the SAME
+	// transaction, soft-deletes the user's contacts scoped to that org and
+	// hard-deletes their notification routes there. Contacts the user holds in
+	// other orgs are untouched. Returns how many contacts were removed.
+	//
+	// A contact that outlives its membership keeps a linked Telegram (or other
+	// chat-ops) destination acting in an org the person no longer belongs to.
+	RemoveOrganizationMember(ctx context.Context, uid string) (int, error)
 	// CountAdminsByOrg counts members holding at least the admin role (owners
 	// included — they outrank admins).
 	CountAdminsByOrg(ctx context.Context, orgUID string) (int, error)
