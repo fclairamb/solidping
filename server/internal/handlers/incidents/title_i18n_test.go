@@ -26,14 +26,14 @@ func TestTitleKeysExistInDashboardLocales(t *testing.T) {
 	for _, lang := range []string{"en", "fr", "de", "es"} {
 		path := filepath.Join("..", "..", "..", "..", "web", "dash0", "src", "locales", lang, "incidents.json")
 
-		content, err := os.ReadFile(path) //nolint:gosec // fixed test path.
+		content, err := os.ReadFile(path)
 		require.NoError(t, err)
 
 		var catalog map[string]any
 		require.NoError(t, json.Unmarshal(content, &catalog))
 
 		for _, key := range keys {
-			var node any = catalog["generated"]
+			node := catalog["generated"]
 			for part := range strings.SplitSeq(key, ".") {
 				obj, ok := node.(map[string]any)
 				require.True(t, ok, "%s: generated.%s", lang, key)

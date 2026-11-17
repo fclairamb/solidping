@@ -231,7 +231,7 @@ type ValidationErrorField struct {
 }
 
 // IsError reports whether the finding blocks. Absent severity means error.
-func (f ValidationErrorField) IsError() bool {
+func (f *ValidationErrorField) IsError() bool {
 	return f.Severity == "" || f.Severity == SeverityError
 }
 

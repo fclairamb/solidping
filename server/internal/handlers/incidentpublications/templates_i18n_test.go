@@ -68,7 +68,7 @@ func TestRenderKeepsTheRecipe(t *testing.T) {
 func readLocale(t *testing.T, path string, keys ...string) map[string]any {
 	t.Helper()
 
-	content, err := os.ReadFile(path) //nolint:gosec // fixed test path.
+	content, err := os.ReadFile(path)
 	require.NoError(t, err)
 
 	var node map[string]any

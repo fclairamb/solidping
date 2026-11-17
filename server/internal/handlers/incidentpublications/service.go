@@ -746,8 +746,7 @@ func (s *Service) UpdatePublication(
 		}
 
 		update.PublicTitle = req.Title
-		pub.PublicTitle = *req.Title
-		pub.PublicTitleI18n = nil
+		pub.PublicTitle, pub.PublicTitleI18n = *req.Title, nil // a retitle drops the recipe
 	}
 
 	if req.Severity != nil {
