@@ -1,7 +1,7 @@
 ---
 sidebar_position: 0
 title: Overview
-description: Import your existing monitors into SolidPing from Gatus, Better Stack, Uptime Kuma, UptimeRobot or Pingdom.
+description: Import your existing monitors into SolidPing from Gatus, Better Stack, Uptime Kuma, UptimeRobot, Pingdom or a Chrome Recorder flow.
 ---
 
 # Migrating to SolidPing
@@ -20,6 +20,7 @@ with its type, interval, target and thresholds intact.
 | Uptime Kuma | The `sp` CLI reads your `kuma.db` (2.x), or a 1.x backup JSON | [Migrate from Uptime Kuma](./from-uptime-kuma.md) |
 | UptimeRobot | The API v2 `getMonitors` JSON | [Migrate from UptimeRobot](./from-uptimerobot.md) |
 | Pingdom | A read-only API token, or the `GET /checks` JSON | [Migrate from Pingdom](./from-pingdom.md) |
+| Chrome Recorder | A flow exported from DevTools > Recorder as JSON | [Record a flow with Chrome and import it](./from-chrome-recorder.md) |
 
 ## Recommended: let an AI agent do the translation
 

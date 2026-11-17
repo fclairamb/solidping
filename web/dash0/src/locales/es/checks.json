@@ -114,7 +114,8 @@
       "betterstack": "Better Stack (token de API)",
       "uptime-kuma": "Uptime Kuma (copia de seguridad JSON)",
       "uptimerobot": "UptimeRobot (JSON de getMonitors)",
-      "pingdom": "Pingdom (token de API o JSON)"
+      "pingdom": "Pingdom (token de API o JSON)",
+      "chrome-recorder": "Chrome Recorder (JSON exportado)"
     },
     "importSourceHelp": {
       "solidping": "Un documento generado con el botón Exportar, en JSON o YAML.",
@@ -122,14 +123,16 @@
       "betterstack": "Leemos tus monitores y heartbeats desde la API de Better Stack y los convertimos.",
       "uptime-kuma": "Uptime Kuma 1.x: Ajustes → Copia de seguridad → Exportar JSON. La versión 2.x ya no ofrece esta exportación.",
       "uptimerobot": "Pega el JSON de la llamada getMonitors de la API v2 de UptimeRobot: consulta la documentación para el comando curl exacto.",
-      "pingdom": "Crea un token de solo lectura en My Pingdom > Settings > Pingdom API > Add API token (acceso de lectura), o pega el JSON de GET /api/3.1/checks."
+      "pingdom": "Crea un token de solo lectura en My Pingdom > Settings > Pingdom API > Add API token (acceso de lectura), o pega el JSON de GET /api/3.1/checks.",
+      "chrome-recorder": "En Chrome DevTools > Recorder, graba tu flujo y luego Exportar > JSON. Pega o sube el archivo: se convierte en un check de navegador con un paso por acción. Las contraseñas van a los secretos cifrados del check."
     },
     "importPlaceholder": {
       "solidping": "Pega el documento JSON o YAML exportado…",
       "gatus": "Pega tu config.yaml de Gatus…",
       "uptime-kuma": "Pega la copia de seguridad JSON de Uptime Kuma…",
       "uptimerobot": "Pega el JSON getMonitors de UptimeRobot…",
-      "pingdom": "O pega el JSON de tus checks de Pingdom…"
+      "pingdom": "O pega el JSON de tus checks de Pingdom…",
+      "chrome-recorder": "Pega tu JSON de Chrome Recorder…"
     },
     "importPayload": "Configuración",
     "importUpload": "Subir un archivo",

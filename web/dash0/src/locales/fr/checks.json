@@ -114,7 +114,8 @@
       "betterstack": "Better Stack (jeton d'API)",
       "uptime-kuma": "Uptime Kuma (sauvegarde JSON)",
       "uptimerobot": "UptimeRobot (JSON getMonitors)",
-      "pingdom": "Pingdom (jeton d'API ou JSON)"
+      "pingdom": "Pingdom (jeton d'API ou JSON)",
+      "chrome-recorder": "Chrome Recorder (JSON exporté)"
     },
     "importSourceHelp": {
       "solidping": "Un document produit par le bouton Exporter, en JSON ou YAML.",
@@ -122,14 +123,16 @@
       "betterstack": "Nous récupérons vos moniteurs et heartbeats via l'API Better Stack, puis nous les convertissons.",
       "uptime-kuma": "Uptime Kuma 1.x : Paramètres → Sauvegarde → Exporter le JSON. La version 2.x ne propose plus cet export.",
       "uptimerobot": "Collez le JSON obtenu via l'appel getMonitors de l'API v2 d'UptimeRobot — voir la documentation pour la commande curl exacte.",
-      "pingdom": "Créez un jeton en lecture seule dans My Pingdom > Settings > Pingdom API > Add API token (accès en lecture), ou collez le JSON de GET /api/3.1/checks."
+      "pingdom": "Créez un jeton en lecture seule dans My Pingdom > Settings > Pingdom API > Add API token (accès en lecture), ou collez le JSON de GET /api/3.1/checks.",
+      "chrome-recorder": "Dans Chrome DevTools > Recorder, enregistrez votre parcours puis Exporter > JSON. Collez ou importez le fichier : il devient un check navigateur avec une étape par action. Les mots de passe vont dans les secrets chiffrés du check."
     },
     "importPlaceholder": {
       "solidping": "Collez le document JSON ou YAML exporté…",
       "gatus": "Collez votre config.yaml Gatus…",
       "uptime-kuma": "Collez la sauvegarde JSON Uptime Kuma…",
       "uptimerobot": "Collez le JSON getMonitors d'UptimeRobot…",
-      "pingdom": "Ou collez le JSON de vos checks Pingdom…"
+      "pingdom": "Ou collez le JSON de vos checks Pingdom…",
+      "chrome-recorder": "Collez votre JSON Chrome Recorder…"
     },
     "importPayload": "Configuration",
     "importUpload": "Envoyer un fichier",

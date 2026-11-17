@@ -1751,6 +1751,7 @@ export const CONVERT_SOURCES = [
   "uptime-kuma",
   "uptimerobot",
   "pingdom",
+  "chrome-recorder",
 ] as const;
 export type ConvertSource = (typeof CONVERT_SOURCES)[number];
 

@@ -1,0 +1,61 @@
+{
+  "document": {
+    "version": 1,
+    "exportedAt": "",
+    "organization": "chrome-recorder",
+    "checks": [
+      {
+        "name": "Acme popup",
+        "slug": "acme-popup",
+        "type": "js",
+        "config": {
+          "script": "// Generated from Chrome DevTools Recorder flow \"Acme popup\".\nconst page = browser.open();\nfunction must(r, what) { if (!r.ok) { throw new Error(what + \": \" + r.error); } }\nstep(\"Go to \\\"https://app.acme.example\\\"\", function () {\n  must(page.goto(\"https://app.acme.example\"), \"step 1: navigate https://app.acme.example\");\n});\n// TODO step 2: \"click\" runs inside an iframe, which a check cannot drive\n// TODO step 3: \"click\" targets another page (popup or new tab); a check drives a single page\n// TODO step 4: \"customStep\" is a custom step, which has no SolidPing equivalent\n// TODO step 5: \"teleport\" is not a known Recorder step type\n// TODO step 6: \"click\" has no usable selector\n// step 7: secondary click skipped\n// step 8: lone keyDown \"Shift\" skipped\nreturn { status: \"up\", output: { url: page.url() } };\n"
+        },
+        "enabled": false,
+        "degradedEnabled": false
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "item": "Acme popup",
+      "field": "steps",
+      "message": "step 2 (\"click\") runs inside an iframe, which a check cannot drive — the check was created paused"
+    },
+    {
+      "item": "Acme popup",
+      "field": "steps",
+      "message": "step 3 (\"click\") targets another page (popup or new tab); a check drives a single page — the check was created paused"
+    },
+    {
+      "item": "Acme popup",
+      "field": "steps",
+      "message": "step 4 (\"customStep\") is a custom step, which has no SolidPing equivalent — the check was created paused"
+    },
+    {
+      "item": "Acme popup",
+      "field": "steps",
+      "message": "step 5 (\"teleport\") is not a known Recorder step type — the check was created paused"
+    },
+    {
+      "item": "Acme popup",
+      "field": "steps",
+      "message": "step 6 (\"click\") has 1 selector(s) crossing a shadow root or frame that were skipped"
+    },
+    {
+      "item": "Acme popup",
+      "field": "steps",
+      "message": "step 6 (\"click\") has no usable selector — the check was created paused"
+    },
+    {
+      "item": "Acme popup",
+      "field": "steps",
+      "message": "step 7 (\"click\") uses the \"secondary\" mouse button, which is not supported; the click was skipped"
+    },
+    {
+      "item": "Acme popup",
+      "field": "steps",
+      "message": "step 8 (\"keyDown\") is a lone key event (modifier or unmatched) and was skipped"
+    }
+  ]
+}

@@ -38,6 +38,8 @@ const (
 	SourceUptimeRobot = "uptimerobot"
 	// SourcePingdom is the Pingdom API 3.1 source (token fetch or pasted JSON).
 	SourcePingdom = "pingdom"
+	// SourceChromeRecorder is a Chrome DevTools Recorder JSON export (one browser check).
+	SourceChromeRecorder = "chrome-recorder"
 )
 
 // Config keys shared by several converters. Extracted so the same literal is
@@ -424,5 +426,7 @@ const dnsDefaultPort = 53
 
 // SupportedSources lists every source identifier the convert endpoint accepts.
 func SupportedSources() []string {
-	return []string{SourceGatus, SourceBetterStack, SourceUptimeKuma, SourceUptimeRobot, SourcePingdom}
+	return []string{
+		SourceGatus, SourceBetterStack, SourceUptimeKuma, SourceUptimeRobot, SourcePingdom, SourceChromeRecorder,
+	}
 }
