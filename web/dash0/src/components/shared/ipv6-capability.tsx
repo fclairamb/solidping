@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -62,6 +63,11 @@ export function Ipv6CapabilityBadge({
   className?: string;
   "data-testid"?: string;
 }) {
+  // Controlled so a click (or a tap, where there is no hover) opens the
+  // explanation instead of Radix closing it. The preventDefault also keeps a
+  // click from reaching an enclosing <label> (the region picker row), which
+  // would toggle the region.
+  const [open, setOpen] = useState(false);
   const { t } = useTranslation("checks");
 
   if (capability === "unknown" && hideUnknown) {
@@ -70,8 +76,14 @@ export function Ipv6CapabilityBadge({
 
   return (
     <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
+      <Tooltip open={open} onOpenChange={setOpen}>
+        <TooltipTrigger
+          asChild
+          onClick={(event) => {
+            event.preventDefault();
+            setOpen(true);
+          }}
+        >
           <Badge
             variant={variants[capability]}
             className={className}
