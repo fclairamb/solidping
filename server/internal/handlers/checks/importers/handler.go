@@ -110,6 +110,8 @@ func (h *Handler) converterFor(source string) (Converter, error) {
 		return NewBetterStackConverter(BetterStackOptions{BaseURL: h.betterStackBaseURL}), nil
 	case SourcePingdom:
 		return NewPingdomConverter(PingdomOptions{BaseURL: h.pingdomBaseURL}), nil
+	case SourceChromeRecorder:
+		return &ChromeRecorderConverter{}, nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnknownSource, source)
 	}

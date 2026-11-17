@@ -190,6 +190,28 @@ Blocks for `ms` milliseconds. It is the only way to wait inside a script — no
 sleep(200); // wait 200ms, e.g. to let an async side effect settle
 ```
 
+### `step(name, fn[, options])` {#step}
+
+Names a part of the script. `step` runs `fn`, records `{name, status, durationMs, error}` and
+returns what `fn` returned. The steps are stored with the result and shown on its detail page
+(and in the editor's **Test** panel) as a list: `ok`, `failed` or `skipped`, with the duration
+and the error.
+
+```js
+var page = browser.open();
+step("Open the login page", function () { page.goto(env.URL); });
+step("Click Se connecter", function () { page.click("text=Se connecter"); });
+return { status: "up" };
+```
+
+- When `fn` throws, the step is `failed`, the error is rethrown, and every later `step()` call is
+  recorded `skipped` without running. The result's message becomes
+  `step 2/3 "Click Se connecter" failed: <error>` instead of the raw script error.
+- Steps cannot be nested: calling `step()` inside a step throws.
+- When a page is open, a failing step takes a capture of it (time-boxed), kept as the result's
+  screenshot. `step(name, fn, { screenshot: true })` takes one on success too, at most 5 per run.
+- A script that never calls `step()` reports exactly what it did before.
+
 ### `env` / `secrets`
 
 Read-only objects built from the `env` and `secrets` config maps —
@@ -344,17 +366,74 @@ supported.
 | Call | Returns | Notes |
 |---|---|---|
 | `browser.open()` | `page` | Acquires a browser slot, opens a fresh isolated context and tab. **Throws** — see below. |
+| `page.basicAuth(username, password, { origin? })` | `{ ok, error? }` | Arms HTTP Basic credentials for the **next** `page.goto()`. Answered only for that URL's origin (or `origin`, like `"https://staging.acme.com"`), at most twice, then the navigation fails with `basic auth rejected by <origin>`. Call it before `goto`. See below. |
 | `page.goto(url)` | `{ ok, url, title, duration, error? }` | Navigates and waits for `body`. `url` must be `http`/`https`. `url` in the result is the URL **after** redirects; there is deliberately **no status code** — read one with `page.evaluate` or `http.get`. |
 | `page.waitFor(selector, { timeout? })` | `{ ok, duration, error? }` | Waits for the selector to become visible. `timeout` is a duration string (`"10s"`) or a number of ms, clamped to the script's remaining time. |
 | `page.click(selector)` | `{ ok, error? }` | Clicks the first match, scrolling it into view. |
 | `page.fill(selector, text)` | `{ ok, error? }` | Clears the field and **sends keys**, so a React/Vue controlled input sees real input events. |
 | `page.press(selector, key)` | `{ ok, error? }` | Sends one key — `"Enter"`, `"Tab"`, `"Escape"`, an arrow, or a single character. |
+| `page.check(selector)` / `page.uncheck(selector)` | `{ ok, error? }` | Puts a checkbox/radio in the requested state: clicks only if the state differs, then asserts it. |
+| `page.select(selector, option)` | `{ ok, error? }` | Chooses an option of a `<select>`, matched by value then by visible text, and fires `input` + `change`. |
+| `page.submit(selector)` | `{ ok, error? }` | Calls `requestSubmit()` on the form (or the form owning the element), so validation and submit handlers run. |
 | `page.text(selector)` | `{ ok, text, error? }` | Visible text of the first match, capped at 1 MB. |
 | `page.evaluate(expression)` | `{ ok, value, error? }` | Runs the expression **inside the page** (real DOM, page origin) and returns its JSON-serialisable value; a returned Promise is awaited. A throw inside the page is `{ ok: false, error }`. Capped at 1 MB. |
 | `page.url()` | `string` | Current top-frame URL — how you assert you landed on `/dashboard`. |
 | `page.cookies()` | `[{ name, value, domain, path, secure, httpOnly, expires }]` | The page's cookies, so a browser-established session can be handed to `http.*` — see the example below. |
 | `page.screenshot()` | `{ ok, error? }` | Attaches a capture of the page to the result — see below. |
 | `page.close()` | `undefined` | Disposes the page and releases the slot. Called for you when the script ends; calling it twice is a no-op. |
+
+**Selectors.** Every `selector` argument accepts a Playwright-style prefix:
+
+| Prefix | Meaning |
+|---|---|
+| none, or `css=` | CSS selector (`"button"` is the CSS tag) |
+| `text=` | Visible text of a button, link, `[role=button]`, `input[type=submit\|button]` (its value), then any element's own text |
+| `label=` | The form control of a `<label>` (`for=`, nesting, `aria-label`, `aria-labelledby`), `placeholder` as a last resort |
+| `name=` | `[name="..."]` |
+| `auto=` | Tries CSS, then `name=`, `label=`, `text=`; first strategy with a match wins. Meant for imports |
+| `aria/Name` or `aria/Name[role="button"]` | Chrome DevTools Recorder syntax: accessible name (and role), computed by Chrome's accessibility tree |
+| `xpath/<expr>` | Chrome Recorder syntax: an XPath expression (`xpath///button[2]`) |
+| `pierce/<css>` | Chrome Recorder syntax: CSS that also descends into open shadow roots |
+| `text/<text>` | Chrome Recorder syntax: same as `text=` |
+
+Every selector argument also accepts an **array of fallbacks**, tried in order: the first entry that resolves to exactly one visible element wins, and an ambiguous or missing entry is skipped when a later one is unique. When none qualifies, the error lists each entry with its match count.
+
+```js
+page.click(["aria/Sign in", "#login > button", "xpath///button[2]"]);
+```
+
+Matching ignores case and extra whitespace; an exact match wins over a "contains" match. Only visible elements count, and exactly one must match: no match is an error, and so is an ambiguous one (`text="Save" matches 3 elements, make it more specific`).
+
+```js
+var page = browser.open();
+page.goto(env.BASE_URL + "/login");
+page.fill("label=Email", env.USERNAME);
+page.fill("label=Password", secrets.PASSWORD);
+page.click("text=Sign in");
+```
+
+**HTTP Basic authentication.** A site behind Basic auth (a staging
+environment, say) makes Chrome raise a login prompt that a headless page cannot
+answer. Call `page.basicAuth()` before `page.goto()`, with the credentials kept
+in [`secrets`](#script-parameters-env-and-secrets):
+
+```js
+var page = browser.open();
+page.basicAuth(secrets.USER, secrets.PASSWORD);
+var nav = page.goto("https://staging.acme.com/");
+if (!nav.ok) return { status: "down", output: { error: nav.error } };
+```
+
+The credentials are answered **only for one origin** (scheme, host and port):
+the origin of the next `page.goto()` URL, or the `origin` option. A challenge
+from any other origin (a CDN, an analytics script, an iframe) is cancelled, so
+the password is never sent there, and so is a proxy's. Wrong credentials are
+tried at most twice: `goto` then returns `{ ok: false, error: "basic auth
+rejected by https://staging.acme.com" }`, an error that names the origin and
+never the username or password. Do not put `user:pass@` in the URL instead:
+Chrome drops it for subresources and it shows up in `page.url()` and in
+results. A username or password that is not a string (a misspelled
+`secrets.NAME`) throws.
 
 **Target failures return, infrastructure failures throw.** A selector that
 never appeared, a page that threw, a navigation that failed — all of them come
@@ -964,6 +1043,23 @@ checks.forEach(function (result, index) {
   }
 });
 return { status: worst, metrics: metrics };
+```
+
+### Basic auth through a real browser (tested)
+
+A page behind HTTP Basic authentication, with the credentials in `secrets`.
+
+<!-- test: browser-basic-auth -->
+```js
+var page = browser.open();
+page.basicAuth(secrets.USER, secrets.PASSWORD);
+var nav = page.goto(env.BASE_URL + "/");
+if (!nav.ok) return { status: "down", output: { error: nav.error } };
+var heading = page.text("h1");
+if (!heading.ok || heading.text !== "welcome") {
+  return { status: "down", output: { heading: heading.text, error: heading.error } };
+}
+return { status: "up", metrics: { loadMs: nav.duration } };
 ```
 
 ### Form login through a real browser (tested)

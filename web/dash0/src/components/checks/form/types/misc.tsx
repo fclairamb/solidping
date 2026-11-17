@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import CodeMirror from "@uiw/react-codemirror";
+import { JsTestRun } from "@/components/checks/js-test-run";
 import { javascript } from "@codemirror/lang-javascript";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -1080,6 +1081,14 @@ function JsFields({ state, onChange, errors }: CheckTypeFieldsProps<JsState>) {
         <p className="text-xs text-muted-foreground">
           {t("misc.scriptHelp")}
         </p>
+        <JsTestRun
+          org={org}
+          config={{
+            script: state.script,
+            env: rowsToMap(state.env),
+            secrets: state.secretsDirty ? rowsToMap(state.secrets) : undefined,
+          }}
+        />
       </div>
       <div className="space-y-2">
         <div>
