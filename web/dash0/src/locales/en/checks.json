@@ -1797,5 +1797,16 @@
     "sharedRegionDisabled": "Shared locations are disabled: this organization requires check secrets to be sealed in the browser."
   },
   "groupFilterUnknown": "No group matches “{{slug}}”.",
-  "clearGroupFilter": "Clear filter"
+  "clearGroupFilter": "Clear filter",
+  "steps": {
+    "testButton": "Test",
+    "noSteps": "This script reports no steps. Wrap parts of it in step(\"name\", fn) to see them here.",
+    "screenshotAlt": "Page at the failed step {{name}}",
+    "title": "Steps",
+    "status": {
+      "ok": "ok",
+      "failed": "failed",
+      "skipped": "skipped"
+    }
+  }
 }

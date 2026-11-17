@@ -190,6 +190,28 @@ Blocks for `ms` milliseconds. It is the only way to wait inside a script — no
 sleep(200); // wait 200ms, e.g. to let an async side effect settle
 ```
 
+### `step(name, fn[, options])` {#step}
+
+Names a part of the script. `step` runs `fn`, records `{name, status, durationMs, error}` and
+returns what `fn` returned. The steps are stored with the result and shown on its detail page
+(and in the editor's **Test** panel) as a list: `ok`, `failed` or `skipped`, with the duration
+and the error.
+
+```js
+var page = browser.open();
+step("Open the login page", function () { page.goto(env.URL); });
+step("Click Se connecter", function () { page.click("text=Se connecter"); });
+return { status: "up" };
+```
+
+- When `fn` throws, the step is `failed`, the error is rethrown, and every later `step()` call is
+  recorded `skipped` without running. The result's message becomes
+  `step 2/3 "Click Se connecter" failed: <error>` instead of the raw script error.
+- Steps cannot be nested: calling `step()` inside a step throws.
+- When a page is open, a failing step takes a capture of it (time-boxed), kept as the result's
+  screenshot. `step(name, fn, { screenshot: true })` takes one on success too, at most 5 per run.
+- A script that never calls `step()` reports exactly what it did before.
+
 ### `env` / `secrets`
 
 Read-only objects built from the `env` and `secrets` config maps —

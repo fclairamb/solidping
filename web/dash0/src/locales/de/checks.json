@@ -1797,5 +1797,16 @@
     "sharedRegionDisabled": "Geteilte Regionen sind deaktiviert: Diese Organisation verlangt, dass Check-Geheimnisse im Browser versiegelt werden."
   },
   "groupFilterUnknown": "Keine Gruppe passt zu „{{slug}}“.",
-  "clearGroupFilter": "Filter löschen"
+  "clearGroupFilter": "Filter löschen",
+  "steps": {
+    "testButton": "Testen",
+    "noSteps": "Dieses Skript meldet keine Schritte. Umschließen Sie Teile mit step(\"Name\", fn), um sie hier zu sehen.",
+    "screenshotAlt": "Seite beim fehlgeschlagenen Schritt {{name}}",
+    "title": "Schritte",
+    "status": {
+      "ok": "erfolgreich",
+      "failed": "fehlgeschlagen",
+      "skipped": "übersprungen"
+    }
+  }
 }

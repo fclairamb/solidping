@@ -1638,6 +1638,34 @@ export function useAIGenerate(org: string) {
   });
 }
 
+/** The part of a js check's config a test run needs. */
+export interface TestRunConfig {
+  script: string;
+  env?: Record<string, string>;
+  /** Only the secrets the operator typed: stored ones never come back. */
+  secrets?: Record<string, string>;
+}
+
+export interface TestRunResponse {
+  status: string;
+  durationMs: number;
+  message?: string;
+  output?: Record<string, unknown>;
+  steps: unknown[];
+  screenshot?: { format: string; data: string };
+}
+
+/** Runs an unsaved js check once (spec 2026-11-17-04): nothing is stored. */
+export function useTestRunCheck(org: string) {
+  return useMutation({
+    mutationFn: (config: TestRunConfig) =>
+      apiFetch<TestRunResponse>(`/api/v1/orgs/${org}/checks/test-run`, {
+        method: "POST",
+        body: JSON.stringify({ type: "js", config }),
+      }),
+  });
+}
+
 /** Restore, approve or reject one version of a check. */
 export function useCheckVersionAction(
   org: string,

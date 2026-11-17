@@ -1797,5 +1797,16 @@
     "sharedRegionDisabled": "Les régions partagées sont désactivées : cette organisation exige que les secrets des checks soient scellés dans le navigateur."
   },
   "groupFilterUnknown": "Aucun groupe ne correspond à « {{slug}} ».",
-  "clearGroupFilter": "Effacer le filtre"
+  "clearGroupFilter": "Effacer le filtre",
+  "steps": {
+    "testButton": "Tester",
+    "noSteps": "Ce script ne déclare aucune étape. Entourez des parties avec step(\"nom\", fn) pour les voir ici.",
+    "screenshotAlt": "Page à l’étape en échec {{name}}",
+    "title": "Étapes",
+    "status": {
+      "ok": "réussie",
+      "failed": "en échec",
+      "skipped": "ignorée"
+    }
+  }
 }

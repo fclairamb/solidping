@@ -1797,5 +1797,16 @@
     "sharedRegionDisabled": "Las regiones compartidas están desactivadas: esta organización exige que los secretos de los checks se sellen en el navegador."
   },
   "groupFilterUnknown": "Ningún grupo coincide con «{{slug}}».",
-  "clearGroupFilter": "Quitar filtro"
+  "clearGroupFilter": "Quitar filtro",
+  "steps": {
+    "testButton": "Probar",
+    "noSteps": "Este script no declara pasos. Envuelva partes con step(\"nombre\", fn) para verlas aquí.",
+    "screenshotAlt": "Página en el paso fallido {{name}}",
+    "title": "Pasos",
+    "status": {
+      "ok": "correcto",
+      "failed": "fallido",
+      "skipped": "omitido"
+    }
+  }
 }
