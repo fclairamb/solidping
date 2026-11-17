@@ -46,4 +46,20 @@ describe("StepsList", () => {
     expect(items.map((i) => i.getAttribute("data-status"))).toEqual(["ok", "failed", "skipped"]);
     expect(screen.getByTestId("check-step-error").textContent).toBe("boom");
   });
+
+  it("shows the capture under the last step that owns a screenshot", () => {
+    render(
+      <StepsList
+        steps={[
+          { name: "A", status: "ok", durationMs: 1, screenshot: true },
+          { name: "B", status: "ok", durationMs: 1, screenshot: true },
+          { name: "C", status: "ok", durationMs: 1 },
+        ]}
+        screenshotSrc="/pub/files/x"
+      />,
+    );
+    const items = screen.getAllByTestId("check-step-item");
+    expect(items[0].querySelector("[data-testid=check-step-screenshot]")).toBeNull();
+    expect(items[1].querySelector("[data-testid=check-step-screenshot]")).not.toBeNull();
+  });
 });

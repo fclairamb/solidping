@@ -125,7 +125,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { StepsList } from "@/components/checks/steps-list";
+import { StoredResultSteps } from "@/components/checks/stored-result-steps";
 import { parseSteps, STEPS_OUTPUT_KEY } from "@/lib/check-steps";
 import { lastRealResultAt } from "@/lib/check-freshness";
 import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
@@ -1748,12 +1748,11 @@ function CheckDetailPage() {
                   </div>
                 )}
                 {parseSteps(check.lastResult.output).length > 0 && (
-                  <div data-testid="check-result-steps">
-                    <div className="text-sm font-medium text-muted-foreground mb-2">
-                      {t("checks:steps.title")}
-                    </div>
-                    <StepsList steps={parseSteps(check.lastResult.output)} />
-                  </div>
+                  <StoredResultSteps
+                    org={org}
+                    checkUid={checkUid}
+                    steps={parseSteps(check.lastResult.output)}
+                  />
                 )}
                 {check.lastResult.output &&
                   Object.keys(check.lastResult.output).length > 0 && (

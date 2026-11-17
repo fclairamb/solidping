@@ -84,6 +84,9 @@ type Response struct {
 }
 
 // TestRun handles POST /api/v1/orgs/:org/checks/test-run.
+//
+// The script runs synchronously on the API node itself: one region = the API
+// node's. There is no region selection for a test run.
 func (h *Handler) TestRun(writer http.ResponseWriter, req *http.Request) error {
 	body, err := io.ReadAll(io.LimitReader(req.Body, maxBodyBytes))
 	if err != nil {

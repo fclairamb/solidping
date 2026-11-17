@@ -10,7 +10,7 @@ const ICONS: Record<CheckStep["status"], string> = {
 
 export interface StepsListProps {
   steps: CheckStep[];
-  /** Data URI of the capture taken at the failing step, when there is one. */
+  /** Capture kept for the run (data URI or stored file URL), shown under the step that owns it. */
   screenshotSrc?: string;
 }
 
@@ -18,6 +18,12 @@ export interface StepsListProps {
 export function StepsList({ steps, screenshotSrc }: StepsListProps) {
   const { t } = useTranslation("checks");
   if (steps.length === 0) return null;
+  // Only one capture is kept per result (the last one): it belongs to the
+  // last step that reports a screenshot.
+  let ownerIndex = -1;
+  steps.forEach((step, index) => {
+    if (step.screenshot) ownerIndex = index;
+  });
   return (
     <ol className="space-y-1 text-sm" data-testid="check-steps-list">
       {steps.map((step, index) => (
@@ -41,7 +47,7 @@ export function StepsList({ steps, screenshotSrc }: StepsListProps) {
               {step.error}
             </p>
           )}
-          {step.status === "failed" && step.screenshot && screenshotSrc && (
+          {index === ownerIndex && screenshotSrc && (
             <a href={screenshotSrc} target="_blank" rel="noreferrer" className="ml-7 block" data-testid="check-step-screenshot-link">
               <img
                 src={screenshotSrc}
