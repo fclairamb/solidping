@@ -138,7 +138,7 @@ func TestOfflineEmailData_CountsWhatItDoesNotList(t *testing.T) {
 	want := map[string][2]string{
 		"en": {"…and 20 more.", "1 other check keeps running from its other regions."},
 		"fr": {"…et 20 autres.", "1 autre contrôle continue de s'exécuter depuis ses régions restantes."},
-		"de": {"…und 20 weitere.", "1 weitere Prüfung läuft in ihren übrigen Regionen weiter."},
+		"de": {"…und 20 weitere.", "1 weiterer Check läuft in seinen übrigen Regionen weiter."},
 		"es": {"…y 20 más.", "1 comprobación más sigue ejecutándose desde sus otras"},
 	}
 

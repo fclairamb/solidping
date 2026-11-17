@@ -182,7 +182,7 @@
     "backHome": "Zurück zur Startseite"
   },
   "notificationSources": {
-    "checkConnection": "Kanal der Prüfung",
+    "checkConnection": "Kanal des Checks",
     "escalationStep": "Eskalationsstufe",
     "onCallSchedule": "Bereitschaftsplan",
     "allAdmins": "Alle Administratoren",

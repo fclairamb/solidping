@@ -16,10 +16,10 @@
   },
   "welcome": {
     "title": "Willkommen bei SolidPing",
-    "preheader": "Ihr Konto ist bereit. Fügen Sie in einer Minute Ihre erste Prüfung hinzu.",
+    "preheader": "Ihr Konto ist bereit. Fügen Sie in einer Minute Ihren ersten Check hinzu.",
     "lead": "Ihr Konto ist bereit. Mit diesen drei Schritten (zusammen fünf Minuten) holen Sie das Beste heraus:",
     "addCheck": {
-      "label": "1. Prüfung hinzufügen",
+      "label": "1. Check hinzufügen",
       "detail": "Eine Website, eine API, ein DNS-Eintrag, ein Cron-Job..."
     },
     "getAlerted": {

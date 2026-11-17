@@ -119,8 +119,8 @@ func TestAppliedRepairMailIsWrittenInTheOwnersLanguage(t *testing.T) {
 		},
 		"de": {
 			lines: []string{
-				"Prüfung repariert: Pricing page",
-				"SolidPing hat das Skript der Prüfung „Pricing page“ repariert (Version 4).",
+				"Check repariert: Pricing page",
+				"SolidPing hat das Skript des Checks „Pricing page“ repariert (Version 4).",
 				"\nÄnderungen:\n",
 				"Reparatur ansehen oder rückgängig machen: " + repairLinkFixture + "\n",
 			},

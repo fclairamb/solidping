@@ -50,7 +50,7 @@
   },
   "deleteConfirm": {
     "title": "Diesen Kanal löschen?",
-    "body": "Verbundene Prüfungen verlieren dieses Benachrichtigungsziel. Nicht rückgängig zu machen."
+    "body": "Verbundene Checks verlieren dieses Benachrichtigungsziel. Nicht rückgängig zu machen."
   },
   "empty": {
     "title": "Keine Kanäle",
@@ -61,8 +61,8 @@
     "namePlaceholder": "Bereitschafts-Alerts",
     "enabled": "Aktiviert",
     "enabledHelp": "Deaktivierte Kanäle senden keine Benachrichtigungen.",
-    "default": "Standard für neue Prüfungen",
-    "defaultHelp": "Vorausgewählt bei neuen Prüfungen. Bestehende Prüfungen bleiben unverändert.",
+    "default": "Standard für neue Checks",
+    "defaultHelp": "Vorausgewählt bei neuen Checks. Bestehende Checks bleiben unverändert.",
     "webhookUrl": "Webhook-URL",
     "msteamsWebhookHint": "Öffnen Sie in Teams Workflows → „In einem Kanal posten, wenn eine Webhook-Anfrage eingeht“, schließen Sie den Assistenten ab und fügen Sie hier die erhaltene Workflow-URL ein. Der veraltete „Incoming Webhook“-Connector ist abgeschaltet und funktioniert nicht mehr.",
     "recipients": "Empfänger",

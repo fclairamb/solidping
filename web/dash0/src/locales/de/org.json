@@ -71,8 +71,8 @@
       "placeholder": "https://intranet.acme.com\nhttps://*.acme.com",
       "help": "Ein Origin pro Zeile: Schema und Host, optional mit Port oder einem führenden *.-Label. Keine Pfade. Wird als frame-ancestors in der Content-Security-Policy der Seite gesendet und gilt innerhalb einer Minute. Leer lassen, um alle anderen Websites zu blockieren."
     },
-    "defaultEscalationBlastRadius_one": "{{count}} Prüfung erbt derzeit die Standardrichtlinie und wird diese Richtlinie verwenden.",
-    "defaultEscalationBlastRadius_other": "{{count}} Prüfungen erben derzeit die Standardrichtlinie und werden diese Richtlinie verwenden.",
+    "defaultEscalationBlastRadius_one": "{{count}} Check erbt derzeit die Standardrichtlinie und wird diese Richtlinie verwenden.",
+    "defaultEscalationBlastRadius_other": "{{count}} Checks erben derzeit die Standardrichtlinie und werden diese Richtlinie verwenden.",
     "defaultEscalationSilent": "stumm",
     "browserSealing": {
       "title": "Verschlüsselung der Check-Geheimnisse",
@@ -93,9 +93,9 @@
     "title": "Nutzung",
     "description": "Die Grenzwerte Ihres Tarifs und Ihr aktueller Verbrauch.",
     "plan": "Aktueller Tarif",
-    "checks": "Prüfungen",
-    "checksPerMinute": "Prüfungen pro Minute",
-    "multiRegionNote": "Eine Multi-Region-Prüfung läuft in jeder ausgewählten Region und verbraucht daher Regionen × 60 s / Intervall Prüfungen pro Minute.",
+    "checks": "Checks",
+    "checksPerMinute": "Checks pro Minute",
+    "multiRegionNote": "Ein Multi-Region-Check läuft in jeder ausgewählten Region und verbraucht daher Regionen × 60 s / Intervall Checks pro Minute.",
     "users": "Benutzer",
     "privateLocationAgents": "Agenten für private Standorte",
     "customDomains": "Benutzerdefinierte Domains",
@@ -286,10 +286,10 @@
     }
   },
   "checkRateLimit": {
-    "title": "Einige Prüfungsausführungen werden übersprungen",
-    "overLimit": "Ihre Organisation plant ca. {{demand}} Prüfungsausführungen pro Minute, Ihr Tarif erlaubt jedoch {{limit}}/Min. — einige Ausführungen werden übersprungen.",
-    "skippedToday_one": "{{count}} Prüfungsausführung wurde heute übersprungen, weil Ihre Organisation ihr Ausführungslimit überschritten hat.",
-    "skippedToday_other": "{{count}} Prüfungsausführungen wurden heute übersprungen, weil Ihre Organisation ihr Ausführungslimit überschritten hat.",
+    "title": "Einige Check-Ausführungen werden übersprungen",
+    "overLimit": "Ihre Organisation plant ca. {{demand}} Check-Ausführungen pro Minute, Ihr Tarif erlaubt jedoch {{limit}}/Min. — einige Ausführungen werden übersprungen.",
+    "skippedToday_one": "{{count}} Check-Ausführung wurde heute übersprungen, weil Ihre Organisation ihr Ausführungslimit überschritten hat.",
+    "skippedToday_other": "{{count}} Check-Ausführungen wurden heute übersprungen, weil Ihre Organisation ihr Ausführungslimit überschritten hat.",
     "reviewScheduling": "Planung überprüfen",
     "upgrade": "Upgrade"
   },

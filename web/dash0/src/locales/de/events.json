@@ -17,10 +17,10 @@
     "details": "Details"
   },
   "types": {
-    "check.created": "Prüfung erstellt",
-    "check.updated": "Prüfung aktualisiert",
-    "check.deleted": "Prüfung gelöscht",
-    "check.placement_changed": "Prüfung in eine andere Region verschoben",
+    "check.created": "Check erstellt",
+    "check.updated": "Check aktualisiert",
+    "check.deleted": "Check gelöscht",
+    "check.placement_changed": "Check in eine andere Region verschoben",
     "check.baseline_captured": "DNS-Referenz gespeichert",
     "check.ai_repair_attempted": "KI-Reparatur versucht",
     "check.ai_repair_proposed": "KI-Reparatur vorgeschlagen",
@@ -55,7 +55,7 @@
     "status_update.updated": "Statusupdate bearbeitet",
     "status_update.deleted": "Statusupdate entfernt",
     "org.activation.signup_completed": "Registrierung abgeschlossen",
-    "org.activation.first_check_created": "Erste Prüfung erstellt",
+    "org.activation.first_check_created": "Erster Check erstellt",
     "org.activation.first_result_received": "Erstes Ergebnis erhalten",
     "org.activation.first_notification_configured": "Erste Benachrichtigung konfiguriert",
     "org.activation.first_incident_paged": "Erster Vorfall gemeldet",
@@ -97,7 +97,7 @@
   "descriptions": {
     "org.activation.signup_completed": "Ihre Organisation ist eingerichtet und einsatzbereit.",
     "org.activation.first_check_created": "Ihre erste Verfügbarkeitsprüfung ist aktiv und überwacht.",
-    "org.activation.first_result_received": "Ihr erstes Prüfergebnis ist eingetroffen.",
+    "org.activation.first_result_received": "Ihr erstes Check-Ergebnis ist eingetroffen.",
     "org.activation.first_notification_configured": "Sie haben Ihren ersten Benachrichtigungskanal eingerichtet.",
     "first_notification_configured_prefix": "Sie haben Ihren ersten Benachrichtigungskanal eingerichtet:",
     "login_failed_count": "× {{count}}",
@@ -106,7 +106,7 @@
     "org.activation.first_incident_paged": "Ihre erste Vorfallbenachrichtigung wurde zugestellt."
   },
   "links": {
-    "check": "Prüfung",
+    "check": "Check",
     "incident": "Vorfall",
     "privateLocation": "Privater Standort"
   },
@@ -156,7 +156,7 @@
       "maintenance_window": "Wartungsfenster",
       "config": "Config as Code",
       "discovery": "Erkennung",
-      "check": "Prüfungen",
+      "check": "Checks",
       "incident": "Vorfälle",
       "org": "Organisation",
       "statuspage": "Statusseiten-Veröffentlichungen",
@@ -186,7 +186,7 @@
       "oncall_schedule": "Bereitschaftsplan",
       "status_page": "Statusseite",
       "maintenance_window": "Wartungsfenster",
-      "check": "Prüfung",
+      "check": "Check",
       "manifest": "Konfigurationsmanifest",
       "organization": "Organisation"
     }

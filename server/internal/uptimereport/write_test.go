@@ -101,11 +101,11 @@ func writtenWants() map[string]writtenWant {
 			"Disponibilité quotidienne, 1er juil. – 31 juil. (UTC)", "ne sont affichées que pour 1 contrôle",
 		},
 		i18n.LangGerman: {
-			"Juli 2026", "Juni 2026", "Production (1 Prüfung)", "99,950" + nbsp + "%", "+0,080" + nbsp + "Prozentpunkte",
+			"Juli 2026", "Juni 2026", "Production (1 Check)", "99,950" + nbsp + "%", "+0,080" + nbsp + "Prozentpunkte",
 			"3,20" + nbsp + "s", "+8,4" + nbsp + "%",
 			"42" + nbsp + "Min.", "21" + nbsp + "Min. 40" + nbsp + "Sek.", "-12" + nbsp + "Min. 30" + nbsp + "Sek.", "Gefährdet",
 			"1 Messung und 2 Spitzen über 1" + nbsp + "s",
-			"Tägliche Verfügbarkeit, 1. Juli – 31. Juli (UTC)", "nur für 1 Prüfung angezeigt",
+			"Tägliche Verfügbarkeit, 1. Juli – 31. Juli (UTC)", "nur für 1 Check angezeigt",
 		},
 		i18n.LangSpanish: {
 			"julio de 2026", "junio de 2026", "Production (1 comprobación)", "99,950" + nbsp + "%", "+0,080" + nbsp + "puntos",
@@ -188,7 +188,7 @@ func TestWriteNumbersAndPlurals(t *testing.T) {
 	// A scoped schedule with several checks takes the plural.
 	report.Figures.OrgWide = false
 	r.Equal("Production (12 checks)", report.In(i18n.English).ScopeLabel)
-	r.Equal("Production (12 Prüfungen)", report.In(i18n.New(i18n.LangGerman, "")).ScopeLabel)
+	r.Equal("Production (12 Checks)", report.In(i18n.New(i18n.LangGerman, "")).ScopeLabel)
 
 	// Weekly: the first and last day of the week, in the schedule's zone.
 	paris, err := time.LoadLocation("Europe/Paris")
