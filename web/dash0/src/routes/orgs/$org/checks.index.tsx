@@ -127,6 +127,11 @@ import { ApiError, apiFetch, getApiErrorField } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
 import {
+  isGroupBucketSettled,
+  isGroupSectionVisible,
+  streamFrontier,
+} from "@/lib/check-group-buckets";
+import {
   parseFacetedFilterParam,
   serializeFacetedFilterParam,
 } from "@/lib/faceted-filter";
@@ -174,12 +179,12 @@ const groupSlugRegex = /^[a-z][a-z0-9-]{2,99}$/;
 // Import sources offered by the checks-list import flow: the native SolidPing
 // export document, plus the third-party converters served by
 // POST /checks/import/convert.
-const IMPORT_SOURCES = ["solidping", "gatus", "betterstack", "uptime-kuma", "uptimerobot", "pingdom"] as const;
+const IMPORT_SOURCES = ["solidping", "gatus", "betterstack", "uptime-kuma", "uptimerobot", "pingdom", "chrome-recorder"] as const;
 type ImportSourceId = (typeof IMPORT_SOURCES)[number];
 
 // Sources whose payload is a file the user pastes or uploads. Better Stack is
 // the odd one out: it takes an API token and the server does the fetching.
-const FILE_IMPORT_SOURCES: ImportSourceId[] = ["solidping", "gatus", "uptime-kuma", "uptimerobot"];
+const FILE_IMPORT_SOURCES: ImportSourceId[] = ["solidping", "gatus", "uptime-kuma", "uptimerobot", "chrome-recorder"];
 
 // Pingdom accepts either a read-only API token (the server fetches) or a pasted
 // GET /checks JSON payload: both inputs are shown, the token wins when filled.
@@ -193,6 +198,7 @@ const IMPORT_ACCEPT: Record<ImportSourceId, string> = {
   "uptime-kuma": ".json",
   uptimerobot: ".json",
   pingdom: ".json",
+  "chrome-recorder": ".json",
 };
 
 // Normalized preview shape shared by the native import and every converter.
@@ -961,9 +967,10 @@ function CheckGroupSection({
           {/* Rows win over the loading branch: an already-populated bucket
            * keeps rendering its rows while the page-level stream continues.
            * A still-empty bucket reads as loading (skeletons) as long as the
-           * stream can still deliver more (`isLoading` folds in
-           * hasNextPage/isFetchingNextPage) — the truthful "no checks" empty
-           * state only shows once the stream is fully drained.
+           * stream can still deliver more for this group (`isLoading` is
+           * false once the sort=group stream is drained or has moved past
+           * this group, see isGroupBucketSettled) — the truthful "no checks"
+           * empty state shows as soon as the bucket is final.
            *
            * Exception: when NOT filtering, `group.checkCount` is the
            * authoritative server-side total (independent of the loaded
@@ -1366,6 +1373,12 @@ function ChecksIndexPage() {
   // every other page that reads it.
   const { data: regionsData } = useRegions(org);
   const loadedChecks = useMemo(() => Array.from(checksByUid.values()), [checksByUid]);
+  // How far the sort=group stream has got: a group the stream already moved
+  // past is final, so its empty bucket shows "No checks", never skeletons.
+  const checksFrontier = useMemo(
+    () => streamFrontier(loadedChecks, groups ?? []),
+    [loadedChecks, groups],
+  );
 
   // Result count (spec 2026-09-30-02). The org-wide total comes from the
   // existing /checks/stats aggregate (non-internal, non-deleted: exactly the
@@ -1934,15 +1947,13 @@ function ChecksIndexPage() {
             {(groups || [])
               .map((group, idx) => ({ group, idx }))
               .filter(({ group }) => {
-                // While filtering, skip groups whose bucket has zero matches
-                // — but only once the stream has fully resolved
-                // (checksStreaming false), so a group never flickers out
-                // before its later pages have had a chance to load. Not
-                // filtering: keep today's behavior (empty groups stay
-                // visible with their placeholder, so users can find/manage
-                // them).
-                if (!isFiltering || checksStreaming) return true;
-                return (checksByGroup.get(group.uid)?.length ?? 0) > 0;
+                // While filtering, only groups with matching loaded checks
+                // (see isGroupSectionVisible). Not filtering, every group,
+                // empty ones with their placeholder.
+                return isGroupSectionVisible(
+                  checksByGroup.get(group.uid)?.length ?? 0,
+                  isFiltering,
+                );
               })
               .map(({ group, idx }) => (
                 <CheckGroupSection
@@ -1950,7 +1961,7 @@ function ChecksIndexPage() {
                   group={group}
                   org={org}
                   checks={checksByGroup.get(group.uid) ?? []}
-                  isLoading={checksStreaming}
+                  isLoading={!isGroupBucketSettled(group, checksFrontier, checksStreaming)}
                   error={checksError}
                   search={debouncedSearch}
                   isFiltering={isFiltering}

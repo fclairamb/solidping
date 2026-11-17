@@ -167,7 +167,10 @@ X-Sp-Agent-Uid   X-Sp-Timestamp   X-Sp-Nonce   X-Sp-Signature   X-Sp-Signature-V
 ```
 
 The legacy v1 challenge (`method|path|timestamp|nonce`, no version header) is
-still verified for agents that have not upgraded, with a deprecation warning;
+still verified for agents that have not upgraded, with a deprecation warning
+logged at most once per agent per hour (with a `suppressed` count of the
+requests in between) and every such request counted in
+`solidping_agent_legacy_signature_requests_total{channel="http"|"reconnect"}`;
 it covers neither query nor body and is slated for removal once the fleet has
 migrated.
 

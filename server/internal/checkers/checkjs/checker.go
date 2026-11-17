@@ -382,10 +382,15 @@ func (r *jsRuntime) resultFor(
 	}
 
 	if err != nil {
+		message := "script error: " + err.Error()
+		if stepMessage := r.stepFailureMessage(); stepMessage != "" {
+			message = stepMessage
+		}
+
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: duration,
-			Output:   r.buildOutput("script error: " + err.Error()),
+			Output:   r.buildOutput(message),
 		}
 	}
 
@@ -472,6 +477,15 @@ type jsRuntime struct {
 
 	// invalidStatus is the unknown status string a plugin script returned.
 	invalidStatus string
+
+	// steps are the named steps the script ran through step(); see steps.go.
+	steps      []stepRecord
+	inStep     bool
+	stepFailed bool
+	// failedStep is the 1-based index of the failed step.
+	failedStep int
+	// stepShots counts the optional step captures taken (maxStepScreenshots).
+	stepShots int
 }
 
 // remainingPayload is what is left of the execution's single maxHTTPBody-byte
@@ -529,6 +543,7 @@ func (r *jsRuntime) registerLocalGlobals() {
 	r.installMemoryBudget()
 	r.registerEnv()
 	r.registerSecrets()
+	r.registerStep()
 	r.registerPluginConfig()
 	r.registerConsole()
 	r.registerSleep()
@@ -540,7 +555,7 @@ func (r *jsRuntime) registerLocalGlobals() {
 // pools, sockets). An isolated script reaches them over its channel.
 //
 //nolint:gochecknoglobals // Fixed list of binding names.
-var hostGlobals = []string{"solidping", "http", "browser", "rdp", "vnc", "tcp", "udp", "websocket"}
+var hostGlobals = []string{"solidping", "http", "browser", "rdp", "vnc", "tcp", "udp", "websocket", stepShotGlobal}
 
 // registerHostGlobals sets up the globals listed in hostGlobals.
 func (r *jsRuntime) registerHostGlobals() {
@@ -552,6 +567,7 @@ func (r *jsRuntime) registerHostGlobals() {
 	r.registerTCP()
 	r.registerUDP()
 	r.registerWebSocket()
+	r.registerStepShot()
 }
 
 // registerEnv exposes checkconfig.Env as a read-only "env" object.
@@ -1584,6 +1600,7 @@ func (r *jsRuntime) buildOutput(value string) map[string]any {
 	}
 
 	r.addDroppedHeaders(out)
+	r.addSteps(out)
 
 	return out
 }
@@ -1605,6 +1622,7 @@ func (r *jsRuntime) buildOutputFromObj(obj *goja.Object) map[string]any {
 	}
 
 	r.addDroppedHeaders(out)
+	r.addSteps(out)
 
 	return out
 }

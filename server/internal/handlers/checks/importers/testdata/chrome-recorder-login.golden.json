@@ -1,0 +1,29 @@
+{
+  "document": {
+    "version": 1,
+    "exportedAt": "",
+    "organization": "chrome-recorder",
+    "checks": [
+      {
+        "name": "Acme login",
+        "slug": "acme-login",
+        "type": "js",
+        "config": {
+          "script": "// Generated from Chrome DevTools Recorder flow \"Acme login\".\nconst page = browser.open();\nfunction must(r, what) { if (!r.ok) { throw new Error(what + \": \" + r.error); } }\nfunction waitUrl(want) {\n  var trim = function (u) { return String(u).replace(/\\/$/, \"\"); };\n  for (var i = 0; i \u003c 10; i++) {\n    if (trim(page.url()) === trim(want)) { return; }\n    sleep(500);\n  }\n  throw new Error(\"expected navigation to \" + want + \" but the page is at \" + page.url());\n}\n// step 1: setViewport 1280x720 ignored (the check uses a fixed viewport)\nstep(\"Go to \\\"https://app.acme.example/login\\\"\", function () {\n  must(page.goto(\"https://app.acme.example/login\"), \"step 2: navigate https://app.acme.example/login\");\n  waitUrl(\"https://app.acme.example/login\");\n});\nstep(\"Click \\\"Email\\\"\", function () {\n  must(page.click([\"aria/Email\", \"#email\", \"xpath///*[@id=\\\"email\\\"]\", \"pierce/#email\"]), \"step 3: click Email\");\n});\nstep(\"Fill \\\"Email\\\"\", function () {\n  must(page.fill([\"aria/Email\", \"#email\"], \"ops@acme.example\"), \"step 4: fill Email\");\n});\nstep(\"Click \\\"Password\\\"\", function () {\n  must(page.click([\"aria/Password\", \"#password\"]), \"step 5: click Password\");\n});\nstep(\"Fill \\\"Password\\\"\", function () {\n  must(page.fill([\"aria/Password\", \"#password\"], secrets.RECORDER_SECRET_1), \"step 6: fill Password\");\n});\nstep(\"Press \\\"Enter\\\"\", function () {\n  must(page.press([\"aria/Password\", \"#password\"], \"Enter\"), \"step 7: press Enter\");\n  waitUrl(\"https://app.acme.example/dashboard\");\n});\nstep(\"Wait for element \\\"Welcome back\\\"\", function () {\n  must(page.waitFor([\"aria/Welcome back\", \"h1.welcome\"], { timeout: 8000 }), \"step 9: waitForElement Welcome back\");\n});\n// step 10: hover has no effect on a check and was skipped\nreturn { status: \"up\", output: { url: page.url() } };\n",
+          "secrets": {
+            "RECORDER_SECRET_1": "s3cret-Passw0rd!"
+          }
+        },
+        "enabled": true,
+        "degradedEnabled": false
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "item": "Acme login",
+      "field": "secrets",
+      "message": "1 password value(s) were moved to the check's encrypted secrets (RECORDER_SECRET_1) and are not in the script; other typed values (emails, one-time codes) stay in clear in the script — review them"
+    }
+  ]
+}

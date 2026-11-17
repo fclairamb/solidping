@@ -221,7 +221,7 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.51.0
 	github.com/IBM/sarama v1.61.1
 	github.com/SherClockHolmes/webpush-go v1.4.0
-	github.com/a2aproject/a2a-go/v2 v2.8.0
+	github.com/a2aproject/a2a-go/v2 v2.9.0
 	github.com/anthropics/anthropic-sdk-go v1.84.0
 	github.com/arran4/golang-ical v0.3.8
 	github.com/aws/aws-sdk-go-v2 v1.48.0
@@ -238,7 +238,7 @@ require (
 	github.com/crewjam/saml v0.6.3
 	github.com/dlclark/regexp2/v2 v2.13.0
 	github.com/docker/go-units v0.5.0
-	github.com/dop251/goja v0.0.0-20261116234614-2eded47d7035
+	github.com/dop251/goja v0.0.0-20261117132507-c18a77e471d9
 	github.com/dreamscached/minequery/v2 v2.5.0
 	github.com/dustin/go-humanize v1.1.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1

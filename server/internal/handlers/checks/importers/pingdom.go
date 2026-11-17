@@ -64,14 +64,18 @@ var (
 type PingdomOptions struct {
 	BaseURL string
 	Client  *http.Client
+	// TMSPageSize is the page size of the transaction check list; 0 means the
+	// default. Exposed so tests can exercise pagination with small fixtures.
+	TMSPageSize int
 }
 
 // PingdomConverter converts Pingdom checks, either fetched from the Pingdom API
 // 3.1 with a read-only token, or pasted as JSON. The token is only sent as a
 // Bearer header; it is never stored, logged, or echoed in an error.
 type PingdomConverter struct {
-	baseURL string
-	client  *http.Client
+	baseURL     string
+	client      *http.Client
+	tmsPageSize int
 }
 
 // NewPingdomConverter builds a converter with the supplied options.
@@ -86,7 +90,12 @@ func NewPingdomConverter(opts PingdomOptions) *PingdomConverter {
 		client = &http.Client{Timeout: pingdomTimeout}
 	}
 
-	return &PingdomConverter{baseURL: base, client: client}
+	pageSize := opts.TMSPageSize
+	if pageSize <= 0 {
+		pageSize = pingdomTMSPageSize
+	}
+
+	return &PingdomConverter{baseURL: base, client: client, tmsPageSize: pageSize}
 }
 
 // Source implements Converter.
@@ -147,7 +156,9 @@ func (c *PingdomConverter) Convert(input []byte) (*ConversionResult, error) {
 // ConvertContext resolves the input (token fetch or pasted payload) into a list
 // of raw checks, then converts them.
 func (c *PingdomConverter) ConvertContext(ctx context.Context, input []byte) (*ConversionResult, error) {
-	items, err := c.collect(ctx, input)
+	warn := &warnings{}
+
+	items, err := c.collect(ctx, input, warn)
 	if err != nil {
 		return nil, err
 	}
@@ -156,12 +167,16 @@ func (c *PingdomConverter) ConvertContext(ctx context.Context, input []byte) (*C
 		return nil, fmt.Errorf("%w: the Pingdom payload has no checks", ErrEmptyInput)
 	}
 
-	warn := &warnings{}
 	doc := newDocument(SourcePingdom)
 	slugs := newSlugSet()
 
 	for _, raw := range items {
-		if check, ok := convertPingdomCheck(raw, slugs, warn); ok {
+		convert := convertPingdomCheck
+		if isPingdomTMS(raw) {
+			convert = convertPingdomTMS
+		}
+
+		if check, ok := convert(raw, slugs, warn); ok {
 			doc.Checks = append(doc.Checks, check)
 		}
 	}
@@ -176,7 +191,9 @@ func (c *PingdomConverter) ConvertContext(ctx context.Context, input []byte) (*C
 }
 
 // collect returns one raw JSON object per check.
-func (c *PingdomConverter) collect(ctx context.Context, input []byte) ([]json.RawMessage, error) {
+func (c *PingdomConverter) collect(
+	ctx context.Context, input []byte, warn *warnings,
+) ([]json.RawMessage, error) {
 	trimmed := bytes.TrimSpace(input)
 
 	// A bare array of check (or {"check": …}) objects.
@@ -195,7 +212,7 @@ func (c *PingdomConverter) collect(ctx context.Context, input []byte) ([]json.Ra
 	}
 
 	if token := strings.TrimSpace(env.Token); token != "" {
-		return c.fetch(ctx, token)
+		return c.fetch(ctx, token, warn)
 	}
 
 	switch {
@@ -203,6 +220,9 @@ func (c *PingdomConverter) collect(ctx context.Context, input []byte) ([]json.Ra
 		return unwrapPingdomItems(env.Checks), nil
 	case len(env.Check) > 0:
 		return []json.RawMessage{env.Check}, nil
+	case isPingdomTMS(trimmed):
+		// A bare GET /tms/check/{id} response.
+		return []json.RawMessage{json.RawMessage(trimmed)}, nil
 	default:
 		return nil, ErrPingdomTokenRequired
 	}
@@ -230,7 +250,7 @@ func unwrapPingdomItems(items []json.RawMessage) []json.RawMessage {
 }
 
 // fetch lists the checks, then reads each one's details with bounded concurrency.
-func (c *PingdomConverter) fetch(ctx context.Context, token string) ([]json.RawMessage, error) {
+func (c *PingdomConverter) fetch(ctx context.Context, token string, warn *warnings) ([]json.RawMessage, error) {
 	body, err := c.get(ctx, token, "/api/3.1/checks?include_tags=true")
 	if err != nil {
 		return nil, err
@@ -298,7 +318,14 @@ func (c *PingdomConverter) fetch(ctx context.Context, token string) ([]json.RawM
 	}
 
 	// Tags are only guaranteed on the list response: carry them over.
-	return mergePingdomTags(results, raw.Checks), nil
+	merged := mergePingdomTags(results, raw.Checks)
+
+	tms, err := c.fetchTMS(ctx, token, warn)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(merged, tms...), nil
 }
 
 // mergePingdomTags copies the list item's tags into the details object when the
@@ -366,6 +393,8 @@ func (c *PingdomConverter) get(ctx context.Context, token, path string) ([]byte,
 		return nil, fmt.Errorf("%w (HTTP %d)", ErrPingdomUnauthorized, resp.StatusCode)
 	case resp.StatusCode == http.StatusTooManyRequests:
 		return nil, ErrPingdomRateLimited
+	case resp.StatusCode == http.StatusNotFound:
+		return nil, fmt.Errorf("%w: %w (HTTP 404)", ErrPingdomAPI, errPingdomNotFound)
 	case resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices:
 		// The body is intentionally not included: it can echo the request.
 		return nil, fmt.Errorf("%w (HTTP %d)", ErrPingdomAPI, resp.StatusCode)
@@ -467,7 +496,7 @@ func convertPingdomCheck(raw json.RawMessage, slugs *slugSet, warn *warnings) (c
 		check.Config = pingdomMailConfig(host, false, &settings, name, warn)
 	default:
 		warn.addf(name, "type", "check skipped: Pingdom type %q has no SolidPing counterpart "+
-			"(transaction checks are not imported)", typeName)
+			"(legacy transaction checks are not imported; transaction checks are read from the TMS API)", typeName)
 
 		return checks.ExportCheck{}, false
 	}

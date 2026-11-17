@@ -33,8 +33,13 @@ Globals:
 - http.session(): same verbs plus cookies(url), sharing one cookie jar.
 - browser.open() returns a real headless Chrome page (one per run, throws without Chrome):
   page.goto(url) -> { ok, url, title, duration, error? }
+  page.basicAuth(secrets.USER, secrets.PASSWORD, { origin? }) -> { ok, error? }: HTTP Basic
+    credentials for the next page.goto() origin only; call it before goto, never user:pass@ in URLs.
   page.waitFor(selector, { timeout? }) -> { ok, duration, error? }
   page.click(selector) / page.fill(selector, text) / page.press(selector, key) -> { ok, error? }
+  page.check(selector) / page.uncheck(selector) / page.select(selector, option) / page.submit(selector)
+    -> { ok, error? }
+  (selector: CSS, or prefixed text=, label=, name=, auto=)
   page.text(selector) -> { ok, text, error? }
   click, fill, press and text wait for their selector until the whole run budget is
   spent: call page.waitFor(selector, { timeout: "5s" }) first, so a missing element

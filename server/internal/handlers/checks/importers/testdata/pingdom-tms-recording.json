@@ -1,0 +1,22 @@
+{
+  "id": 102,
+  "name": "Acme checkout recording",
+  "active": true,
+  "interval": 5,
+  "region": "eu",
+  "type": "recording",
+  "tags": [{"name": "recorded"}],
+  "metadata": {"authentications": {"httpAuthentications": [
+    {"host": "https://shop.acme.example", "credentials": {"userName": "recUser", "password": "rec-pw-9"}}
+  ]}},
+  "steps": [
+    {"fn": "wpm_go_to", "args": {"url": "https://shop.acme.example"}},
+    {"fn": "wpm_click", "args": {"element": "Buy", "offsetX": 3, "offsetY": 4}},
+    {"fn": "wpm_fill", "args": {"input": "Qty", "value": "2"}},
+    {"fn": "wpm_select_dropdown", "args": {"select": "size", "option": "L"}},
+    {"fn": "wpm_wait", "args": {"seconds": 2}},
+    {"fn": "wpm_contains_timeout", "args": {"element": "body", "value": "Order \\d+", "waitTime": 5, "useRegularExpression": true}},
+    {"fn": "wpm_not_contains_timeout", "args": {"element": "body", "value": "Error", "waitTime": 1, "useRegularExpression": false}},
+    {"fn": "wpm_click_xy", "args": {"element": "canvas", "x": 10, "y": 20}}
+  ]
+}

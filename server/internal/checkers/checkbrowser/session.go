@@ -98,6 +98,9 @@ type Session struct {
 	// from under an enforcing egress policy (see watchEgress). Once set, the
 	// session only ever answers with it.
 	egressDenied atomic.Pointer[egress.DeniedError]
+
+	// auth is the HTTP Basic credentials armed by BasicAuth, if any.
+	auth basicAuth
 }
 
 // NavResult is what a navigation reports back. Deliberately no HTTP status
@@ -365,12 +368,22 @@ func (s *Session) Navigate(ctx context.Context, url string) (NavResult, error) {
 		return NavResult{}, err
 	}
 
+	authOrigin, rejectionsBefore := s.bindBasicAuthOrigin(url)
+
 	err := s.run(ctx,
 		chromedp.Navigate(url),
 		chromedp.WaitReady("body"),
 		chromedp.Title(&title),
 		chromedp.Location(&location),
 	)
+
+	// Canceling a challenge lets Chrome render the 401 page, which reads as a
+	// successful navigation: the refusal has to be reported from here. An
+	// egress refusal still wins, it is the more serious of the two.
+	if s.basicAuthRejectedSince(rejectionsBefore) && s.deniedByEgress() == nil {
+		return NavResult{}, basicAuthRejectedError(authOrigin)
+	}
+
 	if err != nil {
 		return NavResult{}, err
 	}
@@ -522,15 +535,26 @@ func (s *Session) deniedByEgress() error {
 // says "h1 { ... }" resolved to that text node, and page.text("h1") failed
 // with "encountered an undefined value" (a text node has no innerText).
 
-// WaitVisible waits for a selector to become visible.
+// WaitVisible waits for a selector to become visible. A prefixed selector
+// (text=, label=, name=, auto=, aria/, xpath/, pierce/, text/) or a list of
+// fallbacks polls its resolver until exactly one visible
+// element matches or ctx ends.
 func (s *Session) WaitVisible(ctx context.Context, sel string) error {
-	return s.run(ctx, chromedp.WaitVisible(sel, chromedp.ByQuery))
+	if needsResolver(sel) {
+		return s.waitResolved(ctx, sel)
+	}
+
+	_, value := parseSelector(sel)
+
+	return s.run(ctx, chromedp.WaitVisible(value, chromedp.ByQuery))
 }
 
-// Click clicks the first node matching sel, scrolling it into view first
+// Click clicks the node sel designates, scrolling it into view first
 // (chromedp.Click's own default).
 func (s *Session) Click(ctx context.Context, sel string) error {
-	return s.run(ctx, chromedp.Click(sel, chromedp.ByQuery))
+	return s.withTarget(ctx, sel, func(tgt target) error {
+		return s.run(ctx, chromedp.Click(tgt.sel, tgt.opt))
+	})
 }
 
 // Fill clears the field and SENDS KEYS into it.
@@ -539,14 +563,18 @@ func (s *Session) Click(ctx context.Context, sel string) error {
 // controlled React/Vue input listens for, so a login form would submit fields
 // its own framework still believes are empty.
 func (s *Session) Fill(ctx context.Context, sel, text string) error {
-	return s.run(ctx, chromedp.Clear(sel, chromedp.ByQuery), chromedp.SendKeys(sel, text, chromedp.ByQuery))
+	return s.withTarget(ctx, sel, func(tgt target) error {
+		return s.run(ctx, chromedp.Clear(tgt.sel, tgt.opt), chromedp.SendKeys(tgt.sel, text, tgt.opt))
+	})
 }
 
 // Press sends one key to the element — "Enter" to submit a form, "Tab" to move
 // on. Key names are the familiar DOM ones; anything else is sent verbatim, so
 // a single character works too.
 func (s *Session) Press(ctx context.Context, sel, key string) error {
-	return s.run(ctx, chromedp.SendKeys(sel, keySequence(key), chromedp.ByQuery))
+	return s.withTarget(ctx, sel, func(tgt target) error {
+		return s.run(ctx, chromedp.SendKeys(tgt.sel, keySequence(key), tgt.opt))
+	})
 }
 
 // keySequence maps the handful of named keys a form flow needs onto the
@@ -582,7 +610,10 @@ func keySequence(key string) string {
 func (s *Session) Text(ctx context.Context, sel string) (string, error) {
 	var text string
 
-	if err := s.run(ctx, chromedp.Text(sel, &text, chromedp.ByQuery)); err != nil {
+	err := s.withTarget(ctx, sel, func(tgt target) error {
+		return s.run(ctx, chromedp.Text(tgt.sel, &text, tgt.opt))
+	})
+	if err != nil {
 		return "", err
 	}
 

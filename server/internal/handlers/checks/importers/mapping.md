@@ -260,7 +260,7 @@ no type-specific settings, so its HTTP checks default to the `/` path.
 | `type.ping` | `icmp` |
 | `type.dns` | `dns` (`hostname`, `expectedip` → `expected_ips`, `nameserver` + `:53`) |
 | `type.smtp` / `pop3` / `imap` | `smtp` / `pop3` / `imap` (`stringtoexpect` → `expect_greeting`, `encryption` → `tls` for pop3/imap; for smtp, port 465 is implicit TLS already so nothing is set, any other port gets `starttls`) |
-| any other type (transaction/TMS) | skipped + warning |
+| legacy `type: transaction` of `/checks` | skipped + warning (transaction checks come from the TMS API, below) |
 | `resolution` (minutes) | period, clamped by `normalizeChecks` |
 | `sendnotificationwhendown` (n) | `confirmationPeriodSeconds` = n × period |
 | `status: paused` | imported disabled |
@@ -270,3 +270,36 @@ no type-specific settings, so its HTTP checks default to the `/` path.
 | alert contacts, integrations, maintenance | not imported |
 
 Managed label: `solidping-managed=pingdom`.
+
+### Pingdom transaction (TMS) checks
+
+With a token, the importer also reads `GET /api/3.1/tms/check` (`limit`/`offset`
+pagination) and `GET /api/3.1/tms/check/{id}` per check; a pasted
+`GET /tms/check/{id}` response works too (a pasted list has no steps and is
+skipped). A 404 on the list (account without transactions) is ignored, a 401
+fails the import. Each TMS check becomes **one `js` check** whose script is
+generated: `var page = browser.open();`, one line per step, every Pingdom
+selector wrapped as `auto=...`, and `return { status: "up" }` at the end. A
+failing step throws a message naming the step.
+
+| Pingdom step | Generated |
+|---|---|
+| `go_to` / `wpm_go_to` | `page.goto(url)` (`https://` added when scheme-less) |
+| `click` / `wpm_click` | `page.click("auto=...")` (offsets ignored) |
+| `fill` / `wpm_fill` | `page.fill` |
+| `check` / `uncheck` | `page.check` / `page.uncheck` |
+| `select` / `wpm_select_dropdown` | `page.select` |
+| `select_radio` | `page.check("auto=<name>")` + warning (ambiguous if several radios share the name) |
+| `submit` | `page.submit` |
+| `sleep` / `wpm_wait` | `sleep(ms)`, clamped to 30s |
+| `wait_for_element` | `page.waitFor` |
+| `wait_for_contains`, `wpm_contains_timeout`, `wpm_not_contains_timeout` | poll `page.text` (regex honoured), up to the wait time |
+| `basic_auth` (and recording `metadata` HTTP authentications) | `page.basicAuth(secrets.PINGDOM_BASIC_USER, secrets.PINGDOM_BASIC_PASSWORD)` before the first `go_to`; the values go to the check's encrypted `secrets`, never into the script |
+| `url`, `exists`, `not_exists`, `contains`, `not_contains` | `page.url()` / `page.text()` assertions |
+| `field_contains`, `field_not_contains`, `is_checked`, `is_not_checked`, `radio_selected`, `dropdown_selected`, `dropdown_not_selected` | `page.evaluate()` assertions (CSS, then `name`, then label text; a dropdown option matches by text or value) |
+| `wpm_click_xy`, `wpm_move_mouse_to_element`, `wpm_close_tab`, unknown `fn` | `// TODO` line + warning, check created **paused** |
+| `interval` (minutes) | period |
+| `active: false` | disabled |
+| `tags` | labels |
+| `send_notification_when_down` | `confirmationPeriodSeconds` |
+| `region` | not mapped, warning |
