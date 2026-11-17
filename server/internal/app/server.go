@@ -2057,7 +2057,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// handlers/unsubscribe surface, never through this authenticated API.
 	emailSuppressionsService := emailsuppressions.NewService(s.dbService)
 	emailSuppressionsHandler := emailsuppressions.NewHandler(emailSuppressionsService, s.config)
-	orgEmailSuppressions := orgGroup("/orgs/:org/email-suppressions")
+	//
+	// Admin only (spec 2026-11-17-07): each row is a recipient's email address
+	// (mostly third parties) and what they opted out of, and DELETE overrides
+	// that recipient's own opt-out. orgGroup's write floor lets every GET
+	// through, so both routes get their own admin chain, like the status page
+	// subscriber list.
+	orgEmailSuppressions := api.NewGroup("/orgs/:org/email-suppressions").
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
 	orgEmailSuppressions.GET("", emailSuppressionsHandler.ListSuppressions)
 	orgEmailSuppressions.DELETE("/:uid", emailSuppressionsHandler.DeleteSuppression)
 

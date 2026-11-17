@@ -47,6 +47,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { notificationStatusVariant } from "@/lib/notifications";
+import { ApiError } from "@/api/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export const Route = createFileRoute(
   "/orgs/$org/integrations/$integrationUid",
@@ -166,10 +169,17 @@ function RecentNotificationsSection({
  * this shows every suppression in the org, not just ones tied to this
  * integration's own recipients. Shown only on email-type integrations,
  * since that's the natural place a user configuring email alerts would
- * look for "who's opted out." */
+ * look for "who's opted out."
+ *
+ * Org admin only (spec 2026-11-17-07): the rows are recipients' addresses
+ * and re-subscribing overrides their own opt-out. The page renders this
+ * section for admins only; a 403 (e.g. after a role change) shows the usual
+ * permission notice instead of an error. */
 function SuppressionsSection({ org }: { org: string }) {
   const { t } = useTranslation("integrations");
-  const { data: rows, isLoading, error } = useEmailSuppressions(org);
+  const { data: rows, isLoading, error: queryError } = useEmailSuppressions(org);
+  const denied = queryError instanceof ApiError && queryError.status === 403;
+  const error = denied ? null : queryError;
   const deleteSuppression = useDeleteEmailSuppression(org);
 
   const handleResubscribe = async (uid: string, email: string) => {
@@ -193,17 +203,27 @@ function SuppressionsSection({ org }: { org: string }) {
             <Skeleton className="h-8 w-full" />
           </div>
         )}
+        {denied && (
+          <Alert data-testid="suppressions-permission-denied">
+            <AlertDescription>
+              <span className="font-medium">
+                {t("permissionDenied", { ns: "common" })}
+              </span>{" "}
+              {t("suppressions.adminOnly")}
+            </AlertDescription>
+          </Alert>
+        )}
         {!isLoading && error && (
           <p className="text-sm text-destructive py-4 text-center">
             {t("suppressions.loadFailed")}
           </p>
         )}
-        {!isLoading && !error && (!rows || rows.length === 0) && (
+        {!isLoading && !error && !denied && (!rows || rows.length === 0) && (
           <p className="text-sm text-muted-foreground py-4 text-center" data-testid="suppressions-empty">
             {t("suppressions.empty")}
           </p>
         )}
-        {!isLoading && !error && rows && rows.length > 0 && (
+        {!isLoading && !error && !denied && rows && rows.length > 0 && (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -263,6 +283,7 @@ function IntegrationDetailPage() {
   const { t } = useTranslation("integrations");
   const { org, integrationUid } = Route.useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const { data: integration, isLoading } = useIntegration(org, integrationUid);
   const update = useUpdateIntegration(org, integrationUid);
@@ -394,7 +415,9 @@ function IntegrationDetailPage() {
 
       <RecentNotificationsSection org={org} integrationUid={integrationUid} />
 
-      {integration.type === "email" && <SuppressionsSection org={org} />}
+      {integration.type === "email" && user?.isAdmin && (
+        <SuppressionsSection org={org} />
+      )}
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>

@@ -8,9 +8,12 @@
  * `data-testid` says secret, password, token, kubeconfig, webhook or private
  * but that carries no `data-secret-input`. A literal type="password" input is
  * exempt (rrweb masks it). <PasswordInput> is always safe.
- * Spec 2026-11-12-04.
+ * A <Textarea> named payload, import or config is a pasted document (a
+ * monitoring export, a config file) that routinely holds credentials, so it
+ * is flagged too. Specs 2026-11-12-04 and 2026-11-17-08.
  */
 const SECRETISH = /(secret|password|token|kubeconfig|webhook|private)/i;
+const DOCUMENTISH = /(payload|import|config)/i;
 const GUARDED = new Set(["Input", "Textarea"]);
 const ATTRS = new Set(["id", "name", "data-testid"]);
 
@@ -53,8 +56,9 @@ export default {
         if (node.attributes.some((a) => a.type === "JSXSpreadAttribute")) return;
         // A native type="password" input is masked by rrweb by default.
         if (attrs.some((a) => a.name.name === "type" && staticText(a.value) === "password")) return;
+        const pattern = node.name.name === "Textarea" ? [SECRETISH, DOCUMENTISH] : [SECRETISH];
         const named = attrs.some(
-          (a) => ATTRS.has(a.name.name) && SECRETISH.test(staticText(a.value)),
+          (a) => ATTRS.has(a.name.name) && pattern.some((re) => re.test(staticText(a.value))),
         );
         if (named) context.report({ node, messageId: "missing" });
       },

@@ -47,6 +47,10 @@ func (h *Handler) handleComment(
 		return
 	}
 
+	if h.refuseReadOnly(ctx, chatID, org) {
+		return
+	}
+
 	actor := telegram.ActorLabel(actorFirstName(msg))
 
 	if _, err := h.commenter.AddCommentFromTelegram(

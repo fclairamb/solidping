@@ -134,6 +134,8 @@ func setupEnv(t *testing.T) *tgEnv {
 
 	user := models.NewUser("oncall@example.com")
 	require.NoError(t, dbSvc.CreateUser(ctx, user))
+	require.NoError(t, dbSvc.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleUser)))
 
 	cfg := &config.Config{}
 	cfg.Telegram = config.TelegramConfig{
