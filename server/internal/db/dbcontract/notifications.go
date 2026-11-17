@@ -106,7 +106,6 @@ func runUserContacts(t *testing.T, fix *fixture) {
 	must.Empty(byValue)
 }
 
-//nolint:funlen // linear contract scenario
 // runMemberRemovalContacts: removing a membership ends the user's contacts and
 // routes in THAT org, and only there.
 func runMemberRemovalContacts(t *testing.T, fix *fixture) {
@@ -169,6 +168,7 @@ func runMemberRemovalContacts(t *testing.T, fix *fixture) {
 	must.Zero(removed)
 }
 
+//nolint:funlen // linear contract scenario
 func runIncidentNotifications(t *testing.T, fix *fixture) {
 	t.Helper()
 
