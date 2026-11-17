@@ -67,6 +67,7 @@ import {
   type EditSpec,
 } from "./segment-plan";
 import { renderLabelImages } from "./labels";
+import { localeSubdir, parseShowcaseLocale } from "./locale";
 
 const showcaseDir = path.dirname(fileURLToPath(import.meta.url));
 const outputDir = path.join(showcaseDir, "output");
@@ -78,6 +79,12 @@ const masterFile = path.join(outputDir, "master.mp4");
 const terminalSegment = path.join(outputDir, "terminal", "docker-run.mp4");
 const publishDir = path.resolve(showcaseDir, "../../docs/static/showcase");
 const screenshotsDir = path.resolve(showcaseDir, "../../../res/screenshots");
+/**
+ * Where a non-English take's stills are published: git-ignored, because this
+ * repo embeds English media only. The marketing site copies them from here
+ * into its own `static/img/showcase/<locale>/`.
+ */
+const localizedStillsDir = path.join(outputDir, "published");
 
 /**
  * Stills the docs Tour page embeds, and the name each one takes in
@@ -761,7 +768,48 @@ function labelSpecs(): LabelSpec[] {
   ];
 }
 
+/**
+ * `--stills-only` (`make showcase-stills`): publish the three stills of the
+ * take just recorded in `SHOWCASE_LOCALE`, and nothing else — no terminal
+ * segment, no cut. English goes to the usual committed paths; any other
+ * locale to `output/published/<locale>/`.
+ */
+function publishStillsOnly(): void {
+  const locale = parseShowcaseLocale(process.env.SHOWCASE_LOCALE);
+  const sub = localeSubdir(locale);
+  const src = path.join(stillsDir, sub);
+  const dst = sub ? path.join(localizedStillsDir, sub) : publishDir;
+  const missing: string[] = [];
+  for (const { still } of PUBLISHED_STILLS) {
+    const from = path.join(src, still);
+    if (!existsSync(from)) {
+      missing.push(still);
+      continue;
+    }
+    const to = path.join(dst, still);
+    console.log(
+      `showcase: wrote      ${path.relative(process.cwd(), to)} (${publishStill(from, to)})`,
+    );
+  }
+  if (missing.length > 0) {
+    fail(
+      `The ${locale} take did not produce these still frames: ${missing.join(", ")}. ` +
+        `Expected them under ${src}.`,
+    );
+  }
+}
+
 async function main(): Promise<void> {
+  if (process.argv.includes("--stills-only")) {
+    publishStillsOnly();
+    return;
+  }
+  if (parseShowcaseLocale(process.env.SHOWCASE_LOCALE) !== "en") {
+    fail(
+      "The published cut is English only. For a localized take, publish its " +
+        "stills with `make showcase-stills SHOWCASE_LOCALE=<locale>`.",
+    );
+  }
   assertEncoders();
 
   const terminal = requireTerminalSegment();

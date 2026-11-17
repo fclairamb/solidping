@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+import { browserLocaleTag, parseShowcaseLocale } from "./locale";
+
 /**
  * Playwright configuration for the **showcase media pipeline**.
  *
@@ -59,6 +61,12 @@ export default defineConfig({
 
     // Consistent theme across every capture, regardless of the host machine.
     colorScheme: "light",
+
+    // The dashboard detects its language from navigator.language on a fresh
+    // install, so the context's locale is what films a French or German take
+    // (`SHOWCASE_LOCALE`, see locale.ts). It also drives Intl, so dates and
+    // numbers match the UI.
+    locale: browserLocaleTag(parseShowcaseLocale(process.env.SHOWCASE_LOCALE)),
 
     // Pacing is deliberate, not global. slowMo delays EVERY Playwright input
     // step, which turns the eased cursor travel in fixtures.ts (a burst of
