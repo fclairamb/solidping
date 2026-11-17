@@ -269,9 +269,8 @@ func jsq(text string) string {
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 
-	if err := enc.Encode(text); err != nil {
-		return `""`
-	}
+	// Encoding a string cannot fail.
+	_ = enc.Encode(text) //nolint:errchkjson // a string always encodes
 
 	return strings.TrimRight(buf.String(), "\n")
 }

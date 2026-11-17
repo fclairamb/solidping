@@ -3,7 +3,6 @@ package checkbrowser
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -352,10 +351,7 @@ func (s *Session) tagAria(ctx context.Context, value, nonce string) error {
 func (s *Session) resolveEntry(ctx context.Context, entry string) (resolved, error) {
 	kind, value := parseSelector(entry)
 
-	nonce, err := newNonce()
-	if err != nil {
-		return resolved{}, err
-	}
+	nonce := newNonce()
 
 	shown := shownSelector(kind, value)
 	jsKind, jsValue := kind, value
@@ -368,10 +364,8 @@ func (s *Session) resolveEntry(ctx context.Context, entry string) (resolved, err
 		jsKind, jsValue = "cand", nonce
 	}
 
-	args, err := json.Marshal([]string{jsKind, jsValue, nonce, shown})
-	if err != nil {
-		return resolved{}, fmt.Errorf("encoding selector: %w", err)
-	}
+	// Encoding strings cannot fail.
+	args, _ := json.Marshal([]string{jsKind, jsValue, nonce, shown}) //nolint:errchkjson // strings always marshal
 
 	// The args slice is spread into the call: JSON array -> arguments.
 	expr := resolverJS + ".apply(null, " + string(args) + ")"
@@ -443,13 +437,9 @@ func (s *Session) waitResolved(ctx context.Context, sel string) error {
 	}
 }
 
-func newNonce() (string, error) {
-	buf := make([]byte, 8)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("generating selector nonce: %w", err)
-	}
-
-	return hex.EncodeToString(buf), nil
+func newNonce() string {
+	// crypto/rand.Read never returns an error: it aborts the program instead.
+	return rand.Text()
 }
 
 func jsString(value string) string {

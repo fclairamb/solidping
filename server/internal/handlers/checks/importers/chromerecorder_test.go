@@ -2,6 +2,7 @@ package importers_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -163,4 +164,103 @@ func TestChromeRecorderConvertEndpoint(t *testing.T) {
 	bad := harness.post(t, "chrome-recorder", false, []byte(`{"title":"x","steps":[]}`))
 	r.Equal(http.StatusBadRequest, bad.Code)
 	r.Contains(bad.Body.String(), "no steps")
+}
+
+func recorderScriptOf(t *testing.T, input string) (string, bool) {
+	t.Helper()
+
+	result, err := (&importers.ChromeRecorderConverter{}).Convert([]byte(input))
+	require.NoError(t, err)
+
+	script, ok := result.Document.Checks[0].Config["script"].(string)
+	require.True(t, ok)
+
+	return script, result.Document.Checks[0].Enabled
+}
+
+func TestChromeRecorderMalformedStepBecomesATodo(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	script, enabled := recorderScriptOf(t, `{"steps": [
+	  {"type": "navigate", "url": "https://a.example"},
+	  {"type": "click", "timeout": "soon", "selectors": [["#go"]]}
+	]}`)
+	r.False(enabled)
+	r.Contains(script, "// TODO step 2")
+
+	_, err := (&importers.ChromeRecorderConverter{}).Convert(
+		[]byte(`{"steps": [{"type": "navigate", "url": "https://a.example"}, {"timeout": "soon"}]}`))
+	r.ErrorIs(err, importers.ErrRecorderInvalid)
+	r.ErrorContains(err, "step 2 has no type")
+}
+
+func TestChromeRecorderViewportAndTitleDefaults(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	for name, size := range map[string]string{
+		"huge":  `"width": 9000, "height": 800`,
+		"tiny":  `"width": 1280, "height": 100`,
+		"close": `"width": 1300, "height": 820`,
+	} {
+		result, err := (&importers.ChromeRecorderConverter{}).Convert([]byte(`{"title": "  ", "steps": [
+		  {"type": "navigate", "url": "https://a.example"},
+		  {"type": "setViewport", ` + size + `}
+		]}`))
+		r.NoError(err, name)
+		r.Equal("Chrome recording", result.Document.Checks[0].Name, name)
+
+		warned := len(result.Warnings) > 0
+		r.Equal(name != "close", warned, name)
+	}
+}
+
+func TestChromeRecorderTimeouts(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	script, _ := recorderScriptOf(t, `{"title": "t", "timeout": 7000, "steps": [
+	  {"type": "navigate", "url": "https://a.example"},
+	  {"type": "waitForElement", "selectors": [["#a"]]},
+	  {"type": "waitForElement", "selectors": [["#b"]], "timeout": 99999}
+	]}`)
+	r.Contains(script, `page.waitFor(["#a"], { timeout: 7000 })`, "the flow timeout is the default")
+	r.Contains(script, `page.waitFor(["#b"], { timeout: 30000 })`, "a step timeout is clamped to the script budget")
+}
+
+func TestChromeRecorderSelectorShapes(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	longName := strings.Repeat("x", 120)
+
+	script, enabled := recorderScriptOf(t, `{"title": "s", "steps": [
+	  {"type": "navigate", "url": "https://a.example", "assertedEvents": [
+	    {"type": "navigation", "url": "https://a.example/home"}, {"type": "navigation"}]},
+	  {"type": "click", "selectors": ["#plain", 42, ["#a", "#shadow"], ["aria/Save[role=\"button\"]"]]},
+	  {"type": "click", "selectors": [["aria/Open[role=\"button\"]"]]},
+	  {"type": "click", "selectors": [["#`+longName+`"]]},
+	  {"type": "click", "selectors": [["#a", "#shadow"]]},
+	  {"type": "change", "selectors": [["#a", "#shadow"]], "value": "v"},
+	  {"type": "waitForElement", "selectors": [["#a", "#shadow"]]},
+	  {"type": "waitForElement", "selectors": [["aria/Save"]], "count": 2, "visible": false},
+	  {"type": "waitForElement", "selectors": [["xpath//html/body"]], "count": 2, "operator": "<="},
+	  {"type": "waitForElement", "selectors": [["pierce/#deep"]], "count": 1, "operator": "=="},
+	  {"type": "waitForElement", "selectors": [["text/Hello"], ["#fallback"]], "count": 4, "operator": "!!"},
+	  {"type": "waitForElement", "selectors": [["#ready"]], "attributes": {"a": "b"}}
+	]}`)
+
+	r.False(enabled, "unusable selectors pause the check")
+	r.Contains(script, `waitUrl("https://a.example/home")`)
+	r.Equal(1, countOccurrences(script, `waitUrl("`), "an event without a URL asserts nothing")
+	r.Contains(script, "// TODO step 5")
+	r.Contains(script, "// TODO step 6")
+	r.Contains(script, "// TODO step 7")
+	r.Contains(script, "document.evaluate(")
+	r.Contains(script, "els.length <= 2")
+	r.Contains(script, "els.length === 1")
+	r.Contains(script, "els.length >= 4", "an unknown operator falls back to at-least")
+	r.Contains(script, `step 3: click Open"`, "the aria prefix and role suffix are dropped from the label")
+	r.NotContains(script, "click #"+longName, "labels are truncated")
 }

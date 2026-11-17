@@ -192,3 +192,24 @@ func resultText(t *testing.T, result *checkerdef.Result) string {
 
 	return text
 }
+
+// TestBasicAuthBindingRejectsANonStringOrigin: an origin of the wrong type is
+// a script bug naming the argument, and nothing reaches the session.
+//
+//nolint:paralleltest // mutates the package-level OpenBrowser seam
+func TestBasicAuthBindingRejectsANonStringOrigin(t *testing.T) {
+	r := require.New(t)
+
+	session := &fakeSession{}
+	installFakeBrowser(t, session)
+
+	result := runBrowserScript(t, `
+var page = browser.open();
+page.basicAuth("alice", "pw", { origin: 8080 });
+return { status: "up" };
+`, 5*time.Second)
+
+	r.Equal("error", result.Status.String(), "output: %#v", result.Output)
+	r.Contains(result.Output["error"], "origin must be a string")
+	r.Empty(session.basicAuths)
+}

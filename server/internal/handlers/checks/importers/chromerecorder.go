@@ -598,10 +598,8 @@ func attributeChecks(step *recorderStep) string {
 
 // jsonLiteral renders a value as a JS literal (JSON is a subset of JS).
 func jsonLiteral(value any) string {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return "{}"
-	}
+	// The values are decoded JSON, so they always marshal back.
+	encoded, _ := json.Marshal(value) //nolint:errchkjson // decoded JSON always marshals
 
 	return string(encoded)
 }
@@ -682,10 +680,6 @@ func (g *recorderScript) wrap(before, todoBefore int, label string) {
 
 // recorderTarget names a step's target from its first selector.
 func recorderTarget(list []string) string {
-	if len(list) == 0 {
-		return ""
-	}
-
 	target := list[0]
 	target = strings.TrimPrefix(target, "aria/")
 
