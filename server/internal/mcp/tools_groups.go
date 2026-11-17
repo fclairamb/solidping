@@ -36,8 +36,8 @@ func listCheckGroupsDef() ToolDefinition {
 			"shared incident handling and dashboard layout. Use it to find the checkGroupUid that " +
 			"create_check and update_check take, or the group a status page resource pins; use " +
 			"list_checks with checkGroupUid for the checks inside a group, and list_check_types for " +
-			"the kinds of check you can create. Groups are created and edited in the dashboard, not " +
-			"through MCP. Read-only: works with mcp:read tokens.",
+			"the kinds of check you can create. Takes no parameters; groups are created and edited in " +
+			"the dashboard, not through MCP. Read-only: works with mcp:read tokens.",
 		InputSchema:  objectSchema(map[string]any{}, nil),
 		OutputSchema: dataOutputSchema("Check groups on this page.", checkGroupOutputProps()),
 		Annotations:  readOnlyAnnotations("List check groups"),
