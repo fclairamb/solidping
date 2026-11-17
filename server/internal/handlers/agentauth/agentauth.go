@@ -17,6 +17,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
 )
 
 // Signed-request headers, identical to the agent WebSocket reconnect headers.
@@ -45,11 +46,20 @@ type AgentStore interface {
 type Authenticator struct {
 	store  AgentStore
 	nonces agents.NonceGuard
+
+	// legacyWarn throttles the v1 deprecation WARN to one line per agent per
+	// interval; logger is where it goes (nil: slog.Default()).
+	legacyWarn *agents.DeprecationThrottle
+	logger     *slog.Logger
 }
 
 // New builds an authenticator over the agent store and the replay guard.
 func New(store AgentStore, nonces agents.NonceGuard) *Authenticator {
-	return &Authenticator{store: store, nonces: nonces}
+	return &Authenticator{
+		store:      store,
+		nonces:     nonces,
+		legacyWarn: agents.NewDeprecationThrottle(agents.DefaultDeprecationLogInterval),
+	}
 }
 
 // SetNonceGuard swaps the replay guard (tests, embeddings without the
@@ -111,8 +121,10 @@ const maxSignedBodyBytes = 4 << 20
 // verifySignature dispatches on the challenge version the agent advertises.
 // v2 binds the full request URI (path AND query) and the exact body bytes;
 // the legacy v1 challenge (path only) is still accepted for agents that have
-// not upgraded, with a deprecation warning so operators can watch the legacy
-// channel go quiet before it is removed. Any other version is refused.
+// not upgraded, counted in a metric so operators can watch the legacy channel
+// go quiet before it is removed, with a deprecation warning at most once per
+// agent per hour (a legacy agent polls several times a minute). Any other
+// version is refused.
 func (a *Authenticator) verifySignature(
 	req *http.Request, agent *models.Agent, timestamp, nonce, signature string,
 ) error {
@@ -127,17 +139,40 @@ func (a *Authenticator) verifySignature(
 			agent.Ed25519PublicKey, req.Method, req.URL.RequestURI(), timestamp, nonce, body, signature,
 		)
 	case "":
-		slog.WarnContext(req.Context(),
-			"DEPRECATED: agent request authenticated with the legacy v1 signature (path only); "+
-				"the agent should upgrade to the v2 challenge binding query and body",
-			"agent", agent.UID, "path", req.URL.Path)
-
-		return agents.VerifySignature(
+		if err := agents.VerifySignature(
 			agent.Ed25519PublicKey, req.Method, req.URL.Path, timestamp, nonce, signature,
-		)
+		); err != nil {
+			return err
+		}
+
+		a.noteLegacySignature(req, agent)
+
+		return nil
 	default:
 		return ErrUnauthenticated
 	}
+}
+
+// noteLegacySignature counts a verified v1 request and logs the deprecation,
+// throttled per agent, with the number of requests swallowed since the last
+// line.
+func (a *Authenticator) noteLegacySignature(req *http.Request, agent *models.Agent) {
+	prommetrics.RecordAgentLegacySignature(prommetrics.AgentLegacySignatureHTTP)
+
+	ok, suppressed := a.legacyWarn.Allow(agent.UID)
+	if !ok {
+		return
+	}
+
+	logger := a.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	logger.WarnContext(req.Context(),
+		"DEPRECATED: agent request authenticated with the legacy v1 signature (path only); "+
+			"the agent should upgrade to the v2 challenge binding query and body",
+		"agent", agent.UID, "path", req.URL.Path, "suppressed", suppressed)
 }
 
 // readAndRestoreBody buffers the request body so it can be hashed, then puts

@@ -749,6 +749,19 @@ var (
 		},
 	)
 
+	// AgentLegacySignatureRequests counts agent requests still authenticated
+	// with the legacy v1 signature, by channel ("http" for the signed plain
+	// HTTP calls, "reconnect" for the WebSocket reconnect). The deprecation
+	// WARN is throttled per agent, so this is what shows the legacy channel
+	// going quiet before it is removed.
+	AgentLegacySignatureRequests = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_agent_legacy_signature_requests_total",
+			Help: "Agent requests authenticated with the deprecated v1 signature, by channel",
+		},
+		[]string{labelChannel},
+	)
+
 	allCollectors = []prometheus.Collector{
 		SupportCapture, SupportMirror, SupportDMUnavailable, OrgProviderLinksDangling,
 		OperatorNotice,
@@ -774,6 +787,7 @@ var (
 		HeartbeatPushBeats, HeartbeatPushConnections,
 		StatusPageMemoHits, StatusPageMemoMisses, StatusPageMemoSingleflightShared,
 		AgentWSConnStale, AgentWSConnClosed, AgentWSReconnects,
+		AgentLegacySignatureRequests,
 	}
 )
 
