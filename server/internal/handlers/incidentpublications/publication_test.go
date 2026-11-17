@@ -137,7 +137,10 @@ func newPubSetup(t *testing.T, opts setupOptions) *pubSetup {
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	clk := clock.NewFake(time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC))
+	// Anchored on the real time: ListPublicStatusUpdates keeps the last
+	// HistoryDays counted from the wall clock, so a fixed date (2026-08-19 here
+	// before) falls out of the 90-day feed window and the test starts failing.
+	clk := clock.NewFake(time.Now().UTC().Add(-time.Hour).Truncate(time.Second))
 	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
 	org := models.NewOrganization("acme", "Acme")
