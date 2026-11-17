@@ -79,4 +79,35 @@ test.describe("Lazy locales", () => {
     await expect(page.getByTestId("passkey-login-button")).toHaveText("Sign in with passkey");
     expect(chunks).toEqual([]);
   });
+
+  test("?lang= picks the language on any page, then leaves the URL", async ({ page }) => {
+    await page.addInitScript(() => {
+      if (!sessionStorage.getItem("lang-seeded")) {
+        sessionStorage.setItem("lang-seeded", "1");
+        localStorage.setItem("solidping_language", "en");
+      }
+    });
+    await enablePasskeys(page);
+
+    await page.goto("orgs/test/login?lang=es");
+
+    const button = page.getByTestId("passkey-login-button");
+    await expect(button).toHaveText("Iniciar sesión con llave de acceso");
+    await expect(page).not.toHaveURL(/[?&]lang=/);
+    expect(await page.evaluate(() => localStorage.getItem("solidping_language"))).toBe("es");
+
+    // The pick sticks without the parameter.
+    await page.reload();
+    await expect(button).toHaveText("Iniciar sesión con llave de acceso");
+  });
+
+  test("an unknown ?lang= is dropped and keeps the current language", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("solidping_language", "en"));
+    await enablePasskeys(page);
+
+    await page.goto("orgs/test/login?lang=xx");
+
+    await expect(page.getByTestId("passkey-login-button")).toHaveText("Sign in with passkey");
+    await expect(page).not.toHaveURL(/[?&]lang=/);
+  });
 });

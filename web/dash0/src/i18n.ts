@@ -1,6 +1,7 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
+import { consumeLanguageQuery } from "./lib/language-query";
 import en_account from "./locales/en/account.json";
 import en_auth from "./locales/en/auth.json";
 import en_badges from "./locales/en/badges.json";
@@ -99,18 +100,25 @@ i18n.on("languageChanged", () => {
   document.documentElement.lang = i18n.resolvedLanguage ?? "en";
 });
 
+const LANGUAGE_STORAGE_KEY = "solidping_language";
+
+// `?lang=fr` on any dashboard URL picks the language: it is stored where the
+// detector looks first, and the parameter leaves the address bar.
+const queryLanguage = consumeLanguageQuery(LANGUAGE_STORAGE_KEY);
+
 const initPromise = i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     resources: { en: enResources },
+    ...(queryLanguage ? { lng: queryLanguage } : {}),
     defaultNS: "common",
     fallbackLng: "en",
     interpolation: { escapeValue: false },
     react: { useSuspense: false },
     detection: {
       order: ["localStorage", "navigator"],
-      lookupLocalStorage: "solidping_language",
+      lookupLocalStorage: LANGUAGE_STORAGE_KEY,
       caches: ["localStorage"],
     },
   });

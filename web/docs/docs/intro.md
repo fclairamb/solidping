@@ -26,7 +26,7 @@ SolidPing is a **distributed monitoring platform** designed for checking the ava
 - **MCP Server** - Expose checks, incidents, and status pages to AI assistants over the Model Context Protocol
 - **Observability** - Sentry error tracking, Prometheus metrics, OpenTelemetry support
 - **CLI Client** - Manage checks, incidents, and results from the terminal with the `sp` binary
-- **Internationalized Dashboard** - Available in English, French, German, and Spanish
+- **Internationalized Dashboard** - Available in English, French, German, and Spanish. Add `?lang=fr` (or `en`, `de`, `es`) to any dashboard or status page URL to switch language
 
 ## Architecture Overview
 

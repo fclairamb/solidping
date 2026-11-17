@@ -27,6 +27,7 @@ import { disconnectAllLiveSockets } from "@/contexts/LiveEventsContext";
 import { persistSessionOrg, SESSION_ORG_KEY } from "@/lib/session-org";
 import { exitImpersonation, getImpersonation, isImpersonationExpired } from "@/lib/impersonation";
 import i18n from "@/i18n";
+import { clearRequestedLanguage, requestedLanguage } from "@/lib/language-query";
 import { browserTimezone, supportedLanguage, type LanguageCode } from "@/lib/languages";
 import {
   planPreferencesSync,
@@ -430,6 +431,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const plan = planPreferencesSync({
       server: hasPreferences ? { locale: savedLocale, timezone: savedTimezone } : undefined,
       uiLanguage: i18n.resolvedLanguage,
+      requestedLanguage: requestedLanguage(),
       browserTimezone: browserTimezone(),
       mode: preferencesSyncMode({
         isDemo,
@@ -480,6 +482,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const changeLanguage = useCallback(
     async (code: LanguageCode) => {
+      clearRequestedLanguage();
       await i18n.changeLanguage(code);
       if (!user || user.preferences === undefined) {
         return;
