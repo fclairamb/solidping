@@ -29,3 +29,7 @@ Found by the security scan of 2026-11-17 (finding AP2). Severity: Low. Any `view
 ## Open questions
 
 - Should `user` (write) members keep the re-subscribe action? **Recommended:** no, admin only, like the subscriber list: it is third parties' personal data and overrides their own opt-out.
+
+## Resolved open questions
+
+- `user` (write) members do not keep the re-subscribe action: list and re-subscribe are admin only, like the subscriber list. (autopilot: recommended answer)
