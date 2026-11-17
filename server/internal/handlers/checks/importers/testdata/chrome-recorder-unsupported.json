@@ -1,0 +1,13 @@
+{
+  "title": "Acme popup",
+  "steps": [
+    {"type": "navigate", "url": "https://app.acme.example"},
+    {"type": "click", "frame": [0], "selectors": [["#in-iframe"]]},
+    {"type": "click", "target": "https://popup.acme.example/", "selectors": [["#in-popup"]]},
+    {"type": "customStep", "name": "x", "parameters": {}},
+    {"type": "teleport"},
+    {"type": "click", "selectors": [["#host", "#inside-shadow"]]},
+    {"type": "click", "button": "secondary", "selectors": [["#menu"]]},
+    {"type": "keyDown", "key": "Shift"}
+  ]
+}

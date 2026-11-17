@@ -125,6 +125,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { StoredResultSteps } from "@/components/checks/stored-result-steps";
+import { parseSteps, STEPS_OUTPUT_KEY } from "@/lib/check-steps";
 import { lastRealResultAt } from "@/lib/check-freshness";
 import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { SloCoverageChip } from "@/components/slos/slo-coverage-chip";
@@ -1745,6 +1747,15 @@ function CheckDetailPage() {
                     </span>
                   </div>
                 )}
+                {parseSteps(check.lastResult.output).length > 0 && (
+                  <StoredResultSteps
+                    org={org}
+                    checkUid={checkUid}
+                    steps={parseSteps(check.lastResult.output)}
+                    timestamp={check.lastResult.timestamp}
+                    durationMs={check.lastResult.durationMs}
+                  />
+                )}
                 {check.lastResult.output &&
                   Object.keys(check.lastResult.output).length > 0 && (
                     <div>
@@ -1761,6 +1772,7 @@ function CheckDetailPage() {
                             ([key]) =>
                               key !== "chain" &&
                               key !== "soonestExpiring" &&
+                              key !== STEPS_OUTPUT_KEY &&
                               key !== IP_VERSION_OUTPUT_KEY &&
                               key !== IP_FALLBACK_OUTPUT_KEY &&
                               key !== JSON_ASSERTION_RESULT_OUTPUT_KEY &&

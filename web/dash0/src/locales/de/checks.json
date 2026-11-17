@@ -116,7 +116,8 @@
       "betterstack": "Better Stack (API-Token)",
       "uptime-kuma": "Uptime Kuma (Backup-JSON)",
       "uptimerobot": "UptimeRobot (getMonitors-JSON)",
-      "pingdom": "Pingdom (API-Token oder JSON)"
+      "pingdom": "Pingdom (API-Token oder JSON)",
+      "chrome-recorder": "Chrome Recorder (exportiertes JSON)"
     },
     "importSourceHelp": {
       "solidping": "Ein über die Schaltfläche „Exportieren“ erzeugtes Dokument, als JSON oder YAML.",
@@ -124,14 +125,16 @@
       "betterstack": "Wir lesen Ihre Monitore und Heartbeats über die Better-Stack-API aus und konvertieren sie.",
       "uptime-kuma": "Uptime Kuma 1.x: Einstellungen → Backup → JSON exportieren. Version 2.x bietet diesen Export nicht mehr an.",
       "uptimerobot": "Fügen Sie das JSON des getMonitors-Aufrufs der UptimeRobot-API v2 ein — den genauen curl-Befehl finden Sie in der Dokumentation.",
-      "pingdom": "Erstellen Sie ein schreibgeschütztes Token unter My Pingdom > Settings > Pingdom API > Add API token (Lesezugriff) oder fügen Sie das JSON von GET /api/3.1/checks ein."
+      "pingdom": "Erstellen Sie ein schreibgeschütztes Token unter My Pingdom > Settings > Pingdom API > Add API token (Lesezugriff) oder fügen Sie das JSON von GET /api/3.1/checks ein.",
+      "chrome-recorder": "In Chrome DevTools > Recorder den Ablauf aufzeichnen, dann Exportieren > JSON. Datei einfügen oder hochladen: Daraus wird ein Browser-Check mit einem Schritt pro Aktion. Passwörter landen in den verschlüsselten Secrets des Checks."
     },
     "importPlaceholder": {
       "solidping": "Exportiertes JSON- oder YAML-Dokument einfügen…",
       "gatus": "Gatus-config.yaml einfügen…",
       "uptime-kuma": "Uptime-Kuma-Backup-JSON einfügen…",
       "uptimerobot": "UptimeRobot-getMonitors-JSON einfügen…",
-      "pingdom": "Oder fügen Sie das JSON Ihrer Pingdom-Checks ein…"
+      "pingdom": "Oder fügen Sie das JSON Ihrer Pingdom-Checks ein…",
+      "chrome-recorder": "Fügen Sie Ihr Chrome-Recorder-JSON ein…"
     },
     "importPayload": "Konfiguration",
     "importUpload": "Datei hochladen",
@@ -1802,6 +1805,17 @@
   },
   "groupFilterUnknown": "Keine Gruppe passt zu „{{slug}}“.",
   "clearGroupFilter": "Filter löschen",
+  "steps": {
+    "testButton": "Testen",
+    "noSteps": "Dieses Skript meldet keine Schritte. Umschließen Sie Teile mit step(\"Name\", fn), um sie hier zu sehen.",
+    "screenshotAlt": "Seite beim fehlgeschlagenen Schritt {{name}}",
+    "title": "Schritte",
+    "status": {
+      "ok": "erfolgreich",
+      "failed": "fehlgeschlagen",
+      "skipped": "übersprungen"
+    }
+  },
   "regionCapability": {
     "ipv6": {
       "label": {

@@ -58,10 +58,15 @@ var (
 //nolint:interfacebloat // see above
 type BrowserSession interface {
 	Navigate(ctx context.Context, url string) (checkbrowser.NavResult, error)
+	BasicAuth(ctx context.Context, username, password, origin string) error
 	WaitVisible(ctx context.Context, sel string) error
 	Click(ctx context.Context, sel string) error
 	Fill(ctx context.Context, sel, text string) error
 	Press(ctx context.Context, sel, key string) error
+	Check(ctx context.Context, sel string) error
+	Uncheck(ctx context.Context, sel string) error
+	Select(ctx context.Context, sel, option string) error
+	Submit(ctx context.Context, sel string) error
 	Text(ctx context.Context, sel string) (string, error)
 	Evaluate(ctx context.Context, expr string) (any, error)
 	URL(ctx context.Context) (string, error)
@@ -189,8 +194,16 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 		})
 	})
 
+	_ = page.Set("basicAuth", func(call goja.FunctionCall) goja.Value {
+		username, password, origin := r.basicAuthArgs(call)
+
+		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
+			return nil, session.BasicAuth(r.execCtx, username, password, origin)
+		})
+	})
+
 	_ = page.Set("waitFor", func(call goja.FunctionCall) goja.Value {
-		selector := call.Argument(0).String()
+		selector := selectorArg(call.Argument(0))
 
 		var opts map[string]any
 		if len(call.Arguments) > 1 {
@@ -215,7 +228,7 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 	})
 
 	_ = page.Set("click", func(call goja.FunctionCall) goja.Value {
-		selector := call.Argument(0).String()
+		selector := selectorArg(call.Argument(0))
 
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
 			return nil, session.Click(r.execCtx, selector)
@@ -223,7 +236,7 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 	})
 
 	_ = page.Set("fill", func(call goja.FunctionCall) goja.Value {
-		selector, text := call.Argument(0).String(), call.Argument(1).String()
+		selector, text := selectorArg(call.Argument(0)), call.Argument(1).String()
 
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
 			return nil, session.Fill(r.execCtx, selector, text)
@@ -231,15 +244,37 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 	})
 
 	_ = page.Set("press", func(call goja.FunctionCall) goja.Value {
-		selector, key := call.Argument(0).String(), call.Argument(1).String()
+		selector, key := selectorArg(call.Argument(0)), call.Argument(1).String()
 
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
 			return nil, session.Press(r.execCtx, selector, key)
 		})
 	})
 
+	for name, action := range map[string]func(BrowserSession, context.Context, string) error{
+		"check":   BrowserSession.Check,
+		"uncheck": BrowserSession.Uncheck,
+		"submit":  BrowserSession.Submit,
+	} {
+		_ = page.Set(name, func(call goja.FunctionCall) goja.Value {
+			selector := selectorArg(call.Argument(0))
+
+			return r.pageAction(func(session BrowserSession) (map[string]any, error) {
+				return nil, action(session, r.execCtx, selector)
+			})
+		})
+	}
+
+	_ = page.Set("select", func(call goja.FunctionCall) goja.Value {
+		selector, option := selectorArg(call.Argument(0)), call.Argument(1).String()
+
+		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
+			return nil, session.Select(r.execCtx, selector, option)
+		})
+	})
+
 	_ = page.Set("text", func(call goja.FunctionCall) goja.Value {
-		selector := call.Argument(0).String()
+		selector := selectorArg(call.Argument(0))
 
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
 			text, err := session.Text(r.execCtx, selector)
@@ -291,6 +326,35 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 	r.setUncountedPageMethods(page)
 
 	return page
+}
+
+// basicAuthArgs reads page.basicAuth(username, password, { origin? }).
+//
+// A username or password that is not a string throws: the usual cause is a
+// misspelled `secrets.NAME`, and sending the literal "undefined" as a
+// password would turn that script bug into a confusing 401. The message names
+// the argument, never its value.
+func (r *jsRuntime) basicAuthArgs(call goja.FunctionCall) (string, string, string) {
+	for i, name := range []string{"username", "password"} {
+		if _, ok := call.Argument(i).Export().(string); !ok {
+			panic(r.vm.NewTypeError("page.basicAuth: " + name + " must be a string (is the secret defined?)"))
+		}
+	}
+
+	origin := ""
+
+	if opts, ok := call.Argument(2).Export().(map[string]any); ok {
+		if value, isSet := opts["origin"]; isSet && value != nil {
+			text, isString := value.(string)
+			if !isString {
+				panic(r.vm.NewTypeError("page.basicAuth: origin must be a string"))
+			}
+
+			origin = text
+		}
+	}
+
+	return call.Argument(0).String(), call.Argument(1).String(), origin
 }
 
 // setUncountedPageMethods attaches the two methods that do NOT spend an action:
@@ -482,7 +546,7 @@ func (r *jsRuntime) attachScreenshot(result *checkerdef.Result) {
 	}
 
 	forced := r.execCtx != nil && checkerdef.ForcedCapture(r.execCtx)
-	if !forced && !checkbrowser.CapturableStatus(result.Status) {
+	if !forced && !checkbrowser.CapturableStatus(result.Status) && !hasFailedStep(result) {
 		return
 	}
 
@@ -509,4 +573,20 @@ func (r *jsRuntime) attachScreenshot(result *checkerdef.Result) {
 		Format:     r.screenshot.Format,
 		CapturedAt: r.screenshotAt,
 	}
+}
+
+// selectorArg turns a script's selector argument into the string the session
+// takes: a plain string stays as is, an array of strings (fallbacks, tried in
+// order) is encoded as a list.
+func selectorArg(value goja.Value) string {
+	if list, ok := value.Export().([]any); ok && len(list) > 0 {
+		out := make([]string, 0, len(list))
+		for _, item := range list {
+			out = append(out, fmt.Sprint(item))
+		}
+
+		return checkbrowser.EncodeSelectorList(out)
+	}
+
+	return value.String()
 }
