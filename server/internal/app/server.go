@@ -70,6 +70,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks/importers"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkscreenshots"
+	"github.com/fclairamb/solidping/server/internal/handlers/checktestrun"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/degradedeval"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
@@ -1304,6 +1305,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	aiChecksHandler := aichecksapi.NewHandler(s.aiChecks, s.dbService, s.config)
 	orgChecks.POST("/ai/contract", aiChecksHandler.Contract)
 	orgChecks.POST("/ai/generate", aiChecksHandler.Generate)
+	// Test run of an unsaved check (spec 2026-11-17-04): runs once, stores
+	// and notifies nothing. A literal segment, ahead of "/:checkUid"; a write
+	// route, so orgGroup's floor refuses viewers.
+	orgChecks.POST("/test-run", checktestrun.NewHandler(s.aiChecks.Runner(), s.config).TestRun)
 	orgChecks.GET("/:checkUid", checksHandler.GetCheck)
 	orgChecks.PUT("/:slug", checksHandler.UpsertCheck)
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)

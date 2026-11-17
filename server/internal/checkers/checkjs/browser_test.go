@@ -44,6 +44,7 @@ type fakeSession struct {
 	cookieErr error
 	shot      []byte
 	shotErr   error
+	shots     atomic.Int32
 
 	calls   atomic.Int32
 	closes  atomic.Int32
@@ -176,6 +177,7 @@ func (f *fakeSession) Cookies(_ context.Context) ([]checkbrowser.Cookie, error) 
 
 func (f *fakeSession) Screenshot(_ context.Context) (checkbrowser.Capture, error) {
 	f.calls.Add(1)
+	f.shots.Add(1)
 
 	return checkbrowser.Capture{Image: f.shot, Format: checkbrowser.ScreenshotFormat}, f.shotErr
 }

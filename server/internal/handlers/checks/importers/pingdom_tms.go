@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -283,7 +284,10 @@ type pingdomScript struct {
 	helpers        map[string]bool
 	secrets        map[string]string
 	untranslatable bool
-	kind           string
+	// untranslatableCount counts the TODO lines emitted, so a step that only
+	// produced a TODO comment is not wrapped in step().
+	untranslatableCount int
+	kind                string
 }
 
 func newPingdomScript(name string, warn *warnings) *pingdomScript {
@@ -422,6 +426,7 @@ func (g *pingdomScript) use(helpers ...string) {
 // todo records an untranslatable step: a warning, a TODO line, a paused check.
 func (g *pingdomScript) todo(index int, step pingdomTMSStep, reason string) {
 	g.untranslatable = true
+	g.untranslatableCount++
 	g.warn.addf(g.name, "steps", "step %d (%s) %s — the check was created paused", index+1, jsq(step.Fn), reason)
 	g.emitf("// TODO step %d: %s %s", index+1, jsq(step.Fn), reason)
 }
@@ -446,7 +451,9 @@ func (g *pingdomScript) generate(check *pingdomTMSCheck) {
 			}
 		}
 
+		before, todoBefore := len(g.body), g.untranslatableCount
 		g.step(index, step)
+		g.wrapStep(before, todoBefore, step)
 	}
 
 	if !authDone && len(g.secrets) > 0 {
@@ -660,5 +667,73 @@ func (g *pingdomScript) validation(index int, step pingdomTMSStep) {
 		g.todo(index, step, "has no SolidPing equivalent (coordinate, hover and tab steps are not supported)")
 	default:
 		g.todo(index, step, "is not a known Pingdom function")
+	}
+}
+
+// wrapStep wraps what a step emitted in step("<label>", …) so a failing run
+// reports which step failed (spec 2026-11-17-04). A step that emitted nothing
+// (basic_auth, hoisted) or only a TODO line stays as is.
+func (g *pingdomScript) wrapStep(before, todoBefore int, step pingdomTMSStep) {
+	if len(g.body) == before || g.untranslatableCount != todoBefore {
+		return
+	}
+
+	lines := slices.Clone(g.body[before:])
+	g.body = g.body[:before]
+
+	g.emitf("step(%s, function () {", jsq(stepHumanLabel(step)))
+
+	for _, line := range lines {
+		g.emitf("  %s", line)
+	}
+
+	g.emitf("});")
+}
+
+// stepHumanLabel is the name of a step in the result: `Click "Se connecter"`.
+func stepHumanLabel(step pingdomTMSStep) string {
+	quoted := func(value string) string { return `"` + value + `"` }
+
+	switch step.Fn {
+	case "go_to", "wpm_go_to":
+		return "Go to " + step.arg("url")
+	case "click", "wpm_click":
+		return "Click " + quoted(step.arg("element"))
+	case "fill", "wpm_fill":
+		return "Fill " + quoted(step.arg("input"))
+	case "check":
+		return "Check " + quoted(step.arg("checkbox"))
+	case "uncheck":
+		return "Uncheck " + quoted(step.arg("checkbox"))
+	case "select", "wpm_select_dropdown":
+		return "Select " + quoted(step.arg("option")) + " in " + quoted(step.arg("select"))
+	case "select_radio":
+		return "Select radio " + quoted(step.arg("radio"))
+	case "submit":
+		return "Submit " + quoted(step.arg("form"))
+	case "sleep", "wpm_wait":
+		return "Wait " + step.arg("seconds") + "s"
+	case "wait_for_element":
+		return "Wait for " + quoted(step.arg("element"))
+	case "wait_for_contains", "wpm_contains_timeout", "contains":
+		return "Expect " + quoted(step.arg("element")) + " to contain " + quoted(step.arg("value"))
+	case "wpm_not_contains_timeout", "not_contains":
+		return "Expect " + quoted(step.arg("element")) + " not to contain " + quoted(step.arg("value"))
+	case "url":
+		return "Expect URL " + step.arg("url")
+	case "exists":
+		return "Expect " + quoted(step.arg("element")) + " to exist"
+	case "not_exists":
+		return "Expect " + quoted(step.arg("element")) + " not to exist"
+	case "field_contains", "field_not_contains":
+		return "Check the value of " + quoted(step.arg("input"))
+	case "is_checked", "is_not_checked":
+		return "Check the state of " + quoted(step.arg("checkbox"))
+	case "radio_selected":
+		return "Expect radio " + quoted(step.arg("radio")) + " selected"
+	case "dropdown_selected", "dropdown_not_selected":
+		return "Check the selection of " + quoted(step.arg("select"))
+	default:
+		return strings.ReplaceAll(step.Fn, "_", " ")
 	}
 }

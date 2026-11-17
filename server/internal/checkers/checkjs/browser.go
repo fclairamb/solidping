@@ -546,7 +546,7 @@ func (r *jsRuntime) attachScreenshot(result *checkerdef.Result) {
 	}
 
 	forced := r.execCtx != nil && checkerdef.ForcedCapture(r.execCtx)
-	if !forced && !checkbrowser.CapturableStatus(result.Status) {
+	if !forced && !checkbrowser.CapturableStatus(result.Status) && !hasFailedStep(result) {
 		return
 	}
 
