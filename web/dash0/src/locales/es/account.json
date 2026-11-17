@@ -88,7 +88,8 @@
       "lastAuthMethod": "Añade otra llave de acceso o establece una contraseña antes de eliminar esta.",
       "unsupported": "Este navegador no admite llaves de acceso.",
       "removeFailed": "No se pudo eliminar la llave de acceso.",
-      "renameFailed": "No se pudo renombrar la llave de acceso."
+      "renameFailed": "No se pudo renombrar la llave de acceso.",
+      "defaultLabel": "Llave de seguridad"
     },
     "totp": {
       "title": "Autenticación de dos factores (TOTP)",

@@ -245,22 +245,24 @@ function TimelineItem({
 
 // --- Status Updates Panel ---
 
+// Labels come from statusUpdates:kinds.<value>, as in the status-update form.
 const STATUS_UPDATE_KINDS = [
-  { value: "investigating", label: "Investigating" },
-  { value: "identified", label: "Identified" },
-  { value: "monitoring", label: "Monitoring" },
-  { value: "resolved", label: "Resolved" },
-  { value: "maintenance", label: "Maintenance" },
-  { value: "info", label: "Info" },
+  "investigating",
+  "identified",
+  "monitoring",
+  "resolved",
+  "maintenance",
+  "info",
 ];
 
 function KindBadgeInline({ kind }: { kind: string }) {
+  const { t } = useTranslation("statusUpdates");
   return (
     <Badge
       variant="outline"
       className={cn("font-medium capitalize", statusUpdateKindTone(kind))}
     >
-      {kind}
+      {t(`kinds.${kind}`, { defaultValue: kind })}
     </Badge>
   );
 }
@@ -389,9 +391,9 @@ function IncidentStatusUpdateDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {STATUS_UPDATE_KINDS.map((k) => (
-                  <SelectItem key={k.value} value={k.value}>
-                    {k.label}
+                {STATUS_UPDATE_KINDS.map((kind) => (
+                  <SelectItem key={kind} value={kind}>
+                    {t(`kinds.${kind}`, { ns: "statusUpdates" })}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1441,7 +1443,11 @@ function FailureSnapshotBlock({
           <div className="text-xs text-muted-foreground">
             {t("detail.failureDetails.status")}
           </div>
-          <div>{snapshot.status || "-"}</div>
+          <div>
+            {snapshot.status
+              ? t(`checks:status.${snapshot.status}`, { defaultValue: snapshot.status })
+              : "-"}
+          </div>
         </div>
         <div>
           <div className="text-xs text-muted-foreground">

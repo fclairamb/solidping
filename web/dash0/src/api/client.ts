@@ -199,7 +199,7 @@ interface FetchOptions extends RequestInit {
 }
 
 export class NetworkError extends Error {
-  constructor(message: string = "Network connection failed") {
+  constructor(message: string = i18n.t("apiErrors.network", { ns: "common" })) {
     super(message);
     this.name = "NetworkError";
   }
@@ -558,7 +558,12 @@ export async function handleResponse<T>(
     // says nothing about the session now in place: clearing that one and
     // redirecting to login?session_expired=true is how renaming the org
     // logged its owner out (solidping-business#81). Fail just this request.
-    throw new ApiError("Session changed", "SESSION_CHANGED", undefined, 401);
+    throw new ApiError(
+      i18n.t("apiErrors.sessionChanged", { ns: "common" }),
+      "SESSION_CHANGED",
+      undefined,
+      401,
+    );
   }
 
   if (response.status === 401 && !skipAuth && !suppress401Handling) {
@@ -569,7 +574,12 @@ export async function handleResponse<T>(
     if (!suppress401Redirect) {
       redirectToExpiredLogin({ hadSession });
     }
-    throw new ApiError("Session expired", "UNAUTHORIZED", undefined, 401);
+    throw new ApiError(
+      i18n.t("apiErrors.sessionExpired", { ns: "common" }),
+      "UNAUTHORIZED",
+      undefined,
+      401,
+    );
   }
 
   if (response.status === 429) {
@@ -577,7 +587,7 @@ export async function handleResponse<T>(
     const retryAfter = retryAfterHeader ? parseInt(retryAfterHeader, 10) : undefined;
     const error = await response.json().catch(() => ({}));
     throw new ApiError(
-      error.title || "Too many requests",
+      error.title || i18n.t("apiErrors.rateLimited", { ns: "common" }),
       error.code || "RATE_LIMITED",
       error.detail,
       429,
@@ -614,7 +624,7 @@ export async function handleResponse<T>(
       ? i18n.t("demo.writeRefused", { ns: "org" })
       : isImpersonationForbidden
         ? i18n.t("impersonation.forbidden", { ns: "server" })
-        : error.title || "An error occurred";
+        : error.title || i18n.t("apiErrors.generic", { ns: "common" });
 
     if (isDemoReadOnly) {
       announceDemoReadOnly(message);

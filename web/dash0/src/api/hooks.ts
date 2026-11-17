@@ -31,6 +31,7 @@ import type { SignupAttribution } from "@/lib/attribution";
 import { mergeResultTiers } from "@/lib/result-tiers";
 import { isStalePublication } from "@/lib/stale-publications";
 import type { LocalizedText } from "@/lib/localized-text";
+import i18n from "@/i18n";
 import {
   chartFetchParamsForWindow,
   chartRollupTier,
@@ -1572,7 +1573,7 @@ function aiStreamError(status: number, body: { title?: string; code?: string; de
   if (body.code === "AI_GENERATION_FAILED") {
     return new AIGenerationFailedError(body as AIGenerationFailed);
   }
-  return new ApiError(body.title || "An error occurred", body.code || "UNKNOWN_ERROR", body.detail, status);
+  return new ApiError(body.title || i18n.t("apiErrors.generic", { ns: "common" }), body.code || "UNKNOWN_ERROR", body.detail, status);
 }
 
 /** POST /checks/ai/generate with its progress streamed as NDJSON. */
@@ -6720,7 +6721,7 @@ export async function downloadMSTeamsManifest(org: string): Promise<void> {
   );
 
   if (!response.ok) {
-    throw new Error("Failed to download the Teams app package");
+    throw new Error(i18n.t("teamsPackageDownloadFailed", { ns: "integrations" }));
   }
 
   const blob = await response.blob();

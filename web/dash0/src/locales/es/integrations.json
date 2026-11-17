@@ -415,5 +415,23 @@
   "personalChannels": {
     "text": "Los canales personales (Telegram, WhatsApp, SMS, mensajes directos) se configuran por usuario y se alcanzan mediante políticas de escalado.",
     "link": "Configúrelos en Cuenta → Notificaciones"
-  }
+  },
+  "channelLabels": {
+    "email": "Correo electrónico",
+    "phone": "Teléfono (SMS)",
+    "slackDm": "Mensaje directo de Slack",
+    "discordDm": "Mensaje directo de Discord",
+    "webpush": "Notificaciones del navegador"
+  },
+  "webPushButton": {
+    "enable": "Activar notificaciones del navegador",
+    "enabling": "Activando…",
+    "subscribed": "Suscrito",
+    "blocked": "Notificaciones bloqueadas"
+  },
+  "slackInstall": {
+    "finishing": "Terminando la instalación de Slack…",
+    "unexpectedError": "Error inesperado"
+  },
+  "teamsPackageDownloadFailed": "No se pudo descargar el paquete de la aplicación de Teams"
 }

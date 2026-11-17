@@ -133,5 +133,7 @@
     "removedTitle": "{{name}} is no longer monitored",
     "removedGenericTitle": "The affected service is no longer monitored",
     "removedBody": "The monitored resource was removed. This incident is resolved."
-  }
+  },
+  "unlockWrongPassword": "Incorrect password",
+  "unlockTooManyAttempts": "Too many attempts. Please try again in a few minutes."
 }

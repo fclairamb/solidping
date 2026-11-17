@@ -133,5 +133,7 @@
     "removedTitle": "{{name}} ya no se supervisa",
     "removedGenericTitle": "El servicio afectado ya no se supervisa",
     "removedBody": "El recurso supervisado se ha eliminado. La incidencia está resuelta."
-  }
+  },
+  "unlockWrongPassword": "Contraseña incorrecta",
+  "unlockTooManyAttempts": "Demasiados intentos. Vuelva a intentarlo en unos minutos."
 }

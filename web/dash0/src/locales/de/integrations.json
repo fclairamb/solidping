@@ -415,5 +415,23 @@
   "personalChannels": {
     "text": "Persönliche Kanäle (Telegram, WhatsApp, SMS, Direktnachrichten) werden pro Benutzer eingerichtet und über Eskalationsrichtlinien erreicht.",
     "link": "Einrichten unter Konto → Benachrichtigungen"
-  }
+  },
+  "channelLabels": {
+    "email": "E-Mail",
+    "phone": "Telefon (SMS)",
+    "slackDm": "Slack-Direktnachricht",
+    "discordDm": "Discord-Direktnachricht",
+    "webpush": "Browser-Benachrichtigungen"
+  },
+  "webPushButton": {
+    "enable": "Browser-Benachrichtigungen aktivieren",
+    "enabling": "Wird aktiviert…",
+    "subscribed": "Abonniert",
+    "blocked": "Benachrichtigungen blockiert"
+  },
+  "slackInstall": {
+    "finishing": "Slack-Installation wird abgeschlossen…",
+    "unexpectedError": "Unerwarteter Fehler"
+  },
+  "teamsPackageDownloadFailed": "Das Teams-App-Paket konnte nicht heruntergeladen werden"
 }

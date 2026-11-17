@@ -1099,7 +1099,7 @@ function SectionCard({
     reorderResources.mutate(reordered, {
       onError: (err) => {
         toast.error(
-          err instanceof ApiError ? err.message : "Failed to reorder",
+          err instanceof ApiError ? err.message : t("resources.reorderFailed"),
         );
       },
     });
@@ -1298,7 +1298,7 @@ function StatusPageDetailPage() {
     reorderSections.mutate(reordered, {
       onError: (err) => {
         toast.error(
-          err instanceof ApiError ? err.message : "Failed to reorder",
+          err instanceof ApiError ? err.message : t("resources.reorderFailed"),
         );
       },
     });

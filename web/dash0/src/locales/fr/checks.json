@@ -47,7 +47,9 @@
     "created": "En attente",
     "degraded": "Dégradé",
     "abandoned": "Abandonné",
-    "unknown": "Inconnu"
+    "unknown": "Inconnu",
+    "timeout": "Délai dépassé",
+    "error": "Erreur"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} opérationnels",
@@ -1799,5 +1801,26 @@
     "sharedRegionDisabled": "Les régions partagées sont désactivées : cette organisation exige que les secrets des checks soient scellés dans le navigateur."
   },
   "groupFilterUnknown": "Aucun groupe ne correspond à « {{slug}} ».",
-  "clearGroupFilter": "Effacer le filtre"
+  "clearGroupFilter": "Effacer le filtre",
+  "regionCapability": {
+    "ipv6": {
+      "label": {
+        "yes": "IPv6",
+        "no": "Pas d'IPv6",
+        "unknown": "IPv6 inconnu"
+      },
+      "hint": {
+        "yes": "Au moins un worker actif de cette région signale une sortie IPv6.",
+        "no": "Aucun worker actif de cette région ne signale actuellement de sortie IPv6. Vous pouvez quand même la sélectionner — le contrôle n'est refusé que si le worker n'a vraiment aucune route IPv6 au moment de l'exécution.",
+        "unknown": "Pas encore signalé — cette région n'a aucun worker actif qui signale ses familles de sortie, ou utilise un agent plus ancien. Elle prend peut-être en charge IPv6."
+      }
+    },
+    "browser": {
+      "hint": {
+        "yes": "Au moins un worker actif de cette région signale un navigateur headless disponible pour les contrôles navigateur.",
+        "no": "Aucun worker actif de cette région ne signale actuellement de navigateur headless. Vous pouvez quand même la sélectionner — le contrôle n'est refusé que si le worker n'a vraiment aucun navigateur au moment de l'exécution.",
+        "unknown": "Pas encore signalé — cette région n'a aucun worker actif qui signale ses capacités, ou utilise un agent plus ancien. Elle prend peut-être en charge les contrôles navigateur."
+      }
+    }
+  }
 }

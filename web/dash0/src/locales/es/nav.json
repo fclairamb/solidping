@@ -176,5 +176,7 @@
     "publicStatus": "Estado público",
     "administration": "Administración"
   },
-  "history": "Historial"
+  "history": "Historial",
+  "notifications": "Notificaciones",
+  "notification": "Notificación"
 }

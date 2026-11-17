@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Lock } from "lucide-react";
@@ -19,6 +20,20 @@ import { PRIMARY_BUTTON_CLASSES } from "@/lib/primary-button";
  * the visitor has proved anything would be exactly the leak the password is
  * meant to prevent.
  */
+function unlockErrorMessage(t: TFunction, err: unknown): string {
+  if (err instanceof ApiError) {
+    switch (err.code) {
+      case "STATUS_PAGE_LOCKED":
+        return t("unlockWrongPassword");
+      case "RATE_LIMITED":
+        return t("unlockTooManyAttempts");
+      case "STATUS_PAGE_NOT_FOUND":
+        return t("statusPageNotFound");
+    }
+  }
+  return t("unlockGenericError");
+}
+
 export function UnlockForm({
   org,
   slug,
@@ -43,12 +58,10 @@ export function UnlockForm({
       setPassword("");
       onUnlocked();
     } catch (err) {
-      // A wrong password and a rate-limit both come back as an error with a
-      // message the server already worded for a visitor; anything else falls
-      // back to the generic string so a network blip never renders as blank.
-      setError(
-        err instanceof ApiError ? err.message : t("unlockGenericError"),
-      );
+      // The server's titles are English: show the visitor the reason in the
+      // page language, by code. Anything else falls back to the generic
+      // string so a network blip never renders as blank.
+      setError(unlockErrorMessage(t, err));
     }
   };
 

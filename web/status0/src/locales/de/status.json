@@ -133,5 +133,7 @@
     "removedTitle": "{{name}} wird nicht mehr überwacht",
     "removedGenericTitle": "Der betroffene Dienst wird nicht mehr überwacht",
     "removedBody": "Die überwachte Ressource wurde entfernt. Die Störung ist behoben."
-  }
+  },
+  "unlockWrongPassword": "Falsches Passwort",
+  "unlockTooManyAttempts": "Zu viele Versuche. Bitte versuchen Sie es in einigen Minuten erneut."
 }

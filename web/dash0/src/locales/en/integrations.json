@@ -415,5 +415,23 @@
   "personalChannels": {
     "text": "Personal channels (Telegram, WhatsApp, SMS, direct messages) are set per user and reached through escalation policies.",
     "link": "Set them under Account → Notifications"
-  }
+  },
+  "channelLabels": {
+    "email": "Email",
+    "phone": "Phone (SMS)",
+    "slackDm": "Slack DM",
+    "discordDm": "Discord DM",
+    "webpush": "Browser push"
+  },
+  "webPushButton": {
+    "enable": "Enable browser notifications",
+    "enabling": "Enabling…",
+    "subscribed": "Subscribed",
+    "blocked": "Notifications blocked"
+  },
+  "slackInstall": {
+    "finishing": "Finishing your Slack install…",
+    "unexpectedError": "Unexpected error"
+  },
+  "teamsPackageDownloadFailed": "Failed to download the Teams app package"
 }

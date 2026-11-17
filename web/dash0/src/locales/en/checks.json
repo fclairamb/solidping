@@ -47,7 +47,9 @@
     "created": "Pending",
     "degraded": "Degraded",
     "abandoned": "Abandoned",
-    "unknown": "Unknown"
+    "unknown": "Unknown",
+    "timeout": "Timeout",
+    "error": "Error"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} up",
@@ -1799,5 +1801,26 @@
     "sharedRegionDisabled": "Shared locations are disabled: this organization requires check secrets to be sealed in the browser."
   },
   "groupFilterUnknown": "No group matches “{{slug}}”.",
-  "clearGroupFilter": "Clear filter"
+  "clearGroupFilter": "Clear filter",
+  "regionCapability": {
+    "ipv6": {
+      "label": {
+        "yes": "IPv6",
+        "no": "No IPv6",
+        "unknown": "IPv6 unknown"
+      },
+      "hint": {
+        "yes": "At least one live worker in this region reports IPv6 egress.",
+        "no": "No live worker in this region currently reports IPv6 egress. You can still select it — the check is only rejected if the worker really has no IPv6 route when it runs.",
+        "unknown": "Not reported yet — this region has no live worker reporting its egress families, or is running an older agent. It may well support IPv6."
+      }
+    },
+    "browser": {
+      "hint": {
+        "yes": "At least one live worker in this region reports a headless browser available for browser checks.",
+        "no": "No live worker in this region currently reports a headless browser. You can still select it — the check is only rejected if the worker really has no browser when it runs.",
+        "unknown": "Not reported yet — this region has no live worker reporting its capabilities, or is running an older agent. It may well support browser checks."
+      }
+    }
+  }
 }

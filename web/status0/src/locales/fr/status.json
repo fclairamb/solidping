@@ -133,5 +133,7 @@
     "removedTitle": "{{name}} n'est plus surveillé",
     "removedGenericTitle": "Le service affecté n'est plus surveillé",
     "removedBody": "La ressource surveillée a été retirée. L'incident est résolu."
-  }
+  },
+  "unlockWrongPassword": "Mot de passe incorrect",
+  "unlockTooManyAttempts": "Trop de tentatives. Veuillez réessayer dans quelques minutes."
 }

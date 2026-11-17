@@ -415,5 +415,23 @@
   "personalChannels": {
     "text": "Les canaux personnels (Telegram, WhatsApp, SMS, messages privés) se règlent par utilisateur et passent par les politiques d'escalade.",
     "link": "À configurer dans Compte → Notifications"
-  }
+  },
+  "channelLabels": {
+    "email": "E-mail",
+    "phone": "Téléphone (SMS)",
+    "slackDm": "Message privé Slack",
+    "discordDm": "Message privé Discord",
+    "webpush": "Notifications du navigateur"
+  },
+  "webPushButton": {
+    "enable": "Activer les notifications du navigateur",
+    "enabling": "Activation…",
+    "subscribed": "Abonné",
+    "blocked": "Notifications bloquées"
+  },
+  "slackInstall": {
+    "finishing": "Finalisation de l'installation Slack…",
+    "unexpectedError": "Erreur inattendue"
+  },
+  "teamsPackageDownloadFailed": "Échec du téléchargement du paquet d'application Teams"
 }

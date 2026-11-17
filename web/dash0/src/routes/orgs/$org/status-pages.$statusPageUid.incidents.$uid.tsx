@@ -103,7 +103,7 @@ function PublicationEditorPage() {
       <QueryErrorView
         error={error}
         org={org}
-        resource="incident publication"
+        resource={t("common:resources.incidentPublication")}
         onRetry={() => void refetch()}
       />
     );
