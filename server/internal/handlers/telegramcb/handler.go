@@ -302,7 +302,7 @@ func (h *Handler) handleStart(
 	ctx context.Context, msg *telegram.IncomingMessage, chatID, token string,
 ) {
 	if token == "" {
-		if contacts := h.linkedContacts(ctx, chatID); len(contacts) > 0 {
+		if orgs := h.linkedOrgs(ctx, chatID); len(orgs) > 0 {
 			h.reply(ctx, chatID, telegram.BuildHelpHTML())
 
 			return

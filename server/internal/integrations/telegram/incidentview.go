@@ -373,6 +373,22 @@ func BuildNotConnectedToOrgHTML(orgSlug string) string {
 		EscapeHTML(strings.TrimSpace(orgSlug)))
 }
 
+// BuildReadOnlyRoleHTML refuses a write (/ack, /comment) from a chat whose
+// linked member only holds a read-only role (viewer) in the org. Reads stay
+// available, which is why it names the org rather than answering not-linked.
+func BuildReadOnlyRoleHTML(orgSlug string) string {
+	return fmt.Sprintf(
+		"Your role in <b>%s</b> is read-only: you can view incidents, "+
+			"but not acknowledge or comment on them.",
+		EscapeHTML(strings.TrimSpace(orgSlug)))
+}
+
+// ReadOnlyRoleToast is the callback-toast twin of BuildReadOnlyRoleHTML (toasts
+// are plain text, and short).
+func ReadOnlyRoleToast(orgSlug string) string {
+	return fmt.Sprintf("Your role in %s is read-only.", strings.TrimSpace(orgSlug))
+}
+
 // BuildAmbiguousRefHTML is the answer to a BARE reference in a chat linked to
 // several organizations, when the number exists in more than one of them.
 //
