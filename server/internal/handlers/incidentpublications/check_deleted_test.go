@@ -62,7 +62,9 @@ func newDelSetup(t *testing.T, dbSvc db.Service, policy models.AutoResolvePolicy
 	section := models.NewStatusPageSection(page.UID, "Services", "services", 1)
 	r.NoError(dbSvc.CreateStatusPageSection(ctx, section))
 
-	clk := clock.NewFake(time.Now().UTC().Truncate(time.Second))
+	// Based on now, not a fixed date: the status-update feed query filters on the
+	// real DB clock, so a fixed date falls out of the 90-day history window.
+	clk := clock.NewFake(time.Now().UTC().Truncate(time.Hour))
 	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
 	pubs := incidentpublications.NewService(dbSvc, clk, nil)

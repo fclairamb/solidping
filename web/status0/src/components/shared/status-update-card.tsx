@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import type { BadgeProps } from "@/components/ui/badge";
 import type { StatusUpdatePublicResponse } from "@/api/hooks";
+import { localizeGenerated } from "@/lib/localized-text";
 
 // ALLOWED_SCHEMES defines URL schemes that are safe to render as links.
 const ALLOWED_SCHEMES = ["http", "https", "mailto"];
@@ -94,6 +95,8 @@ export function StatusUpdateCard({
   variant = "card",
 }: StatusUpdateCardProps) {
   const { t, i18n } = useTranslation();
+  const exists = (key: string) => i18n.exists(key);
+  const body = localizeGenerated(t, exists, update.bodyI18n, update.bodyMarkdown);
   // Known kinds share the incident-state labels; an unknown one falls back to
   // its capitalized raw value.
   const kind = t(`incidentState.${update.kind || "info"}`, {
@@ -111,7 +114,7 @@ export function StatusUpdateCard({
       {/* Header row: title (left) + kind badge + timestamp (right) */}
       <div className="flex items-start justify-between gap-2 flex-wrap">
         <h3 className="text-sm font-semibold text-foreground min-w-0 break-words">
-          {update.title}
+          {localizeGenerated(t, exists, update.titleI18n, update.title)}
         </h3>
         {/* translate="no" on both: the kind label flips
             investigating → identified → resolved as the incident progresses,
@@ -139,9 +142,9 @@ export function StatusUpdateCard({
       </div>
 
       {/* Body markdown */}
-      {update.bodyMarkdown && (
+      {body && (
         <div className="prose prose-sm max-w-none text-sm text-foreground [&>*:last-child]:mb-0">
-          <SafeMarkdown content={update.bodyMarkdown} />
+          <SafeMarkdown content={body} />
         </div>
       )}
 

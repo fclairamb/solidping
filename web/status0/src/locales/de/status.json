@@ -117,5 +117,23 @@
       "30d": "Verfügbarkeit (30 Tage)",
       "90d": "Verfügbarkeit (90 Tage)"
     }
-  }
+  },
+  "publication": {
+    "openedTitle": "{{name}} hat Probleme",
+    "openedBody": "Wir untersuchen eine Störung, die {{name}} betrifft.",
+    "groupOpenedTitle": "Einige Dienste haben Probleme",
+    "resolvedTitle": "{{name}} ist wiederhergestellt",
+    "resolvedBody": "{{name}} funktioniert wieder normal. Die Störung ist behoben.",
+    "monitoringTitle": "{{name}} ist wiederhergestellt",
+    "monitoringBody": "Die betroffene Komponente ist wiederhergestellt. Wir beobachten die Lage.",
+    "relapseTitle": "{{name}} hat erneut Probleme",
+    "relapseBody": "{{name}} ist erneut betroffen. Wir untersuchen das Problem.",
+    "alsoAffectingTitle": "Diese Störung betrifft auch {{name}}",
+    "alsoAffectingBody": "{{name}} ist nun ebenfalls von dieser Störung betroffen.",
+    "removedTitle": "{{name}} wird nicht mehr überwacht",
+    "removedGenericTitle": "Der betroffene Dienst wird nicht mehr überwacht",
+    "removedBody": "Die überwachte Ressource wurde entfernt. Die Störung ist behoben."
+  },
+  "unlockWrongPassword": "Falsches Passwort",
+  "unlockTooManyAttempts": "Zu viele Versuche. Bitte versuchen Sie es in einigen Minuten erneut."
 }

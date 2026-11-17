@@ -88,7 +88,8 @@
       "lastAuthMethod": "Fügen Sie einen weiteren Passkey hinzu oder legen Sie ein Passwort fest, bevor Sie diesen entfernen.",
       "unsupported": "Dieser Browser unterstützt keine Passkeys.",
       "removeFailed": "Passkey konnte nicht entfernt werden.",
-      "renameFailed": "Passkey konnte nicht umbenannt werden."
+      "renameFailed": "Passkey konnte nicht umbenannt werden.",
+      "defaultLabel": "Sicherheitsschlüssel"
     },
     "totp": {
       "title": "Zwei-Faktor-Authentifizierung (TOTP)",

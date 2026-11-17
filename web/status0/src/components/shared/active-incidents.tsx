@@ -7,6 +7,7 @@ import type {
 } from "@/api/hooks";
 import { severityStyle } from "@/lib/status-style";
 import { StatusUpdateThreadList } from "./status-updates-timeline";
+import { localizeGenerated } from "@/lib/localized-text";
 
 function stateBadgeVariant(state: string) {
   switch (state) {
@@ -42,13 +43,15 @@ function toTimelineUpdate(
     uid: update.uid,
     title: update.title,
     bodyMarkdown: update.bodyMarkdown,
+    titleI18n: update.titleI18n,
+    bodyI18n: update.bodyI18n,
     kind: update.kind,
     publishedAt: update.publishedAt,
   };
 }
 
 export function IncidentCard({ incident }: { incident: PublicIncident }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const updates = incident.updates ?? [];
   const severity = severityStyle(incident.severity);
 
@@ -68,7 +71,12 @@ export function IncidentCard({ incident }: { incident: PublicIncident }) {
             className="min-w-0 break-words text-sm font-semibold sm:text-base"
             data-testid="active-incident-title"
           >
-            {incident.title}
+            {localizeGenerated(
+              t,
+              (key) => i18n.exists(key),
+              incident.titleI18n,
+              incident.title,
+            )}
           </h3>
           {/* translate="no" on the badges: their text flips as the incident
               progresses while their elements are reused, which is the pattern

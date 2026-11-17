@@ -24,7 +24,7 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 
 	// Validate Host
 	if cfg.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
+		return checkerdef.NewRequiredConfigError("host")
 	}
 
 	// Validate Count (1-600) - check the original value if set

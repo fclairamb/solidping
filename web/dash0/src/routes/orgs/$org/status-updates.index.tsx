@@ -54,6 +54,7 @@ import { useDebounce } from "@/lib/use-debounce";
 import { cn } from "@/lib/utils";
 import { STATUS_UPDATE_KINDS, statusUpdateKindTone } from "@/lib/status-update-kind";
 import { STATUS_BASE } from "@/lib/base-path";
+import { localizeGenerated } from "@/lib/localized-text";
 
 interface StatusUpdatesIndexSearch {
   q?: string;
@@ -103,7 +104,7 @@ function StatusUpdateRow({
           className="font-medium text-foreground hover:text-primary hover:underline transition-colors"
           data-testid="status-update-row-title"
         >
-          {update.title}
+          {localizeGenerated(t, update.titleI18n, update.title)}
         </Link>
         {/* A threaded post points back at the publication it hangs under. A
             standalone post (maintenance, info) has no publication, so it gets

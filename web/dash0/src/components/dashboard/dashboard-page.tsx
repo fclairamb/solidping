@@ -82,6 +82,7 @@ import { statusStyle } from "@/lib/status-style";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { localizeGenerated } from "@/lib/localized-text";
 
 const CHECK_POLL_MS = 30_000;
 const INCIDENT_POLL_MS = 30_000;
@@ -1009,7 +1010,9 @@ function ActiveIncidentsList({
                             data-testid="active-incident-title"
                             data-incident-title={incident.title}
                           >
-                            {incident.title || t("activeIncidents.untitled")}
+                            {(incident.title &&
+                              localizeGenerated(t, incident.titleI18n, incident.title)) ||
+                              t("activeIncidents.untitled")}
                           </div>
                           {incident.checkName ? (
                             <div

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useWebPushSubscription } from "@/hooks/useWebPushSubscription";
@@ -24,6 +25,7 @@ export function WebPushEnableButton({
   "data-testid": testId,
 }: WebPushEnableButtonProps) {
   const { isSupported, permission, subscribe } = useWebPushSubscription(org);
+  const { t } = useTranslation("integrations");
   const [state, setState] = useState<ButtonState>(() => {
     if (permission === "denied") return "blocked";
     if (permission === "granted") return "default"; // may already be subscribed; let parent track
@@ -54,10 +56,10 @@ export function WebPushEnableButton({
   };
 
   const label: Record<ButtonState, string> = {
-    default: "Enable browser notifications",
-    pending: "Enabling…",
-    subscribed: "Subscribed",
-    blocked: "Notifications blocked",
+    default: t("webPushButton.enable"),
+    pending: t("webPushButton.enabling"),
+    subscribed: t("webPushButton.subscribed"),
+    blocked: t("webPushButton.blocked"),
   };
 
   return (

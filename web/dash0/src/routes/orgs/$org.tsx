@@ -317,7 +317,7 @@ function Breadcrumbs({ org }: { org: string }) {
   );
 
   if (isNotificationDetail) {
-    const notifLabel = "Notification";
+    const notifLabel = t("notification");
     if (notifFrom?.type === "incident") {
       const incidentLabel =
         notifIncident?.checkName ||

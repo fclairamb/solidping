@@ -99,7 +99,9 @@ type OpenSLOBurnIncidentRequest struct {
 	AnchorCheck     *models.Check
 	StartedAt       time.Time
 	Title           string
-	Snapshot        *BurnSnapshot
+	// TitleI18n is the recipe of Title, for the dashboard (optional).
+	TitleI18n *models.LocalizedText
+	Snapshot  *BurnSnapshot
 }
 
 // OpenSLOBurnIncident opens a burn-rate incident through the normal incident
@@ -123,6 +125,7 @@ func (s *Service) OpenSLOBurnIncident(
 
 	incident := models.NewIncident(req.OrganizationUID, req.AnchorCheck.UID, req.StartedAt, req.Title)
 	incident.Kind = models.IncidentKindSLOBurn
+	incident.TitleI18n = req.TitleI18n
 	incident.SLOUID = &req.Snapshot.SLOUID
 	incident.SLOAlertPolicyUID = &req.Snapshot.PolicyUID
 	incident.Details = req.Snapshot.Details()

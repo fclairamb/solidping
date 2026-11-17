@@ -332,11 +332,11 @@ func (c *RabbitMQConfig) GetConfig() map[string]any {
 // Validate checks if the configuration is valid.
 func (c *RabbitMQConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError(checkerdef.OutputKeyHost, "is required")
+		return checkerdef.NewRequiredConfigError(checkerdef.OutputKeyHost)
 	}
 
 	if c.Username == "" {
-		return checkerdef.NewConfigError("username", "is required")
+		return checkerdef.NewRequiredConfigError("username")
 	}
 
 	if c.Port != 0 && (c.Port < 1 || c.Port > 65535) {

@@ -193,5 +193,19 @@
   "removeItem": "Quitar {{item}}",
   "githubStar": {
     "sidebar": "Dar una estrella en GitHub"
+  },
+  "backToList": "Volver a {{list}}",
+  "resources": {
+    "check": "Comprobación",
+    "statusPage": "Página de estado",
+    "incidentPublication": "Publicación de incidencia",
+    "statusUpdate": "Aviso"
+  },
+  "apiErrors": {
+    "generic": "Se ha producido un error",
+    "rateLimited": "Demasiadas solicitudes",
+    "sessionExpired": "Sesión caducada",
+    "sessionChanged": "La sesión ha cambiado",
+    "network": "Falló la conexión de red"
   }
 }

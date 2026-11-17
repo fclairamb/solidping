@@ -32,7 +32,8 @@
       "lastAuthMethod": "Add another passkey or set a password before removing this one.",
       "unsupported": "This browser does not support passkeys.",
       "removeFailed": "Could not remove passkey.",
-      "renameFailed": "Could not rename passkey."
+      "renameFailed": "Could not rename passkey.",
+      "defaultLabel": "Security key"
     },
     "totp": {
       "title": "Two-Factor Authentication (TOTP)",

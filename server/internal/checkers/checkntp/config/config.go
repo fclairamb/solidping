@@ -179,7 +179,7 @@ func (c *NTPConfig) GetConfig() map[string]any {
 // defaults for the optional numeric fields so Execute can rely on them.
 func (c *NTPConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
+		return checkerdef.NewRequiredConfigError("host")
 	}
 
 	if c.Port == 0 {

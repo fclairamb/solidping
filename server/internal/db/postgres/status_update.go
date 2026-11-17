@@ -120,16 +120,18 @@ func (s *Service) ListPublicStatusUpdates(
 	}
 
 	type rowResult struct {
-		UID            string    `bun:"uid"`
-		SectionUID     *string   `bun:"section_uid"`
-		CheckUID       *string   `bun:"check_uid"`
-		IncidentUID    *string   `bun:"incident_uid"`
-		PublicationUID *string   `bun:"incident_publication_uid"`
-		Title          string    `bun:"title"`
-		BodyMarkdown   string    `bun:"body_markdown"`
-		LinkURL        *string   `bun:"link_url"`
-		Kind           string    `bun:"kind"`
-		PublishedAt    time.Time `bun:"published_at"`
+		UID            string                `bun:"uid"`
+		SectionUID     *string               `bun:"section_uid"`
+		CheckUID       *string               `bun:"check_uid"`
+		IncidentUID    *string               `bun:"incident_uid"`
+		PublicationUID *string               `bun:"incident_publication_uid"`
+		Title          string                `bun:"title"`
+		BodyMarkdown   string                `bun:"body_markdown"`
+		TitleI18n      *models.LocalizedText `bun:"title_i18n,type:jsonb"`
+		BodyI18n       *models.LocalizedText `bun:"body_i18n,type:jsonb"`
+		LinkURL        *string               `bun:"link_url"`
+		Kind           string                `bun:"kind"`
+		PublishedAt    time.Time             `bun:"published_at"`
 	}
 
 	var rowResults []rowResult
@@ -140,7 +142,7 @@ func (s *Service) ListPublicStatusUpdates(
 	// history-window `historyDays` is an int, so fmt.Sprintf interpolation is safe.
 	rawQuery := fmt.Sprintf(
 		`SELECT uid, section_uid, check_uid, incident_uid, incident_publication_uid,
-		        title, body_markdown, link_url, kind, published_at
+		        title, body_markdown, title_i18n, body_i18n, link_url, kind, published_at
 		 FROM status_updates
 		 WHERE status_page_uid = ?
 		   AND deleted_at IS NULL
@@ -172,6 +174,8 @@ func (s *Service) ListPublicStatusUpdates(
 			PublicationUID: entry.PublicationUID,
 			Title:          entry.Title,
 			BodyMarkdown:   entry.BodyMarkdown,
+			TitleI18n:      entry.TitleI18n,
+			BodyI18n:       entry.BodyI18n,
 			LinkURL:        entry.LinkURL,
 			Kind:           entry.Kind,
 			PublishedAt:    entry.PublishedAt,

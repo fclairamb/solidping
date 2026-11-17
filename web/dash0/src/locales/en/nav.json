@@ -176,5 +176,7 @@
     "publicStatus": "Public status",
     "administration": "Administration"
   },
-  "history": "History"
+  "history": "History",
+  "notifications": "Notifications",
+  "notification": "Notification"
 }

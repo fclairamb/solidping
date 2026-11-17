@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
@@ -36,12 +37,6 @@ export function ipv6Capability(
   return "unknown";
 }
 
-const labels: Record<Ipv6Capability, string> = {
-  yes: "IPv6",
-  no: "No IPv6",
-  unknown: "IPv6 unknown",
-};
-
 const variants: Record<Ipv6Capability, "success" | "warning" | "outline"> = {
   yes: "success",
   no: "warning",
@@ -49,12 +44,7 @@ const variants: Record<Ipv6Capability, "success" | "warning" | "outline"> = {
   unknown: "outline",
 };
 
-const hints: Record<Ipv6Capability, string> = {
-  yes: "At least one live worker in this region reports IPv6 egress.",
-  no: "No live worker in this region currently reports IPv6 egress. You can still select it — the check is only rejected if the worker really has no IPv6 route when it runs.",
-  unknown:
-    "Not reported yet — this region has no live worker reporting its egress families, or is running an older agent. It may well support IPv6.",
-};
+// Labels and hints: checks:regionCapability.ipv6.{label,hint}.<capability>.
 
 /**
  * Renders the capability as a badge with a distinct look per state. Pass
@@ -78,6 +68,7 @@ export function Ipv6CapabilityBadge({
   // click from reaching an enclosing <label> (the region picker row), which
   // would toggle the region.
   const [open, setOpen] = useState(false);
+  const { t } = useTranslation("checks");
 
   if (capability === "unknown" && hideUnknown) {
     return null;
@@ -99,10 +90,10 @@ export function Ipv6CapabilityBadge({
             data-testid={testId}
             data-ipv6={capability}
           >
-            {labels[capability]}
+            {t(`regionCapability.ipv6.label.${capability}`)}
           </Badge>
         </TooltipTrigger>
-        <TooltipContent className="max-w-xs">{hints[capability]}</TooltipContent>
+        <TooltipContent className="max-w-xs">{t(`regionCapability.ipv6.hint.${capability}`)}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

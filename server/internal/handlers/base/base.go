@@ -224,10 +224,14 @@ type ValidationErrorField struct {
 	// produced this finding (e.g. "SLUG_TAKEN"). Empty when the producer
 	// has no code to offer; clients must fall back to Name + Message.
 	Code string `json:"code,omitempty"`
+	// Rule names the specific rule behind an INVALID_CONFIG finding
+	// ("required"), for clients that translate the message. Empty when the
+	// rule has no identifier yet; clients fall back to Message.
+	Rule string `json:"rule,omitempty"`
 }
 
 // IsError reports whether the finding blocks. Absent severity means error.
-func (f ValidationErrorField) IsError() bool {
+func (f *ValidationErrorField) IsError() bool {
 	return f.Severity == "" || f.Severity == SeverityError
 }
 

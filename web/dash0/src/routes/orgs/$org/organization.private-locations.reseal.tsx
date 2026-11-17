@@ -31,7 +31,7 @@ function ResealPage() {
       <QueryErrorView
         error={error}
         org={org}
-        resource="Checks"
+        resource={t("nav:checks")}
         backTo="/orgs/$org/organization/private-locations"
         backLabel={t("privateLocations.reseal.back")}
         onRetry={() => refetch()}

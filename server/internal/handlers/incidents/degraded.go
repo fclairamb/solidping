@@ -123,6 +123,8 @@ type OpenDegradedIncidentRequest struct {
 	Check     *models.Check
 	StartedAt time.Time
 	Title     string
+	// TitleI18n is the recipe of Title, for the dashboard (optional).
+	TitleI18n *models.LocalizedText
 	Snapshot  *DegradedSnapshot
 }
 
@@ -158,6 +160,7 @@ func (s *Service) OpenDegradedIncident(
 
 	incident := models.NewIncident(req.Check.OrganizationUID, req.Check.UID, req.StartedAt, req.Title)
 	incident.Kind = models.IncidentKindDegraded
+	incident.TitleI18n = req.TitleI18n
 	incident.Details = req.Snapshot.Details()
 
 	if err := s.db.CreateIncident(ctx, incident); err != nil {

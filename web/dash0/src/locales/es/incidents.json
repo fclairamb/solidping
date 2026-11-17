@@ -369,5 +369,34 @@
     "empty": "Ningún incidente en este período",
     "truncated": "Solo se incluyen los 5.000 incidentes más recientes, por lo que estas cifras son parciales.",
     "noData": "Sin datos"
+  },
+  "generated": {
+    "incident": {
+      "title": {
+        "down": "{{name}} está caído",
+        "downUnnamed": "La comprobación está caída",
+        "degradedFailures": "{{name}} está degradado: {{failures}} fallos en los últimos {{probes}} sondeos",
+        "degradedFailuresAvailability": "{{name}} está degradado: {{failures}} fallos en los últimos {{probes}} sondeos ({{availability, number(minimumFractionDigits: 1; maximumFractionDigits: 1)}} % disponible)",
+        "degradedSlow": "{{name}} está degradado: {{slow}} de los últimos {{probes}} sondeos fueron más lentos que {{thresholdMs}} ms",
+        "sloFastBurn": "Consumo rápido: el presupuesto de error de {{name}} se consume a {{rate, number(minimumFractionDigits: 1; maximumFractionDigits: 1)}}x",
+        "sloSlowBurn": "Consumo lento: el presupuesto de error de {{name}} se consume a {{rate, number(minimumFractionDigits: 1; maximumFractionDigits: 1)}}x"
+      }
+    },
+    "publication": {
+      "openedTitle": "{{name}} está experimentando problemas",
+      "openedBody": "Estamos investigando una incidencia que afecta a {{name}}.",
+      "groupOpenedTitle": "Algunos servicios están experimentando problemas",
+      "resolvedTitle": "{{name}} se ha recuperado",
+      "resolvedBody": "{{name}} vuelve a funcionar con normalidad. La incidencia está resuelta.",
+      "monitoringTitle": "{{name}} se ha recuperado",
+      "monitoringBody": "El componente afectado se ha recuperado. Estamos supervisando la situación.",
+      "relapseTitle": "{{name}} vuelve a experimentar problemas",
+      "relapseBody": "{{name}} está afectado de nuevo. Estamos investigando.",
+      "alsoAffectingTitle": "Esta incidencia también afecta a {{name}}",
+      "alsoAffectingBody": "{{name}} también está afectado por esta incidencia.",
+      "removedTitle": "{{name}} ya no se supervisa",
+      "removedGenericTitle": "El servicio afectado ya no se supervisa",
+      "removedBody": "El recurso supervisado se ha eliminado. La incidencia está resuelta."
+    }
   }
 }

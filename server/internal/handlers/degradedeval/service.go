@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -197,6 +198,7 @@ func (s *Service) applyFiring(
 		Check:     check,
 		StartedAt: startedAt,
 		Title:     Title(check, snapshot),
+		TitleI18n: TitleI18n(check, snapshot),
 		Snapshot:  snapshot,
 	})
 
@@ -382,14 +384,7 @@ func resolveWindow(open *models.Incident, outcome *degraded.Outcome) int {
 // like an outage: "is down" would get muted alongside the real thing, and the
 // target is usually up at this very moment.
 func Title(check *models.Check, snapshot *incidents.DegradedSnapshot) string {
-	name := "Check"
-
-	switch {
-	case check.Slug != nil && *check.Slug != "":
-		name = *check.Slug
-	case check.Name != nil && *check.Name != "":
-		name = *check.Name
-	}
+	name := titleName(check)
 
 	switch {
 	case snapshot.FailuresFired && snapshot.AvailabilityPct != nil:
@@ -401,5 +396,48 @@ func Title(check *models.Check, snapshot *incidents.DegradedSnapshot) string {
 	default:
 		return fmt.Sprintf("%s is degraded: %d of the last %d probes were slower than %dms",
 			name, snapshot.SlowMatches, snapshot.SlowSlots, snapshot.SlowThreshold)
+	}
+}
+
+// TitleI18n is the recipe of Title, so the dashboard shows it in the reader's
+// language. Same branches, same values: the availability is rounded to the
+// one decimal Title prints.
+func TitleI18n(check *models.Check, snapshot *incidents.DegradedSnapshot) *models.LocalizedText {
+	name := titleName(check)
+
+	switch {
+	case snapshot.FailuresFired && snapshot.AvailabilityPct != nil:
+		availability := math.Round(*snapshot.AvailabilityPct*10) / 10
+
+		return models.NewLocalizedText(incidents.TitleKeyDegradedFailuresAvailability, &models.LocalizedParams{
+			Name:         name,
+			Failures:     &snapshot.FailureMatches,
+			Probes:       &snapshot.FailureSlots,
+			Availability: &availability,
+		})
+	case snapshot.FailuresFired:
+		return models.NewLocalizedText(incidents.TitleKeyDegradedFailures, &models.LocalizedParams{
+			Name:     name,
+			Failures: &snapshot.FailureMatches,
+			Probes:   &snapshot.FailureSlots,
+		})
+	default:
+		return models.NewLocalizedText(incidents.TitleKeyDegradedSlow, &models.LocalizedParams{
+			Name:        name,
+			Slow:        &snapshot.SlowMatches,
+			Probes:      &snapshot.SlowSlots,
+			ThresholdMs: &snapshot.SlowThreshold,
+		})
+	}
+}
+
+func titleName(check *models.Check) string {
+	switch {
+	case check.Slug != nil && *check.Slug != "":
+		return *check.Slug
+	case check.Name != nil && *check.Name != "":
+		return *check.Name
+	default:
+		return "Check"
 	}
 }
