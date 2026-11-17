@@ -1043,3 +1043,24 @@ return { status: a.ok && b.ok && c.ok && d.ok ? "up" : "down" };
 		"select:label=Country=France", "submit:text=Sign in",
 	}, session.pressed)
 }
+
+// TestBrowserSelectorArraysAreEncodedAsLists: an array argument reaches the
+// session as one encoded fallback list.
+//
+//nolint:paralleltest // mutates the package-level OpenBrowser seam
+func TestBrowserSelectorArraysAreEncodedAsLists(t *testing.T) {
+	r := require.New(t)
+
+	session := &fakeSession{}
+	installFakeBrowser(t, session)
+
+	result := runBrowserScript(t, `
+var page = browser.open();
+var a = page.check(["aria/Remember", "#cb"]);
+var b = page.submit("aria/Go[role=\"button\"]");
+return { status: a.ok && b.ok ? "up" : "down" };
+`, 5*time.Second)
+
+	r.Equal("up", result.Status.String(), "output: %#v", result.Output)
+	r.Equal([]string{`check:["aria/Remember","#cb"]`, `submit:aria/Go[role="button"]`}, session.pressed)
+}

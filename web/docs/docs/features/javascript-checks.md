@@ -369,6 +369,16 @@ supported.
 | `label=` | The form control of a `<label>` (`for=`, nesting, `aria-label`, `aria-labelledby`), `placeholder` as a last resort |
 | `name=` | `[name="..."]` |
 | `auto=` | Tries CSS, then `name=`, `label=`, `text=`; first strategy with a match wins. Meant for imports |
+| `aria/Name` or `aria/Name[role="button"]` | Chrome DevTools Recorder syntax: accessible name (and role), computed by Chrome's accessibility tree |
+| `xpath/<expr>` | Chrome Recorder syntax: an XPath expression (`xpath///button[2]`) |
+| `pierce/<css>` | Chrome Recorder syntax: CSS that also descends into open shadow roots |
+| `text/<text>` | Chrome Recorder syntax: same as `text=` |
+
+Every selector argument also accepts an **array of fallbacks**, tried in order: the first entry that resolves to exactly one visible element wins, and an ambiguous or missing entry is skipped when a later one is unique. When none qualifies, the error lists each entry with its match count.
+
+```js
+page.click(["aria/Sign in", "#login > button", "xpath///button[2]"]);
+```
 
 Matching ignores case and extra whitespace; an exact match wins over a "contains" match. Only visible elements count, and exactly one must match: no match is an error, and so is an ambiguous one (`text="Save" matches 3 elements, make it more specific`).
 

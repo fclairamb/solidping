@@ -16,16 +16,21 @@ func TestParseSelector(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string][2]string{
-		"button":           {"css", "button"},
-		"css=button":       {"css", "button"},
-		"text=Sign in":     {"text", "Sign in"},
-		"label=Email":      {"label", "Email"},
-		"name=q":           {"name", "q"},
-		"auto=START":       {"auto", "START"},
-		"a[href='x=y']":    {"css", "a[href='x=y']"},
-		"unknown=whatever": {"css", "unknown=whatever"},
-		"text=name=nested": {"text", "name=nested"},
-		"#text=not-a-kind": {"css", "#text=not-a-kind"},
+		"button":                 {"css", "button"},
+		"css=button":             {"css", "button"},
+		"text=Sign in":           {"text", "Sign in"},
+		"label=Email":            {"label", "Email"},
+		"name=q":                 {"name", "q"},
+		"auto=START":             {"auto", "START"},
+		"a[href='x=y']":          {"css", "a[href='x=y']"},
+		"unknown=whatever":       {"css", "unknown=whatever"},
+		"text=name=nested":       {"text", "name=nested"},
+		"#text=not-a-kind":       {"css", "#text=not-a-kind"},
+		"aria/Sign in":           {"aria", "Sign in"},
+		`aria/Go[role="button"]`: {"aria", `Go[role="button"]`},
+		"xpath///button[2]":      {"xpath", "//button[2]"},
+		"pierce/#x":              {"pierce", "#x"},
+		"text/Sign in":           {"text", "Sign in"},
 	}
 
 	for in, want := range cases {
@@ -234,4 +239,122 @@ func TestSelectorTaggingDoesNotTripEgressGuard(t *testing.T) {
 	r.NoError(err)
 	r.EqualValues(0, tagged)
 	r.NoError(session.deniedByEgress())
+}
+
+func TestSelectorList(t *testing.T) {
+	t.Parallel()
+
+	list, isList := parseSelectorList(EncodeSelectorList([]string{"aria/Go", "#a > b", `x[y="z"]`}))
+	require.True(t, isList)
+	require.Equal(t, []string{"aria/Go", "#a > b", `x[y="z"]`}, list)
+
+	// CSS attribute selectors starting with "[" are not lists.
+	for _, css := range []string{"[name=q]", `[data-x="1"]`, "button", "[]"} {
+		got, isList := parseSelectorList(css)
+		require.False(t, isList, css)
+		require.Equal(t, []string{css}, got)
+	}
+
+	require.True(t, needsResolver(`["#a"]`))
+	require.True(t, needsResolver("aria/x"))
+	require.False(t, needsResolver("#a"))
+}
+
+func TestAriaRole(t *testing.T) {
+	t.Parallel()
+
+	name, role := ariaRole(`Sign in[role="button"]`)
+	require.Equal(t, "Sign in", name)
+	require.Equal(t, "button", role)
+
+	name, role = ariaRole("Sign in")
+	require.Equal(t, "Sign in", name)
+	require.Empty(t, role)
+}
+
+const recorderFixture = `<html><body>
+<button id="r1" aria-label="Log in">x</button>
+<a href="#" id="r2">Log in</a>
+<h2 role="heading">Title</h2>
+<div id="host"></div>
+<button id="amb1">Dup</button><button id="amb2">Dup</button>
+<script>
+var root = document.getElementById("host").attachShadow({mode: "open"});
+root.innerHTML = '<button id="deep">Deep action</button>';
+root.getElementById("deep").addEventListener("click", function(){ document.title = "deep-clicked"; });
+document.getElementById("r2").addEventListener("click", function(){ document.title = "link-clicked"; });
+document.getElementById("r1").addEventListener("click", function(){ document.title = "button-clicked"; });
+</script></body></html>`
+
+//nolint:paralleltest // mutates the process-wide settings
+func TestRecorderSelectorsLive(t *testing.T) {
+	settings, ok := liveBrowserSettings()
+	if !ok {
+		t.Skip(liveBrowserSkipReason)
+	}
+
+	r := require.New(t)
+
+	withSettings(t, settings)
+	widenChromeStart(t)
+
+	fixture := liveFixtureServer(t)
+	mux, isMux := fixture.Config.Handler.(*http.ServeMux)
+	r.True(isMux)
+	mux.HandleFunc("/rec", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(recorderFixture))
+	})
+
+	base := browserReachableURL(t, fixture.URL)
+
+	ctx, cancel := contextWithTimeout(t, 60*time.Second)
+	defer cancel()
+
+	session, err := Open(ctx)
+	r.NoError(err)
+
+	defer session.Close()
+
+	_, err = session.Navigate(ctx, base+"/rec")
+	r.NoError(err)
+
+	title := func() any {
+		got, evalErr := session.Evaluate(ctx, `document.title`)
+		r.NoError(evalErr)
+
+		return got
+	}
+
+	// aria/ with a role picks the button, not the link of the same name.
+	r.NoError(session.Click(ctx, `aria/Log in[role="button"]`))
+	r.Equal("button-clicked", title())
+	r.NoError(session.Click(ctx, `aria/Log in[role="link"]`))
+	r.Equal("link-clicked", title())
+	// Without a role both match: ambiguous.
+	r.ErrorContains(session.Click(ctx, "aria/Log in"), "matches 2 elements")
+	r.ErrorContains(session.Click(ctx, "aria/Nothing like it"), "no element matches")
+
+	// xpath/ and text/.
+	r.NoError(session.Click(ctx, "xpath///button[@id='r1']"))
+	r.Equal("button-clicked", title())
+	r.NoError(session.Click(ctx, "text/Log in"))
+
+	// pierce/ reaches inside an open shadow root; plain CSS does not.
+	r.NoError(session.Click(ctx, "pierce/#deep"))
+	r.Equal("deep-clicked", title())
+	r.Error(session.Click(ctx, "pierce/#absent"))
+
+	// Fallback list: stale first, ambiguous first, all failing.
+	r.NoError(session.Click(ctx, EncodeSelectorList([]string{"#gone", "#r2"})))
+	r.Equal("link-clicked", title())
+	r.NoError(session.Click(ctx, EncodeSelectorList([]string{"text=Dup", "#r1"})))
+	r.Equal("button-clicked", title())
+
+	err = session.Click(ctx, EncodeSelectorList([]string{"#gone", "text=Dup", "aria/Nothing"}))
+	r.ErrorContains(err, "#gone (0 matches)")
+	r.ErrorContains(err, "text=Dup (2 matches)")
+	r.ErrorContains(err, "aria/Nothing (0 matches)")
+
+	// waitFor over a list.
+	r.NoError(session.WaitVisible(ctx, EncodeSelectorList([]string{"#gone", "#r1"})))
 }

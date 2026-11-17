@@ -536,10 +536,11 @@ func (s *Session) deniedByEgress() error {
 // with "encountered an undefined value" (a text node has no innerText).
 
 // WaitVisible waits for a selector to become visible. A prefixed selector
-// (text=, label=, name=, auto=) polls its resolver until exactly one visible
+// (text=, label=, name=, auto=, aria/, xpath/, pierce/, text/) or a list of
+// fallbacks polls its resolver until exactly one visible
 // element matches or ctx ends.
 func (s *Session) WaitVisible(ctx context.Context, sel string) error {
-	if kind, _ := parseSelector(sel); kind != kindCSS {
+	if needsResolver(sel) {
 		return s.waitResolved(ctx, sel)
 	}
 
@@ -551,8 +552,8 @@ func (s *Session) WaitVisible(ctx context.Context, sel string) error {
 // Click clicks the node sel designates, scrolling it into view first
 // (chromedp.Click's own default).
 func (s *Session) Click(ctx context.Context, sel string) error {
-	return s.withTarget(ctx, sel, func(css string) error {
-		return s.run(ctx, chromedp.Click(css, chromedp.ByQuery))
+	return s.withTarget(ctx, sel, func(tgt target) error {
+		return s.run(ctx, chromedp.Click(tgt.sel, tgt.opt))
 	})
 }
 
@@ -562,8 +563,8 @@ func (s *Session) Click(ctx context.Context, sel string) error {
 // controlled React/Vue input listens for, so a login form would submit fields
 // its own framework still believes are empty.
 func (s *Session) Fill(ctx context.Context, sel, text string) error {
-	return s.withTarget(ctx, sel, func(css string) error {
-		return s.run(ctx, chromedp.Clear(css, chromedp.ByQuery), chromedp.SendKeys(css, text, chromedp.ByQuery))
+	return s.withTarget(ctx, sel, func(tgt target) error {
+		return s.run(ctx, chromedp.Clear(tgt.sel, tgt.opt), chromedp.SendKeys(tgt.sel, text, tgt.opt))
 	})
 }
 
@@ -571,8 +572,8 @@ func (s *Session) Fill(ctx context.Context, sel, text string) error {
 // on. Key names are the familiar DOM ones; anything else is sent verbatim, so
 // a single character works too.
 func (s *Session) Press(ctx context.Context, sel, key string) error {
-	return s.withTarget(ctx, sel, func(css string) error {
-		return s.run(ctx, chromedp.SendKeys(css, keySequence(key), chromedp.ByQuery))
+	return s.withTarget(ctx, sel, func(tgt target) error {
+		return s.run(ctx, chromedp.SendKeys(tgt.sel, keySequence(key), tgt.opt))
 	})
 }
 
@@ -609,8 +610,8 @@ func keySequence(key string) string {
 func (s *Session) Text(ctx context.Context, sel string) (string, error) {
 	var text string
 
-	err := s.withTarget(ctx, sel, func(css string) error {
-		return s.run(ctx, chromedp.Text(css, &text, chromedp.ByQuery))
+	err := s.withTarget(ctx, sel, func(tgt target) error {
+		return s.run(ctx, chromedp.Text(tgt.sel, &text, tgt.opt))
 	})
 	if err != nil {
 		return "", err

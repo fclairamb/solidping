@@ -203,7 +203,7 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 	})
 
 	_ = page.Set("waitFor", func(call goja.FunctionCall) goja.Value {
-		selector := call.Argument(0).String()
+		selector := selectorArg(call.Argument(0))
 
 		var opts map[string]any
 		if len(call.Arguments) > 1 {
@@ -228,7 +228,7 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 	})
 
 	_ = page.Set("click", func(call goja.FunctionCall) goja.Value {
-		selector := call.Argument(0).String()
+		selector := selectorArg(call.Argument(0))
 
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
 			return nil, session.Click(r.execCtx, selector)
@@ -236,7 +236,7 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 	})
 
 	_ = page.Set("fill", func(call goja.FunctionCall) goja.Value {
-		selector, text := call.Argument(0).String(), call.Argument(1).String()
+		selector, text := selectorArg(call.Argument(0)), call.Argument(1).String()
 
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
 			return nil, session.Fill(r.execCtx, selector, text)
@@ -244,7 +244,7 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 	})
 
 	_ = page.Set("press", func(call goja.FunctionCall) goja.Value {
-		selector, key := call.Argument(0).String(), call.Argument(1).String()
+		selector, key := selectorArg(call.Argument(0)), call.Argument(1).String()
 
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
 			return nil, session.Press(r.execCtx, selector, key)
@@ -257,7 +257,7 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 		"submit":  BrowserSession.Submit,
 	} {
 		_ = page.Set(name, func(call goja.FunctionCall) goja.Value {
-			selector := call.Argument(0).String()
+			selector := selectorArg(call.Argument(0))
 
 			return r.pageAction(func(session BrowserSession) (map[string]any, error) {
 				return nil, action(session, r.execCtx, selector)
@@ -266,7 +266,7 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 	}
 
 	_ = page.Set("select", func(call goja.FunctionCall) goja.Value {
-		selector, option := call.Argument(0).String(), call.Argument(1).String()
+		selector, option := selectorArg(call.Argument(0)), call.Argument(1).String()
 
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
 			return nil, session.Select(r.execCtx, selector, option)
@@ -274,7 +274,7 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 	})
 
 	_ = page.Set("text", func(call goja.FunctionCall) goja.Value {
-		selector := call.Argument(0).String()
+		selector := selectorArg(call.Argument(0))
 
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
 			text, err := session.Text(r.execCtx, selector)
@@ -573,4 +573,20 @@ func (r *jsRuntime) attachScreenshot(result *checkerdef.Result) {
 		Format:     r.screenshot.Format,
 		CapturedAt: r.screenshotAt,
 	}
+}
+
+// selectorArg turns a script's selector argument into the string the session
+// takes: a plain string stays as is, an array of strings (fallbacks, tried in
+// order) is encoded as a list.
+func selectorArg(value goja.Value) string {
+	if list, ok := value.Export().([]any); ok && len(list) > 0 {
+		out := make([]string, 0, len(list))
+		for _, item := range list {
+			out = append(out, fmt.Sprint(item))
+		}
+
+		return checkbrowser.EncodeSelectorList(out)
+	}
+
+	return value.String()
 }
