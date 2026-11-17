@@ -963,6 +963,7 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, request *http.Re
 			{
 				Name:    configErr.Parameter,
 				Message: configErr.Message,
+				Rule:    configErr.Rule,
 			},
 		})
 	}
@@ -1053,6 +1054,7 @@ func (h *Handler) handleUpsertError(writer http.ResponseWriter, request *http.Re
 			{
 				Name:    configErr.Parameter,
 				Message: configErr.Message,
+				Rule:    configErr.Rule,
 			},
 		})
 	}
@@ -1116,6 +1118,7 @@ func (h *Handler) handleCloneError(writer http.ResponseWriter, request *http.Req
 			{
 				Name:    configErr.Parameter,
 				Message: configErr.Message,
+				Rule:    configErr.Rule,
 			},
 		})
 	}

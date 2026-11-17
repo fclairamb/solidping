@@ -11,6 +11,7 @@ import {
   getFieldError,
   findFinding,
   VALIDATION_CODES,
+  localizeFieldError,
 } from "@/hooks/use-check-validation";
 import { cn } from "@/lib/utils";
 import { resolveCheckRefLabel } from "@/lib/dependency-graph";
@@ -1590,7 +1591,17 @@ export function CheckForm({
       if (isDemoReadOnlyError(err)) {
         return;
       }
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.code === "VALIDATION_ERROR" && err.fields?.length) {
+        // The title is the server's English ("Configuration validation
+        // failed"): name the refused fields in the UI language instead.
+        setError(
+          t("form.invalidFields", {
+            fields: err.fields
+              .map((field) => `${field.name}: ${localizeFieldError(field).message}`)
+              .join("; "),
+          }),
+        );
+      } else if (err instanceof ApiError) {
         setError(err.message);
       } else {
         setError(

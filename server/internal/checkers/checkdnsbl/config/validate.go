@@ -17,7 +17,7 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 	}
 
 	if cfg.Target == "" {
-		return checkerdef.NewConfigError(KeyTarget, "is required")
+		return checkerdef.NewRequiredConfigError(KeyTarget)
 	}
 
 	if cfg.Nameserver != "" && !strings.Contains(cfg.Nameserver, ":") {

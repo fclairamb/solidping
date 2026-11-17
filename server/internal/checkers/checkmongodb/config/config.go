@@ -117,7 +117,7 @@ func (c *MongoDBConfig) GetConfig() map[string]any {
 // Validate checks if the configuration is valid.
 func (c *MongoDBConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
+		return checkerdef.NewRequiredConfigError("host")
 	}
 
 	if c.Port < 0 || c.Port > 65535 {

@@ -136,7 +136,7 @@ func (c *FreeboxLineConfig) GetConfig() map[string]any {
 // any network call — wire validation happens during Execute.
 func (c *FreeboxLineConfig) Validate() error {
 	if c.ConnectionUID == "" {
-		return checkerdef.NewConfigError(keyConnectionUID, "is required")
+		return checkerdef.NewRequiredConfigError(keyConnectionUID)
 	}
 
 	switch c.LinkType {

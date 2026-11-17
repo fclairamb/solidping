@@ -209,6 +209,8 @@ export class NetworkError extends Error {
 export interface ApiErrorField {
   name: string;
   message: string;
+  /** The specific config rule behind the finding ("required"), when known. */
+  rule?: string;
 }
 
 export class ApiError extends Error {

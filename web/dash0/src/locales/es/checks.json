@@ -408,7 +408,8 @@
     "lookupMethodAuto": "Automático (RDAP, WHOIS como alternativa)",
     "lookupMethodRdap": "Solo RDAP",
     "lookupMethodWhois": "Solo WHOIS",
-    "lookupMethodHelp": "Automático prueba primero RDAP y recurre a WHOIS ante cualquier fallo. Solo RDAP y Solo WHOIS nunca recurren a la alternativa."
+    "lookupMethodHelp": "Automático prueba primero RDAP y recurre a WHOIS ante cualquier fallo. Solo RDAP y Solo WHOIS nunca recurren a la alternativa.",
+    "invalidFields": "Algunos campos no son válidos: {{fields}}"
   },
   "types": {
     "http": "HTTP",
@@ -1522,7 +1523,8 @@
     "vendorStatusUrl": "La URL de la página de estado es obligatoria",
     "vendorStatusHttps": "La URL de la página de estado debe empezar por https://",
     "pluginInvalidJson": "La configuración no es JSON válido: {{detail}}",
-    "pluginNotAnObject": "La configuración debe ser un objeto JSON."
+    "pluginNotAnObject": "La configuración debe ser un objeto JSON.",
+    "fieldRequired": "Este campo es obligatorio"
   },
   "health": {
     "format": "Formato de salud",

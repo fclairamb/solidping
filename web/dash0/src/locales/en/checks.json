@@ -408,7 +408,8 @@
     "lookupMethodAuto": "Auto (RDAP, WHOIS fallback)",
     "lookupMethodRdap": "RDAP only",
     "lookupMethodWhois": "WHOIS only",
-    "lookupMethodHelp": "Auto tries RDAP first and falls back to WHOIS on any failure. RDAP only and WHOIS only never fall back."
+    "lookupMethodHelp": "Auto tries RDAP first and falls back to WHOIS on any failure. RDAP only and WHOIS only never fall back.",
+    "invalidFields": "Some fields are not valid: {{fields}}"
   },
   "types": {
     "http": "HTTP",
@@ -1522,7 +1523,8 @@
     "vendorStatusUrl": "Status page URL is required",
     "vendorStatusHttps": "Status page URL must start with https://",
     "pluginInvalidJson": "The config is not valid JSON: {{detail}}",
-    "pluginNotAnObject": "The config must be a JSON object."
+    "pluginNotAnObject": "The config must be a JSON object.",
+    "fieldRequired": "This field is required"
   },
   "health": {
     "format": "Health format",

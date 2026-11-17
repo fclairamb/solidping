@@ -31,7 +31,15 @@ type ConfigError struct {
 
 	// Message is the human-readable error message describing what's wrong.
 	Message string
+
+	// Rule identifies the rule that failed (ConfigRuleRequired...), so an API
+	// client can show the message in its reader's language. Empty when the
+	// rule has no identifier yet: clients then fall back to Message.
+	Rule string
 }
+
+// ConfigRuleRequired is the Rule of a parameter that must be set.
+const ConfigRuleRequired = "required"
 
 // Error implements the error interface.
 func (e *ConfigError) Error() string {
@@ -51,6 +59,17 @@ func NewConfigError(parameter, message string) error {
 	return &ConfigError{
 		Parameter: parameter,
 		Message:   message,
+	}
+}
+
+// NewRequiredConfigError reports a parameter that must be set. Its message
+// stays "is required" (what the API always said); its Rule lets the dashboard
+// translate it.
+func NewRequiredConfigError(parameter string) error {
+	return &ConfigError{
+		Parameter: parameter,
+		Message:   "is required",
+		Rule:      ConfigRuleRequired,
 	}
 }
 

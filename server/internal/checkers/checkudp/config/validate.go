@@ -19,11 +19,11 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 	}
 
 	if cfg.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
+		return checkerdef.NewRequiredConfigError("host")
 	}
 
 	if cfg.Port == 0 {
-		return checkerdef.NewConfigError("port", "is required")
+		return checkerdef.NewRequiredConfigError("port")
 	}
 
 	if cfg.Port < 1 || cfg.Port > 65535 {

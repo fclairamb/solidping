@@ -152,11 +152,11 @@ func (c *PostgreSQLConfig) GetConfig() map[string]any {
 // Validate checks if the configuration is valid.
 func (c *PostgreSQLConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
+		return checkerdef.NewRequiredConfigError("host")
 	}
 
 	if c.Username == "" {
-		return checkerdef.NewConfigError("username", "is required")
+		return checkerdef.NewRequiredConfigError("username")
 	}
 
 	if c.Port < 0 || c.Port > 65535 {

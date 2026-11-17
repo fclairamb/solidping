@@ -142,11 +142,11 @@ func (c *MSSQLConfig) GetConfig() map[string]any {
 // Validate checks if the configuration is valid.
 func (c *MSSQLConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
+		return checkerdef.NewRequiredConfigError("host")
 	}
 
 	if c.Username == "" {
-		return checkerdef.NewConfigError("username", "is required")
+		return checkerdef.NewRequiredConfigError("username")
 	}
 
 	if c.Port < 0 || c.Port > 65535 {

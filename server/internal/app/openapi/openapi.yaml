@@ -11085,6 +11085,53 @@ components:
             (e.g. `SLUG_TAKEN`, `ORG_RATE_OVER_LIMIT`). Absent when the producer
             has no code to offer, in which case clients fall back to
             `name` + `message`.
+        rule:
+          type: string
+          enum: [required]
+          description: >
+            The specific check-config rule behind an `INVALID_CONFIG` finding,
+            for clients that translate the message (`required`: the field must
+            be set). Absent when the rule has no identifier yet; fall back to
+            `message`.
+
+    LocalizedText:
+      type: object
+      description: >
+        Recipe of a sentence the server generated (an incident title, an
+        auto-published status-page entry and its updates): a message key and
+        the values it interpolates, so a client renders the sentence in its
+        reader's language. The literal text next to it stays the fallback for
+        an unknown key. Absent once a person wrote or edited the text.
+      required: [key]
+      properties:
+        key:
+          type: string
+          description: >
+            Message key, namespaced by producer: `incident.title.*`
+            (`down`, `downUnnamed`, `degradedFailures`,
+            `degradedFailuresAvailability`, `degradedSlow`, `sloFastBurn`,
+            `sloSlowBurn`) or `publication.*` (status-page templates).
+          example: incident.title.down
+        params:
+          type: object
+          description: Interpolated values. A `publication.*` recipe without `name` stands for an unnamed component.
+          properties:
+            name:
+              type: string
+            failures:
+              type: integer
+            probes:
+              type: integer
+            slow:
+              type: integer
+            thresholdMs:
+              type: integer
+            availability:
+              type: number
+              description: Percentage, rounded to one decimal.
+            rate:
+              type: number
+              description: SLO burn rate, rounded to one decimal.
 
     # Management schemas
     VersionResponse:
@@ -14346,6 +14393,8 @@ components:
             flapping layer.
         title:
           type: string
+        titleI18n:
+          $ref: "#/components/schemas/LocalizedText"
         description:
           type: string
         check:
@@ -15653,6 +15702,8 @@ components:
           format: uuid
         title:
           type: string
+        titleI18n:
+          $ref: "#/components/schemas/LocalizedText"
         state:
           type: string
           enum: [investigating, identified, monitoring, resolved]
@@ -15691,8 +15742,12 @@ components:
           enum: [investigating, identified, monitoring, resolved, maintenance, info]
         title:
           type: string
+        titleI18n:
+          $ref: "#/components/schemas/LocalizedText"
         bodyMarkdown:
           type: string
+        bodyI18n:
+          $ref: "#/components/schemas/LocalizedText"
         publishedAt:
           type: string
           format: date-time
@@ -15717,6 +15772,8 @@ components:
             hand-authored publication, which tracks nothing.
         title:
           type: string
+        titleI18n:
+          $ref: "#/components/schemas/LocalizedText"
         state:
           type: string
           enum: [investigating, identified, monitoring, resolved]
@@ -15779,8 +15836,12 @@ components:
           enum: [investigating, identified, monitoring, resolved, maintenance, info]
         title:
           type: string
+        titleI18n:
+          $ref: "#/components/schemas/LocalizedText"
         bodyMarkdown:
           type: string
+        bodyI18n:
+          $ref: "#/components/schemas/LocalizedText"
         publishedAt:
           type: string
           format: date-time
@@ -16653,8 +16714,12 @@ components:
             Assigned by the publication pipeline; ignored on write.
         title:
           type: string
+        titleI18n:
+          $ref: "#/components/schemas/LocalizedText"
         bodyMarkdown:
           type: string
+        bodyI18n:
+          $ref: "#/components/schemas/LocalizedText"
         linkUrl:
           type: string
         kind:
@@ -16690,8 +16755,12 @@ components:
           format: uuid
         title:
           type: string
+        titleI18n:
+          $ref: "#/components/schemas/LocalizedText"
         bodyMarkdown:
           type: string
+        bodyI18n:
+          $ref: "#/components/schemas/LocalizedText"
         linkUrl:
           type: string
         kind:
