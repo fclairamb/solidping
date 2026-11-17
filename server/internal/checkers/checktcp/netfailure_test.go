@@ -3,6 +3,8 @@ package checktcp
 import (
 	"context"
 	"net"
+	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -121,21 +123,24 @@ func TestSuccessfulProbeCarriesNoNetworkFailureMarker(t *testing.T) {
 func TestTunneledFailureCarriesNoNetworkFailureMarker(t *testing.T) {
 	t.Parallel()
 
-	port := closedPort(t)
-
-	// The "tunnel" is a plain dialer, so the failure is byte-for-byte the one
-	// the direct path classifies as connection-refused above. The only
-	// difference is that the checker took the tunneled branch.
+	// The "tunnel" returns the exact error a refused loopback dial produces, so
+	// the failure is byte-for-byte the one the direct path classifies as
+	// connection-refused above. The only difference is that the checker took
+	// the tunneled branch. Synthesizing it (rather than dialing a closed port)
+	// keeps the test deterministic: under t.Parallel a freed ephemeral port can
+	// be rebound by another test before the dial, and the probe comes back up.
 	ctx := checkerdef.WithTunnelDialer(t.Context(), dialerFunc(func(
-		ctx context.Context, network, address string,
+		_ context.Context, network, _ string,
 	) (net.Conn, error) {
-		var dialer net.Dialer
-
-		return dialer.DialContext(ctx, network, address)
+		return nil, &net.OpError{
+			Op:  "dial",
+			Net: network,
+			Err: os.NewSyscallError("connect", syscall.ECONNREFUSED),
+		}
 	}))
 
 	checker := &TCPChecker{}
-	cfg := &TCPConfig{Host: "127.0.0.1", Port: port, Timeout: 2 * time.Second}
+	cfg := &TCPConfig{Host: "127.0.0.1", Port: 9, Timeout: 2 * time.Second}
 
 	result, err := checker.Execute(ctx, cfg)
 	if err != nil {
