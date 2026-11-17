@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AppWindow } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -72,14 +73,26 @@ export function BrowserCapabilityIcon({
   className?: string;
   "data-testid"?: string;
 }) {
+  // Controlled so a click (or a tap, where there is no hover) opens the
+  // explanation instead of Radix closing it. The preventDefault also keeps a
+  // click from reaching an enclosing <label> (the region picker row), which
+  // would toggle the region.
+  const [open, setOpen] = useState(false);
+
   if (capability === "unknown" && hideUnknown) {
     return null;
   }
 
   return (
     <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
+      <Tooltip open={open} onOpenChange={setOpen}>
+        <TooltipTrigger
+          asChild
+          onClick={(event) => {
+            event.preventDefault();
+            setOpen(true);
+          }}
+        >
           <AppWindow
             className={cn("h-3.5 w-3.5", colors[capability], className)}
             data-testid={testId}
