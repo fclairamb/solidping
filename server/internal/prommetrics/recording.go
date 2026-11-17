@@ -251,3 +251,15 @@ func RecordAgentWSClosed(reason string) {
 func RecordAgentWSReconnect() {
 	AgentWSReconnects.Inc()
 }
+
+// Channels of RecordAgentLegacySignature.
+const (
+	AgentLegacySignatureHTTP      = "http"
+	AgentLegacySignatureReconnect = "reconnect"
+)
+
+// RecordAgentLegacySignature counts one agent request authenticated with the
+// deprecated v1 signature on the given channel (AgentLegacySignature*).
+func RecordAgentLegacySignature(channel string) {
+	AgentLegacySignatureRequests.WithLabelValues(channel).Inc()
+}

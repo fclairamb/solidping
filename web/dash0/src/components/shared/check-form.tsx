@@ -2145,8 +2145,16 @@ export function CheckForm({
                                 onCheckedChange={() => toggleRegion(region.slug)}
                                 data-testid={`region-checkbox-${region.slug}`}
                               />
-                              <span className="text-sm">{region.emoji} {region.name}</span>
-                              <span className="ml-auto flex items-center gap-1">
+                              <span className="text-sm" data-testid={`region-name-${region.slug}`}>
+                                {region.emoji} {region.name}
+                              </span>
+                              {/* The badges explain the region; a click on one must not
+                                  reach the <label> and toggle the region. */}
+                              <span
+                                className="ml-auto flex items-center gap-1"
+                                onClick={(event) => event.preventDefault()}
+                                data-testid={`region-badges-${region.slug}`}
+                              >
                                 {region.private && (
                                   <Badge variant="secondary" className="text-[10px]" title={t("form.privateRegionTitle")}>
                                     {t("form.privateRegionBadge")}
