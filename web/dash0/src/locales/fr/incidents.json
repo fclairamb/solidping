@@ -369,5 +369,34 @@
     "empty": "Aucun incident sur cette période",
     "truncated": "Seuls les 5 000 incidents les plus récents sont pris en compte : ces chiffres sont partiels.",
     "noData": "Aucune donnée"
+  },
+  "generated": {
+    "incident": {
+      "title": {
+        "down": "{{name}} est en panne",
+        "downUnnamed": "Le contrôle est en panne",
+        "degradedFailures": "{{name}} est dégradé : {{failures}} échecs sur les {{probes}} dernières sondes",
+        "degradedFailuresAvailability": "{{name}} est dégradé : {{failures}} échecs sur les {{probes}} dernières sondes ({{availability, number(minimumFractionDigits: 1; maximumFractionDigits: 1)}} % de disponibilité)",
+        "degradedSlow": "{{name}} est dégradé : {{slow}} des {{probes}} dernières sondes ont dépassé {{thresholdMs}} ms",
+        "sloFastBurn": "Combustion rapide : le budget d'erreur de {{name}} brûle à {{rate, number(minimumFractionDigits: 1; maximumFractionDigits: 1)}}x",
+        "sloSlowBurn": "Combustion lente : le budget d'erreur de {{name}} brûle à {{rate, number(minimumFractionDigits: 1; maximumFractionDigits: 1)}}x"
+      }
+    },
+    "publication": {
+      "openedTitle": "{{name}} rencontre des difficultés",
+      "openedBody": "Nous investiguons un incident affectant {{name}}.",
+      "groupOpenedTitle": "Certains services rencontrent des difficultés",
+      "resolvedTitle": "{{name}} a été rétabli",
+      "resolvedBody": "{{name}} fonctionne de nouveau normalement. L'incident est résolu.",
+      "monitoringTitle": "{{name}} a été rétabli",
+      "monitoringBody": "Le composant affecté a été rétabli. Nous surveillons la situation.",
+      "relapseTitle": "{{name}} rencontre de nouveau des difficultés",
+      "relapseBody": "{{name}} est de nouveau affecté. Nous investiguons.",
+      "alsoAffectingTitle": "Cet incident affecte également {{name}}",
+      "alsoAffectingBody": "{{name}} est désormais également affecté par cet incident.",
+      "removedTitle": "{{name}} n'est plus surveillé",
+      "removedGenericTitle": "Le service affecté n'est plus surveillé",
+      "removedBody": "La ressource surveillée a été retirée. L'incident est résolu."
+    }
   }
 }

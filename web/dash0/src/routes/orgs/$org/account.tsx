@@ -19,7 +19,7 @@ function AccountLayout() {
     { label: t("nav:tokens"), path: "/orgs/$org/account/tokens" },
     { label: t("nav:organizations"), path: "/orgs/$org/account/organizations" },
     { label: t("nav:ai"), path: "/orgs/$org/account/mcp" },
-    { label: "Notifications", path: "/orgs/$org/account/notifications" },
+    { label: t("nav:notifications"), path: "/orgs/$org/account/notifications" },
   ];
 
   return (

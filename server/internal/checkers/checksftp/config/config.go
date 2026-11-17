@@ -149,7 +149,7 @@ func (c *SFTPConfig) GetConfig() map[string]any {
 // Validate checks if the configuration is valid.
 func (c *SFTPConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
+		return checkerdef.NewRequiredConfigError("host")
 	}
 
 	if c.Port != 0 && (c.Port < 1 || c.Port > 65535) {
@@ -161,7 +161,7 @@ func (c *SFTPConfig) Validate() error {
 	}
 
 	if c.Username == "" {
-		return checkerdef.NewConfigError("username", "is required")
+		return checkerdef.NewRequiredConfigError("username")
 	}
 
 	if err := c.validateCredentials(); err != nil {

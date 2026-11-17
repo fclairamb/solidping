@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import type { StalePublication } from "@/api/hooks";
 import { groupStaleByPage } from "@/lib/stale-publications";
+import { localizeGenerated } from "@/lib/localized-text";
 
 interface StalePublicationsBannerProps {
   org: string;
@@ -88,7 +89,7 @@ export function StalePublicationsBanner({
                       className="underline underline-offset-2 hover:opacity-80"
                       data-testid="stale-publication-link"
                     >
-                      {publication.title}
+                      {localizeGenerated(t, publication.titleI18n, publication.title)}
                     </Link>
                   </li>
                 ))}

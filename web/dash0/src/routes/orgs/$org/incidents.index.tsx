@@ -55,6 +55,7 @@ import { CheckPicker } from "@/components/shared/check-picker";
 import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
+import { localizeGenerated } from "@/lib/localized-text";
 
 type StateFilter = "all" | "active" | "resolved" | "acked" | "snoozed";
 
@@ -578,7 +579,8 @@ function IncidentsIndexPage() {
                             data-testid="incident-title"
                             data-incident-title={incident.title ?? ""}
                           >
-                            {incident.title ||
+                            {(incident.title &&
+                              localizeGenerated(t, incident.titleI18n, incident.title)) ||
                               incident.checkName ||
                               incident.checkSlug}
                           </Link>

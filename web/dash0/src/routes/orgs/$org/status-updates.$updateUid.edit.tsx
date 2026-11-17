@@ -49,7 +49,7 @@ function EditStatusUpdatePage() {
       <QueryErrorView
         error={error}
         org={org}
-        resource="status update"
+        resource={t("common:resources.statusUpdate")}
         onRetry={() => refetch()}
       />
     );

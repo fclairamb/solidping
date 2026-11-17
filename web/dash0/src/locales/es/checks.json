@@ -47,7 +47,9 @@
     "created": "Pendiente",
     "degraded": "Degradado",
     "abandoned": "Abandonado",
-    "unknown": "Desconocido"
+    "unknown": "Desconocido",
+    "timeout": "Tiempo agotado",
+    "error": "Fallo"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} activos",
@@ -408,7 +410,8 @@
     "lookupMethodAuto": "Automático (RDAP, WHOIS como alternativa)",
     "lookupMethodRdap": "Solo RDAP",
     "lookupMethodWhois": "Solo WHOIS",
-    "lookupMethodHelp": "Automático prueba primero RDAP y recurre a WHOIS ante cualquier fallo. Solo RDAP y Solo WHOIS nunca recurren a la alternativa."
+    "lookupMethodHelp": "Automático prueba primero RDAP y recurre a WHOIS ante cualquier fallo. Solo RDAP y Solo WHOIS nunca recurren a la alternativa.",
+    "invalidFields": "Algunos campos no son válidos: {{fields}}"
   },
   "types": {
     "http": "HTTP",
@@ -1522,7 +1525,8 @@
     "vendorStatusUrl": "La URL de la página de estado es obligatoria",
     "vendorStatusHttps": "La URL de la página de estado debe empezar por https://",
     "pluginInvalidJson": "La configuración no es JSON válido: {{detail}}",
-    "pluginNotAnObject": "La configuración debe ser un objeto JSON."
+    "pluginNotAnObject": "La configuración debe ser un objeto JSON.",
+    "fieldRequired": "Este campo es obligatorio"
   },
   "health": {
     "format": "Formato de salud",
@@ -1797,5 +1801,26 @@
     "sharedRegionDisabled": "Las regiones compartidas están desactivadas: esta organización exige que los secretos de los checks se sellen en el navegador."
   },
   "groupFilterUnknown": "Ningún grupo coincide con «{{slug}}».",
-  "clearGroupFilter": "Quitar filtro"
+  "clearGroupFilter": "Quitar filtro",
+  "regionCapability": {
+    "ipv6": {
+      "label": {
+        "yes": "IPv6",
+        "no": "Sin IPv6",
+        "unknown": "IPv6 desconocido"
+      },
+      "hint": {
+        "yes": "Al menos un worker activo de esta región informa salida IPv6.",
+        "no": "Ningún worker activo de esta región informa actualmente salida IPv6. Puede seleccionarla igualmente — la comprobación solo se rechaza si el worker realmente no tiene ruta IPv6 al ejecutarse.",
+        "unknown": "Aún no informado — esta región no tiene ningún worker activo que informe sus familias de salida, o usa un agente más antiguo. Es posible que admita IPv6."
+      }
+    },
+    "browser": {
+      "hint": {
+        "yes": "Al menos un worker activo de esta región informa un navegador headless disponible para comprobaciones de navegador.",
+        "no": "Ningún worker activo de esta región informa actualmente un navegador headless. Puede seleccionarla igualmente — la comprobación solo se rechaza si el worker realmente no tiene navegador al ejecutarse.",
+        "unknown": "Aún no informado — esta región no tiene ningún worker activo que informe sus capacidades, o usa un agente más antiguo. Es posible que admita comprobaciones de navegador."
+      }
+    }
+  }
 }

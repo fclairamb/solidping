@@ -152,15 +152,19 @@ type StatusUpdateResponse struct {
 	// under a publication on the page, absent when the post stands alone (a
 	// maintenance notice, an announcement). Read-only — it is assigned by the
 	// publication pipeline, never by a client write.
-	IncidentPublicationUID *string   `json:"incidentPublicationUid,omitempty"`
-	Title                  string    `json:"title"`
-	BodyMarkdown           string    `json:"bodyMarkdown"`
-	LinkURL                *string   `json:"linkUrl,omitempty"`
-	Kind                   string    `json:"kind"`
-	PublishedAt            time.Time `json:"publishedAt"`
-	AuthorUID              *string   `json:"authorUid,omitempty"`
-	CreatedAt              time.Time `json:"createdAt"`
-	UpdatedAt              time.Time `json:"updatedAt"`
+	IncidentPublicationUID *string `json:"incidentPublicationUid,omitempty"`
+	Title                  string  `json:"title"`
+	BodyMarkdown           string  `json:"bodyMarkdown"`
+	// TitleI18n / BodyI18n are the recipes of a machine-written update, for
+	// rendering it in the reader's language. Absent on hand-written text.
+	TitleI18n   *models.LocalizedText `json:"titleI18n,omitempty"`
+	BodyI18n    *models.LocalizedText `json:"bodyI18n,omitempty"`
+	LinkURL     *string               `json:"linkUrl,omitempty"`
+	Kind        string                `json:"kind"`
+	PublishedAt time.Time             `json:"publishedAt"`
+	AuthorUID   *string               `json:"authorUid,omitempty"`
+	CreatedAt   time.Time             `json:"createdAt"`
+	UpdatedAt   time.Time             `json:"updatedAt"`
 }
 
 // CreateStatusUpdateRequest represents a request to create a status update.
@@ -225,6 +229,8 @@ func toResponse(update *models.StatusUpdate) StatusUpdateResponse {
 		IncidentPublicationUID: update.IncidentPublicationUID,
 		Title:                  update.Title,
 		BodyMarkdown:           update.BodyMarkdown,
+		TitleI18n:              update.TitleI18n,
+		BodyI18n:               update.BodyI18n,
 		LinkURL:                update.LinkURL,
 		Kind:                   string(update.Kind),
 		PublishedAt:            update.PublishedAt,
@@ -680,12 +686,21 @@ func (s *Service) UpdateStatusUpdate( //nolint:cyclop // patching optional field
 			return StatusUpdateResponse{}, err
 		}
 
+		if *req.Title != update.Title {
+			// A person rewrote it: show their words, not the template.
+			update.TitleI18n = nil
+		}
+
 		update.Title = *req.Title
 	}
 
 	if req.BodyMarkdown != nil {
 		if err := validateBody(*req.BodyMarkdown); err != nil {
 			return StatusUpdateResponse{}, err
+		}
+
+		if *req.BodyMarkdown != update.BodyMarkdown {
+			update.BodyI18n = nil
 		}
 
 		update.BodyMarkdown = *req.BodyMarkdown

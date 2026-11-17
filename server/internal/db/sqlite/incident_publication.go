@@ -122,7 +122,10 @@ func (s *Service) UpdateIncidentPublication(
 		Where("deleted_at IS NULL")
 
 	if update.PublicTitle != nil {
-		query = query.Set("public_title = ?", *update.PublicTitle)
+		// A retitle replaces the templated title: its recipe goes with it, or
+		// visitors in another language would keep reading the old one.
+		query = query.Set("public_title = ?", *update.PublicTitle).
+			Set("public_title_i18n = NULL")
 	}
 
 	if update.PublicState != nil {

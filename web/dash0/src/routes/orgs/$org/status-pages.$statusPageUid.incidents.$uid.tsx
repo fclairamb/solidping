@@ -35,6 +35,7 @@ import {
   publicationSeverityLabel,
   publicationStateLabel,
 } from "@/lib/publication-labels";
+import { localizeGenerated } from "@/lib/localized-text";
 
 export const Route = createFileRoute(
   "/orgs/$org/status-pages/$statusPageUid/incidents/$uid",
@@ -102,7 +103,7 @@ function PublicationEditorPage() {
       <QueryErrorView
         error={error}
         org={org}
-        resource="incident publication"
+        resource={t("common:resources.incidentPublication")}
         onRetry={() => void refetch()}
       />
     );
@@ -127,7 +128,7 @@ function PublicationEditorPage() {
         </Button>
         <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl break-words">
-            {publication.title}
+            {localizeGenerated(t, publication.titleI18n, publication.title)}
           </h1>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <Badge
@@ -323,7 +324,7 @@ function PublicationEditorPage() {
                     )}
                   </div>
                   <p className="mt-1 text-sm whitespace-pre-wrap break-words">
-                    {update.bodyMarkdown}
+                    {localizeGenerated(t, update.bodyI18n, update.bodyMarkdown)}
                   </p>
                 </li>
               ))}

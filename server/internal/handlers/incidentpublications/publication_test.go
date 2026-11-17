@@ -140,7 +140,7 @@ func newPubSetup(t *testing.T, opts setupOptions) *pubSetup {
 	// Anchor the fake clock on the wall clock: ListPublicStatusUpdates filters
 	// its history window with the database's own NOW(), so a hard-coded date
 	// silently ages out of the window (it did, 90 days after 2026-08-19).
-	clk := clock.NewFake(time.Now().UTC().Truncate(time.Second))
+	clk := clock.NewFake(time.Now().UTC().Truncate(time.Hour))
 	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
 	org := models.NewOrganization("acme", "Acme")
