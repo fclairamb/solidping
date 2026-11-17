@@ -139,17 +139,14 @@ test.describe("Checks index group-ordered pagination", () => {
       const sectionC = sectionByName(nameC);
 
       await expect(sectionA).toBeVisible({ timeout: 15_000 });
-      await expect(sectionC).toBeVisible();
 
-      // FIRST PAINT (page 1 only, hasNextPage still true): none of the three
-      // seeded groups — all with a non-zero badge — may show the false empty
-      // state. C is the regression focus: its checks are all on page 2, so it
-      // is empty here and must render skeletons, not "No checks".
+      // FIRST PAINT (page 1 only, hasNextPage still true), label filter on:
+      // groups without a loaded match are hidden (solidping-business#92), so C
+      // (all its checks on page 2) is not rendered yet. What must never happen
+      // is a false empty state on any of the three groups.
       for (const section of [sectionA, sectionB, sectionC]) {
         await expect(section.getByTestId("group-empty")).toHaveCount(0);
       }
-      // C is genuinely empty on page 1 → it must be showing skeleton rows.
-      await expect(sectionC.locator(".animate-pulse").first()).toBeVisible();
       // Sanity: A (fully on page 1) already shows real rows.
       await expect(
         checkNameLocator(page, `paga ${ts}-0`).first(),
@@ -172,6 +169,7 @@ test.describe("Checks index group-ordered pagination", () => {
 
       // AFTER SCROLL: C's real rows are present and the false empty state never
       // appeared.
+      await expect(sectionC).toBeVisible({ timeout: 15_000 });
       await expect(checkNameLocator(sectionC, `pagc ${ts}-0`)).toBeVisible({
         timeout: 15_000,
       });
