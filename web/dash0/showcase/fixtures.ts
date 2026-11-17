@@ -8,6 +8,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { smoothstep, type CueFile, type FocusCue, type Rect } from "./crop-window";
+import { localeSubdir, parseShowcaseLocale, showcaseContent } from "./locale";
 
 /**
  * Showcase fixtures.
@@ -45,6 +46,10 @@ import { smoothstep, type CueFile, type FocusCue, type Rect } from "./crop-windo
  * 3. **Cue points** — `focus()` records *what mattered when*; the browser is
  *    never zoomed. `postprocess.ts` turns the cue list into the camera move.
  */
+/** The language this take is filmed in (`SHOWCASE_LOCALE`, default `en`). */
+export const SHOWCASE_LOCALE = parseShowcaseLocale(process.env.SHOWCASE_LOCALE);
+const SHOWCASE_CONTENT = showcaseContent(SHOWCASE_LOCALE);
+
 export const API_BASE = process.env.E2E_BASE_URL
   ? new URL(process.env.E2E_BASE_URL).origin
   : "http://localhost:4000";
@@ -90,43 +95,31 @@ export const SHOWCASE_ORG = process.env.SHOWCASE_ORG ?? "northwind";
 const SHOWCASE_ORG_NAME = process.env.SHOWCASE_ORG_NAME ?? "Northwind Systems";
 
 /** Display name shown in the dashboard sidebar during the recording. */
-const SHOWCASE_USER_NAME = process.env.SHOWCASE_USER_NAME ?? "Alex Rivera";
+const SHOWCASE_USER_NAME =
+  process.env.SHOWCASE_USER_NAME ?? SHOWCASE_CONTENT.userName;
 
 const showcaseDir = path.dirname(fileURLToPath(import.meta.url));
 
 /** Where named still frames are written. Git-ignored, like the rest of output/. */
-export const STILLS_DIR = path.join(showcaseDir, "output", "stills");
+export const STILLS_DIR = path.join(
+  showcaseDir,
+  "output",
+  "stills",
+  localeSubdir(SHOWCASE_LOCALE),
+);
 
 /** Where cue lists are written, one per recording. Also git-ignored. */
 export const CUES_DIR = path.join(showcaseDir, "output", "cues");
 
 /**
  * Realistic demo data staged before the recording so the UI on camera looks
- * like a real account.
+ * like a real account — in the language of the take (`SHOWCASE_LOCALE`, see
+ * `locale.ts`).
  */
-export const DEMO_CHECKS = [
-  {
-    name: "Marketing site",
-    type: "http",
-    config: { url: "https://www.solidping.io/" },
-  },
-  {
-    name: "Docs site",
-    type: "http",
-    config: { url: "https://solidping.io/docs/" },
-  },
-  {
-    name: "Checkout API",
-    type: "http",
-    config: { url: "https://api.solidping.io/health" },
-  },
-] as const;
+export const DEMO_CHECKS = SHOWCASE_CONTENT.demoChecks;
 
 /** The check created on camera during the recording. */
-export const FEATURED_CHECK = {
-  name: "Production API",
-  url: "https://solidping.io/api/mgmt/health",
-};
+export const FEATURED_CHECK = SHOWCASE_CONTENT.featured;
 
 interface Json {
   [key: string]: unknown;
