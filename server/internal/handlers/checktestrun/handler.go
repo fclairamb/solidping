@@ -90,24 +90,24 @@ func (h *Handler) TestRun(writer http.ResponseWriter, req *http.Request) error {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid body")
 	}
 
-	var in Request
-	if unmarshalErr := json.Unmarshal(body, &in); unmarshalErr != nil {
+	var payload Request
+	if unmarshalErr := json.Unmarshal(body, &payload); unmarshalErr != nil {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid JSON body")
 	}
 
-	if in.Type != string(checkerdef.CheckTypeJS) {
+	if payload.Type != string(checkerdef.CheckTypeJS) {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"Only js checks can be test-run")
 	}
 
-	if strings.TrimSpace(in.Config.Script) == "" {
+	if strings.TrimSpace(payload.Config.Script) == "" {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "script is required")
 	}
 
 	var timeout time.Duration
 
-	if in.Config.Timeout != "" {
-		parsed, parseErr := time.ParseDuration(in.Config.Timeout)
+	if payload.Config.Timeout != "" {
+		parsed, parseErr := time.ParseDuration(payload.Config.Timeout)
 		if parseErr != nil || parsed < 0 {
 			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid timeout")
 		}
@@ -125,7 +125,7 @@ func (h *Handler) TestRun(writer http.ResponseWriter, req *http.Request) error {
 			"Too many test runs in progress")
 	}
 
-	result, err := h.runner.Test(req.Context(), in.Config.Script, in.Config.Env, in.Config.Secrets, timeout)
+	result, err := h.runner.Test(req.Context(), payload.Config.Script, payload.Config.Env, payload.Config.Secrets, timeout)
 	if err != nil {
 		var cfgErr *checkerdef.ConfigError
 		if errors.As(err, &cfgErr) {

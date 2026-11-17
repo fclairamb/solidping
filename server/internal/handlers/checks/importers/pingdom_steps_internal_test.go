@@ -19,7 +19,7 @@ func TestPingdomTMSWrapsStepsInStepMarker(t *testing.T) {
 	}})
 
 	out := script.String()
-	require.Contains(t, out, `step("Go to https://acme.example", function () {`)
+	require.Contains(t, out, `step("Go to \"https://acme.example\"", function () {`)
 	require.Contains(t, out, `step("Click \"Se connecter\"", function () {`)
 	require.Contains(t, out, "// TODO step 3")
 	require.NotContains(t, out, `step("wpm click xy"`)

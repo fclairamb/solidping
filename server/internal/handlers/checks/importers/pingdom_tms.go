@@ -690,50 +690,22 @@ func (g *pingdomScript) wrapStep(before, todoBefore int, step pingdomTMSStep) {
 	g.emitf("});")
 }
 
-// stepHumanLabel is the name of a step in the result: `Click "Se connecter"`.
-func stepHumanLabel(step pingdomTMSStep) string {
-	quoted := func(value string) string { return `"` + value + `"` }
+// stepHumanLabelArgs are the arguments that name a step's target, in order.
+//
+//nolint:gochecknoglobals // fixed list
+var stepHumanLabelArgs = []string{"element", "input", "select", "checkbox", "radio", "form", "url"}
 
-	switch step.Fn {
-	case "go_to", "wpm_go_to":
-		return "Go to " + step.arg("url")
-	case "click", "wpm_click":
-		return "Click " + quoted(step.arg("element"))
-	case "fill", "wpm_fill":
-		return "Fill " + quoted(step.arg("input"))
-	case "check":
-		return "Check " + quoted(step.arg("checkbox"))
-	case "uncheck":
-		return "Uncheck " + quoted(step.arg("checkbox"))
-	case "select", "wpm_select_dropdown":
-		return "Select " + quoted(step.arg("option")) + " in " + quoted(step.arg("select"))
-	case "select_radio":
-		return "Select radio " + quoted(step.arg("radio"))
-	case "submit":
-		return "Submit " + quoted(step.arg("form"))
-	case "sleep", "wpm_wait":
-		return "Wait " + step.arg("seconds") + "s"
-	case "wait_for_element":
-		return "Wait for " + quoted(step.arg("element"))
-	case "wait_for_contains", "wpm_contains_timeout", "contains":
-		return "Expect " + quoted(step.arg("element")) + " to contain " + quoted(step.arg("value"))
-	case "wpm_not_contains_timeout", "not_contains":
-		return "Expect " + quoted(step.arg("element")) + " not to contain " + quoted(step.arg("value"))
-	case "url":
-		return "Expect URL " + step.arg("url")
-	case "exists":
-		return "Expect " + quoted(step.arg("element")) + " to exist"
-	case "not_exists":
-		return "Expect " + quoted(step.arg("element")) + " not to exist"
-	case "field_contains", "field_not_contains":
-		return "Check the value of " + quoted(step.arg("input"))
-	case "is_checked", "is_not_checked":
-		return "Check the state of " + quoted(step.arg("checkbox"))
-	case "radio_selected":
-		return "Expect radio " + quoted(step.arg("radio")) + " selected"
-	case "dropdown_selected", "dropdown_not_selected":
-		return "Check the selection of " + quoted(step.arg("select"))
-	default:
-		return strings.ReplaceAll(step.Fn, "_", " ")
+// stepHumanLabel is the name of a step in the result: the function spelled
+// out and its target, e.g. `Click "Se connecter"` or `Wait for element "#ok"`.
+func stepHumanLabel(step pingdomTMSStep) string {
+	words := strings.TrimPrefix(strings.ReplaceAll(step.Fn, "_", " "), "wpm ")
+	label := strings.ToUpper(words[:1]) + words[1:]
+
+	for _, key := range stepHumanLabelArgs {
+		if target := step.arg(key); target != "" {
+			return label + ` "` + target + `"`
+		}
 	}
+
+	return label
 }

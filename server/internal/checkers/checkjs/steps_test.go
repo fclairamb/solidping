@@ -90,6 +90,7 @@ func TestNoStepLeavesOutputUnchanged(t *testing.T) {
 	assert.NotContains(t, res.Output, OutputKeySteps)
 }
 
+//nolint:paralleltest // swaps the process-wide OpenBrowser seam
 func TestStepScreenshotOnlyOnFailureByDefault(t *testing.T) {
 	fake := &fakeSession{shot: []byte("img")}
 	installFakeBrowser(t, fake)
@@ -108,6 +109,7 @@ func TestStepScreenshotOnlyOnFailureByDefault(t *testing.T) {
 	require.NotNil(t, res.Diagnostics.Screenshot)
 }
 
+//nolint:paralleltest // swaps the process-wide OpenBrowser seam
 func TestStepScreenshotOptionIsCapped(t *testing.T) {
 	fake := &fakeSession{shot: []byte("img")}
 	installFakeBrowser(t, fake)

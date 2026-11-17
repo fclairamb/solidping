@@ -26,6 +26,9 @@ const (
 // that used step(): a list of {name, status, durationMs, error?, screenshot?}.
 const OutputKeySteps = "steps"
 
+// stepKeyName is the key of a step's name in the output.
+const stepKeyName = "name"
+
 const (
 	// maxSteps bounds the recorded steps of one run (the output is stored).
 	maxSteps = 100
@@ -67,7 +70,7 @@ func (r *jsRuntime) runStep(call goja.FunctionCall) goja.Value {
 
 	name := truncateRunes(call.Argument(0).String(), maxStepNameLen)
 
-	fn, ok := goja.AssertFunction(call.Argument(1))
+	body, ok := goja.AssertFunction(call.Argument(1))
 	if !ok {
 		panic(r.vm.NewTypeError("step(name, fn): fn must be a function"))
 	}
@@ -86,7 +89,7 @@ func (r *jsRuntime) runStep(call goja.FunctionCall) goja.Value {
 
 	r.inStep = true
 	start := time.Now()
-	val, err := fn(goja.Undefined())
+	val, err := body(goja.Undefined())
 	r.inStep = false
 
 	rec := stepRecord{name: name, status: StepStatusOK, durationMs: time.Since(start).Milliseconds()}
@@ -227,9 +230,10 @@ func (r *jsRuntime) addSteps(out map[string]any) {
 
 	list := make([]any, 0, len(r.steps))
 
-	for _, rec := range r.steps {
+	for index := range r.steps {
+		rec := &r.steps[index]
 		entry := map[string]any{
-			"name":       rec.name,
+			stepKeyName:  rec.name,
 			"status":     rec.status,
 			"durationMs": rec.durationMs,
 		}
