@@ -107,6 +107,68 @@ func runUserContacts(t *testing.T, fix *fixture) {
 }
 
 //nolint:funlen // linear contract scenario
+// runMemberRemovalContacts: removing a membership ends the user's contacts and
+// routes in THAT org, and only there.
+func runMemberRemovalContacts(t *testing.T, fix *fixture) {
+	t.Helper()
+
+	ctx := t.Context()
+	must := require.New(t)
+	svc := fix.svc
+
+	other := models.NewOrganization("contract-rm-other", "Removal Other")
+	must.NoError(svc.CreateOrganization(ctx, other))
+
+	user := models.NewUser("removal@acme.com")
+	must.NoError(svc.CreateUser(ctx, user))
+
+	memberA := models.NewOrganizationMember(fix.org.UID, user.UID, models.MemberRoleUser)
+	must.NoError(svc.CreateOrganizationMember(ctx, memberA))
+
+	memberB := models.NewOrganizationMember(other.UID, user.UID, models.MemberRoleUser)
+	must.NoError(svc.CreateOrganizationMember(ctx, memberB))
+
+	inA := models.NewUserContact(user.UID, fix.org.UID, models.UserContactTypeTelegram, "removal-chat", "tg")
+	must.NoError(svc.UpsertUserContact(ctx, inA))
+	must.NoError(svc.EnsureUserNotificationRoute(ctx, user.UID, fix.org.UID, inA.UID))
+
+	inB := models.NewUserContact(user.UID, other.UID, models.UserContactTypeTelegram, "removal-chat", "tg")
+	must.NoError(svc.UpsertUserContact(ctx, inB))
+	must.NoError(svc.EnsureUserNotificationRoute(ctx, user.UID, other.UID, inB.UID))
+
+	removed, err := svc.RemoveOrganizationMember(ctx, memberA.UID)
+	must.NoError(err)
+	must.Equal(1, removed)
+
+	_, err = svc.GetMemberByUserAndOrg(ctx, user.UID, fix.org.UID)
+	must.Error(err)
+
+	_, err = svc.GetUserContact(ctx, inA.UID)
+	must.Error(err, "the removed org's contact must be gone")
+
+	routes, err := svc.ListUserContactsWithRoutes(ctx, user.UID, fix.org.UID)
+	must.NoError(err)
+	must.Empty(routes)
+
+	// Positive control: the org the user still belongs to keeps its contact.
+	_, err = svc.GetUserContact(ctx, inB.UID)
+	must.NoError(err)
+
+	routes, err = svc.ListUserContactsWithRoutes(ctx, user.UID, other.UID)
+	must.NoError(err)
+	must.Len(routes, 1)
+
+	// DeleteOrganizationMember goes through the same cleanup.
+	must.NoError(svc.DeleteOrganizationMember(ctx, memberB.UID))
+	_, err = svc.GetUserContact(ctx, inB.UID)
+	must.Error(err)
+
+	// A missing membership is not an error.
+	removed, err = svc.RemoveOrganizationMember(ctx, "00000000-0000-0000-0000-000000000000")
+	must.NoError(err)
+	must.Zero(removed)
+}
+
 func runIncidentNotifications(t *testing.T, fix *fixture) {
 	t.Helper()
 
