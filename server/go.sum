@@ -53,8 +53,8 @@ github.com/SherClockHolmes/webpush-go v1.4.0 h1:ocnzNKWN23T9nvHi6IfyrQjkIc0oJWv1
 github.com/SherClockHolmes/webpush-go v1.4.0/go.mod h1:XSq8pKX11vNV8MJEMwjrlTkxhAj1zKfxmyhdV7Pd6UA=
 github.com/a2aproject/a2a-go v0.3.15 h1:h5YpCiPq3jxQ5rIns7oDjPag3ivP8u817AzdA4F+NiI=
 github.com/a2aproject/a2a-go v0.3.15/go.mod h1:I7Cm+a1oL+UT6zMoP+roaRE5vdfUa1iQGVN8aSOuZ0I=
-github.com/a2aproject/a2a-go/v2 v2.8.0 h1:RmZBANuY8P9Pm1dfZ8gCY2yHAuVO7OnTFw8/kOZdCQQ=
-github.com/a2aproject/a2a-go/v2 v2.8.0/go.mod h1:UrxIRm1qmHm1kDoEk5PXRHc+4WGw0OEnZFuavMOH+24=
+github.com/a2aproject/a2a-go/v2 v2.9.0 h1:BmpIVxF1UrB6mmWj1Mg3nFujvLDPWhs8rGEf9QqGbUk=
+github.com/a2aproject/a2a-go/v2 v2.9.0/go.mod h1:UrxIRm1qmHm1kDoEk5PXRHc+4WGw0OEnZFuavMOH+24=
 github.com/alexbrainman/sspi v0.0.0-20250919150558-7d374ff0d59e h1:4dAU9FXIyQktpoUAgOJK3OTFc/xug0PCXYCqU0FgDKI=
 github.com/alexbrainman/sspi v0.0.0-20250919150558-7d374ff0d59e/go.mod h1:cEWa1LVoE5KvSD9ONXsZrj0z6KqySlCCNKHlLzbqAt4=
 github.com/andybalholm/brotli v1.2.7 h1:UgafRPGMam5ySHfRkhthMqOFA6IFoeF3D7mWIDLjG5A=
@@ -180,8 +180,8 @@ github.com/docker/go-connections v0.8.2 h1:9d9DEokx5W7qlr0shkFXIxEA7+TTD+llwzcyk
 github.com/docker/go-connections v0.8.2/go.mod h1:no1qkHdjq7kLMGUXYAduOhYPSJxxvgWBh7ogVvptn3Q=
 github.com/docker/go-units v0.5.0 h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4=
 github.com/docker/go-units v0.5.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
-github.com/dop251/goja v0.0.0-20261116234614-2eded47d7035 h1:ElIYL40MD0ShHiZi1nP5bXxeFdX7r5H13Fv15wMazlw=
-github.com/dop251/goja v0.0.0-20261116234614-2eded47d7035/go.mod h1:L1yoLBco9M3b2Gdh1UZHg+BIePeAdV1bwknaLLxAgoc=
+github.com/dop251/goja v0.0.0-20261117132507-c18a77e471d9 h1:qh/KgRtJN9UPfaOoEvocmqZJHUeUXQIllZHb896xtUc=
+github.com/dop251/goja v0.0.0-20261117132507-c18a77e471d9/go.mod h1:L1yoLBco9M3b2Gdh1UZHg+BIePeAdV1bwknaLLxAgoc=
 github.com/dprotaso/go-yit v0.0.0-20191028211022-135eb7262960/go.mod h1:9HQzr9D/0PGwMEbC3d5AB7oi67+h4TsQqItC1GVYG58=
 github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 h1:PRxIJD8XjimM5aTknUK9w6DHLDox2r2M3DI4i2pnd3w=
 github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936/go.mod h1:ttYvX5qlB+mlV1okblJqcSMtR4c52UKxDiX9GRBS8+Q=
