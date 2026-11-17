@@ -163,7 +163,8 @@ func (r *jsRuntime) registerStepShot() {
 }
 
 // captureForStep takes a time-boxed capture of the open page and records it
-// like a page.screenshot() (last capture wins).
+// like a page.screenshot() (last capture wins). A JS check has no `screenshot`
+// config flag to gate on: a step capture happens whenever a browser is open.
 func (r *jsRuntime) captureForStep(force bool) bool {
 	if r.browser == nil || r.execCtx == nil {
 		return false

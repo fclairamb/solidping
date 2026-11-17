@@ -1752,6 +1752,8 @@ function CheckDetailPage() {
                     org={org}
                     checkUid={checkUid}
                     steps={parseSteps(check.lastResult.output)}
+                    timestamp={check.lastResult.timestamp}
+                    durationMs={check.lastResult.durationMs}
                   />
                 )}
                 {check.lastResult.output &&
