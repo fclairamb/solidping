@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
+import { useDateFnsLocale } from "@/lib/date-locale";
 import { X } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useRegions, useResult } from "@/api/hooks";
@@ -47,6 +48,7 @@ export function PinnedResultBox({
   onClose,
 }: PinnedResultBoxProps) {
   const { t } = useTranslation("checks");
+  const dateLocale = useDateFnsLocale();
   const { data, isLoading, error } = useResult(org, checkUid, resultUid);
   // react-query dedupes with the parent chart's own useRegions(org) call.
   const { data: regionsData } = useRegions(org);
@@ -92,7 +94,7 @@ export function PinnedResultBox({
     >
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          {ts ? format(ts, "MMM d, HH:mm:ss") : ""}
+          {ts ? format(ts, "MMM d, HH:mm:ss", { locale: dateLocale }) : ""}
         </p>
         <Button
           type="button"
