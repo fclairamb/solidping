@@ -154,6 +154,32 @@ Two narrower entry points exist for iterating: `make showcase-terminal`
 re-films only the `docker run` segment, and `make showcase-cut` re-runs the edit
 over takes already in `showcase/output/` without recording anything.
 
+### Localized stills (`make showcase-stills`)
+
+The marketing site shows the three stills in French and German too.
+`make showcase-stills` records the same take but publishes only its stills,
+in the language `SHOWCASE_LOCALE` names (`en`, `fr`, `de`, `es`):
+
+```bash
+rm -rf /tmp/showcase-db-fr && mkdir -p /tmp/showcase-db-fr
+PORT=4321 SP_DB_TYPE=sqlite SP_DB_DIR=/tmp/showcase-db-fr ./solidping serve &
+SHOWCASE_LOCALE=fr E2E_BASE_URL=http://localhost:4321/d/ make showcase-stills
+```
+
+- The dashboard has no language switch in the URL: it reads `localStorage`,
+  then `navigator.language` (`src/i18n.ts`), and a saved
+  `preferences.locale` wins once signed in. A fresh database has none saved and
+  adopts the browser's language, so the Playwright context's `locale` is what
+  sets it (it also drives `Intl`). One fresh database per language, as always.
+- The demo check names, the featured check and the sidebar's display name are
+  localized (`locale.ts`); the org name and URLs are not.
+- A non-English locale publishes to `showcase/output/published/<locale>/`
+  (git-ignored: this repo embeds English media only); copy them into
+  `../solidping-website/static/img/showcase/<locale>/`. English publishes to
+  the usual committed paths.
+- The video and its captions stay English: `make showcase` refuses a
+  non-English `SHOWCASE_LOCALE`.
+
 > ### ⚠️ What a run leaves behind in the target database
 >
 > The pipeline **writes to whatever server you point it at**, and two of those
@@ -187,7 +213,8 @@ Useful knobs:
 | `SHOWCASE_BOOTSTRAP_ORG` / `SHOWCASE_EMAIL` / `SHOWCASE_PASSWORD` | `default` / `admin@solidping.io` / `solidpass` | Account used to bootstrap; also the identity that appears on camera |
 | `SHOWCASE_ROTATED_PASSWORD` | `showcase-rotated-pass` | Password the account is rotated onto when the server forces a rotation, and **stays on**. Must differ from `SHOWCASE_PASSWORD` and be ≥ 8 characters |
 | `SHOWCASE_ORG` / `SHOWCASE_ORG_NAME` | `northwind` / `Northwind Systems` | The org that gets provisioned and filmed |
-| `SHOWCASE_USER_NAME` | `Alex Rivera` | Display name shown in the sidebar footer |
+| `SHOWCASE_LOCALE` | `en` | Language of the take: `en`, `fr`, `de` or `es`. Sets the browser locale and localizes the demo data (`locale.ts`) |
+| `SHOWCASE_USER_NAME` | `Alex Rivera` (localized) | Display name shown in the sidebar footer |
 | `SHOWCASE_CURSOR` | on | Set to `0` to record without the synthetic pointer |
 | `SHOWCASE_TRAVEL_MS` | `420` | How long the cursor takes to travel to a control before clicking it |
 | `SHOWCASE_SLOW_MO` | `0` | Playwright `slowMo`. Escape hatch only — it delays *every* input step, including each step of the eased cursor travel |
