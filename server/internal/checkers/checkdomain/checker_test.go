@@ -234,10 +234,10 @@ func whoisFixture() string {
 
 // countingWhoisFunc returns an always-succeeding whoisFunc stub returning
 // raw, plus a call counter so tests can assert WHOIS was (not) invoked.
-func countingWhoisFunc(raw string) (func(string) (string, error), *atomic.Int32) {
+func countingWhoisFunc(raw string) (func(context.Context, string) (string, error), *atomic.Int32) {
 	var calls atomic.Int32
 
-	return func(string) (string, error) {
+	return func(context.Context, string) (string, error) {
 		calls.Add(1)
 
 		return raw, nil
@@ -440,7 +440,7 @@ func TestDomainChecker_Execute_ContextCancellation(t *testing.T) {
 
 	result, err := checker.Execute(ctx, cfg)
 	require.NoError(t, err)
-	require.Equal(t, checkerdef.StatusDown, result.Status)
+	require.Equal(t, checkerdef.StatusTimeout, result.Status)
 	require.Contains(t, result.Output["error"], "context canceled")
 	require.Equal(t, int32(0), whoisCalls.Load(), "method=rdap must not fall back even on ctx cancellation")
 }
