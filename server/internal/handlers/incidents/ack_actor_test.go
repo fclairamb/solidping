@@ -3,6 +3,7 @@ package incidents_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -288,6 +289,12 @@ func newAckTestUser(t *testing.T, s *resolveSetup) *models.User {
 	user := models.NewUser("alice@acme.com")
 	user.Name = "Alice Acme"
 	require.NoError(t, s.dbSvc.CreateUser(t.Context(), user))
+
+	// A joined member: the chat-ops write floor (Telegram) refuses anyone else.
+	member := models.NewOrganizationMember(s.org.UID, user.UID, models.MemberRoleUser)
+	now := time.Now()
+	member.JoinedAt = &now
+	require.NoError(t, s.dbSvc.CreateOrganizationMember(t.Context(), member))
 
 	return user
 }

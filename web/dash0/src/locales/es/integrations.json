@@ -377,6 +377,7 @@
     }
   },
   "suppressions": {
+    "adminOnly": "Solo los administradores de la organización pueden ver quién se dio de baja.",
     "title": "Destinatarios dados de baja",
     "resubscribed": "{{email}} vuelto a suscribir",
     "resubscribeFailed": "No se pudo volver a suscribir",

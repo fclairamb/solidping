@@ -92,7 +92,14 @@ test.describe("Region placement", () => {
     const page = authenticatedPage;
     const token = await getAuthToken(page);
 
+    // The form only asks for automatic placement once it knows the regions
+    // (check-form.tsx omits the field while availableRegions is undefined),
+    // so the submit below must not race the regions query on a slow server.
+    const regionsLoaded = page.waitForResponse(
+      (resp) => /\/api\/v1\/orgs\/[^/]+\/regions(\?|$)/.test(resp.url()) && resp.request().method() === "GET",
+    );
     await page.goto("orgs/test/checks/new?checkType=http");
+    await regionsLoaded;
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // The picker never renders: there is nothing to choose between.
