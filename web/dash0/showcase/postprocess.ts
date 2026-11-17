@@ -67,7 +67,7 @@ import {
   type EditSpec,
 } from "./segment-plan";
 import { renderLabelImages } from "./labels";
-import { localeSubdir, parseShowcaseLocale } from "./locale";
+import { localeSubdir, parseShowcaseLocale, showcaseCaptions } from "./locale";
 
 const showcaseDir = path.dirname(fileURLToPath(import.meta.url));
 const outputDir = path.join(showcaseDir, "output");
@@ -80,11 +80,15 @@ const terminalSegment = path.join(outputDir, "terminal", "docker-run.mp4");
 const publishDir = path.resolve(showcaseDir, "../../docs/static/showcase");
 const screenshotsDir = path.resolve(showcaseDir, "../../../res/screenshots");
 /**
- * Where a non-English take's stills are published: git-ignored, because this
- * repo embeds English media only. The marketing site copies them from here
- * into its own `static/img/showcase/<locale>/`.
+ * Where a non-English take's cut and stills are published: git-ignored,
+ * because this repo embeds English media only. The marketing site copies them
+ * from here into its own `static/img/showcase/<locale>/`.
  */
-const localizedStillsDir = path.join(outputDir, "published");
+const localizedPublishDir = path.join(outputDir, "published");
+
+/** The language of the take being cut (`SHOWCASE_LOCALE`, default `en`). */
+const LOCALE = parseShowcaseLocale(process.env.SHOWCASE_LOCALE);
+const CAPTIONS = showcaseCaptions(LOCALE);
 
 /**
  * Stills the docs Tour page embeds, and the name each one takes in
@@ -99,6 +103,15 @@ const PUBLISHED_STILLS = [
 /** The published cut, twice. */
 const PUBLISHED_VIDEO_AV1 = "setup-to-first-result.mp4";
 const PUBLISHED_VIDEO_H264 = "setup-to-first-result.h264.mp4";
+
+/**
+ * The dashboard-only cut, from the checks list onwards (no `docker run`, no
+ * first login): the marketing site's /cloud page sells the hosted product, so
+ * it plays this one. Never committed here — published to
+ * `output/published/<locale>/` for every locale, English included.
+ */
+const DASHBOARD_VIDEO_AV1 = "dashboard-create-check.mp4";
+const DASHBOARD_VIDEO_H264 = "dashboard-create-check.h264.mp4";
 
 /**
  * Assets a previous run left behind. Removed on every run: two cuts of the
@@ -196,7 +209,7 @@ const EDITS: EditSpec[] = [
     toLabel: "chart",
     speed: Number(process.env.SHOWCASE_TIMELAPSE_SPEED ?? 4),
     minSpanS: Number(process.env.SHOWCASE_TIMELAPSE_MIN_S ?? 9),
-    tag: `${Number(process.env.SHOWCASE_TIMELAPSE_SPEED ?? 4)}× speed`,
+    tag: CAPTIONS.speed(Number(process.env.SHOWCASE_TIMELAPSE_SPEED ?? 4)),
   },
 ];
 
@@ -699,6 +712,7 @@ function transcode(
   codecArgs: string[],
   what: string,
   trimTo?: number,
+  trimFrom?: number,
 ): void {
   rmSync(output, { force: true });
   run(
@@ -708,6 +722,7 @@ function transcode(
       "-loglevel",
       "error",
       "-y",
+      ...(trimFrom ? ["-ss", trimFrom.toFixed(3)] : []),
       "-i",
       masterFile,
       ...(trimTo ? ["-to", trimTo.toFixed(3)] : []),
@@ -757,28 +772,28 @@ function publishStill(src: string, dst: string): string {
 /** The captions, in order. */
 function labelSpecs(): LabelSpec[] {
   return [
-    { atCue: null, text: "Run it", holdS: LABEL_HOLD_S },
-    { atCue: "login", text: "First login", holdS: LABEL_HOLD_S },
-    { atCue: "checks-list", text: "First check", holdS: LABEL_HOLD_S },
+    { atCue: null, text: CAPTIONS.run, holdS: LABEL_HOLD_S },
+    { atCue: "login", text: CAPTIONS.login, holdS: LABEL_HOLD_S },
+    { atCue: "checks-list", text: CAPTIONS.check, holdS: LABEL_HOLD_S },
     {
       atCue: "detail-page",
-      text: "First results",
+      text: CAPTIONS.results,
       holdS: LABEL_HOLD_S,
     },
   ];
 }
 
 /**
- * `--stills-only` (`make showcase-stills`): publish the three stills of the
- * take just recorded in `SHOWCASE_LOCALE`, and nothing else — no terminal
- * segment, no cut. English goes to the usual committed paths; any other
- * locale to `output/published/<locale>/`.
+ * Publishes the three stills of the take recorded in `SHOWCASE_LOCALE`.
+ * English goes to the usual committed paths; any other locale to
+ * `output/published/<locale>/`. On its own (`--stills-only`, i.e.
+ * `make showcase-stills`) it needs no terminal segment and cuts nothing.
  */
 function publishStillsOnly(): void {
-  const locale = parseShowcaseLocale(process.env.SHOWCASE_LOCALE);
+  const locale = LOCALE;
   const sub = localeSubdir(locale);
   const src = path.join(stillsDir, sub);
-  const dst = sub ? path.join(localizedStillsDir, sub) : publishDir;
+  const dst = sub ? path.join(localizedPublishDir, sub) : publishDir;
   const missing: string[] = [];
   for (const { still } of PUBLISHED_STILLS) {
     const from = path.join(src, still);
@@ -803,12 +818,6 @@ async function main(): Promise<void> {
   if (process.argv.includes("--stills-only")) {
     publishStillsOnly();
     return;
-  }
-  if (parseShowcaseLocale(process.env.SHOWCASE_LOCALE) !== "en") {
-    fail(
-      "The published cut is English only. For a localized take, publish its " +
-        "stills with `make showcase-stills SHOWCASE_LOCALE=<locale>`.",
-    );
   }
   assertEncoders();
 
@@ -1023,9 +1032,13 @@ async function main(): Promise<void> {
 
   // ---- everything published derives from that master ----------------------
 
-  mkdirSync(publishDir, { recursive: true });
+  // A localized cut is published next to its stills, outside the repo's
+  // committed (English-only) media.
+  const sub = localeSubdir(LOCALE);
+  const videoDir = sub ? path.join(localizedPublishDir, sub) : publishDir;
+  mkdirSync(videoDir, { recursive: true });
 
-  const av1Out = path.join(publishDir, PUBLISHED_VIDEO_AV1);
+  const av1Out = path.join(videoDir, PUBLISHED_VIDEO_AV1);
   transcode(av1Out, AV1_ARGS, "AV1 re-encode (libsvtav1)");
   console.log(
     `showcase: wrote      ${path.relative(process.cwd(), av1Out)} (${humanSize(av1Out)}, AV1)`,
@@ -1036,6 +1049,33 @@ async function main(): Promise<void> {
   console.log(
     `showcase: wrote      ${path.relative(process.cwd(), h264Out)} (${humanSize(h264Out)}, H.264)`,
   );
+
+  // The dashboard-only cut starts where the "First check" caption does, on the
+  // checks list.
+  const firstCheck = lowerThirds.find((c) => c.text === CAPTIONS.check);
+  if (!firstCheck) fail(`No "${CAPTIONS.check}" caption to start the dashboard cut at.`);
+  const dashboardDir = path.join(localizedPublishDir, LOCALE);
+  mkdirSync(dashboardDir, { recursive: true });
+  for (const [file, args, codec] of [
+    [DASHBOARD_VIDEO_AV1, AV1_ARGS, "AV1"],
+    [DASHBOARD_VIDEO_H264, H264_ARGS, "H.264"],
+  ] as const) {
+    const out = path.join(dashboardDir, file);
+    transcode(out, [...args], `dashboard cut (${codec})`, undefined, firstCheck.start);
+    console.log(
+      `showcase: wrote      ${path.relative(process.cwd(), out)} (${humanSize(out)}, ${codec}, dashboard only)`,
+    );
+  }
+
+  if (sub) {
+    publishStillsOnly();
+    console.log(
+      `showcase: done. The ${LOCALE} cut and stills are in ` +
+        `${path.relative(process.cwd(), videoDir)}; copy them into the website's ` +
+        `static/img/showcase/${sub}/.`,
+    );
+    return;
+  }
 
   mkdirSync(screenshotsDir, { recursive: true });
 
