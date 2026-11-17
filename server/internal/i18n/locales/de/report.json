@@ -16,16 +16,16 @@
     "versusWeek": "der Woche vom {start} bis {end}"
   },
   "scope": {
-    "all": "Alle Prüfungen ({count})",
-    "named_one": "{name} ({count} Prüfung)",
-    "named_other": "{name} ({count} Prüfungen)"
+    "all": "Alle Checks ({count})",
+    "named_one": "{name} ({count} Check)",
+    "named_other": "{name} ({count} Checks)"
   },
   "downAll": {
     "check": "{check} war während des gesamten Zeitraums ausgefallen.",
-    "every": "Alle überwachten Prüfungen waren während des gesamten Zeitraums ausgefallen."
+    "every": "Alle überwachten Checks waren während des gesamten Zeitraums ausgefallen."
   },
   "labels": {
-    "checksMonitored": "Überwachte Prüfungen",
+    "checksMonitored": "Überwachte Checks",
     "incidents": "Vorfälle",
     "totalDowntime": "Gesamtausfallzeit"
   },
@@ -60,15 +60,15 @@
     "includesFailures": "Die Antwortzeiten enthalten auch fehlgeschlagene Messungen."
   },
   "checks": {
-    "title": "Pro Prüfung · schlechteste zuerst",
-    "truncated": "Angezeigt werden die {shown} Prüfungen mit der niedrigsten Verfügbarkeit von insgesamt {total}.",
+    "title": "Pro Check · schlechteste zuerst",
+    "truncated": "Angezeigt werden die {shown} Checks mit der niedrigsten Verfügbarkeit von insgesamt {total}.",
     "downAllPeriod": "den ganzen Zeitraum ausgefallen"
   },
   "strip": {
     "label": "Tägliche Verfügbarkeit, {start} – {end} (UTC)",
-    "legend": "{label}: grün ≥ {good}, bernsteinfarben ≥ {warn}, orange ≥ {poor}, darunter rot. Grau bedeutet, dass an diesem Tag nichts aufgezeichnet wurde. Eine mitten im Zeitraum angelegte Prüfung erscheint daher grau, nicht rot.",
-    "budgetNote_one": "Tagesleisten werden nur für {count} Prüfung angezeigt, die mit der niedrigsten Verfügbarkeit; die übrigen wurden weggelassen, damit diese E-Mail unter der Größe bleibt, ab der E-Mail-Programme sie kürzen.",
-    "budgetNote_other": "Tagesleisten werden nur für die {count} Prüfungen mit der niedrigsten Verfügbarkeit angezeigt; die übrigen wurden weggelassen, damit diese E-Mail unter der Größe bleibt, ab der E-Mail-Programme sie kürzen."
+    "legend": "{label}: grün ≥ {good}, bernsteinfarben ≥ {warn}, orange ≥ {poor}, darunter rot. Grau bedeutet, dass an diesem Tag nichts aufgezeichnet wurde. Ein mitten im Zeitraum angelegter Check erscheint daher grau, nicht rot.",
+    "budgetNote_one": "Tagesleisten werden nur für {count} Check angezeigt, den mit der niedrigsten Verfügbarkeit; die übrigen wurden weggelassen, damit diese E-Mail unter der Größe bleibt, ab der E-Mail-Programme sie kürzen.",
+    "budgetNote_other": "Tagesleisten werden nur für die {count} Checks mit der niedrigsten Verfügbarkeit angezeigt; die übrigen wurden weggelassen, damit diese E-Mail unter der Größe bleibt, ab der E-Mail-Programme sie kürzen."
   },
   "slo": {
     "title": "Ziele",
@@ -85,8 +85,8 @@
     "overall": "Gesamtverfügbarkeit",
     "versus": "gegenüber {period}: {previous}",
     "latencyHeading": "Antwortzeit:",
-    "perCheck": "Pro Prüfung, schlechteste zuerst:",
-    "perCheckTruncated": "Pro Prüfung, schlechteste zuerst (angezeigt werden die {shown} Prüfungen mit der niedrigsten Verfügbarkeit von insgesamt {total}):",
+    "perCheck": "Pro Check, schlechteste zuerst:",
+    "perCheckTruncated": "Pro Check, schlechteste zuerst (angezeigt werden die {shown} Checks mit der niedrigsten Verfügbarkeit von insgesamt {total}):",
     "objectivesHeading": "Ziele:",
     "budgetRemaining": "verbleibendes Budget {budget}"
   },

@@ -61,9 +61,9 @@
     "ackExpires": "Der Link gilt bis zum {date}."
   },
   "labels": {
-    "check": "Prüfung",
+    "check": "Check",
     "target": "Ziel",
-    "checkURL": "URL der Prüfung",
+    "checkURL": "URL des Checks",
     "since": "Seit",
     "incident": "Vorfall",
     "docs": "Dokumentation"

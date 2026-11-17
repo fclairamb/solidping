@@ -22,9 +22,9 @@
   },
   "aggregation": {
     "title": "Aggregation",
-    "description": "Legen Sie fest, wie lange Roh- und aggregierte Prüfergebnisse aufbewahrt werden, bevor sie in die nächste Stufe verdichtet werden. Diese Fenster gelten global, systemweit. Änderungen werden beim nächsten Lauf des Aggregations-Jobs wirksam — kein Neustart erforderlich.",
+    "description": "Legen Sie fest, wie lange Roh- und aggregierte Check-Ergebnisse aufbewahrt werden, bevor sie in die nächste Stufe verdichtet werden. Diese Fenster gelten global, systemweit. Änderungen werden beim nächsten Lauf des Aggregations-Jobs wirksam — kein Neustart erforderlich.",
     "rawHours": "Rohdaten-Aufbewahrung (Stunden)",
-    "rawHoursHelp": "Stunden an Roh-Prüfergebnissen, die vor der Aggregation zu Stunden-Rollups aufbewahrt werden.",
+    "rawHoursHelp": "Stunden an Roh-Check-Ergebnissen, die vor der Aggregation zu Stunden-Rollups aufbewahrt werden.",
     "hourDays": "Stunden-Aufbewahrung (Tage)",
     "hourDaysHelp": "Tage an Stunden-Rollups, die vor der Aggregation zu Tages-Rollups aufbewahrt werden.",
     "dayMonths": "Tages-Aufbewahrung (Monate)",
@@ -186,9 +186,9 @@
   "performance": {
     "title": "Leistung",
     "subtitle": "Leistungsbezogene Parameter konfigurieren.",
-    "description": "Konfigurieren Sie die Anzahl gleichzeitiger Worker für Prüfungen und Aufträge. Änderungen werden erst nach einem Server-Neustart wirksam.",
-    "checkRunners": "Prüfungs-Worker",
-    "checkRunnersHelp": "Anzahl gleichzeitiger Goroutinen zum Ausführen der Prüfungen.",
+    "description": "Konfigurieren Sie die Anzahl gleichzeitiger Worker für Checks und Aufträge. Änderungen werden erst nach einem Server-Neustart wirksam.",
+    "checkRunners": "Check-Worker",
+    "checkRunnersHelp": "Anzahl gleichzeitiger Goroutinen zum Ausführen der Checks.",
     "jobRunners": "Auftrags-Worker",
     "jobRunnersHelp": "Anzahl gleichzeitiger Goroutinen zur Verarbeitung von Hintergrundaufträgen.",
     "fastLaneReserved": "Reservierte Fast-Lane-Slots",
@@ -229,7 +229,7 @@
   },
   "emailInbox": {
     "title": "E-Mail-Posteingang",
-    "description": "Konfigurieren Sie den gemeinsamen JMAP-Posteingang, der von passiven E-Mail-Prüfungen verwendet wird. Fastmail, Stalwart und andere JMAP-fähige Anbieter werden unterstützt.",
+    "description": "Konfigurieren Sie den gemeinsamen JMAP-Posteingang, der von passiven E-Mail-Checks verwendet wird. Fastmail, Stalwart und andere JMAP-fähige Anbieter werden unterstützt.",
     "enable": "E-Mail-Posteingang aktivieren",
     "sessionUrl": "JMAP-Sitzungs-URL",
     "sessionUrlPlaceholder": "https://jmap.beispiel.com/.well-known/jmap",
@@ -366,9 +366,9 @@
       "organization": "Organisation",
       "plan": "Tarif",
       "source": "Quelle",
-      "maxChecks": "Prüfungen",
+      "maxChecks": "Checks",
       "maxUsers": "Plätze",
-      "maxChecksPerMinute": "Prüfungen / Min.",
+      "maxChecksPerMinute": "Checks / Min.",
       "override": "Übersteuerung seit"
     },
     "provenance": {
@@ -382,8 +382,8 @@
       "orgAdmin": "Org-Admin-Eintrag seit {{since}}"
     },
     "limits": {
-      "maxChecks": "Prüfungen",
-      "maxChecksPerMinute": "Prüfungen pro Minute",
+      "maxChecks": "Checks",
+      "maxChecksPerMinute": "Checks pro Minute",
       "maxUsers": "Plätze",
       "maxDeportedAgents": "Private Agenten",
       "maxCustomDomains": "Eigene Domains",
@@ -521,7 +521,7 @@
     "error": "Aktivierungs-Funnel konnte nicht geladen werden.",
     "org": "Organisation",
     "signup": "Registrierung",
-    "firstCheck": "Erste Prüfung",
+    "firstCheck": "Erster Check",
     "firstResult": "Erstes Ergebnis",
     "firstNotifier": "Erste Benachrichtigung",
     "firstIncident": "Erste Alarmierung",

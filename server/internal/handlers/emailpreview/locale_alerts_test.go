@@ -74,8 +74,8 @@ var alertsExpectations = map[string]map[string][2]string{
 			"2 de vos contrôles dans l'organisation Acme Corp s'exécutent uniquement depuis cette région",
 		},
 		"de": {
-			"🔴 Region Lauterbourg (lauterbourg) ist offline: 2 Ihrer Prüfungen laufen nicht",
-			"2 Ihrer Prüfungen in Acme Corp laufen nur von dieser Region aus",
+			"🔴 Region Lauterbourg (lauterbourg) ist offline: 2 Ihrer Checks laufen nicht",
+			"2 Ihrer Checks in Acme Corp laufen nur von dieser Region aus",
 		},
 		"es": {
 			"🔴 La región Lauterbourg (lauterbourg) está fuera de línea: 2 de tus comprobaciones no se ejecutan",
@@ -89,7 +89,7 @@ var alertsExpectations = map[string]map[string][2]string{
 			"Hors ligne pendant : 7 h 52 min",
 		},
 		"de": {
-			"🟢 Region Lauterbourg (lauterbourg) ist wieder online, Ihre Prüfungen werden fortgesetzt",
+			"🟢 Region Lauterbourg (lauterbourg) ist wieder online, Ihre Checks werden fortgesetzt",
 			"Offline-Dauer: 7 Std. 52 Min.",
 		},
 		"es": {
@@ -252,8 +252,8 @@ func TestAlerts_RegionOfflineSingularAfterRoundTrip(t *testing.T) {
 			"D'ici là, ce contrôle n'affichera pas de statut, faute de données.",
 		},
 		"de": {
-			"1 Ihrer Prüfungen läuft nicht", "1 weitere Prüfung läuft in ihren übrigen Regionen weiter",
-			"Bis dahin zeigt diese Prüfung statt eines Status",
+			"1 Ihrer Checks läuft nicht", "1 weiterer Check läuft in seinen übrigen Regionen weiter",
+			"Bis dahin zeigt dieser Check statt eines Status",
 		},
 		"es": {
 			"1 de tus comprobaciones no se ejecuta", "1 comprobación más sigue ejecutándose",

@@ -7,14 +7,14 @@
   "noMatch": "Keine Wartungsfenster entsprechen Ihrer Suche",
   "backToList": "Zurück zu den Wartungsfenstern",
   "edit": "Bearbeiten",
-  "checksCount_one": "{{count}} Prüfung",
-  "checksCount_other": "{{count}} Prüfungen",
+  "checksCount_one": "{{count}} Check",
+  "checksCount_other": "{{count}} Checks",
   "table": {
     "title": "Titel",
     "schedule": "Zeitplan",
     "recurrence": "Wiederholung",
     "status": "Status",
-    "checks": "Prüfungen"
+    "checks": "Checks"
   },
   "recurrence": {
     "none": "Einmalig",
@@ -30,12 +30,12 @@
   "form": {
     "createTitle": "Neues Wartungsfenster",
     "editTitle": "Wartungsfenster bearbeiten",
-    "createDescription": "Planen Sie einen Wartungszeitraum, in dem Vorfallsbenachrichtigungen für die ausgewählten Prüfungen unterdrückt werden.",
-    "editDescription": "Aktualisieren Sie den Zeitplan und die betroffenen Prüfungen dieses Wartungsfensters.",
+    "createDescription": "Planen Sie einen Wartungszeitraum, in dem Vorfallsbenachrichtigungen für die ausgewählten Checks unterdrückt werden.",
+    "editDescription": "Aktualisieren Sie den Zeitplan und die betroffenen Checks dieses Wartungsfensters.",
     "detailsTitle": "Details",
     "scheduleTitle": "Zeitplan",
-    "affectedTitle": "Betroffene Prüfungen",
-    "affectedDescription": "Vorfälle für diese Prüfungen und Gruppen werden unterdrückt, während das Fenster aktiv ist.",
+    "affectedTitle": "Betroffene Checks",
+    "affectedDescription": "Vorfälle für diese Checks und Gruppen werden unterdrückt, während das Fenster aktiv ist.",
     "title": "Titel",
     "titlePlaceholder": "Wöchentliches DB-Backup",
     "description": "Beschreibung",
@@ -56,8 +56,8 @@
     "untilHelp": "Optional. Nach diesem Datum wird das Fenster nicht mehr wiederholt.",
     "recurrenceEndHelp": "Optional. Nach diesem Datum wird das Fenster nicht mehr wiederholt.",
     "utcNote": "Alle Zeiten werden in UTC eingegeben und gespeichert.",
-    "checks": "Prüfungen",
-    "groups": "Prüfgruppen",
+    "checks": "Checks",
+    "groups": "Check-Gruppen",
     "submitCreate": "Fenster erstellen",
     "submitSave": "Änderungen speichern",
     "cancel": "Abbrechen",
@@ -78,7 +78,7 @@
     "monthly": "Am {{day}}. jedes Monats, {{start}} – {{end}} ({{duration}})",
     "until": " · bis {{date}}",
     "noEnd": " · kein Enddatum",
-    "alertsPaused": "Vorfallsbenachrichtigungen für die betroffenen Prüfungen sind während jedes Vorkommens pausiert.",
+    "alertsPaused": "Vorfallsbenachrichtigungen für die betroffenen Checks sind während jedes Vorkommens pausiert.",
     "nextLabel": "Nächste:",
     "nextNone": "Keine bevorstehenden Vorkommen"
   },
@@ -92,12 +92,12 @@
     "summary": "Zusammenfassung",
     "nextOccurrences": "Nächste Vorkommen",
     "noNextOccurrences": "Keine bevorstehenden Vorkommen",
-    "affectedChecks": "Betroffene Prüfungen",
+    "affectedChecks": "Betroffene Checks",
     "start": "Beginn",
     "end": "Ende",
     "recurrence": "Wiederholung",
     "recurrenceEnd": "Wiederholungsende",
-    "noAffected": "Keine Prüfungen oder Gruppen sind von diesem Fenster betroffen.",
+    "noAffected": "Keine Checks oder Gruppen sind von diesem Fenster betroffen.",
     "createdBy": "Erstellt von",
     "view": "Anzeigen"
   },
@@ -113,9 +113,9 @@
     "confirmTitle": "Wartungsfenster löschen?",
     "confirmBody": "Möchten Sie dieses Wartungsfenster wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
   },
-  "noChecks": "Keine Prüfungen",
-  "noChecksTitle": "Dieses Fenster ist mit keiner Prüfung verknüpft und unterdrückt daher nichts.",
-  "checksLabel_one": "Prüfung",
-  "checksLabel_other": "Prüfungen",
+  "noChecks": "Keine Checks",
+  "noChecksTitle": "Dieses Fenster ist mit keinem Check verknüpft und unterdrückt daher nichts.",
+  "checksLabel_one": "Check",
+  "checksLabel_other": "Checks",
   "emptyHint": "Erstellen Sie eines, um Vorfallwarnungen bei geplanten Arbeiten zu unterdrücken."
 }

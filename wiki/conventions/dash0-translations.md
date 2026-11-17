@@ -33,5 +33,5 @@ helpers). When touching a form, sweep those by hand: list the string-literal
 anything a user reads as prose into the locale files.
 
 Terminology already chosen per locale, reuse it: fr "clé d'accès" (passkey),
-"contrôle" (check), "astreinte" (on-call), vous; de "Passkey", "Prüfung",
+"contrôle" (check), "astreinte" (on-call), vous; de "Passkey", "Check" (der Check, die Checks; compounds "Check-Typ", "Check-Gruppe"),
 "Bereitschaft", Sie; es "llave de acceso", "comprobación", "guardia", tú.

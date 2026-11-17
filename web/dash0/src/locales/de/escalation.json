@@ -15,8 +15,8 @@
       "steps": "Schritte",
       "usedBy": "Verwendet von"
     },
-    "usedChecks_one": "{{count}} Prüfung",
-    "usedChecks_other": "{{count}} Prüfungen",
+    "usedChecks_one": "{{count}} Check",
+    "usedChecks_other": "{{count}} Checks",
     "usedGroups_one": "{{count}} Gruppe",
     "usedGroups_other": "{{count}} Gruppen",
     "unused": "Unbenutzt",
