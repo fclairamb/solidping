@@ -234,6 +234,10 @@ func (s *Service) planCreateCheck(
 		return nil, cfgErr
 	}
 
+	if delayErr := validateEmailDeliveryDelay(req.Type, effective, effectivePeriod); delayErr != nil {
+		return nil, delayErr
+	}
+
 	// Send-mode SMTP checks need a period floor so the paired inbox can't be
 	// flooded (spec 2026-08-19-04).
 	if intervalErr := validateSMTPSendInterval(req.Type, effective, period); intervalErr != nil {
@@ -564,6 +568,10 @@ func (s *Service) planUpdateConfig(
 		ctx, org.UID, existing.Type, planned, regionsForCheck,
 	); cfgErr != nil {
 		return cfgErr
+	}
+
+	if delayErr := validateEmailDeliveryDelay(existing.Type, planned, period); delayErr != nil {
+		return delayErr
 	}
 
 	return validateSMTPSendInterval(existing.Type, planned, period)

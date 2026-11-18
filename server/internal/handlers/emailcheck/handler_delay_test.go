@@ -67,6 +67,38 @@ func TestDeliveryDelayOverLimitIsDown(t *testing.T) {
 	r.InDelta(809000, *res.Duration, 1500)
 }
 
+// TestLateMailAfterWatchTimeoutThenInTimeProbe: the watch already recorded the
+// missed probe as down; the late mail is recorded down with its real latency,
+// and the next in-time probe is recorded up.
+func TestLateMailAfterWatchTimeoutThenInTimeProbe(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	f := newAuthFixture(t, models.JSONMap{"max_delivery_delay": "10m"}, &stubResolver{})
+
+	// The watch's timeout row (an evaluation row written by a worker; none is
+	// needed for this handler path, it only has to coexist).
+	timeoutStatus := int(checkerdef.StatusDown)
+	r.NoError(f.svc.SaveResultWithStatusTracking(t.Context(), &models.Result{
+		UID: "watch-timeout", OrganizationUID: f.check.OrganizationUID, CheckUID: f.check.UID,
+		PeriodType: models.PeriodTypeRaw, PeriodStart: time.Now().Add(-time.Minute), Status: &timeoutStatus,
+		Metrics: models.JSONMap{},
+		Output: models.JSONMap{
+			"message": "sent at 10:00, not received after 10m", "evaluation": true,
+			"deliveryTimeoutAt": time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano),
+		},
+		CreatedAt: time.Now().Add(-time.Minute),
+	}))
+
+	late := f.deliverProbe(t, testToken+"@inbox.example.com", "<late-after-timeout@x>", 13*time.Minute, true)
+	r.Equal(int(checkerdef.StatusDown), *late.Status)
+	r.InDelta(780000, *late.Duration, 1500)
+
+	inTime := f.deliverProbe(t, testToken+"@inbox.example.com", "<in-time-after@x>", 2*time.Minute, true)
+	r.Equal(int(checkerdef.StatusUp), *inTime.Status)
+	r.InDelta(120000, *inTime.Duration, 1500)
+}
+
 func TestDeliveryDelayWithoutLimitIsUp(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

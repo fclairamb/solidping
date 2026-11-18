@@ -89,6 +89,14 @@ func validateAuth(configMap map[string]any) error {
 	return nil
 }
 
+// ValidateDeliveryDelayForPeriod applies the max_delivery_delay rules against
+// a known check period. The checks service calls it where the effective period
+// is final (create with the defaulted period, update with the merged one),
+// since the checker's own Validate only sees the period the request carried.
+func ValidateDeliveryDelayForPeriod(configMap map[string]any, period time.Duration) error {
+	return validateMaxDeliveryDelay(configMap, period)
+}
+
 // validateMaxDeliveryDelay applies the rules of max_delivery_delay: at least a
 // minute, and lower than the check period when the period is known (a limit
 // longer than the period could never fire before the period verdict).

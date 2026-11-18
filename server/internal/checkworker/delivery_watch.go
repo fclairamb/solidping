@@ -29,6 +29,10 @@ const (
 
 	outputKeySentAt         = "sentAt"
 	outputKeySourceCheckUID = "sourceCheckUid"
+	// outputKeyTimeoutAt marks a row as (a copy of) a watch timeout: when the
+	// watch recorded the missed probe. passiveVerdict keeps the check down
+	// until a signal newer than this instant arrives.
+	outputKeyTimeoutAt = "deliveryTimeoutAt"
 )
 
 // DeliveryWatch reports a probe mail that never arrived (spec
@@ -234,6 +238,7 @@ func (w *DeliveryWatch) recordTimeout(
 				sentAt.UTC().Format("15:04"), checkemailconfig.FormatDuration(target.limit)),
 			outputKeySentAt:         sentAt.Format(time.RFC3339),
 			outputKeySourceCheckUID: smtp.UID,
+			outputKeyTimeoutAt:      now.UTC().Format(time.RFC3339Nano),
 			outputKeyEvaluation:     true,
 		},
 		CreatedAt: now,

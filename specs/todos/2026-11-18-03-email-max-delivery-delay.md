@@ -122,3 +122,16 @@ the send to receive delay.
 - A late probe keeps the check `down` until the next probe: the verdict is per probe. (autopilot: recommended answer)
 - The delay failure is `down`; the slow rule stays the softer tier. (autopilot: recommended answer)
 - Reject `max_delivery_delay` when it is not lower than the check period. (autopilot: recommended answer)
+
+## Done notes
+
+- Mechanism: a `DeliveryWatch` sweep (`server/internal/checkworker/delivery_watch.go`) runs on the
+  PassiveEvaluator loop every 30 s rather than a shorter evaluation cadence (which would write one
+  row per tick). It reads the last successful send of each send-mode smtp check delivering to an
+  email check with `max_delivery_delay`, and writes ONE down row when no email result carries that
+  send's `sentAt`. The SMTP checker records `sentAt` in its output so the send can be matched.
+- Hold: the timeout row carries `deliveryTimeoutAt`; `passiveVerdict` (via `heldDeliveryTimeout`,
+  `backend.DeliveryTimeoutReader`) keeps the check down until a real email newer than that instant
+  arrives, so the once-per-period evaluation cannot write `up` from an older signal.
+- Validation: `max_delivery_delay` lower than the period is enforced on create (defaulted period
+  included), update (config or period change), plan/dry-run and the validate endpoint.

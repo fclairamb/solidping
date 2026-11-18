@@ -7,12 +7,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 const watchToken = "feedfacefeedfacefeedfacefeedfacefeedfacefeedface"
@@ -167,4 +169,51 @@ func TestDeliveryWatchSkipsSendThatArrived(t *testing.T) {
 	r.NoError(err)
 	r.Zero(wrote)
 	r.Len(f.emailRows(t), 1)
+}
+
+// saveSignal writes an inbound email signal row (no worker_uid) for the email check.
+func (f *watchFixture) saveSignal(t *testing.T, uid string, at time.Time, status checkerdef.Status) {
+	t.Helper()
+
+	st := int(status)
+	require.NoError(t, f.svc.SaveResultWithStatusTracking(t.Context(), &models.Result{
+		UID: uid, OrganizationUID: f.email.OrganizationUID, CheckUID: f.email.UID,
+		PeriodType: models.PeriodTypeRaw, PeriodStart: at, Status: &st,
+		Metrics: models.JSONMap{}, Output: models.JSONMap{"message": "Email received"}, CreatedAt: at,
+	}))
+}
+
+// TestPassiveVerdictKeepsWatchTimeoutUntilNewerEmail: after the watch wrote a
+// timeout row, the once-per-period evaluation must not turn it back to up from
+// an older up signal; a real email newer than the timeout lifts the hold.
+func TestPassiveVerdictKeepsWatchTimeoutUntilNewerEmail(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	f := newWatchFixture(t, models.JSONMap{"max_delivery_delay": "10m"})
+	f.saveSignal(t, "older-up", f.now.Add(-30*time.Minute), checkerdef.StatusUp)
+	f.recordSend(t, f.now.Add(-11*time.Minute).Truncate(time.Second))
+
+	wrote, err := f.watch.Sweep(t.Context(), f.worker, f.now)
+	r.NoError(err)
+	r.Equal(1, wrote)
+
+	be := backend.NewDirectBackend(f.svc, nil, nil, nil, nil)
+	job := &models.CheckJob{
+		OrganizationUID: f.email.OrganizationUID, CheckUID: f.email.UID, Type: string(checkerdef.CheckTypeEmail),
+		Period: timeutils.Duration(time.Hour), Check: f.email,
+	}
+
+	status, output, grace, err := passiveVerdict(t.Context(), be, job, f.now.Add(time.Minute))
+	r.NoError(err)
+	r.False(grace)
+	r.Equal(checkerdef.StatusDown, status)
+	r.Contains(output[outputKeyMessage], "not received after 10m")
+
+	// A newer real email lifts the hold.
+	f.saveSignal(t, "newer-up", f.now.Add(2*time.Minute), checkerdef.StatusUp)
+
+	status, _, _, err = passiveVerdict(t.Context(), be, job, f.now.Add(3*time.Minute))
+	r.NoError(err)
+	r.Equal(checkerdef.StatusUp, status)
 }
