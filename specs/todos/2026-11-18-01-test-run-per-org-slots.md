@@ -33,3 +33,9 @@ Found by the security scan of 2026-11-18 (finding AQ1). Severity: Low. Any membe
 
 - Per-org concurrency: 1 or 2? **Recommended:** 1. The dash0 Test button runs one script at a time, and 1 is enough for a human. A CI job that tries several scripts gets a clear `429` with `Retry-After`.
 - Should the per-org limits depend on the plan (entitlements)? **Recommended:** not now. Fixed limits fix the fairness gap. A plan-based limit can come later if a paying customer needs more.
+
+## Resolved open questions
+
+- Per-org concurrency: allow **1** test run in flight per org. (autopilot: recommended answer)
+- Per-org limits are fixed, not plan-based (no entitlements) for now. (autopilot: recommended answer)
+- Proposal step 2: give test runs a browser budget of their own: they may hold at most **2** of the 4 browser slots, so scheduled checks always keep at least 2. Scheduled checks wait for a slot exactly as today. (autopilot: the spec's first option and example)
