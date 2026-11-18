@@ -216,17 +216,25 @@ func (b *blockingRunner) Test(
 	return &aichecks.RunResult{Status: "up"}, nil
 }
 
-func postAsOrg(t *testing.T, handler *Handler, orgUID string) *httptest.ResponseRecorder {
-	t.Helper()
-
-	ctx := context.WithValue(t.Context(), base.ContextKeyOrganization, &models.Organization{UID: orgUID})
+// serveAsOrg runs one test run as orgUID. It asserts nothing, so goroutines
+// can call it; a write error shows as a 0 status.
+func serveAsOrg(ctx context.Context, handler *Handler, orgUID string) *httptest.ResponseRecorder {
+	ctx = context.WithValue(ctx, base.ContextKeyOrganization, &models.Organization{UID: orgUID})
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/orgs/x/checks/test-run",
 		strings.NewReader(`{"type":"js","config":{"script":"return { status: 'up' };"}}`))
 	rec := httptest.NewRecorder()
 
-	require.NoError(t, handler.TestRun(rec, req))
+	if err := handler.TestRun(rec, req); err != nil {
+		rec.Code = 0
+	}
 
 	return rec
+}
+
+func postAsOrg(t *testing.T, handler *Handler, orgUID string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	return serveAsOrg(t.Context(), handler, orgUID)
 }
 
 // TestTestRunPerOrgCap is the regression test of spec 2026-11-18-01: one org
@@ -246,7 +254,7 @@ func TestTestRunPerOrgCap(t *testing.T) {
 	codes := make(chan *httptest.ResponseRecorder, maxConcurrent)
 
 	for range maxConcurrent {
-		wg.Go(func() { codes <- postAsOrg(t, handler, "org-a") })
+		wg.Go(func() { codes <- serveAsOrg(t.Context(), handler, "org-a") })
 	}
 
 	for range maxConcurrent - MaxPerOrg {
@@ -267,7 +275,7 @@ func TestTestRunPerOrgCap(t *testing.T) {
 	// Org B, with org A still holding its slot, runs.
 	doneB := make(chan int, 1)
 
-	go func() { doneB <- postAsOrg(t, handler, "org-b").Code }()
+	go func() { doneB <- serveAsOrg(t.Context(), handler, "org-b").Code }()
 
 	select {
 	case <-runner.started:

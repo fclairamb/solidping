@@ -317,17 +317,17 @@ func TestTestRunsKeepBrowserSlotsForScheduledChecks(t *testing.T) {
 	testRunCtx := WithTestRunBudget(t.Context())
 
 	// Positive control: with nothing held, a test run gets a slot at once.
-	release, ok := acquireSlot(testRunCtx)
+	first, ok := acquireSlot(testRunCtx)
 	r.True(ok)
-	release()
+	first()
 	r.Zero(browserSlots.InUse())
 	r.Zero(testRunBrowserSlots.InUse())
 
 	held := make([]func(), 0, MaxTestRunBrowsers)
 
 	for range MaxTestRunBrowsers {
-		release, ok := acquireSlot(testRunCtx)
-		r.True(ok)
+		release, acquired := acquireSlot(testRunCtx)
+		r.True(acquired)
 
 		held = append(held, release)
 	}
@@ -352,8 +352,8 @@ func TestTestRunsKeepBrowserSlotsForScheduledChecks(t *testing.T) {
 	defer cancelScheduled()
 
 	for range MaxConcurrentBrowsers - MaxTestRunBrowsers {
-		release, ok := acquireSlot(scheduledCtx)
-		r.True(ok, "a scheduled execution gets one of the slots test runs cannot take")
+		release, acquired := acquireSlot(scheduledCtx)
+		r.True(acquired, "a scheduled execution gets one of the slots test runs cannot take")
 
 		held = append(held, release)
 	}
