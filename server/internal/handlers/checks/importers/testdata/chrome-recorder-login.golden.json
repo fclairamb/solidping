@@ -23,7 +23,12 @@
     {
       "item": "Acme login",
       "field": "secrets",
-      "message": "1 password value(s) were moved to the check's encrypted secrets (RECORDER_SECRET_1) and are not in the script; other typed values (emails, one-time codes) stay in clear in the script — review them"
+      "message": "1 typed value(s) were moved to the check's encrypted secrets (RECORDER_SECRET_1) and are not in the script"
+    },
+    {
+      "item": "Acme login",
+      "field": "steps",
+      "message": "1 typed value(s) stayed in the script; move any credential to secrets.NAME"
     }
   ]
 }

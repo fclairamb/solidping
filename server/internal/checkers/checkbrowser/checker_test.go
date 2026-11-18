@@ -304,3 +304,59 @@ func TestExecPathAlsoWaitsForASlot(t *testing.T) {
 	r.Equal(checkerdef.StatusTimeout, result.Status)
 	r.Contains(result.Output["error"], "browser slot")
 }
+
+// TestTestRunsKeepBrowserSlotsForScheduledChecks (spec 2026-11-18-01): test
+// runs may hold at most MaxTestRunBrowsers of the MaxConcurrentBrowsers slots,
+// so with every test-run browser slot held a scheduled execution still gets
+// one at once.
+//
+//nolint:paralleltest // the semaphores are process-wide
+func TestTestRunsKeepBrowserSlotsForScheduledChecks(t *testing.T) {
+	r := require.New(t)
+
+	testRunCtx := WithTestRunBudget(t.Context())
+
+	// Positive control: with nothing held, a test run gets a slot at once.
+	first, ok := acquireSlot(testRunCtx)
+	r.True(ok)
+	first()
+	r.Zero(browserSlots.InUse())
+	r.Zero(testRunBrowserSlots.InUse())
+
+	held := make([]func(), 0, MaxTestRunBrowsers)
+
+	for range MaxTestRunBrowsers {
+		release, acquired := acquireSlot(testRunCtx)
+		r.True(acquired)
+
+		held = append(held, release)
+	}
+
+	defer func() {
+		for _, release := range held {
+			release()
+		}
+	}()
+
+	// One more test run waits for the test-run budget and gives up with its
+	// context, although browserSlots still has free slots.
+	shortCtx, cancel := context.WithTimeout(testRunCtx, 50*time.Millisecond)
+	defer cancel()
+
+	_, ok = acquireSlot(shortCtx)
+	r.False(ok, "a test run must not take more than MaxTestRunBrowsers slots")
+	r.Equal(MaxTestRunBrowsers, browserSlots.InUse(), "a refused test run holds no browser slot")
+
+	// Every remaining slot is for scheduled executions, and they get it at once.
+	scheduledCtx, cancelScheduled := context.WithTimeout(t.Context(), time.Second)
+	defer cancelScheduled()
+
+	for range MaxConcurrentBrowsers - MaxTestRunBrowsers {
+		release, acquired := acquireSlot(scheduledCtx)
+		r.True(acquired, "a scheduled execution gets one of the slots test runs cannot take")
+
+		held = append(held, release)
+	}
+
+	r.Equal(MaxConcurrentBrowsers, browserSlots.InUse())
+}

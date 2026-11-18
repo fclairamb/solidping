@@ -47,10 +47,19 @@ failed.
 
 ## Passwords
 
-A `change` step on a password field has its value moved to the check's
-**encrypted secrets** (`RECORDER_SECRET_1`, ...) and the script reads
-`secrets.RECORDER_SECRET_1`. Other typed values (emails, one-time codes) stay in
-clear in the script: review them before confirming.
+A `change` step has its value moved to the check's **encrypted secrets**
+(`RECORDER_SECRET_1`, ...), and the script reads `secrets.RECORDER_SECRET_1`,
+when either is true:
+
+- one of its selectors looks like a credential field: it matches `password`,
+  `pwd`, `pass`, `pin`, `otp`, `secret`, `token`, `api key`, `mot de passe`,
+  `passwort` or `contraseña`, or carries `type=password`;
+- the value looks like a credential: a `Bearer ` token, or a long random string
+  with no spaces.
+
+Other typed values (emails, search terms) stay in clear in the script, and the
+import warns with their count ("N typed value(s) stayed in the script"): move any
+credential among them to `secrets.NAME` before confirming.
 
 ## What is not converted
 
