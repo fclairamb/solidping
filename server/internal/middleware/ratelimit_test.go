@@ -145,6 +145,37 @@ func TestRateLimitRoute_AppliesOutsideLimitedPrefix(t *testing.T) {
 // keeps the same on/off switch as RateLimit (RequestsPerMinute == 0), so a
 // deployment or test that turns rate limiting off entirely doesn't leave a
 // route-specific limiter enforcing anyway.
+// TestRateLimitRouteBy_BucketsByKey (spec 2026-11-18-01): requests that share
+// a key share a bucket whatever their IP, two keys never share one, and an
+// empty key falls back to the IP bucket.
+func TestRateLimitRouteBy_BucketsByKey(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	rl := middleware.NewRateLimiter(config.RateLimitConfig{RequestsPerMinute: 1, Burst: 1}, context.Background())
+	handler := rl.RateLimitRouteBy(func(req *http.Request) string {
+		return req.Header.Get("X-Test-Org")
+	})(okHandler())
+
+	call := func(ip, org string) int {
+		req := newBunRequest(ip, "/api/v1/orgs/x/checks/test-run")
+		if org != "" {
+			req.Header.Set("X-Test-Org", org)
+		}
+
+		w := httptest.NewRecorder()
+		_ = handler(w, req)
+
+		return w.Code
+	}
+
+	r.Equal(http.StatusOK, call("1.1.1.1", "org-a"))
+	r.Equal(http.StatusTooManyRequests, call("2.2.2.2", "org-a"), "another IP of the same org shares its bucket")
+	r.Equal(http.StatusOK, call("1.1.1.1", "org-b"), "another org has its own bucket")
+	r.Equal(http.StatusOK, call("1.1.1.1", ""), "no key falls back to the IP bucket")
+	r.Equal(http.StatusTooManyRequests, call("1.1.1.1", ""))
+}
+
 func TestRateLimitRoute_DisabledStillHonorsGlobalSwitch(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

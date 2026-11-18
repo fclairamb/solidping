@@ -641,6 +641,30 @@ func toolsRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
 	}
 }
 
+// testRunsPerMinute is the per-org allowance for POST
+// /api/v1/orgs/:org/checks/test-run (spec 2026-11-18-01). Fixed, not
+// plan-based. Burst equals the minute's allowance.
+const testRunsPerMinute = 20
+
+// testRunRateLimitConfig derives the per-org test-run limiter from the
+// server's own, keeping the trusted proxy hops (used by the IP fallback).
+func testRunRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
+	return config.RateLimitConfig{
+		RequestsPerMinute: testRunsPerMinute,
+		Burst:             testRunsPerMinute,
+		TrustedProxies:    base.TrustedProxies,
+	}
+}
+
+// orgRateLimitKey buckets a request by the org RequireOrgAccess resolved.
+func orgRateLimitKey(req *http.Request) string {
+	if org, ok := middleware.GetOrganizationFromContext(req.Context()); ok && org != nil {
+		return "org:" + org.UID
+	}
+
+	return ""
+}
+
 // toolsRegion is the region reported on tool runs: the node's, else the
 // check worker's.
 func (s *Server) toolsRegion() string {
@@ -1308,7 +1332,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Test run of an unsaved check (spec 2026-11-17-04): runs once, stores
 	// and notifies nothing. A literal segment, ahead of "/:checkUid"; a write
 	// route, so orgGroup's floor refuses viewers.
-	orgChecks.POST("/test-run", checktestrun.NewHandler(s.aiChecks.Runner(), s.config).TestRun)
+	// Per-org limiter (spec 2026-11-18-01): mounted after RequireOrgAccess and
+	// RequireOrgWrite, so a viewer still gets 403, and keyed on the org so
+	// every member of one org shares its budget.
+	testRunLimiter := middleware.NewRateLimiter(testRunRateLimitConfig(s.config.Server.RateLimiting), ctx)
+	orgChecks.Use(testRunLimiter.RateLimitRouteBy(orgRateLimitKey)).
+		POST("/test-run", checktestrun.NewHandler(s.aiChecks.Runner(), s.config).TestRun)
 	orgChecks.GET("/:checkUid", checksHandler.GetCheck)
 	orgChecks.PUT("/:slug", checksHandler.UpsertCheck)
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)
