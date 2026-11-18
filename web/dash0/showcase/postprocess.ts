@@ -1044,7 +1044,7 @@ async function main(): Promise<void> {
     `showcase: wrote      ${path.relative(process.cwd(), av1Out)} (${humanSize(av1Out)}, AV1)`,
   );
 
-  const h264Out = path.join(publishDir, PUBLISHED_VIDEO_H264);
+  const h264Out = path.join(videoDir, PUBLISHED_VIDEO_H264);
   transcode(h264Out, H264_ARGS, "H.264 re-encode (libx264)");
   console.log(
     `showcase: wrote      ${path.relative(process.cwd(), h264Out)} (${humanSize(h264Out)}, H.264)`,
