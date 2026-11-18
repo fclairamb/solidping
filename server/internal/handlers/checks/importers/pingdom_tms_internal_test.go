@@ -250,3 +250,76 @@ func TestPingdomUnusableURLs(t *testing.T) {
 	r.Contains(script.String(), "// TODO step 2")
 	r.True(script.untranslatable)
 }
+
+func TestPingdomTMSFillCredentialGoesToSecrets(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	warn := &warnings{}
+	check, ok := convertPingdomTMS(json.RawMessage(`{
+	  "id": 7, "name": "Acme login", "type": "script",
+	  "steps": [
+	    {"fn": "go_to", "args": {"url": "acme.example/login"}},
+	    {"fn": "fill", "args": {"input": "Email", "value": "ops@acme.example"}},
+	    {"fn": "wpm_fill", "args": {"input": "Password", "value": "hunter2-acme"}},
+	    {"fn": "fill", "args": {"input": "#search", "value": "Bearer abc"}},
+	    {"fn": "click", "args": {"element": "Sign in"}}
+	  ]
+	}`), newSlugSet(), warn)
+	r.True(ok)
+
+	script, isString := check.Config["script"].(string)
+	r.True(isString)
+	r.NotContains(script, "hunter2-acme")
+	r.NotContains(script, "Bearer abc")
+	r.Contains(script, `page.fill("auto=Password", secrets.PINGDOM_FILL_1)`)
+	r.Contains(script, `page.fill("auto=#search", secrets.PINGDOM_FILL_2)`)
+	r.Contains(script, `"ops@acme.example"`, "a non-credential value stays a literal")
+
+	secrets, isMap := check.Config["secrets"].(map[string]any)
+	r.True(isMap)
+	r.Equal("hunter2-acme", secrets["PINGDOM_FILL_1"])
+	r.Equal("Bearer abc", secrets["PINGDOM_FILL_2"])
+	r.NotContains(secrets, pingdomSecretUser, "no basic auth was configured")
+
+	var moved, stayed bool
+
+	for _, w := range warn.result() {
+		r.NotContains(w.Message, "hunter2-acme")
+		r.NotContains(w.Message, "go_to step to arm them", "fill secrets are not basic auth")
+
+		moved = moved || strings.Contains(w.Message, "2 typed value(s) were moved")
+		stayed = stayed || strings.Contains(w.Message, "1 typed value(s) stayed in the script")
+	}
+
+	r.True(moved)
+	r.True(stayed)
+}
+
+func TestTypedSecretRule(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		value, field string
+		want         bool
+	}{
+		{"x", "Password", true},
+		{"x", "#user_pin", true},
+		{"x", "otp-code", true},
+		{"x", "api_key", true},
+		{"x", "Mot de passe", true},
+		{"x", "Passwort", true},
+		{"x", "Contraseña", true},
+		{"x", "client_secret", true},
+		{"x", "input[type=password]", true},
+		{"Bearer abc", "#search", true},
+		{"sk9Fq2LxP7vRz4TbW1mN8cYd", "#field", true},
+		{"hello", "#search", false},
+		{"ops@acme.example", "Email", false},
+		{"Paris", "#shipping-city", false},
+		{"https://acme.example/a1b2c3d4e5f6g7h8", "#website", false},
+		{"aaaaaaaaaaaaaaaaaaaaaa11", "#field", false},
+	} {
+		require.Equalf(t, tc.want, isTypedSecret(tc.value, tc.field), "value %q field %q", tc.value, tc.field)
+	}
+}
