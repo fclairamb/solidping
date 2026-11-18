@@ -74,7 +74,8 @@ func (r *AbandonedResultReaperJobRun) Run(ctx context.Context, jctx *jobdef.JobC
 	if outcome.Reaped > 0 {
 		// A non-zero reap is a signal, not routine — warn so it surfaces.
 		log.WarnContext(ctx, "Reaped abandoned results",
-			"reaped", outcome.Reaped, "candidates", outcome.Candidates)
+			"reaped", outcome.Reaped, "candidates", outcome.Candidates,
+			"reaped_by_region", outcome.ReapedByRegion)
 	}
 
 	r.rescheduleSelf(ctx, jctx)

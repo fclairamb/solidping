@@ -243,7 +243,25 @@ func TestEvaluateDMARCEdgeCases(t *testing.T) {
 		auth := h.evaluateSenderAuth(t.Context(), authEmail(), cfg)
 		r.Equal("temperror", auth.DMARC)
 		r.Empty(auth.Failures)
-		r.Contains(auth.TempErrors, "dmarc")
+		r.Contains(auth.TempErrors, "dmarc: TXT record unavailable: lookup _dmarc.example.com: servfail",
+			"the entry carries the DNS cause, like the DKIM one")
+		r.Equal("example.com", auth.DMARCDomain)
+	})
+
+	t.Run("deadline spent before the policy lookup is told apart", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		res := &stubResolver{txt: map[string][]string{"_dmarc.example.com": {"v=DMARC1; p=reject"}}}
+		auth := &senderAuth{}
+		rec, verdict := newAuthHandler(res, nil).lookupDMARC(ctx, auth, "example.com")
+		r.Nil(rec)
+		r.Equal("temperror", verdict)
+		r.Equal([]string{"dmarc: deadline exceeded before the lookup"}, auth.TempErrors)
+		r.Equal("example.com", auth.DMARCDomain)
 	})
 
 	t.Run("failing SPF with unverifiable DKIM is temperror", func(t *testing.T) {

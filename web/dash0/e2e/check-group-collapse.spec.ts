@@ -236,6 +236,63 @@ test.describe("Check group collapse", () => {
     );
   });
 
+  for (const filter of [
+    { name: "a search", query: "q=Node" },
+    { name: "a group filter", query: "group=e2e-forced-group" },
+  ]) {
+    test(`clicking a header force-expanded by ${filter.name} is a no-op that persists nothing`, async ({
+      authenticatedPage,
+    }) => {
+      const page = authenticatedPage;
+      const { upChecks } = fourMemberGroup("e2e-forced-group", "E2E Forced Group");
+      const group: MockGroup = {
+        uid: "e2e-forced-group",
+        name: "E2E Forced Group",
+        status: "up",
+        memberStatusCounts: { up: 4 },
+        checkCount: 4,
+      };
+
+      await mockChecksIndex(page, { group, checks: upChecks });
+      await page.goto(`orgs/test/checks?${filter.query}`);
+      await page.waitForLoadState("networkidle");
+
+      const section = groupSectionLocator(page, group.name);
+      await expect(section).toBeVisible({ timeout: 10000 });
+
+      // Force-expanded: rows are shown, and the header is visibly not a
+      // toggle (no chevron, no button role, no aria-expanded).
+      const header = section.getByTestId("group-header");
+      await expect(header).toHaveAttribute("data-force-expanded", "true");
+      await expect(header).not.toHaveAttribute("aria-expanded", /.*/);
+      await expect(header).not.toHaveAttribute("role", "button");
+      await expect(section.getByTestId("group-collapse-toggle")).toHaveCount(0);
+      await expect(section.getByRole("link", { name: "Node A", exact: true })).toBeVisible();
+
+      // Clicking it repeatedly changes nothing and writes nothing.
+      await header.click({ position: { x: 4, y: 4 } });
+      await header.click({ position: { x: 4, y: 4 } });
+      await header.click({ position: { x: 4, y: 4 } });
+      await expect(section.getByRole("link", { name: "Node A", exact: true })).toBeVisible();
+      const stored = await page.evaluate(
+        () => window.localStorage.getItem("solidping_collapsed_groups_test"),
+      );
+      expect(stored).toBeNull();
+
+      // Once the filter is cleared, the group is back to its default
+      // (collapsed, since its status is up) and is a toggle again.
+      await page.goto("orgs/test/checks");
+      await page.waitForLoadState("networkidle");
+      const cleared = groupSectionLocator(page, group.name);
+      await expect(cleared).toBeVisible({ timeout: 10000 });
+      await expect(cleared.getByTestId("group-header")).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      await expect(cleared.getByTestId("group-collapse-toggle")).toBeVisible();
+    });
+  }
+
   test("mobile viewport renders the header without horizontal overflow", async ({
     authenticatedPage,
   }) => {
