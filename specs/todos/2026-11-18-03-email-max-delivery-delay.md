@@ -135,11 +135,14 @@ the send to receive delay.
   header on the mail), so step 5 can match a send to an email result.
 - The docs page that describes the email check under `web/docs/docs/`.
 
-## Open questions
+## Resolved open questions
 
-- Should a late probe keep the check `down` until the next probe? Recommended: yes. The verdict
-  is per probe, and the remedy is a more frequent SMTP probe.
-- Should the delay failure be `down`, or `degraded`? Recommended: `down`, with the slow rule as
-  the softer tier.
-- Should `max_delivery_delay` be rejected when it is not lower than the check period?
-  Recommended: yes, a limit longer than the period can never fire before the period verdict.
+Decided by the maintainer on 2026-11-18. These are directives, not options.
+
+- **A late probe keeps the check `down` until the next probe.** The verdict is per probe. Nothing
+  flips the check back up when the late mail finally arrives. The remedy for a long red period is
+  a more frequent SMTP probe, and the docs say so.
+- **A delay failure is `down`, never `degraded`.** There is no `degraded` option on
+  `max_delivery_delay`. The softer tier is the existing slow rule (`slow_threshold_ms`).
+- **`max_delivery_delay` must be lower than the check period.** `ValidateSpec` rejects a limit
+  that is equal to or longer than the period, with a `VALIDATION_ERROR` naming both values.
