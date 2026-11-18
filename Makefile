@@ -1,7 +1,7 @@
 .PHONY: test-upgrade docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs embed-placeholders cloud-setup check-clean-clone \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-browser dev-dash0 dev-status0 dev-docs dev-backend \
 	test test-cover test-postgres test-slow test-scenario test-dash0 test-docs lint lint-agent-docs lint-migrations lint-back lint-dash0 lint-status0 fmt deps migrate help sync-brand-assets build-favicons \
-	showcase showcase-terminal showcase-cut showcase-stills \
+	showcase showcase-terminal showcase-cut showcase-take showcase-stills \
 	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres \
 	build-scenario scenario-test
 .DEFAULT_GOAL := build
@@ -475,6 +475,9 @@ showcase-terminal: ## Re-film only the terminal segment of the showcase cut
 
 showcase-cut: ## Re-cut the showcase media from the takes already in showcase/output/
 	@cd $(DASH0_DIR) && bun run showcase/postprocess.ts
+
+showcase-take: ## Record only the dashboard take of the cut, in SHOWCASE_LOCALE (then make showcase-cut)
+	@cd $(DASH0_DIR) && bunx playwright test --config=showcase/playwright.config.ts setup-to-first-result
 
 showcase-stills: ## Record only the three dashboard stills, in SHOWCASE_LOCALE (en, fr, de, es)
 	@echo "Recording showcase stills (needs a FRESH SolidPing server)..."
