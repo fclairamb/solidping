@@ -1,5 +1,5 @@
 import type { TranslateFn } from "@/lib/i18n-types";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useDebounce } from "@/lib/use-debounce";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -370,6 +370,11 @@ function computeHostSectionStatus(checks: Check[]): {
 const SECTION_CARD_CLASS = "overflow-hidden rounded-xl border bg-card shadow-card";
 const SECTION_HEADER_CLASS =
   "relative flex items-center justify-between gap-2 pl-5 pr-4 py-3 cursor-pointer bg-muted hover:bg-muted/70 transition-colors flex-wrap";
+
+// The group header while a search or group filter force-expands it: same
+// layout, but not clickable (no pointer, no hover tint).
+const SECTION_HEADER_FORCED_CLASS =
+  "relative flex items-center justify-between gap-2 pl-5 pr-4 py-3 bg-muted flex-wrap";
 
 // Presentational: a by-host bucket. No group entity backs it (no edit link,
 // no move up/down, no escalation indicator) — just the hostname, member
@@ -789,11 +794,16 @@ function CheckGroupSection({
   // (down/degraded/warning/validating/created) starts expanded so the
   // failure that brought the user here is immediately visible.
   const defaultCollapsed = group.status === "up";
-  // Searching always force-expands (without touching the persisted choice)
-  // so matches are never hidden behind a collapsed section.
-  const collapsed = search || forceExpanded ? false : (manualOverride ?? defaultCollapsed);
+  // Searching or filtering by group always force-expands (without touching
+  // the persisted choice) so matches are never hidden behind a collapsed
+  // section. While forced, the header is not a toggle at all: no chevron, no
+  // button role, and a click writes nothing, so a collapsed state the user
+  // never saw can't be persisted.
+  const forced = Boolean(search) || forceExpanded;
+  const collapsed = forced ? false : (manualOverride ?? defaultCollapsed);
 
   const toggleCollapsed = () => {
+    if (forced) return;
     const next = !collapsed;
     setManualOverride(next);
     writeCollapsedGroup(org, group.uid, next);
@@ -812,41 +822,48 @@ function CheckGroupSection({
   return (
     <div className={SECTION_CARD_CLASS} data-testid="group-section">
       <div
-        className={SECTION_HEADER_CLASS}
-        onClick={toggleCollapsed}
-        role="button"
-        tabIndex={0}
-        aria-expanded={!collapsed}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            toggleCollapsed();
-          }
-        }}
+        className={forced ? SECTION_HEADER_FORCED_CLASS : SECTION_HEADER_CLASS}
+        {...(forced
+          ? {}
+          : {
+              onClick: toggleCollapsed,
+              role: "button",
+              tabIndex: 0,
+              "aria-expanded": !collapsed,
+              onKeyDown: (e: KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleCollapsed();
+                }
+              },
+            })}
         data-testid="group-header"
+        data-force-expanded={forced ? "true" : undefined}
       >
         <span
           aria-hidden
           className={`absolute inset-y-0 left-0 w-1 ${statusStyle(group.status).color}`}
         />
         <div className="flex items-center gap-2 min-w-0 flex-wrap">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                className="inline-flex shrink-0"
-                data-testid="group-collapse-toggle"
-              >
-                {collapsed ? (
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                )}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              {collapsed ? t("menu.expandGroup") : t("menu.collapseGroup")}
-            </TooltipContent>
-          </Tooltip>
+          {!forced && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="inline-flex shrink-0"
+                  data-testid="group-collapse-toggle"
+                >
+                  {collapsed ? (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {collapsed ? t("menu.expandGroup") : t("menu.collapseGroup")}
+              </TooltipContent>
+            </Tooltip>
+          )}
           <button
             type="button"
             className="text-base font-semibold truncate text-left hover:underline"

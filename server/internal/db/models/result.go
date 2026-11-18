@@ -475,4 +475,27 @@ type ReapAbandonedResultsOutcome struct {
 	// Reaped is the number of those candidates that were past
 	// AbandonedResultThreshold for their check and got finalized this sweep.
 	Reaped int
+	// ReapedByRegion splits Reaped by the region of each reaped row, so a burst
+	// can be traced to the checker that stopped reporting.
+	// ReapedRegionNone counts the rows that carry no region (CreateCheck's
+	// "Check created" marker is one).
+	ReapedByRegion map[string]int
+}
+
+// ReapedRegionNone is the ReapedByRegion key of the reaped rows without a region.
+const ReapedRegionNone = "none"
+
+// CountReaped records one reaped row of the given region.
+func (o *ReapAbandonedResultsOutcome) CountReaped(region *string) {
+	key := ReapedRegionNone
+	if region != nil && *region != "" {
+		key = *region
+	}
+
+	if o.ReapedByRegion == nil {
+		o.ReapedByRegion = make(map[string]int)
+	}
+
+	o.Reaped++
+	o.ReapedByRegion[key]++
 }
