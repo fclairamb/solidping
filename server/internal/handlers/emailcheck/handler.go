@@ -510,8 +510,12 @@ func (h *Handler) applySenderAuth(
 	auth := h.evaluateSenderAuth(ctx, email, cfg)
 
 	if len(auth.TempErrors) > 0 {
-		h.logger.WarnContext(ctx, "sender authentication incomplete",
-			"check_uid", check.UID, "temperror", auth.TempErrors)
+		attrs := []any{"check_uid", check.UID, "temperror", auth.TempErrors}
+		if auth.DMARCDomain != "" {
+			attrs = append(attrs, "dmarc_domain", auth.DMARCDomain)
+		}
+
+		h.logger.WarnContext(ctx, "sender authentication incomplete", attrs...)
 	}
 
 	if auth.ran.blocklists {

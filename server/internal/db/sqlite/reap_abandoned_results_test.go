@@ -54,6 +54,8 @@ func TestReapAbandonedResults_FinalizesStaleMarkerOnly(t *testing.T) {
 
 	stale := models.NewResult(org.UID, check.UID, models.ResultStatusCreated, 0)
 	stale.PeriodStart = time.Now().Add(-2 * time.Hour) // far past the ~7.5 min threshold
+	staleRegion := "acme-region-1"
+	stale.Region = &staleRegion
 	r.NoError(s.CreateResult(ctx, stale))
 
 	fresh := models.NewResult(org.UID, check.UID, models.ResultStatusCreated, 0)
@@ -68,6 +70,8 @@ func TestReapAbandonedResults_FinalizesStaleMarkerOnly(t *testing.T) {
 	r.NoError(err)
 	r.Equal(2, outcome.Candidates, "only the two created rows are candidates; running is never scanned")
 	r.Equal(1, outcome.Reaped, "only the stale created row is past threshold")
+	r.Equal(map[string]int{"acme-region-1": 1}, outcome.ReapedByRegion,
+		"the reaped rows are counted per region, for the reaper's WARN line")
 
 	var reapedRow models.Result
 	r.NoError(s.DB().NewSelect().Model(&reapedRow).Where("uid = ?", stale.UID).Scan(ctx))
