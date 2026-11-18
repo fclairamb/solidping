@@ -141,10 +141,6 @@ func TestRateLimitRoute_AppliesOutsideLimitedPrefix(t *testing.T) {
 	r.Equal(http.StatusOK, w.Code, "the limiter must reset once the bucket refills")
 }
 
-// TestRateLimitRoute_DisabledStillHonorsGlobalSwitch proves RateLimitRoute
-// keeps the same on/off switch as RateLimit (RequestsPerMinute == 0), so a
-// deployment or test that turns rate limiting off entirely doesn't leave a
-// route-specific limiter enforcing anyway.
 // TestRateLimitRouteBy_BucketsByKey (spec 2026-11-18-01): requests that share
 // a key share a bucket whatever their IP, two keys never share one, and an
 // empty key falls back to the IP bucket.
@@ -176,6 +172,10 @@ func TestRateLimitRouteBy_BucketsByKey(t *testing.T) {
 	r.Equal(http.StatusTooManyRequests, call("1.1.1.1", ""))
 }
 
+// TestRateLimitRoute_DisabledStillHonorsGlobalSwitch proves RateLimitRoute
+// keeps the same on/off switch as RateLimit (RequestsPerMinute == 0), so a
+// deployment or test that turns rate limiting off entirely doesn't leave a
+// route-specific limiter enforcing anyway.
 func TestRateLimitRoute_DisabledStillHonorsGlobalSwitch(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
