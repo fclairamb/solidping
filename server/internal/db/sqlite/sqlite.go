@@ -3493,7 +3493,7 @@ func (s *Service) ReapAbandonedResults(ctx context.Context) (models.ReapAbandone
 	// so it is neither reaped nor worth carrying here.
 	err := s.db.NewSelect().
 		Model(&candidates).
-		Column("uid", "check_uid", "status", "period_start").
+		Column("uid", "check_uid", "status", "period_start", "region").
 		Where("period_type = 'raw'").
 		Where("status IN (?)", bun.List(abandonedResultLifecycleStatuses())).
 		Scan(ctx)
@@ -3533,7 +3533,7 @@ func (s *Service) ReapAbandonedResults(ctx context.Context) (models.ReapAbandone
 		}
 
 		if claimed {
-			outcome.Reaped++
+			outcome.CountReaped(candidate.Region)
 		}
 	}
 

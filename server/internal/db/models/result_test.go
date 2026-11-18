@@ -305,3 +305,20 @@ func TestAbandonedResultThreshold(t *testing.T) {
 	// A longer period yields a longer threshold — monotonic in period.
 	r.Greater(AbandonedResultThreshold(time.Hour), AbandonedResultThreshold(time.Minute))
 }
+
+func TestReapAbandonedResultsOutcomeCountReaped(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	region := "acme-region-1"
+	empty := ""
+
+	var outcome ReapAbandonedResultsOutcome
+	outcome.CountReaped(&region)
+	outcome.CountReaped(&region)
+	outcome.CountReaped(nil)
+	outcome.CountReaped(&empty)
+
+	r.Equal(4, outcome.Reaped)
+	r.Equal(map[string]int{"acme-region-1": 2, ReapedRegionNone: 2}, outcome.ReapedByRegion)
+}

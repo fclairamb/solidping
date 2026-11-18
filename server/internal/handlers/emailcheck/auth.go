@@ -59,14 +59,17 @@ type blobFetcher func(ctx context.Context, blobID string) ([]byte, error)
 // senderAuth is the outcome of evaluateSenderAuth: the verdicts that go into the
 // result output and the requirements that failed.
 type senderAuth struct {
-	SendingIP     string
-	SPF           string
-	SPFDomain     string
-	DKIM          string
-	DKIMDomains   []string
-	DKIMAligned   bool
-	DMARC         string
-	DMARCPolicy   string
+	SendingIP   string
+	SPF         string
+	SPFDomain   string
+	DKIM        string
+	DKIMDomains []string
+	DKIMAligned bool
+	DMARC       string
+	DMARCPolicy string
+	// DMARCDomain is the domain whose _dmarc lookup could not complete, logged
+	// next to the temperror so the cause can be traced (empty otherwise).
+	DMARCDomain   string
 	BlocklistedOn []string
 	ProviderAuth  map[string]string
 	ReceivedIPs   []string
@@ -480,14 +483,26 @@ func (h *Handler) evalDMARC(ctx context.Context, auth *senderAuth, fromDomain st
 func (h *Handler) lookupDMARC(
 	ctx context.Context, auth *senderAuth, fromDomain string,
 ) (*dmarc.Record, string) {
+	if ctx.Err() != nil {
+		// SPF, DKIM or the blocklists already spent the deadline: no DNS query
+		// was even sent, which is not a resolver problem.
+		auth.DMARCDomain = fromDomain
+		auth.TempErrors = append(auth.TempErrors, "dmarc: deadline exceeded before the lookup")
+
+		return nil, verdictTempError
+	}
+
 	res := h.resolver()
 	opts := &dmarc.LookupOptions{LookupTXT: func(domain string) ([]string, error) {
 		return lookupTXT(ctx, res, domain)
 	}}
 
+	queried := fromDomain
+
 	rec, err := dmarc.LookupWithOptions(fromDomain, opts)
 	if errors.Is(err, dmarc.ErrNoPolicy) {
 		if org, orgErr := publicsuffix.EffectiveTLDPlusOne(fromDomain); orgErr == nil && org != fromDomain {
+			queried = org
 			rec, err = dmarc.LookupWithOptions(org, opts)
 		}
 	}
@@ -498,12 +513,26 @@ func (h *Handler) lookupDMARC(
 	case errors.Is(err, dmarc.ErrNoPolicy):
 		return nil, verdictNone
 	case dmarc.IsTempFail(err) || ctx.Err() != nil:
-		auth.TempErrors = append(auth.TempErrors, "dmarc")
+		// go-msgauth errors already start with "dmarc: " and carry the DNS
+		// cause (timeout, SERVFAIL, canceled context), like the DKIM entry.
+		auth.DMARCDomain = queried
+		auth.TempErrors = append(auth.TempErrors, dmarcTempError(err))
 
 		return nil, verdictTempError
 	default:
 		return nil, verdictNone // unparsable record: as good as none
 	}
+}
+
+// dmarcTempError renders a DMARC lookup failure as a TempErrors entry,
+// "dmarc: <cause>".
+func dmarcTempError(err error) string {
+	msg := err.Error()
+	if strings.HasPrefix(msg, "dmarc: ") {
+		return msg
+	}
+
+	return "dmarc: " + msg
 }
 
 // aligned reports whether two domains are aligned: equal in strict mode, sharing
