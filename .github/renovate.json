@@ -5,8 +5,8 @@
   "postUpdateOptions": ["gomodTidyAll"],
   "packageRules": [
     {
-      "description": "Minor/patch: automerge with squash",
-      "matchUpdateTypes": ["minor", "patch"],
+      "description": "Minor/patch/digest: automerge with squash",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
       "addLabels": ["deps"],
       "automerge": true,
       "automergeType": "pr",
@@ -14,8 +14,9 @@
       "platformAutomerge": true
     },
     {
+      "description": "Go non-major updates in one PR. digest covers the modules pinned to a pseudo-version (goja...), which renovate reports as digest updates, not minor/patch (PR #935 came alone).",
       "matchDatasources": ["go"],
-      "matchUpdateTypes": ["minor", "patch"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
       "groupName": "go dependencies (non-major)"
     },
     {
@@ -61,16 +62,6 @@
         "github.com/chromedp/cdproto"
       ],
       "enabled": false
-    },
-    {
-      "description": "goja: always automerge, whatever the update type (it only ships pseudo-versions)",
-      "matchDepNames": ["github.com/dop251/goja"],
-      "groupName": null,
-      "addLabels": ["deps"],
-      "automerge": true,
-      "automergeType": "pr",
-      "automergeStrategy": "squash",
-      "platformAutomerge": true
     },
     {
       "description": "chromedp/headless-shell: always automerge, whatever the update type. Its version IS the Chrome version (151.0.7922.109 -> 152.x), so every ~4-week Chrome release reads to renovate as a major and is held by the no-major-automerge rule above, even though nothing breaking happened (PR #263). It is pinned only in docker-compose.yml \u2014 local dev and the E2E browser, never a shipped artifact \u2014 and CI's E2E job exercises it on every PR. Must stay AFTER the major rule: renovate applies packageRules in order and the last match wins. Only the numbered tag that the `stable` tag points to is offered (custom datasource `headless-shell-stable`): the numbered tags mix stable, beta and dev builds (157.0.8092.0 was a dev build), so the tag name alone cannot tell them apart.",
