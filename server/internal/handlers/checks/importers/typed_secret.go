@@ -54,13 +54,13 @@ func looksLikeCredential(value string) bool {
 
 	hasLetter, hasDigit := false, false
 
-	for _, r := range value {
+	for _, char := range value {
 		switch {
-		case unicode.IsSpace(r):
+		case unicode.IsSpace(char):
 			return false
-		case unicode.IsLetter(r):
+		case unicode.IsLetter(char):
 			hasLetter = true
-		case unicode.IsDigit(r):
+		case unicode.IsDigit(char):
 			hasDigit = true
 		}
 	}
@@ -73,8 +73,8 @@ func shannonEntropy(value string) float64 {
 	counts := map[rune]int{}
 	total := 0
 
-	for _, r := range value {
-		counts[r]++
+	for _, char := range value {
+		counts[char]++
 		total++
 	}
 
