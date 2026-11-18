@@ -373,10 +373,42 @@ func (rl *RateLimiter) RateLimitRoute(next httpx.HandlerFunc) httpx.HandlerFunc 
 	}
 }
 
+// RateLimitRouteBy is RateLimitRoute with the bucket chosen by key instead of
+// by client IP or bearer token: e.g. one bucket per org for a route mounted
+// after RequireOrgAccess (spec 2026-11-18-01). An empty key falls back to the
+// usual IP/token bucket.
+func (rl *RateLimiter) RateLimitRouteBy(key func(*http.Request) string) httpx.Middleware {
+	return func(next httpx.HandlerFunc) httpx.HandlerFunc {
+		return func(writer http.ResponseWriter, req *http.Request) error {
+			if rl.cfg.RequestsPerMinute == 0 {
+				return next(writer, req)
+			}
+
+			bucket := key(req)
+			if bucket == "" {
+				bucket, _, _ = rl.bucketFor(req)
+			} else {
+				// "k:" cannot collide with an IP or a "t:" token key.
+				bucket = "k:" + bucket
+			}
+
+			return rl.rateLimitKey(next, writer, req, bucket)
+		}
+	}
+}
+
 // rateLimitCore is the shared admission logic behind RateLimit and
 // RateLimitRoute, once the caller has decided the request is in scope.
 func (rl *RateLimiter) rateLimitCore(next httpx.HandlerFunc, writer http.ResponseWriter, req *http.Request) error {
 	key, _, _ := rl.bucketFor(req)
+
+	return rl.rateLimitKey(next, writer, req, key)
+}
+
+// rateLimitKey admits or refuses req against the bucket named key.
+func (rl *RateLimiter) rateLimitKey(
+	next httpx.HandlerFunc, writer http.ResponseWriter, req *http.Request, key string,
+) error {
 	entry := rl.getEntry(key)
 
 	if entry.limiter.Allow() {
