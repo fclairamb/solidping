@@ -114,3 +114,53 @@ export function showcaseContent(locale: ShowcaseLocale): ShowcaseContent {
     userName: n.user,
   };
 }
+
+/** The words burned into the published cut. */
+export interface ShowcaseCaptions {
+  /** Over the `docker run` terminal segment. */
+  run: string;
+  /** Over the first sign-in and the forced password rotation. */
+  login: string;
+  /** Over creating the check. */
+  check: string;
+  /** Over the detail page as results arrive. */
+  results: string;
+  /** The tag over the sped-up stretch, for a given speed. */
+  speed: (factor: number) => string;
+}
+
+const CAPTIONS: Record<ShowcaseLocale, ShowcaseCaptions> = {
+  en: {
+    run: "Run it",
+    login: "First login",
+    check: "First check",
+    results: "First results",
+    speed: (n) => `${n}× speed`,
+  },
+  fr: {
+    run: "Lancez-le",
+    login: "Première connexion",
+    check: "Premier contrôle",
+    results: "Premiers résultats",
+    speed: (n) => `Accéléré ×${n}`,
+  },
+  de: {
+    run: "Starten",
+    login: "Erste Anmeldung",
+    check: "Erster Check",
+    results: "Erste Ergebnisse",
+    speed: (n) => `${n}× schneller`,
+  },
+  es: {
+    run: "Ejecútalo",
+    login: "Primer inicio de sesión",
+    check: "Primera comprobación",
+    results: "Primeros resultados",
+    speed: (n) => `Velocidad ×${n}`,
+  },
+};
+
+/** The captions of the published cut, in the locale's language. */
+export function showcaseCaptions(locale: ShowcaseLocale): ShowcaseCaptions {
+  return CAPTIONS[locale];
+}
