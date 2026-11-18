@@ -34,6 +34,11 @@
     },
     {
       "item": "Acme signup flow",
+      "field": "steps",
+      "message": "1 typed value(s) stayed in the script; move any credential to secrets.NAME"
+    },
+    {
+      "item": "Acme signup flow",
       "field": "region",
       "message": "region \"us-west\" has no SolidPing counterpart — pick regions on the check"
     }

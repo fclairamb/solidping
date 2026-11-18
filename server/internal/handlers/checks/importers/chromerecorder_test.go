@@ -60,11 +60,83 @@ func TestChromeRecorderPasswordMovedToSecrets(t *testing.T) {
 			found = true
 
 			r.Contains(warning.Message, "RECORDER_SECRET_1")
-			r.Contains(warning.Message, "stay in clear")
 		}
 	}
 
 	r.True(found, "a secrets warning is expected")
+}
+
+// recorderChangeFlow is a one-field flow typing value into the selectors.
+func recorderChangeFlow(selectors, value string) []byte {
+	return []byte(`{"title": "Acme typed", "steps": [
+	  {"type": "navigate", "url": "https://app.acme.example/"},
+	  {"type": "change", "value": "` + value + `", "selectors": ` + selectors + `}
+	]}`)
+}
+
+func TestChromeRecorderTypedValueRule(t *testing.T) {
+	t.Parallel()
+
+	t.Run("password type selector goes to secrets", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		result, err := (&importers.ChromeRecorderConverter{}).Convert(
+			recorderChangeFlow(`[["#cred"], ["input[type=\"password\"]"]]`, "hunter2-acme"))
+		r.NoError(err)
+
+		cfg := result.Document.Checks[0].Config
+		script, ok := cfg["script"].(string)
+		r.True(ok)
+		r.NotContains(script, "hunter2-acme")
+		r.Contains(script, "secrets.RECORDER_SECRET_1")
+
+		secrets, ok := cfg["secrets"].(map[string]any)
+		r.True(ok)
+		r.Equal("hunter2-acme", secrets["RECORDER_SECRET_1"])
+
+		for _, warning := range result.Warnings {
+			r.NotContains(warning.Message, "stayed in the script")
+		}
+	})
+
+	t.Run("credential-looking value goes to secrets", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		result, err := (&importers.ChromeRecorderConverter{}).Convert(
+			recorderChangeFlow(`[["#field-3"]]`, "sk9Fq2LxP7vRz4TbW1mN8cYd"))
+		r.NoError(err)
+
+		script, ok := result.Document.Checks[0].Config["script"].(string)
+		r.True(ok)
+		r.NotContains(script, "sk9Fq2LxP7vRz4TbW1mN8cYd")
+		r.Contains(script, "secrets.RECORDER_SECRET_1")
+	})
+
+	t.Run("plain value stays in the script with a warning", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		result, err := (&importers.ChromeRecorderConverter{}).Convert(recorderChangeFlow(`[["#search"]]`, "hello"))
+		r.NoError(err)
+
+		cfg := result.Document.Checks[0].Config
+		script, ok := cfg["script"].(string)
+		r.True(ok)
+		r.Contains(script, `"hello"`)
+		r.NotContains(cfg, "secrets")
+
+		var found bool
+
+		for _, warning := range result.Warnings {
+			if strings.Contains(warning.Message, "1 typed value(s) stayed in the script") {
+				found = true
+			}
+		}
+
+		r.True(found, "the stayed-in-the-script warning is expected")
+	})
 }
 
 func TestChromeRecorderUnsupportedStepsPauseTheCheck(t *testing.T) {

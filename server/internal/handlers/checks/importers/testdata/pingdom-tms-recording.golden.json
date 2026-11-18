@@ -32,6 +32,11 @@
     },
     {
       "item": "Acme checkout recording",
+      "field": "steps",
+      "message": "1 typed value(s) stayed in the script; move any credential to secrets.NAME"
+    },
+    {
+      "item": "Acme checkout recording",
       "field": "region",
       "message": "region \"eu\" has no SolidPing counterpart — pick regions on the check"
     }
