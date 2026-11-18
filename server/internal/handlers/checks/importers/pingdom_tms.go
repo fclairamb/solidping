@@ -35,6 +35,8 @@ const (
 	// holding a basic_auth step's credentials.
 	pingdomSecretUser     = "PINGDOM_BASIC_USER"
 	pingdomSecretPassword = "PINGDOM_BASIC_PASSWORD"
+	// pingdomSecretFillPrefix names the secrets holding credential fill values.
+	pingdomSecretFillPrefix = "PINGDOM_FILL_"
 )
 
 // errPingdomNotFound marks an HTTP 404 from the API.
@@ -287,6 +289,10 @@ type pingdomScript struct {
 	// produced a TODO comment is not wrapped in step().
 	untranslatableCount int
 	kind                string
+	// fillSecrets and fillLiterals count the fill values moved to the
+	// secrets and those left in the script.
+	fillSecrets  int
+	fillLiterals int
 }
 
 func newPingdomScript(name string, warn *warnings) *pingdomScript {
@@ -455,8 +461,19 @@ func (g *pingdomScript) generate(check *pingdomTMSCheck) {
 		g.wrapStep(before, todoBefore, step)
 	}
 
-	if !authDone && len(g.secrets) > 0 {
+	_, hasBasicUser := g.secrets[pingdomSecretUser]
+	if !authDone && hasBasicUser {
 		g.warn.addf(g.name, "steps", "basic auth credentials were stored but the check has no go_to step to arm them")
+	}
+
+	if g.fillSecrets > 0 {
+		g.warn.addf(g.name, "secrets",
+			"%d typed value(s) were moved to the check's encrypted secrets (%s1 to %s%d) and are not in the script",
+			g.fillSecrets, pingdomSecretFillPrefix, pingdomSecretFillPrefix, g.fillSecrets)
+	}
+
+	if g.fillLiterals > 0 {
+		g.warn.addf(g.name, "steps", typedValuesLeftFormat, g.fillLiterals)
 	}
 }
 
@@ -497,6 +514,25 @@ func (g *pingdomScript) emitBasicAuth() {
 	g.use(helperNameMust)
 	g.emitf("must(page.basicAuth(secrets.%s, secrets.%s), %s);",
 		pingdomSecretUser, pingdomSecretPassword, jsq("basic_auth"))
+}
+
+// fill types a value; a credential goes to the encrypted secrets as
+// PINGDOM_FILL_<n> and the script references it, never the value.
+func (g *pingdomScript) fill(index int, step pingdomTMSStep) {
+	input, raw := step.arg("input"), step.arg("value")
+	value := jsq(raw)
+
+	if isTypedSecret(raw, input) {
+		g.fillSecrets++
+		key := pingdomSecretFillPrefix + strconv.Itoa(g.fillSecrets)
+		g.secrets[key] = raw
+		value = "secrets." + key
+	} else {
+		g.fillLiterals++
+	}
+
+	g.use(helperNameMust)
+	g.emitf("must(page.fill(%s, %s), %s);", sel(input), value, stepLabel(index, step, input))
 }
 
 // sel wraps a Pingdom selector as an auto= selector.
@@ -563,9 +599,7 @@ func (g *pingdomScript) step(index int, step pingdomTMSStep) {
 	case "click", "wpm_click":
 		g.action(index, step, "page.click(%s)", step.arg("element"))
 	case "fill", "wpm_fill":
-		g.use(helperNameMust)
-		g.emitf("must(page.fill(%s, %s), %s);", sel(step.arg("input")), jsq(step.arg("value")),
-			stepLabel(index, step, step.arg("input")))
+		g.fill(index, step)
 	case "check":
 		g.action(index, step, "page.check(%s)", step.arg("checkbox"))
 	case "uncheck":

@@ -2667,6 +2667,95 @@ paths:
         "429":
           $ref: "#/components/responses/TooManyRequests"
 
+  /api/v1/orgs/{org}/checks/test-run:
+    post:
+      tags: [Checks]
+      summary: Run an unsaved js check once
+      description: >-
+        Runs a js check definition that is not saved yet, once, on the API node, and returns
+        its status, output and named steps. Nothing is stored or notified. Needs the `user`
+        role (a viewer gets 403). Limits, all fixed: 1 test run in flight per organization
+        and 4 per API node (a 429 with `Retry-After: 5` when either is reached), 20 test runs
+        per minute per organization (a 429 with `Retry-After: 60` past it), 30s per run, and
+        test runs hold at most 2 of the node's 4 browser slots, the other 2 staying for the
+        scheduled browser checks.
+      operationId: checkTestRun
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, config]
+              properties:
+                type:
+                  type: string
+                  enum: [js]
+                config:
+                  type: object
+                  required: [script]
+                  properties:
+                    script:
+                      type: string
+                    env:
+                      type: object
+                      additionalProperties:
+                        type: string
+                    secrets:
+                      type: object
+                      additionalProperties:
+                        type: string
+                    timeout:
+                      type: string
+                      description: A Go duration, at most 30s (the default).
+      responses:
+        "200":
+          description: The run's outcome
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, durationMs, steps]
+                properties:
+                  status:
+                    type: string
+                  durationMs:
+                    type: integer
+                    format: int64
+                  message:
+                    type: string
+                  output:
+                    type: object
+                    additionalProperties: true
+                  metrics:
+                    type: object
+                    additionalProperties: true
+                  steps:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  screenshot:
+                    type: object
+                    properties:
+                      format:
+                        type: string
+                      data:
+                        type: string
+                        description: Base64 image.
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
   /api/v1/orgs/{org}/checks/{checkUid}/screenshots:
     get:
       tags: [Checks]

@@ -38,6 +38,12 @@ place (they carry the `solidping-managed=pingdom` label).
   line of a generated script. Steps with no equivalent (`wpm_click_xy`, mouse
   moves, tab closing, unknown functions) leave a `// TODO` line and a warning,
   and the check is created paused. `basic_auth` credentials go to the check's
-  encrypted secrets, not the script. Pingdom regions are not mapped.
+  encrypted secrets, not the script. A `fill` value goes to the encrypted
+  secrets too (`PINGDOM_FILL_1`, ..., read as `secrets.PINGDOM_FILL_1`) when
+  the field looks like a credential field (`password`, `pwd`, `pin`, `otp`,
+  `secret`, `token`, `api key`, `mot de passe`, ...) or the value looks like a
+  credential (a `Bearer ` token, a long random string). Any other typed value
+  stays in the script, and a warning counts them: move any credential to
+  `secrets.NAME` before confirming. Pingdom regions are not mapped.
 - Basic-auth credentials are **not** imported (a warning lists them): re-enter them on the check.
 - Probe filters, alert contacts, integrations and maintenance windows.

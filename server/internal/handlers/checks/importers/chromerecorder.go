@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -47,9 +46,6 @@ const (
 	recOperatorAtMost  = "<="
 	recOperatorAtLeast = ">="
 )
-
-// passwordHint matches a selector that points at a password field.
-var passwordHint = regexp.MustCompile(`(?i)password|passwd|pwd|mot de passe`)
 
 // recorderFlow is the top-level export.
 type recorderFlow struct {
@@ -182,12 +178,14 @@ func requireNavigateFirst(steps []*recorderStep) error {
 
 // recorderScript accumulates the generated script.
 type recorderScript struct {
-	name           string
-	warn           *warnings
-	flowTimeout    int
-	body           []string
-	helpers        map[string]bool
-	secrets        map[string]string
+	name        string
+	warn        *warnings
+	flowTimeout int
+	body        []string
+	helpers     map[string]bool
+	secrets     map[string]string
+	// typedLiterals counts the change values left in the script.
+	typedLiterals  int
 	untranslatable bool
 	todoCount      int
 	lastSelectors  string
@@ -299,9 +297,12 @@ func (g *recorderScript) generate(steps []*recorderStep) {
 
 		sort.Strings(keys)
 		g.warn.addf(g.name, "secrets",
-			"%d password value(s) were moved to the check's encrypted secrets (%s) and are not in the script; "+
-				"other typed values (emails, one-time codes) stay in clear in the script — review them",
+			"%d typed value(s) were moved to the check's encrypted secrets (%s) and are not in the script",
 			len(keys), strings.Join(keys, ", "))
+	}
+
+	if g.typedLiterals > 0 {
+		g.warn.addf(g.name, "steps", typedValuesLeftFormat, g.typedLiterals)
 	}
 }
 
@@ -464,10 +465,12 @@ func (g *recorderScript) change(index int, step *recorderStep) {
 
 	value := jsq(step.Value)
 
-	if slices.ContainsFunc(list, passwordHint.MatchString) {
+	if isTypedSecret(step.Value, list...) {
 		key := recSecretPrefix + strconv.Itoa(len(g.secrets)+1)
 		g.secrets[key] = step.Value
 		value = "secrets." + key
+	} else {
+		g.typedLiterals++
 	}
 
 	g.emitf("must(page.fill(%s, %s), %s);", literal, value, jsq(stepWhat(index, "fill "+recorderTarget(list))))

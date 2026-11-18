@@ -144,6 +144,36 @@ func TestCheckTestRunRoute(t *testing.T) {
 	r.Equal("ok", out.Steps[0].Status)
 	r.Equal("failed", out.Steps[1].Status)
 
+	// Per-org rate limit (spec 2026-11-18-01): the editor already spent two
+	// runs of the org's budget. Invalid bodies are cheap but still count.
+	admitted, limited := 2, false
+
+	for range testRunsPerMinute + 5 {
+		resp = do(http.MethodPost, path, editor, strings.NewReader(`{"type":"http","config":{}}`))
+		_ = resp.Body.Close()
+
+		if resp.StatusCode == http.StatusTooManyRequests {
+			r.NotEmpty(resp.Header.Get("Retry-After"))
+
+			limited = true
+
+			break
+		}
+
+		r.Equal(http.StatusBadRequest, resp.StatusCode)
+
+		admitted++
+	}
+
+	r.True(limited, "the per-org limiter must refuse runs past its budget")
+	r.GreaterOrEqual(admitted, testRunsPerMinute)
+	r.LessOrEqual(admitted, testRunsPerMinute+1, "one token may refill during the loop, no more")
+
+	// The role check still runs first: a viewer gets 403, not 429.
+	resp = do(http.MethodPost, path, viewer, strings.NewReader(payload))
+	_ = resp.Body.Close()
+	r.Equal(http.StatusForbidden, resp.StatusCode, "a viewer cannot test-run, even once the org is limited")
+
 	// Nothing was created.
 	checks, _, listErr := dbSvc.ListChecks(ctx, org.UID, nil)
 	r.NoError(listErr)
