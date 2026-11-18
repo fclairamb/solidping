@@ -1272,6 +1272,8 @@
     "emailAuthHelp": "Optional. Prüft, wer die Nachricht gesendet hat, wie es ein empfangender Mailserver tun würde. Eine nicht erfüllte Anforderung setzt das Ergebnis auf Ausfall; DNS-Zeitüberschreitungen nie.",
     "emailRequireSpf": "SPF verlangen",
     "emailAuthOff": "Aus",
+    "emailMaxDeliveryDelay": "Maximale Zustellverzögerung",
+    "emailMaxDeliveryDelayHelp": "Optional, z. B. 10m. Eine später oder nie zugestellte Sonden-Mail setzt das Ergebnis auf ausgefallen. Erfordert einen gekoppelten SMTP-Check, der die Sonde sendet.",
     "emailSpfNone": "Alles außer fail",
     "emailSpfSoftfail": "Softfail oder besser",
     "emailSpfPass": "Pass",

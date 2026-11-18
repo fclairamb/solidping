@@ -108,7 +108,7 @@ func (s *Service) ListEnabledChecksByType(ctx context.Context, types []string) (
 		Where("enabled = ?", true).
 		Where("internal = ?", false).
 		Where("deleted_at IS NULL").
-		Where("type IN (?)", bun.In(types)).
+		Where("type IN (?)", bun.List(types)).
 		Scan(ctx); err != nil {
 		return nil, fmt.Errorf("list enabled checks by type: %w", err)
 	}

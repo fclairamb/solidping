@@ -1049,6 +1049,29 @@ Like a heartbeat check, an email-reception check has no regions and follows
 the same timing rules: 1× the period, and 2 periods of grace for a new check
 that has not received its first email yet.
 
+#### Maximum delivery delay {#email-max-delivery-delay}
+
+Set `max_delivery_delay` (a duration such as `10m`, at least `1m` and lower than
+the check period) to fail a probe that takes too long. It needs a paired
+[SMTP check in send mode](#smtp-send-mode): only a probe carrying the
+`X-SolidPing-Sent-At` header has a trustworthy send time, and a mail from any
+other sender is never judged late.
+
+The result duration of an email check is the delivery latency (send to receive),
+so the response-time chart and the slow rule see it. With a limit set:
+
+- **Arrived late.** The result is `down` with `delivered after 13m29s, limit 10m`.
+  An explicit `down` from the sender wins over the delay; when sender
+  authentication also fails, both messages are joined.
+- **Never arrived.** The check goes `down` at send time + limit, without waiting
+  for its period, with `sent at 09:52, not received after 10m` (one row per
+  missed probe). A probe that arrives afterwards is recorded as late. The check
+  recovers on the next probe that arrives in time.
+
+Advice: a 10 minute limit calls for an **hourly** SMTP probe, not a daily one.
+The slow rule defaults to 3 slow probes out of 6, so for one mail a day set it
+to 1 of 1.
+
 ## Remote Access
 
 ### SSH {#ssh}

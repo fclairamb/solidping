@@ -1272,6 +1272,8 @@
     "emailAuthHelp": "Facultatif. Vérifie qui a envoyé le message, comme le ferait un serveur de réception. Une exigence non satisfaite met le résultat en échec ; une expiration DNS jamais.",
     "emailRequireSpf": "Exiger SPF",
     "emailAuthOff": "Désactivé",
+    "emailMaxDeliveryDelay": "Délai de livraison maximal",
+    "emailMaxDeliveryDelayHelp": "Optionnel, par ex. 10m. Un e-mail de sonde livré plus tard, ou jamais, passe le résultat en panne. Nécessite un check SMTP associé qui envoie la sonde.",
     "emailSpfNone": "Tout sauf fail",
     "emailSpfSoftfail": "Softfail ou mieux",
     "emailSpfPass": "Pass",

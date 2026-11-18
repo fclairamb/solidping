@@ -10,6 +10,7 @@ package config
 
 import (
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -88,6 +89,22 @@ func (c *EmailConfig) SPFAccepts(verdict string) bool {
 	default:
 		return true
 	}
+}
+
+// FormatDuration renders a duration without the zero tail: 10m0s as 10m and
+// 1h0m0s as 1h.
+func FormatDuration(d time.Duration) string {
+	text := d.String()
+
+	if strings.HasSuffix(text, "m0s") {
+		text = strings.TrimSuffix(text, "0s")
+	}
+
+	if strings.HasSuffix(text, "h0m") {
+		text = strings.TrimSuffix(text, "0m")
+	}
+
+	return text
 }
 
 // FromMap populates the configuration from a map.
@@ -206,7 +223,7 @@ func (c *EmailConfig) GetConfig() map[string]any {
 	}
 
 	if c.MaxDeliveryDelay != 0 {
-		cfg[KeyMaxDeliveryDelay] = c.MaxDeliveryDelay.String()
+		cfg[KeyMaxDeliveryDelay] = FormatDuration(c.MaxDeliveryDelay)
 	}
 
 	return cfg

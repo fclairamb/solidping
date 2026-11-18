@@ -1272,6 +1272,8 @@
     "emailAuthHelp": "Opcional. Verifica quién envió el mensaje, como lo haría un servidor de correo receptor. Un requisito incumplido pone el resultado en caída; un tiempo de espera DNS nunca.",
     "emailRequireSpf": "Exigir SPF",
     "emailAuthOff": "Desactivado",
+    "emailMaxDeliveryDelay": "Retraso máximo de entrega",
+    "emailMaxDeliveryDelayHelp": "Opcional, p. ej. 10m. Un correo de sonda entregado más tarde, o nunca, marca el resultado como caído. Requiere un check SMTP asociado que envíe la sonda.",
     "emailSpfNone": "Cualquiera salvo fail",
     "emailSpfSoftfail": "Softfail o mejor",
     "emailSpfPass": "Pass",

@@ -1262,6 +1262,7 @@ export interface EmailState {
   requireDmarc: string; // "off" | "pass"
   checkBlocklists: boolean;
   blocklists: string;
+  maxDeliveryDelay: string; // Go duration such as "10m"; "" = no limit
 }
 
 const EMAIL_AUTH_OFF = "off";
@@ -1270,7 +1271,7 @@ export const emailModule: CheckTypeModule<EmailState> = {
   types: ["email"],
   // Everything else (the public `token`) is carried through by the shared form's
   // passthrough; only the authentication keys are modelled here.
-  ownedKeys: ["require_spf", "require_dkim", "require_dmarc", "check_blocklists", "blocklists"],
+  ownedKeys: ["require_spf", "require_dkim", "require_dmarc", "check_blocklists", "blocklists", "max_delivery_delay"],
   fromConfig: (config) => ({
     requireSpf: getConfigField(config, "require_spf") || EMAIL_AUTH_OFF,
     requireDkim: getConfigField(config, "require_dkim") === "true",
@@ -1281,6 +1282,7 @@ export const emailModule: CheckTypeModule<EmailState> = {
     blocklists: Array.isArray(config.blocklists)
       ? (config.blocklists as string[]).join("\n")
       : getConfigField(config, "blocklists"),
+    maxDeliveryDelay: getConfigField(config, "max_delivery_delay"),
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
@@ -1292,6 +1294,8 @@ export const emailModule: CheckTypeModule<EmailState> = {
       const zones = splitBlocklists(state.blocklists);
       if (zones.length > 0) cfg.blocklists = zones;
     }
+    const delay = state.maxDeliveryDelay.trim();
+    if (delay) cfg.max_delivery_delay = delay;
     return { config: cfg, errors: [] };
   },
   Fields: EmailFields,
@@ -1317,6 +1321,17 @@ function EmailFields({ state, onChange }: CheckTypeFieldsProps<EmailState>) {
       <p className="text-sm text-muted-foreground">
         {t("misc.emailGeneratedHelp")}
       </p>
+      <div className="space-y-2">
+        <Label htmlFor="emailMaxDeliveryDelay">{t("misc.emailMaxDeliveryDelay")}</Label>
+        <Input
+          id="emailMaxDeliveryDelay"
+          placeholder="10m"
+          value={state.maxDeliveryDelay}
+          onChange={(e) => onChange({ ...state, maxDeliveryDelay: e.target.value })}
+          data-testid="email-max-delivery-delay-input"
+        />
+        <p className="text-xs text-muted-foreground">{t("misc.emailMaxDeliveryDelayHelp")}</p>
+      </div>
       <CollapsibleSection
         title={t("misc.emailAuthTitle")}
         customized={customized}

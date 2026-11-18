@@ -453,23 +453,8 @@ func (h *Handler) recordResult(
 	}
 
 	if status == statusUp {
-		var failures []string
-
-		authOutput, failed := h.applySenderAuth(ctx, check, email, metrics)
-		if authOutput != nil {
-			output[outputKeyAuth] = authOutput
-		}
-
-		if failed != "" {
-			failures = append(failures, failed)
-		}
-
-		if late := lateDeliveryMessage(check, latency, hasLatency); late != "" {
-			failures = append(failures, late)
-		}
-
-		if len(failures) > 0 {
-			status, message = statusDown, strings.Join(failures, "; ")
+		if failed := h.upStatusFailures(ctx, check, email, output, metrics, latency, hasLatency); failed != "" {
+			status, message = statusDown, failed
 		}
 	}
 
@@ -511,6 +496,31 @@ func (h *Handler) recordResult(
 	return nil
 }
 
+// upStatusFailures runs the two checks a token-derived up goes through (sender
+// authentication, then the delivery delay) and returns their joined failure
+// message, "" when both pass. The auth block is added to output in every case.
+func (h *Handler) upStatusFailures(
+	ctx context.Context, check *models.Check, email *jmap.Email,
+	output, metrics models.JSONMap, latency time.Duration, hasLatency bool,
+) string {
+	var failures []string
+
+	authOutput, failed := h.applySenderAuth(ctx, check, email, metrics)
+	if authOutput != nil {
+		output[outputKeyAuth] = authOutput
+	}
+
+	if failed != "" {
+		failures = append(failures, failed)
+	}
+
+	if late := lateDeliveryMessage(check, latency, hasLatency); late != "" {
+		failures = append(failures, late)
+	}
+
+	return strings.Join(failures, "; ")
+}
+
 // lateDeliveryMessage returns the failure message when the check has a
 // max_delivery_delay and the probe took longer than it, "" otherwise. A mail
 // without a trustworthy send time (no X-SolidPing-Sent-At) is never late.
@@ -529,22 +539,7 @@ func lateDeliveryMessage(check *models.Check, latency time.Duration, hasLatency 
 	}
 
 	return fmt.Sprintf("delivered after %s, limit %s",
-		shortDuration(latency.Round(time.Second)), shortDuration(cfg.MaxDeliveryDelay))
-}
-
-// shortDuration renders 10m0s as 10m and 1h0m0s as 1h.
-func shortDuration(d time.Duration) string {
-	text := d.String()
-
-	if strings.HasSuffix(text, "m0s") {
-		text = strings.TrimSuffix(text, "0s")
-	}
-
-	if strings.HasSuffix(text, "h0m") {
-		text = strings.TrimSuffix(text, "0m")
-	}
-
-	return text
+		emailconfig.FormatDuration(latency.Round(time.Second)), emailconfig.FormatDuration(cfg.MaxDeliveryDelay))
 }
 
 // applySenderAuth runs the optional sender-authentication evaluation of the check

@@ -150,13 +150,13 @@ func (w *DeliveryWatch) targetOf(smtp *models.Check, watched map[string]*watched
 func (w *DeliveryWatch) sweepPair(
 	ctx context.Context, workerUID string, now time.Time, smtp *models.Check, target *watchedEmail,
 ) (bool, error) {
-	up := int(checkerdef.StatusUp)
+	statusUp := int(checkerdef.StatusUp)
 
 	sends, err := w.db.ListResults(ctx, &models.ListResultsFilter{
 		OrganizationUID: smtp.OrganizationUID,
 		CheckUIDs:       []string{smtp.UID},
 		PeriodTypes:     []string{models.PeriodTypeRaw},
-		Statuses:        []int{up},
+		Statuses:        []int{statusUp},
 		Limit:           1,
 	})
 	if err != nil {
@@ -169,9 +169,9 @@ func (w *DeliveryWatch) sweepPair(
 
 	sentRaw, _ := sends.Results[0].Output[outputKeySentAt].(string)
 
-	sentAt, err := time.Parse(time.RFC3339, sentRaw)
-	if err != nil || now.Sub(sentAt) <= target.limit {
-		return false, nil
+	sentAt, parseErr := time.Parse(time.RFC3339, sentRaw)
+	if parseErr != nil || now.Sub(sentAt) <= target.limit {
+		return false, nil //nolint:nilerr // a send without a usable sentAt is skipped, not an error
 	}
 
 	seen, err := w.alreadyAccounted(ctx, target.check, sentAt)
@@ -231,7 +231,7 @@ func (w *DeliveryWatch) recordTimeout(
 		Metrics:         models.JSONMap{},
 		Output: models.JSONMap{
 			outputKeyMessage: fmt.Sprintf("sent at %s, not received after %s",
-				sentAt.UTC().Format("15:04"), shortLimit(target.limit)),
+				sentAt.UTC().Format("15:04"), checkemailconfig.FormatDuration(target.limit)),
 			outputKeySentAt:         sentAt.Format(time.RFC3339),
 			outputKeySourceCheckUID: smtp.UID,
 			outputKeyEvaluation:     true,
@@ -253,19 +253,4 @@ func (w *DeliveryWatch) recordTimeout(
 	}
 
 	return nil
-}
-
-// shortLimit renders 10m0s as 10m and 1h0m0s as 1h.
-func shortLimit(d time.Duration) string {
-	text := d.String()
-
-	if strings.HasSuffix(text, "m0s") {
-		text = strings.TrimSuffix(text, "0s")
-	}
-
-	if strings.HasSuffix(text, "h0m") {
-		text = strings.TrimSuffix(text, "0m")
-	}
-
-	return text
 }

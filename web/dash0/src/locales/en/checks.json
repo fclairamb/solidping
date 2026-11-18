@@ -1272,6 +1272,8 @@
     "emailAuthHelp": "Optional. Verify who sent the message, like a receiving mail server would. A failed requirement turns the result down; DNS timeouts never do.",
     "emailRequireSpf": "Require SPF",
     "emailAuthOff": "Off",
+    "emailMaxDeliveryDelay": "Maximum delivery delay",
+    "emailMaxDeliveryDelayHelp": "Optional, e.g. 10m. A probe mail delivered later than this, or never, turns the result down. Needs a paired SMTP check that sends the probe.",
     "emailSpfNone": "Anything but fail",
     "emailSpfSoftfail": "Softfail or better",
     "emailSpfPass": "Pass",

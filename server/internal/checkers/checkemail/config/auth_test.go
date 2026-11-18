@@ -163,7 +163,7 @@ func TestMaxDeliveryDelayRoundTrip(t *testing.T) {
 	cfg := &config.EmailConfig{}
 	require.NoError(t, cfg.FromMap(map[string]any{"max_delivery_delay": "10m"}))
 	require.Equal(t, 10*time.Minute, cfg.MaxDeliveryDelay)
-	require.Equal(t, "10m0s", cfg.GetConfig()["max_delivery_delay"])
+	require.Equal(t, "10m", cfg.GetConfig()["max_delivery_delay"])
 
 	absent := &config.EmailConfig{}
 	require.NoError(t, absent.FromMap(map[string]any{"token": "x"}))
