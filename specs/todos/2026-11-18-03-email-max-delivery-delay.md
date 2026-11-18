@@ -116,3 +116,9 @@ the send to receive delay.
   the softer tier.
 - Should `max_delivery_delay` be rejected when it is not lower than the check period?
   Recommended: yes, a limit longer than the period can never fire before the period verdict.
+
+## Resolved open questions
+
+- A late probe keeps the check `down` until the next probe: the verdict is per probe. (autopilot: recommended answer)
+- The delay failure is `down`; the slow rule stays the softer tier. (autopilot: recommended answer)
+- Reject `max_delivery_delay` when it is not lower than the check period. (autopilot: recommended answer)
