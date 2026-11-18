@@ -101,13 +101,13 @@ Keep the recipes as they are. Add full per-language text next to them, for hand-
   or are edited inline on `status-pages.$statusPageUid.incidents.$uid.tsx`.
 - Whether `public_incidents.go` builds its own response structs (then they need the field too).
 
-## Open questions
+## Resolved open questions
 
-- **Flag translations as stale when the literal text changes?** Recommended: no in this spec.
-  Keep them untouched and show, in the editor only, a hint next to each translation whose row
-  literal was edited after it. Deferred unless it turns out to be cheap (it needs a timestamp per
-  entry).
-- **A translation for a row that still has a recipe (machine-written, never edited)?**
-  Recommended: allowed. The translation wins for its language, the recipe keeps serving the others.
-- **Should the default language be picked from `translations` when the literal is in another
-  language than the page's?** Recommended: no. The literal column is always the page language.
+Decided by Florent, 2026-11-18 (the recommended answers).
+
+- **Stale translations.** Do not flag or clear a translation when the literal text changes.
+  Translations are left untouched. No per-entry timestamp, no hint in the editor.
+- **Translation on a machine-written row.** Allowed. A row that still has its recipe accepts
+  `translations`: the translation wins for its language, the recipe keeps serving the others.
+- **Default language.** The literal column is always the page language. Never pick the default
+  text from `translations`.
