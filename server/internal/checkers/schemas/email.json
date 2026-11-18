@@ -22,9 +22,6 @@
         "type": "string"
       },
       "type": "array"
-    },
-    "max_delivery_delay": {
-      "type": "string"
     }
   },
   "type": "object",
