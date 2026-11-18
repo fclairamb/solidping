@@ -9,16 +9,20 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/aichecks"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
 const (
@@ -26,6 +30,11 @@ const (
 	// maxConcurrent bounds the test runs a process executes at once: each may
 	// hold a browser slot.
 	maxConcurrent = 4
+	// MaxPerOrg bounds the test runs one org has in flight at once (spec
+	// 2026-11-18-01), so a single tenant can never hold every process slot.
+	MaxPerOrg = 1
+	// retryAfterSeconds is the Retry-After of a refused run.
+	retryAfterSeconds = "5"
 )
 
 // Runner executes a script once. *aichecks.Runner implements it.
@@ -41,6 +50,11 @@ type Handler struct {
 
 	runner Runner
 	slots  chan struct{}
+
+	mu sync.Mutex
+	// perOrg counts the runs in flight by org UID. An entry is deleted when
+	// its count drops back to zero, so the map only holds busy orgs.
+	perOrg map[string]int
 }
 
 // NewHandler builds the handler.
@@ -49,7 +63,66 @@ func NewHandler(runner Runner, cfg *config.Config) *Handler {
 		HandlerBase: base.NewHandlerBase(cfg),
 		runner:      runner,
 		slots:       make(chan struct{}, maxConcurrent),
+		perOrg:      map[string]int{},
 	}
+}
+
+// errOrgBusy and errProcessBusy are the two reasons acquire refuses a run.
+var (
+	errOrgBusy     = errors.New("org at its test-run limit")
+	errProcessBusy = errors.New("every test-run slot is busy")
+)
+
+// acquire reserves one of the org's MaxPerOrg slots and one of the process's
+// maxConcurrent slots, without waiting. The returned release frees both.
+func (h *Handler) acquire(orgUID string) (func(), error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.perOrg[orgUID] >= MaxPerOrg {
+		return nil, errOrgBusy
+	}
+
+	select {
+	case h.slots <- struct{}{}:
+	default:
+		return nil, errProcessBusy
+	}
+
+	h.perOrg[orgUID]++
+
+	var once sync.Once
+
+	return func() {
+		once.Do(func() {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+
+			h.perOrg[orgUID]--
+			if h.perOrg[orgUID] <= 0 {
+				delete(h.perOrg, orgUID)
+			}
+
+			<-h.slots
+		})
+	}, nil
+}
+
+// busyOrgs reports how many orgs have a run in flight. For tests.
+func (h *Handler) busyOrgs() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	return len(h.perOrg)
+}
+
+// orgUID is the org RequireOrgAccess resolved, or "" outside the real chain.
+func orgUID(req *http.Request) string {
+	if org, ok := middleware.GetOrganizationFromContext(req.Context()); ok && org != nil {
+		return org.UID
+	}
+
+	return ""
 }
 
 // Request is the check definition to run. Only `js` checks can be tried.
@@ -118,17 +191,26 @@ func (h *Handler) TestRun(writer http.ResponseWriter, req *http.Request) error {
 		timeout = parsed
 	}
 
-	select {
-	case h.slots <- struct{}{}:
-		defer func() { <-h.slots }()
-	default:
-		writer.Header().Set("Retry-After", "5")
+	release, err := h.acquire(orgUID(req))
+	if err != nil {
+		writer.Header().Set("Retry-After", retryAfterSeconds)
 
-		return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
-			"Too many test runs in progress")
+		message := "Too many test runs in progress"
+		if errors.Is(err, errOrgBusy) {
+			message = fmt.Sprintf(
+				"This organization already has a test run in progress (limit: %d at a time per organization)", MaxPerOrg)
+		}
+
+		return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeRateLimited, message)
 	}
 
-	result, err := h.runner.Test(req.Context(), payload.Config.Script, payload.Config.Env, payload.Config.Secrets, timeout)
+	defer release()
+
+	// Every browser the script opens counts against the test-run budget, so
+	// scheduled browser checks on this node always keep part of the pool.
+	ctx := checkbrowser.WithTestRunBudget(req.Context())
+
+	result, err := h.runner.Test(ctx, payload.Config.Script, payload.Config.Env, payload.Config.Secrets, timeout)
 	if err != nil {
 		var cfgErr *checkerdef.ConfigError
 		if errors.As(err, &cfgErr) {

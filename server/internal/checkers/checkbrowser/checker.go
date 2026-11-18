@@ -120,13 +120,61 @@ type BrowserChecker struct {
 	screenshot func(ctx context.Context) (Capture, error)
 }
 
+// MaxTestRunBrowsers caps how many of the MaxConcurrentBrowsers slots test
+// runs (POST …/checks/test-run, spec 2026-11-18-01) may hold at once, so a
+// tenant looping test runs can never starve the scheduled browser checks of
+// the node: they always keep MaxConcurrentBrowsers - MaxTestRunBrowsers slots.
+const MaxTestRunBrowsers = 2
+
+// testRunBrowserSlots is the test-run budget inside browserSlots. A test run
+// takes one of these first, then a browserSlots slot; scheduled checks only
+// ever touch browserSlots, so the way they wait is unchanged.
+//
+//nolint:gochecknoglobals // process-wide concurrency cap, see MaxTestRunBrowsers
+var testRunBrowserSlots = checkersession.NewSlots(MaxTestRunBrowsers, ErrSlotTimeout)
+
+type testRunKey struct{}
+
+// WithTestRunBudget marks ctx as a test run's: every browser it opens counts
+// against MaxTestRunBrowsers on top of MaxConcurrentBrowsers.
+func WithTestRunBudget(ctx context.Context) context.Context {
+	return context.WithValue(ctx, testRunKey{}, true)
+}
+
+// IsTestRun reports whether ctx was marked by WithTestRunBudget.
+func IsTestRun(ctx context.Context) bool {
+	marked, _ := ctx.Value(testRunKey{}).(bool)
+
+	return marked
+}
+
 // acquireSlot waits for one of the MaxConcurrentBrowsers slots, giving up when
-// the check's context (which already carries the check's timeout) is done.
+// the check's context (which already carries the check's timeout) is done. A
+// test run's context first waits for one of the MaxTestRunBrowsers slots.
 // The returned release must be called exactly once.
 func acquireSlot(ctx context.Context) (func(), bool) {
-	release, err := browserSlots.Acquire(ctx)
+	if !IsTestRun(ctx) {
+		release, err := browserSlots.Acquire(ctx)
 
-	return release, err == nil
+		return release, err == nil
+	}
+
+	releaseBudget, err := testRunBrowserSlots.Acquire(ctx)
+	if err != nil {
+		return nil, false
+	}
+
+	release, err := browserSlots.Acquire(ctx)
+	if err != nil {
+		releaseBudget()
+
+		return nil, false
+	}
+
+	return func() {
+		release()
+		releaseBudget()
+	}, true
 }
 
 // Type returns the check type identifier.

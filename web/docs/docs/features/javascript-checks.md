@@ -769,6 +769,22 @@ string.
 | Memory built by native calls (see below) | 64 MiB per execution |
 | Memory of the script process (see below) | 256 MiB per execution |
 
+### Test runs {#test-run-limits}
+
+The editor's **Test** button (`POST /api/v1/orgs/{org}/checks/test-run`) runs an unsaved script
+once, on the API node. So that one organization cannot take that node for itself, test runs
+have fixed limits of their own, on top of the ones above:
+
+| Limit | Value |
+|---|---|
+| Test runs in flight | 1 per organization, 4 per API node |
+| Test runs started | 20 per minute per organization |
+| Browser slots | test runs hold at most 2 of the node's 4, the other 2 stay for scheduled browser checks |
+
+A run over one of these limits is refused at once with `429 RATE_LIMITED` and a `Retry-After`
+header (5 seconds for the in-flight limits, 60 for the per-minute one). A test run that opens a
+browser while 2 test runs already hold one waits for a slot within its own timeout.
+
 ### Memory budget
 
 The script runs inside the check worker, which every organization shares, and
