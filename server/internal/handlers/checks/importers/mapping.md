@@ -286,7 +286,7 @@ failing step throws a message naming the step.
 |---|---|
 | `go_to` / `wpm_go_to` | `page.goto(url)` (`https://` added when scheme-less) |
 | `click` / `wpm_click` | `page.click("auto=...")` (offsets ignored) |
-| `fill` / `wpm_fill` | `page.fill` |
+| `fill` / `wpm_fill` | `page.fill`; the value goes to the encrypted `secrets` as `PINGDOM_FILL_<n>` (the script reads `secrets.PINGDOM_FILL_<n>`) when the field looks like a credential field (its selector or name matches `pass`, `pwd`, `pin`, `otp`, `secret`, `token`, `api key`, `mot de passe`, `contraseña`, or carries `type=password`), or the value looks like a credential (a `Bearer ` prefix, or a long high-entropy string with no spaces). Any value left in the script raises a warning with their count. The Chrome Recorder `change` step follows the same rule (`RECORDER_SECRET_<n>`) |
 | `check` / `uncheck` | `page.check` / `page.uncheck` |
 | `select` / `wpm_select_dropdown` | `page.select` |
 | `select_radio` | `page.check("auto=<name>")` + warning (ambiguous if several radios share the name) |
