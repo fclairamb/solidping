@@ -5,8 +5,8 @@
   "postUpdateOptions": ["gomodTidyAll"],
   "packageRules": [
     {
-      "description": "Minor/patch: automerge with squash",
-      "matchUpdateTypes": ["minor", "patch"],
+      "description": "Minor/patch/digest: automerge with squash",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
       "addLabels": ["deps"],
       "automerge": true,
       "automergeType": "pr",
@@ -14,8 +14,9 @@
       "platformAutomerge": true
     },
     {
+      "description": "Go non-major updates in one PR. digest covers the modules pinned to a pseudo-version (goja...), which renovate reports as digest updates, not minor/patch (PR #935 came alone).",
       "matchDatasources": ["go"],
-      "matchUpdateTypes": ["minor", "patch"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
       "groupName": "go dependencies (non-major)"
     },
     {
@@ -63,9 +64,9 @@
       "enabled": false
     },
     {
-      "description": "goja: always automerge, whatever the update type (it only ships pseudo-versions)",
+      "description": "goja: always automerge, whatever the update type (it only ships pseudo-versions), in the go non-major group",
       "matchDepNames": ["github.com/dop251/goja"],
-      "groupName": null,
+      "groupName": "go dependencies (non-major)",
       "addLabels": ["deps"],
       "automerge": true,
       "automergeType": "pr",
