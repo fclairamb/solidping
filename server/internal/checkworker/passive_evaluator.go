@@ -90,6 +90,11 @@ type PassiveEvaluator struct {
 
 	batch int
 	poll  time.Duration
+
+	// watch reports probe mails that never arrived (spec 2026-11-18-03); nil
+	// disables it. lastWatch is the previous sweep, owned by the Run loop.
+	watch     *DeliveryWatch
+	lastWatch time.Time
 }
 
 // NewPassiveEvaluator builds the jobs node's passive evaluator, writing its
@@ -107,7 +112,10 @@ func NewPassiveEvaluator(
 		dbService, checkJobSvc, incidentSvc, svc.EventNotifier, svc.Credentials,
 	)
 
-	return newPassiveEvaluator(cfg, checkJobSvc, directBackend)
+	evaluator := newPassiveEvaluator(cfg, checkJobSvc, directBackend)
+	evaluator.watch = NewDeliveryWatch(dbService, incidentSvc)
+
+	return evaluator
 }
 
 // newPassiveEvaluator is the testable constructor.
@@ -158,7 +166,23 @@ func (e *PassiveEvaluator) Run(ctx context.Context) error {
 			e.logger.WarnContext(ctx, "Passive evaluation pass failed", "error", err)
 		}
 
+		e.sweepDeliveries(ctx)
+
 		timer.Reset(e.nextWait(evaluated, nextIn, err))
+	}
+}
+
+// sweepDeliveries runs the delivery watch when its interval elapsed.
+func (e *PassiveEvaluator) sweepDeliveries(ctx context.Context) {
+	worker := e.worker.Load()
+	if e.watch == nil || worker == nil || time.Since(e.lastWatch) < deliveryWatchInterval {
+		return
+	}
+
+	e.lastWatch = time.Now()
+
+	if _, err := e.watch.Sweep(ctx, worker.UID, time.Now()); err != nil && !errors.Is(err, context.Canceled) {
+		e.logger.WarnContext(ctx, "Delivery watch sweep failed", "error", err)
 	}
 }
 

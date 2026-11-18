@@ -4,6 +4,7 @@ import (
 	"maps"
 	"regexp"
 	"slices"
+	"time"
 
 	dnsblconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdnsbl/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -19,6 +20,10 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 	}
 
 	if err := validateAuth(spec.Config); err != nil {
+		return err
+	}
+
+	if err := validateMaxDeliveryDelay(spec.Config, spec.Period); err != nil {
 		return err
 	}
 
@@ -79,6 +84,31 @@ func validateAuth(configMap map[string]any) error {
 		if !zonePattern.MatchString(zone) {
 			return checkerdef.NewConfigErrorf(KeyBlocklists, "%q is not a valid DNS zone name", zone)
 		}
+	}
+
+	return nil
+}
+
+// validateMaxDeliveryDelay applies the rules of max_delivery_delay: at least a
+// minute, and lower than the check period when the period is known (a limit
+// longer than the period could never fire before the period verdict).
+func validateMaxDeliveryDelay(configMap map[string]any, period time.Duration) error {
+	cfg := &EmailConfig{}
+	if err := cfg.delayFromMap(configMap); err != nil {
+		return err
+	}
+
+	if raw, _ := configMap[KeyMaxDeliveryDelay].(string); raw == "" {
+		return nil
+	}
+
+	if cfg.MaxDeliveryDelay < MinMaxDeliveryDelay {
+		return checkerdef.NewConfigError(KeyMaxDeliveryDelay, "must be at least 1m")
+	}
+
+	if period > 0 && cfg.MaxDeliveryDelay >= period {
+		return checkerdef.NewConfigErrorf(KeyMaxDeliveryDelay,
+			"must be lower than the check period (%s)", period)
 	}
 
 	return nil

@@ -3,6 +3,7 @@ package config_test
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -154,4 +155,32 @@ func TestFromMapRejectsNonStringToken(t *testing.T) {
 
 	cfg := &config.EmailConfig{}
 	require.Error(t, cfg.FromMap(map[string]any{"token": 42}))
+}
+
+func TestMaxDeliveryDelayRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.EmailConfig{}
+	require.NoError(t, cfg.FromMap(map[string]any{"max_delivery_delay": "10m"}))
+	require.Equal(t, 10*time.Minute, cfg.MaxDeliveryDelay)
+	require.Equal(t, "10m0s", cfg.GetConfig()["max_delivery_delay"])
+
+	absent := &config.EmailConfig{}
+	require.NoError(t, absent.FromMap(map[string]any{"token": "x"}))
+	require.NotContains(t, absent.GetConfig(), "max_delivery_delay")
+}
+
+func TestValidateSpecMaxDeliveryDelay(t *testing.T) {
+	t.Parallel()
+
+	for _, bad := range []any{"soon", 10, "-5m", "30s", "2h"} {
+		spec := &checkerdef.CheckSpec{Period: time.Hour, Config: map[string]any{"max_delivery_delay": bad}}
+		require.Error(t, config.ValidateSpec(spec), "%v", bad)
+	}
+
+	spec := &checkerdef.CheckSpec{Period: time.Hour, Config: map[string]any{"max_delivery_delay": "10m"}}
+	require.NoError(t, config.ValidateSpec(spec))
+
+	unknownPeriod := &checkerdef.CheckSpec{Config: map[string]any{"max_delivery_delay": "2h"}}
+	require.NoError(t, config.ValidateSpec(unknownPeriod))
 }

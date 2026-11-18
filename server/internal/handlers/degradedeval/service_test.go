@@ -693,3 +693,38 @@ func TestBothRulesOffEvaluatesNothing(t *testing.T) {
 	r.Empty(s.incidentsOfKind(t, models.IncidentKindDegraded))
 	r.NotNil(s.reload(t).DegradedEvaluatedAt, "still swept, still rotated")
 }
+
+// TestEmailCheckSlowRuleReadsDeliveryLatency: an email check records the probe's
+// delivery latency as its result duration (spec 2026-11-18-03), so the slow
+// rule at 1 of 1 sees a slow delivery and stays quiet on a fast one.
+func TestEmailCheckSlowRuleReadsDeliveryLatency(t *testing.T) {
+	t.Parallel()
+
+	configure := func(check *models.Check) {
+		check.Type = "email"
+		check.Config = models.JSONMap{"token": "feedfacefeedfacefeedfacefeedfacefeedfacefeedface"}
+		check.SlowThresholdMs = intPtr(300000)
+		check.DegradedSlow = intPtr(1)
+		check.DegradedSlowWindow = intPtr(1)
+	}
+
+	t.Run("latency above the threshold opens a degraded incident", func(t *testing.T) {
+		t.Parallel()
+
+		s := newEvalSetup(t, configure)
+		s.submit(t, models.ResultStatusUp, 809000)
+		s.evaluate(t)
+
+		require.Len(t, s.incidentsOfKind(t, models.IncidentKindDegraded), 1)
+	})
+
+	t.Run("latency below the threshold opens none", func(t *testing.T) {
+		t.Parallel()
+
+		s := newEvalSetup(t, configure)
+		s.submit(t, models.ResultStatusUp, 2000)
+		s.evaluate(t)
+
+		require.Empty(t, s.incidentsOfKind(t, models.IncidentKindDegraded))
+	})
+}

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/uptrace/bun"
+
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -94,4 +96,22 @@ func (s *Service) FindLastResolvedDegradedIncident(
 	}
 
 	return incident, nil
+}
+
+// ListEnabledChecksByType returns every enabled, live, non-internal check of the
+// given types across every organization.
+func (s *Service) ListEnabledChecksByType(ctx context.Context, types []string) ([]*models.Check, error) {
+	var checks []*models.Check
+
+	if err := s.db.NewSelect().
+		Model(&checks).
+		Where("enabled = ?", true).
+		Where("internal = ?", false).
+		Where("deleted_at IS NULL").
+		Where("type IN (?)", bun.In(types)).
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("list enabled checks by type: %w", err)
+	}
+
+	return checks, nil
 }

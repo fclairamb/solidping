@@ -8,6 +8,7 @@ package emailcheck
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -284,17 +285,17 @@ func findHeader(headers []jmap.EmailHeader, name string) string {
 // it was sent" — or larger than maxSaneDeliveryLatency.
 func enrichFromSMTPHeaders(
 	output, metrics models.JSONMap, email *jmap.Email, orgUID string,
-) {
+) (time.Duration, bool) {
 	sourceCheckUID := findHeader(email.Headers, headerSourceCheckUID)
 	sentAtRaw := findHeader(email.Headers, headerSentAt)
 
 	if sourceCheckUID == "" || sentAtRaw == "" {
-		return
+		return 0, false
 	}
 
 	sentAt, err := time.Parse(time.RFC3339, sentAtRaw)
 	if err != nil {
-		return
+		return 0, false
 	}
 
 	output[outputKeySourceCheckUID] = sourceCheckUID
@@ -302,7 +303,7 @@ func enrichFromSMTPHeaders(
 
 	latency := email.ReceivedAt.Sub(sentAt)
 	if latency < 0 || latency > maxSaneDeliveryLatency {
-		return
+		return 0, false
 	}
 
 	latencyMs := float64(latency.Microseconds()) / 1000.0
@@ -310,6 +311,8 @@ func enrichFromSMTPHeaders(
 	metrics[outputKeyLatencyMs] = latencyMs
 
 	prommetrics.EmailDeliveryLatency.WithLabelValues(orgUID).Observe(latency.Seconds())
+
+	return latency, true
 }
 
 func normalizeStatus(raw string) (string, bool) {
@@ -424,8 +427,6 @@ func (h *Handler) recordResult(
 		return err
 	}
 
-	durationMs := float32(0)
-
 	from, messageID := senderAndMessageID(email)
 
 	if h.alreadyRecorded(ctx, check.OrganizationUID, check.UID, messageID, origin) {
@@ -435,31 +436,47 @@ func (h *Handler) recordResult(
 	metrics := make(models.JSONMap)
 	message := defaultMessage(status)
 
-	var authOutput map[string]any
-
-	if status == statusUp {
-		var failed string
-		if authOutput, failed = h.applySenderAuth(ctx, check, email, metrics); failed != "" {
-			status, message = statusDown, failed
-		}
-	}
-
-	checkerStatus := toCheckerStatus(status)
-	statusInt := int(checkerStatus)
-
 	output := models.JSONMap{
-		outputKeyMessage:    message,
 		outputKeyFrom:       from,
 		outputKeySubject:    email.Subject,
 		outputKeyMessageID:  messageID,
 		outputKeyReceivedAt: email.ReceivedAt.Format(time.RFC3339),
 	}
 
-	if authOutput != nil {
-		output[outputKeyAuth] = authOutput
+	// The latency is known before the status is decided: the delivery delay
+	// limit is part of the verdict.
+	latency, hasLatency := enrichFromSMTPHeaders(output, metrics, email, check.OrganizationUID)
+
+	durationMs := float32(0)
+	if hasLatency {
+		durationMs = float32(latency.Microseconds()) / 1000
 	}
 
-	enrichFromSMTPHeaders(output, metrics, email, check.OrganizationUID)
+	if status == statusUp {
+		var failures []string
+
+		authOutput, failed := h.applySenderAuth(ctx, check, email, metrics)
+		if authOutput != nil {
+			output[outputKeyAuth] = authOutput
+		}
+
+		if failed != "" {
+			failures = append(failures, failed)
+		}
+
+		if late := lateDeliveryMessage(check, latency, hasLatency); late != "" {
+			failures = append(failures, late)
+		}
+
+		if len(failures) > 0 {
+			status, message = statusDown, strings.Join(failures, "; ")
+		}
+	}
+
+	output[outputKeyMessage] = message
+
+	checkerStatus := toCheckerStatus(status)
+	statusInt := int(checkerStatus)
 
 	now := time.Now()
 	result := &models.Result{
@@ -492,6 +509,42 @@ func (h *Handler) recordResult(
 	}
 
 	return nil
+}
+
+// lateDeliveryMessage returns the failure message when the check has a
+// max_delivery_delay and the probe took longer than it, "" otherwise. A mail
+// without a trustworthy send time (no X-SolidPing-Sent-At) is never late.
+func lateDeliveryMessage(check *models.Check, latency time.Duration, hasLatency bool) string {
+	if !hasLatency {
+		return ""
+	}
+
+	cfg := &emailconfig.EmailConfig{}
+	if err := cfg.FromMap(check.Config); err != nil || cfg.MaxDeliveryDelay <= 0 {
+		return ""
+	}
+
+	if latency <= cfg.MaxDeliveryDelay {
+		return ""
+	}
+
+	return fmt.Sprintf("delivered after %s, limit %s",
+		shortDuration(latency.Round(time.Second)), shortDuration(cfg.MaxDeliveryDelay))
+}
+
+// shortDuration renders 10m0s as 10m and 1h0m0s as 1h.
+func shortDuration(d time.Duration) string {
+	text := d.String()
+
+	if strings.HasSuffix(text, "m0s") {
+		text = strings.TrimSuffix(text, "0s")
+	}
+
+	if strings.HasSuffix(text, "h0m") {
+		text = strings.TrimSuffix(text, "0m")
+	}
+
+	return text
 }
 
 // applySenderAuth runs the optional sender-authentication evaluation of the check
