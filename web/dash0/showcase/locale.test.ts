@@ -5,6 +5,7 @@ import {
   browserLocaleTag,
   localeSubdir,
   parseShowcaseLocale,
+  showcaseCaptions,
   showcaseContent,
 } from "./locale";
 
@@ -63,6 +64,32 @@ describe("showcaseContent", () => {
       expect(c.featured.url).toBe(en.featured.url);
       expect(c.featured.name).not.toBe(en.featured.name);
       expect(new Set(c.demoChecks.map((d) => d.name)).size).toBe(3);
+    }
+  });
+});
+
+describe("showcaseCaptions", () => {
+  it("keeps the English captions the published cut always had", () => {
+    const en = showcaseCaptions("en");
+    expect([en.run, en.login, en.check, en.results]).toEqual([
+      "Run it",
+      "First login",
+      "First check",
+      "First results",
+    ]);
+    expect(en.speed(4)).toBe("4× speed");
+  });
+
+  it("translates every caption, and the speed tag names the factor", () => {
+    const en = showcaseCaptions("en");
+    for (const locale of SHOWCASE_LOCALES.filter((l) => l !== "en")) {
+      const c = showcaseCaptions(locale);
+      for (const key of ["run", "login", "check", "results"] as const) {
+        expect(c[key]).not.toBe(en[key]);
+      }
+      expect(new Set([c.run, c.login, c.check, c.results]).size).toBe(4);
+      expect(c.speed(3)).toContain("3");
+      expect(c.speed(3)).not.toBe(en.speed(3));
     }
   });
 });

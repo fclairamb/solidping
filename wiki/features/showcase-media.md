@@ -23,8 +23,10 @@ E2E_BASE_URL=http://localhost:4321/d/ make showcase
 ```
 
 French, German or Spanish stills (for the marketing site) come from
-`SHOWCASE_LOCALE=fr make showcase-stills`, against a fresh database too; see
-the README's "Localized stills".
+`SHOWCASE_LOCALE=fr make showcase-stills`, and the whole cut, captions
+included, from `SHOWCASE_LOCALE=fr make showcase-take showcase-cut` after one
+`make showcase-terminal`; each against a fresh database too. See the README's
+"Localized stills and cuts".
 
 **The database must be genuinely fresh.** Since spec 2026-09-16-05 the take
 films the forced password rotation, which only a never-used default-mode
