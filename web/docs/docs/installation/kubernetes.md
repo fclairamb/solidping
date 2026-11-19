@@ -373,14 +373,13 @@ The SolidPing image is distroless and ships no browser. To run
         - name: browser
           image: chromedp/headless-shell:158.0.8127.37
           args:
-            - --remote-debugging-address=0.0.0.0
+            # The pod's localhost only: the worker shares it, nothing else needs it.
+            - --remote-debugging-address=127.0.0.1
             - --remote-debugging-port=9222
             # Required from Chrome 111 on for a non-browser websocket client.
             - --remote-allow-origins=*
             - --disable-gpu
             - --no-sandbox
-          ports:
-            - containerPort: 9222
           volumeMounts:
             # Chrome mounts /dev/shm; the container default is far too small.
             - name: dshm
@@ -399,6 +398,12 @@ A sidecar rather than a shared browser Deployment: the CDP endpoint stays on
 localhost (never exposed as a Service — a reachable CDP endpoint is remote
 control of a browser), and the browser's lifecycle is coupled to the worker
 that uses it. Pin the image tag so every region runs the same Chrome version.
+
+Sharing the pod's localhost also lets the worker route the browser's traffic
+through its guarded egress proxy when the [egress policy](/configuration/egress-policy#browser-checks)
+is enforcing: every connection a page makes, WebSockets included, is then
+refused before it reaches a private address. Keep `SP_CHECKERS_BROWSER_CDP_URL`
+on `127.0.0.1` for that.
 
 Each worker caps itself at 4 concurrent browser executions, so size the sidecar
 for four tabs. Workers that can reach their sidecar advertise a `browser`
