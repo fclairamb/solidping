@@ -154,6 +154,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
+	"github.com/fclairamb/solidping/server/internal/testruns"
 	"github.com/fclairamb/solidping/server/internal/tlsedge"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
@@ -207,7 +208,11 @@ type Server struct {
 	services  *services.Registry
 	// aiChecks authors and repairs AI-written js checks (spec 2026-10-03-07).
 	aiChecks *aichecks.Service
-	router   *httpx.Router
+	// testRunLimiter is the admission control shared by every on-demand run
+	// of this process: REST test runs, MCP probes and the AI authoring loop
+	// (spec 2026-11-19-03).
+	testRunLimiter *testruns.Limiter
+	router         *httpx.Router
 	// handler is s.router, optionally wrapped by compressionWrapper (see
 	// SetupRoutes). It is the outermost handler: Server.Handler() and
 	// handlerWithDocsHost's fallthrough both serve this, never s.router
@@ -564,11 +569,16 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// app_settings, which does not exist before the migrations. Initialize
 	// loads them (InitializeWebPush).
 
+	// One limiter for every on-demand run of the process (spec 2026-11-19-03).
+	testRunLimiter := testruns.New()
+	aiChecksSvc.SetRunLimiter(testRunLimiter)
+
 	server := &Server{
 		dbService:         dbService,
 		jobSvc:            jobService,
 		services:          svcList,
 		aiChecks:          aiChecksSvc,
+		testRunLimiter:    testRunLimiter,
 		config:            cfg,
 		instanceSMSSender: instanceSMSSender,
 		authService:       authService,
@@ -644,7 +654,7 @@ func toolsRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
 // testRunsPerMinute is the per-org allowance for POST
 // /api/v1/orgs/:org/checks/test-run (spec 2026-11-18-01). Fixed, not
 // plan-based. Burst equals the minute's allowance.
-const testRunsPerMinute = 20
+const testRunsPerMinute = testruns.RunsPerMinute
 
 // testRunRateLimitConfig derives the per-org test-run limiter from the
 // server's own, keeping the trusted proxy hops (used by the IP fallback).
@@ -1145,6 +1155,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.config,
 	)
 	s.mcpHandler.SetScriptRunner(s.aiChecks.Runner())
+	s.mcpHandler.SetProbeLimiter(s.testRunLimiter)
 	mcpGroup := api.NewGroup("/mcp")
 	// GET is deliberately outside RequireMCPAuth: a browser opening the
 	// endpoint has no token and gets a helpful redirect to the dashboard MCP
@@ -1337,7 +1348,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// every member of one org shares its budget.
 	testRunLimiter := middleware.NewRateLimiter(testRunRateLimitConfig(s.config.Server.RateLimiting), ctx)
 	orgChecks.Use(testRunLimiter.RateLimitRouteBy(orgRateLimitKey)).
-		POST("/test-run", checktestrun.NewHandler(s.aiChecks.Runner(), s.config).TestRun)
+		POST("/test-run", checktestrun.NewHandlerWithLimiter(s.aiChecks.Runner(), s.config, s.testRunLimiter).TestRun)
 	orgChecks.GET("/:checkUid", checksHandler.GetCheck)
 	orgChecks.PUT("/:slug", checksHandler.UpsertCheck)
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)

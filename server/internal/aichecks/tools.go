@@ -85,6 +85,12 @@ func (rec *runRecorder) pageTool(def ai.ToolDef, page pageFunc) ai.Tool {
 
 			hosts, held := rec.hold()
 
+			ctx, release, err := rec.admitted(ctx)
+			if err != nil {
+				return "", err
+			}
+			defer release()
+
 			res, err := page(ctx, args.URL, hosts, held)
 			if err != nil {
 				return "", rec.heldRefusal(err)
@@ -93,6 +99,15 @@ func (rec *runRecorder) pageTool(def ai.ToolDef, page pageFunc) ai.Tool {
 			return forModel(res), nil
 		},
 	}
+}
+
+// admitted applies rec.admit, if any.
+func (rec *runRecorder) admitted(ctx context.Context) (context.Context, func(), error) {
+	if rec.admit == nil {
+		return ctx, func() {}, nil
+	}
+
+	return rec.admit(ctx)
 }
 
 // heldNote explains a refusal that only the loop's earlier real-secrets run
@@ -123,6 +138,11 @@ type scriptRun struct {
 // remembers the last run and the last passing one.
 type runRecorder struct {
 	runner *Runner
+	// admit, when set, is called before every run, fetch_page and
+	// browser_snapshot of the loop: it waits for a slot of the process-wide
+	// test-run limiter and returns the context to run with and its release
+	// (spec 2026-11-19-03). Nil admits everything.
+	admit func(ctx context.Context) (context.Context, func(), error)
 	// prepare decides how a script runs: the secrets it gets, the hosts it
 	// may reach while they are real, a note for the model, or a refusal (an
 	// error the model sees instead of a run).
@@ -246,6 +266,12 @@ func (rec *runRecorder) runScript(ctx context.Context, script string, final bool
 	} else {
 		hosts, held = rec.hold()
 	}
+
+	ctx, release, err := rec.admitted(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 
 	res, err := rec.runner.run(ctx, script, rec.env, secrets, hosts, held, 0)
 	if errors.Is(err, egress.ErrHostNotAllowed) {
