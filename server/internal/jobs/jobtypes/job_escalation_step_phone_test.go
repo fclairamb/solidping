@@ -232,14 +232,19 @@ func verifiedPhoneRoute(orgUID string) *models.UserNotificationRoute {
 	}
 }
 
+// emailRoute is a confirmed email contact: since spec 2026-11-19-02 an
+// unconfirmed one is never paged (TestDispatch_UnverifiedEmailIsNotPaged).
 func emailRoute() *models.UserNotificationRoute {
+	now := time.Now()
+
 	return &models.UserNotificationRoute{
 		UID:     "route-email",
 		UserUID: "user-1",
 		Contact: &models.UserContact{
-			UID:   "contact-email",
-			Type:  models.UserContactTypeEmail,
-			Value: "oncall@example.com",
+			UID:        "contact-email",
+			Type:       models.UserContactTypeEmail,
+			Value:      "oncall@example.com",
+			VerifiedAt: &now,
 		},
 	}
 }

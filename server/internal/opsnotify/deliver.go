@@ -356,6 +356,15 @@ func sendEmail(
 	ctx context.Context, deps Deps, log *slog.Logger, label string,
 	route *models.UserNotificationRoute, notice *Notice, loc i18n.Locale,
 ) string {
+	// An unconfirmed email contact may be anyone's address (spec
+	// 2026-11-19-02): same rule as escalation paging.
+	if route.Contact.VerifiedAt == nil {
+		log.WarnContext(ctx, label+" not sent: email contact not verified; skipping route",
+			"contactUid", route.Contact.UID)
+
+		return outcomeSkipped
+	}
+
 	if deps.EnqueueEmail == nil {
 		return skipUnavailable(ctx, log, label, models.UserContactTypeEmail, route)
 	}

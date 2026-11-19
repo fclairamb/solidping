@@ -115,6 +115,22 @@
     "revoke": "Si ce n'était pas vous, retirez-le de vos réglages de notifications et changez votre mot de passe :",
     "cta": "Ouvrir mes réglages de notifications"
   },
+  "contactAdded": {
+    "subject": "Un moyen de notification a été ajouté à votre compte SolidPing",
+    "preheader": "Les alertes d'incident de {org} y sont désormais aussi envoyées.",
+    "title": "Un moyen de notification a été ajouté",
+    "body": "Le {date}, {value} a été ajouté à vos moyens de notification dans {org}. Les alertes d'incident de cette organisation y sont désormais aussi envoyées.",
+    "revoke": "Si ce n'était pas vous, supprimez-le de vos réglages de notification et changez votre mot de passe :",
+    "cta": "Ouvrir mes réglages de notification"
+  },
+  "contactVerifyCode": {
+    "subject": "Votre code de vérification SolidPing : {code}",
+    "preheader": "Confirmez cette adresse pour recevoir les alertes d'incident de {org}.",
+    "title": "Confirmez cette adresse e-mail",
+    "body": "Le compte SolidPing {account} a demandé à recevoir les alertes d'incident de {org} à cette adresse. Saisissez ce code dans SolidPing pour la confirmer :",
+    "expiry": "Le code expire dans 10 minutes.",
+    "ignore": "Si vous n'attendiez pas cet e-mail, ignorez-le : aucune alerte ne sera envoyée à cette adresse."
+  },
   "invitation": {
     "subject": "Invitation à rejoindre {org} sur SolidPing",
     "preheader": {

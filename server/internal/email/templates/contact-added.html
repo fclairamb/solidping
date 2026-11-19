@@ -1,0 +1,18 @@
+{{define "subject"}}{{t "account.contactAdded.subject"}}{{end}}
+{{define "preheader"}}{{t "account.contactAdded.preheader" "org" .OrgName}}{{end}}
+{{template "base.html" .}}
+{{define "content"}}
+    <h1>{{t "account.contactAdded.title"}}</h1>
+    <p>{{t "account.contactAdded.body" "date" (date .AddedAt) "value" .ContactValue "org" .OrgName}}</p>
+    <p>{{t "account.contactAdded.revoke"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .NotificationsURL "Label" (t "account.contactAdded.cta") "Variant" "primary"}}</div>
+    <p class="meta">{{t "account.securityNotice.warning"}}</p>
+{{end}}
+{{define "text"}}{{t "account.contactAdded.title"}}
+
+{{t "account.contactAdded.body" "date" (date .AddedAt) "value" .ContactValue "org" .OrgName}}
+
+{{t "account.contactAdded.revoke"}} {{.NotificationsURL}}
+
+{{t "account.securityNotice.warning"}}
+{{end}}

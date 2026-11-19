@@ -106,6 +106,23 @@ func telegramLinkedFixture(_ i18n.Locale) map[string]any {
 	}
 }
 
+func contactAddedFixture(_ i18n.Locale) map[string]any {
+	return map[string]any{
+		"AddedAt":          fixtureChangedAt(),
+		"ContactValue":     "oncall@acme.com",
+		"OrgName":          fixtureOrgName,
+		"NotificationsURL": fixtureDashboardURL + "/orgs/acme/account/notifications",
+	}
+}
+
+func contactVerifyCodeFixture(_ i18n.Locale) map[string]any {
+	return map[string]any{
+		"Code":         "482913",
+		"AccountEmail": "alice@acme.com",
+		"OrgName":      fixtureOrgName,
+	}
+}
+
 func invitationFixture(loc i18n.Locale) map[string]any {
 	return map[string]any{
 		keyOrgName:    fixtureOrgName,

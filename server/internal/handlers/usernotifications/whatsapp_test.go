@@ -273,8 +273,8 @@ func TestWhatsAppContactIsDistinctFromPhone(t *testing.T) {
 	r.Nil(phoneContact.VerifiedAt, "verifying WhatsApp must not verify the SMS contact")
 }
 
-// TestVerifyContact_RejectsNonVerifiableTypes keeps the gate closed for email /
-// web push / Slack contacts.
+// TestVerifyContact_RejectsNonVerifiableTypes keeps the gate closed for web
+// push / Slack contacts (email has a code round trip since spec 2026-11-19-02).
 func TestVerifyContact_RejectsNonVerifiableTypes(t *testing.T) {
 	t.Parallel()
 
@@ -283,7 +283,7 @@ func TestVerifyContact_RejectsNonVerifiableTypes(t *testing.T) {
 	env := setupWhatsAppEnv(t)
 
 	for _, contactType := range []string{
-		models.UserContactTypeEmail, models.UserContactTypeWebPush, models.UserContactTypeSlackUser,
+		models.UserContactTypeWebPush, models.UserContactTypeSlackUser,
 	} {
 		c := models.NewUserContact(env.user.UID, env.org.UID, contactType, contactType+"-value", "")
 		r.NoError(env.svc.db.UpsertUserContact(ctx, c))

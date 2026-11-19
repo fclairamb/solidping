@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/discordlink"
+	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 )
 
@@ -34,6 +35,24 @@ var ErrReauthUnavailable = errors.New("re-authentication is not available")
 func refuseImpersonation(ctx context.Context) error {
 	if audit.ImpersonatorFromContext(ctx) != "" {
 		return ErrImpersonationForbidden
+	}
+
+	return nil
+}
+
+// refuseChannelBinding refuses a request that must not bind or re-enable a
+// paging channel for the account (spec 2026-11-19-02): an impersonated request
+// (ErrImpersonationForbidden), whose channel would keep receiving the target's
+// pages after the session, or a personal access token (auth.ErrPATForbidden),
+// whose channel would survive the token's revocation. The route denylists
+// refuse the same calls first; this is the second wall.
+func refuseChannelBinding(ctx context.Context) error {
+	if err := refuseImpersonation(ctx); err != nil {
+		return err
+	}
+
+	if auth.IsPATCredential(ctx) {
+		return auth.ErrPATForbidden
 	}
 
 	return nil

@@ -1763,6 +1763,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// A Discord link binds an identity that signs in, so it asks the same
 		// re-authentication as a new TOTP or passkey (spec 2026-11-01-03).
 		usernotifications.WithFactorReauthenticator(s.authService),
+		// An email contact for another address confirms an emailed code, and
+		// the owner is told when a contact is added (spec 2026-11-19-02).
+		usernotifications.WithContactMailer(s.authService),
 	)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender, s.services.EmailFormatter)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()

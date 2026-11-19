@@ -48,16 +48,18 @@ func NewHandler(
 }
 
 func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
+	if handled, writeErr := h.writeCredentialError(writer, err); handled {
+		return writeErr
+	}
+
 	switch {
-	case errors.Is(err, ErrImpersonationForbidden):
-		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeImpersonationForbidden, err.Error())
 	case errors.Is(err, ErrOrgNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	case errors.Is(err, ErrRouteNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Notification route not found")
 	case errors.Is(err, ErrContactNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Notification contact not found")
-	case errors.Is(err, ErrInvalidWhatsAppNumber):
+	case errors.Is(err, ErrInvalidWhatsAppNumber), errors.Is(err, ErrInvalidEmailAddress):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	case errors.Is(err, ErrTelegramContactNotDirect):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
@@ -71,6 +73,20 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
 		return h.WriteInternalError(writer, request, err)
+	}
+}
+
+// writeCredentialError answers the refusals of a credential that may not bind
+// a paging channel: an impersonation session (IMPERSONATION_FORBIDDEN) or a
+// personal access token (PAT_FORBIDDEN). Reports whether it wrote a response.
+func (h *Handler) writeCredentialError(writer http.ResponseWriter, err error) (bool, error) {
+	switch {
+	case errors.Is(err, ErrImpersonationForbidden):
+		return true, h.WriteError(writer, http.StatusForbidden, base.ErrorCodeImpersonationForbidden, err.Error())
+	case errors.Is(err, auth.ErrPATForbidden):
+		return true, h.WriteError(writer, http.StatusForbidden, base.ErrorCodePATForbidden, auth.PATForbiddenMessage)
+	default:
+		return false, nil
 	}
 }
 
@@ -306,12 +322,17 @@ func (h *Handler) ConfirmVerify(writer http.ResponseWriter, req *http.Request) e
 
 // handleVerifyError maps verification-flow errors to HTTP responses.
 func (h *Handler) handleVerifyError(writer http.ResponseWriter, request *http.Request, err error) error {
+	if handled, writeErr := h.writeCredentialError(writer, err); handled {
+		return writeErr
+	}
+
 	switch {
 	case errors.Is(err, ErrContactNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Notification contact not found")
 	case errors.Is(err, ErrOrgNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
-	case errors.Is(err, ErrNoProvider), errors.Is(err, ErrNoWhatsAppProvider):
+	case errors.Is(err, ErrNoProvider), errors.Is(err, ErrNoWhatsAppProvider),
+		errors.Is(err, ErrEmailSenderNotConfigured):
 		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, err.Error())
 	case errors.Is(err, ErrSMSDestinationNotAllowed):
 		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,

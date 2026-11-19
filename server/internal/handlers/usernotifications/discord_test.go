@@ -365,7 +365,9 @@ func TestContactRequiresSetupCoversDiscord(t *testing.T) {
 	r := require.New(t)
 	r.True(contactRequiresSetup(models.UserContactTypeDiscord))
 	r.True(contactRequiresSetup(models.UserContactTypeTelegram))
-	r.False(contactRequiresSetup(models.UserContactTypeEmail))
+	// Email confirms a code since spec 2026-11-19-02; web push never does.
+	r.True(contactRequiresSetup(models.UserContactTypeEmail))
+	r.False(contactRequiresSetup(models.UserContactTypeWebPush))
 	r.False(models.ContactRequiresVerification(models.UserContactTypeDiscord),
 		"there is no verification CODE for discord — the binding is the proof")
 }
