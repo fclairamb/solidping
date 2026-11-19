@@ -105,6 +105,8 @@ visitors read.
 | incident_uid | uuid | FK to incidents (optional link) |
 | title | text | Update headline |
 | body_markdown | text | Update body, Markdown |
+| title_i18n / body_i18n | jsonb | Recipe of a machine-written title / body (`{"key", "params"}`); NULL once a person wrote or edited it |
+| translations | jsonb | Hand-written text in other languages, `{"fr": {"title", "body"}}`. NULL = none. The literal columns stay the page's own language; editing them never touches it. Validated in the service (supported language, not the page's own, complete entry) |
 | link_url | text | Optional "read more" link |
 | kind | text | investigating, identified, monitoring, resolved, maintenance, info |
 | incident_publication_uid | uuid | FK to incident_publications (optional link) |
@@ -142,6 +144,8 @@ probe's output could be written into.
 | incident_uid | uuid | FK to incidents. **NULL = hand-authored**, tracks nothing |
 | status_page_uid | uuid | FK to status_pages |
 | public_title | text | Customer-readable title, templated at creation, freely editable |
+| public_title_i18n | jsonb | Recipe of a templated title; NULL once a person retitled it |
+| translations | jsonb | Hand-written title in other languages, `{"fr": {"title"}}`. NULL = none. A retitle never touches it |
 | public_state | text | investigating, identified, monitoring, resolved |
 | severity | text | minor, major, critical. Display-only badge; NULL = no badge |
 | auto_created | boolean | Minted by the auto-publish pipeline. Gates group **consolidation** only; auto-resolve and relapse reopen key on `incident_uid` |

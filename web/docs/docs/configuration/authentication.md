@@ -170,13 +170,40 @@ Over the API: `PATCH /api/v1/auth/me` with `{"email": "...", "currentPassword": 
 
 ### Email of the first admin
 
-On the first start of an empty database, SolidPing creates a super admin named `admin@solidping.io`. Set `SP_ADMIN_EMAIL` to seed it with your own address instead. It is only read when no organization exists yet. The password is still `solidpass` and must be changed at first login.
+On the first start of an empty database, SolidPing creates a super admin named `admin@solidping.io`. Set `SP_ADMIN_EMAIL` to seed it with your own address instead. It is only read when no organization exists yet. Its password is described below and must be changed at first login.
 
 While that admin still signs in with `admin@solidping.io`, the first-login "set a new password" screen also asks for an email address and its confirmation. Fill both to change the address in the same step as the password, or leave them empty to keep it. The new address is unverified, `auth.email_changed` is recorded, and nothing is sent to `admin@solidping.io` (that address is not yours). Over the API, add `"email"` to the `POST /api/v1/auth/change-password` body; it is refused with `400` once the account has another address.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SP_ADMIN_EMAIL` | `admin@solidping.io` | Email of the super admin created on the first start |
+| `SP_ADMIN_PASSWORD` | generated | First password of that super admin. See below |
+
+### Password of the first admin
+
+SolidPing generates a random password for that super admin when it creates it, and prints it once in the server log, in a line starting with `First login`:
+
+```
+level=WARN msg="First login: generated admin password, shown once, you will be asked to change it. ..." email=admin@solidping.io password=Kx7mPq2RtW9vLz4NcHb3
+```
+
+Find it with the log command of your platform:
+
+| Platform | Command |
+|----------|---------|
+| Docker | `docker logs <container> 2>&1 \| grep "First login"` |
+| Docker Compose | `docker compose logs solidping \| grep "First login"` |
+| Kubernetes / Helm | `kubectl logs -l app.kubernetes.io/instance=<release> \| grep "First login"` |
+| Fly.io | `fly logs \| grep "First login"` |
+| systemd | `journalctl -u solidping \| grep "First login"` |
+
+The password is stored hashed only, so this line is never printed again. Later boots print a `First login` line with the email only, as long as the password has not been changed.
+
+To choose the first password yourself, set `SP_ADMIN_PASSWORD` before the first start. Use it on platforms where you cannot read the logs, or from a deployment template. It is never written to the log. The first login still asks for a new password.
+
+**Lost the generated password?** Restart SolidPing with `SP_ADMIN_PASSWORD` set. As long as the first admin has not changed its password yet, the boot replaces it with that value. It never touches another account, and it does nothing once the password has been changed. Remove the variable afterwards if you like: it is not read again.
+
+The `test` and `demo` run modes (`SP_RUN_MODE`) keep the public development password `solidpass`, so the end-to-end tests and the public demo can sign in.
 
 ## OAuth Providers
 

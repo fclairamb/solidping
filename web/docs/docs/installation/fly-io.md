@@ -51,7 +51,12 @@ Sign in with the seeded admin account:
 
 | Email | Password | Org |
 |---|---|---|
-| `admin@solidping.io` | `solidpass` | `default` |
+| `admin@solidping.io` | generated, see below | `default` |
+
+The password is generated at the first start and printed once in the logs: run `fly logs | grep "First login"`
+and look for the line starting with `First login`. To choose it yourself, or to
+recover a lost one, set the `SP_ADMIN_PASSWORD` variable and restart. See
+[Password of the first admin](/configuration/authentication#password-of-the-first-admin).
 
 The first login forces a password change before anything else in the dashboard is
 reachable.

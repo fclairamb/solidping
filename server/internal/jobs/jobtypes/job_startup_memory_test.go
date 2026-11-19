@@ -13,13 +13,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/defaults"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
-// runFreshStartup runs the startup job once on a fresh in-memory database.
+// runFreshStartup runs the startup job once on a fresh in-memory database, in
+// the test run mode so the seed keeps the known defaults.Password.
 func runFreshStartup(t *testing.T) *sqlite.Service {
 	t.Helper()
 
@@ -36,6 +38,7 @@ func runFreshStartup(t *testing.T) *sqlite.Service {
 	require.NoError(t, jobRun.Run(ctx, &jobdef.JobContext{
 		DB:        dbSvc.DB(),
 		DBService: dbSvc,
+		AppConfig: &config.Config{RunMode: runModeTest},
 		Logger:    slog.New(slog.DiscardHandler),
 	}))
 

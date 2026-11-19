@@ -321,7 +321,8 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 
 	if count > 0 {
 		log.DebugContext(ctx, "Organizations already exist, skipping default org creation", "count", count)
-		return nil
+
+		return r.resetSeedAdminPassword(ctx, jctx)
 	}
 
 	log.DebugContext(ctx, "No organizations found, creating default organization")
@@ -338,12 +339,17 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 
 	// Create admin user
 	adminEmail := seedAdminEmail(jctx.AppConfig)
-	adminPassword := defaults.Password
 
-	// bcrypt, not the active argon2id policy: this password is public, so a
-	// 64 MiB argon2 derivation on every first boot buys nothing and doubled the
-	// first-boot memory peak (spec 2026-10-12-04). The forced password change
-	// below mints an argon2id hash with the active policy.
+	adminPassword, source, err := seedAdminPassword(jctx.AppConfig)
+	if err != nil {
+		return err
+	}
+
+	// bcrypt, not the active argon2id policy: this password is hashed once per
+	// install and lives only until the forced change below, so a 64 MiB argon2
+	// derivation on every first boot buys nothing and doubled the first-boot
+	// memory peak (spec 2026-10-12-04). The forced password change mints an
+	// argon2id hash with the active policy.
 	passwordHash, err := passwords.HashBcrypt(adminPassword)
 	if err != nil {
 		return fmt.Errorf("failed to hash admin password: %w", err)
@@ -352,12 +358,10 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 	adminUser := models.NewUser(adminEmail)
 	adminUser.PasswordHash = &passwordHash
 	adminUser.SuperAdmin = true
-	// Both halves of this credential pair are published in a public repository,
-	// and the account is a superadmin. The seed itself stays unconditional and
-	// identical in dev and production — a mode-dependent security posture is
-	// one more thing that can be mis-detected — so the exposure is closed at
-	// the other end instead: the first successful login can do nothing but
-	// rotate the password (spec 2026-08-23-04).
+	// The first login can do nothing but rotate the password (spec
+	// 2026-08-23-04), whatever the source of the seeded one: a generated
+	// password went through a log line, SP_ADMIN_PASSWORD through a deployment
+	// template, and defaults.Password is public.
 	adminUser.MustChangePassword = true
 
 	// Deliberately NOT captured as a user_signed_up product event (spec
@@ -369,6 +373,15 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 	}
 
 	log.InfoContext(ctx, "Created admin user", "uid", adminUser.UID, "email", adminEmail)
+
+	if source == seedPasswordGenerated {
+		// The only place the generated password ever appears: it is stored
+		// hashed only, so this line cannot be reprinted (spec 2026-11-19-01).
+		log.WarnContext(ctx, "First login: generated admin password, shown once, "+
+			"you will be asked to change it. Lost it? Restart with SP_ADMIN_PASSWORD set.",
+			"email", adminEmail,
+			"password", adminPassword)
+	}
 
 	// Create the owner membership for the default organization. The seeded
 	// admin is the org's founder, so it gets `owner` — the same role
