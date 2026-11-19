@@ -408,7 +408,8 @@ func (c *SMTPChecker) executeSendMode(
 
 	sendStart := time.Now()
 
-	if err := doSendEmail(textConn, cfg.MailFrom, cfg.DeliveryTo, identity.CheckUID); err != nil {
+	sentAt, err := doSendEmail(textConn, cfg.MailFrom, cfg.DeliveryTo, identity.CheckUID)
+	if err != nil {
 		_ = textConn.PrintfLine("QUIT")
 
 		baseOutput[checkerdef.OutputKeyError] = err.Error()
@@ -427,6 +428,9 @@ func (c *SMTPChecker) executeSendMode(
 	_ = textConn.PrintfLine("QUIT")
 
 	baseOutput["submitted"] = true
+	// sentAt is the X-SolidPing-Sent-At value of the probe: the delivery watch
+	// matches a send to the email result that carries the same value.
+	baseOutput["sentAt"] = sentAt.Format(time.RFC3339)
 
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusUp,
@@ -440,36 +444,33 @@ func (c *SMTPChecker) executeSendMode(
 // system-generated probe message. Returns an error naming which step was
 // rejected (and by what server reply) so executeSendMode's Down result stays
 // diagnostic.
-func doSendEmail(textConn *textproto.Conn, mailFrom, deliveryTo, sourceCheckUID string) error {
+func doSendEmail(textConn *textproto.Conn, mailFrom, deliveryTo, sourceCheckUID string) (time.Time, error) {
 	if err := smtpCommand(textConn, smtpCodeOK, "MAIL FROM:<%s>", mailFrom); err != nil {
-		return fmt.Errorf("MAIL FROM rejected: %w", err)
+		return time.Time{}, fmt.Errorf("MAIL FROM rejected: %w", err)
 	}
 
 	if err := smtpCommand(textConn, smtpCodeOK, "RCPT TO:<%s>", deliveryTo); err != nil {
-		return fmt.Errorf("RCPT TO rejected: %w", err)
+		return time.Time{}, fmt.Errorf("RCPT TO rejected: %w", err)
 	}
 
 	if err := smtpCommand(textConn, smtpCodeStartData, "DATA"); err != nil {
-		return fmt.Errorf("DATA rejected: %w", err)
+		return time.Time{}, fmt.Errorf("DATA rejected: %w", err)
 	}
 
+	sentAt := time.Now()
 	dw := textConn.DotWriter()
-	_, writeErr := dw.Write([]byte(buildProbeMessage(mailFrom, deliveryTo, sourceCheckUID, time.Now())))
-	closeErr := dw.Close()
+	// A failed write is sticky on the underlying buffer, so Close reports it too.
+	_, _ = dw.Write([]byte(buildProbeMessage(mailFrom, deliveryTo, sourceCheckUID, sentAt)))
 
-	if writeErr != nil {
-		return fmt.Errorf("failed to write message body: %w", writeErr)
-	}
-
-	if closeErr != nil {
-		return fmt.Errorf("failed to send message body: %w", closeErr)
+	if closeErr := dw.Close(); closeErr != nil {
+		return time.Time{}, fmt.Errorf("failed to send message body: %w", closeErr)
 	}
 
 	if _, _, err := textConn.ReadResponse(smtpCodeOK); err != nil {
-		return fmt.Errorf("message rejected: %w", err)
+		return time.Time{}, fmt.Errorf("message rejected: %w", err)
 	}
 
-	return nil
+	return sentAt, nil
 }
 
 // smtpCommand sends an SMTP command and reads the expected response code,

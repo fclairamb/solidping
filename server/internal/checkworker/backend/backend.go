@@ -67,6 +67,16 @@ type PrivateLocationReader interface {
 	LastAgentDisconnect(ctx context.Context, orgUID, region string) (*models.Event, error)
 }
 
+// DeliveryTimeoutReader is the extra read the email check's passive verdict
+// needs (spec 2026-11-18-03): the newest evaluation row, to see whether the
+// DeliveryWatch recorded a missed probe that no newer signal has answered.
+// Like PrivateLocationReader it is not part of WorkerBackend.
+type DeliveryTimeoutReader interface {
+	// LastEvaluation returns the newest raw row of the check, of any origin, or
+	// nil when there is none.
+	LastEvaluation(ctx context.Context, orgUID, checkUID string) (*models.Result, error)
+}
+
 // WorkerBackend abstracts how a check worker communicates with the master.
 // CheckWorker consumes exactly this interface, so the same loop runs in-process
 // (DirectBackend) and inside a deported agent (WSBackend).

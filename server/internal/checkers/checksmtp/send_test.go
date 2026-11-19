@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/textproto"
 	"strings"
 	"sync"
 	"testing"
@@ -523,4 +524,80 @@ func TestSMTPChecker_SendMode_DeliveryToInjection_NeverReachesWire(t *testing.T)
 		r.False(snap.gotData, "an injection payload must never reach the DATA phase for %q", deliveryTo)
 		r.Empty(snap.mailFrom, "no MAIL FROM — smuggled or otherwise — may reach the wire for %q", deliveryTo)
 	}
+}
+
+// TestSMTPChecker_SendMode_RcptToRejected pins the Down-with-server-reply
+// contract for a rejected recipient.
+func TestSMTPChecker_SendMode_RcptToRejected(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	host, port, rec := startSendModeFakeSMTPServer(t, sendModeFakeOpts{rejectRcptTo: true})
+
+	checker := &SMTPChecker{}
+	result, err := checker.Execute(sendModeJobContext(), sendModeConfig(host, port))
+	r.NoError(err)
+	r.Equal(checkerdef.StatusDown, result.Status)
+	r.Contains(result.Output["error"], "RCPT TO rejected")
+	r.False(rec.snapshot().gotData)
+}
+
+// serveSendSession plays the server side of doSendEmail over a pipe: it
+// accepts MAIL/RCPT/DATA, reads the body up to the dot terminator, then runs
+// finish (reply or hang up).
+func serveSendSession(server net.Conn, readBody bool, finish func(net.Conn)) {
+	reader := bufio.NewReader(server)
+
+	for _, reply := range []string{"250 OK", "250 OK", "354 go ahead"} {
+		if _, err := reader.ReadString('\n'); err != nil {
+			return
+		}
+
+		_, _ = fmt.Fprintf(server, "%s\r\n", reply)
+	}
+
+	if readBody {
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil || strings.TrimRight(line, "\r\n") == "." {
+				break
+			}
+		}
+	}
+
+	finish(server)
+}
+
+func TestDoSendEmail_MessageRejectedAfterBody(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	client, server := net.Pipe()
+
+	t.Cleanup(func() { _ = client.Close() })
+
+	go func() {
+		defer func() { _ = server.Close() }()
+
+		serveSendSession(server, true, func(conn net.Conn) { _, _ = fmt.Fprintf(conn, "554 spam suspected\r\n") })
+	}()
+
+	_, err := doSendEmail(textproto.NewConn(client), "a@acme.test", "b@acme.test", "uid")
+	r.Error(err)
+	r.Contains(err.Error(), "message rejected")
+}
+
+func TestDoSendEmail_ConnectionLostDuringBody(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	client, server := net.Pipe()
+
+	t.Cleanup(func() { _ = client.Close() })
+
+	go serveSendSession(server, false, func(conn net.Conn) { _ = conn.Close() })
+
+	_, err := doSendEmail(textproto.NewConn(client), "a@acme.test", "b@acme.test", "uid")
+	r.Error(err)
+	r.Contains(err.Error(), "failed to send message body")
 }

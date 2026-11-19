@@ -643,3 +643,38 @@ func TestClaimJobsDropsUndecryptableJobOnPostgres(t *testing.T) {
 	r.NoError(dbSvc.DB().NewSelect().Model(&job).Where("check_uid = ?", check.UID).Scan(ctx))
 	r.Nil(job.LeaseWorkerUID, "the lease must be released on Postgres too")
 }
+
+// LastEvaluation returns the newest result row of the check (nil when it has
+// none) and surfaces a database failure.
+func TestLastEvaluation(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	be, _, dbSvc, ctx := newDirectBackend(t)
+
+	org := models.NewOrganization("last-eval", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "mail", "email")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	none, err := be.LastEvaluation(ctx, org.UID, "unknown-check")
+	r.NoError(err)
+	r.Nil(none)
+
+	status := 2
+	r.NoError(dbSvc.SaveResultWithStatusTracking(ctx, &models.Result{
+		UID: "eval-1", OrganizationUID: org.UID, CheckUID: check.UID, PeriodType: models.PeriodTypeRaw,
+		PeriodStart: time.Now(), Status: &status, Metrics: models.JSONMap{},
+		Output: models.JSONMap{"message": "late"}, CreatedAt: time.Now(),
+	}))
+
+	last, err := be.LastEvaluation(ctx, org.UID, check.UID)
+	r.NoError(err)
+	r.NotNil(last)
+	r.Equal("late", last.Output["message"])
+
+	r.NoError(dbSvc.Close())
+
+	_, err = be.LastEvaluation(ctx, org.UID, check.UID)
+	r.Error(err)
+}
