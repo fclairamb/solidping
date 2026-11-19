@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	checkemailconfig "github.com/fclairamb/solidping/server/internal/checkers/checkemail/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksmtp"
 	"github.com/fclairamb/solidping/server/internal/jmap"
@@ -185,4 +186,15 @@ func validateSMTPSendInterval(checkType string, config map[string]any, period ti
 	}
 
 	return nil
+}
+
+// validateEmailDeliveryDelay enforces "max_delivery_delay lower than the
+// period" (spec 2026-11-18-03) for an email check once its effective period is
+// known. A zero period means "not provided" and is left to the default.
+func validateEmailDeliveryDelay(checkType string, config map[string]any, period time.Duration) error {
+	if checkerdef.CheckType(checkType) != checkerdef.CheckTypeEmail || period == 0 {
+		return nil
+	}
+
+	return checkemailconfig.ValidateDeliveryDelayForPeriod(config, period) //nolint:wrapcheck // a config error as is
 }

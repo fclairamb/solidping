@@ -400,6 +400,16 @@ func (b *DirectBackend) LastSignals(
 	return b.dbService.GetLastSignalForChecks(ctx, orgUID, checkUIDs)
 }
 
+// LastEvaluation implements DeliveryTimeoutReader.
+func (b *DirectBackend) LastEvaluation(ctx context.Context, orgUID, checkUID string) (*models.Result, error) {
+	rows, err := b.dbService.GetLastResultForChecks(ctx, orgUID, []string{checkUID})
+	if err != nil {
+		return nil, err
+	}
+
+	return rows[checkUID], nil
+}
+
 // PrivateLocationAgents implements PrivateLocationReader: the org's agents
 // bound to exactly this private region. Exact equality within the org, the
 // same predicate ClaimJobsForAgent claims with.
