@@ -57,6 +57,10 @@ type Options struct {
 	// StartParameters are extra postgresql.conf-style settings, e.g.
 	// {"shared_buffers": "256kB"}.
 	StartParameters map[string]string
+
+	// SocketDir, when set, makes postgres listen ONLY on a Unix-domain socket
+	// in this directory (TCP off), the way a single-box install often runs.
+	SocketDir string
 }
 
 // ownerMarker is the JSON structure written to ownerMarkerFile.
@@ -192,7 +196,7 @@ func resolveOptions(opts *Options) resolved {
 func embeddedConfig(opts *Options, dataDir, runtimeDir string) embeddedpostgres.Config {
 	res := resolveOptions(opts)
 
-	return embeddedpostgres.DefaultConfig().
+	cfg := embeddedpostgres.DefaultConfig().
 		Port(res.port).
 		Database(res.database).
 		Username(res.username).
@@ -201,6 +205,12 @@ func embeddedConfig(opts *Options, dataDir, runtimeDir string) embeddedpostgres.
 		RuntimePath(runtimeDir).
 		CachePath(sharedCachePath()).
 		StartParameters(res.startParams)
+
+	if opts.SocketDir != "" {
+		cfg = cfg.UnixSocket(opts.SocketDir)
+	}
+
+	return cfg
 }
 
 // Start creates a fresh, self-owned data directory, runs the startup sweep

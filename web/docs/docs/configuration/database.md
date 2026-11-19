@@ -61,6 +61,23 @@ SP_DB_URL=postgresql://user:password@db.example.com:5432/solidping?sslmode=requi
 SP_DB_URL=postgresql://user:password@pgbouncer:6432/solidping?sslmode=disable
 ```
 
+### Unix-domain socket
+
+On a single box, SolidPing can reach PostgreSQL over its Unix socket, with no
+TCP listener and no `pg_hba.conf` host rule. Leave the URL host empty and pass
+the socket **directory** in the `host` parameter, as with `psql`:
+
+```bash
+SP_DB_URL='postgresql://solidping:password@/solidping?host=/var/run/postgresql&sslmode=disable'
+# Non-default port (it names the socket file, .s.PGSQL.<port>)
+SP_DB_URL='postgresql://solidping:password@/solidping?host=/var/run/postgresql&port=5433&sslmode=disable'
+```
+
+The socket file itself (`host=/var/run/postgresql/.s.PGSQL.5432`) is accepted
+too. A percent-encoded host (`@%2Fvar%2Frun%2Fpostgresql/`) is not: use the
+`host` parameter. In a container, mount the host's socket directory
+(`- /var/run/postgresql:/var/run/postgresql`) and use the same URL.
+
 :::caution PgBouncer and LISTEN/NOTIFY
 SolidPing keeps one PostgreSQL `LISTEN` session per API instance for
 [live dashboard updates](../features/live-updates.md) and job wake-ups.
