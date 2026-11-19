@@ -635,3 +635,23 @@ func TestServiceRunRefusesDataDirOpenedAfterInstall(t *testing.T) {
 	r.ErrorIs(err, errUntrustedDataDir)
 	r.ErrorIs(err, errPathWritable)
 }
+
+func TestWriteConfigEnvErrors(t *testing.T) { //nolint:paralleltest // system seams
+	r := require.New(t)
+	newFakeHost(t, true)
+
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	r.NoError(os.WriteFile(blocker, nil, 0o600))
+
+	// Lstat fails with ENOTDIR, not ENOENT.
+	r.ErrorContains(writeConfigEnv(blocker, -1), "check")
+
+	// The folder does not exist: the file cannot be created.
+	r.ErrorContains(writeConfigEnv(filepath.Join(t.TempDir(), "missing"), -1), "write")
+
+	// The file is created, but cannot be handed to the service user.
+	chownPath = func(string, int, int) error { return errFakeCommand }
+	dir := t.TempDir()
+	r.ErrorIs(writeConfigEnv(dir, 4242), errFakeCommand)
+	r.ErrorContains(writeConfigEnv(t.TempDir(), 4242), "hand")
+}
