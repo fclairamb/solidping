@@ -38,8 +38,8 @@ const (
 // Verification errors.
 var (
 	// ErrNotAPhoneContact is returned when verification is requested for a
-	// contact type that has no code round-trip (email / web push / Slack).
-	ErrNotAPhoneContact = errors.New("only phone and WhatsApp contacts can be verified")
+	// contact type that has no code round-trip (web push / Slack / ...).
+	ErrNotAPhoneContact = errors.New("only phone, WhatsApp and email contacts can be verified")
 	// ErrNoWhatsAppProvider is returned when a WhatsApp contact is verified on
 	// an instance that has no WhatsApp credentials configured.
 	ErrNoWhatsAppProvider = errors.New("WhatsApp is not configured on this instance")
@@ -101,11 +101,19 @@ type codeTransport func(ctx context.Context, to, code string) error
 // escalation page, and refusing it after stamping would burn a code and a
 // resend slot for a message that was never going to be sent.
 func (s *Service) resolveCodeTransport(
-	ctx context.Context, orgUID, contactType, to string,
+	ctx context.Context, orgUID string, user *models.User, contactType, destination string,
 ) (codeTransport, error) {
 	switch contactType {
+	case models.UserContactTypeEmail:
+		if s.contactMailer == nil {
+			return nil, ErrEmailSenderNotConfigured
+		}
+
+		return func(ctx context.Context, to, code string) error {
+			return s.contactMailer.SendContactVerificationCode(ctx, user, orgUID, to, code)
+		}, nil
 	case models.UserContactTypePhone:
-		sender, err := s.resolveGuardedSMSSender(ctx, orgUID, to)
+		sender, err := s.resolveGuardedSMSSender(ctx, orgUID, destination)
 		if err != nil {
 			return nil, err
 		}
@@ -125,14 +133,20 @@ func (s *Service) resolveCodeTransport(
 	}
 }
 
-// VerifyContact issues a fresh 6-digit code for a verifiable contact (phone or
-// WhatsApp) and sends it over that contact type's transport: an SMS via the
-// org's default Twilio connection, or the instance's WhatsApp authentication
-// template. Everything else — the code, its hash, the TTL, the resend limiter
+// VerifyContact issues a fresh 6-digit code for a verifiable contact (phone,
+// WhatsApp or email) and sends it over that contact type's transport: an SMS
+// via the org's default Twilio connection, the instance's WhatsApp
+// authentication template, or an email to the address. Everything else — the
+// code, its hash, the TTL, the resend limiter
 // — is shared.
 func (s *Service) VerifyContact(
 	ctx context.Context, orgSlug string, user *models.User, contactUID string,
 ) error {
+	// A verified contact is a paging channel (spec 2026-11-19-02).
+	if err := refuseChannelBinding(ctx); err != nil {
+		return err
+	}
+
 	orgUID, err := s.resolveOrgUID(ctx, orgSlug)
 	if err != nil {
 		return err
@@ -143,7 +157,7 @@ func (s *Service) VerifyContact(
 		return err
 	}
 
-	if !models.ContactRequiresVerification(contact.Type) {
+	if !contactCodeVerifiable(contact.Type) {
 		return ErrNotAPhoneContact
 	}
 
@@ -167,7 +181,7 @@ func (s *Service) VerifyContact(
 	}
 
 	// Resolve the provider first so we don't stamp a code we can't deliver.
-	send, err := s.resolveCodeTransport(ctx, orgUID, contact.Type, contact.Value)
+	send, err := s.resolveCodeTransport(ctx, orgUID, user, contact.Type, contact.Value)
 	if err != nil {
 		return err
 	}
@@ -195,6 +209,11 @@ func (s *Service) VerifyContact(
 func (s *Service) ConfirmVerify(
 	ctx context.Context, orgSlug string, user *models.User, contactUID, code string,
 ) error {
+	// A verified contact is a paging channel (spec 2026-11-19-02).
+	if err := refuseChannelBinding(ctx); err != nil {
+		return err
+	}
+
 	orgUID, err := s.resolveOrgUID(ctx, orgSlug)
 	if err != nil {
 		return err
@@ -205,7 +224,7 @@ func (s *Service) ConfirmVerify(
 		return err
 	}
 
-	if !models.ContactRequiresVerification(contact.Type) {
+	if !contactCodeVerifiable(contact.Type) {
 		return ErrNotAPhoneContact
 	}
 

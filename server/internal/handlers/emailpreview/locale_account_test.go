@@ -24,6 +24,7 @@ var accountTemplates = []string{
 	"totp-disabled.html",
 	"discord-linked.html",
 	"telegram-linked.html",
+	"contact-added.html", "contact-verify-code.html",
 	"invitation.html",
 	"membership-request-new.html", "membership-request-decision.html",
 }
@@ -204,6 +205,42 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 			i18n.LangSpanish: {
 				"Se ha vinculado una cuenta de Telegram a tu cuenta de SolidPing",
 				"El 5 jul, 10:00 UTC se vinculó una cuenta de Telegram",
+			},
+		},
+		"contact-added.html": {
+			i18n.LangEnglish: {
+				"A notification method was added to your SolidPing account",
+				"On Jul 5, 10:00 UTC, oncall@acme.com was added to your notification methods in Acme Corp.",
+			},
+			i18n.LangFrench: {
+				"Un moyen de notification a été ajouté à votre compte SolidPing",
+				"Le 5 juil., 10:00 UTC, oncall@acme.com a été ajouté à vos moyens de notification dans Acme Corp.",
+			},
+			i18n.LangGerman: {
+				"Ihrem SolidPing-Konto wurde eine Benachrichtigungsmethode hinzugefügt",
+				"Am 5. Juli, 10:00 UTC wurde oncall@acme.com zu Ihren Benachrichtigungsmethoden in Acme Corp hinzugefügt.",
+			},
+			i18n.LangSpanish: {
+				"Se ha añadido un método de notificación a tu cuenta de SolidPing",
+				"El 5 jul, 10:00 UTC se añadió oncall@acme.com a tus métodos de notificación en Acme Corp.",
+			},
+		},
+		"contact-verify-code.html": {
+			i18n.LangEnglish: {
+				"Your SolidPing verification code: 482913",
+				"The SolidPing account alice@acme.com asked to receive the incident alerts of Acme Corp at this address.",
+			},
+			i18n.LangFrench: {
+				"Votre code de vérification SolidPing : 482913",
+				"Le compte SolidPing alice@acme.com a demandé à recevoir les alertes d'incident de Acme Corp à cette adresse.",
+			},
+			i18n.LangGerman: {
+				"Ihr SolidPing-Bestätigungscode: 482913",
+				"Das SolidPing-Konto alice@acme.com möchte die Incident-Alarme von Acme Corp an diese Adresse erhalten.",
+			},
+			i18n.LangSpanish: {
+				"Tu código de verificación de SolidPing: 482913",
+				"La cuenta de SolidPing alice@acme.com ha pedido recibir las alertas",
 			},
 		},
 		"passkey-added.html": {

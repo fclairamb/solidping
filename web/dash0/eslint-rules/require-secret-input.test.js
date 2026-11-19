@@ -18,6 +18,8 @@ tester.run("require-secret-input", rule, {
     { filename, code: `const a = <Textarea id="import-payload" data-secret-input />;` },
     { filename, code: `const a = <Input id="import-name" />;` },
     { filename, code: `const a = <Textarea id="description" />;` },
+    { filename, code: `const a = <Input id="posthogPersonalApiKey" type={show ? "text" : "password"} className={NO_CAPTURE_CLASS} />;` },
+    { filename, code: `const a = <Input id="posthogPersonalApiKey" data-secret-input />;` },
   ],
   invalid: [
     { filename, code: `const a = <Textarea id="kubeconfig" />;`, errors: [{ messageId: "missing" }] },
@@ -25,5 +27,9 @@ tester.run("require-secret-input", rule, {
     { filename, code: "const a = <Input data-testid={`provider-${k}-token`} />;", errors: [{ messageId: "missing" }] },
     { filename, code: `const a = <Textarea id="import-payload" />;`, errors: [{ messageId: "missing" }] },
     { filename, code: `const a = <Textarea data-testid="gatus-config" />;`, errors: [{ messageId: "missing" }] },
+    { filename, code: `const a = <Input id="posthogPersonalApiKey" type={show ? "text" : "password"} />;`, errors: [{ messageId: "missing" }] },
+    { filename, code: `const a = <Input id="posthogProjectApiKey" />;`, errors: [{ messageId: "missing" }] },
+    { filename, code: `const a = <Input id="api_key" />;`, errors: [{ messageId: "missing" }] },
+    { filename, code: `const a = <Input name="personal-access-key" />;`, errors: [{ messageId: "missing" }] },
   ],
 });

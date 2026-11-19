@@ -5,8 +5,10 @@ import type { IncidentNotification } from "@/api/hooks";
 /**
  * Whether a contact is ready to receive a test notification.
  *
- * Phone and WhatsApp contacts need their verification code confirmed; Telegram
- * and Discord need the user to complete their respective DM setup. This mirrors
+ * Phone, WhatsApp and email contacts need their verification code confirmed
+ * (an email contact for the user's own verified sign-in email is born
+ * verified); Telegram and Discord need the user to complete their respective
+ * DM setup. This mirrors
  * contactRequiresSetup in server/internal/handlers/usernotifications/service.go.
  * Unknown future contact types deliberately remain testable by default.
  */
@@ -14,6 +16,7 @@ export function contactCanTest(type: string, verifiedAt?: string | null): boolea
   const requiresSetup =
     type === "phone" ||
     type === "whatsapp" ||
+    type === "email" ||
     type === "telegram" ||
     type === "discord";
   return !requiresSetup || Boolean(verifiedAt);

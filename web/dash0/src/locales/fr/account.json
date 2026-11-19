@@ -208,6 +208,14 @@
       "sendFailed": "Échec de l’envoi du code",
       "incorrectCode": "Code incorrect"
     },
+    "email": {
+      "unverifiedBadge": "Non vérifiée — confirmez cette adresse pour recevoir les alertes par e-mail",
+      "verify": {
+        "dialogTitle": "Vérifier l’adresse e-mail",
+        "dialogDescription": "Nous allons envoyer un code à 6 chiffres à {{phone}}. Saisissez-le ci-dessous pour confirmer que vous lisez cette adresse et qu’elle peut recevoir les alertes.",
+        "verified": "Adresse e-mail vérifiée"
+      }
+    },
     "whatsapp": {
       "unverifiedBadge": "Non vérifié — vérifiez pour recevoir les alertes WhatsApp",
       "afterAddHint": "Après l’ajout, vérifiez le numéro sur WhatsApp pour commencer à recevoir les alertes. La vérification vaut aussi consentement à recevoir des messages professionnels.",

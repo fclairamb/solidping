@@ -104,6 +104,28 @@ PAT tokens can be issued with `mcp:read` for safer agent embedding —
 "let the assistant browse our infra without letting it create or
 delete anything".
 
+**Probes that execute on the server** (spec 2026-11-19-03). `probe`
+`kind=script` and `kind=browser` (and their legacy names `run_js_script`,
+`browser_snapshot`) write nothing, but they run arbitrary js or hold a
+headless browser on the API node, so the access table classes them as
+writes: they need the `mcp` scope, the `user` role, and are refused to the
+demo, exactly like `POST /orgs/:org/checks/test-run`. `probe` is classified
+on its `kind` (`byArgTool`), and only `kind=fetch` (`fetch_page`) stays a
+read open to `mcp:read`. Every probe is admitted by the process-wide
+[`testruns.Limiter`](../../server/internal/testruns/limiter.go), the one the
+REST test run and the AI authoring loop (`POST …/checks/ai/generate`) share:
+
+- one run per org at a time, four per process; a refused probe gets the tool
+  error "too many runs in progress, … retry in 5 s";
+- 20 probes per org per minute;
+- every probe context is marked `checkbrowser.WithTestRunBudget`, so MCP
+  browsers take at most `MaxTestRunBrowsers` (2) of the node's browser slots.
+
+The limiter is keyed on the org UID (resolved from the token's org slug), so
+a REST test run and an MCP probe of one org cannot both be in flight. The AI
+loop waits for a slot (`AcquireWait`) instead of failing. The `ai_repair` job
+runs on job nodes and is not admitted by it.
+
 ## Available tools
 
 Tools are static, registered once at startup

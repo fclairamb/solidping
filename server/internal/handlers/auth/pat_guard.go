@@ -66,6 +66,14 @@ var patForbiddenRoutes = []demoAllowedRoute{
 	// Paging redirection to a chat the holder controls.
 	{http.MethodPost, ImpersonationPatternDiscordConnect},
 	{http.MethodPost, ImpersonationPatternTelegramLink},
+	// The same redirection through the generic contact routes (spec
+	// 2026-11-19-02): a contact added, a route re-enabled or a code confirmed
+	// with a PAT would keep receiving the owner's pages after the PAT is
+	// revoked. Removing a contact stays allowed.
+	{http.MethodPost, ImpersonationPatternNotificationContacts},
+	{http.MethodPatch, ImpersonationPatternNotificationRoute},
+	{http.MethodPost, ImpersonationPatternContactVerify},
+	{http.MethodPost, ImpersonationPatternContactVerifyConfirm},
 	// Impersonation mints a token acting as someone else.
 	{http.MethodPost, ImpersonationPatternImpersonate},
 }

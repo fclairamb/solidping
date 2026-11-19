@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { NO_CAPTURE_CLASS } from "@/lib/no-capture";
 import {
   Card,
   CardContent,
@@ -200,6 +201,7 @@ function AnalyticsSettingsPage() {
               {t("server:analytics.projectApiKey")}
               {envBadge(KEY_PROJECT_API_KEY)}
             </Label>
+            {/* eslint-disable-next-line secret-local/require-secret-input -- the public project key, served to every browser, not a credential */}
             <Input
               id="posthogProjectApiKey"
               type="text"
@@ -259,6 +261,7 @@ function AnalyticsSettingsPage() {
                 <div className="relative flex-1">
                   <Input
                     id="posthogPersonalApiKey"
+                    className={NO_CAPTURE_CLASS}
                     type={showPersonal ? "text" : "password"}
                     autoComplete="off"
                     placeholder={t("server:analytics.personalApiKeyPlaceholder")}

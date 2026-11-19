@@ -208,6 +208,14 @@
       "sendFailed": "Error al enviar el código",
       "incorrectCode": "Código incorrecto"
     },
+    "email": {
+      "unverifiedBadge": "Sin verificar — confirma esta dirección para recibir alertas por correo",
+      "verify": {
+        "dialogTitle": "Verificar dirección de correo",
+        "dialogDescription": "Enviaremos un código de 6 dígitos a {{phone}}. Introdúcelo abajo para confirmar que lees esta dirección y que puede recibir las alertas.",
+        "verified": "Dirección de correo verificada"
+      }
+    },
     "whatsapp": {
       "unverifiedBadge": "Sin verificar — verifica para recibir alertas por WhatsApp",
       "afterAddHint": "Después de añadirlo, verifica el número en WhatsApp para empezar a recibir alertas. La verificación es también tu consentimiento para recibir mensajes comerciales.",

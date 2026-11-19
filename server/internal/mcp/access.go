@@ -19,9 +19,9 @@ const (
 	accessRead toolAccessKind = iota + 1
 	// accessWrite: every call writes.
 	accessWrite
-	// accessByAction: the `action` argument decides; only the actions listed
-	// in readActions are reads, anything else (missing, malformed, unknown,
-	// differently cased) is a write.
+	// accessByAction: an argument (`action`, or `kind` for probe) decides;
+	// only the values listed in readActions are reads, anything else
+	// (missing, malformed, unknown, differently cased) is a write.
 	accessByAction
 )
 
@@ -29,7 +29,9 @@ const (
 const propAction = "action"
 
 type toolAccess struct {
-	kind        toolAccessKind
+	kind toolAccessKind
+	// arg is the argument an accessByAction tool is classified on.
+	arg         string
 	readActions map[string]struct{}
 }
 
@@ -40,12 +42,18 @@ func writeTool() toolAccess { return toolAccess{kind: accessWrite} }
 // a write, which is what every manage_* tool is today: the scope gate refuses
 // all of them to a read-only token.
 func byActionTool(readActions ...string) toolAccess {
-	set := make(map[string]struct{}, len(readActions))
-	for _, action := range readActions {
-		set[action] = struct{}{}
+	return byArgTool(propAction, readActions...)
+}
+
+// byArgTool declares a tool classified on argument arg: only readValues are
+// reads.
+func byArgTool(arg string, readValues ...string) toolAccess {
+	set := make(map[string]struct{}, len(readValues))
+	for _, value := range readValues {
+		set[value] = struct{}{}
 	}
 
-	return toolAccess{kind: accessByAction, readActions: set}
+	return toolAccess{kind: accessByAction, arg: arg, readActions: set}
 }
 
 // toolAccessTable classifies every callable tool name, listed or alias.
@@ -77,10 +85,14 @@ var toolAccessTable = map[string]toolAccess{
 	toolIncidentNotificationsList: readTool(),
 
 	// Probes: they reach the outside world but write nothing in SolidPing.
-	toolProbe:           readTool(),
-	toolRunJSScript:     readTool(),
+	// run_js_script and browser_snapshot execute arbitrary code or hold a
+	// server browser, so they take the write gates (scope, demo, user role),
+	// like POST …/checks/test-run (spec 2026-11-19-03). The merged probe is
+	// classified on its kind: only kind=fetch is a read.
+	toolProbe:           byArgTool(propKind, probeKindFetch),
+	toolRunJSScript:     writeTool(),
 	toolFetchPage:       readTool(),
-	toolBrowserSnapshot: readTool(),
+	toolBrowserSnapshot: writeTool(),
 
 	// Integrations
 	toolListIntegrations:  readTool(),
@@ -140,7 +152,7 @@ func accessMutates(access toolAccess, args map[string]any) bool {
 	case accessRead:
 		return false
 	case accessByAction:
-		action, isString := args[propAction].(string)
+		action, isString := args[access.arg].(string)
 		if !isString {
 			return true
 		}

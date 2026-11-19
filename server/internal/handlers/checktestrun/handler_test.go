@@ -21,6 +21,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/testruns"
 )
 
 type neverRunner struct{ called bool }
@@ -322,4 +323,29 @@ func TestTestRunUsesTheBrowserTestRunBudget(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.True(t, runner.budget, "a test run's browsers count against the test-run budget")
+}
+
+// TestTestRunSharesTheMCPRateBucket: REST test runs and MCP probes spend one
+// per-org runs-per-minute allowance (spec 2026-11-19-03). Twenty REST runs
+// leave the org's MCP probes nothing for the minute; another org is untouched.
+func TestTestRunSharesTheMCPRateBucket(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	limiter := testruns.New()
+	runner := &neverRunner{}
+	handler := NewHandlerWithLimiter(runner, &config.Config{}, limiter)
+
+	for range testruns.RunsPerMinute {
+		r.Equal(http.StatusOK, postAsOrg(t, handler, "org-a").Code)
+	}
+
+	rec := postAsOrg(t, handler, "org-a")
+	r.Equal(http.StatusTooManyRequests, rec.Code, "the 21st REST run of the minute is refused")
+	r.Equal("5", rec.Header().Get("Retry-After"))
+	r.Contains(rec.Body.String(), "runs per minute")
+
+	r.False(limiter.Allow("org-a"), "the MCP probe budget of the org is spent by its REST runs")
+	r.True(limiter.Allow("org-b"), "another org keeps its own allowance")
+	r.Equal(http.StatusOK, postAsOrg(t, handler, "org-b").Code)
 }

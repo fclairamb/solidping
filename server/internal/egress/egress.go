@@ -393,6 +393,42 @@ func (g *Guard) ResolveOne(ctx context.Context, host string) (net.IP, error) {
 	return ips[0], nil
 }
 
+// CheckHost judges a host the caller cannot dial itself: every address it
+// resolves to must be allowed, since the library that will connect may pick
+// any of them. A refusal is recorded on ctx's Recorder and names the first
+// refused address. A lookup failure is returned as is: the caller decides
+// whether a name that does not resolve here is a refusal. An IP literal is
+// judged as itself. Non-enforcing guards allow everything without resolving.
+func (g *Guard) CheckHost(ctx context.Context, host string) error {
+	if !g.Enforcing() {
+		return nil
+	}
+
+	host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+
+	if ip := net.ParseIP(host); ip != nil {
+		return g.CheckAddr(ctx, host, ip)
+	}
+
+	lookup := net.DefaultResolver.LookupIPAddr
+	if g.lookup != nil {
+		lookup = g.lookup
+	}
+
+	addrs, err := lookup(ctx, host)
+	if err != nil {
+		return err
+	}
+
+	for i := range addrs {
+		if g.isNonPublic(addrs[i].IP) {
+			return g.denied(ctx, host, addrs[i].IP)
+		}
+	}
+
+	return nil
+}
+
 // DialContext dials addr under the policy with the guard's default dialer
 // settings (30s connect timeout, 30s keep-alive, like http.DefaultTransport).
 func (g *Guard) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {

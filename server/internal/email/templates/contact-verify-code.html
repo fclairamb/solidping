@@ -1,0 +1,20 @@
+{{define "subject"}}{{t "account.contactVerifyCode.subject" "code" .Code}}{{end}}
+{{define "preheader"}}{{t "account.contactVerifyCode.preheader" "org" .OrgName}}{{end}}
+{{template "base.html" .}}
+{{define "content"}}
+    <h1>{{t "account.contactVerifyCode.title"}}</h1>
+    <p>{{t "account.contactVerifyCode.body" "account" .AccountEmail "org" .OrgName}}</p>
+    <p style="font-size:28px;font-weight:700;letter-spacing:6px;text-align:center;margin:24px 0">{{.Code}}</p>
+    <p>{{t "account.contactVerifyCode.expiry"}}</p>
+    <p class="meta">{{t "account.contactVerifyCode.ignore"}}</p>
+{{end}}
+{{define "text"}}{{t "account.contactVerifyCode.title"}}
+
+{{t "account.contactVerifyCode.body" "account" .AccountEmail "org" .OrgName}}
+
+{{.Code}}
+
+{{t "account.contactVerifyCode.expiry"}}
+
+{{t "account.contactVerifyCode.ignore"}}
+{{end}}

@@ -5,14 +5,15 @@
  * src/lib/analytics.ts), so `data-secret-input` (which makes <Input> and
  * <Textarea> add `ph-no-capture`) is the only thing keeping a credential out of
  * the replay. This rule flags an <Input> / <Textarea> whose `id`, `name` or
- * `data-testid` says secret, password, token, kubeconfig, webhook or private
+ * `data-testid` says secret, password, token, kubeconfig, webhook, private,
+ * API key or personal (a personal access key)
  * but that carries no `data-secret-input`. A literal type="password" input is
  * exempt (rrweb masks it). <PasswordInput> is always safe.
  * A <Textarea> named payload, import or config is a pasted document (a
  * monitoring export, a config file) that routinely holds credentials, so it
  * is flagged too. Specs 2026-11-12-04 and 2026-11-17-08.
  */
-const SECRETISH = /(secret|password|token|kubeconfig|webhook|private)/i;
+const SECRETISH = /(secret|password|token|kubeconfig|webhook|private|api[-_]?key|personal)/i;
 const DOCUMENTISH = /(payload|import|config)/i;
 const GUARDED = new Set(["Input", "Textarea"]);
 const ATTRS = new Set(["id", "name", "data-testid"]);

@@ -6,10 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	neturl "net/url"
 	"strings"
 	"time"
 
 	"github.com/chromedp/cdproto"
+	cdptarget "github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkbrowser/config"
@@ -555,7 +558,9 @@ func browserWasAllocated(ctx context.Context) bool {
 // allocator builds the chromedp allocator for the configured backend: a remote
 // one against the long-lived Chrome when a CDP URL is set, the historical exec
 // allocator otherwise.
-func allocator(ctx context.Context, current Settings, pin *hostPin) (context.Context, context.CancelFunc) {
+func allocator(
+	ctx context.Context, current Settings, pin *hostPin, proxy *egressProxy,
+) (context.Context, context.CancelFunc) {
 	if current.Remote() {
 		return chromedp.NewRemoteAllocator(ctx, current.CDPURL)
 	}
@@ -568,14 +573,68 @@ func allocator(ctx context.Context, current Settings, pin *hostPin) (context.Con
 		opts = append(opts, chromedp.ExecPath(current.ChromePath))
 	}
 
-	// Egress pin (spec 2026-09-25-19): this Chrome is started for this check
-	// only, so its resolver can be told the ONE address the pre-flight
-	// approved for the main host — a rebinding answer never reaches it.
-	if pin != nil {
+	// Egress (specs 2026-09-25-19 and 2026-11-19-04): this Chrome is started
+	// for this check only, so it is pointed at the session's guarded proxy
+	// for every connection, and its own resolver is told the ONE address the
+	// pre-flight approved for the main host and NOTHING else — whatever would
+	// not go through the proxy cannot resolve a name either.
+	if proxy != nil {
+		opts = append(opts,
+			chromedp.ProxyServer(proxy.URL()),
+			chromedp.Flag("proxy-bypass-list", egressProxyBypassList),
+			chromedp.Flag("host-resolver-rules", egressResolverRules(pin, proxy.host())),
+		)
+	} else if pin != nil {
 		opts = append(opts, chromedp.Flag("host-resolver-rules", pin.resolverRule()))
 	}
 
 	return chromedp.NewExecAllocator(ctx, opts...)
+}
+
+// egressResolverRules is the deny-by-default --host-resolver-rules of an
+// enforcing session: the pinned navigation host maps to its approved
+// address, the proxy's own address is left alone, every other host maps to
+// ~NOTFOUND. Chrome takes the first MAP that matches and applies EXCLUDE
+// before any MAP.
+func egressResolverRules(pin *hostPin, proxyHost string) string {
+	rules := make([]string, 0, 3)
+
+	if pin != nil {
+		rules = append(rules, pin.resolverRule())
+	}
+
+	rules = append(rules, "MAP * ~NOTFOUND")
+
+	if proxyHost != "" {
+		rules = append(rules, "EXCLUDE "+proxyHost)
+	}
+
+	return strings.Join(rules, ", ")
+}
+
+// proxyReachableFrom reports whether the browser of these settings can reach
+// a proxy listening on this process's loopback: always for a Chrome started
+// here, and for a remote one only when its CDP endpoint is on the loopback
+// too (the Kubernetes sidecar shares the pod's network namespace). A remote
+// Chrome elsewhere falls back to watchEgress alone.
+func proxyReachableFrom(current Settings) bool {
+	if !current.Remote() {
+		return true
+	}
+
+	parsed, err := neturl.Parse(current.CDPURL)
+	if err != nil {
+		return false
+	}
+
+	host := parsed.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+
+	ip := net.ParseIP(host)
+
+	return ip != nil && ip.IsLoopback()
 }
 
 // chromeStartTimeout is how long a freshly launched Chrome has to print its
@@ -594,10 +653,23 @@ var chromeStartTimeout = 20 * time.Second
 // one long-lived Chrome never share cookies, storage or a service worker. The
 // exec path allocates its own short-lived process, so its default context is
 // already isolated.
-func browserContext(allocCtx context.Context, current Settings) (context.Context, context.CancelFunc) {
+func browserContext(
+	allocCtx context.Context, current Settings, proxy *egressProxy,
+) (context.Context, context.CancelFunc) {
 	if current.Remote() {
+		var contextOpts []chromedp.CreateBrowserContextOption
+
+		// A shared Chrome cannot take per-check flags, but each isolated
+		// context can be given its own proxy.
+		if proxy != nil {
+			contextOpts = append(contextOpts,
+				func(p *cdptarget.CreateBrowserContextParams) *cdptarget.CreateBrowserContextParams {
+					return p.WithProxyServer(proxy.URL()).WithProxyBypassList(egressProxyBypassList)
+				})
+		}
+
 		return chromedp.NewContext(allocCtx,
-			append(chromedpLogOptions(slog.Default()), chromedp.WithNewBrowserContext())...)
+			append(chromedpLogOptions(slog.Default()), chromedp.WithNewBrowserContext(contextOpts...))...)
 	}
 
 	return chromedp.NewContext(allocCtx, chromedpLogOptions(slog.Default())...)

@@ -260,6 +260,21 @@ check pointed at an internal URL will reach it. Treat browser-check
 URLs as "anything this worker can reach" — same trust model as HTTP
 checks.
 
+Under an enforcing egress policy (SaaS default) that changes: each session
+starts a guarded HTTP/CONNECT proxy on the loopback
+(`checkbrowser/egressproxy.go`) and Chrome sends every connection through
+it, WebSockets included (Chrome tunnels `ws://` and `wss://` through
+CONNECT). A non-public destination is refused before it is contacted and
+poisons the session. A locally launched Chrome also gets deny-by-default
+`--host-resolver-rules` (`MAP <pinned host> <ip>, MAP * ~NOTFOUND, EXCLUDE
+127.0.0.1`). A remote CDP Chrome gets the proxy through the isolated
+context's `proxyServer` when its endpoint is on the loopback (k8s sidecar);
+off the loopback it only has `watchEgress`, which judges response addresses
+and the host of every `Network.webSocketCreated` and poisons the session
+after the fact (spec 2026-11-19-04, scan finding AR3, also closes T3 for
+the proxied paths). User-facing summary:
+`web/docs/docs/configuration/egress-policy.md`.
+
 ## Where to look in the code
 
 | Concern | File |

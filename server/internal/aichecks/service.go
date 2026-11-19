@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/ai"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	jsconfig "github.com/fclairamb/solidping/server/internal/checkers/checkjs/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -20,6 +21,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/testruns"
 )
 
 // Service errors.
@@ -69,6 +71,43 @@ type Service struct {
 	now          func() time.Time
 	mailer       Mailer
 	baseURL      string
+	// runLimiter, when set, admits every run of the authoring loop under the
+	// process-wide test-run caps (spec 2026-11-19-03).
+	runLimiter *testruns.Limiter
+}
+
+// SetRunLimiter shares the process-wide test-run limiter with the authoring
+// loop: each of its runs then waits for one of the org's slots, and its
+// browsers count against checkbrowser.MaxTestRunBrowsers.
+func (s *Service) SetRunLimiter(limiter *testruns.Limiter) {
+	s.runLimiter = limiter
+}
+
+// progressOrNoop is progress, or a sink when the caller wants none.
+func progressOrNoop(progress func(Progress)) func(Progress) {
+	if progress == nil {
+		return func(Progress) {}
+	}
+
+	return progress
+}
+
+// loopAdmit is the runRecorder.admit of an org's loop, nil without a limiter.
+func (s *Service) loopAdmit(orgUID string) func(ctx context.Context) (context.Context, func(), error) {
+	if s.runLimiter == nil {
+		return nil
+	}
+
+	limiter := s.runLimiter
+
+	return func(ctx context.Context) (context.Context, func(), error) {
+		release, err := limiter.AcquireWait(ctx, orgUID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("no run slot free for this organization: %w", err)
+		}
+
+		return checkbrowser.WithTestRunBudget(ctx), release, nil
+	}
 }
 
 // Options are the service's dependencies.
@@ -492,13 +531,11 @@ func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequ
 	ctx = ai.WithCallMeta(ctx, ai.CallMeta{OrgUID: orgUID, CheckUID: req.CheckUID, Purpose: ai.PurposeGenerate})
 
 	declared := append([]string{req.Prompt}, req.Contract...)
-	progress := req.OnProgress
-	if progress == nil {
-		progress = func(Progress) {}
-	}
+	progress := progressOrNoop(req.OnProgress)
 
 	rec := &runRecorder{
 		runner:   s.runner,
+		admit:    s.loopAdmit(orgUID),
 		env:      req.Env,
 		progress: progress,
 		prepare: func(script string) (*runGrant, error) {

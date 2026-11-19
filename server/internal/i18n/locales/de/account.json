@@ -115,6 +115,22 @@
     "revoke": "Wenn Sie das nicht waren, entfernen Sie es in Ihren Benachrichtigungseinstellungen und ändern Sie Ihr Passwort:",
     "cta": "Benachrichtigungseinstellungen öffnen"
   },
+  "contactAdded": {
+    "subject": "Ihrem SolidPing-Konto wurde eine Benachrichtigungsmethode hinzugefügt",
+    "preheader": "Incident-Alarme von {org} gehen jetzt auch dorthin.",
+    "title": "Eine Benachrichtigungsmethode wurde hinzugefügt",
+    "body": "Am {date} wurde {value} zu Ihren Benachrichtigungsmethoden in {org} hinzugefügt. Incident-Alarme dieser Organisation gehen jetzt auch dorthin.",
+    "revoke": "Falls Sie das nicht waren, entfernen Sie sie in Ihren Benachrichtigungseinstellungen und ändern Sie Ihr Passwort:",
+    "cta": "Meine Benachrichtigungseinstellungen öffnen"
+  },
+  "contactVerifyCode": {
+    "subject": "Ihr SolidPing-Bestätigungscode: {code}",
+    "preheader": "Bestätigen Sie diese Adresse, um Incident-Alarme von {org} zu erhalten.",
+    "title": "Bestätigen Sie diese E-Mail-Adresse",
+    "body": "Das SolidPing-Konto {account} möchte die Incident-Alarme von {org} an diese Adresse erhalten. Geben Sie diesen Code in SolidPing ein, um sie zu bestätigen:",
+    "expiry": "Der Code läuft in 10 Minuten ab.",
+    "ignore": "Falls Sie diese E-Mail nicht erwartet haben, ignorieren Sie sie: An diese Adresse wird kein Alarm gesendet."
+  },
   "invitation": {
     "subject": "Einladung zu {org} bei SolidPing",
     "preheader": {

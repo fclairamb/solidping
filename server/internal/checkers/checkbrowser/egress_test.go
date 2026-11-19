@@ -5,6 +5,7 @@ import (
 	"net"
 	"testing"
 
+	"github.com/chromedp/cdproto/network"
 	"github.com/stretchr/testify/require"
 
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkbrowser/config"
@@ -157,12 +158,12 @@ func TestSessionIsPoisonedByANonPublicResponse(t *testing.T) {
 	guard := egress.New(false)
 	session := &Session{}
 
-	session.checkRemote(ctx, guard, "https://www.acme.com/", "93.184.216.34")
-	session.checkRemote(ctx, guard, "https://cdn.acme.com/app.js", "")
+	session.checkRemote(ctx, guard, "https://www.acme.com/", "93.184.216.34", 443)
+	session.checkRemote(ctx, guard, "https://cdn.acme.com/app.js", "", 443)
 	r.NoError(session.deniedByEgress(), "public and cached responses are fine")
 
-	session.checkRemote(ctx, guard, "http://rebind.acme.com/secret", "[::1]")
-	session.checkRemote(ctx, guard, "http://other.acme.com/", "10.0.0.1")
+	session.checkRemote(ctx, guard, "http://rebind.acme.com/secret", "[::1]", 443)
+	session.checkRemote(ctx, guard, "http://other.acme.com/", "10.0.0.1", 443)
 
 	err := session.deniedByEgress()
 	r.ErrorIs(err, egress.ErrDenied)
@@ -174,4 +175,116 @@ func TestSessionIsPoisonedByANonPublicResponse(t *testing.T) {
 
 	_, textErr := session.Text(ctx, "body")
 	r.ErrorIs(textErr, egress.ErrDenied)
+}
+
+// A WebSocket the page opens is judged on its host (spec 2026-11-19-04):
+// Chrome reports no remote address for one, and the response listener never
+// sees it.
+func TestSessionIsPoisonedByAWebSocketToAPrivateHost(t *testing.T) {
+	t.Parallel()
+
+	publicOnly := func(host string) ([]net.IPAddr, error) {
+		if host == "internal.acme.com" {
+			return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}, {IP: net.ParseIP("10.1.2.3")}}, nil
+		}
+
+		return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}, nil
+	}
+	guard := egress.New(false, egress.WithLookup(func(_ context.Context, host string) ([]net.IPAddr, error) {
+		return publicOnly(host)
+	}))
+
+	t.Run("public host", func(t *testing.T) {
+		t.Parallel()
+
+		session := &Session{}
+		session.onEgressEvent(t.Context(), guard, &network.EventWebSocketCreated{URL: "wss://ws.acme.com/feed"})
+		require.NoError(t, session.deniedByEgress())
+	})
+
+	for name, wsURL := range map[string]string{
+		"IP literal":                   "ws://10.0.0.5:8080/",
+		"legacy IPv4 literal":          "ws://2130706433/",
+		"IPv6 loopback":                "ws://[::1]:9222/devtools/browser/x",
+		"name with one private answer": "wss://internal.acme.com/socket",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, rec := egress.WithRecorder(t.Context())
+			session := &Session{}
+
+			session.onEgressEvent(ctx, guard, &network.EventWebSocketCreated{URL: wsURL})
+
+			err := session.deniedByEgress()
+			require.ErrorIs(t, err, egress.ErrDenied)
+			require.NotNil(t, rec.Denied(), "the execution's recorder sees it too")
+
+			_, evalErr := session.Evaluate(ctx, "document.title")
+			require.ErrorIs(t, evalErr, egress.ErrDenied, "nothing read from the page reaches a result")
+		})
+	}
+}
+
+// Behind the egress proxy, the proxy is the judge: responses Chrome reports
+// from the proxy's own loopback address are not refused, and the WebSocket
+// host lookup is skipped.
+func TestSessionTrustsItsEgressProxy(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	guard := egress.New(false)
+	session := &Session{}
+
+	proxy, err := startEgressProxy(t.Context(), guard, nil)
+	r.NoError(err)
+
+	defer proxy.Close()
+
+	session.proxy = proxy
+
+	addr, ok := proxy.listener.Addr().(*net.TCPAddr)
+	r.True(ok)
+
+	session.onEgressEvent(t.Context(), guard, &network.EventResponseReceived{Response: &network.Response{
+		URL: "https://www.acme.com/", RemoteIPAddress: addr.IP.String(), RemotePort: int64(addr.Port),
+	}})
+	session.onEgressEvent(t.Context(), guard, &network.EventWebSocketCreated{URL: "ws://10.0.0.5/"})
+	r.NoError(session.deniedByEgress())
+
+	// Another loopback port is not the proxy: still refused.
+	session.onEgressEvent(t.Context(), guard, &network.EventResponseReceived{Response: &network.Response{
+		URL: "http://127.0.0.1:6379/", RemoteIPAddress: addr.IP.String(), RemotePort: int64(addr.Port) + 1,
+	}})
+	r.ErrorIs(session.deniedByEgress(), egress.ErrDenied)
+}
+
+// The resolver rules of an enforcing local Chrome deny every name by default:
+// only the pinned navigation host maps somewhere, and the proxy's address is
+// left alone so Chrome can reach it.
+func TestEgressResolverRulesDenyEveryOtherHost(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	pin := &hostPin{host: "www.acme.com", ip: net.ParseIP("93.184.216.34")}
+
+	r.Equal("MAP www.acme.com 93.184.216.34, MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
+		egressResolverRules(pin, "127.0.0.1"))
+	r.Equal("MAP * ~NOTFOUND, EXCLUDE 127.0.0.1", egressResolverRules(nil, "127.0.0.1"),
+		"a JS check has no pinned host: every name goes through the proxy")
+}
+
+func TestProxyReachableFrom(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.True(proxyReachableFrom(Settings{}), "a Chrome started here")
+	r.True(proxyReachableFrom(Settings{CDPURL: "ws://127.0.0.1:9222"}), "the Kubernetes sidecar")
+	r.True(proxyReachableFrom(Settings{CDPURL: "ws://localhost:9222"}))
+	r.True(proxyReachableFrom(Settings{CDPURL: "ws://[::1]:9222"}))
+	r.False(proxyReachableFrom(Settings{CDPURL: "ws://browser:9222"}), "a compose service elsewhere")
+	r.False(proxyReachableFrom(Settings{CDPURL: "ws://10.0.0.4:9222"}))
 }
