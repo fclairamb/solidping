@@ -539,3 +539,30 @@ func TestEnforcingDialFallsBackToIPv4WhenIPv6Hangs(t *testing.T) {
 	require.Eventually(t, func() bool { return accepted.Load() == 1 }, time.Second, 10*time.Millisecond)
 	r.Equal(int32(1), calls.Load(), "resolved exactly once")
 }
+
+// CheckHost is strict: one non-public answer among public ones is enough to
+// refuse, because the caller does not choose the address that gets dialed.
+func TestCheckHostRefusesAnyNonPublicAnswer(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	var calls atomic.Int32
+
+	mixed := egress.New(false, egress.WithLookup(fixedLookup(&calls, "93.184.216.34", "10.0.0.7")))
+	ctx, rec := egress.WithRecorder(t.Context())
+
+	err := mixed.CheckHost(ctx, "ws.acme.com")
+	r.ErrorIs(err, egress.ErrDenied)
+	r.Contains(err.Error(), "ws.acme.com")
+	r.NotNil(rec.Denied(), "the refusal is recorded")
+
+	public := egress.New(false, egress.WithLookup(fixedLookup(&calls, "93.184.216.34")))
+	r.NoError(public.CheckHost(t.Context(), "www.acme.com"))
+	r.ErrorIs(public.CheckHost(t.Context(), "[::1]"), egress.ErrDenied, "an IP literal is judged as itself")
+
+	before := calls.Load()
+	allow := egress.New(true, egress.WithLookup(fixedLookup(&calls, "10.0.0.7")))
+	r.NoError(allow.CheckHost(t.Context(), "internal.acme.com"))
+	r.Equal(before, calls.Load(), "a non-enforcing guard does not resolve")
+}
