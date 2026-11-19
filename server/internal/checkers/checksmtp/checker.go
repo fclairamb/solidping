@@ -459,14 +459,10 @@ func doSendEmail(textConn *textproto.Conn, mailFrom, deliveryTo, sourceCheckUID 
 
 	sentAt := time.Now()
 	dw := textConn.DotWriter()
-	_, writeErr := dw.Write([]byte(buildProbeMessage(mailFrom, deliveryTo, sourceCheckUID, sentAt)))
-	closeErr := dw.Close()
+	// A failed write is sticky on the underlying buffer, so Close reports it too.
+	_, _ = dw.Write([]byte(buildProbeMessage(mailFrom, deliveryTo, sourceCheckUID, sentAt)))
 
-	if writeErr != nil {
-		return time.Time{}, fmt.Errorf("failed to write message body: %w", writeErr)
-	}
-
-	if closeErr != nil {
+	if closeErr := dw.Close(); closeErr != nil {
 		return time.Time{}, fmt.Errorf("failed to send message body: %w", closeErr)
 	}
 

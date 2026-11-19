@@ -66,3 +66,50 @@ func TestEmailMaxDeliveryDelayVersusPeriod(t *testing.T) {
 		require.Contains(t, err.Error(), "lower than the check period")
 	})
 }
+
+// The dry-run validate endpoint holds max_delivery_delay to the same rule as
+// the write paths.
+func TestValidateCheckRejectsDeliveryDelayNotBelowPeriod(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	svc, _, org := setupSMTPDeliveryChecksService(t)
+
+	validated, err := svc.ValidateCheck(t.Context(), org.Slug, &checks.ValidateCheckRequest{
+		Type: "email", Period: "5m", Config: map[string]any{"max_delivery_delay": "5m"},
+	})
+	r.NoError(err)
+	r.False(validated.Valid)
+	r.NotEmpty(validated.Fields)
+	r.Equal(checks.CodeInvalidConfig, validated.Fields[len(validated.Fields)-1].Code)
+	r.Contains(validated.Fields[len(validated.Fields)-1].Message, "lower than the check period")
+
+	ok, err := svc.ValidateCheck(t.Context(), org.Slug, &checks.ValidateCheckRequest{
+		Type: "email", Period: "1h", Config: map[string]any{"max_delivery_delay": "5m"},
+	})
+	r.NoError(err)
+	r.True(ok.Valid)
+}
+
+// A dry-run import that updates an existing email check refuses a delay the
+// real update would refuse.
+func TestImportDryRunUpdateRejectsDeliveryDelayNotBelowPeriod(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	rig := newLabelRig(t, "dry-delay", nil)
+
+	entry := func(delay string) map[string]any {
+		return map[string]any{
+			"name": "Mail", "slug": "mail-delay", "type": "email", "enabled": true, "period": "1h",
+			"config": map[string]any{"max_delivery_delay": delay},
+		}
+	}
+
+	created := rig.importDoc(t, importDocument(rig.org.Slug, entry("10m")), false)
+	r.Equal(1, created.Created, "%+v", created.Errors)
+
+	dry := rig.importDoc(t, importDocument(rig.org.Slug, entry("2h")), true)
+	r.Zero(dry.Updated)
+	r.Len(dry.Errors, 1)
+	r.Contains(dry.Errors[0].Error, "lower than the check period")
+}

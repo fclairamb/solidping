@@ -216,15 +216,10 @@ func (w *DeliveryWatch) recordTimeout(
 	ctx context.Context, workerUID string, now time.Time,
 	smtp *models.Check, target *watchedEmail, sentAt time.Time,
 ) error {
-	resultUID, err := uuid.NewV7()
-	if err != nil {
-		return err
-	}
-
 	status := int(checkerdef.StatusDown)
 	duration := float32(0)
 	result := &models.Result{
-		UID:             resultUID.String(),
+		UID:             uuid.Must(uuid.NewV7()).String(),
 		OrganizationUID: target.check.OrganizationUID,
 		CheckUID:        target.check.UID,
 		PeriodType:      models.PeriodTypeRaw,

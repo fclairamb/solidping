@@ -184,3 +184,47 @@ func TestValidateSpecMaxDeliveryDelay(t *testing.T) {
 	unknownPeriod := &checkerdef.CheckSpec{Config: map[string]any{"max_delivery_delay": "2h"}}
 	require.NoError(t, config.ValidateSpec(unknownPeriod))
 }
+
+func TestFormatDuration(t *testing.T) {
+	t.Parallel()
+
+	cases := map[time.Duration]string{
+		10 * time.Minute:                 "10m",
+		time.Hour:                        "1h",
+		90 * time.Minute:                 "1h30m",
+		2*time.Hour + 30*time.Second:     "2h0m30s",
+		45 * time.Second:                 "45s",
+		24 * time.Hour:                   "24h",
+		time.Hour + 5*time.Minute:        "1h5m",
+		3*time.Hour + 20*time.Minute:     "3h20m",
+		time.Minute + 30*time.Second:     "1m30s",
+		time.Hour + 59*time.Minute:       "1h59m",
+		5*time.Hour + 0*time.Millisecond: "5h",
+	}
+
+	for in, want := range cases {
+		require.Equal(t, want, config.FormatDuration(in), "%v", in)
+	}
+}
+
+func TestEmptyMaxDeliveryDelayMeansNoLimit(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.EmailConfig{}
+	require.NoError(t, cfg.FromMap(map[string]any{"max_delivery_delay": ""}))
+	require.Zero(t, cfg.MaxDeliveryDelay)
+}
+
+func TestValidateDeliveryDelayForPeriod(t *testing.T) {
+	t.Parallel()
+
+	for _, bad := range []any{"soon", 10, "30s", "-5m"} {
+		require.Error(t,
+			config.ValidateDeliveryDelayForPeriod(map[string]any{"max_delivery_delay": bad}, time.Hour), "%v", bad)
+	}
+
+	require.Error(t, config.ValidateDeliveryDelayForPeriod(map[string]any{"max_delivery_delay": "1h"}, time.Hour))
+	require.NoError(t, config.ValidateDeliveryDelayForPeriod(map[string]any{"max_delivery_delay": "10m"}, time.Hour))
+	require.NoError(t, config.ValidateDeliveryDelayForPeriod(map[string]any{"max_delivery_delay": ""}, time.Hour))
+	require.NoError(t, config.ValidateDeliveryDelayForPeriod(map[string]any{}, time.Hour))
+}
