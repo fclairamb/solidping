@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/testruns"
 )
 
@@ -52,4 +54,47 @@ func TestAuthoringLoopRunsWaitForTheSharedLimiter(t *testing.T) {
 	r.NoError(err)
 	r.False(checkbrowser.IsTestRun(ctx))
 	release()
+}
+
+// TestRepairRunsWaitForTheSharedLimiter: the ai_repair loop's runs take the
+// org's slot of the shared limiter too (spec 2026-11-19-03), so a repair
+// cannot run beside a REST test run or an MCP probe of the same org.
+func TestRepairRunsWaitForTheSharedLimiter(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc := NewService(&Options{})
+	limiter := testruns.New()
+	svc.SetRunLimiter(limiter)
+
+	target := &repairTarget{
+		check: &models.Check{OrganizationUID: "org-a"},
+		cfg:   &checkjs.JSConfig{Script: "return { status: 'up' };"},
+	}
+
+	rec := svc.repairRecorder(target)
+	r.NotNil(rec.admit, "a repair's runs go through the shared limiter")
+
+	held, err := limiter.Acquire("org-a")
+	r.NoError(err)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+
+	_, _, err = rec.admitted(ctx)
+	r.Error(err, "the repair run waits for the org's slot, then gives up")
+	r.ErrorIs(err, testruns.ErrOrgBusy)
+
+	held()
+
+	ctx, release, err := rec.admitted(t.Context())
+	r.NoError(err)
+	r.True(checkbrowser.IsTestRun(ctx))
+	r.Equal(1, limiter.BusyOrgs())
+
+	_, err = limiter.Acquire("org-a")
+	r.ErrorIs(err, testruns.ErrOrgBusy, "a REST run or MCP probe of the org waits while the repair runs")
+
+	release()
+	r.Zero(limiter.BusyOrgs())
 }

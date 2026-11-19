@@ -369,16 +369,19 @@ func (s *Service) recordAttempt(
 	}
 }
 
-// attemptRepair runs the repair loop, the guards and the verification run,
-// then stores the candidate.
-func (s *Service) attemptRepair(ctx context.Context, target *repairTarget) (*RepairOutcome, ai.Usage, error) {
+// repairRecorder is the runRecorder of a repair attempt: its runs may only
+// reach the hosts the previous version was granted, and each one waits for a
+// slot of the org in the shared limiter, like the authoring loop's (spec
+// 2026-11-19-03).
+func (s *Service) repairRecorder(target *repairTarget) *runRecorder {
 	previous := target.cfg.Script
 	env := target.cfg.Env
 	allowed := grantedHosts(target.cfg)
 
-	rec := &runRecorder{
+	return &runRecorder{
 		runner: s.runner,
 		env:    env,
+		admit:  s.loopAdmit(target.check.OrganizationUID),
 		prepare: func(script string) (*runGrant, error) {
 			// An early refusal of a host the script text names. The
 			// boundary is the runtime allowlist: the run may only reach the
@@ -391,6 +394,12 @@ func (s *Service) attemptRepair(ctx context.Context, target *repairTarget) (*Rep
 			return &runGrant{secrets: target.secrets, hosts: allowed}, nil
 		},
 	}
+}
+
+// attemptRepair runs the repair loop, the guards and the verification run,
+// then stores the candidate.
+func (s *Service) attemptRepair(ctx context.Context, target *repairTarget) (*RepairOutcome, ai.Usage, error) {
+	rec := s.repairRecorder(target)
 
 	tools := []ai.Tool{rec.tool(), rec.fetchPageTool(), rec.browserSnapshotTool()}
 	loop := s.loop(systemPrompt(), tools, rec.done)
