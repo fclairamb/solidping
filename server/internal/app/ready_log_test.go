@@ -13,11 +13,13 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/defaults"
+	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
 // TestLogReady covers the ready line and the first-login line: the password
-// is printed only while the seeded admin still has to rotate it, and a
-// deported agent prints nothing.
+// is printed only while the seeded admin still has to rotate it and only when
+// it is the public defaults.Password (spec 2026-11-19-01), and a deported
+// agent prints nothing.
 func TestLogReady(t *testing.T) {
 	t.Parallel()
 
@@ -29,14 +31,26 @@ func TestLogReady(t *testing.T) {
 		withDB        bool
 		seedAdmin     bool
 		mustChange    bool
+		password      string
+		adminPassword string
 		wantReady     bool
 		wantFirstLine bool
+		wantPassword  bool
+		wantHint      string
 	}{
-		{"admin must change password", "", true, true, true, true, true},
-		{"admin already rotated", "", true, true, false, true, false},
-		{"no admin seeded", "", true, false, false, true, false},
-		{"no database service", "", false, false, false, true, false},
-		{"agent mode logs nothing", config.NodeRoleAgent, true, true, true, false, false},
+		{"admin must change password", "", true, true, true, defaults.Password, "", true, true, true, ""},
+		{
+			"generated password is never reprinted", "", true, true, true, "Kx7mPq2RtW9vLz4NcHb3", "", true, true, false,
+			"SP_ADMIN_PASSWORD set",
+		},
+		{
+			"configured password is not printed", "", true, true, true, "acme-first-pass", "acme-first-pass", true, true, false,
+			"value of SP_ADMIN_PASSWORD",
+		},
+		{"admin already rotated", "", true, true, false, defaults.Password, "", true, false, false, ""},
+		{"no admin seeded", "", true, false, false, "", "", true, false, false, ""},
+		{"no database service", "", false, false, false, "", "", true, false, false, ""},
+		{"agent mode logs nothing", config.NodeRoleAgent, true, true, true, defaults.Password, "", false, false, false, ""},
 	}
 
 	for _, tc := range testCases {
@@ -49,6 +63,7 @@ func TestLogReady(t *testing.T) {
 			srv := &Server{config: &config.Config{
 				Node:     config.NodeConfig{Role: tc.role},
 				Database: config.DatabaseConfig{Type: config.DatabaseTypeSQLite, Dir: t.TempDir()},
+				Auth:     config.AuthConfig{AdminPassword: tc.adminPassword},
 			}}
 
 			if tc.withDB {
@@ -60,6 +75,11 @@ func TestLogReady(t *testing.T) {
 				if tc.seedAdmin {
 					user := models.NewUser(defaults.Email)
 					user.MustChangePassword = tc.mustChange
+
+					hash, hashErr := passwords.HashBcrypt(tc.password)
+					r.NoError(hashErr)
+					user.PasswordHash = &hash
+
 					r.NoError(dbSvc.CreateUser(ctx, user))
 				}
 
@@ -79,10 +99,24 @@ func TestLogReady(t *testing.T) {
 			}
 
 			if tc.wantFirstLine {
+				r.Contains(logged, "First login")
 				r.Contains(logged, "email="+defaults.Email)
+			} else {
+				r.NotContains(logged, "First login")
+			}
+
+			if tc.wantPassword {
 				r.Contains(logged, "password="+defaults.Password)
 			} else {
 				r.NotContains(logged, "password=")
+			}
+
+			if tc.wantHint != "" {
+				r.Contains(logged, tc.wantHint)
+			}
+
+			if tc.password != "" && tc.password != defaults.Password {
+				r.NotContains(logged, tc.password, "a non-default password must never reach the log")
 			}
 		})
 	}

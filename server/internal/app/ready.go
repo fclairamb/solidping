@@ -12,6 +12,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/defaults"
+	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 	"github.com/fclairamb/solidping/server/internal/version"
 )
 
@@ -45,9 +46,14 @@ func (s *Server) logReady(ctx context.Context, logger *slog.Logger, listenAddr n
 
 // logFirstLogin tells the first login, only while the seeded admin has never
 // rotated its password: users.must_change_password is set by the startup seed
-// alone and cleared by the forced change, so the seed password is still the
-// account's password. That seed password is a constant (defaults.Password,
-// never configurable), and it is the only password this line can print.
+// alone and cleared by the forced change.
+//
+// The seed password is no longer always public (spec 2026-11-19-01): it is
+// defaults.Password in the test and demo run modes, auth.admin_password when
+// the operator set one, and a random password otherwise, printed once by the
+// seed and stored hashed only. So this line prints a password only when it is
+// the public defaults.Password, checked against the stored hash; otherwise it
+// gives the email and where the password is.
 func (s *Server) logFirstLogin(ctx context.Context, logger *slog.Logger) {
 	if s.dbService == nil {
 		return
@@ -60,9 +66,23 @@ func (s *Server) logFirstLogin(ctx context.Context, logger *slog.Logger) {
 		return
 	}
 
+	if user.PasswordHash != nil && passwords.Verify(defaults.Password, *user.PasswordHash) {
+		logger.InfoContext(ctx, "First login with the default admin account, you will be asked to change the password",
+			"email", email,
+			"password", defaults.Password)
+
+		return
+	}
+
+	hint := "see the \"First login\" line logged when the database was created, " +
+		"or restart with SP_ADMIN_PASSWORD set"
+	if s.config.Auth.AdminPassword != "" {
+		hint = "the password is the value of SP_ADMIN_PASSWORD"
+	}
+
 	logger.InfoContext(ctx, "First login with the default admin account, you will be asked to change the password",
 		"email", email,
-		"password", defaults.Password)
+		"hint", hint)
 }
 
 // seedAdminEmail is the email the startup job seeds the admin account with:
