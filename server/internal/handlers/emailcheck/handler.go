@@ -53,6 +53,7 @@ const (
 	outputKeyReceivedAt     = "receivedAt"
 	outputKeySourceCheckUID = "sourceCheckUid"
 	outputKeySentAt         = "sentAt"
+	outputKeySentAtSource   = "sentAtSource"
 	outputKeyLatencyMs      = "latencyMs"
 	outputKeyAuth           = "auth"
 	metricBlocklistedCount  = "blocklisted_count"
@@ -272,34 +273,54 @@ func findHeader(headers []jmap.EmailHeader, name string) string {
 	return ""
 }
 
-// enrichFromSMTPHeaders parses the optional send-mode attribution headers
-// (spec 2026-08-19-04) and, when present, adds sourceCheckUid/sentAt/latencyMs
-// to output and records the latency metric. Messages without the headers (or
-// with an unparsable Sent-At) are left byte-for-byte as they were before this
-// feature — full backward compatibility with human/heartbeat-style uses of
-// the email check.
+// Values of the sentAtSource output key: which clock produced sentAt.
+const (
+	sentAtSourceHeader = "header" // X-SolidPing-Sent-At, SolidPing's own clock
+	sentAtSourceDate   = "date"   // the mail's Date header, the sender's clock
+)
+
+// emailSentAt decides when a mail was sent: X-SolidPing-Sent-At when it
+// parses (SolidPing's own clock), otherwise the mail's Date header
+// (jmap.Email.SentAt, the sender's clock, a fallback only). ok is false when
+// neither is usable.
+func emailSentAt(email *jmap.Email) (sentAt time.Time, source string, ok bool) {
+	if raw := findHeader(email.Headers, headerSentAt); raw != "" {
+		if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
+			return parsed, sentAtSourceHeader, true
+		}
+	}
+
+	if email.SentAt != nil && !email.SentAt.IsZero() {
+		return *email.SentAt, sentAtSourceDate, true
+	}
+
+	return time.Time{}, "", false
+}
+
+// enrichFromSMTPHeaders adds the send-mode attribution (sourceCheckUid, spec
+// 2026-08-19-04) and the delivery timing (sentAt/sentAtSource/latencyMs) to
+// output, and records the latency metric. The send time comes from
+// emailSentAt, so a mail from any other sender gets a latency from its Date
+// header. A mail with neither send time is left as it was.
 //
-// latencyMs is dropped (attribution kept) when it would be negative — the
-// worker clock and the mail path's clock are not the same box, so a
-// non-monotonic reading is a clock artifact, not a real "email arrived before
-// it was sent" — or larger than maxSaneDeliveryLatency.
+// latencyMs is dropped (sentAt kept) when it would be negative — the sender's
+// clock and the mail path's clock are not the same box, so a non-monotonic
+// reading is a clock artifact, not a real "email arrived before it was sent" —
+// or larger than maxSaneDeliveryLatency. Such a mail is never judged late.
 func enrichFromSMTPHeaders(
 	output, metrics models.JSONMap, email *jmap.Email, orgUID string,
 ) (time.Duration, bool) {
-	sourceCheckUID := findHeader(email.Headers, headerSourceCheckUID)
-	sentAtRaw := findHeader(email.Headers, headerSentAt)
+	if sourceCheckUID := findHeader(email.Headers, headerSourceCheckUID); sourceCheckUID != "" {
+		output[outputKeySourceCheckUID] = sourceCheckUID
+	}
 
-	if sourceCheckUID == "" || sentAtRaw == "" {
+	sentAt, source, ok := emailSentAt(email)
+	if !ok {
 		return 0, false
 	}
 
-	sentAt, err := time.Parse(time.RFC3339, sentAtRaw)
-	if err != nil {
-		return 0, false
-	}
-
-	output[outputKeySourceCheckUID] = sourceCheckUID
 	output[outputKeySentAt] = sentAt.Format(time.RFC3339)
+	output[outputKeySentAtSource] = source
 
 	latency := email.ReceivedAt.Sub(sentAt)
 	if latency < 0 || latency > maxSaneDeliveryLatency {

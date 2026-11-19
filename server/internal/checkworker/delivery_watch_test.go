@@ -146,6 +146,34 @@ func TestDeliveryWatchSkipsCheckWithoutLimit(t *testing.T) {
 	r.Empty(f.emailRows(t))
 }
 
+// TestDeliveryWatchSkipsEmailCheckWithoutPairedSMTP: a check fed only by
+// third-party mail (Date-sourced sentAt) has no send to wait for, so it never
+// gets a timeout row and keeps its period-based verdict.
+func TestDeliveryWatchSkipsEmailCheckWithoutPairedSMTP(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	f := newWatchFixture(t, models.JSONMap{"max_delivery_delay": "10m"})
+	r.NoError(f.svc.DeleteCheck(t.Context(), f.smtp.UID))
+
+	status := int(checkerdef.StatusUp)
+	dated := f.now.Add(-3 * time.Hour).Truncate(time.Second)
+	r.NoError(f.svc.SaveResultWithStatusTracking(t.Context(), &models.Result{
+		UID: "third-party", OrganizationUID: f.email.OrganizationUID, CheckUID: f.email.UID,
+		PeriodType: models.PeriodTypeRaw, PeriodStart: dated, Status: &status,
+		Metrics: models.JSONMap{},
+		Output: models.JSONMap{
+			"message": "Email received", "sentAt": dated.Format(time.RFC3339), "sentAtSource": "date",
+		},
+		CreatedAt: dated,
+	}))
+
+	wrote, err := f.watch.Sweep(t.Context(), f.worker, f.now)
+	r.NoError(err)
+	r.Zero(wrote)
+	r.Len(f.emailRows(t), 1, "only the third-party mail, no timeout row")
+}
+
 func TestDeliveryWatchSkipsSendThatArrived(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

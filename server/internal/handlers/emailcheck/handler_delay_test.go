@@ -18,18 +18,39 @@ func (f *authFixture) deliverProbe(
 ) *models.Result {
 	t.Helper()
 
+	return f.deliverMail(t, recipient, msgID, func(email *jmap.Email) {
+		if withHeaders {
+			email.Headers = append(email.Headers,
+				jmap.EmailHeader{Name: headerSourceCheckUID, Value: "smtp-check"},
+				jmap.EmailHeader{Name: headerSentAt, Value: email.ReceivedAt.Add(-delay).Format(time.RFC3339)})
+		}
+	})
+}
+
+// deliverDated delivers a third-party mail (no SolidPing headers) whose Date
+// header is `delay` before its reception (negative: after it).
+func (f *authFixture) deliverDated(t *testing.T, msgID string, delay time.Duration) *models.Result {
+	t.Helper()
+
+	return f.deliverMail(t, testToken+"@inbox.example.com", msgID, func(email *jmap.Email) {
+		date := email.ReceivedAt.Add(-delay)
+		email.SentAt = &date
+	})
+}
+
+// deliverMail delivers a mail received now, shaped by mutate, and returns its result.
+func (f *authFixture) deliverMail(
+	t *testing.T, recipient, msgID string, mutate func(*jmap.Email),
+) *models.Result {
+	t.Helper()
+
 	received := time.Now().Truncate(time.Second)
 	email := authEmail()
 	email.To = []jmap.EmailAddress{{Email: recipient}}
 	email.MessageID = []string{msgID}
 	email.ReceivedAt = received
 	email.Subject = "probe"
-
-	if withHeaders {
-		email.Headers = append(email.Headers,
-			jmap.EmailHeader{Name: headerSourceCheckUID, Value: "smtp-check"},
-			jmap.EmailHeader{Name: headerSentAt, Value: received.Add(-delay).Format(time.RFC3339)})
-	}
+	mutate(email)
 
 	outcome, err := f.h.HandleEmail(t.Context(), nil, *email, jmap.OriginInbox)
 	require.NoError(t, err)
@@ -110,7 +131,8 @@ func TestDeliveryDelayWithoutLimitIsUp(t *testing.T) {
 	r.InDelta(780000, *res.Duration, 1500)
 }
 
-func TestDeliveryDelayIgnoredWithoutSentAtHeader(t *testing.T) {
+// Neither X-SolidPing-Sent-At nor Date: no send time, never judged late.
+func TestDeliveryDelayIgnoredWithoutAnySendTime(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
@@ -119,6 +141,8 @@ func TestDeliveryDelayIgnoredWithoutSentAtHeader(t *testing.T) {
 
 	r.Equal(int(checkerdef.StatusUp), *res.Status)
 	r.InDelta(0, *res.Duration, 0)
+	r.NotContains(res.Output, "latencyMs")
+	r.NotContains(res.Output, "sentAtSource")
 }
 
 func TestDeliveryDelayExplicitDownWins(t *testing.T) {
@@ -162,4 +186,92 @@ func TestAllFourAuthOptionsRecordAuthBlock(t *testing.T) {
 	res := f.deliver(t, testToken+"@inbox.example.com", "<four@x>")
 
 	r.Contains(res.Output, "auth")
+}
+
+// Send time: a third-party mail gets its latency from its Date header.
+func TestDeliveryDelayFromDateHeaderOverLimitIsDown(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	f := newAuthFixture(t, models.JSONMap{"max_delivery_delay": "10m"}, &stubResolver{})
+	res := f.deliverDated(t, "<dated-late@x>", 13*time.Minute+29*time.Second)
+
+	r.Equal(int(checkerdef.StatusDown), *res.Status)
+	r.Equal("delivered after 13m29s, limit 10m", res.Output["message"])
+	r.Equal("date", res.Output["sentAtSource"])
+	r.InDelta(809000, res.Output["latencyMs"], 1500)
+	r.InDelta(809000, *res.Duration, 1500)
+	r.NotContains(res.Output, "sourceCheckUid")
+}
+
+func TestDeliveryDelayFromDateHeaderWithinLimitIsUp(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	f := newAuthFixture(t, models.JSONMap{"max_delivery_delay": "10m"}, &stubResolver{})
+	res := f.deliverDated(t, "<dated-in@x>", 3*time.Minute)
+
+	r.Equal(int(checkerdef.StatusUp), *res.Status)
+	r.Equal("date", res.Output["sentAtSource"])
+	r.InDelta(180000, *res.Duration, 1500)
+}
+
+// With both send times present and disagreeing, X-SolidPing-Sent-At wins.
+func TestDeliveryDelaySentAtHeaderWinsOverDate(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	f := newAuthFixture(t, models.JSONMap{"max_delivery_delay": "10m"}, &stubResolver{})
+	res := f.deliverMail(t, testToken+"@inbox.example.com", "<both-times@x>", func(email *jmap.Email) {
+		date := email.ReceivedAt.Add(-time.Hour)
+		email.SentAt = &date
+		email.Headers = append(email.Headers, jmap.EmailHeader{
+			Name: headerSentAt, Value: email.ReceivedAt.Add(-2 * time.Minute).Format(time.RFC3339),
+		})
+	})
+
+	r.Equal(int(checkerdef.StatusUp), *res.Status)
+	r.Equal("header", res.Output["sentAtSource"])
+	r.InDelta(120000, *res.Duration, 1500)
+}
+
+// A Date after the reception or more than 24 h before it is a clock problem:
+// no latency, never judged late.
+func TestDeliveryDelayImplausibleDateIsIgnored(t *testing.T) {
+	t.Parallel()
+
+	for name, delay := range map[string]time.Duration{
+		"future": -5 * time.Minute,
+		"stale":  48 * time.Hour,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			f := newAuthFixture(t, models.JSONMap{"max_delivery_delay": "1m"}, &stubResolver{})
+			res := f.deliverDated(t, "<dated-"+name+"@x>", delay)
+
+			r.Equal(int(checkerdef.StatusUp), *res.Status)
+			r.NotContains(res.Output, "latencyMs")
+			r.InDelta(0, *res.Duration, 0)
+		})
+	}
+}
+
+// The sent-at header alone, without the source-check header, still gives a latency.
+func TestDeliveryDelaySentAtWithoutSourceCheckHeader(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	f := newAuthFixture(t, models.JSONMap{"max_delivery_delay": "10m"}, &stubResolver{})
+	res := f.deliverMail(t, testToken+"@inbox.example.com", "<no-source@x>", func(email *jmap.Email) {
+		email.Headers = append(email.Headers, jmap.EmailHeader{
+			Name: headerSentAt, Value: email.ReceivedAt.Add(-12 * time.Minute).Format(time.RFC3339),
+		})
+	})
+
+	r.Equal(int(checkerdef.StatusDown), *res.Status)
+	r.Equal("header", res.Output["sentAtSource"])
+	r.InDelta(720000, *res.Duration, 1500)
+	r.NotContains(res.Output, "sourceCheckUid")
 }
