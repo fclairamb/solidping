@@ -12,21 +12,56 @@ export interface LocalizedText {
   params?: Record<string, string | number>;
 }
 
+/** Hand-written text in one language: `body` only on a status update. */
+export interface TranslationEntry {
+  title: string;
+  body?: string;
+}
+
+/** Hand-written text in other languages, keyed by language code. */
+export type Translations = Record<string, TranslationEntry>;
+
+/**
+ * Where a hand-written translation is looked up: the entry's `translations`
+ * map, the field it is for, and the reader's language (any BCP 47 tag, only
+ * its primary subtag counts).
+ */
+export interface TranslationSource {
+  translations?: Translations | null;
+  field: "title" | "body";
+  language?: string;
+}
+
+/** The hand-written text for the reader's language, or undefined. */
+export function pickTranslation(source: TranslationSource | undefined): string | undefined {
+  if (!source?.translations || !source.language) return undefined;
+  const code = source.language.toLowerCase().split(/[-_]/)[0];
+  const value = source.translations[code]?.[source.field];
+  return value ? value : undefined;
+}
+
 /** Publication templates stand in their group title when no name is known. */
 const UNNAMED_KEY = "publication.groupOpenedTitle";
 
 /**
- * Renders a generated sentence in the visitor's language, or `fallback` (the
- * stored literal) when there is no recipe or this build does not know its key.
- * Only `publication.*` keys are rendered: they are the only ones the server
- * puts on a public page.
+ * Resolves the text to show a reader, in this order:
+ *  1. a hand-written translation for their language (`translation`),
+ *  2. the recipe rendered in their language, when the row still has one and
+ *     this build knows its key,
+ *  3. `fallback`, the stored literal (the page's own language).
+ * Only `publication.*` recipe keys are rendered: they are the only ones the
+ * server puts on a public page.
  */
 export function localizeGenerated(
   t: TFunction,
   exists: (key: string) => boolean,
   text: LocalizedText | null | undefined,
   fallback: string,
+  translation?: TranslationSource,
 ): string {
+  const written = pickTranslation(translation);
+  if (written !== undefined) return written;
+
   if (!text?.key?.startsWith("publication.") || !exists(text.key)) {
     return fallback;
   }

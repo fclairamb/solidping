@@ -199,7 +199,11 @@ function ActiveIncidentCard({
           className="min-w-0 break-words text-2xl font-semibold sm:text-3xl"
           data-testid="tv-active-incident-title"
         >
-          {localizeGenerated(t, (key) => i18n.exists(key), incident.titleI18n, incident.title)}
+          {localizeGenerated(t, (key) => i18n.exists(key), incident.titleI18n, incident.title, {
+            translations: incident.translations,
+            field: "title",
+            language: i18n.resolvedLanguage || i18n.language,
+          })}
         </h3>
         {severity && (
           <span
@@ -569,7 +573,11 @@ export function TvBoard({
                 data-testid="tv-resolved-incident"
               >
                 <h4 className="truncate text-lg font-medium sm:text-xl">
-                  {localizeGenerated(t, (key) => i18n.exists(key), incident.titleI18n, incident.title)}
+                  {localizeGenerated(t, (key) => i18n.exists(key), incident.titleI18n, incident.title, {
+            translations: incident.translations,
+            field: "title",
+            language: i18n.resolvedLanguage || i18n.language,
+          })}
                 </h4>
                 <p className="text-base opacity-70 sm:text-lg" translate="no">
                   {ago === null

@@ -60,5 +60,17 @@
     "saving": "Enregistrement…",
     "create": "Créer",
     "saveChanges": "Enregistrer les modifications"
+  },
+  "translations": {
+    "heading": "Autres langues",
+    "description": "Rédigez le titre et le corps complets dans une autre langue. Les visiteurs qui lisent la page dans cette langue les voient ; les autres voient le texte ci-dessus. Laissez un groupe vide pour ne pas traduire.",
+    "titleLabel": "Titre",
+    "bodyLabel": "Corps (markdown)",
+    "languages": {
+      "en": "Anglais",
+      "fr": "Français",
+      "de": "Allemand",
+      "es": "Espagnol"
+    }
   }
 }
