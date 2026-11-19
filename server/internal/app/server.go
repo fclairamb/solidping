@@ -653,27 +653,8 @@ func toolsRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
 
 // testRunsPerMinute is the per-org allowance for POST
 // /api/v1/orgs/:org/checks/test-run (spec 2026-11-18-01). Fixed, not
-// plan-based. Burst equals the minute's allowance.
+// plan-based. Counted by the shared testruns.Limiter (spec 2026-11-19-03).
 const testRunsPerMinute = testruns.RunsPerMinute
-
-// testRunRateLimitConfig derives the per-org test-run limiter from the
-// server's own, keeping the trusted proxy hops (used by the IP fallback).
-func testRunRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
-	return config.RateLimitConfig{
-		RequestsPerMinute: testRunsPerMinute,
-		Burst:             testRunsPerMinute,
-		TrustedProxies:    base.TrustedProxies,
-	}
-}
-
-// orgRateLimitKey buckets a request by the org RequireOrgAccess resolved.
-func orgRateLimitKey(req *http.Request) string {
-	if org, ok := middleware.GetOrganizationFromContext(req.Context()); ok && org != nil {
-		return "org:" + org.UID
-	}
-
-	return ""
-}
 
 // toolsRegion is the region reported on tool runs: the node's, else the
 // check worker's.
@@ -1343,12 +1324,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Test run of an unsaved check (spec 2026-11-17-04): runs once, stores
 	// and notifies nothing. A literal segment, ahead of "/:checkUid"; a write
 	// route, so orgGroup's floor refuses viewers.
-	// Per-org limiter (spec 2026-11-18-01): mounted after RequireOrgAccess and
-	// RequireOrgWrite, so a viewer still gets 403, and keyed on the org so
-	// every member of one org shares its budget.
-	testRunLimiter := middleware.NewRateLimiter(testRunRateLimitConfig(s.config.Server.RateLimiting), ctx)
-	orgChecks.Use(testRunLimiter.RateLimitRouteBy(orgRateLimitKey)).
-		POST("/test-run", checktestrun.NewHandlerWithLimiter(s.aiChecks.Runner(), s.config, s.testRunLimiter).TestRun)
+	// Per-org limits (specs 2026-11-18-01, 2026-11-19-03): the handler applies
+	// s.testRunLimiter's runs-per-minute allowance and concurrency caps, the
+	// same per-org budget the MCP probes spend. It runs after
+	// RequireOrgAccess and RequireOrgWrite, so a viewer still gets 403.
+	orgChecks.POST("/test-run",
+		checktestrun.NewHandlerWithLimiter(s.aiChecks.Runner(), s.config, s.testRunLimiter).TestRun)
 	orgChecks.GET("/:checkUid", checksHandler.GetCheck)
 	orgChecks.PUT("/:slug", checksHandler.UpsertCheck)
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)

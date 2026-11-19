@@ -135,6 +135,16 @@ type Response struct {
 // The script runs synchronously on the API node itself: one region = the API
 // node's. There is no region selection for a test run.
 func (h *Handler) TestRun(writer http.ResponseWriter, req *http.Request) error {
+	// The per-org runs-per-minute allowance, shared with the MCP probes and
+	// counted before the body is read: an invalid body still costs a run
+	// (spec 2026-11-19-03).
+	if !h.limiter.Allow(orgUID(req)) {
+		writer.Header().Set("Retry-After", retryAfterSeconds)
+
+		return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeRateLimited, fmt.Sprintf(
+			"Too many test runs: this organization is limited to %d runs per minute", testruns.RunsPerMinute))
+	}
+
 	body, err := io.ReadAll(io.LimitReader(req.Body, maxBodyBytes))
 	if err != nil {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid body")

@@ -166,8 +166,13 @@ func TestCheckTestRunRoute(t *testing.T) {
 	}
 
 	r.True(limited, "the per-org limiter must refuse runs past its budget")
-	r.GreaterOrEqual(admitted, testRunsPerMinute)
-	r.LessOrEqual(admitted, testRunsPerMinute+1, "one token may refill during the loop, no more")
+	r.Equal(testRunsPerMinute, admitted, "the org gets exactly its runs-per-minute allowance")
+
+	// REST and MCP share one per-org bucket (spec 2026-11-19-03): the REST
+	// runs spent the allowance the MCP probes of the same org draw from, so
+	// one org cannot get 20 REST runs plus 20 MCP probes a minute.
+	r.False(server.testRunLimiter.Allow(org.UID), "the REST runs must exhaust the org's MCP probe budget")
+	r.True(server.testRunLimiter.Allow("another-org"), "another org keeps its own allowance")
 
 	// The role check still runs first: a viewer gets 403, not 429.
 	resp = do(http.MethodPost, path, viewer, strings.NewReader(payload))
