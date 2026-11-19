@@ -48,6 +48,20 @@ func probeAnnotations(title string) *ToolAnnotations {
 	}
 }
 
+// execProbeAnnotations is a probe that runs code or a browser on the server
+// (run_js_script, browser_snapshot). It writes nothing in SolidPing, but it
+// takes the write gates (see toolAccessTable), so it does not advertise
+// readOnlyHint.
+func execProbeAnnotations(title string) *ToolAnnotations {
+	return &ToolAnnotations{
+		Title:           title,
+		ReadOnlyHint:    false,
+		DestructiveHint: false,
+		IdempotentHint:  true,
+		OpenWorldHint:   true,
+	}
+}
+
 func createAnnotations(title string) *ToolAnnotations {
 	return &ToolAnnotations{
 		Title:           title,

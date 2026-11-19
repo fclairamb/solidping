@@ -224,10 +224,12 @@ func probeDef() ToolDefinition {
 			"from the server. kind=browser snapshots a page to pick selectors for browser steps. " +
 			"kind selects the mode; the other params apply only to their kind (script: " +
 			"script/env/secrets/timeout; fetch and browser: url). Reaches the URL or script " +
-			"target you name. Read-only: works with mcp:read tokens.",
+			"target you name. kind=fetch works with mcp:read tokens; kind=script and kind=browser " +
+			"execute code or hold a browser on the server, so they need a write-capable token (mcp " +
+			"scope) and the user role. One run per organization at a time, 20 per minute.",
 		InputSchema:  objectSchema(props, []string{propKind}),
 		OutputSchema: runResultOutputSchema(),
-		Annotations:  probeAnnotations("Probe a target"),
+		Annotations:  execProbeAnnotations("Probe a target"),
 	}
 }
 

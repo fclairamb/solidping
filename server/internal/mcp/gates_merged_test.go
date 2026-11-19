@@ -33,7 +33,11 @@ func expectedWrite(name string) bool {
 		}
 	}
 
-	return name == toolRunCheck
+	// The probes that execute code or hold a browser on the server take the
+	// write gates too (spec 2026-11-19-03).
+	// probe is classified on its kind, and no kind fails closed.
+	return name == toolRunCheck || name == toolRunJSScript || name == toolBrowserSnapshot ||
+		name == toolProbe
 }
 
 func TestToolMutatesOverEveryRegisteredTool(t *testing.T) {
@@ -115,14 +119,20 @@ func TestReadTokenRefusedOnManageAndLegacyWrites(t *testing.T) {
 	}
 
 	aliases := legacyWriteAliases()
-	r.Len(aliases, 11)
+	// 11 status page aliases, plus run_js_script and browser_snapshot.
+	r.Len(aliases, 13)
 
 	for _, alias := range aliases {
 		refuse(alias, map[string]any{})
 	}
 
+	// The merged probe is classified on its kind (spec 2026-11-19-03).
+	for _, kind := range []any{probeKindScript, probeKindBrowser, nil, "nope", "Fetch"} {
+		refuse(toolProbe, map[string]any{propKind: kind})
+	}
+
 	// Positive control: the same token reaches a read merge.
-	resp := rpcToolCall(t, handler, readOnly, toolProbe, map[string]any{propKind: "nope"})
+	resp := rpcToolCall(t, handler, readOnly, toolProbe, map[string]any{propKind: probeKindFetch})
 	r.Nil(resp.Error)
 }
 
