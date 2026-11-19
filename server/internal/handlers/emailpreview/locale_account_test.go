@@ -240,7 +240,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 			},
 			i18n.LangSpanish: {
 				"Tu código de verificación de SolidPing: 482913",
-				"La cuenta de SolidPing alice@acme.com ha pedido recibir las alertas de incidentes de Acme Corp en esta dirección.",
+				"La cuenta de SolidPing alice@acme.com ha pedido recibir las alertas",
 			},
 		},
 		"passkey-added.html": {

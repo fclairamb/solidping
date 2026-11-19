@@ -101,7 +101,7 @@ type codeTransport func(ctx context.Context, to, code string) error
 // escalation page, and refusing it after stamping would burn a code and a
 // resend slot for a message that was never going to be sent.
 func (s *Service) resolveCodeTransport(
-	ctx context.Context, orgUID string, user *models.User, contactType, to string,
+	ctx context.Context, orgUID string, user *models.User, contactType, destination string,
 ) (codeTransport, error) {
 	switch contactType {
 	case models.UserContactTypeEmail:
@@ -113,7 +113,7 @@ func (s *Service) resolveCodeTransport(
 			return s.contactMailer.SendContactVerificationCode(ctx, user, orgUID, to, code)
 		}, nil
 	case models.UserContactTypePhone:
-		sender, err := s.resolveGuardedSMSSender(ctx, orgUID, to)
+		sender, err := s.resolveGuardedSMSSender(ctx, orgUID, destination)
 		if err != nil {
 			return nil, err
 		}
@@ -136,7 +136,8 @@ func (s *Service) resolveCodeTransport(
 // VerifyContact issues a fresh 6-digit code for a verifiable contact (phone,
 // WhatsApp or email) and sends it over that contact type's transport: an SMS
 // via the org's default Twilio connection, the instance's WhatsApp
-// authentication template, or an email to the address. Everything else — the code, its hash, the TTL, the resend limiter
+// authentication template, or an email to the address. Everything else — the
+// code, its hash, the TTL, the resend limiter
 // — is shared.
 func (s *Service) VerifyContact(
 	ctx context.Context, orgSlug string, user *models.User, contactUID string,

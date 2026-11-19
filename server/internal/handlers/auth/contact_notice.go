@@ -13,6 +13,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 )
 
+// keyContactOrgName is the template field naming the org of a contact email.
+const keyContactOrgName = "OrgName"
+
 // ErrContactCodeNotSent is returned when an email contact's verification code
 // could not be queued (no job service, or an invalid address).
 var ErrContactCodeNotSent = errors.New("the verification code could not be sent")
@@ -53,7 +56,7 @@ func (s *Service) NotifyContactAdded(ctx context.Context, user *models.User, org
 		map[string]any{
 			"AddedAt":           time.Now().UTC(),
 			"ContactValue":      display,
-			"OrgName":           orgName,
+			keyContactOrgName:   orgName,
 			keyNotificationsURL: notificationsURL,
 		},
 	)
@@ -73,9 +76,9 @@ func (s *Service) SendContactVerificationCode(
 
 	if !s.enqueueEmail(ctx, "", address, email.TemplateContactVerifyCode, recipient.ForUser(user),
 		map[string]any{
-			"Code":         code,
-			"AccountEmail": user.Email,
-			"OrgName":      orgName,
+			"Code":            code,
+			"AccountEmail":    user.Email,
+			keyContactOrgName: orgName,
 		},
 	) {
 		return ErrContactCodeNotSent

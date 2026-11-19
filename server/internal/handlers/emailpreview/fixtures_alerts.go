@@ -59,8 +59,8 @@ func testEmailFixture(loc i18n.Locale) map[string]any {
 // pagingNudgeFixture covers members.Service.SendPagingNudge's paging-nudge.html.
 func pagingNudgeFixture(_ i18n.Locale) map[string]any {
 	return map[string]any{
-		keyOrgName:         fixtureOrgName,
-		"NotificationsURL": fixtureDashboardURL + "/orgs/acme/account/notifications",
+		keyOrgName:          fixtureOrgName,
+		keyNotificationsURL: fixtureDashboardURL + "/orgs/acme/account/notifications",
 	}
 }
 

@@ -37,7 +37,7 @@ const (
 	ImpersonationPatternNotificationContacts = "/api/v1/orgs/{org}/users/me/notification-contacts"
 	ImpersonationPatternNotificationRoute    = "/api/v1/orgs/{org}/users/me/notification-routes/{routeUid}"
 	ImpersonationPatternContactVerify        = "/api/v1/orgs/{org}/users/me/notification-contacts/{contactUid}/verify"
-	ImpersonationPatternContactVerifyConfirm = "/api/v1/orgs/{org}/users/me/notification-contacts/{contactUid}/verify/confirm"
+	ImpersonationPatternContactVerifyConfirm = ImpersonationPatternContactVerify + "/confirm"
 )
 
 // impersonationForbiddenRoutes is the credential-changing surface. It is a

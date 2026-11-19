@@ -536,6 +536,64 @@ func (s *Service) CreateContact(
 
 	position := len(existing)
 
+	contact, err := s.newContact(ctx, orgUID, user, req)
+	if err != nil {
+		return nil, err
+	}
+
+	isNew := !hasContact(existing, req.Type, req.Value)
+
+	if upsertErr := s.db.UpsertUserContact(ctx, contact); upsertErr != nil {
+		return nil, fmt.Errorf("create contact: %w", upsertErr)
+	}
+
+	// Reload to get the actual UID after upsert.
+	routes, reloadErr := s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
+	if reloadErr != nil {
+		return nil, fmt.Errorf("reload routes: %w", reloadErr)
+	}
+
+	// Find the route for our new contact (may already exist after upsert).
+	for _, found := range routes {
+		if found.Contact != nil && found.Contact.Type == req.Type && found.Contact.Value == req.Value {
+			if isNew {
+				s.notifyContactAdded(ctx, user, orgUID, req)
+			}
+
+			return toRouteResponse(found), nil
+		}
+	}
+
+	// No route yet — create it.
+	route := models.NewUserNotificationRoute(user.UID, orgUID, contact.UID, position)
+	if _, insertErr := s.db.DB().NewInsert().Model(route).
+		On("CONFLICT (contact_uid) DO NOTHING").
+		Exec(ctx); insertErr != nil {
+		return nil, fmt.Errorf("create route: %w", insertErr)
+	}
+
+	// Reload again.
+	routes, reloadErr = s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
+	if reloadErr != nil {
+		return nil, fmt.Errorf("reload routes after create: %w", reloadErr)
+	}
+
+	for _, r := range routes {
+		if r.Contact != nil && r.Contact.Type == req.Type && r.Contact.Value == req.Value {
+			s.notifyContactAdded(ctx, user, orgUID, req)
+
+			return toRouteResponse(r), nil
+		}
+	}
+
+	return nil, ErrRouteNotFoundAfterCreate
+}
+
+// newContact validates a CreateContact request and builds the contact row,
+// with its workspace and, when it is usable at once, its verified stamp.
+func (s *Service) newContact(
+	ctx context.Context, orgUID string, user *models.User, req CreateContactRequest,
+) (*models.UserContact, error) {
 	// WhatsApp destinations must be E.164 — Meta rejects anything else, and a
 	// malformed number would otherwise sit in the list looking verifiable.
 	if req.Type == models.UserContactTypeWhatsApp && !whatsapp.ValidE164(strings.TrimSpace(req.Value)) {
@@ -569,52 +627,7 @@ func (s *Service) CreateContact(
 		contact.VerifiedAt = &now
 	}
 
-	isNew := !hasContact(existing, req.Type, req.Value)
-
-	if upsertErr := s.db.UpsertUserContact(ctx, contact); upsertErr != nil {
-		return nil, fmt.Errorf("create contact: %w", upsertErr)
-	}
-
-	// Reload to get the actual UID after upsert.
-	routes, reloadErr := s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
-	if reloadErr != nil {
-		return nil, fmt.Errorf("reload routes: %w", reloadErr)
-	}
-
-	// Find the route for our new contact (may already exist after upsert).
-	for _, r := range routes {
-		if r.Contact != nil && r.Contact.Type == req.Type && r.Contact.Value == req.Value {
-			if isNew {
-				s.notifyContactAdded(ctx, user, orgUID, req)
-			}
-
-			return toRouteResponse(r), nil
-		}
-	}
-
-	// No route yet — create it.
-	route := models.NewUserNotificationRoute(user.UID, orgUID, contact.UID, position)
-	if _, insertErr := s.db.DB().NewInsert().Model(route).
-		On("CONFLICT (contact_uid) DO NOTHING").
-		Exec(ctx); insertErr != nil {
-		return nil, fmt.Errorf("create route: %w", insertErr)
-	}
-
-	// Reload again.
-	routes, reloadErr = s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
-	if reloadErr != nil {
-		return nil, fmt.Errorf("reload routes after create: %w", reloadErr)
-	}
-
-	for _, r := range routes {
-		if r.Contact != nil && r.Contact.Type == req.Type && r.Contact.Value == req.Value {
-			s.notifyContactAdded(ctx, user, orgUID, req)
-
-			return toRouteResponse(r), nil
-		}
-	}
-
-	return nil, ErrRouteNotFoundAfterCreate
+	return contact, nil
 }
 
 // PatchRoute updates enabled flag and/or reorders.

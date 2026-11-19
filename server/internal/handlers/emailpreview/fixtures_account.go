@@ -99,19 +99,22 @@ func discordLinkedFixture(_ i18n.Locale) map[string]any {
 	}
 }
 
+// fixtureNotificationsURL is the notification settings page of the fixture org.
+const fixtureNotificationsURL = fixtureDashboardURL + "/orgs/acme/account/notifications"
+
 func telegramLinkedFixture(_ i18n.Locale) map[string]any {
 	return map[string]any{
-		"LinkedAt":         fixtureChangedAt(),
-		"NotificationsURL": fixtureDashboardURL + "/orgs/acme/account/notifications",
+		"LinkedAt":          fixtureChangedAt(),
+		keyNotificationsURL: fixtureNotificationsURL,
 	}
 }
 
 func contactAddedFixture(_ i18n.Locale) map[string]any {
 	return map[string]any{
-		"AddedAt":          fixtureChangedAt(),
-		"ContactValue":     "oncall@acme.com",
-		"OrgName":          fixtureOrgName,
-		"NotificationsURL": fixtureDashboardURL + "/orgs/acme/account/notifications",
+		"AddedAt":           fixtureChangedAt(),
+		"ContactValue":      "oncall@acme.com",
+		keyOrgName:          fixtureOrgName,
+		keyNotificationsURL: fixtureNotificationsURL,
 	}
 }
 
@@ -119,7 +122,7 @@ func contactVerifyCodeFixture(_ i18n.Locale) map[string]any {
 	return map[string]any{
 		"Code":         "482913",
 		"AccountEmail": "alice@acme.com",
-		"OrgName":      fixtureOrgName,
+		keyOrgName:     fixtureOrgName,
 	}
 }
 

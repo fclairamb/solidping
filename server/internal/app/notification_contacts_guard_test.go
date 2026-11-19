@@ -90,11 +90,11 @@ func TestImpersonationCannotBindANotificationContact(t *testing.T) {
 
 	for _, call := range contactBindingCalls("impa") {
 		t.Run(call.name, func(t *testing.T) {
-			r := require.New(t)
+			sub := require.New(t)
 
-			status, body := env.do(call.method, call.path, token, call.body)
-			r.Equal(http.StatusForbidden, status, body)
-			r.Equal(string(base.ErrorCodeImpersonationForbidden), body["code"])
+			code, answer := env.do(call.method, call.path, token, call.body)
+			sub.Equal(http.StatusForbidden, code, answer)
+			sub.Equal(string(base.ErrorCodeImpersonationForbidden), answer["code"])
 		})
 	}
 
