@@ -282,8 +282,8 @@ const (
 // emailSentAt decides when a mail was sent: X-SolidPing-Sent-At when it
 // parses (SolidPing's own clock), otherwise the mail's Date header
 // (jmap.Email.SentAt, the sender's clock, a fallback only). ok is false when
-// neither is usable.
-func emailSentAt(email *jmap.Email) (sentAt time.Time, source string, ok bool) {
+// neither is usable. It returns the send time, its source and ok.
+func emailSentAt(email *jmap.Email) (time.Time, string, bool) {
 	if raw := findHeader(email.Headers, headerSentAt); raw != "" {
 		if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
 			return parsed, sentAtSourceHeader, true

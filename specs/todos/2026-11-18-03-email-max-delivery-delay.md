@@ -159,3 +159,15 @@ Decided by the maintainer on 2026-11-18. These are directives, not options.
   arrives, so the once-per-period evaluation cannot write `up` from an older signal.
 - Validation: `max_delivery_delay` lower than the period is enforced on create (defaulted period
   included), update (config or period change), plan/dry-run and the validate endpoint.
+- Send time (revision of 2026-11-18): `emailSentAt` (`server/internal/handlers/emailcheck/handler.go`)
+  takes `X-SolidPing-Sent-At` when it parses, else `jmap.Email.SentAt` (the `Date` header), else
+  none. `enrichFromSMTPHeaders` writes `sourceCheckUid` whenever its header is present but no
+  longer needs it for the latency, and adds `sentAtSource` (`header` / `date`). The 24 h / negative
+  sanity bound, the `EmailDeliveryLatency` metric, the result duration and the late verdict apply
+  to both sources. An unparsable `X-SolidPing-Sent-At` now falls back to `Date`.
+- No paired SMTP check: `DeliveryWatch` only walks smtp checks, so an email check fed only by
+  third-party mail gets no timeout row (`TestDeliveryWatchSkipsEmailCheckWithoutPairedSMTP`).
+- Frontend: the delivery card now renders when `sentAt` is present even without
+  `sourceCheckUid` (no SMTP link then), and shows `mail.sentAtSourceDate`
+  (`data-testid="email-delivery-sent-at-source"`) next to the latency when `sentAtSource` is
+  `date`. The help line (`data-testid="email-max-delivery-delay-help"`) names both sources.

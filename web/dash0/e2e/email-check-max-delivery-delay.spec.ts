@@ -37,6 +37,8 @@ test.describe("Email check maximum delivery delay", () => {
     await expect(page.getByTestId("check-name-input")).toBeVisible();
     await page.getByTestId("check-name-input").fill(`E2E Email Delay ${Date.now()}`);
     await page.getByTestId("email-max-delivery-delay-input").fill("10m");
+    // The help line names both send-time sources.
+    await expect(page.getByTestId("email-max-delivery-delay-help")).toContainText("Date header");
     // The limit must be lower than the expected interval (the default is 5m).
     await page.getByTestId("check-period-input").fill("1");
     await page.getByTestId("check-period-unit-select").click();

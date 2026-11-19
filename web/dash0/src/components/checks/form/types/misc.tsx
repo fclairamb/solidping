@@ -1330,7 +1330,9 @@ function EmailFields({ state, onChange }: CheckTypeFieldsProps<EmailState>) {
           onChange={(e) => onChange({ ...state, maxDeliveryDelay: e.target.value })}
           data-testid="email-max-delivery-delay-input"
         />
-        <p className="text-xs text-muted-foreground">{t("misc.emailMaxDeliveryDelayHelp")}</p>
+        <p className="text-xs text-muted-foreground" data-testid="email-max-delivery-delay-help">
+          {t("misc.emailMaxDeliveryDelayHelp")}
+        </p>
       </div>
       <CollapsibleSection
         title={t("misc.emailAuthTitle")}
