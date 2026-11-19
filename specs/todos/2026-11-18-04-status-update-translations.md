@@ -81,7 +81,7 @@ Keep the recipes as they are. Add full per-language text next to them, for hand-
   for the page's own language, oversized body, each answering a validation error.
 - `server/internal/handlers/incidentpublications/service_test.go`: same cases for `publicTitle`.
 - Handler tests for both: `translations` is in the JSON response, camelCase, and a bad payload
-  answers `400 VALIDATION_ERROR`.
+  answers `422 VALIDATION_ERROR`.
 - `server/internal/db/sqlite/localized_text_migration_test.go` and
   `server/internal/db/postgres/localized_text_migration_postgres_test.go`: the column exists after
   migrating, an existing row has `NULL`, the down migration drops it.
