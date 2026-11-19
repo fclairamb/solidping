@@ -30,7 +30,7 @@ func TestPublicViewCarriesTranslations(t *testing.T) {
 	upd.Title = "Investigating"
 	upd.BodyMarkdown = "body"
 	upd.Kind = models.StatusUpdateKindInvestigating
-	upd.Translations = models.Translations{"fr": {Title: "Analyse", Body: "corps"}}
+	upd.Translations = models.Translations{"fr": {Title: "Enquete", Body: "corps"}}
 	require.NoError(t, svc.db.CreateStatusUpdate(ctx, upd))
 
 	svc.SetPublicIncidentProvider(fakeIncidentProvider{incidents: []PublicIncident{{
@@ -64,7 +64,7 @@ func TestPublicViewCarriesTranslations(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &wire))
 
 	require.Len(t, wire.RecentUpdates, 1)
-	require.Equal(t, "Analyse", wire.RecentUpdates[0].Translations["fr"]["title"])
+	require.Equal(t, "Enquete", wire.RecentUpdates[0].Translations["fr"]["title"])
 	require.Equal(t, "corps", wire.RecentUpdates[0].Translations["fr"]["body"])
 
 	require.Len(t, wire.ActiveIncidents, 1)
