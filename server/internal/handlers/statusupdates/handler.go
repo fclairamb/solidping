@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
@@ -240,7 +241,26 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 		return h.WriteValidationError(writer, "Invalid incidentUid", []base.ValidationErrorField{
 			{Name: fieldIncidentUID, Message: msgUIDRequired},
 		})
+	case isTranslationError(err):
+		return h.WriteValidationError(writer, "Invalid translations", []base.ValidationErrorField{
+			{Name: "translations", Message: err.Error()},
+		})
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
+}
+
+// isTranslationError reports whether err is a translations validation failure.
+func isTranslationError(err error) bool {
+	for _, target := range []error{
+		models.ErrTranslationLanguage, models.ErrTranslationOwnLanguage, models.ErrTranslationTitleRequired,
+		models.ErrTranslationTitleTooLong, models.ErrTranslationBodyRequired, models.ErrTranslationBodyTooLong,
+		models.ErrTranslationBodyNotAllowed,
+	} {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+
+	return false
 }

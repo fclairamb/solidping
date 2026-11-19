@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
@@ -261,6 +262,10 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 		return h.WriteValidationError(writer, "Title too long", []base.ValidationErrorField{
 			{Name: "title", Message: "Title must be at most 200 characters"},
 		})
+	case isTranslationError(err):
+		return h.WriteValidationError(writer, "Invalid translations", []base.ValidationErrorField{
+			{Name: "translations", Message: err.Error()},
+		})
 	case errors.Is(err, ErrInvalidState):
 		return h.WriteValidationError(writer, "Invalid state", []base.ValidationErrorField{
 			{Name: "state", Message: "Must be one of: investigating, identified, monitoring, resolved"},
@@ -284,4 +289,19 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
+}
+
+// isTranslationError reports whether err is a translations validation failure.
+func isTranslationError(err error) bool {
+	for _, target := range []error{
+		models.ErrTranslationLanguage, models.ErrTranslationOwnLanguage, models.ErrTranslationTitleRequired,
+		models.ErrTranslationTitleTooLong, models.ErrTranslationBodyRequired, models.ErrTranslationBodyTooLong,
+		models.ErrTranslationBodyNotAllowed,
+	} {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+
+	return false
 }

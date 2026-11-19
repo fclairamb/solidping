@@ -2280,6 +2280,27 @@ func (e MemorySampleMode) Valid() bool {
 	}
 }
 
+// Defines values for NotificationPagingCoverageCoveredBy.
+const (
+	NotificationPagingCoverageCoveredByNone       NotificationPagingCoverageCoveredBy = "none"
+	NotificationPagingCoverageCoveredByOrgDefault NotificationPagingCoverageCoveredBy = "org_default"
+	NotificationPagingCoverageCoveredBySomeChecks NotificationPagingCoverageCoveredBy = "some_checks"
+)
+
+// Valid indicates whether the value is a known member of the NotificationPagingCoverageCoveredBy enum.
+func (e NotificationPagingCoverageCoveredBy) Valid() bool {
+	switch e {
+	case NotificationPagingCoverageCoveredByNone:
+		return true
+	case NotificationPagingCoverageCoveredByOrgDefault:
+		return true
+	case NotificationPagingCoverageCoveredBySomeChecks:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrgResultStatus.
 const (
 	OrgResultStatusAbandoned OrgResultStatus = "abandoned"
@@ -3621,6 +3642,21 @@ func (e ValidateDocumentResponsePlanPlanAction) Valid() bool {
 	}
 }
 
+// Defines values for ValidationErrorFieldRule.
+const (
+	ValidationErrorFieldRuleRequired ValidationErrorFieldRule = "required"
+)
+
+// Valid indicates whether the value is a known member of the ValidationErrorFieldRule enum.
+func (e ValidationErrorFieldRule) Valid() bool {
+	switch e {
+	case ValidationErrorFieldRuleRequired:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ValidationErrorFieldSeverity.
 const (
 	ValidationErrorFieldSeverityError   ValidationErrorFieldSeverity = "error"
@@ -3777,6 +3813,21 @@ func (e SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason) Valid() boo
 	}
 }
 
+// Defines values for CheckTestRunJSONBodyType.
+const (
+	CheckTestRunJSONBodyTypeJs CheckTestRunJSONBodyType = "js"
+)
+
+// Valid indicates whether the value is a known member of the CheckTestRunJSONBodyType enum.
+func (e CheckTestRunJSONBodyType) Valid() bool {
+	switch e {
+	case CheckTestRunJSONBodyTypeJs:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListCheckEventsParamsOrder.
 const (
 	ListCheckEventsParamsOrderAsc  ListCheckEventsParamsOrder = "asc"
@@ -3867,6 +3918,27 @@ func (e ListIncidentsParamsOrder) Valid() bool {
 	case ListIncidentsParamsOrderAsc:
 		return true
 	case ListIncidentsParamsOrderDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetIncidentInsightsParamsPeriod.
+const (
+	GetIncidentInsightsParamsPeriodN30d GetIncidentInsightsParamsPeriod = "30d"
+	GetIncidentInsightsParamsPeriodN7d  GetIncidentInsightsParamsPeriod = "7d"
+	GetIncidentInsightsParamsPeriodN90d GetIncidentInsightsParamsPeriod = "90d"
+)
+
+// Valid indicates whether the value is a known member of the GetIncidentInsightsParamsPeriod enum.
+func (e GetIncidentInsightsParamsPeriod) Valid() bool {
+	switch e {
+	case GetIncidentInsightsParamsPeriodN30d:
+		return true
+	case GetIncidentInsightsParamsPeriodN7d:
+		return true
+	case GetIncidentInsightsParamsPeriodN90d:
 		return true
 	default:
 		return false
@@ -4482,6 +4554,9 @@ type AuthProvidersResponse struct {
 type AvailabilityBucket struct {
 	// AvailabilityPct successfulChecks / totalChecks × 100. Null when totalChecks == 0 — no data is not 100%.
 	AvailabilityPct *float32 `json:"availabilityPct"`
+
+	// AvgDurationMs Mean response time of the cell's probes; omitted when none carried one.
+	AvgDurationMs *float32 `json:"avgDurationMs,omitempty"`
 
 	// HasData False when the cell has no countable probes (then availabilityPct is null).
 	HasData bool `json:"hasData"`
@@ -5274,8 +5349,11 @@ type CheckTypeInfo struct {
 	SupportsIpVersion *bool `json:"supportsIpVersion,omitempty"`
 
 	// SupportsTunnel The type can run through an SSH check's tunnel (`tunnelCheckUid`).
-	SupportsTunnel *bool  `json:"supportsTunnel,omitempty"`
-	Type           string `json:"type"`
+	SupportsTunnel *bool `json:"supportsTunnel,omitempty"`
+
+	// TargetFields Config keys that decide where this type's secrets go (the URL, the host and port, the tunnel reference). Browser-sealed secrets carry a binding to the digest of these fields, and the agent refuses them once one changes.
+	TargetFields *[]string `json:"targetFields,omitempty"`
+	Type         string    `json:"type"`
 }
 
 // CheckTypeListResponse defines model for CheckTypeListResponse.
@@ -5605,6 +5683,12 @@ type CreateIncidentPublicationRequest struct {
 
 	// Title Customer-facing title. Never paste probe output into it.
 	Title string `json:"title"`
+
+	// Translations Hand-written text in other languages, keyed by UI language code (`en`, `fr`, `de`, `es`). The literal `title` / `bodyMarkdown` stay the status page's own language, so the page's language is rejected as a key. An entry is complete or absent: an empty `title` is a VALIDATION_ERROR, and on a status update so is an empty `body` while `bodyMarkdown` is not. A reader in language L sees `translations[L]`, else the recipe (`titleI18n` / `bodyI18n`), else the literal text.
+	//
+	//
+	// Example: {"fr":{"body":"Nous enquêtons.","title":"Panne des paiements"}}
+	Translations *Translations `json:"translations,omitempty"`
 }
 
 // CreateIncidentPublicationRequestSeverity defines model for CreateIncidentPublicationRequest.Severity.
@@ -5781,7 +5865,9 @@ type CreateStatusPageRequest struct {
 	Description  *string `json:"description,omitempty"`
 
 	// HideBranding Page-level white-label opt-in. Stored whether or not the org is entitled, so an upgrade applies without re-saving the page.
-	HideBranding  *bool   `json:"hideBranding,omitempty"`
+	HideBranding *bool `json:"hideBranding,omitempty"`
+
+	// HistoryDays Deprecated, use historyPeriod. Only read when historyPeriod is absent; a value outside 1..90 is `422 VALIDATION_ERROR`.
 	HistoryDays   *int    `json:"historyDays,omitempty"`
 	HistoryPeriod *string `json:"historyPeriod,omitempty"`
 	IsDefault     *bool   `json:"isDefault,omitempty"`
@@ -5848,6 +5934,12 @@ type CreateStatusUpdateRequest struct {
 	SectionUid    *openapi_types.UUID `json:"sectionUid,omitempty"`
 	StatusPageUid openapi_types.UUID  `json:"statusPageUid"`
 	Title         string              `json:"title"`
+
+	// Translations Hand-written text in other languages, keyed by UI language code (`en`, `fr`, `de`, `es`). The literal `title` / `bodyMarkdown` stay the status page's own language, so the page's language is rejected as a key. An entry is complete or absent: an empty `title` is a VALIDATION_ERROR, and on a status update so is an empty `body` while `bodyMarkdown` is not. A reader in language L sees `translations[L]`, else the recipe (`titleI18n` / `bodyI18n`), else the literal text.
+	//
+	//
+	// Example: {"fr":{"body":"Nous enquêtons.","title":"Panne des paiements"}}
+	Translations *Translations `json:"translations,omitempty"`
 }
 
 // CreateSupportMessageRequest defines model for CreateSupportMessageRequest.
@@ -6411,8 +6503,11 @@ type Event struct {
 	Payload     *map[string]interface{} `json:"payload,omitempty"`
 
 	// SourceIp Client address the action came from. Returned to org admins and owners only, and absent entirely when `audit.capture_ip` is off.
-	SourceIp *string             `json:"sourceIp,omitempty"`
-	Uid      *openapi_types.UUID `json:"uid,omitempty"`
+	SourceIp *string `json:"sourceIp,omitempty"`
+
+	// TargetUserName On an `auth.login_failed` row, the display name of the org member whose account was tried. Admin/owner only; absent when the typed email (`payload.email`) matches no member. Non-admin members only receive the `auth.login_failed` rows against their own account.
+	TargetUserName *string             `json:"targetUserName,omitempty"`
+	Uid            *openapi_types.UUID `json:"uid,omitempty"`
 
 	// UserAgent User-Agent of the originating request, truncated. Admin/owner only.
 	UserAgent *string `json:"userAgent,omitempty"`
@@ -6693,7 +6788,10 @@ type IncidentDetail struct {
 	StartedAt  *time.Time           `json:"startedAt,omitempty"`
 	State      *IncidentDetailState `json:"state,omitempty"`
 	Title      *string              `json:"title,omitempty"`
-	Uid        *openapi_types.UUID  `json:"uid,omitempty"`
+
+	// TitleI18n Recipe of a sentence the server generated (an incident title, an auto-published status-page entry and its updates): a message key and the values it interpolates, so a client renders the sentence in its reader's language. The literal text next to it stays the fallback for an unknown key. Absent once a person wrote or edited the text.
+	TitleI18n *LocalizedText      `json:"titleI18n,omitempty"`
+	Uid       *openapi_types.UUID `json:"uid,omitempty"`
 }
 
 // IncidentDetailKind What the incident is ABOUT: `check` (an outage), `slo_burn` (an error-budget burn-rate alert) or `degraded` (a check that fails intermittently or answers far slower than usual — the target may well be up right now).
@@ -6701,6 +6799,20 @@ type IncidentDetailKind string
 
 // IncidentDetailState defines model for IncidentDetail.State.
 type IncidentDetailState string
+
+// IncidentInsightsDuration defines model for IncidentInsightsDuration.
+type IncidentInsightsDuration struct {
+	MedianSeconds *int64 `json:"medianSeconds,omitempty"`
+	P90Seconds    *int64 `json:"p90Seconds,omitempty"`
+	SampleCount   *int   `json:"sampleCount,omitempty"`
+}
+
+// IncidentInsightsResolution defines model for IncidentInsightsResolution.
+type IncidentInsightsResolution struct {
+	Count         *int   `json:"count,omitempty"`
+	MedianSeconds *int64 `json:"medianSeconds,omitempty"`
+	P90Seconds    *int64 `json:"p90Seconds,omitempty"`
+}
 
 // IncidentListResponse defines model for IncidentListResponse.
 type IncidentListResponse struct {
@@ -6730,9 +6842,18 @@ type IncidentPublication struct {
 	State         IncidentPublicationState `json:"state"`
 	StatusPageUid openapi_types.UUID       `json:"statusPageUid"`
 	Title         string                   `json:"title"`
-	Uid           openapi_types.UUID       `json:"uid"`
-	UpdatedAt     *time.Time               `json:"updatedAt,omitempty"`
-	Updates       *[]PublicationUpdate     `json:"updates,omitempty"`
+
+	// TitleI18n Recipe of a sentence the server generated (an incident title, an auto-published status-page entry and its updates): a message key and the values it interpolates, so a client renders the sentence in its reader's language. The literal text next to it stays the fallback for an unknown key. Absent once a person wrote or edited the text.
+	TitleI18n *LocalizedText `json:"titleI18n,omitempty"`
+
+	// Translations Hand-written text in other languages, keyed by UI language code (`en`, `fr`, `de`, `es`). The literal `title` / `bodyMarkdown` stay the status page's own language, so the page's language is rejected as a key. An entry is complete or absent: an empty `title` is a VALIDATION_ERROR, and on a status update so is an empty `body` while `bodyMarkdown` is not. A reader in language L sees `translations[L]`, else the recipe (`titleI18n` / `bodyI18n`), else the literal text.
+	//
+	//
+	// Example: {"fr":{"body":"Nous enquêtons.","title":"Panne des paiements"}}
+	Translations *Translations        `json:"translations,omitempty"`
+	Uid          openapi_types.UUID   `json:"uid"`
+	UpdatedAt    *time.Time           `json:"updatedAt,omitempty"`
+	Updates      *[]PublicationUpdate `json:"updates,omitempty"`
 }
 
 // IncidentPublicationSeverity defines model for IncidentPublication.Severity.
@@ -6976,6 +7097,29 @@ type LimitsResponse struct {
 
 	// RateLimit Rate-limit section of the limits response.
 	RateLimit LimitsRateLimit `json:"rateLimit"`
+}
+
+// LocalizedText Recipe of a sentence the server generated (an incident title, an auto-published status-page entry and its updates): a message key and the values it interpolates, so a client renders the sentence in its reader's language. The literal text next to it stays the fallback for an unknown key. Absent once a person wrote or edited the text.
+type LocalizedText struct {
+	// Key Message key, namespaced by producer: `incident.title.*` (`down`, `downUnnamed`, `degradedFailures`, `degradedFailuresAvailability`, `degradedSlow`, `sloFastBurn`, `sloSlowBurn`) or `publication.*` (status-page templates).
+	//
+	//
+	// Example: incident.title.down
+	Key string `json:"key"`
+
+	// Params Interpolated values. A `publication.*` recipe without `name` stands for an unnamed component.
+	Params *struct {
+		// Availability Percentage, rounded to one decimal.
+		Availability *float32 `json:"availability,omitempty"`
+		Failures     *int     `json:"failures,omitempty"`
+		Name         *string  `json:"name,omitempty"`
+		Probes       *int     `json:"probes,omitempty"`
+
+		// Rate SLO burn rate, rounded to one decimal.
+		Rate        *float32 `json:"rate,omitempty"`
+		Slow        *int     `json:"slow,omitempty"`
+		ThresholdMs *int     `json:"thresholdMs,omitempty"`
+	} `json:"params,omitempty"`
 }
 
 // LoginRequest defines model for LoginRequest.
@@ -7424,6 +7568,18 @@ type NotificationListResponse struct {
 	Data *[]Notification `json:"data,omitempty"`
 }
 
+// NotificationPagingCoverage Whether an escalation policy ever pages the caller in this organization. Personal methods (Telegram, WhatsApp, SMS, DMs) only fire through one.
+type NotificationPagingCoverage struct {
+	// CoveredBy org_default when the org default policy pages the caller, some_checks when only policies assigned to some checks or groups do, none otherwise.
+	CoveredBy NotificationPagingCoverageCoveredBy `json:"coveredBy"`
+
+	// PolicyCount Number of live escalation policies in the organization.
+	PolicyCount int `json:"policyCount"`
+}
+
+// NotificationPagingCoverageCoveredBy org_default when the org default policy pages the caller, some_checks when only policies assigned to some checks or groups do, none otherwise.
+type NotificationPagingCoverageCoveredBy string
+
 // NotificationRoute defines model for NotificationRoute.
 type NotificationRoute struct {
 	Contact   NotificationContact `json:"contact"`
@@ -7435,7 +7591,10 @@ type NotificationRoute struct {
 
 // NotificationRouteListResponse defines model for NotificationRouteListResponse.
 type NotificationRouteListResponse struct {
-	Data            *[]NotificationRoute         `json:"data,omitempty"`
+	Data *[]NotificationRoute `json:"data,omitempty"`
+
+	// Paging Whether an escalation policy ever pages the caller in this organization. Personal methods (Telegram, WhatsApp, SMS, DMs) only fire through one.
+	Paging          *NotificationPagingCoverage  `json:"paging,omitempty"`
 	SlackSuggestion *NotificationSlackSuggestion `json:"slackSuggestion,omitempty"`
 }
 
@@ -7823,8 +7982,17 @@ type PublicIncident struct {
 	StartedAt time.Time               `json:"startedAt"`
 	State     PublicIncidentState     `json:"state"`
 	Title     string                  `json:"title"`
-	Uid       openapi_types.UUID      `json:"uid"`
-	Updates   *[]PublicIncidentUpdate `json:"updates,omitempty"`
+
+	// TitleI18n Recipe of a sentence the server generated (an incident title, an auto-published status-page entry and its updates): a message key and the values it interpolates, so a client renders the sentence in its reader's language. The literal text next to it stays the fallback for an unknown key. Absent once a person wrote or edited the text.
+	TitleI18n *LocalizedText `json:"titleI18n,omitempty"`
+
+	// Translations Hand-written text in other languages, keyed by UI language code (`en`, `fr`, `de`, `es`). The literal `title` / `bodyMarkdown` stay the status page's own language, so the page's language is rejected as a key. An entry is complete or absent: an empty `title` is a VALIDATION_ERROR, and on a status update so is an empty `body` while `bodyMarkdown` is not. A reader in language L sees `translations[L]`, else the recipe (`titleI18n` / `bodyI18n`), else the literal text.
+	//
+	//
+	// Example: {"fr":{"body":"Nous enquêtons.","title":"Panne des paiements"}}
+	Translations *Translations           `json:"translations,omitempty"`
+	Uid          openapi_types.UUID      `json:"uid"`
+	Updates      *[]PublicIncidentUpdate `json:"updates,omitempty"`
 }
 
 // PublicIncidentSeverity Display-only public badge. Absent when the operator set none.
@@ -7840,11 +8008,22 @@ type PublicIncidentListResponse struct {
 
 // PublicIncidentUpdate defines model for PublicIncidentUpdate.
 type PublicIncidentUpdate struct {
+	// BodyI18n Recipe of a sentence the server generated (an incident title, an auto-published status-page entry and its updates): a message key and the values it interpolates, so a client renders the sentence in its reader's language. The literal text next to it stays the fallback for an unknown key. Absent once a person wrote or edited the text.
+	BodyI18n     *LocalizedText           `json:"bodyI18n,omitempty"`
 	BodyMarkdown string                   `json:"bodyMarkdown"`
 	Kind         PublicIncidentUpdateKind `json:"kind"`
 	PublishedAt  time.Time                `json:"publishedAt"`
 	Title        string                   `json:"title"`
-	Uid          openapi_types.UUID       `json:"uid"`
+
+	// TitleI18n Recipe of a sentence the server generated (an incident title, an auto-published status-page entry and its updates): a message key and the values it interpolates, so a client renders the sentence in its reader's language. The literal text next to it stays the fallback for an unknown key. Absent once a person wrote or edited the text.
+	TitleI18n *LocalizedText `json:"titleI18n,omitempty"`
+
+	// Translations Hand-written text in other languages, keyed by UI language code (`en`, `fr`, `de`, `es`). The literal `title` / `bodyMarkdown` stay the status page's own language, so the page's language is rejected as a key. An entry is complete or absent: an empty `title` is a VALIDATION_ERROR, and on a status update so is an empty `body` while `bodyMarkdown` is not. A reader in language L sees `translations[L]`, else the recipe (`titleI18n` / `bodyI18n`), else the literal text.
+	//
+	//
+	// Example: {"fr":{"body":"Nous enquêtons.","title":"Panne des paiements"}}
+	Translations *Translations      `json:"translations,omitempty"`
+	Uid          openapi_types.UUID `json:"uid"`
 }
 
 // PublicIncidentUpdateKind defines model for PublicIncidentUpdate.Kind.
@@ -7887,6 +8066,12 @@ type PublicTelegramConfig struct {
 	// non-empty bot token **and** a non-empty bot username. False on any
 	// deployment that has not configured a bot.
 	Enabled bool `json:"enabled"`
+
+	// LoginEnabled Present and true when Sign in with Telegram is on
+	// (`SP_TELEGRAM_LOGIN_ENABLED`). A connected chat then also signs in
+	// to the account, so the dashboard asks for the current password
+	// before minting a connect link.
+	LoginEnabled *bool `json:"loginEnabled,omitempty"`
 }
 
 // PublicWhatsAppConfig Instance-level WhatsApp capability flag. The dashboard reads it to
@@ -7903,12 +8088,24 @@ type PublicWhatsAppConfig struct {
 // PublicationUpdate defines model for PublicationUpdate.
 type PublicationUpdate struct {
 	// AuthorUid Absent for updates generated by the auto-publish pipeline — a machine post has no author, and attributing it to a human would be a lie the UI then renders.
-	AuthorUid    *openapi_types.UUID   `json:"authorUid,omitempty"`
+	AuthorUid *openapi_types.UUID `json:"authorUid,omitempty"`
+
+	// BodyI18n Recipe of a sentence the server generated (an incident title, an auto-published status-page entry and its updates): a message key and the values it interpolates, so a client renders the sentence in its reader's language. The literal text next to it stays the fallback for an unknown key. Absent once a person wrote or edited the text.
+	BodyI18n     *LocalizedText        `json:"bodyI18n,omitempty"`
 	BodyMarkdown string                `json:"bodyMarkdown"`
 	Kind         PublicationUpdateKind `json:"kind"`
 	PublishedAt  time.Time             `json:"publishedAt"`
 	Title        string                `json:"title"`
-	Uid          openapi_types.UUID    `json:"uid"`
+
+	// TitleI18n Recipe of a sentence the server generated (an incident title, an auto-published status-page entry and its updates): a message key and the values it interpolates, so a client renders the sentence in its reader's language. The literal text next to it stays the fallback for an unknown key. Absent once a person wrote or edited the text.
+	TitleI18n *LocalizedText `json:"titleI18n,omitempty"`
+
+	// Translations Hand-written text in other languages, keyed by UI language code (`en`, `fr`, `de`, `es`). The literal `title` / `bodyMarkdown` stay the status page's own language, so the page's language is rejected as a key. An entry is complete or absent: an empty `title` is a VALIDATION_ERROR, and on a status update so is an empty `body` while `bodyMarkdown` is not. A reader in language L sees `translations[L]`, else the recipe (`titleI18n` / `bodyI18n`), else the literal text.
+	//
+	//
+	// Example: {"fr":{"body":"Nous enquêtons.","title":"Panne des paiements"}}
+	Translations *Translations      `json:"translations,omitempty"`
+	Uid          openapi_types.UUID `json:"uid"`
 }
 
 // PublicationUpdateKind defines model for PublicationUpdate.Kind.
@@ -8547,7 +8744,9 @@ type StatusPage struct {
 
 	// HideBranding On admin payloads: the page's raw white-label opt-in. On the PUBLIC payload: the RESOLVED decision, already ANDed with the org's whiteLabel entitlement.
 	HideBranding *bool `json:"hideBranding,omitempty"`
-	HistoryDays  int   `json:"historyDays"`
+
+	// HistoryDays Deprecated, kept in sync with historyPeriod. Always within 1..90.
+	HistoryDays int `json:"historyDays"`
 
 	// HistoryPeriod History window (24h, 7d, 30d, 90d)
 	HistoryPeriod string  `json:"historyPeriod"`
@@ -8800,7 +8999,10 @@ type StatusPageUnlockRequest struct {
 
 // StatusUpdate defines model for StatusUpdate.
 type StatusUpdate struct {
-	AuthorUid    string              `json:"authorUid"`
+	AuthorUid string `json:"authorUid"`
+
+	// BodyI18n Recipe of a sentence the server generated (an incident title, an auto-published status-page entry and its updates): a message key and the values it interpolates, so a client renders the sentence in its reader's language. The literal text next to it stays the fallback for an unknown key. Absent once a person wrote or edited the text.
+	BodyI18n     *LocalizedText      `json:"bodyI18n,omitempty"`
 	BodyMarkdown string              `json:"bodyMarkdown"`
 	CheckUid     *openapi_types.UUID `json:"checkUid,omitempty"`
 	CreatedAt    time.Time           `json:"createdAt"`
@@ -8816,8 +9018,17 @@ type StatusUpdate struct {
 	SectionUid    *openapi_types.UUID `json:"sectionUid,omitempty"`
 	StatusPageUid openapi_types.UUID  `json:"statusPageUid"`
 	Title         string              `json:"title"`
-	Uid           openapi_types.UUID  `json:"uid"`
-	UpdatedAt     time.Time           `json:"updatedAt"`
+
+	// TitleI18n Recipe of a sentence the server generated (an incident title, an auto-published status-page entry and its updates): a message key and the values it interpolates, so a client renders the sentence in its reader's language. The literal text next to it stays the fallback for an unknown key. Absent once a person wrote or edited the text.
+	TitleI18n *LocalizedText `json:"titleI18n,omitempty"`
+
+	// Translations Hand-written text in other languages, keyed by UI language code (`en`, `fr`, `de`, `es`). The literal `title` / `bodyMarkdown` stay the status page's own language, so the page's language is rejected as a key. An entry is complete or absent: an empty `title` is a VALIDATION_ERROR, and on a status update so is an empty `body` while `bodyMarkdown` is not. A reader in language L sees `translations[L]`, else the recipe (`titleI18n` / `bodyI18n`), else the literal text.
+	//
+	//
+	// Example: {"fr":{"body":"Nous enquêtons.","title":"Panne des paiements"}}
+	Translations *Translations      `json:"translations,omitempty"`
+	Uid          openapi_types.UUID `json:"uid"`
+	UpdatedAt    time.Time          `json:"updatedAt"`
 }
 
 // StatusUpdateListResponse defines model for StatusUpdateListResponse.
@@ -8827,6 +9038,8 @@ type StatusUpdateListResponse struct {
 
 // StatusUpdatePublic defines model for StatusUpdatePublic.
 type StatusUpdatePublic struct {
+	// BodyI18n Recipe of a sentence the server generated (an incident title, an auto-published status-page entry and its updates): a message key and the values it interpolates, so a client renders the sentence in its reader's language. The literal text next to it stays the fallback for an unknown key. Absent once a person wrote or edited the text.
+	BodyI18n     *LocalizedText      `json:"bodyI18n,omitempty"`
 	BodyMarkdown string              `json:"bodyMarkdown"`
 	CheckUid     *openapi_types.UUID `json:"checkUid,omitempty"`
 	IncidentUid  *openapi_types.UUID `json:"incidentUid,omitempty"`
@@ -8835,7 +9048,16 @@ type StatusUpdatePublic struct {
 	PublishedAt  time.Time           `json:"publishedAt"`
 	SectionUid   *openapi_types.UUID `json:"sectionUid,omitempty"`
 	Title        string              `json:"title"`
-	Uid          openapi_types.UUID  `json:"uid"`
+
+	// TitleI18n Recipe of a sentence the server generated (an incident title, an auto-published status-page entry and its updates): a message key and the values it interpolates, so a client renders the sentence in its reader's language. The literal text next to it stays the fallback for an unknown key. Absent once a person wrote or edited the text.
+	TitleI18n *LocalizedText `json:"titleI18n,omitempty"`
+
+	// Translations Hand-written text in other languages, keyed by UI language code (`en`, `fr`, `de`, `es`). The literal `title` / `bodyMarkdown` stay the status page's own language, so the page's language is rejected as a key. An entry is complete or absent: an empty `title` is a VALIDATION_ERROR, and on a status update so is an empty `body` while `bodyMarkdown` is not. A reader in language L sees `translations[L]`, else the recipe (`titleI18n` / `bodyI18n`), else the literal text.
+	//
+	//
+	// Example: {"fr":{"body":"Nous enquêtons.","title":"Panne des paiements"}}
+	Translations *Translations      `json:"translations,omitempty"`
+	Uid          openapi_types.UUID `json:"uid"`
 }
 
 // SupportMessage defines model for SupportMessage.
@@ -8950,6 +9172,12 @@ type SystemParameterListResponse struct {
 	Data *[]SystemParameter `json:"data,omitempty"`
 }
 
+// TelegramLinkRequest defines model for TelegramLinkRequest.
+type TelegramLinkRequest struct {
+	// CurrentPassword The password currently on the account. Required when Sign in with Telegram is on, unless the account has no password (it then needs a sign-in within the last 10 minutes). Ignored otherwise.
+	CurrentPassword *string `json:"currentPassword,omitempty"`
+}
+
 // TelegramLinkResponse defines model for TelegramLinkResponse.
 type TelegramLinkResponse struct {
 	// ExpiresAt When the token stops working (15 minutes after minting).
@@ -9044,6 +9272,17 @@ type ToolRunResult struct {
 
 // ToolRunResultType defines model for ToolRunResult.Type.
 type ToolRunResultType string
+
+// TranslationEntry The full text of one entry in one language. `body` is markdown and only applies to status updates (a publication title has none).
+type TranslationEntry struct {
+	Body  *string `json:"body,omitempty"`
+	Title string  `json:"title"`
+}
+
+// Translations Hand-written text in other languages, keyed by UI language code (`en`, `fr`, `de`, `es`). The literal `title` / `bodyMarkdown` stay the status page's own language, so the page's language is rejected as a key. An entry is complete or absent: an empty `title` is a VALIDATION_ERROR, and on a status update so is an empty `body` while `bodyMarkdown` is not. A reader in language L sees `translations[L]`, else the recipe (`titleI18n` / `bodyI18n`), else the literal text.
+//
+// Example: {"fr":{"body":"Nous enquêtons.","title":"Panne des paiements"}}
+type Translations map[string]TranslationEntry
 
 // UpdateChannelRequest defines model for UpdateChannelRequest.
 type UpdateChannelRequest struct {
@@ -9172,6 +9411,9 @@ type UpdateIncidentPublicationRequest struct {
 	Severity *string                                `json:"severity,omitempty"`
 	State    *UpdateIncidentPublicationRequestState `json:"state,omitempty"`
 	Title    *string                                `json:"title,omitempty"`
+
+	// Translations Replaces the whole map. `{}` or null clears it. Omit the field to leave it unchanged. Editing the literal text never touches it.
+	Translations *Translations `json:"translations,omitempty"`
 }
 
 // UpdateIncidentPublicationRequestState defines model for UpdateIncidentPublicationRequest.State.
@@ -9327,10 +9569,12 @@ type UpdateStatusPageRequest struct {
 	CustomCss *string `json:"customCss,omitempty"`
 
 	// CustomDomain Set/change the custom domain (non-empty), or clear it (null or ""). Omit the field to leave the domain unchanged. Setting a new domain generates a fresh verification token and resets verification.
-	CustomDomain  *string `json:"customDomain,omitempty"`
-	Description   *string `json:"description,omitempty"`
-	Enabled       *bool   `json:"enabled,omitempty"`
-	HideBranding  *bool   `json:"hideBranding,omitempty"`
+	CustomDomain *string `json:"customDomain,omitempty"`
+	Description  *string `json:"description,omitempty"`
+	Enabled      *bool   `json:"enabled,omitempty"`
+	HideBranding *bool   `json:"hideBranding,omitempty"`
+
+	// HistoryDays Deprecated, use historyPeriod. Only read when historyPeriod is absent; a value outside 1..90 is `422 VALIDATION_ERROR`.
 	HistoryDays   *int    `json:"historyDays,omitempty"`
 	HistoryPeriod *string `json:"historyPeriod,omitempty"`
 	IsDefault     *bool   `json:"isDefault,omitempty"`
@@ -9400,6 +9644,9 @@ type UpdateStatusUpdateRequest struct {
 	// SectionUid Set/change the section (must belong to the update's status page), or clear it with null. Omit the field to leave it unchanged; "" is a VALIDATION_ERROR (send null to clear). Clearing sectionUid does not implicitly clear checkUid.
 	SectionUid *openapi_types.UUID `json:"sectionUid,omitempty"`
 	Title      *string             `json:"title,omitempty"`
+
+	// Translations Replaces the whole map. `{}` or null clears it. Omit the field to leave it unchanged. Editing the literal text never touches it.
+	Translations *Translations `json:"translations,omitempty"`
 }
 
 // UpdateSupportThreadRequest defines model for UpdateSupportThreadRequest.
@@ -9621,9 +9868,15 @@ type ValidationErrorField struct {
 	// Name Field name the finding is about
 	Name string `json:"name"`
 
+	// Rule The specific check-config rule behind an `INVALID_CONFIG` finding, for clients that translate the message (`required`: the field must be set). Absent when the rule has no identifier yet; fall back to `message`.
+	Rule *ValidationErrorFieldRule `json:"rule,omitempty"`
+
 	// Severity How the finding should be treated. ABSENT MEANS `error`: the field was added after this shape shipped, and a producer that omits it is always reporting a blocking error. Only `error` findings make a validation response invalid; `warning` and `info` never block.
 	Severity *ValidationErrorFieldSeverity `json:"severity,omitempty"`
 }
+
+// ValidationErrorFieldRule The specific check-config rule behind an `INVALID_CONFIG` finding, for clients that translate the message (`required`: the field must be set). Absent when the rule has no identifier yet; fall back to `message`.
+type ValidationErrorFieldRule string
 
 // ValidationErrorFieldSeverity How the finding should be treated. ABSENT MEANS `error`: the field was added after this shape shipped, and a producer that omits it is always reporting a blocking error. Only `error` findings make a validation response invalid; `warning` and `info` never block.
 type ValidationErrorFieldSeverity string
@@ -9834,6 +10087,24 @@ type GetDeviceConsentParams struct {
 	UserCode string `form:"userCode" json:"userCode"`
 }
 
+// TelegramCallbackParams defines parameters for TelegramCallback.
+type TelegramCallbackParams struct {
+	State string `form:"state" json:"state"`
+
+	// TgAuthResult Base64 JSON login result moved from the fragment by the bridge page.
+	TgAuthResult *string `form:"tgAuthResult,omitempty" json:"tgAuthResult,omitempty"`
+}
+
+// TelegramLoginParams defines parameters for TelegramLogin.
+type TelegramLoginParams struct {
+	// Org Org to sign in to. Optional: without it the login lands in the
+	// org where the Telegram account was linked.
+	Org *string `form:"org,omitempty" json:"org,omitempty"`
+
+	// RedirectUri Same-origin relative path to return to after sign-in.
+	RedirectUri *string `form:"redirect_uri,omitempty" json:"redirect_uri,omitempty"`
+}
+
 // ListAllTokensParams defines parameters for ListAllTokens.
 type ListAllTokensParams struct {
 	// Type Filter by token type
@@ -9859,6 +10130,21 @@ type ListAdminJobsParams struct {
 
 	// Offset Number of rows to skip
 	Offset *JobOffsetQuery `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetOrgAvailabilityBucketsParams defines parameters for GetOrgAvailabilityBuckets.
+type GetOrgAvailabilityBucketsParams struct {
+	// From Window start (inclusive), RFC3339.
+	From time.Time `form:"from" json:"from"`
+
+	// To Window end (exclusive), RFC3339. Must be after `from`.
+	To time.Time `form:"to" json:"to"`
+
+	// Bucket Cell width, in seconds (e.g. 3600) or as a Go duration (e.g. 1h). A whole positive multiple of one hour; at most 200 cells.
+	Bucket *string `form:"bucket,omitempty" json:"bucket,omitempty"`
+
+	// Checks Comma-separated check UIDs, at most 100.
+	Checks string `form:"checks" json:"checks"`
 }
 
 // ListChannelsParams defines parameters for ListChannels.
@@ -9944,6 +10230,22 @@ type SwitchChecksToAutoPlacementJSONBody struct {
 
 // SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason defines parameters for SwitchChecksToAutoPlacement.
 type SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason string
+
+// CheckTestRunJSONBody defines parameters for CheckTestRun.
+type CheckTestRunJSONBody struct {
+	Config struct {
+		Env     *map[string]string `json:"env,omitempty"`
+		Script  string             `json:"script"`
+		Secrets *map[string]string `json:"secrets,omitempty"`
+
+		// Timeout A Go duration, at most 30s (the default).
+		Timeout *string `json:"timeout,omitempty"`
+	} `json:"config"`
+	Type CheckTestRunJSONBodyType `json:"type"`
+}
+
+// CheckTestRunJSONBodyType defines parameters for CheckTestRun.
+type CheckTestRunJSONBodyType string
 
 // ValidateCheckJSONBody defines parameters for ValidateCheck.
 type ValidateCheckJSONBody struct {
@@ -10103,7 +10405,7 @@ type ListEventsParams struct {
 	// IncidentUid Filter by incident UID
 	IncidentUid *string `form:"incidentUid,omitempty" json:"incidentUid,omitempty"`
 
-	// Type Filter by event-type FAMILY (comma-separated prefixes, e.g. `auth,member`). Distinct from `eventType`, which matches exactly. The `auth` family is only returned to org admins and owners.
+	// Type Filter by event-type FAMILY (comma-separated prefixes, e.g. `auth,member`). Distinct from `eventType`, which matches exactly. The `auth` family is only returned to org admins and owners; other members only get the `auth.login_failed` rows against their own account.
 	Type *string `form:"type,omitempty" json:"type,omitempty"`
 
 	// ActorUserUid Filter to the events caused by one user. `actorUid` is accepted as an alias.
@@ -10178,6 +10480,15 @@ type ListIncidentsParams struct {
 
 // ListIncidentsParamsOrder defines parameters for ListIncidents.
 type ListIncidentsParamsOrder string
+
+// GetIncidentInsightsParams defines parameters for GetIncidentInsights.
+type GetIncidentInsightsParams struct {
+	// Period Trailing window, one of 7d, 30d (default), 90d. Anything else is a 400 VALIDATION_ERROR.
+	Period *GetIncidentInsightsParamsPeriod `form:"period,omitempty" json:"period,omitempty"`
+}
+
+// GetIncidentInsightsParamsPeriod defines parameters for GetIncidentInsights.
+type GetIncidentInsightsParamsPeriod string
 
 // GetIncidentParams defines parameters for GetIncident.
 type GetIncidentParams struct {
@@ -10682,6 +10993,9 @@ type AiCheckGenerateJSONRequestBody AiCheckGenerateJSONBody
 // Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 type SwitchChecksToAutoPlacementJSONRequestBody SwitchChecksToAutoPlacementJSONBody
 
+// CheckTestRunJSONRequestBody defines body for CheckTestRun for application/json ContentType.
+type CheckTestRunJSONRequestBody CheckTestRunJSONBody
+
 // ValidateCheckJSONRequestBody defines body for ValidateCheck for application/json ContentType.
 type ValidateCheckJSONRequestBody ValidateCheckJSONBody
 
@@ -10876,6 +11190,9 @@ type ConfirmMyNotificationContactJSONRequestBody ConfirmMyNotificationContactJSO
 
 // UpdateMyNotificationRouteJSONRequestBody defines body for UpdateMyNotificationRoute for application/json ContentType.
 type UpdateMyNotificationRouteJSONRequestBody = UpdateNotificationRouteRequest
+
+// CreateMyTelegramLinkJSONRequestBody defines body for CreateMyTelegramLink for application/json ContentType.
+type CreateMyTelegramLinkJSONRequestBody = TelegramLinkRequest
 
 // UnlockDefaultStatusPageJSONRequestBody defines body for UnlockDefaultStatusPage for application/json ContentType.
 type UnlockDefaultStatusPageJSONRequestBody = StatusPageUnlockRequest
@@ -11615,6 +11932,43 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/auth/switch-org (the `SwitchOrg` operationId).
 	SwitchOrg(ctx context.Context, body SwitchOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// TelegramCallback Sign in with Telegram callback
+	//
+	// Telegram returns the login result in the URL fragment
+	// (`#tgAuthResult=…`), which never reaches the server. Called with only
+	// `state`, this endpoint answers a small HTML page (CSP allows its one
+	// script by hash) that re-requests it with `tgAuthResult` in the query
+	// string. The Login Widget's plain form (`id`, `auth_date`, `hash`, …
+	// as query parameters) is accepted too.
+	//
+	// The result's `hash` must verify (HMAC-SHA256 of the sorted
+	// `key=value` lines, keyed by SHA-256 of the bot token) and `auth_date`
+	// must be at most 5 minutes old. The Telegram account must already be a
+	// verified `telegram` notification contact of a SolidPing user: no
+	// account is ever created (Telegram returns no email address). Success
+	// redirects to `/d/auth/complete?code=…` like every other provider and
+	// records `auth.login_succeeded` with `auth_method` `telegram`.
+	// Failures redirect with `error` set to `TELEGRAM_NOT_LINKED`,
+	// `TELEGRAM_AMBIGUOUS` (linked by several users and no `org` picks
+	// one), `TELEGRAM_AUTH_EXPIRED`, `TELEGRAM_AUTH_INVALID`,
+	// `INVALID_STATE` or `access_denied`.
+	//
+	// Corresponds with GET /api/v1/auth/telegram/callback (the `TelegramCallback` operationId).
+	TelegramCallback(ctx context.Context, params *TelegramCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TelegramLogin Start Sign in with Telegram
+	//
+	// Redirects the browser to `https://oauth.telegram.org/auth` with the
+	// instance bot's id, the instance origin and a `return_to` on
+	// `/api/v1/auth/telegram/callback` carrying a single-use state (10
+	// minutes). Mounted only when Telegram is configured and
+	// `SP_TELEGRAM_LOGIN_ENABLED` is true (listed as type `telegram` by
+	// `GET /api/v1/auth/providers`); the bot's domain must be set with
+	// @BotFather `/setdomain`.
+	//
+	// Corresponds with GET /api/v1/auth/telegram/login (the `TelegramLogin` operationId).
+	TelegramLogin(ctx context.Context, params *TelegramLoginParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAllTokens List all user's tokens across orgs
 	//
 	// Corresponds with GET /api/v1/auth/tokens (the `ListAllTokens` operationId).
@@ -11778,6 +12132,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/admin/jobs/{uid}/chain (the `GetAdminJobChain` operationId).
 	GetAdminJobChain(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetOrgAvailabilityBuckets Bucketed availability for several checks of an org in one call
+	//
+	// Same engine and cell semantics as /api/v1/orgs/{org}/checks/{check}/availability/buckets, for a list of checks at once (the dashboard's "Checks at a glance" 24h strips). Reads raw, hour and day tiers, so a trailing window is filled even though its probes have not been rolled up yet. UIDs that do not belong to the organization are ignored.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/availability/buckets (the `GetOrgAvailabilityBuckets` operationId).
+	GetOrgAvailabilityBuckets(ctx context.Context, org OrgPath, params *GetOrgAvailabilityBucketsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListChannels List notification channels
 	//
@@ -12005,6 +12366,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/checks/stats (the `GetCheckStats` operationId).
 	GetCheckStats(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CheckTestRunWithBody Run an unsaved js check once
+	//
+	// Runs a js check definition that is not saved yet, once, on the API node, and returns its status, output and named steps. Nothing is stored or notified. Needs the `user` role (a viewer gets 403). Limits, all fixed: 1 test run in flight per organization and 4 per API node (a 429 with `Retry-After: 5` when either is reached), 20 test runs per minute per organization (a 429 with `Retry-After: 60` past it), 30s per run, and test runs hold at most 2 of the node's 4 browser slots, the other 2 staying for the scheduled browser checks.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/test-run (the `CheckTestRun` operationId).
+	CheckTestRunWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CheckTestRun Run an unsaved js check once
+	//
+	// Runs a js check definition that is not saved yet, once, on the API node, and returns its status, output and named steps. Nothing is stored or notified. Needs the `user` role (a viewer gets 403). Limits, all fixed: 1 test run in flight per organization and 4 per API node (a 429 with `Retry-After: 5` when either is reached), 20 test runs per minute per organization (a 429 with `Retry-After: 60` past it), 30s per run, and test runs hold at most 2 of the node's 4 browser slots, the other 2 staying for the scheduled browser checks.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/test-run (the `CheckTestRun` operationId).
+	CheckTestRun(ctx context.Context, org OrgPath, body CheckTestRunJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ValidateCheckWithBody Validate a check configuration, or a whole config-as-code document
 	//
@@ -12425,10 +12804,14 @@ type ClientInterface interface {
 
 	// ListEmailSuppressions List email suppressions
 	//
+	// Org admin (or owner) only. Viewers and `user` members get 403 FORBIDDEN.
+	//
 	// Corresponds with GET /api/v1/orgs/{org}/email-suppressions (the `ListEmailSuppressions` operationId).
 	ListEmailSuppressions(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteEmailSuppression Remove an email suppression (re-subscribe)
+	//
+	// Org admin (or owner) only. Viewers and `user` members get 403 FORBIDDEN.
 	//
 	// Corresponds with DELETE /api/v1/orgs/{org}/email-suppressions/{uid} (the `DeleteEmailSuppression` operationId).
 	DeleteEmailSuppression(ctx context.Context, org OrgPath, uid EmailSuppressionUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -12571,6 +12954,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/incidents (the `ListIncidents` operationId).
 	ListIncidents(ctx context.Context, org OrgPath, params *ListIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIncidentInsights Incident insights
+	//
+	// Aggregates the check outages active during a trailing period (started before its end, still open or resolved inside it; downtime is clipped to the period): the checks that fail the most, the time to acknowledge, the time to resolve and how incidents were resolved. Medians and nearest-rank p90, never means. Rolled-up (paging-suppressed) incidents count in the checks table and the resolve time but not in the acknowledge sample or rate. SLO burn and degraded incidents are not counted. At most 5000 incidents are read, then `truncated` is true.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/incidents/insights (the `GetIncidentInsights` operationId).
+	GetIncidentInsights(ctx context.Context, org OrgPath, params *GetIncidentInsightsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListIncidentPublications List every status page this incident is published on
 	//
@@ -13861,6 +14251,35 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/users/me/notification-routes/{routeUid}/test (the `TestMyNotificationRoute` operationId).
 	TestMyNotificationRoute(ctx context.Context, org OrgPath, routeUid RouteUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CreateMyTelegramLinkWithBody Mint a single-use Telegram connect link for the caller
+	//
+	// Returns a `https://t.me/<botUsername>?start=<token>` deep link carrying
+	// a single-use, high-entropy token (TTL 15 minutes).
+	//
+	// Nothing is created by this call. The Telegram contact only comes into
+	// existence when the user actually presses **Start** in Telegram and the
+	// resulting `/start <token>` reaches the instance webhook — pressing Start
+	// is both the proof of reachability and the opt-in, which is why this
+	// channel has no verification code round-trip.
+	//
+	// A replayed token is a no-op, not a second contact. Poll
+	// `GET /api/v1/orgs/{org}/users/me/notification-routes` to observe the new
+	// contact appear.
+	//
+	// When Sign in with Telegram is on (`SP_TELEGRAM_LOGIN_ENABLED`), the
+	// linked chat also signs in to the account, so this is a new sign-in
+	// factor and needs a re-authentication: `currentPassword` when the
+	// account has a password, otherwise a sign-in within the last 10 minutes.
+	// Every attempt spends the per-user change-password budget, and a link
+	// that makes the chat a sign-in method emails the account owner a
+	// "Telegram account linked" notice. With sign-in off the body is ignored.
+	// Refused for personal access tokens and impersonation tokens.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/users/me/telegram/link (the `CreateMyTelegramLink` operationId).
+	CreateMyTelegramLinkWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// CreateMyTelegramLink Mint a single-use Telegram connect link for the caller
 	//
 	// Returns a `https://t.me/<botUsername>?start=<token>` deep link carrying
@@ -13876,8 +14295,19 @@ type ClientInterface interface {
 	// `GET /api/v1/orgs/{org}/users/me/notification-routes` to observe the new
 	// contact appear.
 	//
+	// When Sign in with Telegram is on (`SP_TELEGRAM_LOGIN_ENABLED`), the
+	// linked chat also signs in to the account, so this is a new sign-in
+	// factor and needs a re-authentication: `currentPassword` when the
+	// account has a password, otherwise a sign-in within the last 10 minutes.
+	// Every attempt spends the per-user change-password budget, and a link
+	// that makes the chat a sign-in method emails the account owner a
+	// "Telegram account linked" notice. With sign-in off the body is ignored.
+	// Refused for personal access tokens and impersonation tokens.
+	//
+	// Takes a body of the `application/json` content type.
+	//
 	// Corresponds with POST /api/v1/orgs/{org}/users/me/telegram/link (the `CreateMyTelegramLink` operationId).
-	CreateMyTelegramLink(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+	CreateMyTelegramLink(ctx context.Context, org OrgPath, body CreateMyTelegramLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListUserNotifications List a user's notification deliveries
 	//
@@ -15367,6 +15797,63 @@ func (c *Client) SwitchOrg(ctx context.Context, body SwitchOrgJSONRequestBody, r
 	return c.Client.Do(req)
 }
 
+// TelegramCallback Sign in with Telegram callback
+//
+// Telegram returns the login result in the URL fragment
+// (`#tgAuthResult=…`), which never reaches the server. Called with only
+// `state`, this endpoint answers a small HTML page (CSP allows its one
+// script by hash) that re-requests it with `tgAuthResult` in the query
+// string. The Login Widget's plain form (`id`, `auth_date`, `hash`, …
+// as query parameters) is accepted too.
+//
+// The result's `hash` must verify (HMAC-SHA256 of the sorted
+// `key=value` lines, keyed by SHA-256 of the bot token) and `auth_date`
+// must be at most 5 minutes old. The Telegram account must already be a
+// verified `telegram` notification contact of a SolidPing user: no
+// account is ever created (Telegram returns no email address). Success
+// redirects to `/d/auth/complete?code=…` like every other provider and
+// records `auth.login_succeeded` with `auth_method` `telegram`.
+// Failures redirect with `error` set to `TELEGRAM_NOT_LINKED`,
+// `TELEGRAM_AMBIGUOUS` (linked by several users and no `org` picks
+// one), `TELEGRAM_AUTH_EXPIRED`, `TELEGRAM_AUTH_INVALID`,
+// `INVALID_STATE` or `access_denied`.
+//
+// Corresponds with GET /api/v1/auth/telegram/callback (the `TelegramCallback` operationId).
+func (c *Client) TelegramCallback(ctx context.Context, params *TelegramCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTelegramCallbackRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// TelegramLogin Start Sign in with Telegram
+//
+// Redirects the browser to `https://oauth.telegram.org/auth` with the
+// instance bot's id, the instance origin and a `return_to` on
+// `/api/v1/auth/telegram/callback` carrying a single-use state (10
+// minutes). Mounted only when Telegram is configured and
+// `SP_TELEGRAM_LOGIN_ENABLED` is true (listed as type `telegram` by
+// `GET /api/v1/auth/providers`); the bot's domain must be set with
+// @BotFather `/setdomain`.
+//
+// Corresponds with GET /api/v1/auth/telegram/login (the `TelegramLogin` operationId).
+func (c *Client) TelegramLogin(ctx context.Context, params *TelegramLoginParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTelegramLoginRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListAllTokens List all user's tokens across orgs
 //
 // Corresponds with GET /api/v1/auth/tokens (the `ListAllTokens` operationId).
@@ -15691,6 +16178,23 @@ func (c *Client) GetAdminJob(ctx context.Context, org OrgPath, uid JobUidPath, r
 // Corresponds with GET /api/v1/orgs/{org}/admin/jobs/{uid}/chain (the `GetAdminJobChain` operationId).
 func (c *Client) GetAdminJobChain(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAdminJobChainRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetOrgAvailabilityBuckets Bucketed availability for several checks of an org in one call
+//
+// Same engine and cell semantics as /api/v1/orgs/{org}/checks/{check}/availability/buckets, for a list of checks at once (the dashboard's "Checks at a glance" 24h strips). Reads raw, hour and day tiers, so a trailing window is filled even though its probes have not been rolled up yet. UIDs that do not belong to the organization are ignored.
+//
+// Corresponds with GET /api/v1/orgs/{org}/availability/buckets (the `GetOrgAvailabilityBuckets` operationId).
+func (c *Client) GetOrgAvailabilityBuckets(ctx context.Context, org OrgPath, params *GetOrgAvailabilityBucketsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOrgAvailabilityBucketsRequest(c.Server, org, params)
 	if err != nil {
 		return nil, err
 	}
@@ -16226,6 +16730,44 @@ func (c *Client) SwitchChecksToAutoPlacement(ctx context.Context, org OrgPath, b
 // Corresponds with GET /api/v1/orgs/{org}/checks/stats (the `GetCheckStats` operationId).
 func (c *Client) GetCheckStats(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetCheckStatsRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CheckTestRunWithBody Run an unsaved js check once
+//
+// Runs a js check definition that is not saved yet, once, on the API node, and returns its status, output and named steps. Nothing is stored or notified. Needs the `user` role (a viewer gets 403). Limits, all fixed: 1 test run in flight per organization and 4 per API node (a 429 with `Retry-After: 5` when either is reached), 20 test runs per minute per organization (a 429 with `Retry-After: 60` past it), 30s per run, and test runs hold at most 2 of the node's 4 browser slots, the other 2 staying for the scheduled browser checks.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/test-run (the `CheckTestRun` operationId).
+func (c *Client) CheckTestRunWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckTestRunRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CheckTestRun Run an unsaved js check once
+//
+// Runs a js check definition that is not saved yet, once, on the API node, and returns its status, output and named steps. Nothing is stored or notified. Needs the `user` role (a viewer gets 403). Limits, all fixed: 1 test run in flight per organization and 4 per API node (a 429 with `Retry-After: 5` when either is reached), 20 test runs per minute per organization (a 429 with `Retry-After: 60` past it), 30s per run, and test runs hold at most 2 of the node's 4 browser slots, the other 2 staying for the scheduled browser checks.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/test-run (the `CheckTestRun` operationId).
+func (c *Client) CheckTestRun(ctx context.Context, org OrgPath, body CheckTestRunJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckTestRunRequest(c.Server, org, body)
 	if err != nil {
 		return nil, err
 	}
@@ -17185,6 +17727,8 @@ func (c *Client) ListDiscoveryTypes(ctx context.Context, org OrgPath, reqEditors
 
 // ListEmailSuppressions List email suppressions
 //
+// Org admin (or owner) only. Viewers and `user` members get 403 FORBIDDEN.
+//
 // Corresponds with GET /api/v1/orgs/{org}/email-suppressions (the `ListEmailSuppressions` operationId).
 func (c *Client) ListEmailSuppressions(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListEmailSuppressionsRequest(c.Server, org)
@@ -17199,6 +17743,8 @@ func (c *Client) ListEmailSuppressions(ctx context.Context, org OrgPath, reqEdit
 }
 
 // DeleteEmailSuppression Remove an email suppression (re-subscribe)
+//
+// Org admin (or owner) only. Viewers and `user` members get 403 FORBIDDEN.
 //
 // Corresponds with DELETE /api/v1/orgs/{org}/email-suppressions/{uid} (the `DeleteEmailSuppression` operationId).
 func (c *Client) DeleteEmailSuppression(ctx context.Context, org OrgPath, uid EmailSuppressionUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -17532,6 +18078,23 @@ func (c *Client) DownloadFile(ctx context.Context, org OrgPath, uid FileUidPath,
 // Corresponds with GET /api/v1/orgs/{org}/incidents (the `ListIncidents` operationId).
 func (c *Client) ListIncidents(ctx context.Context, org OrgPath, params *ListIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListIncidentsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetIncidentInsights Incident insights
+//
+// Aggregates the check outages active during a trailing period (started before its end, still open or resolved inside it; downtime is clipped to the period): the checks that fail the most, the time to acknowledge, the time to resolve and how incidents were resolved. Medians and nearest-rank p90, never means. Rolled-up (paging-suppressed) incidents count in the checks table and the resolve time but not in the acknowledge sample or rate. SLO burn and degraded incidents are not counted. At most 5000 incidents are read, then `truncated` is true.
+//
+// Corresponds with GET /api/v1/orgs/{org}/incidents/insights (the `GetIncidentInsights` operationId).
+func (c *Client) GetIncidentInsights(ctx context.Context, org OrgPath, params *GetIncidentInsightsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIncidentInsightsRequest(c.Server, org, params)
 	if err != nil {
 		return nil, err
 	}
@@ -20681,6 +21244,45 @@ func (c *Client) TestMyNotificationRoute(ctx context.Context, org OrgPath, route
 	return c.Client.Do(req)
 }
 
+// CreateMyTelegramLinkWithBody Mint a single-use Telegram connect link for the caller
+//
+// Returns a `https://t.me/<botUsername>?start=<token>` deep link carrying
+// a single-use, high-entropy token (TTL 15 minutes).
+//
+// Nothing is created by this call. The Telegram contact only comes into
+// existence when the user actually presses **Start** in Telegram and the
+// resulting `/start <token>` reaches the instance webhook — pressing Start
+// is both the proof of reachability and the opt-in, which is why this
+// channel has no verification code round-trip.
+//
+// A replayed token is a no-op, not a second contact. Poll
+// `GET /api/v1/orgs/{org}/users/me/notification-routes` to observe the new
+// contact appear.
+//
+// When Sign in with Telegram is on (`SP_TELEGRAM_LOGIN_ENABLED`), the
+// linked chat also signs in to the account, so this is a new sign-in
+// factor and needs a re-authentication: `currentPassword` when the
+// account has a password, otherwise a sign-in within the last 10 minutes.
+// Every attempt spends the per-user change-password budget, and a link
+// that makes the chat a sign-in method emails the account owner a
+// "Telegram account linked" notice. With sign-in off the body is ignored.
+// Refused for personal access tokens and impersonation tokens.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/users/me/telegram/link (the `CreateMyTelegramLink` operationId).
+func (c *Client) CreateMyTelegramLinkWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateMyTelegramLinkRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // CreateMyTelegramLink Mint a single-use Telegram connect link for the caller
 //
 // Returns a `https://t.me/<botUsername>?start=<token>` deep link carrying
@@ -20696,9 +21298,20 @@ func (c *Client) TestMyNotificationRoute(ctx context.Context, org OrgPath, route
 // `GET /api/v1/orgs/{org}/users/me/notification-routes` to observe the new
 // contact appear.
 //
+// When Sign in with Telegram is on (`SP_TELEGRAM_LOGIN_ENABLED`), the
+// linked chat also signs in to the account, so this is a new sign-in
+// factor and needs a re-authentication: `currentPassword` when the
+// account has a password, otherwise a sign-in within the last 10 minutes.
+// Every attempt spends the per-user change-password budget, and a link
+// that makes the chat a sign-in method emails the account owner a
+// "Telegram account linked" notice. With sign-in off the body is ignored.
+// Refused for personal access tokens and impersonation tokens.
+//
+// Takes a body of the `application/json` content type.
+//
 // Corresponds with POST /api/v1/orgs/{org}/users/me/telegram/link (the `CreateMyTelegramLink` operationId).
-func (c *Client) CreateMyTelegramLink(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateMyTelegramLinkRequest(c.Server, org)
+func (c *Client) CreateMyTelegramLink(ctx context.Context, org OrgPath, body CreateMyTelegramLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateMyTelegramLinkRequest(c.Server, org, body)
 	if err != nil {
 		return nil, err
 	}
@@ -22979,6 +23592,134 @@ func NewSwitchOrgRequestWithBody(server string, contentType string, body io.Read
 	return req, nil
 }
 
+// NewTelegramCallbackRequest constructs an http.Request for the TelegramCallback method
+func NewTelegramCallbackRequest(server string, params *TelegramCallbackParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/telegram/callback")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.TgAuthResult != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "tgAuthResult", *params.TgAuthResult, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewTelegramLoginRequest constructs an http.Request for the TelegramLogin method
+func NewTelegramLoginRequest(server string, params *TelegramLoginParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/telegram/login")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Org != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "org", *params.Org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.RedirectUri != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "redirect_uri", *params.RedirectUri, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListAllTokensRequest constructs an http.Request for the ListAllTokens method
 func NewListAllTokensRequest(server string, params *ListAllTokensParams) (*http.Request, error) {
 	var err error
@@ -23566,6 +24307,91 @@ func NewGetAdminJobChainRequest(server string, org OrgPath, uid JobUidPath) (*ht
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetOrgAvailabilityBucketsRequest constructs an http.Request for the GetOrgAvailabilityBuckets method
+func NewGetOrgAvailabilityBucketsRequest(server string, org OrgPath, params *GetOrgAvailabilityBucketsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/availability/buckets", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "from", params.From, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "to", params.To, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.Bucket != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "bucket", *params.Bucket, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "checks", params.Checks, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -24648,6 +25474,53 @@ func NewGetCheckStatsRequest(server string, org OrgPath) (*http.Request, error) 
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewCheckTestRunRequest calls the generic CheckTestRun builder with application/json body
+func NewCheckTestRunRequest(server string, org OrgPath, body CheckTestRunJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCheckTestRunRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewCheckTestRunRequestWithBody constructs an http.Request for the CheckTestRun method, with any body, and a specified content type
+func NewCheckTestRunRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/test-run", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -28066,6 +28939,67 @@ func NewListIncidentsRequest(server string, org OrgPath, params *ListIncidentsPa
 		if params.With != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "with", *params.With, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetIncidentInsightsRequest constructs an http.Request for the GetIncidentInsights method
+func NewGetIncidentInsightsRequest(server string, org OrgPath, params *GetIncidentInsightsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/incidents/insights", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Period != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "period", *params.Period, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -35064,8 +35998,19 @@ func NewTestMyNotificationRouteRequest(server string, org OrgPath, routeUid Rout
 	return req, nil
 }
 
-// NewCreateMyTelegramLinkRequest constructs an http.Request for the CreateMyTelegramLink method
-func NewCreateMyTelegramLinkRequest(server string, org OrgPath) (*http.Request, error) {
+// NewCreateMyTelegramLinkRequest calls the generic CreateMyTelegramLink builder with application/json body
+func NewCreateMyTelegramLinkRequest(server string, org OrgPath, body CreateMyTelegramLinkJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateMyTelegramLinkRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewCreateMyTelegramLinkRequestWithBody constructs an http.Request for the CreateMyTelegramLink method, with any body, and a specified content type
+func NewCreateMyTelegramLinkRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -35090,10 +36035,12 @@ func NewCreateMyTelegramLinkRequest(server string, org OrgPath) (*http.Request, 
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -37870,6 +38817,47 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/auth/switch-org (the `SwitchOrg` operationId).
 	SwitchOrgWithResponse(ctx context.Context, body SwitchOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*SwitchOrgResult, error)
 
+	// TelegramCallbackWithResponse Sign in with Telegram callback
+	//
+	// Telegram returns the login result in the URL fragment
+	// (`#tgAuthResult=…`), which never reaches the server. Called with only
+	// `state`, this endpoint answers a small HTML page (CSP allows its one
+	// script by hash) that re-requests it with `tgAuthResult` in the query
+	// string. The Login Widget's plain form (`id`, `auth_date`, `hash`, …
+	// as query parameters) is accepted too.
+	//
+	// The result's `hash` must verify (HMAC-SHA256 of the sorted
+	// `key=value` lines, keyed by SHA-256 of the bot token) and `auth_date`
+	// must be at most 5 minutes old. The Telegram account must already be a
+	// verified `telegram` notification contact of a SolidPing user: no
+	// account is ever created (Telegram returns no email address). Success
+	// redirects to `/d/auth/complete?code=…` like every other provider and
+	// records `auth.login_succeeded` with `auth_method` `telegram`.
+	// Failures redirect with `error` set to `TELEGRAM_NOT_LINKED`,
+	// `TELEGRAM_AMBIGUOUS` (linked by several users and no `org` picks
+	// one), `TELEGRAM_AUTH_EXPIRED`, `TELEGRAM_AUTH_INVALID`,
+	// `INVALID_STATE` or `access_denied`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/auth/telegram/callback (the `TelegramCallback` operationId).
+	TelegramCallbackWithResponse(ctx context.Context, params *TelegramCallbackParams, reqEditors ...RequestEditorFn) (*TelegramCallbackResult, error)
+
+	// TelegramLoginWithResponse Start Sign in with Telegram
+	//
+	// Redirects the browser to `https://oauth.telegram.org/auth` with the
+	// instance bot's id, the instance origin and a `return_to` on
+	// `/api/v1/auth/telegram/callback` carrying a single-use state (10
+	// minutes). Mounted only when Telegram is configured and
+	// `SP_TELEGRAM_LOGIN_ENABLED` is true (listed as type `telegram` by
+	// `GET /api/v1/auth/providers`); the bot's domain must be set with
+	// @BotFather `/setdomain`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/auth/telegram/login (the `TelegramLogin` operationId).
+	TelegramLoginWithResponse(ctx context.Context, params *TelegramLoginParams, reqEditors ...RequestEditorFn) (*TelegramLoginResult, error)
+
 	// ListAllTokensWithResponse List all user's tokens across orgs
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -38055,6 +39043,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/admin/jobs/{uid}/chain (the `GetAdminJobChain` operationId).
 	GetAdminJobChainWithResponse(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*GetAdminJobChainResult, error)
+
+	// GetOrgAvailabilityBucketsWithResponse Bucketed availability for several checks of an org in one call
+	//
+	// Same engine and cell semantics as /api/v1/orgs/{org}/checks/{check}/availability/buckets, for a list of checks at once (the dashboard's "Checks at a glance" 24h strips). Reads raw, hour and day tiers, so a trailing window is filled even though its probes have not been rolled up yet. UIDs that do not belong to the organization are ignored.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/availability/buckets (the `GetOrgAvailabilityBuckets` operationId).
+	GetOrgAvailabilityBucketsWithResponse(ctx context.Context, org OrgPath, params *GetOrgAvailabilityBucketsParams, reqEditors ...RequestEditorFn) (*GetOrgAvailabilityBucketsResult, error)
 
 	// ListChannelsWithResponse List notification channels
 	//
@@ -38308,6 +39305,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/checks/stats (the `GetCheckStats` operationId).
 	GetCheckStatsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*GetCheckStatsResult, error)
+
+	// CheckTestRunWithBodyWithResponse Run an unsaved js check once
+	//
+	// Runs a js check definition that is not saved yet, once, on the API node, and returns its status, output and named steps. Nothing is stored or notified. Needs the `user` role (a viewer gets 403). Limits, all fixed: 1 test run in flight per organization and 4 per API node (a 429 with `Retry-After: 5` when either is reached), 20 test runs per minute per organization (a 429 with `Retry-After: 60` past it), 30s per run, and test runs hold at most 2 of the node's 4 browser slots, the other 2 staying for the scheduled browser checks.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/test-run (the `CheckTestRun` operationId).
+	CheckTestRunWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CheckTestRunResult, error)
+
+	// CheckTestRunWithResponse Run an unsaved js check once
+	//
+	// Runs a js check definition that is not saved yet, once, on the API node, and returns its status, output and named steps. Nothing is stored or notified. Needs the `user` role (a viewer gets 403). Limits, all fixed: 1 test run in flight per organization and 4 per API node (a 429 with `Retry-After: 5` when either is reached), 20 test runs per minute per organization (a 429 with `Retry-After: 60` past it), 30s per run, and test runs hold at most 2 of the node's 4 browser slots, the other 2 staying for the scheduled browser checks.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/test-run (the `CheckTestRun` operationId).
+	CheckTestRunWithResponse(ctx context.Context, org OrgPath, body CheckTestRunJSONRequestBody, reqEditors ...RequestEditorFn) (*CheckTestRunResult, error)
 
 	// ValidateCheckWithBodyWithResponse Validate a check configuration, or a whole config-as-code document
 	//
@@ -38794,12 +39809,16 @@ type ClientWithResponsesInterface interface {
 
 	// ListEmailSuppressionsWithResponse List email suppressions
 	//
+	// Org admin (or owner) only. Viewers and `user` members get 403 FORBIDDEN.
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/email-suppressions (the `ListEmailSuppressions` operationId).
 	ListEmailSuppressionsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListEmailSuppressionsResult, error)
 
 	// DeleteEmailSuppressionWithResponse Remove an email suppression (re-subscribe)
+	//
+	// Org admin (or owner) only. Viewers and `user` members get 403 FORBIDDEN.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -38966,6 +39985,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/incidents (the `ListIncidents` operationId).
 	ListIncidentsWithResponse(ctx context.Context, org OrgPath, params *ListIncidentsParams, reqEditors ...RequestEditorFn) (*ListIncidentsResult, error)
+
+	// GetIncidentInsightsWithResponse Incident insights
+	//
+	// Aggregates the check outages active during a trailing period (started before its end, still open or resolved inside it; downtime is clipped to the period): the checks that fail the most, the time to acknowledge, the time to resolve and how incidents were resolved. Medians and nearest-rank p90, never means. Rolled-up (paging-suppressed) incidents count in the checks table and the resolve time but not in the acknowledge sample or rate. SLO burn and degraded incidents are not counted. At most 5000 incidents are read, then `truncated` is true.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/incidents/insights (the `GetIncidentInsights` operationId).
+	GetIncidentInsightsWithResponse(ctx context.Context, org OrgPath, params *GetIncidentInsightsParams, reqEditors ...RequestEditorFn) (*GetIncidentInsightsResult, error)
 
 	// ListIncidentPublicationsWithResponse List every status page this incident is published on
 	//
@@ -40424,6 +41452,35 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/users/me/notification-routes/{routeUid}/test (the `TestMyNotificationRoute` operationId).
 	TestMyNotificationRouteWithResponse(ctx context.Context, org OrgPath, routeUid RouteUidPath, reqEditors ...RequestEditorFn) (*TestMyNotificationRouteResult, error)
 
+	// CreateMyTelegramLinkWithBodyWithResponse Mint a single-use Telegram connect link for the caller
+	//
+	// Returns a `https://t.me/<botUsername>?start=<token>` deep link carrying
+	// a single-use, high-entropy token (TTL 15 minutes).
+	//
+	// Nothing is created by this call. The Telegram contact only comes into
+	// existence when the user actually presses **Start** in Telegram and the
+	// resulting `/start <token>` reaches the instance webhook — pressing Start
+	// is both the proof of reachability and the opt-in, which is why this
+	// channel has no verification code round-trip.
+	//
+	// A replayed token is a no-op, not a second contact. Poll
+	// `GET /api/v1/orgs/{org}/users/me/notification-routes` to observe the new
+	// contact appear.
+	//
+	// When Sign in with Telegram is on (`SP_TELEGRAM_LOGIN_ENABLED`), the
+	// linked chat also signs in to the account, so this is a new sign-in
+	// factor and needs a re-authentication: `currentPassword` when the
+	// account has a password, otherwise a sign-in within the last 10 minutes.
+	// Every attempt spends the per-user change-password budget, and a link
+	// that makes the chat a sign-in method emails the account owner a
+	// "Telegram account linked" notice. With sign-in off the body is ignored.
+	// Refused for personal access tokens and impersonation tokens.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/users/me/telegram/link (the `CreateMyTelegramLink` operationId).
+	CreateMyTelegramLinkWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateMyTelegramLinkResult, error)
+
 	// CreateMyTelegramLinkWithResponse Mint a single-use Telegram connect link for the caller
 	//
 	// Returns a `https://t.me/<botUsername>?start=<token>` deep link carrying
@@ -40439,10 +41496,19 @@ type ClientWithResponsesInterface interface {
 	// `GET /api/v1/orgs/{org}/users/me/notification-routes` to observe the new
 	// contact appear.
 	//
-	// Returns a wrapper object for the known response body format(s).
+	// When Sign in with Telegram is on (`SP_TELEGRAM_LOGIN_ENABLED`), the
+	// linked chat also signs in to the account, so this is a new sign-in
+	// factor and needs a re-authentication: `currentPassword` when the
+	// account has a password, otherwise a sign-in within the last 10 minutes.
+	// Every attempt spends the per-user change-password budget, and a link
+	// that makes the chat a sign-in method emails the account owner a
+	// "Telegram account linked" notice. With sign-in off the body is ignored.
+	// Refused for personal access tokens and impersonation tokens.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/users/me/telegram/link (the `CreateMyTelegramLink` operationId).
-	CreateMyTelegramLinkWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*CreateMyTelegramLinkResult, error)
+	CreateMyTelegramLinkWithResponse(ctx context.Context, org OrgPath, body CreateMyTelegramLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateMyTelegramLinkResult, error)
 
 	// ListUserNotificationsWithResponse List a user's notification deliveries
 	//
@@ -42676,6 +43742,74 @@ func (r SwitchOrgResult) ContentType() string {
 	return ""
 }
 
+type TelegramCallbackResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r TelegramCallbackResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r TelegramCallbackResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TelegramCallbackResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r TelegramCallbackResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type TelegramLoginResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r TelegramLoginResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r TelegramLoginResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TelegramLoginResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r TelegramLoginResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListAllTokensResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -43377,6 +44511,88 @@ func (r GetAdminJobChainResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetAdminJobChainResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetOrgAvailabilityBucketsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		BucketSeconds int `json:"bucketSeconds"`
+		Data          map[string]struct {
+			Buckets []AvailabilityBucket `json:"buckets"`
+
+			// LatestDurationMs Average response time of the newest cell that has one.
+			LatestDurationMs *float32 `json:"latestDurationMs,omitempty"`
+		} `json:"data"`
+		WindowEnd   time.Time `json:"windowEnd"`
+		WindowStart time.Time `json:"windowStart"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetOrgAvailabilityBucketsResult) GetJSON200() *struct {
+	BucketSeconds int `json:"bucketSeconds"`
+	Data          map[string]struct {
+		Buckets []AvailabilityBucket `json:"buckets"`
+
+		// LatestDurationMs Average response time of the newest cell that has one.
+		LatestDurationMs *float32 `json:"latestDurationMs,omitempty"`
+	} `json:"data"`
+	WindowEnd   time.Time `json:"windowEnd"`
+	WindowStart time.Time `json:"windowStart"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetOrgAvailabilityBucketsResult) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetOrgAvailabilityBucketsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetOrgAvailabilityBucketsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetOrgAvailabilityBucketsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOrgAvailabilityBucketsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOrgAvailabilityBucketsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetOrgAvailabilityBucketsResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -44706,6 +45922,99 @@ func (r GetCheckStatsResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetCheckStatsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CheckTestRunResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		DurationMs int64                   `json:"durationMs"`
+		Message    *string                 `json:"message,omitempty"`
+		Metrics    *map[string]interface{} `json:"metrics,omitempty"`
+		Output     *map[string]interface{} `json:"output,omitempty"`
+		Screenshot *struct {
+			// Data Base64 image.
+			Data   *string `json:"data,omitempty"`
+			Format *string `json:"format,omitempty"`
+		} `json:"screenshot,omitempty"`
+		Status string                   `json:"status"`
+		Steps  []map[string]interface{} `json:"steps"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *TooManyRequests
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CheckTestRunResult) GetJSON200() *struct {
+	DurationMs int64                   `json:"durationMs"`
+	Message    *string                 `json:"message,omitempty"`
+	Metrics    *map[string]interface{} `json:"metrics,omitempty"`
+	Output     *map[string]interface{} `json:"output,omitempty"`
+	Screenshot *struct {
+		// Data Base64 image.
+		Data   *string `json:"data,omitempty"`
+		Format *string `json:"format,omitempty"`
+	} `json:"screenshot,omitempty"`
+	Status string                   `json:"status"`
+	Steps  []map[string]interface{} `json:"steps"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CheckTestRunResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CheckTestRunResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CheckTestRunResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r CheckTestRunResult) GetJSON429() *TooManyRequests {
+	return r.JSON429
+}
+
+// GetBody returns the raw response body bytes
+func (r CheckTestRunResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CheckTestRunResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CheckTestRunResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CheckTestRunResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -48223,6 +49532,123 @@ func (r ListIncidentsResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListIncidentsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetIncidentInsightsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		// Checks Top 20 checks by incident count, ties broken by downtime.
+		Checks []struct {
+			CheckName       *string    `json:"checkName,omitempty"`
+			CheckSlug       *string    `json:"checkSlug,omitempty"`
+			CheckUid        *string    `json:"checkUid,omitempty"`
+			DowntimeSeconds *int64     `json:"downtimeSeconds,omitempty"`
+			IncidentCount   *int       `json:"incidentCount,omitempty"`
+			LastIncidentAt  *time.Time `json:"lastIncidentAt,omitempty"`
+			RelapseCount    *int       `json:"relapseCount,omitempty"`
+		} `json:"checks"`
+		Period  string `json:"period"`
+		Summary struct {
+			// AckRate 0 to 1
+			AckRate           *float32 `json:"ackRate,omitempty"`
+			AcknowledgedCount *int     `json:"acknowledgedCount,omitempty"`
+			ByResolution      *struct {
+				Auto   *IncidentInsightsResolution `json:"auto,omitempty"`
+				Manual *IncidentInsightsResolution `json:"manual,omitempty"`
+				Other  *IncidentInsightsResolution `json:"other,omitempty"`
+			} `json:"byResolution,omitempty"`
+			IncidentCount *int `json:"incidentCount,omitempty"`
+
+			// PagedCount Incidents that were not rolled up, the base of ackRate.
+			PagedCount        *int                      `json:"pagedCount,omitempty"`
+			TimeToAcknowledge *IncidentInsightsDuration `json:"timeToAcknowledge,omitempty"`
+			TimeToResolve     *IncidentInsightsDuration `json:"timeToResolve,omitempty"`
+		} `json:"summary"`
+		Truncated   bool      `json:"truncated"`
+		WindowEnd   time.Time `json:"windowEnd"`
+		WindowStart time.Time `json:"windowStart"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetIncidentInsightsResult) GetJSON200() *struct {
+	// Checks Top 20 checks by incident count, ties broken by downtime.
+	Checks []struct {
+		CheckName       *string    `json:"checkName,omitempty"`
+		CheckSlug       *string    `json:"checkSlug,omitempty"`
+		CheckUid        *string    `json:"checkUid,omitempty"`
+		DowntimeSeconds *int64     `json:"downtimeSeconds,omitempty"`
+		IncidentCount   *int       `json:"incidentCount,omitempty"`
+		LastIncidentAt  *time.Time `json:"lastIncidentAt,omitempty"`
+		RelapseCount    *int       `json:"relapseCount,omitempty"`
+	} `json:"checks"`
+	Period  string `json:"period"`
+	Summary struct {
+		// AckRate 0 to 1
+		AckRate           *float32 `json:"ackRate,omitempty"`
+		AcknowledgedCount *int     `json:"acknowledgedCount,omitempty"`
+		ByResolution      *struct {
+			Auto   *IncidentInsightsResolution `json:"auto,omitempty"`
+			Manual *IncidentInsightsResolution `json:"manual,omitempty"`
+			Other  *IncidentInsightsResolution `json:"other,omitempty"`
+		} `json:"byResolution,omitempty"`
+		IncidentCount *int `json:"incidentCount,omitempty"`
+
+		// PagedCount Incidents that were not rolled up, the base of ackRate.
+		PagedCount        *int                      `json:"pagedCount,omitempty"`
+		TimeToAcknowledge *IncidentInsightsDuration `json:"timeToAcknowledge,omitempty"`
+		TimeToResolve     *IncidentInsightsDuration `json:"timeToResolve,omitempty"`
+	} `json:"summary"`
+	Truncated   bool      `json:"truncated"`
+	WindowEnd   time.Time `json:"windowEnd"`
+	WindowStart time.Time `json:"windowStart"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetIncidentInsightsResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetIncidentInsightsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r GetIncidentInsightsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIncidentInsightsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIncidentInsightsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetIncidentInsightsResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -56026,9 +57452,13 @@ type CreateMyTelegramLinkResult struct {
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *ValidationError
 	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *Unauthorized
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *TooManyRequests
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -56042,13 +57472,23 @@ func (r CreateMyTelegramLinkResult) GetJSON400() *ValidationError {
 }
 
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r CreateMyTelegramLinkResult) GetJSON401() *Unauthorized {
+func (r CreateMyTelegramLinkResult) GetJSON401() *Error {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateMyTelegramLinkResult) GetJSON403() *Error {
+	return r.JSON403
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
 func (r CreateMyTelegramLinkResult) GetJSON404() *NotFound {
 	return r.JSON404
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r CreateMyTelegramLinkResult) GetJSON429() *TooManyRequests {
+	return r.JSON429
 }
 
 // GetBody returns the raw response body bytes
@@ -59558,6 +60998,59 @@ func (c *ClientWithResponses) SwitchOrgWithResponse(ctx context.Context, body Sw
 	return ParseSwitchOrgResult(rsp)
 }
 
+// TelegramCallbackWithResponse Sign in with Telegram callback
+//
+// Telegram returns the login result in the URL fragment
+// (`#tgAuthResult=…`), which never reaches the server. Called with only
+// `state`, this endpoint answers a small HTML page (CSP allows its one
+// script by hash) that re-requests it with `tgAuthResult` in the query
+// string. The Login Widget's plain form (`id`, `auth_date`, `hash`, …
+// as query parameters) is accepted too.
+//
+// The result's `hash` must verify (HMAC-SHA256 of the sorted
+// `key=value` lines, keyed by SHA-256 of the bot token) and `auth_date`
+// must be at most 5 minutes old. The Telegram account must already be a
+// verified `telegram` notification contact of a SolidPing user: no
+// account is ever created (Telegram returns no email address). Success
+// redirects to `/d/auth/complete?code=…` like every other provider and
+// records `auth.login_succeeded` with `auth_method` `telegram`.
+// Failures redirect with `error` set to `TELEGRAM_NOT_LINKED`,
+// `TELEGRAM_AMBIGUOUS` (linked by several users and no `org` picks
+// one), `TELEGRAM_AUTH_EXPIRED`, `TELEGRAM_AUTH_INVALID`,
+// `INVALID_STATE` or `access_denied`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/auth/telegram/callback (the `TelegramCallback` operationId).
+func (c *ClientWithResponses) TelegramCallbackWithResponse(ctx context.Context, params *TelegramCallbackParams, reqEditors ...RequestEditorFn) (*TelegramCallbackResult, error) {
+	rsp, err := c.TelegramCallback(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTelegramCallbackResult(rsp)
+}
+
+// TelegramLoginWithResponse Start Sign in with Telegram
+//
+// Redirects the browser to `https://oauth.telegram.org/auth` with the
+// instance bot's id, the instance origin and a `return_to` on
+// `/api/v1/auth/telegram/callback` carrying a single-use state (10
+// minutes). Mounted only when Telegram is configured and
+// `SP_TELEGRAM_LOGIN_ENABLED` is true (listed as type `telegram` by
+// `GET /api/v1/auth/providers`); the bot's domain must be set with
+// @BotFather `/setdomain`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/auth/telegram/login (the `TelegramLogin` operationId).
+func (c *ClientWithResponses) TelegramLoginWithResponse(ctx context.Context, params *TelegramLoginParams, reqEditors ...RequestEditorFn) (*TelegramLoginResult, error) {
+	rsp, err := c.TelegramLogin(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTelegramLoginResult(rsp)
+}
+
 // ListAllTokensWithResponse List all user's tokens across orgs
 //
 // Returns a wrapper object for the known response body format(s).
@@ -59844,6 +61337,21 @@ func (c *ClientWithResponses) GetAdminJobChainWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseGetAdminJobChainResult(rsp)
+}
+
+// GetOrgAvailabilityBucketsWithResponse Bucketed availability for several checks of an org in one call
+//
+// Same engine and cell semantics as /api/v1/orgs/{org}/checks/{check}/availability/buckets, for a list of checks at once (the dashboard's "Checks at a glance" 24h strips). Reads raw, hour and day tiers, so a trailing window is filled even though its probes have not been rolled up yet. UIDs that do not belong to the organization are ignored.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/availability/buckets (the `GetOrgAvailabilityBuckets` operationId).
+func (c *ClientWithResponses) GetOrgAvailabilityBucketsWithResponse(ctx context.Context, org OrgPath, params *GetOrgAvailabilityBucketsParams, reqEditors ...RequestEditorFn) (*GetOrgAvailabilityBucketsResult, error) {
+	rsp, err := c.GetOrgAvailabilityBuckets(ctx, org, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOrgAvailabilityBucketsResult(rsp)
 }
 
 // ListChannelsWithResponse List notification channels
@@ -60282,6 +61790,36 @@ func (c *ClientWithResponses) GetCheckStatsWithResponse(ctx context.Context, org
 		return nil, err
 	}
 	return ParseGetCheckStatsResult(rsp)
+}
+
+// CheckTestRunWithBodyWithResponse Run an unsaved js check once
+//
+// Runs a js check definition that is not saved yet, once, on the API node, and returns its status, output and named steps. Nothing is stored or notified. Needs the `user` role (a viewer gets 403). Limits, all fixed: 1 test run in flight per organization and 4 per API node (a 429 with `Retry-After: 5` when either is reached), 20 test runs per minute per organization (a 429 with `Retry-After: 60` past it), 30s per run, and test runs hold at most 2 of the node's 4 browser slots, the other 2 staying for the scheduled browser checks.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/test-run (the `CheckTestRun` operationId).
+func (c *ClientWithResponses) CheckTestRunWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CheckTestRunResult, error) {
+	rsp, err := c.CheckTestRunWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckTestRunResult(rsp)
+}
+
+// CheckTestRunWithResponse Run an unsaved js check once
+//
+// Runs a js check definition that is not saved yet, once, on the API node, and returns its status, output and named steps. Nothing is stored or notified. Needs the `user` role (a viewer gets 403). Limits, all fixed: 1 test run in flight per organization and 4 per API node (a 429 with `Retry-After: 5` when either is reached), 20 test runs per minute per organization (a 429 with `Retry-After: 60` past it), 30s per run, and test runs hold at most 2 of the node's 4 browser slots, the other 2 staying for the scheduled browser checks.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/test-run (the `CheckTestRun` operationId).
+func (c *ClientWithResponses) CheckTestRunWithResponse(ctx context.Context, org OrgPath, body CheckTestRunJSONRequestBody, reqEditors ...RequestEditorFn) (*CheckTestRunResult, error) {
+	rsp, err := c.CheckTestRun(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckTestRunResult(rsp)
 }
 
 // ValidateCheckWithBodyWithResponse Validate a check configuration, or a whole config-as-code document
@@ -61087,6 +62625,8 @@ func (c *ClientWithResponses) ListDiscoveryTypesWithResponse(ctx context.Context
 
 // ListEmailSuppressionsWithResponse List email suppressions
 //
+// Org admin (or owner) only. Viewers and `user` members get 403 FORBIDDEN.
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/orgs/{org}/email-suppressions (the `ListEmailSuppressions` operationId).
@@ -61099,6 +62639,8 @@ func (c *ClientWithResponses) ListEmailSuppressionsWithResponse(ctx context.Cont
 }
 
 // DeleteEmailSuppressionWithResponse Remove an email suppression (re-subscribe)
+//
+// Org admin (or owner) only. Viewers and `user` members get 403 FORBIDDEN.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -61384,6 +62926,21 @@ func (c *ClientWithResponses) ListIncidentsWithResponse(ctx context.Context, org
 		return nil, err
 	}
 	return ParseListIncidentsResult(rsp)
+}
+
+// GetIncidentInsightsWithResponse Incident insights
+//
+// Aggregates the check outages active during a trailing period (started before its end, still open or resolved inside it; downtime is clipped to the period): the checks that fail the most, the time to acknowledge, the time to resolve and how incidents were resolved. Medians and nearest-rank p90, never means. Rolled-up (paging-suppressed) incidents count in the checks table and the resolve time but not in the acknowledge sample or rate. SLO burn and degraded incidents are not counted. At most 5000 incidents are read, then `truncated` is true.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/incidents/insights (the `GetIncidentInsights` operationId).
+func (c *ClientWithResponses) GetIncidentInsightsWithResponse(ctx context.Context, org OrgPath, params *GetIncidentInsightsParams, reqEditors ...RequestEditorFn) (*GetIncidentInsightsResult, error) {
+	rsp, err := c.GetIncidentInsights(ctx, org, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIncidentInsightsResult(rsp)
 }
 
 // ListIncidentPublicationsWithResponse List every status page this incident is published on
@@ -63953,6 +65510,41 @@ func (c *ClientWithResponses) TestMyNotificationRouteWithResponse(ctx context.Co
 	return ParseTestMyNotificationRouteResult(rsp)
 }
 
+// CreateMyTelegramLinkWithBodyWithResponse Mint a single-use Telegram connect link for the caller
+//
+// Returns a `https://t.me/<botUsername>?start=<token>` deep link carrying
+// a single-use, high-entropy token (TTL 15 minutes).
+//
+// Nothing is created by this call. The Telegram contact only comes into
+// existence when the user actually presses **Start** in Telegram and the
+// resulting `/start <token>` reaches the instance webhook — pressing Start
+// is both the proof of reachability and the opt-in, which is why this
+// channel has no verification code round-trip.
+//
+// A replayed token is a no-op, not a second contact. Poll
+// `GET /api/v1/orgs/{org}/users/me/notification-routes` to observe the new
+// contact appear.
+//
+// When Sign in with Telegram is on (`SP_TELEGRAM_LOGIN_ENABLED`), the
+// linked chat also signs in to the account, so this is a new sign-in
+// factor and needs a re-authentication: `currentPassword` when the
+// account has a password, otherwise a sign-in within the last 10 minutes.
+// Every attempt spends the per-user change-password budget, and a link
+// that makes the chat a sign-in method emails the account owner a
+// "Telegram account linked" notice. With sign-in off the body is ignored.
+// Refused for personal access tokens and impersonation tokens.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/users/me/telegram/link (the `CreateMyTelegramLink` operationId).
+func (c *ClientWithResponses) CreateMyTelegramLinkWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateMyTelegramLinkResult, error) {
+	rsp, err := c.CreateMyTelegramLinkWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateMyTelegramLinkResult(rsp)
+}
+
 // CreateMyTelegramLinkWithResponse Mint a single-use Telegram connect link for the caller
 //
 // Returns a `https://t.me/<botUsername>?start=<token>` deep link carrying
@@ -63968,11 +65560,20 @@ func (c *ClientWithResponses) TestMyNotificationRouteWithResponse(ctx context.Co
 // `GET /api/v1/orgs/{org}/users/me/notification-routes` to observe the new
 // contact appear.
 //
-// Returns a wrapper object for the known response body format(s).
+// When Sign in with Telegram is on (`SP_TELEGRAM_LOGIN_ENABLED`), the
+// linked chat also signs in to the account, so this is a new sign-in
+// factor and needs a re-authentication: `currentPassword` when the
+// account has a password, otherwise a sign-in within the last 10 minutes.
+// Every attempt spends the per-user change-password budget, and a link
+// that makes the chat a sign-in method emails the account owner a
+// "Telegram account linked" notice. With sign-in off the body is ignored.
+// Refused for personal access tokens and impersonation tokens.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/orgs/{org}/users/me/telegram/link (the `CreateMyTelegramLink` operationId).
-func (c *ClientWithResponses) CreateMyTelegramLinkWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*CreateMyTelegramLinkResult, error) {
-	rsp, err := c.CreateMyTelegramLink(ctx, org, reqEditors...)
+func (c *ClientWithResponses) CreateMyTelegramLinkWithResponse(ctx context.Context, org OrgPath, body CreateMyTelegramLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateMyTelegramLinkResult, error) {
+	rsp, err := c.CreateMyTelegramLink(ctx, org, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -66104,6 +67705,38 @@ func ParseSwitchOrgResult(rsp *http.Response) (*SwitchOrgResult, error) {
 	return response, nil
 }
 
+// ParseTelegramCallbackResult parses an HTTP response from a TelegramCallbackWithResponse call
+func ParseTelegramCallbackResult(rsp *http.Response) (*TelegramCallbackResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TelegramCallbackResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseTelegramLoginResult parses an HTTP response from a TelegramLoginWithResponse call
+func ParseTelegramLoginResult(rsp *http.Response) (*TelegramLoginResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TelegramLoginResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
 // ParseListAllTokensResult parses an HTTP response from a ListAllTokensWithResponse call
 func ParseListAllTokensResult(rsp *http.Response) (*ListAllTokensResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -66584,6 +68217,63 @@ func ParseGetAdminJobChainResult(rsp *http.Response) (*GetAdminJobChainResult, e
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOrgAvailabilityBucketsResult parses an HTTP response from a GetOrgAvailabilityBucketsWithResponse call
+func ParseGetOrgAvailabilityBucketsResult(rsp *http.Response) (*GetOrgAvailabilityBucketsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOrgAvailabilityBucketsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			BucketSeconds int `json:"bucketSeconds"`
+			Data          map[string]struct {
+				Buckets []AvailabilityBucket `json:"buckets"`
+
+				// LatestDurationMs Average response time of the newest cell that has one.
+				LatestDurationMs *float32 `json:"latestDurationMs,omitempty"`
+			} `json:"data"`
+			WindowEnd   time.Time `json:"windowEnd"`
+			WindowStart time.Time `json:"windowStart"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
@@ -67564,6 +69254,72 @@ func ParseGetCheckStatsResult(rsp *http.Response) (*GetCheckStatsResult, error) 
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCheckTestRunResult parses an HTTP response from a CheckTestRunWithResponse call
+func ParseCheckTestRunResult(rsp *http.Response) (*CheckTestRunResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CheckTestRunResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			DurationMs int64                   `json:"durationMs"`
+			Message    *string                 `json:"message,omitempty"`
+			Metrics    *map[string]interface{} `json:"metrics,omitempty"`
+			Output     *map[string]interface{} `json:"output,omitempty"`
+			Screenshot *struct {
+				// Data Base64 image.
+				Data   *string `json:"data,omitempty"`
+				Format *string `json:"format,omitempty"`
+			} `json:"screenshot,omitempty"`
+			Status string                   `json:"status"`
+			Steps  []map[string]interface{} `json:"steps"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
 
 	}
 
@@ -70207,6 +71963,77 @@ func ParseListIncidentsResult(rsp *http.Response) (*ListIncidentsResult, error) 
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetIncidentInsightsResult parses an HTTP response from a GetIncidentInsightsWithResponse call
+func ParseGetIncidentInsightsResult(rsp *http.Response) (*GetIncidentInsightsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIncidentInsightsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			// Checks Top 20 checks by incident count, ties broken by downtime.
+			Checks []struct {
+				CheckName       *string    `json:"checkName,omitempty"`
+				CheckSlug       *string    `json:"checkSlug,omitempty"`
+				CheckUid        *string    `json:"checkUid,omitempty"`
+				DowntimeSeconds *int64     `json:"downtimeSeconds,omitempty"`
+				IncidentCount   *int       `json:"incidentCount,omitempty"`
+				LastIncidentAt  *time.Time `json:"lastIncidentAt,omitempty"`
+				RelapseCount    *int       `json:"relapseCount,omitempty"`
+			} `json:"checks"`
+			Period  string `json:"period"`
+			Summary struct {
+				// AckRate 0 to 1
+				AckRate           *float32 `json:"ackRate,omitempty"`
+				AcknowledgedCount *int     `json:"acknowledgedCount,omitempty"`
+				ByResolution      *struct {
+					Auto   *IncidentInsightsResolution `json:"auto,omitempty"`
+					Manual *IncidentInsightsResolution `json:"manual,omitempty"`
+					Other  *IncidentInsightsResolution `json:"other,omitempty"`
+				} `json:"byResolution,omitempty"`
+				IncidentCount *int `json:"incidentCount,omitempty"`
+
+				// PagedCount Incidents that were not rolled up, the base of ackRate.
+				PagedCount        *int                      `json:"pagedCount,omitempty"`
+				TimeToAcknowledge *IncidentInsightsDuration `json:"timeToAcknowledge,omitempty"`
+				TimeToResolve     *IncidentInsightsDuration `json:"timeToResolve,omitempty"`
+			} `json:"summary"`
+			Truncated   bool      `json:"truncated"`
+			WindowEnd   time.Time `json:"windowEnd"`
+			WindowStart time.Time `json:"windowStart"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	}
 
@@ -76092,11 +77919,18 @@ func ParseCreateMyTelegramLinkResult(rsp *http.Response) (*CreateMyTelegramLinkR
 		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
+		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
@@ -76104,6 +77938,13 @@ func ParseCreateMyTelegramLinkResult(rsp *http.Response) (*CreateMyTelegramLinkR
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
 
 	}
 
