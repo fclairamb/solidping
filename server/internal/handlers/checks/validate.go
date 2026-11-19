@@ -675,6 +675,10 @@ func (s *Service) validatePeriodFindings(
 		findings.addErrorFrom(err, fieldPeriod, CodeInvalidPeriod)
 	}
 
+	if err := validateEmailDeliveryDelay(req.Type, effective, period); err != nil {
+		findings.addErrorFrom(err, configFieldName, CodeInvalidConfig)
+	}
+
 	return period
 }
 
