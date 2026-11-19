@@ -554,6 +554,51 @@ incident's own detail view, and take it down again later.
 Updates are **append-only**: there is no edit and no delete. A posted update is
 a promise, not a draft — correcting one means posting the correction.
 
+### Writing an update in several languages
+
+A status page is written in one language (its **Language** setting, English by
+default): the title and body you type are that language. Text the server
+writes itself (an auto-published incident, its updates) is already translated
+for every visitor. Text you write by hand is not, so a visitor reading the page
+in French would get your English.
+
+To fix that, a status update and a publication title take **Other languages**:
+the full title and, for an update, the full markdown body, once per language
+(`en`, `fr`, `de`, `es`). In the dashboard, open the update or the publication
+and use the **Other languages** block, with one collapsible group per
+language; a group left empty means no translation. There is no group for the
+page's own language: that is the title and body above.
+
+A visitor sees, in this order:
+
+1. the translation for their language, if there is one;
+2. otherwise, for text the server generated, the generated sentence in their
+   language;
+3. otherwise the text you typed.
+
+An entry is complete or absent: a translation needs a title, and an update
+translation needs a body too. Editing the text you typed does not touch the
+translations, so update them yourself when you change the original. Mails,
+webhooks and feeds cannot choose a language and keep the text you typed.
+
+Through the API, `POST` and `PATCH` of status updates and publications accept a
+`translations` object, keyed by language code:
+
+```json
+{
+  "title": "Payments are failing",
+  "bodyMarkdown": "We are investigating.",
+  "translations": {
+    "fr": { "title": "Les paiements échouent", "body": "Nous enquêtons." }
+  }
+}
+```
+
+A publication's entries only have a `title`. In a `PATCH`, `translations`
+replaces the whole map, `{}` or `null` clears it, and leaving the field out
+keeps it. An unknown language code, the page's own language, an empty title or
+an oversized text answer `VALIDATION_ERROR`.
+
 ### API
 
 | Endpoint | Purpose |

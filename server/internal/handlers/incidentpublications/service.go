@@ -369,6 +369,71 @@ func validateTranslations(page *models.StatusPage, translations models.Translati
 	})
 }
 
+// validateCreate checks the title, severity and translations of a manual
+// publication.
+func validateCreate(page *models.StatusPage, req *CreatePublicationRequest) error {
+	if err := validateTitle(req.Title); err != nil {
+		return err
+	}
+
+	if err := validateSeverity(req.Severity); err != nil {
+		return err
+	}
+
+	return validateTranslations(page, req.Translations)
+}
+
+// applySeverityPatch validates a severity PATCH and applies it to the row patch
+// and to the in-memory publication. An empty string clears the badge.
+func applySeverityPatch(
+	pub *models.IncidentPublication, update *models.IncidentPublicationUpdate, severity *string,
+) error {
+	if severity == nil {
+		return nil
+	}
+
+	if err := validateSeverity(severity); err != nil {
+		return err
+	}
+
+	if *severity == "" {
+		update.ClearSeverity = true
+		pub.Severity = nil
+	} else {
+		update.Severity = severity
+		pub.Severity = severity
+	}
+
+	return nil
+}
+
+// applyTranslationsPatch applies the presence-aware translations field of a
+// PATCH to the row patch and to the in-memory publication.
+func applyTranslationsPatch(
+	page *models.StatusPage, pub *models.IncidentPublication,
+	update *models.IncidentPublicationUpdate, patch models.TranslationsPatch,
+) error {
+	if !patch.Set {
+		return nil
+	}
+
+	if len(patch.Value) == 0 {
+		update.ClearTranslations = true
+		pub.Translations = nil
+
+		return nil
+	}
+
+	if err := validateTranslations(page, patch.Value); err != nil {
+		return err
+	}
+
+	update.Translations = patch.Value
+	pub.Translations = patch.Value
+
+	return nil
+}
+
 func validateSeverity(sev *string) error {
 	if sev == nil || *sev == "" {
 		return nil
@@ -638,15 +703,7 @@ func (s *Service) CreatePublication(
 		return PublicationResponse{}, err
 	}
 
-	if err = validateTitle(req.Title); err != nil {
-		return PublicationResponse{}, err
-	}
-
-	if err = validateSeverity(req.Severity); err != nil {
-		return PublicationResponse{}, err
-	}
-
-	if err = validateTranslations(page, req.Translations); err != nil {
+	if err = validateCreate(page, req); err != nil {
 		return PublicationResponse{}, err
 	}
 
@@ -780,32 +837,12 @@ func (s *Service) UpdatePublication(
 		pub.PublicTitle, pub.PublicTitleI18n = *req.Title, nil // a retitle drops the recipe
 	}
 
-	if req.Translations.Set {
-		if len(req.Translations.Value) == 0 {
-			update.ClearTranslations = true
-			pub.Translations = nil
-		} else {
-			if err := validateTranslations(page, req.Translations.Value); err != nil {
-				return PublicationResponse{}, err
-			}
-
-			update.Translations = req.Translations.Value
-			pub.Translations = req.Translations.Value
-		}
+	if err := applyTranslationsPatch(page, pub, update, req.Translations); err != nil {
+		return PublicationResponse{}, err
 	}
 
-	if req.Severity != nil {
-		if err := validateSeverity(req.Severity); err != nil {
-			return PublicationResponse{}, err
-		}
-
-		if *req.Severity == "" {
-			update.ClearSeverity = true
-			pub.Severity = nil
-		} else {
-			update.Severity = req.Severity
-			pub.Severity = req.Severity
-		}
+	if err := applySeverityPatch(pub, update, req.Severity); err != nil {
+		return PublicationResponse{}, err
 	}
 
 	if req.State != nil {

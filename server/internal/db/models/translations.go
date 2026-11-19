@@ -91,7 +91,9 @@ type TranslationRules struct {
 func (t Translations) Validate(rules TranslationRules) error {
 	own := i18n.New(rules.PageLanguage, "").Lang()
 
-	for lang, entry := range t {
+	for lang := range t {
+		entry := t[lang]
+
 		if i18n.Normalize(lang) != lang {
 			return ErrTranslationLanguage
 		}

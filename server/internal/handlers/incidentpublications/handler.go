@@ -262,10 +262,6 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 		return h.WriteValidationError(writer, "Title too long", []base.ValidationErrorField{
 			{Name: "title", Message: "Title must be at most 200 characters"},
 		})
-	case isTranslationError(err):
-		return h.WriteValidationError(writer, "Invalid translations", []base.ValidationErrorField{
-			{Name: "translations", Message: err.Error()},
-		})
 	case errors.Is(err, ErrInvalidState):
 		return h.WriteValidationError(writer, "Invalid state", []base.ValidationErrorField{
 			{Name: "state", Message: "Must be one of: investigating, identified, monitoring, resolved"},
@@ -287,8 +283,20 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 			{Name: "bodyMarkdown", Message: "Body must be at most 16384 characters"},
 		})
 	default:
-		return h.WriteInternalError(writer, request, err)
+		return h.handleUnlistedError(writer, request, err)
 	}
+}
+
+// handleUnlistedError answers a translations validation failure with
+// VALIDATION_ERROR and anything else as an internal error.
+func (h *Handler) handleUnlistedError(writer http.ResponseWriter, request *http.Request, err error) error {
+	if isTranslationError(err) {
+		return h.WriteValidationError(writer, "Invalid translations", []base.ValidationErrorField{
+			{Name: "translations", Message: err.Error()},
+		})
+	}
+
+	return h.WriteInternalError(writer, request, err)
 }
 
 // isTranslationError reports whether err is a translations validation failure.

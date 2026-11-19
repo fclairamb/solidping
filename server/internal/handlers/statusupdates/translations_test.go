@@ -88,8 +88,12 @@ func TestTranslationsValidation(t *testing.T) {
 		"oversized body": {
 			nil, models.Translations{"fr": {Title: "t", Body: strings.Repeat("a", 16385)}}, models.ErrTranslationBodyTooLong,
 		},
-		"page's own language (default en)": {nil, models.Translations{"en": {Title: "t", Body: "b"}}, models.ErrTranslationOwnLanguage},
-		"page's own language (fr)":         {&fr, models.Translations{"fr": {Title: "t", Body: "b"}}, models.ErrTranslationOwnLanguage},
+		"page's own language (default en)": {
+			nil, models.Translations{"en": {Title: "t", Body: "b"}}, models.ErrTranslationOwnLanguage,
+		},
+		"page's own language (fr)": {
+			&fr, models.Translations{"fr": {Title: "t", Body: "b"}}, models.ErrTranslationOwnLanguage,
+		},
 	}
 
 	for name, tc := range cases {

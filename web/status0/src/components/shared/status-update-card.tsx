@@ -118,7 +118,10 @@ export function StatusUpdateCard({
     >
       {/* Header row: title (left) + kind badge + timestamp (right) */}
       <div className="flex items-start justify-between gap-2 flex-wrap">
-        <h3 className="text-sm font-semibold text-foreground min-w-0 break-words">
+        <h3
+          className="text-sm font-semibold text-foreground min-w-0 break-words"
+          data-testid="status-update-title"
+        >
           {localizeGenerated(t, exists, update.titleI18n, update.title, {
             translations: update.translations,
             field: "title",
@@ -152,7 +155,10 @@ export function StatusUpdateCard({
 
       {/* Body markdown */}
       {body && (
-        <div className="prose prose-sm max-w-none text-sm text-foreground [&>*:last-child]:mb-0">
+        <div
+          className="prose prose-sm max-w-none text-sm text-foreground [&>*:last-child]:mb-0"
+          data-testid="status-update-body"
+        >
           <SafeMarkdown content={body} />
         </div>
       )}
