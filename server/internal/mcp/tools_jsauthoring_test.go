@@ -296,12 +296,8 @@ type probeOutcome struct {
 // callProbe drives one tools/call through Handle. It asserts nothing, so
 // goroutines can call it.
 func (e *probeEnv) callProbe(ctx context.Context, claims *auth.Claims, tool string) probeOutcome {
-	raw, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-		"params": map[string]any{"name": tool, "arguments": map[string]any{
-			propScript: `return {status:"up"};`, propURL: "https://acme.example",
-		}},
-	})
+	raw := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"` + tool +
+		`","arguments":{"script":"return {status:\"up\"};","url":"https://acme.example"}}}`)
 
 	httpReq := httptest.NewRequestWithContext(
 		context.WithValue(ctx, base.ContextKeyClaims, claims), http.MethodPost, "/api/v1/mcp", bytes.NewReader(raw))
@@ -323,7 +319,11 @@ func (e *probeEnv) callProbe(ctx context.Context, claims *auth.Claims, tool stri
 
 	var result ToolCallResult
 
-	body, _ := json.Marshal(resp.Result)
+	body, err := json.Marshal(resp.Result)
+	if err != nil {
+		return probeOutcome{isError: true, text: err.Error()}
+	}
+
 	_ = json.Unmarshal(body, &result)
 
 	out := probeOutcome{isError: result.IsError}

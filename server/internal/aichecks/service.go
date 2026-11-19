@@ -83,6 +83,15 @@ func (s *Service) SetRunLimiter(limiter *testruns.Limiter) {
 	s.runLimiter = limiter
 }
 
+// progressOrNoop is progress, or a sink when the caller wants none.
+func progressOrNoop(progress func(Progress)) func(Progress) {
+	if progress == nil {
+		return func(Progress) {}
+	}
+
+	return progress
+}
+
 // loopAdmit is the runRecorder.admit of an org's loop, nil without a limiter.
 func (s *Service) loopAdmit(orgUID string) func(ctx context.Context) (context.Context, func(), error) {
 	if s.runLimiter == nil {
@@ -522,10 +531,7 @@ func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequ
 	ctx = ai.WithCallMeta(ctx, ai.CallMeta{OrgUID: orgUID, CheckUID: req.CheckUID, Purpose: ai.PurposeGenerate})
 
 	declared := append([]string{req.Prompt}, req.Contract...)
-	progress := req.OnProgress
-	if progress == nil {
-		progress = func(Progress) {}
-	}
+	progress := progressOrNoop(req.OnProgress)
 
 	rec := &runRecorder{
 		runner:   s.runner,
