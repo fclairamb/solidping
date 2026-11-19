@@ -234,7 +234,7 @@ func TestDeliverWritesTheEmailInTheRecipientsLanguage(t *testing.T) {
 		Preferences: &models.UserPreferences{Locale: "fr", Timezone: "Europe/Paris"},
 	}))
 
-	env.contact(t, org, operator, models.UserContactTypeEmail, "alice@acme.com", false)
+	env.contact(t, org, operator, models.UserContactTypeEmail, "alice@acme.com", true)
 	env.contact(t, org, operator, models.UserContactTypeSlackUser, "U1", false)
 	env.contact(t, org, operator, models.UserContactTypeDiscord, "D1", false)
 	env.contact(t, org, operator, models.UserContactTypeTelegram, "42", false)
@@ -291,7 +291,7 @@ func TestDeliverEmailsAnUnstructuredNoticeAsIs(t *testing.T) {
 	r.NoError(env.db.UpdateUser(ctx, operator.UID, &models.UserUpdate{
 		Preferences: &models.UserPreferences{Locale: "fr"},
 	}))
-	env.contact(t, org, operator, models.UserContactTypeEmail, "alice@acme.com", false)
+	env.contact(t, org, operator, models.UserContactTypeEmail, "alice@acme.com", true)
 
 	notice := testNotice()
 	capture := &emailCapture{}
@@ -314,7 +314,7 @@ func TestDeliverEmailsAnEnglishReaderTheSameText(t *testing.T) {
 	org := env.org(t, "acme")
 	operator := env.user(t, "alice@acme.com", true)
 	env.join(t, org, operator)
-	env.contact(t, org, operator, models.UserContactTypeEmail, "alice@acme.com", false)
+	env.contact(t, org, operator, models.UserContactTypeEmail, "alice@acme.com", true)
 
 	notice := localizedNotices()["signup"]
 	capture := &emailCapture{}

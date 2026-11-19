@@ -126,7 +126,10 @@ export function IncidentPublicationsPanel({
                     }}
                     className="text-sm font-medium hover:underline break-words"
                   >
-                    {localizeGenerated(t, publication.titleI18n, publication.title)}
+                    {localizeGenerated(t, publication.titleI18n, publication.title, {
+                      translations: publication.translations,
+                      field: "title",
+                    })}
                   </Link>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={stateBadgeVariant(publication.state)}>

@@ -417,6 +417,20 @@ func TestImpersonate(t *testing.T) {
 	})
 }
 
+// TestIsPATAllowedPagingContacts: a PAT may read its paging routes and remove
+// a contact, but not add, enable or confirm one (spec 2026-11-19-02).
+func TestIsPATAllowedPagingContacts(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.False(IsPATAllowed("POST", ImpersonationPatternNotificationContacts))
+	r.False(IsPATAllowed("PATCH", ImpersonationPatternNotificationRoute))
+	r.False(IsPATAllowed("POST", ImpersonationPatternContactVerify))
+	r.False(IsPATAllowed("POST", ImpersonationPatternContactVerifyConfirm))
+	r.True(IsPATAllowed("GET", "/api/v1/orgs/{org}/users/me/notification-routes"))
+	r.True(IsPATAllowed("DELETE", "/api/v1/orgs/{org}/users/me/notification-contacts/{contactUid}"))
+}
+
 func TestIsImpersonationAllowed(t *testing.T) {
 	t.Parallel()
 
@@ -448,6 +462,14 @@ func TestIsImpersonationAllowed(t *testing.T) {
 		{"POST", ImpersonationPatternImpersonate, false},
 		{"POST", ImpersonationPatternDiscoveryScans, false},
 		{"GET", ImpersonationPatternDiscoveryScans, true},
+		// Paging contacts (spec 2026-11-19-02): binding refused, reading and
+		// removing allowed.
+		{"POST", ImpersonationPatternNotificationContacts, false},
+		{"PATCH", ImpersonationPatternNotificationRoute, false},
+		{"POST", ImpersonationPatternContactVerify, false},
+		{"POST", ImpersonationPatternContactVerifyConfirm, false},
+		{"GET", "/api/v1/orgs/{org}/users/me/notification-routes", true},
+		{"DELETE", "/api/v1/orgs/{org}/users/me/notification-contacts/{contactUid}", true},
 	}
 
 	for _, tc := range tests {

@@ -76,6 +76,11 @@ export function IncidentCard({ incident }: { incident: PublicIncident }) {
               (key) => i18n.exists(key),
               incident.titleI18n,
               incident.title,
+              {
+                translations: incident.translations,
+                field: "title",
+                language: i18n.resolvedLanguage || i18n.language,
+              },
             )}
           </h3>
           {/* translate="no" on the badges: their text flips as the incident

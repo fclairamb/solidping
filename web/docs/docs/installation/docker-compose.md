@@ -237,6 +237,13 @@ Notes:
   that renders in one region renders in all of them.
 - **Do not publish port 9222.** A reachable CDP endpoint is remote control of a
   browser; keep it on the compose network only.
+- **Under an enforcing [egress policy](/configuration/egress-policy#browser-checks)**,
+  a separate `browser` service cannot reach SolidPing's egress proxy, so a page
+  can still send requests to private addresses (their content never reaches the
+  result). To block them at the connection, run the browser in SolidPing's
+  network namespace (`network_mode: "service:solidping"` on `browser`, and
+  `solidping` no longer `depends_on` it) and set
+  `SP_CHECKERS_BROWSER_CDP_URL: ws://127.0.0.1:9222`.
 - The repository's own `docker-compose.yml` carries this service behind a
   profile — `docker compose --profile browser up -d`.
 - Without `SP_CHECKERS_BROWSER_CDP_URL`, SolidPing falls back to a locally

@@ -569,11 +569,13 @@ type StatusUpdatePublicResponse struct {
 	BodyMarkdown string  `json:"bodyMarkdown"`
 	// TitleI18n / BodyI18n are the recipes of a machine-written update, so
 	// the page renders it in the visitor's language.
-	TitleI18n   *models.LocalizedText `json:"titleI18n,omitempty"`
-	BodyI18n    *models.LocalizedText `json:"bodyI18n,omitempty"`
-	LinkURL     *string               `json:"linkUrl,omitempty"`
-	Kind        string                `json:"kind"`
-	PublishedAt time.Time             `json:"publishedAt"`
+	TitleI18n *models.LocalizedText `json:"titleI18n,omitempty"`
+	BodyI18n  *models.LocalizedText `json:"bodyI18n,omitempty"`
+	// Translations is the hand-written title and body in other languages.
+	Translations models.Translations `json:"translations,omitempty"`
+	LinkURL      *string             `json:"linkUrl,omitempty"`
+	Kind         string              `json:"kind"`
+	PublishedAt  time.Time           `json:"publishedAt"`
 }
 
 // PublicIncidentProvider supplies the active incident publications rendered on
@@ -593,6 +595,7 @@ type PublicIncident struct {
 	UID               string                 `json:"uid"`
 	Title             string                 `json:"title"`
 	TitleI18n         *models.LocalizedText  `json:"titleI18n,omitempty"`
+	Translations      models.Translations    `json:"translations,omitempty"`
 	State             string                 `json:"state"`
 	Severity          *string                `json:"severity,omitempty"`
 	StartedAt         time.Time              `json:"startedAt"`
@@ -609,6 +612,7 @@ type PublicIncidentUpdate struct {
 	BodyMarkdown string                `json:"bodyMarkdown"`
 	TitleI18n    *models.LocalizedText `json:"titleI18n,omitempty"`
 	BodyI18n     *models.LocalizedText `json:"bodyI18n,omitempty"`
+	Translations models.Translations   `json:"translations,omitempty"`
 	PublishedAt  time.Time             `json:"publishedAt"`
 }
 
@@ -2797,6 +2801,7 @@ func (s *Service) loadRecentUpdates(
 			BodyMarkdown: upd.BodyMarkdown,
 			TitleI18n:    upd.TitleI18n,
 			BodyI18n:     upd.BodyI18n,
+			Translations: upd.Translations,
 			LinkURL:      upd.LinkURL,
 			Kind:         upd.Kind,
 			PublishedAt:  upd.PublishedAt,

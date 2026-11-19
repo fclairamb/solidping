@@ -11,7 +11,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/fclairamb/solidping/server/internal/aichecks"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -34,6 +33,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/realtime"
+	"github.com/fclairamb/solidping/server/internal/testruns"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/version"
 )
@@ -108,7 +108,12 @@ type Handler struct {
 	// scriptRunner runs the js authoring probes (run_js_script, fetch_page,
 	// browser_snapshot). Defaults to a runner behind this config's egress
 	// policy; the server swaps in its shared one.
-	scriptRunner *aichecks.Runner
+	scriptRunner probeRunner
+	// probeLimiter admits the probes under the process-wide test-run caps
+	// (spec 2026-11-19-03), shared with POST …/checks/test-run. Built lazily
+	// when the server did not hand one over.
+	probeLimiter     *testruns.Limiter
+	probeLimiterOnce sync.Once
 
 	sessions sync.Map // map[string]*session
 	// tools is every registered definition, listed or legacy alias; toolMap

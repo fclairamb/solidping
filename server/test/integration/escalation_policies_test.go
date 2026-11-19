@@ -15,12 +15,28 @@ import (
 func authedRequestWithBody(t *testing.T, ts *TestServer, method, path string, body any) (int, map[string]any) {
 	t.Helper()
 
+	return requestWithBodyToken(t, ts, "pat_test", method, path, body)
+}
+
+// sessionRequestWithBody is authedRequestWithBody with a login session token,
+// for endpoints a personal access token may not call.
+func sessionRequestWithBody(t *testing.T, ts *TestServer, method, path string, body any) (int, map[string]any) {
+	t.Helper()
+
+	return requestWithBodyToken(t, ts, loginToken(t, ts, TestOrgSlug), method, path, body)
+}
+
+func requestWithBodyToken(
+	t *testing.T, ts *TestServer, token, method, path string, body any,
+) (int, map[string]any) {
+	t.Helper()
+
 	raw, err := json.Marshal(body)
 	require.NoError(t, err)
 
 	req, err := http.NewRequestWithContext(t.Context(), method, ts.HTTPServer.URL+path, bytes.NewReader(raw))
 	require.NoError(t, err)
-	req.Header.Set("Authorization", "Bearer pat_test")
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)

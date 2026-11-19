@@ -52,8 +52,10 @@ an existing one:
 This is why the recommended run mode is the **default** one, not
 `SP_RUNMODE=test`: test mode's out-of-the-box identity is `test@test.com`, and
 its seeded fixtures (e.g. "Notified Check → https://example.com") would show up
-in the sidebar and the checks list. Default mode ships
-`admin@solidping.io` / `solidpass`, which reads plausibly on camera.
+in the sidebar and the checks list. Default mode seeds `admin@solidping.io`,
+which reads plausibly on camera. Its first password is random there, so the
+commands below pin it with `SP_ADMIN_PASSWORD=solidpass`, the password the
+pipeline signs in with (`SHOWCASE_PASSWORD`).
 
 All of this happens inside the pipeline — there is no manual setup step, and
 `make showcase` is reproducible from a blank database.
@@ -120,7 +122,7 @@ below). Note: **default** run mode, no `SP_RUNMODE=test`:
 
 ```bash
 rm -rf /tmp/showcase-db && mkdir -p /tmp/showcase-db
-PORT=4321 SP_DB_TYPE=sqlite SP_DB_DIR=/tmp/showcase-db ./solidping serve &
+PORT=4321 SP_DB_TYPE=sqlite SP_DB_DIR=/tmp/showcase-db SP_ADMIN_PASSWORD=solidpass ./solidping serve &
 E2E_BASE_URL=http://localhost:4321/d/ make showcase
 ```
 
@@ -162,7 +164,7 @@ in the language `SHOWCASE_LOCALE` names (`en`, `fr`, `de`, `es`):
 
 ```bash
 rm -rf /tmp/showcase-db-fr && mkdir -p /tmp/showcase-db-fr
-PORT=4321 SP_DB_TYPE=sqlite SP_DB_DIR=/tmp/showcase-db-fr ./solidping serve &
+PORT=4321 SP_DB_TYPE=sqlite SP_DB_DIR=/tmp/showcase-db-fr SP_ADMIN_PASSWORD=solidpass ./solidping serve &
 SHOWCASE_LOCALE=fr E2E_BASE_URL=http://localhost:4321/d/ make showcase-stills
 ```
 

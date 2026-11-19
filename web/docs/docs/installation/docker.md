@@ -127,13 +127,18 @@ docker-compose up -d
 
 Once running, access the dashboard at [http://localhost:4000](http://localhost:4000).
 
-**Default credentials:**
+**First login:**
 - Email: `admin@solidping.io`
-- Password: `solidpass`
+- Password: generated at the first start and printed once in the logs:
+  `docker logs <container> 2>&1 | grep "First login"` (Compose:
+  `docker compose logs solidping | grep "First login"`)
+
+To choose the first password yourself, set `SP_ADMIN_PASSWORD` before the first
+start. Lost the generated one? Restart with `SP_ADMIN_PASSWORD` set: see
+[Password of the first admin](/configuration/authentication#password-of-the-first-admin).
 
 :::warning First login sets a new password
-That password is published in the SolidPing repository, so it buys you exactly
-one login. SolidPing lands you on a "set a new password" screen and the account
+The first password buys you exactly one login. SolidPing lands you on a "set a new password" screen and the account
 can do nothing else until you complete it — over the API, every endpoint except
 `POST /api/v1/auth/change-password`, `GET /api/v1/auth/me` and
 `POST /api/v1/auth/logout` answers `403` with code `PASSWORD_CHANGE_REQUIRED`.

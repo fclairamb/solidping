@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.52.0](https://github.com/fclairamb/solidping/compare/v0.51.0...v0.52.0) (2026-11-19)
+
+
+### Features
+
+* **checks:** JS browser checks import Pingdom TMS and Chrome Recorder scripts, with named steps, test runs, richer selectors and basic auth ([#909](https://github.com/fclairamb/solidping/issues/909)) ([1240c57](https://github.com/fclairamb/solidping/commit/1240c57ffebc1369016132d6aae69ca5d634ea25))
+* **email:** email checks get a maximum delivery delay, latency measured from the Date header, and missed-probe detection ([#938](https://github.com/fclairamb/solidping/issues/938)) ([8489326](https://github.com/fclairamb/solidping/commit/848932693a8ff2e4815813052af7ce24af911cc0))
+* status updates in several languages, a random first admin password, and Postgres over a Unix socket ([#939](https://github.com/fclairamb/solidping/issues/939)) ([a69424f](https://github.com/fclairamb/solidping/commit/a69424f2b1f309b9765d5d38e0685848197524fe))
+* **dash0:** switch the dashboard language with `?lang=` on any URL ([#926](https://github.com/fclairamb/solidping/issues/926)) ([c2640ae](https://github.com/fclairamb/solidping/commit/c2640ae40578705e0e17da6973206422836e5577))
+* **showcase:** dashboard stills and the published video in any dashboard language ([#925](https://github.com/fclairamb/solidping/issues/925), [#932](https://github.com/fclairamb/solidping/issues/932)) ([5104606](https://github.com/fclairamb/solidping/commit/51046063946409d3ae7ff1b5a32aaf4c08bf796e), [d940da5](https://github.com/fclairamb/solidping/commit/d940da5b6d0588182f5bf151cfd10cc2b968e65c))
+
+
+### Bug Fixes
+
+* **security:** no paging contacts through impersonation or PATs, shared MCP probe caps, browser WebSocket egress, analytics key replay ([#946](https://github.com/fclairamb/solidping/issues/946)) ([8d51875](https://github.com/fclairamb/solidping/commit/8d51875eecbbd78f1e276ddf2b0b8b8c9a26f839))
+* **security:** per-organization test-run slots; typed credentials of imported transaction checks go to secrets ([#933](https://github.com/fclairamb/solidping/issues/933)) ([51914b3](https://github.com/fclairamb/solidping/commit/51914b3daa0c1c93f18248889745405d230d1cf6))
+* **security:** Telegram bot membership and role checks, admin-only email suppressions, import payload masked in replays ([#914](https://github.com/fclairamb/solidping/issues/914)) ([55ffc4b](https://github.com/fclairamb/solidping/commit/55ffc4baa5c280a44ad41ba92b2624ec44f3fce8))
+* **i18n:** generated incident, status-page and validation text is translated ([#913](https://github.com/fclairamb/solidping/issues/913)) ([92bb05a](https://github.com/fclairamb/solidping/commit/92bb05a4004c6d9efe3a6a456505db5aa2228ea2)); chart dates follow the dashboard language ([#928](https://github.com/fclairamb/solidping/issues/928)) ([eae2951](https://github.com/fclairamb/solidping/commit/eae29513f024c648f518c0469d8480c70b8916e4)); German says "Check" instead of "Prüfung" ([#910](https://github.com/fclairamb/solidping/issues/910)) ([696dcf8](https://github.com/fclairamb/solidping/commit/696dcf8a56781bb217aa76bd086a7c83256d4143))
+* DMARC temperror cause, reaper regions, force-expanded group headers ([#934](https://github.com/fclairamb/solidping/issues/934)) ([99f955d](https://github.com/fclairamb/solidping/commit/99f955d273cec48c94f873b010da0e259db95898))
+* Slack events handled after the ack, region badge clicks, WHOIS deadline, legacy agent warning, empty check groups ([#917](https://github.com/fclairamb/solidping/issues/917)) ([65b00e2](https://github.com/fclairamb/solidping/commit/65b00e24d4c9eb211699d539f779ae4a7ee6bbce))
+* **deps:** Go dependency updates: goja, posthog-go v2, standard-webhooks v1, a2a-go v2.9.0, amqp091-go v1.17.0, golang.org/x/net v0.63.0 and non-major bumps ([#907](https://github.com/fclairamb/solidping/issues/907), [#911](https://github.com/fclairamb/solidping/issues/911), [#916](https://github.com/fclairamb/solidping/issues/916), [#920](https://github.com/fclairamb/solidping/issues/920), [#922](https://github.com/fclairamb/solidping/issues/922), [#923](https://github.com/fclairamb/solidping/issues/923), [#924](https://github.com/fclairamb/solidping/issues/924), [#927](https://github.com/fclairamb/solidping/issues/927), [#929](https://github.com/fclairamb/solidping/issues/929), [#930](https://github.com/fclairamb/solidping/issues/930), [#931](https://github.com/fclairamb/solidping/issues/931), [#935](https://github.com/fclairamb/solidping/issues/935), [#940](https://github.com/fclairamb/solidping/issues/940))
+
+
 ## [0.51.0](https://github.com/fclairamb/solidping/compare/v0.50.2...v0.51.0) (2026-11-16)
 
 

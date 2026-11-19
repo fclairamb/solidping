@@ -82,6 +82,8 @@ import { NewCheckGroupDialog } from "@/components/shared/new-check-group-dialog"
 import { RecipientsInput } from "@/components/shared/recipients-input";
 import { CommentBody } from "@/components/shared/comment-body";
 import { TokenChipsInput } from "@/components/shared/token-chips-input";
+import { TranslationsEditor } from "@/components/shared/translations-editor";
+import type { Translations } from "@/lib/localized-text";
 import {
   isValidStatusPattern,
   normalizeStatusPattern,
@@ -402,6 +404,7 @@ function DesignReferencePage() {
       <CheckGroupPickerSection />
       <NewCheckGroupDialogSection />
       <TokenChipsInputSection />
+      <TranslationsEditorSection />
       <JsonAssertionEditorSection />
       <KpiTileSection />
       <ClickableStatusBannerSection />
@@ -7131,6 +7134,46 @@ function TokenChipsInputSection() {
             validate={isValidStatusPattern}
             normalize={normalizeStatusPattern}
             placeholder="200"
+          />
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function TranslationsEditorSection() {
+  const [withBody, setWithBody] = useState<Translations>({
+    fr: { title: "Incident en cours", body: "Nous enquêtons." },
+  });
+  const [titleOnly, setTitleOnly] = useState<Translations>({});
+
+  return (
+    <Section
+      id="translations-editor"
+      title="Translations editor"
+      description="The 'Other languages' block of the status update and incident publication editors. One CollapsibleSection per supported language (the page's own language is skipped: the literal text is that language), each with a title and, for updates, a markdown body. A group with text opens by default and is marked customized; an empty group means no translation. Groups stack, so it works on a phone."
+    >
+      <p className="text-xs text-muted-foreground">
+        import {"{ TranslationsEditor }"} from
+        "@/components/shared/translations-editor"
+      </p>
+      <div className="grid gap-6 sm:grid-cols-2 max-w-3xl">
+        <div className="space-y-2">
+          <Label>Status update (title and body), page language en</Label>
+          <TranslationsEditor
+            value={withBody}
+            onChange={setWithBody}
+            withBody
+            pageLanguage="en"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Publication title (title only), page language fr</Label>
+          <TranslationsEditor
+            value={titleOnly}
+            onChange={setTitleOnly}
+            withBody={false}
+            pageLanguage="fr"
           />
         </div>
       </div>

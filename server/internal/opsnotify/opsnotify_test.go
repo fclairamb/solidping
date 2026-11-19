@@ -287,7 +287,7 @@ func TestDeliverRendersEveryContactType(t *testing.T) {
 	org := e.org(t, "acme")
 	e.join(t, org, alice)
 
-	e.contact(t, org, alice, models.UserContactTypeEmail, "alice@acme.com", false)
+	e.contact(t, org, alice, models.UserContactTypeEmail, "alice@acme.com", true)
 	e.contact(t, org, alice, models.UserContactTypeTelegram, "12345", false)
 	e.contact(t, org, alice, models.UserContactTypeSlackUser, "U123", false)
 	e.contact(t, org, alice, models.UserContactTypeWebPush, `{"endpoint":"x"}`, false)
@@ -425,7 +425,7 @@ func TestDeliverSkippedRouteNextToADeliveredOneIsNotAWarning(t *testing.T) {
 	org := e.org(t, "acme")
 	e.join(t, org, alice)
 	e.contact(t, org, alice, models.UserContactTypeWhatsApp, "+33600000000", true)
-	e.contact(t, org, alice, models.UserContactTypeEmail, "alice@acme.com", false)
+	e.contact(t, org, alice, models.UserContactTypeEmail, "alice@acme.com", true)
 
 	report := opsnotify.DeliverToUser(t.Context(), e.deps(), e.log, alice.UID, testNotice())
 
@@ -435,6 +435,27 @@ func TestDeliverSkippedRouteNextToADeliveredOneIsNotAWarning(t *testing.T) {
 	logs := e.logs.String()
 	r.Contains(logs, "skipping route", "the skip is still logged, at DEBUG")
 	r.NotContains(logs, "level=WARN")
+}
+
+// TestDeliverSkipsAnUnverifiedEmail: an email contact whose code was never
+// confirmed may be anyone's address (spec 2026-11-19-02), so no notice goes
+// there; a confirmed one next to it is delivered.
+func TestDeliverSkipsAnUnverifiedEmail(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	e := newEnv(t)
+
+	alice := e.user(t, "alice@acme.com", true)
+	org := e.org(t, "acme")
+	e.join(t, org, alice)
+	e.contact(t, org, alice, models.UserContactTypeEmail, "stranger@example.com", false)
+	e.contact(t, org, alice, models.UserContactTypeEmail, "alice@acme.com", true)
+
+	report := opsnotify.DeliverToUser(t.Context(), e.deps(), e.log, alice.UID, testNotice())
+
+	r.Equal(1, report.Delivered)
+	r.Equal(1, report.Skipped)
 }
 
 // TestDeliverSurvivesOneFailingMedium: a dead route must never abort the
@@ -450,7 +471,7 @@ func TestDeliverSurvivesOneFailingMedium(t *testing.T) {
 	org := e.org(t, "acme")
 	e.join(t, org, alice)
 	e.contact(t, org, alice, models.UserContactTypeTelegram, "12345", false)
-	e.contact(t, org, alice, models.UserContactTypeEmail, "alice@acme.com", false)
+	e.contact(t, org, alice, models.UserContactTypeEmail, "alice@acme.com", true)
 
 	report := opsnotify.DeliverToUser(t.Context(), e.deps(), e.log, alice.UID, testNotice())
 

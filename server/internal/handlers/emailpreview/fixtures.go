@@ -27,11 +27,13 @@ const (
 	// reads as the same person whether they invited someone or acked an alert.
 	fixturePersonName = "Alice Admin"
 
-	keyOrgName      = "OrgName"
-	keySecurityURL  = "SecurityURL"
-	keyDashboardURL = "DashboardURL"
-	keySubject      = "Subject"
-	keyName         = "Name"
+	keyOrgName = "OrgName"
+	// keyNotificationsURL points at the notification settings page.
+	keyNotificationsURL = "NotificationsURL"
+	keySecurityURL      = "SecurityURL"
+	keyDashboardURL     = "DashboardURL"
+	keySubject          = "Subject"
+	keyName             = "Name"
 	// keyColor / colorReportGood keep the uptime-report day strip readable
 	// without repeating literals the linter counts.
 	keyColor        = "Color"
@@ -88,6 +90,8 @@ var fixtureBuilders = map[string]func(i18n.Locale) map[string]any{
 	"totp-disabled.html":               totpDisabledFixture,
 	"discord-linked.html":              discordLinkedFixture,
 	"telegram-linked.html":             telegramLinkedFixture,
+	"contact-added.html":               contactAddedFixture,
+	"contact-verify-code.html":         contactVerifyCodeFixture,
 	"membership-request-new.html":      membershipRequestNewFixture,
 	"membership-request-decision.html": membershipRequestDecisionFixture,
 	"uptime-report.html":               uptimeReportFixture,

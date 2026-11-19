@@ -246,6 +246,8 @@ func manualReaderServerEnvVars() []string {
 		"SP_AUTH_AUTO_PERSONAL_ORG",
 		"SP_AUTH_ADMIN_EMAIL",
 		"SP_ADMIN_EMAIL",
+		"SP_AUTH_ADMIN_PASSWORD",
+		"SP_ADMIN_PASSWORD",
 		// resolveRegistrationLimit
 		"SP_AUTH_REGISTRATION_MAX_PENDING_PER_IP",
 		// applyServerEnv

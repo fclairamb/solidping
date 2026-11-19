@@ -584,6 +584,16 @@ func (r *EscalationStepJobRun) dispatchRoute(
 			return 0
 		}
 
+		// An email contact for an address other than the member's sign-in
+		// email is paged only once its code is confirmed (spec 2026-11-19-02),
+		// like an unverified phone or WhatsApp number.
+		if route.Contact.VerifiedAt == nil {
+			log.InfoContext(ctx, "email contact not verified; skipping route",
+				"contactUID", route.Contact.UID)
+
+			return 0
+		}
+
 		return r.sendEscalationEmail(
 			ctx, jctx, log, incident,
 			route.Contact.Value, route.UserUID,

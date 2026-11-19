@@ -39,10 +39,26 @@ a user only edits their own. All require auth.
 List the calling user's notification routes (with their contacts).
 
 ### POST /api/v1/orgs/:org/users/me/notification-contacts
-Create a contact for the calling user.
+Create a contact for the calling user, and email the account owner a
+"notification method added" notice (`contact-added.html`).
+
+An `email` contact is verified at once only when its address is the caller's
+own verified sign-in email. Any other address starts unverified: it is not
+paged, nor testable, until the code sent by
+`POST …/notification-contacts/:contactUid/verify` (an email with a 6-digit
+code, `contact-verify-code.html`) is confirmed with `…/verify/confirm`, as
+for phone and WhatsApp contacts. An invalid address is refused with
+`VALIDATION_ERROR`.
+
+Refused under impersonation (`403 IMPERSONATION_FORBIDDEN`) and for personal
+access tokens (`403 PAT_FORBIDDEN`), like the verify, verify/confirm and route
+PATCH calls: a contact bound that way would keep receiving the account's pages
+after the session or the token (spec 2026-11-19-02). Deleting a contact is
+always allowed.
 
 ### PATCH /api/v1/orgs/:org/users/me/notification-routes/:routeUid
-Update a route (enable/disable, delay, severity filter).
+Update a route (enable/disable, delay, severity filter). Refused under
+impersonation and for personal access tokens.
 
 ### DELETE /api/v1/orgs/:org/users/me/notification-contacts/:contactUid
 Delete a contact (and the routes bound to it).
@@ -52,7 +68,7 @@ Send a test notification through the route so the user can confirm it works.
 Every pageable contact type is covered: email, Slack DM, web push, Telegram,
 SMS (via the org's default Twilio connection) and WhatsApp (via the approved
 alert template). A contact whose setup round-trip is not complete (unverified
-phone/WhatsApp, disconnected Telegram) is refused with `VALIDATION_ERROR`
+phone/WhatsApp/email, disconnected Telegram) is refused with `VALIDATION_ERROR`
 rather than tested — the dashboard only shows the Test button once a route is
 ready.
 

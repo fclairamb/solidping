@@ -63,12 +63,17 @@ listing.
 Once running, open the app from the CasaOS dashboard (or `http://<your-nas>:4000`
 directly).
 
-**Default credentials:**
+**First login:**
 - Email: `admin@solidping.io`
-- Password: `solidpass`
+- Password: generated at the first start and printed once in the logs. In the CasaOS dashboard, open the app's logs (or run `docker logs solidping 2>&1 | grep "First login"` on the NAS)
+  and look for the line starting with `First login`.
+
+To choose the first password yourself, or to recover a lost one, set
+`SP_ADMIN_PASSWORD` and restart. See
+[Password of the first admin](/configuration/authentication#password-of-the-first-admin).
 
 :::warning First login sets a new password
-That password is published in the SolidPing repository, so it buys you exactly one
+The first password buys you exactly one
 login. SolidPing lands you on a "set a new password" screen and the account can do
 nothing else until you complete it.
 :::

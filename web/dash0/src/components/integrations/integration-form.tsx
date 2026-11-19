@@ -2844,6 +2844,7 @@ function A2APanel({
             <Label htmlFor="ch-a2a-api-key-header">
               {t("a2a.apiKeyHeader", "Header name")}
             </Label>
+            {/* eslint-disable-next-line secret-local/require-secret-input -- the header name the key is sent in, not the key */}
             <Input
               id="ch-a2a-api-key-header"
               data-testid="a2a-api-key-header"

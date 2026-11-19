@@ -560,6 +560,25 @@ func TestApplyAuthEnv_AdminEmail(t *testing.T) {
 	r.Equal("admin@acme.com", cfg.AdminEmail)
 }
 
+// TestApplyAuthEnv_AdminPassword: SP_ADMIN_PASSWORD reaches
+// auth.admin_password (spec 2026-11-19-01), wins over SP_AUTH_ADMIN_PASSWORD,
+// and is kept byte for byte.
+func TestApplyAuthEnv_AdminPassword(t *testing.T) {
+	r := require.New(t)
+
+	cfg := AuthConfig{}
+	applyAuthEnv(&cfg)
+	r.Empty(cfg.AdminPassword, "unset leaves the seed on a generated password")
+
+	t.Setenv("SP_AUTH_ADMIN_PASSWORD", "acme-long-form")
+	applyAuthEnv(&cfg)
+	r.Equal("acme-long-form", cfg.AdminPassword)
+
+	t.Setenv("SP_ADMIN_PASSWORD", " acme short ")
+	applyAuthEnv(&cfg)
+	r.Equal(" acme short ", cfg.AdminPassword)
+}
+
 func TestApplyRealtimeEnv(t *testing.T) {
 	r := require.New(t)
 

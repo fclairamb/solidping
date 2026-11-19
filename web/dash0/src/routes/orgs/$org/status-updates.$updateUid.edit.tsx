@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useStatusUpdate, useUpdateStatusUpdate } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
+import { cleanTranslations } from "@/lib/localized-text";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorView } from "@/components/shared/error-views";
 import {
@@ -39,6 +40,8 @@ function EditStatusUpdatePage() {
       publishedAt: new Date(data.publishedAt).toISOString(),
       sectionUid: data.sectionUid !== "none" ? data.sectionUid : null,
       checkUid: data.checkUid !== "none" ? data.checkUid : null,
+      // The whole map is replaced; {} clears it.
+      translations: cleanTranslations(data.translations),
     });
     toast.success(t("statusUpdates:toast.updated"));
     navigate({ to: "/orgs/$org/status-updates", params: { org } });

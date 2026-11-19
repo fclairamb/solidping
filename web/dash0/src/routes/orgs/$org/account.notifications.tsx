@@ -115,8 +115,12 @@ function VerifyPhoneDialog({
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-  const isWhatsApp = contactType === "whatsapp";
-  const copyPrefix = isWhatsApp ? "notifications.whatsapp.verify" : "notifications.verify";
+  const copyPrefix =
+    contactType === "whatsapp"
+      ? "notifications.whatsapp.verify"
+      : contactType === "email"
+        ? "notifications.email.verify"
+        : "notifications.verify";
 
   const sendCode = async () => {
     setError(null);
@@ -134,7 +138,7 @@ function VerifyPhoneDialog({
     setError(null);
     try {
       await confirm.mutateAsync({ contactUid, code: code.trim() });
-      toast.success(t("notifications.verify.verified"));
+      toast.success(t(`${copyPrefix}.verified`));
       onVerified();
       onOpenChange(false);
       setCode("");
@@ -486,6 +490,10 @@ function RouteRow({
   const needsVerification =
     route.contact.type === "phone" || route.contact.type === "whatsapp";
   const isVerified = !!route.contact.verifiedAt;
+  // An email contact for an address other than the sign-in email confirms an
+  // emailed code before it is paged. Only the unverified state is shown: a
+  // "Verified" badge on every plain email row would be noise.
+  const codeVerifiable = needsVerification || route.contact.type === "email";
 
   // Telegram has no code round-trip: pressing Start in Telegram is the
   // verification. An UNverified telegram contact therefore means something took
@@ -559,7 +567,7 @@ function RouteRow({
             <ShieldCheck className="h-3 w-3 mr-1" /> {t("notifications.verifiedBadge")}
           </Badge>
         )}
-        {needsVerification && !isVerified && (
+        {codeVerifiable && !isVerified && (
           <Badge
             variant="outline"
             className="mt-1 text-xs text-yellow-600 border-yellow-400"
@@ -567,12 +575,14 @@ function RouteRow({
           >
             {route.contact.type === "whatsapp"
               ? t("notifications.whatsapp.unverifiedBadge")
-              : t("notifications.unverifiedBadge")}
+              : route.contact.type === "email"
+                ? t("notifications.email.unverifiedBadge")
+                : t("notifications.unverifiedBadge")}
           </Badge>
         )}
       </div>
       <div className="flex items-center gap-2 flex-none">
-        {needsVerification && !isVerified && (
+        {codeVerifiable && !isVerified && (
           <Button
             variant="outline"
             size="sm"
@@ -582,7 +592,7 @@ function RouteRow({
             {t("notifications.verifyButton")}
           </Button>
         )}
-        {needsVerification && (
+        {codeVerifiable && (
           <VerifyPhoneDialog
             org={org}
             contactUid={route.contact.uid}
@@ -1105,6 +1115,7 @@ function AddContactForm({
             variant={type === "email" ? "default" : "outline"}
             size="sm"
             onClick={() => setType("email")}
+            data-testid="add-contact-type-email"
           >
             <Mail className="h-3 w-3 mr-1" /> {t("notifications.addContact.typeEmail")}
           </Button>

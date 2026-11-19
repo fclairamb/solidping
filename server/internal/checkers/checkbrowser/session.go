@@ -101,6 +101,11 @@ type Session struct {
 
 	// auth is the HTTP Basic credentials armed by BasicAuth, if any.
 	auth basicAuth
+
+	// proxy is the guarded egress proxy this session's Chrome sends all its
+	// traffic through, nil when the policy is not enforcing or the browser
+	// cannot reach it (see proxyReachableFrom).
+	proxy *egressProxy
 }
 
 // NavResult is what a navigation reports back. Deliberately no HTTP status
@@ -185,27 +190,40 @@ func openSessionPinned(sessionCtx, probeCtx context.Context, pin *hostPin) (*Ses
 		}
 	}
 
-	allocCtx, allocCancel := allocator(sessionCtx, current, pin)
-	browserCtx, browserCancel := browserContext(allocCtx, current)
+	session := &Session{release: release}
+	guard := egress.FromContext(probeCtx)
+
+	if err := session.startProxy(probeCtx, guard, current); err != nil {
+		release()
+		recordOpenOutcome(err)
+
+		return nil, err
+	}
+
+	allocCtx, allocCancel := allocator(sessionCtx, current, pin, session.proxy)
+	browserCtx, browserCancel := browserContext(allocCtx, current, session.proxy)
+
+	session.browserCtx = browserCtx
+	session.cancels = []context.CancelFunc{browserCancel, allocCancel}
+
+	if session.proxy != nil {
+		session.cancels = append(session.cancels, session.proxy.Close)
+	}
 
 	// The eager allocate. An empty Run does nothing but bring the browser up,
 	// which is exactly what turns "the browser is missing" into an error from
 	// Open rather than a mysterious failure of the first real action.
 	if err := chromedp.Run(browserCtx); err != nil {
-		browserCancel()
-		allocCancel()
+		for _, cancel := range session.cancels {
+			cancel()
+		}
+
 		release()
 
 		failure := &infraError{msg: openFailureMessage(current, err)}
 		recordOpenOutcome(failure)
 
 		return nil, failure
-	}
-
-	session := &Session{
-		browserCtx: browserCtx,
-		cancels:    []context.CancelFunc{browserCancel, allocCancel},
-		release:    release,
 	}
 
 	// The viewport is set HERE, before the Session is handed to anyone, so
@@ -223,11 +241,32 @@ func openSessionPinned(sessionCtx, probeCtx context.Context, pin *hostPin) (*Ses
 
 	recordOpenOutcome(nil)
 
-	if guard := egress.FromContext(probeCtx); guard.Enforcing() {
+	if guard.Enforcing() {
 		session.watchEgress(probeCtx, guard)
 	}
 
 	return session, nil
+}
+
+// startProxy starts the session's guarded egress proxy when the policy is
+// enforcing and the browser can reach it: every connection Chrome makes then
+// goes through the guard (spec 2026-11-19-04), so a non-public destination is
+// refused BEFORE it is contacted, WebSockets included.
+func (s *Session) startProxy(probeCtx context.Context, guard *egress.Guard, current Settings) error {
+	if !guard.Enforcing() || !proxyReachableFrom(current) {
+		return nil
+	}
+
+	proxy, err := startEgressProxy(probeCtx, guard, func(denied *egress.DeniedError) {
+		s.egressDenied.CompareAndSwap(nil, denied)
+	})
+	if err != nil {
+		return &infraError{msg: "failed to start the browser egress proxy: " + err.Error()}
+	}
+
+	s.proxy = proxy
+
+	return nil
 }
 
 // recordOpenOutcome feeds an attempted open back into the capability cache,
@@ -443,7 +482,7 @@ func preflightEgress(ctx context.Context, rawURL string) (*hostPin, error) {
 		return nil, fmt.Errorf("%w: unparseable URL", errNavigationRefused)
 	}
 
-	if scheme := strings.ToLower(parsed.Scheme); scheme != "http" && scheme != "https" {
+	if scheme := strings.ToLower(parsed.Scheme); scheme != schemeHTTP && scheme != "https" {
 		return nil, fmt.Errorf("%w: only http and https URLs can be checked", errNavigationRefused)
 	}
 
@@ -479,34 +518,91 @@ func preflightEgress(ctx context.Context, rawURL string) (*hostPin, error) {
 
 // watchEgress checks the address Chrome ACTUALLY connected to for every
 // response and every redirect of the session — the main document,
-// subresources, fetch/XHR — against the guard. It cannot stop a request that
-// is already on the wire, but the first non-public answer poisons the
-// session: every later action (title, text, evaluate, screenshot) returns the
-// refusal instead of the page, so nothing read from an internal address ever
-// reaches a result.
+// subresources, fetch/XHR — against the guard, and the host of every
+// WebSocket the page opens. It cannot stop a request that is already on the
+// wire (the egress proxy does that, where the browser can reach it), but the
+// first refusal poisons the session: every later action (title, text,
+// evaluate, screenshot) returns the refusal instead of the page, so nothing
+// read from an internal address ever reaches a result.
 //
 //nolint:contextcheck // the listener belongs to the session's browser context, not the caller's
 func (s *Session) watchEgress(recordCtx context.Context, guard *egress.Guard) {
 	chromedp.ListenTarget(s.browserCtx, func(ev any) {
-		switch event := ev.(type) {
-		case *network.EventResponseReceived:
-			if event.Response != nil {
-				s.checkRemote(recordCtx, guard, event.Response.URL, event.Response.RemoteIPAddress)
-			}
-		case *network.EventRequestWillBeSent:
-			if event.RedirectResponse != nil {
-				s.checkRemote(recordCtx, guard, event.RedirectResponse.URL, event.RedirectResponse.RemoteIPAddress)
-			}
-		}
+		s.onEgressEvent(recordCtx, guard, ev)
 	})
 }
 
+// onEgressEvent is watchEgress's listener body, split out so it can be fed
+// events without a browser.
+func (s *Session) onEgressEvent(recordCtx context.Context, guard *egress.Guard, ev any) {
+	switch event := ev.(type) {
+	case *network.EventResponseReceived:
+		if event.Response != nil {
+			s.checkRemote(recordCtx, guard, event.Response.URL,
+				event.Response.RemoteIPAddress, event.Response.RemotePort)
+		}
+	case *network.EventRequestWillBeSent:
+		if event.RedirectResponse != nil {
+			s.checkRemote(recordCtx, guard, event.RedirectResponse.URL,
+				event.RedirectResponse.RemoteIPAddress, event.RedirectResponse.RemotePort)
+		}
+	case *network.EventWebSocketCreated:
+		// The creation is the only WebSocket event naming the URL, and it
+		// fires before the handshake is sent: the session is poisoned before
+		// a frame can be read.
+		s.checkWebSocket(recordCtx, guard, event.URL)
+	}
+}
+
+// webSocketCheckTimeout bounds the lookup of a WebSocket's host. It runs on
+// the browser's event loop, so it must stay short.
+const webSocketCheckTimeout = 2 * time.Second
+
+// checkWebSocket judges the host of a WebSocket the page opened.
+//
+// Page JavaScript can open a socket to any host (WebSockets have no CORS),
+// and Chrome reports no remote address for one, so the host is resolved here
+// and EVERY answer must be public: Chrome may connect to any of them. Behind
+// the egress proxy this is redundant (the proxy refuses the connection
+// itself) and skipped, so a public host with a stray private record does not
+// fail a check whose connection was in fact safe.
+func (s *Session) checkWebSocket(recordCtx context.Context, guard *egress.Guard, rawURL string) {
+	if s.proxy != nil {
+		return
+	}
+
+	parsed, err := neturl.Parse(rawURL)
+	if err != nil || parsed.Hostname() == "" {
+		return
+	}
+
+	host := parsed.Hostname()
+
+	if literal, litErr := egress.ParseURLHost(host); litErr == nil && literal != nil {
+		s.deny(guard.CheckAddr(recordCtx, host, literal))
+
+		return
+	}
+
+	lookupCtx, cancel := context.WithTimeout(recordCtx, webSocketCheckTimeout)
+	defer cancel()
+
+	// A name that does not resolve here is left alone: Chrome resolves with
+	// the same system resolver and cannot connect to it either.
+	s.deny(guard.CheckHost(lookupCtx, host))
+}
+
 // checkRemote judges one remote address Chrome reported for a response and
-// poisons the session on the first refusal.
-func (s *Session) checkRemote(recordCtx context.Context, guard *egress.Guard, rawURL, remote string) {
+// poisons the session on the first refusal. The egress proxy's own address
+// is not judged: what went through it was checked by the guard already.
+func (s *Session) checkRemote(recordCtx context.Context, guard *egress.Guard, rawURL, remote string, port int64) {
 	ip := net.ParseIP(strings.TrimSuffix(strings.TrimPrefix(remote, "["), "]"))
 	if ip == nil {
 		return // served from cache or a service worker: no connection was made
+	}
+
+	if s.proxy.isProxyAddr(ip, port) {
+		return
 	}
 
 	host := rawURL
@@ -514,8 +610,13 @@ func (s *Session) checkRemote(recordCtx context.Context, guard *egress.Guard, ra
 		host = parsed.Hostname()
 	}
 
+	s.deny(guard.CheckAddr(recordCtx, host, ip))
+}
+
+// deny poisons the session when err is an egress refusal.
+func (s *Session) deny(err error) {
 	var denied *egress.DeniedError
-	if errors.As(guard.CheckAddr(recordCtx, host, ip), &denied) {
+	if errors.As(err, &denied) {
 		s.egressDenied.CompareAndSwap(nil, denied)
 	}
 }

@@ -154,6 +154,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
+	"github.com/fclairamb/solidping/server/internal/testruns"
 	"github.com/fclairamb/solidping/server/internal/tlsedge"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
@@ -207,7 +208,11 @@ type Server struct {
 	services  *services.Registry
 	// aiChecks authors and repairs AI-written js checks (spec 2026-10-03-07).
 	aiChecks *aichecks.Service
-	router   *httpx.Router
+	// testRunLimiter is the admission control shared by every on-demand run
+	// of this process: REST test runs, MCP probes and the AI authoring loop
+	// (spec 2026-11-19-03).
+	testRunLimiter *testruns.Limiter
+	router         *httpx.Router
 	// handler is s.router, optionally wrapped by compressionWrapper (see
 	// SetupRoutes). It is the outermost handler: Server.Handler() and
 	// handlerWithDocsHost's fallthrough both serve this, never s.router
@@ -375,7 +380,8 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	var connString string
 	switch cfg.Database.Type {
 	case "postgres":
-		connString = cfg.Database.URL
+		// lib/pq wants a Unix socket's directory, pgdriver its file: see postgres.ListenerDSN.
+		connString = postgres.ListenerDSN(cfg.Database.URL)
 	case "postgres-embedded":
 		//nolint:lll // DSN string clarity over line length
 		connString = fmt.Sprintf("postgres://postgres:postgres@localhost:%d/solidping_test?sslmode=disable", embeddedPostgresPort)
@@ -564,11 +570,16 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// app_settings, which does not exist before the migrations. Initialize
 	// loads them (InitializeWebPush).
 
+	// One limiter for every on-demand run of the process (spec 2026-11-19-03).
+	testRunLimiter := testruns.New()
+	aiChecksSvc.SetRunLimiter(testRunLimiter)
+
 	server := &Server{
 		dbService:         dbService,
 		jobSvc:            jobService,
 		services:          svcList,
 		aiChecks:          aiChecksSvc,
+		testRunLimiter:    testRunLimiter,
 		config:            cfg,
 		instanceSMSSender: instanceSMSSender,
 		authService:       authService,
@@ -643,27 +654,8 @@ func toolsRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
 
 // testRunsPerMinute is the per-org allowance for POST
 // /api/v1/orgs/:org/checks/test-run (spec 2026-11-18-01). Fixed, not
-// plan-based. Burst equals the minute's allowance.
-const testRunsPerMinute = 20
-
-// testRunRateLimitConfig derives the per-org test-run limiter from the
-// server's own, keeping the trusted proxy hops (used by the IP fallback).
-func testRunRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
-	return config.RateLimitConfig{
-		RequestsPerMinute: testRunsPerMinute,
-		Burst:             testRunsPerMinute,
-		TrustedProxies:    base.TrustedProxies,
-	}
-}
-
-// orgRateLimitKey buckets a request by the org RequireOrgAccess resolved.
-func orgRateLimitKey(req *http.Request) string {
-	if org, ok := middleware.GetOrganizationFromContext(req.Context()); ok && org != nil {
-		return "org:" + org.UID
-	}
-
-	return ""
-}
+// plan-based. Counted by the shared testruns.Limiter (spec 2026-11-19-03).
+const testRunsPerMinute = testruns.RunsPerMinute
 
 // toolsRegion is the region reported on tool runs: the node's, else the
 // check worker's.
@@ -1145,6 +1137,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.config,
 	)
 	s.mcpHandler.SetScriptRunner(s.aiChecks.Runner())
+	s.mcpHandler.SetProbeLimiter(s.testRunLimiter)
 	mcpGroup := api.NewGroup("/mcp")
 	// GET is deliberately outside RequireMCPAuth: a browser opening the
 	// endpoint has no token and gets a helpful redirect to the dashboard MCP
@@ -1332,12 +1325,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Test run of an unsaved check (spec 2026-11-17-04): runs once, stores
 	// and notifies nothing. A literal segment, ahead of "/:checkUid"; a write
 	// route, so orgGroup's floor refuses viewers.
-	// Per-org limiter (spec 2026-11-18-01): mounted after RequireOrgAccess and
-	// RequireOrgWrite, so a viewer still gets 403, and keyed on the org so
-	// every member of one org shares its budget.
-	testRunLimiter := middleware.NewRateLimiter(testRunRateLimitConfig(s.config.Server.RateLimiting), ctx)
-	orgChecks.Use(testRunLimiter.RateLimitRouteBy(orgRateLimitKey)).
-		POST("/test-run", checktestrun.NewHandler(s.aiChecks.Runner(), s.config).TestRun)
+	// Per-org limits (specs 2026-11-18-01, 2026-11-19-03): the handler applies
+	// s.testRunLimiter's runs-per-minute allowance and concurrency caps, the
+	// same per-org budget the MCP probes spend. It runs after
+	// RequireOrgAccess and RequireOrgWrite, so a viewer still gets 403.
+	orgChecks.POST("/test-run",
+		checktestrun.NewHandlerWithLimiter(s.aiChecks.Runner(), s.config, s.testRunLimiter).TestRun)
 	orgChecks.GET("/:checkUid", checksHandler.GetCheck)
 	orgChecks.PUT("/:slug", checksHandler.UpsertCheck)
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)
@@ -1763,6 +1756,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// A Discord link binds an identity that signs in, so it asks the same
 		// re-authentication as a new TOTP or passkey (spec 2026-11-01-03).
 		usernotifications.WithFactorReauthenticator(s.authService),
+		// An email contact for another address confirms an emailed code, and
+		// the owner is told when a contact is added (spec 2026-11-19-02).
+		usernotifications.WithContactMailer(s.authService),
 	)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender, s.services.EmailFormatter)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()

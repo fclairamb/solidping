@@ -74,7 +74,9 @@ x-casaos:
   tips:
     before_install:
       en_US: |
-        First login: admin@solidping.io / solidpass, organization "default".
+        First login: admin@solidping.io, organization "default". The password is
+        generated at the first start and printed once in the app logs (line
+        starting with "First login"). Set SP_ADMIN_PASSWORD to choose it instead.
         You are asked to set a new password immediately.
   developer: Florent Clairambault
   author: Florent Clairambault

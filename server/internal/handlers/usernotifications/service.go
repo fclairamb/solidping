@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/escalationcoverage"
 	"github.com/fclairamb/solidping/server/internal/identitylink"
@@ -51,6 +53,9 @@ var (
 	// ErrInvalidWhatsAppNumber is returned when a WhatsApp contact value is not
 	// a syntactically valid E.164 number.
 	ErrInvalidWhatsAppNumber = errors.New("WhatsApp number must be in E.164 format (e.g. +15551234567)")
+	// ErrInvalidEmailAddress is returned when an email contact's value is not
+	// a deliverable address: its confirmation code could never reach it.
+	ErrInvalidEmailAddress = errors.New("enter a valid email address")
 	// ErrContactNotVerified is returned when a test is requested for a contact
 	// that has not completed its setup round-trip.
 	ErrContactNotVerified = errors.New("contact must be verified before it can be tested")
@@ -180,6 +185,9 @@ type Service struct {
 	// codes on the instance's money, which is exactly what the allow-list
 	// exists to stop. Nil disables the guards (tests, self-hosted defaults).
 	entitlements *entitlements.Service
+	// contactMailer sends the email contact's verification code and the
+	// "contact added" notice (spec 2026-11-19-02). Nil disables both.
+	contactMailer ContactMailer
 }
 
 // WithEntitlements supplies the entitlements service used to apply the
@@ -488,6 +496,10 @@ func (s *Service) slackTeamIDForOrg(ctx context.Context, orgUID string) *string 
 func (s *Service) CreateContact(
 	ctx context.Context, orgSlug string, user *models.User, req CreateContactRequest,
 ) (*RouteResponse, error) {
+	if err := refuseChannelBinding(ctx); err != nil {
+		return nil, err
+	}
+
 	// Telegram contacts are NEVER created here. Their value is a chat id and
 	// there is no verification round-trip that could catch a wrong one, so
 	// accepting one from a request body would let any user page a stranger.
@@ -524,30 +536,12 @@ func (s *Service) CreateContact(
 
 	position := len(existing)
 
-	// WhatsApp destinations must be E.164 — Meta rejects anything else, and a
-	// malformed number would otherwise sit in the list looking verifiable.
-	if req.Type == models.UserContactTypeWhatsApp && !whatsapp.ValidE164(strings.TrimSpace(req.Value)) {
-		return nil, ErrInvalidWhatsAppNumber
+	contact, err := s.newContact(ctx, orgUID, user, req)
+	if err != nil {
+		return nil, err
 	}
 
-	contact := models.NewUserContact(user.UID, orgUID, req.Type, req.Value, req.Label)
-
-	// A Slack user id only identifies a person WITHIN one workspace, so record
-	// which workspace this one came from. The value the dashboard posts comes
-	// from the Slack suggestion, which is built from the org's bound Slack
-	// channel — the same channel resolved here. Left NULL when the org has no
-	// Slack channel to attribute it to: "unknown workspace" is the honest
-	// answer, and the mention resolver treats it as such rather than assuming.
-	if req.Type == models.UserContactTypeSlackUser {
-		contact.TeamID = s.slackTeamIDForOrg(ctx, orgUID)
-	}
-
-	if req.Type == models.UserContactTypeEmail || req.Type == models.UserContactTypeWebPush {
-		// Email is verified by sending; web push is verified by subscribing
-		// (browser grants permission and registers the subscription endpoint).
-		now := time.Now()
-		contact.VerifiedAt = &now
-	}
+	isNew := !hasContact(existing, req.Type, req.Value)
 
 	if upsertErr := s.db.UpsertUserContact(ctx, contact); upsertErr != nil {
 		return nil, fmt.Errorf("create contact: %w", upsertErr)
@@ -560,9 +554,13 @@ func (s *Service) CreateContact(
 	}
 
 	// Find the route for our new contact (may already exist after upsert).
-	for _, r := range routes {
-		if r.Contact != nil && r.Contact.Type == req.Type && r.Contact.Value == req.Value {
-			return toRouteResponse(r), nil
+	for _, found := range routes {
+		if found.Contact != nil && found.Contact.Type == req.Type && found.Contact.Value == req.Value {
+			if isNew {
+				s.notifyContactAdded(ctx, user, orgUID, req)
+			}
+
+			return toRouteResponse(found), nil
 		}
 	}
 
@@ -582,6 +580,8 @@ func (s *Service) CreateContact(
 
 	for _, r := range routes {
 		if r.Contact != nil && r.Contact.Type == req.Type && r.Contact.Value == req.Value {
+			s.notifyContactAdded(ctx, user, orgUID, req)
+
 			return toRouteResponse(r), nil
 		}
 	}
@@ -589,17 +589,76 @@ func (s *Service) CreateContact(
 	return nil, ErrRouteNotFoundAfterCreate
 }
 
+// newContact validates a CreateContact request and builds the contact row,
+// with its workspace and, when it is usable at once, its verified stamp.
+func (s *Service) newContact(
+	ctx context.Context, orgUID string, user *models.User, req CreateContactRequest,
+) (*models.UserContact, error) {
+	// WhatsApp destinations must be E.164 — Meta rejects anything else, and a
+	// malformed number would otherwise sit in the list looking verifiable.
+	if req.Type == models.UserContactTypeWhatsApp && !whatsapp.ValidE164(strings.TrimSpace(req.Value)) {
+		return nil, ErrInvalidWhatsAppNumber
+	}
+
+	if req.Type == models.UserContactTypeEmail && !email.ValidAddress(strings.TrimSpace(req.Value)) {
+		return nil, ErrInvalidEmailAddress
+	}
+
+	contact := models.NewUserContact(user.UID, orgUID, req.Type, req.Value, req.Label)
+
+	// A Slack user id only identifies a person WITHIN one workspace, so record
+	// which workspace this one came from. The value the dashboard posts comes
+	// from the Slack suggestion, which is built from the org's bound Slack
+	// channel — the same channel resolved here. Left NULL when the org has no
+	// Slack channel to attribute it to: "unknown workspace" is the honest
+	// answer, and the mention resolver treats it as such rather than assuming.
+	if req.Type == models.UserContactTypeSlackUser {
+		contact.TeamID = s.slackTeamIDForOrg(ctx, orgUID)
+	}
+
+	// Web push is verified by subscribing (the browser grants permission and
+	// registers the subscription endpoint). An email contact is verified at
+	// once only when it is the user's own verified sign-in email; any other
+	// address confirms a code first (spec 2026-11-19-02), and is not paged
+	// until then.
+	if req.Type == models.UserContactTypeWebPush ||
+		(req.Type == models.UserContactTypeEmail && emailContactBornVerified(user, req.Value)) {
+		now := time.Now()
+		contact.VerifiedAt = &now
+	}
+
+	return contact, nil
+}
+
 // PatchRoute updates enabled flag and/or reorders.
 func (s *Service) PatchRoute(
 	ctx context.Context, orgSlug string, user *models.User,
 	routeUID string, req PatchRouteRequest,
 ) (*RouteResponse, error) {
+	// Re-enabling a route the owner disabled points pages at it again, and a
+	// reorder decides which contact is paged first: neither from a credential
+	// that may not bind a channel.
+	if err := refuseChannelBinding(ctx); err != nil {
+		return nil, err
+	}
+
 	orgUID, err := s.resolveOrgUID(ctx, orgSlug)
 	if err != nil {
 		return nil, err
 	}
 
 	if req.Enabled != nil {
+		// SetRouteEnabled matches on the route uid alone: check the route is
+		// the caller's, in this org, before flipping it.
+		owned, ownErr := s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
+		if ownErr != nil {
+			return nil, fmt.Errorf("list routes for ownership check: %w", ownErr)
+		}
+
+		if !slices.ContainsFunc(owned, func(r *models.UserNotificationRoute) bool { return r.UID == routeUID }) {
+			return nil, ErrRouteNotFound
+		}
+
 		if enableErr := s.db.SetRouteEnabled(ctx, routeUID, *req.Enabled); enableErr != nil {
 			return nil, fmt.Errorf("set route enabled: %w", enableErr)
 		}
@@ -758,7 +817,7 @@ func (s *Service) SendTestNotification(
 // WhatsApp, or pressing Start in Telegram (telegram contacts are born
 // verified, so an unverified one means the connection was lost).
 func contactRequiresSetup(contactType string) bool {
-	return models.ContactRequiresVerification(contactType) ||
+	return contactCodeVerifiable(contactType) ||
 		contactType == models.UserContactTypeTelegram ||
 		contactType == models.UserContactTypeDiscord
 }

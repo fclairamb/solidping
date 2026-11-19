@@ -65,6 +65,29 @@ func TestEscalationEmailViewModelLetsTheRecipientAck(t *testing.T) {
 	r.Empty(newRun().buildEscalationEmailViewModel(ctx, &noConfig, &incident, "oncall@acme.com", i18n.English)["AckURL"])
 }
 
+// TestDispatch_UnverifiedEmailIsNotPaged: an email contact whose code was
+// never confirmed (an address other than the member's sign-in email, spec
+// 2026-11-19-02) gets no page, like an unverified phone number. Once
+// confirmed, it is paged.
+func TestDispatch_UnverifiedEmailIsNotPaged(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupPhoneEnv(t, false, "")
+
+	route := emailRoute()
+	route.Contact.VerifiedAt = nil
+
+	sent := newRun().dispatchRoute(context.Background(), env.jctx, slog.Default(), env.incident, route,
+		map[string]bool{"email": true})
+	r.Equal(0, sent)
+	r.Nil(env.emails.lastMessage(), "no mail to an unconfirmed address")
+
+	sent = newRun().dispatchRoute(context.Background(), env.jctx, slog.Default(), env.incident, emailRoute(),
+		map[string]bool{"email": true})
+	r.Equal(1, sent, "positive control: a confirmed contact is paged")
+}
+
 // TestDispatch_EscalationEmailThreadsWithTheIncident: the escalation mail joins
 // the conversation of the other mails about the same incident, and offers the
 // "I'm on it" button.

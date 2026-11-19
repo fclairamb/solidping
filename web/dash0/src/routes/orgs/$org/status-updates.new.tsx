@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useCreateStatusUpdate } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
+import { cleanTranslations } from "@/lib/localized-text";
 import {
   StatusUpdateForm,
   type StatusUpdateFormData,
@@ -20,6 +21,8 @@ function NewStatusUpdatePage() {
   const createMutation = useCreateStatusUpdate(org);
 
   const handleSubmit = async (data: StatusUpdateFormData) => {
+    const cleaned = cleanTranslations(data.translations);
+    const hasTranslations = Object.keys(cleaned).length > 0;
     await createMutation.mutateAsync({
       statusPageUid: data.statusPageUid,
       kind: data.kind,
@@ -31,6 +34,7 @@ function NewStatusUpdatePage() {
         : undefined,
       sectionUid: data.sectionUid !== "none" ? data.sectionUid : undefined,
       checkUid: data.checkUid !== "none" ? data.checkUid : undefined,
+      translations: hasTranslations ? cleaned : undefined,
     });
     toast.success(t("statusUpdates:toast.created"));
     navigate({ to: "/orgs/$org/status-updates", params: { org } });

@@ -1640,10 +1640,17 @@ type AuthConfig struct {
 	ImpersonationEnabled bool `koanf:"impersonation_enabled"`
 	// AdminEmail is the email of the super admin seeded on the first start of
 	// an empty database (spec 2026-09-30-08). Empty means defaults.Email
-	// (admin@solidping.io). It is read only when no organization exists yet;
-	// the seeded password stays the public default with must_change_password.
+	// (admin@solidping.io). It is read only when no organization exists yet.
 	// Env: SP_ADMIN_EMAIL (or SP_AUTH_ADMIN_EMAIL), bound in applyAuthEnv.
 	AdminEmail string `koanf:"admin_email"`
+	// AdminPassword is the first password of the seeded super admin (spec
+	// 2026-11-19-01). Empty means a random password printed once at seed time
+	// (defaults.Password in the test and demo run modes). The account still
+	// carries must_change_password. While it does, a boot with this set
+	// re-hashes that one account's password to it: the recovery path when the
+	// first-boot log line was lost. Never read once the password was rotated.
+	// Env: SP_ADMIN_PASSWORD (or SP_AUTH_ADMIN_PASSWORD), bound in applyAuthEnv.
+	AdminPassword string `koanf:"admin_password"`
 	// AutoPersonalOrg creates a personal organization for a user who signs in
 	// belonging to none, instead of sending them to /no-org (spec
 	// 2026-10-30-04). TRI-STATE: nil means the deployment-mode default (on
@@ -3148,6 +3155,14 @@ func applyAuthEnv(cfg *AuthConfig) {
 	}
 	if v := strings.TrimSpace(os.Getenv("SP_ADMIN_EMAIL")); v != "" {
 		cfg.AdminEmail = v
+	}
+	// auth.admin_password: SP_ADMIN_PASSWORD is the documented short name.
+	// Not trimmed: a password is taken byte for byte.
+	if v := os.Getenv("SP_AUTH_ADMIN_PASSWORD"); v != "" {
+		cfg.AdminPassword = v
+	}
+	if v := os.Getenv("SP_ADMIN_PASSWORD"); v != "" {
+		cfg.AdminPassword = v
 	}
 }
 

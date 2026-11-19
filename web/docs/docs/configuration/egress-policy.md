@@ -98,7 +98,7 @@ towards a refused address.
 | js | Every `http`, socket and websocket call, and every sub-check |
 | dns, dnsbl | A custom `nameserver`. The worker's own system resolver is not a target and is not guarded |
 | freebox_line, kubernetes | The box's base URL, the cluster's API server |
-| browser, js `browser.open()` | The navigated URL before Chrome loads it, and the address of every response while the page loads (see limits) |
+| browser, js `browser.open()` | Every connection Chrome makes, WebSockets included, through a guarded proxy; the navigated URL before Chrome loads it (see limits) |
 | Any check with an [SSH tunnel](/features/ssh-tunnels) | The bastion. What the bastion reaches is its own network, not the worker's |
 | domain | Not guarded: it queries the registries' RDAP and WHOIS servers, not a host you choose |
 | heartbeat, email, private_location | Not guarded: passive, they make no outbound connection |
@@ -163,40 +163,52 @@ one an org member supplies, so none of them go through this check.
 
 Chrome has its own network stack and resolver, so it cannot be handed the
 guard. Under an enforcing policy a browser check (or a script's
-`page.goto()`) gets three layers instead:
+`browser.open()`) gets these layers instead:
 
-1. **Before navigating**, the URL is read the way Chrome reads it. Only
+1. **Every connection goes through the guard.** Each browser session starts
+   its own proxy on the worker's loopback and Chrome is told to send all its
+   traffic through it, localhost included: the main document,
+   subresources, `fetch`/XHR calls, redirects and WebSockets. The proxy
+   resolves and connects with the guard, so a non-public destination is
+   refused **before it is contacted**. The check then fails with the egress
+   error.
+2. **Before navigating**, the URL is read the way Chrome reads it. Only
    `http`/`https` URLs with a host are accepted (`http:127.0.0.1/` is
    refused). Legacy IPv4 spellings (`2130706433`, `0x7f000001`,
    `0177.0.0.1`, `127.1`) are judged as the address they mean. A host that
    resolves to a non-public address is refused, and so is a host that does
    not resolve at all.
-2. **The approved address is pinned** for Chrome's resolver, so a DNS
-   answer that changes after the check (rebinding) never reaches Chrome.
-   This only happens when SolidPing starts Chrome itself for the check (no
-   `SP_CHECKERS_BROWSER_CDP_URL`). A remote Chrome is shared by every check
-   and its flags are fixed when it starts, so it cannot be pinned per check.
-   A script's `browser.open()` starts Chrome before the script says where it
-   will go, so script navigations are not pinned either.
-3. **While the page loads**, the address Chrome actually connected to is
-   checked for every response and every redirect: the main document,
-   subresources, `fetch`/XHR calls. The first non-public one fails the check
-   with the egress error. Nothing read from the page after that (title,
-   text, `evaluate`, screenshot) reaches the result.
+3. **Chrome's own resolver denies by default** when SolidPing starts Chrome
+   itself (no `SP_CHECKERS_BROWSER_CDP_URL`): only the navigated host maps
+   to the address the pre-flight approved, every other name fails to
+   resolve. Anything that would not go through the proxy cannot reach a
+   host by name.
+4. **While the page loads**, the address Chrome actually connected to is
+   checked for every response and redirect, and the host of every WebSocket
+   the page opens. The first non-public one fails the check with the egress
+   error. Nothing read from the page after that (title, text, `evaluate`,
+   screenshot) reaches the result.
 
-What this still does not stop:
+The proxy (layer 1) needs Chrome to reach the worker's loopback. That is
+the case when SolidPing starts Chrome itself, and for a remote Chrome whose
+`SP_CHECKERS_BROWSER_CDP_URL` is on the loopback (`127.0.0.1`, `::1` or
+`localhost`), such as the [Kubernetes sidecar](/installation/kubernetes#browser-checks-headless-chrome-sidecar).
+A remote Chrome on another host (a separate Docker Compose service reached
+as `ws://browser:9222`) cannot reach it. It only gets layers 2 and 4, with
+these limits:
 
-- **The request itself.** Layer 3 sees a response after it arrived. When
-  layers 1 and 2 could not apply (a remote Chrome that got a rebound DNS
-  answer, a redirect or subresource pointing at a private address, a
-  script's own navigation), Chrome has already sent that request. The
-  content never reaches the result, but a request with side effects has
-  happened.
+- **The request itself.** Layer 4 sees a response after it arrived, so a
+  request to a private address (a redirect, a subresource, a rebound DNS
+  answer) has been sent. Its content never reaches the result.
 - **Requests that get no response** (connection refused, timeouts) are not
-  seen by layer 3. Their timing can still tell whether an internal address
-  answers.
-- **WebSocket connections opened by the page** do not report the address
-  they connected to and are not checked.
+  seen. Their timing can still tell whether an internal address answers.
+- **A WebSocket** to a private host fails the check, but the page's own
+  JavaScript may already have read its frames and sent them to the page's
+  origin.
+
+To get the proxy with Docker Compose, run the browser in SolidPing's network
+namespace (`network_mode: "service:solidping"`) and point
+`SP_CHECKERS_BROWSER_CDP_URL` at `ws://127.0.0.1:9222`.
 
 ### Outside the check workers
 

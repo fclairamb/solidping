@@ -180,7 +180,12 @@ What the tools cover:
   (`kind: "fetch"`) or snapshots it in the server's browser (`kind: "browser"`), so
   your own agent can write a [js check](/features/javascript-checks) without
   SolidPing calling an LLM ([AI-authored checks](/features/ai-authored-checks)).
-  It writes nothing and works with `mcp:read` tokens.
+  It writes nothing in SolidPing, but `kind: "script"` and `kind: "browser"` run
+  code or a browser on the server, so they need the full `mcp` scope and the
+  `user` role, like the dashboard's test run; `kind: "fetch"` works with
+  `mcp:read` tokens. An organization runs one probe at a time and at most 20 a
+  minute; a probe sent while another is running gets "too many runs in
+  progress, retry in 5 s".
 - **Status pages**: pages have their own CRUD tools. `get_status_page` with
   `include: ["sections", "resources", "incidents"]` reads the sub-resources, and
   `manage_status_page_section`, `manage_status_page_resource` and

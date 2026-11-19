@@ -208,6 +208,14 @@
       "sendFailed": "Senden des Codes fehlgeschlagen",
       "incorrectCode": "Falscher Code"
     },
+    "email": {
+      "unverifiedBadge": "Nicht bestätigt — bestätigen Sie diese Adresse, um E-Mail-Alarme zu erhalten",
+      "verify": {
+        "dialogTitle": "E-Mail-Adresse bestätigen",
+        "dialogDescription": "Wir senden einen 6-stelligen Code an {{phone}}. Geben Sie ihn unten ein, um zu bestätigen, dass Sie diese Adresse lesen und dort Alarme erhalten können.",
+        "verified": "E-Mail-Adresse bestätigt"
+      }
+    },
     "whatsapp": {
       "unverifiedBadge": "Nicht verifiziert — verifizieren, um WhatsApp-Benachrichtigungen zu erhalten",
       "afterAddHint": "Verifizieren Sie die Nummer nach dem Hinzufügen in WhatsApp, um Benachrichtigungen zu erhalten. Die Verifizierung gilt zugleich als Einwilligung in geschäftliche Nachrichten.",

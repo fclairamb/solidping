@@ -31,6 +31,13 @@ const (
 	ImpersonationPatternDiscordConnect  = "/api/v1/orgs/{org}/users/me/discord/connect"
 	ImpersonationPatternTelegramLink    = "/api/v1/orgs/{org}/users/me/telegram/link"
 	ImpersonationPatternDiscoveryScans  = "/api/v1/orgs/{org}/discovery/scans"
+	// The generic paging-contact routes (spec 2026-11-19-02): adding a
+	// contact, re-enabling a route, and the code round trip that makes a
+	// phone, WhatsApp or email contact pageable.
+	ImpersonationPatternNotificationContacts = "/api/v1/orgs/{org}/users/me/notification-contacts"
+	ImpersonationPatternNotificationRoute    = "/api/v1/orgs/{org}/users/me/notification-routes/{routeUid}"
+	ImpersonationPatternContactVerify        = "/api/v1/orgs/{org}/users/me/notification-contacts/{contactUid}/verify"
+	ImpersonationPatternContactVerifyConfirm = ImpersonationPatternContactVerify + "/confirm"
 )
 
 // impersonationForbiddenRoutes is the credential-changing surface. It is a
@@ -84,6 +91,15 @@ var impersonationForbiddenRoutes = []demoAllowedRoute{
 	// target's pages would land on an admin-controlled chat.
 	{http.MethodPost, ImpersonationPatternDiscordConnect},
 	{http.MethodPost, ImpersonationPatternTelegramLink},
+	// The generic contact routes reach the same result (spec 2026-11-19-02):
+	// an email, web push, ntfy or Pushover contact is pageable as soon as it
+	// is added, a disabled route pages again once re-enabled, and a confirmed
+	// code makes a phone, WhatsApp or email contact pageable. Removing a
+	// contact stays allowed: it never redirects a page.
+	{http.MethodPost, ImpersonationPatternNotificationContacts},
+	{http.MethodPatch, ImpersonationPatternNotificationRoute},
+	{http.MethodPost, ImpersonationPatternContactVerify},
+	{http.MethodPost, ImpersonationPatternContactVerifyConfirm},
 	// A discovery scan may run from the customer's own agents, inside their
 	// network (spec 2026-10-22-04): never on someone else's behalf.
 	{http.MethodPost, ImpersonationPatternDiscoveryScans},

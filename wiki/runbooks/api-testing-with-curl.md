@@ -80,7 +80,10 @@ curl -s -H "Authorization: Bearer eyJhbGci..." 'http://localhost:4000/api/v1/org
 
 ## Default Credentials
 - **Email**: `admin@solidping.io`
-- **Password**: `solidpass`
+- **Password**: `solidpass` under `make dev` / `make dev-test` and in the `test`
+  and `demo` run modes. In the default run mode the first password is random,
+  printed once in the `First login` log line, unless `SP_ADMIN_PASSWORD` pins it
+  (spec 2026-11-19-01).
 - **Organization**: `default`
 
 On a **fresh database** this account is seeded with `must_change_password`, so

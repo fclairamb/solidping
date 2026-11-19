@@ -343,6 +343,7 @@ dev: kill dev-browser ## Run backend, dash0 and status0 in development mode (dem
 		cd $(BACK_DIR) && SP_REDIRECTS="/d:localhost:5174/d,/s:localhost:5175/s" SP_PROFILER_ENABLED=true \
 		SP_DB_MIGRATION_GUARD_MODE=warn \
 		SP_DEMO_ENABLED=$(DEMO) \
+		SP_ADMIN_PASSWORD="$${SP_ADMIN_PASSWORD:-solidpass}" \
 		SP_PLUGINS_DIR="$${SP_PLUGINS_DIR:-$(CURDIR)/plugins}" \
 		SP_CHECKERS_BROWSER_CDP_URL="$${SP_CHECKERS_BROWSER_CDP_URL-$(BROWSER_CDP_URL)}" \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
@@ -537,7 +538,7 @@ dev-docs: ## Start docs (Docusaurus) dev server on :3000
 
 dev-backend: ## Start backend development server (hot reload via cmd/devloop, rotating log; demo on)
 	@echo "Starting backend dev server (demo: $(DEMO))..."
-	@cd $(BACK_DIR) && SP_DEMO_ENABLED=$(DEMO) go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS)
+	@cd $(BACK_DIR) && SP_DEMO_ENABLED=$(DEMO) SP_ADMIN_PASSWORD="$${SP_ADMIN_PASSWORD:-solidpass}" go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS)
 
 deps: ## Install all dependencies
 	@echo "Installing backend dependencies..."

@@ -5,6 +5,7 @@ import { ArrowLeft, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import {
   useIncidentPublication,
+  useStatusPage,
   useUpdateIncidentPublication,
   useAppendPublicationUpdate,
   type PublicationSeverity,
@@ -35,7 +36,12 @@ import {
   publicationSeverityLabel,
   publicationStateLabel,
 } from "@/lib/publication-labels";
-import { localizeGenerated } from "@/lib/localized-text";
+import { TranslationsEditor } from "@/components/shared/translations-editor";
+import {
+  cleanTranslations,
+  localizeGenerated,
+  type Translations,
+} from "@/lib/localized-text";
 
 export const Route = createFileRoute(
   "/orgs/$org/status-pages/$statusPageUid/incidents/$uid",
@@ -86,6 +92,9 @@ function PublicationEditorPage() {
 
   const [title, setTitle] = useState<string | null>(null);
   const [severity, setSeverity] = useState<string | null>(null);
+  // null = untouched: the stored map is shown and nothing changes on save.
+  const [translationsDraft, setTranslationsDraft] = useState<Translations | null>(null);
+  const { data: statusPage } = useStatusPage(org, statusPageUid);
   const [updateKind, setUpdateKind] = useState<string>("investigating");
   const [updateBody, setUpdateBody] = useState("");
 
@@ -112,6 +121,7 @@ function PublicationEditorPage() {
   if (!publication) return null;
 
   const effectiveTitle = title ?? publication.title;
+  const effectiveTranslations = translationsDraft ?? publication.translations ?? {};
   const effectiveSeverity = severity ?? publication.severity ?? "none";
 
   const backToPage = () =>
@@ -128,7 +138,10 @@ function PublicationEditorPage() {
         </Button>
         <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl break-words">
-            {localizeGenerated(t, publication.titleI18n, publication.title)}
+            {localizeGenerated(t, publication.titleI18n, publication.title, {
+              translations: publication.translations,
+              field: "title",
+            })}
           </h1>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <Badge
@@ -199,6 +212,13 @@ function PublicationEditorPage() {
             </Select>
           </div>
 
+          <TranslationsEditor
+            value={effectiveTranslations}
+            onChange={setTranslationsDraft}
+            withBody={false}
+            pageLanguage={statusPage?.language}
+          />
+
           <Button
             type="button"
             disabled={updatePublication.isPending}
@@ -206,6 +226,11 @@ function PublicationEditorPage() {
             onClick={async () => {
               await updatePublication.mutateAsync({
                 title: effectiveTitle,
+                // The whole map is replaced; {} clears it. Left out when the
+                // editor was not touched.
+                ...(translationsDraft
+                  ? { translations: cleanTranslations(translationsDraft) }
+                  : {}),
                 severity:
                   effectiveSeverity === "none"
                     ? ""
@@ -214,6 +239,7 @@ function PublicationEditorPage() {
               toast.success(t("publications.updated"));
               setTitle(null);
               setSeverity(null);
+              setTranslationsDraft(null);
             }}
           >
             {updatePublication.isPending && (
@@ -324,7 +350,10 @@ function PublicationEditorPage() {
                     )}
                   </div>
                   <p className="mt-1 text-sm whitespace-pre-wrap break-words">
-                    {localizeGenerated(t, update.bodyI18n, update.bodyMarkdown)}
+                    {localizeGenerated(t, update.bodyI18n, update.bodyMarkdown, {
+                      translations: update.translations,
+                      field: "body",
+                    })}
                   </p>
                 </li>
               ))}
