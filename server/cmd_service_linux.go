@@ -150,6 +150,10 @@ func serviceInstall(ctx context.Context, name, dir string) error {
 		return err
 	}
 
+	if err = writeConfigEnv(absDir, owner); err != nil {
+		return err
+	}
+
 	if err = os.MkdirAll(filepath.Dir(job.unitPath), 0o755); err != nil {
 		return fmt.Errorf("create %s: %w", filepath.Dir(job.unitPath), err)
 	}
@@ -176,13 +180,55 @@ func serviceInstall(ctx context.Context, name, dir string) error {
 func printSystemdInstalled(job systemdJob, absDir string) {
 	_, _ = fmt.Fprintf(os.Stdout, "Service %q installed (%s).\n", job.name, job.kind())
 	_, _ = fmt.Fprintf(os.Stdout, "Unit:          %s\n", job.unitPath)
-	_, _ = fmt.Fprintf(os.Stdout, "Configuration: %s\n", filepath.Join(absDir, "config.yml"))
+	_, _ = fmt.Fprintf(os.Stdout, "Configuration (YAML): %s\n", filepath.Join(absDir, "config.yml"))
+	_, _ = fmt.Fprintf(os.Stdout, "Configuration (ENV):  %s\n", filepath.Join(absDir, "config.env"))
 	_, _ = fmt.Fprintf(os.Stdout, "Logs:          journalctl %s\n", strings.Join(job.managerArgs("-u", job.name), " "))
 	_, _ = fmt.Fprintln(os.Stdout, "Start it with: solidping service start")
 
 	if !job.root {
 		_, _ = fmt.Fprintln(os.Stdout, "To start it at boot rather than at login: loginctl enable-linger")
 	}
+}
+
+// configEnvTemplate is the commented starter config.env install writes. Every
+// SP_* variable overrides the matching config.yml key (SP_DB_URL is db.url),
+// so the first start can be prepared with environment variables alone.
+const configEnvTemplate = `# SolidPing environment configuration, loaded by the systemd unit
+# (EnvironmentFile=). Each SP_* variable overrides the matching config.yml
+# key: SP_DB_URL is db.url. Uncomment what you need, then restart the service.
+# Keep this file private: it can hold secrets (chmod 600).
+
+# Email of the super admin created on the first start:
+# SP_ADMIN_EMAIL=admin@example.com
+
+# PostgreSQL instead of the default SQLite:
+# SP_DB_TYPE=postgres
+# SP_DB_URL=postgres://user:password@localhost:5432/solidping?sslmode=disable
+`
+
+// writeConfigEnv creates config.env in the data folder, owner-readable only
+// since it can hold secrets, and hands it to the service user like the folder.
+// A file that already exists is left alone: it may hold what the operator set.
+func writeConfigEnv(dir string, owner int) error {
+	p := filepath.Join(dir, "config.env")
+
+	if _, err := os.Lstat(p); err == nil {
+		return nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("check %s: %w", p, err)
+	}
+
+	if err := os.WriteFile(p, []byte(configEnvTemplate), 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", p, err)
+	}
+
+	if owner != -1 {
+		if err := chownPath(p, owner, -1); err != nil {
+			return fmt.Errorf("hand %s to %s: %w", p, systemdServiceUser, err)
+		}
+	}
+
+	return nil
 }
 
 // installTrustedUIDs are the accounts that may control the binary and the
