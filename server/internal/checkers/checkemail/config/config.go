@@ -10,6 +10,8 @@ package config
 
 import (
 	"slices"
+	"strings"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
@@ -21,6 +23,12 @@ const (
 	KeyRequireDMARC    = "require_dmarc"
 	KeyCheckBlocklists = "check_blocklists"
 	KeyBlocklists      = "blocklists"
+
+	// KeyMaxDeliveryDelay is the optional send-to-receive limit of a probe mail.
+	KeyMaxDeliveryDelay = "max_delivery_delay"
+
+	// MinMaxDeliveryDelay is the smallest accepted max_delivery_delay.
+	MinMaxDeliveryDelay = time.Minute
 )
 
 // SPF requirement levels (a minimum, see SPFAccepts).
@@ -53,6 +61,9 @@ type EmailConfig struct {
 	// Blocklists are the DNSBL zones; empty means the dnsbl checker defaults.
 	// Setting any implies CheckBlocklists.
 	Blocklists []string `json:"blocklists,omitempty"`
+	// MaxDeliveryDelay is the longest accepted send-to-receive delay of a probe
+	// mail carrying X-SolidPing-Sent-At. Zero means no limit.
+	MaxDeliveryDelay time.Duration `json:"-"`
 }
 
 // AuthEnabled reports whether any sender-authentication option is set.
@@ -80,6 +91,22 @@ func (c *EmailConfig) SPFAccepts(verdict string) bool {
 	}
 }
 
+// FormatDuration renders a duration without the zero tail: 10m0s as 10m and
+// 1h0m0s as 1h.
+func FormatDuration(d time.Duration) string {
+	text := d.String()
+
+	if strings.HasSuffix(text, "m0s") {
+		text = strings.TrimSuffix(text, "0s")
+	}
+
+	if strings.HasSuffix(text, "h0m") {
+		text = strings.TrimSuffix(text, "0m")
+	}
+
+	return text
+}
+
 // FromMap populates the configuration from a map.
 func (c *EmailConfig) FromMap(configMap map[string]any) error {
 	if token, ok := configMap["token"].(string); ok {
@@ -91,6 +118,31 @@ func (c *EmailConfig) FromMap(configMap map[string]any) error {
 	if err := c.authFromMap(configMap); err != nil {
 		return err
 	}
+
+	return c.delayFromMap(configMap)
+}
+
+func (c *EmailConfig) delayFromMap(configMap map[string]any) error {
+	raw, ok := configMap[KeyMaxDeliveryDelay]
+	if !ok || raw == nil {
+		return nil
+	}
+
+	text, isString := raw.(string)
+	if !isString {
+		return checkerdef.NewConfigError(KeyMaxDeliveryDelay, "must be a duration string such as \"10m\"")
+	}
+
+	if text == "" {
+		return nil
+	}
+
+	delay, err := time.ParseDuration(text)
+	if err != nil {
+		return checkerdef.NewConfigError(KeyMaxDeliveryDelay, "must be a duration string such as \"10m\"")
+	}
+
+	c.MaxDeliveryDelay = delay
 
 	return nil
 }
@@ -168,6 +220,10 @@ func (c *EmailConfig) GetConfig() map[string]any {
 
 	if len(c.Blocklists) > 0 {
 		cfg[KeyBlocklists] = c.Blocklists
+	}
+
+	if c.MaxDeliveryDelay != 0 {
+		cfg[KeyMaxDeliveryDelay] = FormatDuration(c.MaxDeliveryDelay)
 	}
 
 	return cfg

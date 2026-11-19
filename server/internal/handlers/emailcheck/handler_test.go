@@ -236,7 +236,9 @@ func TestEnrichFromSMTPHeadersMalformedSentAt(t *testing.T) {
 	metrics := models.JSONMap{}
 	enrichFromSMTPHeaders(output, metrics, &email, "org-uid")
 
-	r.Empty(output, "an unparsable Sent-At must degrade to plain behavior, not a partial enrichment")
+	// An unparsable Sent-At falls back to Date; with no Date there is no send
+	// time, only the attribution.
+	r.Equal(models.JSONMap{outputKeySourceCheckUID: "sending-check-uid"}, output)
 	r.Empty(metrics)
 }
 

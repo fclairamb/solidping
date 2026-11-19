@@ -8,6 +8,7 @@ package emailcheck
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -52,6 +53,7 @@ const (
 	outputKeyReceivedAt     = "receivedAt"
 	outputKeySourceCheckUID = "sourceCheckUid"
 	outputKeySentAt         = "sentAt"
+	outputKeySentAtSource   = "sentAtSource"
 	outputKeyLatencyMs      = "latencyMs"
 	outputKeyAuth           = "auth"
 	metricBlocklistedCount  = "blocklisted_count"
@@ -271,38 +273,58 @@ func findHeader(headers []jmap.EmailHeader, name string) string {
 	return ""
 }
 
-// enrichFromSMTPHeaders parses the optional send-mode attribution headers
-// (spec 2026-08-19-04) and, when present, adds sourceCheckUid/sentAt/latencyMs
-// to output and records the latency metric. Messages without the headers (or
-// with an unparsable Sent-At) are left byte-for-byte as they were before this
-// feature — full backward compatibility with human/heartbeat-style uses of
-// the email check.
+// Values of the sentAtSource output key: which clock produced sentAt.
+const (
+	sentAtSourceHeader = "header" // X-SolidPing-Sent-At, SolidPing's own clock
+	sentAtSourceDate   = "date"   // the mail's Date header, the sender's clock
+)
+
+// emailSentAt decides when a mail was sent: X-SolidPing-Sent-At when it
+// parses (SolidPing's own clock), otherwise the mail's Date header
+// (jmap.Email.SentAt, the sender's clock, a fallback only). ok is false when
+// neither is usable. It returns the send time, its source and ok.
+func emailSentAt(email *jmap.Email) (time.Time, string, bool) {
+	if raw := findHeader(email.Headers, headerSentAt); raw != "" {
+		if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
+			return parsed, sentAtSourceHeader, true
+		}
+	}
+
+	if email.SentAt != nil && !email.SentAt.IsZero() {
+		return *email.SentAt, sentAtSourceDate, true
+	}
+
+	return time.Time{}, "", false
+}
+
+// enrichFromSMTPHeaders adds the send-mode attribution (sourceCheckUid, spec
+// 2026-08-19-04) and the delivery timing (sentAt/sentAtSource/latencyMs) to
+// output, and records the latency metric. The send time comes from
+// emailSentAt, so a mail from any other sender gets a latency from its Date
+// header. A mail with neither send time is left as it was.
 //
-// latencyMs is dropped (attribution kept) when it would be negative — the
-// worker clock and the mail path's clock are not the same box, so a
-// non-monotonic reading is a clock artifact, not a real "email arrived before
-// it was sent" — or larger than maxSaneDeliveryLatency.
+// latencyMs is dropped (sentAt kept) when it would be negative — the sender's
+// clock and the mail path's clock are not the same box, so a non-monotonic
+// reading is a clock artifact, not a real "email arrived before it was sent" —
+// or larger than maxSaneDeliveryLatency. Such a mail is never judged late.
 func enrichFromSMTPHeaders(
 	output, metrics models.JSONMap, email *jmap.Email, orgUID string,
-) {
-	sourceCheckUID := findHeader(email.Headers, headerSourceCheckUID)
-	sentAtRaw := findHeader(email.Headers, headerSentAt)
-
-	if sourceCheckUID == "" || sentAtRaw == "" {
-		return
+) (time.Duration, bool) {
+	if sourceCheckUID := findHeader(email.Headers, headerSourceCheckUID); sourceCheckUID != "" {
+		output[outputKeySourceCheckUID] = sourceCheckUID
 	}
 
-	sentAt, err := time.Parse(time.RFC3339, sentAtRaw)
-	if err != nil {
-		return
+	sentAt, source, ok := emailSentAt(email)
+	if !ok {
+		return 0, false
 	}
 
-	output[outputKeySourceCheckUID] = sourceCheckUID
 	output[outputKeySentAt] = sentAt.Format(time.RFC3339)
+	output[outputKeySentAtSource] = source
 
 	latency := email.ReceivedAt.Sub(sentAt)
 	if latency < 0 || latency > maxSaneDeliveryLatency {
-		return
+		return 0, false
 	}
 
 	latencyMs := float64(latency.Microseconds()) / 1000.0
@@ -310,6 +332,8 @@ func enrichFromSMTPHeaders(
 	metrics[outputKeyLatencyMs] = latencyMs
 
 	prommetrics.EmailDeliveryLatency.WithLabelValues(orgUID).Observe(latency.Seconds())
+
+	return latency, true
 }
 
 func normalizeStatus(raw string) (string, bool) {
@@ -424,8 +448,6 @@ func (h *Handler) recordResult(
 		return err
 	}
 
-	durationMs := float32(0)
-
 	from, messageID := senderAndMessageID(email)
 
 	if h.alreadyRecorded(ctx, check.OrganizationUID, check.UID, messageID, origin) {
@@ -435,31 +457,32 @@ func (h *Handler) recordResult(
 	metrics := make(models.JSONMap)
 	message := defaultMessage(status)
 
-	var authOutput map[string]any
-
-	if status == statusUp {
-		var failed string
-		if authOutput, failed = h.applySenderAuth(ctx, check, email, metrics); failed != "" {
-			status, message = statusDown, failed
-		}
-	}
-
-	checkerStatus := toCheckerStatus(status)
-	statusInt := int(checkerStatus)
-
 	output := models.JSONMap{
-		outputKeyMessage:    message,
 		outputKeyFrom:       from,
 		outputKeySubject:    email.Subject,
 		outputKeyMessageID:  messageID,
 		outputKeyReceivedAt: email.ReceivedAt.Format(time.RFC3339),
 	}
 
-	if authOutput != nil {
-		output[outputKeyAuth] = authOutput
+	// The latency is known before the status is decided: the delivery delay
+	// limit is part of the verdict.
+	latency, hasLatency := enrichFromSMTPHeaders(output, metrics, email, check.OrganizationUID)
+
+	durationMs := float32(0)
+	if hasLatency {
+		durationMs = float32(latency.Microseconds()) / 1000
 	}
 
-	enrichFromSMTPHeaders(output, metrics, email, check.OrganizationUID)
+	if status == statusUp {
+		if failed := h.upStatusFailures(ctx, check, email, output, metrics, latency, hasLatency); failed != "" {
+			status, message = statusDown, failed
+		}
+	}
+
+	output[outputKeyMessage] = message
+
+	checkerStatus := toCheckerStatus(status)
+	statusInt := int(checkerStatus)
 
 	now := time.Now()
 	result := &models.Result{
@@ -492,6 +515,52 @@ func (h *Handler) recordResult(
 	}
 
 	return nil
+}
+
+// upStatusFailures runs the two checks a token-derived up goes through (sender
+// authentication, then the delivery delay) and returns their joined failure
+// message, "" when both pass. The auth block is added to output in every case.
+func (h *Handler) upStatusFailures(
+	ctx context.Context, check *models.Check, email *jmap.Email,
+	output, metrics models.JSONMap, latency time.Duration, hasLatency bool,
+) string {
+	var failures []string
+
+	authOutput, failed := h.applySenderAuth(ctx, check, email, metrics)
+	if authOutput != nil {
+		output[outputKeyAuth] = authOutput
+	}
+
+	if failed != "" {
+		failures = append(failures, failed)
+	}
+
+	if late := lateDeliveryMessage(check, latency, hasLatency); late != "" {
+		failures = append(failures, late)
+	}
+
+	return strings.Join(failures, "; ")
+}
+
+// lateDeliveryMessage returns the failure message when the check has a
+// max_delivery_delay and the probe took longer than it, "" otherwise. A mail
+// without a trustworthy send time (no X-SolidPing-Sent-At) is never late.
+func lateDeliveryMessage(check *models.Check, latency time.Duration, hasLatency bool) string {
+	if !hasLatency {
+		return ""
+	}
+
+	cfg := &emailconfig.EmailConfig{}
+	if err := cfg.FromMap(check.Config); err != nil || cfg.MaxDeliveryDelay <= 0 {
+		return ""
+	}
+
+	if latency <= cfg.MaxDeliveryDelay {
+		return ""
+	}
+
+	return fmt.Sprintf("delivered after %s, limit %s",
+		emailconfig.FormatDuration(latency.Round(time.Second)), emailconfig.FormatDuration(cfg.MaxDeliveryDelay))
 }
 
 // applySenderAuth runs the optional sender-authentication evaluation of the check

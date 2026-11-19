@@ -1418,6 +1418,10 @@ type Service interface {
 	// limit still gives every check a turn. A check with degraded detection
 	// off is not evaluated at all.
 	ListChecksForDegradedEval(ctx context.Context, limit int) ([]*models.Check, error)
+	// ListEnabledChecksByType returns every enabled, live, non-internal check of
+	// the given types across every organization (the email delivery watch's
+	// input; the caller filters on config).
+	ListEnabledChecksByType(ctx context.Context, types []string) ([]*models.Check, error)
 	// FindActiveDegradedIncident returns the open degraded incident for a check,
 	// if any. sql.ErrNoRows when there is none.
 	FindActiveDegradedIncident(ctx context.Context, checkUID string) (*models.Incident, error)

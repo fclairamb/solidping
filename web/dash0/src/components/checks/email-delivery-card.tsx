@@ -2,7 +2,10 @@
 // result (spec 2026-08-19-04): when the receiving JMAP handler found the
 // X-SolidPing-Check / X-SolidPing-Sent-At headers, the result output carries
 // sourceCheckUid/sentAt/latencyMs. This card shows the latency and links back
-// to the sending SMTP check. Renders nothing when those fields are absent —
+// to the sending SMTP check. A mail from any other sender gets its send time
+// from its Date header (sentAtSource "date", spec 2026-11-18-03): the card then
+// shows the latency, flagged as measured on the sender's clock, without the
+// link. Renders nothing when neither sourceCheckUid nor sentAt is present —
 // the overwhelming majority of email-check results (human/heartbeat-style
 // uses, or a header stripped by an intermediate MTA), so it is safe to mount
 // unconditionally next to DnsblCard on the result-detail page.
@@ -22,12 +25,16 @@ type Output = Record<string, unknown>;
 // EMAIL_DELIVERY_OUTPUT_KEYS are the keys this card renders itself. The
 // result-detail page strips these from its raw JSON dump so nothing is shown
 // twice — mirrors DNSBL_OUTPUT_KEYS.
-export const EMAIL_DELIVERY_OUTPUT_KEYS = ["sourceCheckUid", "sentAt", "latencyMs", "auth"] as const;
+export const EMAIL_DELIVERY_OUTPUT_KEYS = [
+  "sourceCheckUid",
+  "sentAt",
+  "sentAtSource",
+  "latencyMs",
+  "auth",
+] as const;
 
-function isEmailDeliveryOutput(output: Output | undefined): output is Output & {
-  sourceCheckUid: string;
-} {
-  return Boolean(output) && typeof output?.sourceCheckUid === "string" && output.sourceCheckUid !== "";
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
 }
 
 function formatLatency(latencyMs: unknown): string | null {
@@ -138,25 +145,33 @@ export function EmailDeliveryCard({ org, output }: { org: string; output: Output
 
 function SendModeDeliveryCard({ org, output }: { org: string; output: Output | undefined }) {
   const { t } = useTranslation("checks");
-  if (!isEmailDeliveryOutput(output)) return null;
+  const sourceCheckUid = nonEmptyString(output?.sourceCheckUid);
+  const sentAt = nonEmptyString(output?.sentAt);
+  if (!sourceCheckUid && !sentAt) return null;
 
-  const sourceCheckUid = output.sourceCheckUid;
-  const sentAt = typeof output.sentAt === "string" ? output.sentAt : undefined;
-  const latency = formatLatency(output.latencyMs);
+  const latency = formatLatency(output?.latencyMs);
+  const fromDateHeader = output?.sentAtSource === "date";
 
   return (
     <Card data-testid="email-delivery-card">
       <CardHeader>
         <CardTitle className="text-base">{t("mail.sendModeDelivery")}</CardTitle>
-        <CardDescription>
-          {t("mail.sendModeDeliveryDescription")}
-        </CardDescription>
+        {sourceCheckUid && (
+          <CardDescription>
+            {t("mail.sendModeDeliveryDescription")}
+          </CardDescription>
+        )}
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
         {latency && (
           <div>
             <span className="text-muted-foreground">{t("mail.deliveryLatency")} </span>
-            <code className="font-mono">{latency}</code>
+            <code className="font-mono" data-testid="email-delivery-latency">{latency}</code>
+            {fromDateHeader && (
+              <span className="ml-2 text-xs text-muted-foreground" data-testid="email-delivery-sent-at-source">
+                {t("mail.sentAtSourceDate")}
+              </span>
+            )}
           </div>
         )}
         {sentAt && (
@@ -165,15 +180,17 @@ function SendModeDeliveryCard({ org, output }: { org: string; output: Output | u
             <code className="font-mono">{new Date(sentAt).toLocaleString()}</code>
           </div>
         )}
-        <Link
-          to="/orgs/$org/checks/$checkUid"
-          params={{ org, checkUid: sourceCheckUid }}
-          className="inline-flex items-center gap-1 text-primary hover:underline"
-          data-testid="email-delivery-source-link"
-        >
-          <Mail className="h-3.5 w-3.5" />
-          {t("mail.viewSendingSmtpCheck")}
-        </Link>
+        {sourceCheckUid && (
+          <Link
+            to="/orgs/$org/checks/$checkUid"
+            params={{ org, checkUid: sourceCheckUid }}
+            className="inline-flex items-center gap-1 text-primary hover:underline"
+            data-testid="email-delivery-source-link"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            {t("mail.viewSendingSmtpCheck")}
+          </Link>
+        )}
       </CardContent>
     </Card>
   );
