@@ -210,21 +210,21 @@ const configEnvTemplate = `# SolidPing environment configuration, loaded by the 
 // since it can hold secrets, and hands it to the service user like the folder.
 // A file that already exists is left alone: it may hold what the operator set.
 func writeConfigEnv(dir string, owner int) error {
-	p := filepath.Join(dir, "config.env")
+	path := filepath.Join(dir, "config.env")
 
-	if _, err := os.Lstat(p); err == nil {
+	if _, err := os.Lstat(path); err == nil {
 		return nil
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("check %s: %w", p, err)
+		return fmt.Errorf("check %s: %w", path, err)
 	}
 
-	if err := os.WriteFile(p, []byte(configEnvTemplate), 0o600); err != nil {
-		return fmt.Errorf("write %s: %w", p, err)
+	if err := os.WriteFile(path, []byte(configEnvTemplate), 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
 	}
 
 	if owner != -1 {
-		if err := chownPath(p, owner, -1); err != nil {
-			return fmt.Errorf("hand %s to %s: %w", p, systemdServiceUser, err)
+		if err := chownPath(path, owner, -1); err != nil {
+			return fmt.Errorf("hand %s to %s: %w", path, systemdServiceUser, err)
 		}
 	}
 
