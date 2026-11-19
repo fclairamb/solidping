@@ -111,7 +111,7 @@ func TestCreateContactAndRoute(t *testing.T) {
 
 	r := require.New(t)
 
-	status, body := authedRequestWithBody(t, ts, http.MethodPost, notifContactsPath, map[string]any{
+	status, body := sessionRequestWithBody(t, ts, http.MethodPost, notifContactsPath, map[string]any{
 		"type":  "phone",
 		"value": "+33612345678",
 		"label": "Mobile",
@@ -143,7 +143,7 @@ func TestPatchRouteEnabled(t *testing.T) {
 
 	// Disable it.
 	disabled := false
-	status, body := authedRequestWithBody(t, ts, http.MethodPatch,
+	status, body := sessionRequestWithBody(t, ts, http.MethodPatch,
 		"/api/v1/orgs/"+TestOrgSlug+"/users/me/notification-routes/"+routeUID,
 		map[string]any{"enabled": disabled},
 	)
@@ -160,7 +160,7 @@ func TestDeleteContact(t *testing.T) {
 	r := require.New(t)
 
 	// Create a phone contact.
-	status, body := authedRequestWithBody(t, ts, http.MethodPost, notifContactsPath, map[string]any{
+	status, body := sessionRequestWithBody(t, ts, http.MethodPost, notifContactsPath, map[string]any{
 		"type":  "phone",
 		"value": "+33699887766",
 		"label": "Test phone",
