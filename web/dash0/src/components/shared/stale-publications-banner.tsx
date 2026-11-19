@@ -89,7 +89,10 @@ export function StalePublicationsBanner({
                       className="underline underline-offset-2 hover:opacity-80"
                       data-testid="stale-publication-link"
                     >
-                      {localizeGenerated(t, publication.titleI18n, publication.title)}
+                      {localizeGenerated(t, publication.titleI18n, publication.title, {
+                        translations: publication.translations,
+                        field: "title",
+                      })}
                     </Link>
                   </li>
                 ))}

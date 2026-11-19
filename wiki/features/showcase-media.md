@@ -94,7 +94,9 @@ sets the account display name via `PATCH /api/v1/auth/me` so the sidebar reads
 That is also why `SP_RUNMODE=test` is *not* used for recording: its identity is
 `test@test.com` and its seeded fixtures (e.g. "Notified Check →
 https://example.com") would appear in the sidebar and the checks list. Default
-run mode's `admin@solidping.io` / `solidpass` reads plausibly instead. All of
+run mode's `admin@solidping.io` reads plausibly instead (its side-car is started
+with `SP_ADMIN_PASSWORD=solidpass`, since the default run mode otherwise seeds a
+random password). All of
 it is inside `make showcase` — no manual setup step.
 
 `make showcase` is **manual only** — there is no CI job and no scheduled

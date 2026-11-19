@@ -380,7 +380,8 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	var connString string
 	switch cfg.Database.Type {
 	case "postgres":
-		connString = cfg.Database.URL
+		// lib/pq wants a Unix socket's directory, pgdriver its file: see postgres.ListenerDSN.
+		connString = postgres.ListenerDSN(cfg.Database.URL)
 	case "postgres-embedded":
 		//nolint:lll // DSN string clarity over line length
 		connString = fmt.Sprintf("postgres://postgres:postgres@localhost:%d/solidping_test?sslmode=disable", embeddedPostgresPort)

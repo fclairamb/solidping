@@ -109,5 +109,5 @@ test("should see dashboard", async ({ authenticatedPage }) => {
 
 Default test credentials (from AGENTS.md):
 - Email: `admin@solidping.io`
-- Password: `solidpass`
+- Password: `solidpass` (kept by `SP_RUNMODE=test`; the default run mode seeds a random one)
 - Organization: `default`

@@ -12,6 +12,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { TranslationsEditor } from "@/components/shared/translations-editor";
+import type { Translations } from "@/lib/localized-text";
 import {
   Select,
   SelectContent,
@@ -38,6 +40,8 @@ export interface StatusUpdateFormData {
   bodyMarkdown: string;
   linkUrl: string;
   publishedAt: string;
+  /** Draft of the hand-written text in other languages. */
+  translations: Translations;
 }
 
 export function emptyFormData(defaultPageUid = ""): StatusUpdateFormData {
@@ -50,6 +54,7 @@ export function emptyFormData(defaultPageUid = ""): StatusUpdateFormData {
     bodyMarkdown: "",
     linkUrl: "",
     publishedAt: new Date().toISOString().slice(0, 16),
+    translations: {},
   };
 }
 
@@ -63,6 +68,7 @@ export function formDataFromUpdate(update: StatusUpdate): StatusUpdateFormData {
     bodyMarkdown: update.bodyMarkdown,
     linkUrl: update.linkUrl ?? "",
     publishedAt: new Date(update.publishedAt).toISOString().slice(0, 16),
+    translations: { ...(update.translations ?? {}) },
   };
 }
 
@@ -315,6 +321,17 @@ export function StatusUpdateForm({
               onChange={(e) => setForm((f) => ({ ...f, publishedAt: e.target.value }))}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-6">
+          <TranslationsEditor
+            value={form.translations}
+            onChange={(translations) => setForm((f) => ({ ...f, translations }))}
+            withBody
+            pageLanguage={selectedPage?.language}
+          />
         </CardContent>
       </Card>
 

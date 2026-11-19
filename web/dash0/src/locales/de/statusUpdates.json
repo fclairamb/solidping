@@ -60,5 +60,17 @@
     "saving": "Wird gespeichert…",
     "create": "Erstellen",
     "saveChanges": "Änderungen speichern"
+  },
+  "translations": {
+    "heading": "Weitere Sprachen",
+    "description": "Schreiben Sie Titel und Text vollständig in einer anderen Sprache. Besucher, die die Seite in dieser Sprache lesen, sehen sie; alle anderen sehen den obigen Text. Lassen Sie eine Gruppe leer, wenn es keine Übersetzung gibt.",
+    "titleLabel": "Titel",
+    "bodyLabel": "Text (Markdown)",
+    "languages": {
+      "en": "Englisch",
+      "fr": "Französisch",
+      "de": "Deutsch",
+      "es": "Spanisch"
+    }
   }
 }

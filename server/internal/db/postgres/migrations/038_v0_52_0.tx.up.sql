@@ -3,6 +3,7 @@
 -- Frozen once tagged, like every migration: a later change goes in 039.
 --
 --   SECTION: localized-generated-text   incidents / incident_publications / status_updates *_i18n
+--   SECTION: status-update-translations   status_updates / incident_publications translations
 
 -- ==========================================================================
 -- SECTION: localized-generated-text
@@ -62,3 +63,28 @@ where title_i18n is null
   and title like '% is down'
   and title <> 'Check is down'
   and length(title) > length(' is down');
+
+
+-- ==========================================================================
+-- SECTION: status-update-translations
+-- ==========================================================================
+-- A recipe cannot describe an incident a person documents. Hand-written
+-- content gets its full text per language instead, next to the literal column
+-- (which stays the page's own language): {"fr": {"title": "...", "body": "..."}}
+-- on status_updates, {"fr": {"title": "..."}} on incident_publications.
+-- NULL means no translation.
+--bun:split
+
+alter table status_updates add column if not exists translations jsonb;
+
+--bun:split
+
+alter table incident_publications add column if not exists translations jsonb;
+
+--bun:split
+
+comment on column status_updates.translations is 'Hand-written title and markdown body in other languages: {"<lang>": {"title": "...", "body": "..."}}. The literal title/body_markdown stay the page''s own language. NULL when there is none. Editing the literal text leaves it untouched.';
+
+--bun:split
+
+comment on column incident_publications.translations is 'Hand-written public title in other languages: {"<lang>": {"title": "..."}}. The literal public_title stays the page''s own language. NULL when there is none. A retitle leaves it untouched.';

@@ -232,7 +232,7 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 		return svc, nil
 	}
 
-	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(cfg.DSN)))
+	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(DriverDSN(cfg.DSN))))
 	applyPoolLimits(sqldb, cfg)
 	bunDB := bun.NewDB(sqldb, pgdialect.New())
 

@@ -3,6 +3,7 @@
 -- Frozen once tagged, like every migration: a later change goes in 039.
 --
 --   SECTION: localized-generated-text   incidents / incident_publications / status_updates *_i18n
+--   SECTION: status-update-translations   status_updates / incident_publications translations
 
 -- ==========================================================================
 -- SECTION: localized-generated-text
@@ -42,3 +43,17 @@ where title_i18n is null
   and title like '% is down'
   and title <> 'Check is down'
   and length(title) > length(' is down');
+
+
+-- ==========================================================================
+-- SECTION: status-update-translations
+-- ==========================================================================
+-- Hand-written per-language text next to the literal column. See the Postgres
+-- file for the shape.
+--bun:split
+
+alter table status_updates add column translations text;
+
+--bun:split
+
+alter table incident_publications add column translations text;

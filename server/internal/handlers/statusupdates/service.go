@@ -157,14 +157,17 @@ type StatusUpdateResponse struct {
 	BodyMarkdown           string  `json:"bodyMarkdown"`
 	// TitleI18n / BodyI18n are the recipes of a machine-written update, for
 	// rendering it in the reader's language. Absent on hand-written text.
-	TitleI18n   *models.LocalizedText `json:"titleI18n,omitempty"`
-	BodyI18n    *models.LocalizedText `json:"bodyI18n,omitempty"`
-	LinkURL     *string               `json:"linkUrl,omitempty"`
-	Kind        string                `json:"kind"`
-	PublishedAt time.Time             `json:"publishedAt"`
-	AuthorUID   *string               `json:"authorUid,omitempty"`
-	CreatedAt   time.Time             `json:"createdAt"`
-	UpdatedAt   time.Time             `json:"updatedAt"`
+	TitleI18n *models.LocalizedText `json:"titleI18n,omitempty"`
+	BodyI18n  *models.LocalizedText `json:"bodyI18n,omitempty"`
+	// Translations is the hand-written title and body in other languages,
+	// keyed by language code. Absent when there is none.
+	Translations models.Translations `json:"translations,omitempty"`
+	LinkURL      *string             `json:"linkUrl,omitempty"`
+	Kind         string              `json:"kind"`
+	PublishedAt  time.Time           `json:"publishedAt"`
+	AuthorUID    *string             `json:"authorUid,omitempty"`
+	CreatedAt    time.Time           `json:"createdAt"`
+	UpdatedAt    time.Time           `json:"updatedAt"`
 }
 
 // CreateStatusUpdateRequest represents a request to create a status update.
@@ -178,6 +181,8 @@ type CreateStatusUpdateRequest struct {
 	LinkURL       *string    `json:"linkUrl,omitempty"`
 	Kind          string     `json:"kind"`
 	PublishedAt   *time.Time `json:"publishedAt,omitempty"`
+	// Translations is the title and body written by hand in other languages.
+	Translations models.Translations `json:"translations,omitempty"`
 }
 
 // UpdateStatusUpdateRequest represents a request to update a status update (all fields optional).
@@ -207,6 +212,9 @@ type UpdateStatusUpdateRequest struct {
 	BodyMarkdown *string    `json:"bodyMarkdown,omitempty"`
 	Kind         *string    `json:"kind,omitempty"`
 	PublishedAt  *time.Time `json:"publishedAt,omitempty"`
+	// Translations replaces the whole map when present; null or {} clears it;
+	// an absent key leaves it untouched.
+	Translations models.TranslationsPatch `json:"translations,omitzero"`
 }
 
 // ListStatusUpdatesOptions holds query options for listing status updates.
@@ -231,6 +239,7 @@ func toResponse(update *models.StatusUpdate) StatusUpdateResponse {
 		BodyMarkdown:           update.BodyMarkdown,
 		TitleI18n:              update.TitleI18n,
 		BodyI18n:               update.BodyI18n,
+		Translations:           update.Translations,
 		LinkURL:                update.LinkURL,
 		Kind:                   string(update.Kind),
 		PublishedAt:            update.PublishedAt,
@@ -273,6 +282,23 @@ func validateBody(body string) error {
 	}
 
 	return nil
+}
+
+// validateTranslations checks the hand-written translations of an update whose
+// page and literal body are known.
+func validateTranslations(page *models.StatusPage, translations models.Translations, literalBody string) error {
+	pageLanguage := ""
+	if page.Language != nil {
+		pageLanguage = *page.Language
+	}
+
+	return translations.Validate(models.TranslationRules{
+		PageLanguage: pageLanguage,
+		MaxTitle:     maxTitleLen,
+		MaxBody:      maxBodyLen,
+		WithBody:     true,
+		LiteralBody:  literalBody,
+	})
 }
 
 // ListStatusUpdates returns status updates for an org with filtering.
@@ -379,7 +405,12 @@ func (s *Service) CreateStatusUpdate( //nolint:cyclop // validation requires che
 		checkUID = resolved
 	}
 
+	if err := validateTranslations(page, req.Translations, req.BodyMarkdown); err != nil {
+		return StatusUpdateResponse{}, err
+	}
+
 	update := models.NewStatusUpdate(org.UID, page.UID, authorUID)
+	update.Translations = req.Translations
 	update.Kind = kind
 	update.Title = req.Title
 	update.BodyMarkdown = req.BodyMarkdown
@@ -731,6 +762,10 @@ func (s *Service) UpdateStatusUpdate( //nolint:cyclop // patching optional field
 		update.PublishedAt = *req.PublishedAt
 	}
 
+	if err := s.applyTranslations(ctx, org.UID, update, req); err != nil {
+		return StatusUpdateResponse{}, err
+	}
+
 	if err := s.db.UpdateStatusUpdate(ctx, update); err != nil {
 		return StatusUpdateResponse{}, err
 	}
@@ -743,6 +778,36 @@ func (s *Service) UpdateStatusUpdate( //nolint:cyclop // patching optional field
 	_ = s.db.CreateEvent(ctx, event)
 
 	return toResponse(update), nil
+}
+
+// applyTranslations handles the presence-aware translations field. It runs
+// last so the body the entries are checked against is the one being saved.
+// Editing the literal text alone never reaches here with Set=false changes.
+func (s *Service) applyTranslations(
+	ctx context.Context, orgUID string, update *models.StatusUpdate, req *UpdateStatusUpdateRequest,
+) error {
+	if !req.Translations.Set {
+		return nil
+	}
+
+	if len(req.Translations.Value) == 0 {
+		update.Translations = nil
+
+		return nil
+	}
+
+	page, err := s.loadPageForUpdateValidation(ctx, orgUID, update)
+	if err != nil {
+		return err
+	}
+
+	if err := validateTranslations(page, req.Translations.Value, update.BodyMarkdown); err != nil {
+		return err
+	}
+
+	update.Translations = req.Translations.Value
+
+	return nil
 }
 
 // DeleteStatusUpdate soft-deletes a status update.

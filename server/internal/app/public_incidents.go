@@ -39,6 +39,7 @@ func (a publicIncidentAdapter) ListPublicIncidents(
 			UID:               inc.UID,
 			Title:             inc.Title,
 			TitleI18n:         inc.TitleI18n,
+			Translations:      inc.Translations,
 			State:             inc.State,
 			Severity:          inc.Severity,
 			StartedAt:         inc.StartedAt,
@@ -55,6 +56,7 @@ func (a publicIncidentAdapter) ListPublicIncidents(
 				BodyMarkdown: upd.BodyMarkdown,
 				TitleI18n:    upd.TitleI18n,
 				BodyI18n:     upd.BodyI18n,
+				Translations: upd.Translations,
 				PublishedAt:  upd.PublishedAt,
 			})
 		}

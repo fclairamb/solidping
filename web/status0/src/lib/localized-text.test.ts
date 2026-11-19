@@ -69,3 +69,60 @@ describe("localizeGenerated", () => {
     ).toBe("literal");
   });
 });
+
+describe("localizeGenerated with hand-written translations", () => {
+  const recipe = { key: "publication.openedTitle", params: { name: "Database" } };
+  const translations = { fr: { title: "Panne de la base", body: "Nous enquêtons." } };
+
+  test("a translation wins over the recipe", () => {
+    const { t, exists } = translator(de);
+    expect(
+      localizeGenerated(t, exists, recipe, "literal", {
+        translations,
+        field: "title",
+        language: "fr",
+      }),
+    ).toBe("Panne de la base");
+    expect(
+      localizeGenerated(t, exists, undefined, "literal", {
+        translations,
+        field: "body",
+        language: "fr-FR",
+      }),
+    ).toBe("Nous enquêtons.");
+  });
+
+  test("the recipe wins over the literal when the language has no entry", () => {
+    const { t, exists } = translator(de);
+    expect(
+      localizeGenerated(t, exists, recipe, "literal", {
+        translations,
+        field: "title",
+        language: "de",
+      }),
+    ).toBe("Database hat Probleme");
+  });
+
+  test("falls through to the literal text without a recipe or an entry", () => {
+    const { t, exists } = translator(de);
+    expect(
+      localizeGenerated(t, exists, undefined, "Written by hand", {
+        translations,
+        field: "title",
+        language: "es",
+      }),
+    ).toBe("Written by hand");
+  });
+
+  test("ignores an empty entry field", () => {
+    const { t, exists } = translator(de);
+    expect(
+      localizeGenerated(t, exists, undefined, "literal", {
+        translations: { fr: { title: "" } },
+        field: "title",
+        language: "fr",
+      }),
+    ).toBe("literal");
+  });
+});
+

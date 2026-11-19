@@ -138,8 +138,12 @@ type IncidentPublication struct {
 	// PublicTitleI18n is the recipe PublicTitle was templated from, so a
 	// visitor reading the page in another language gets the title in theirs.
 	// nil once a person retitled the publication (or for a hand-typed title).
-	PublicTitleI18n *LocalizedText   `bun:"public_title_i18n,type:jsonb,nullzero"`
-	PublicState     PublicationState `bun:"public_state,notnull"`
+	PublicTitleI18n *LocalizedText `bun:"public_title_i18n,type:jsonb,nullzero"`
+	// Translations is the public title written by hand in other languages,
+	// keyed by language code. nil when there is none. Never touched by a
+	// retitle.
+	Translations Translations     `bun:"translations,type:jsonb,nullzero"`
+	PublicState  PublicationState `bun:"public_state,notnull"`
 	// Severity is the display-only public badge. nil = no badge.
 	Severity *string `bun:"severity"`
 	// AutoCreated marks a publication minted by the auto-publish pipeline.
@@ -196,13 +200,16 @@ func (p *IncidentPublication) IsResolved() bool {
 // row. A nil pointer leaves the column untouched; a Clear* flag writes NULL.
 type IncidentPublicationUpdate struct {
 	// PublicTitle also clears PublicTitleI18n: a new title has no recipe.
-	PublicTitle     *string
-	PublicState     *PublicationState
-	Severity        *string
-	ClearSeverity   bool
-	HumanTouchedAt  *time.Time
-	ResolvedAt      *time.Time
-	ClearResolvedAt bool
+	PublicTitle *string
+	// Translations replaces the whole map; ClearTranslations writes NULL.
+	Translations      Translations
+	ClearTranslations bool
+	PublicState       *PublicationState
+	Severity          *string
+	ClearSeverity     bool
+	HumanTouchedAt    *time.Time
+	ResolvedAt        *time.Time
+	ClearResolvedAt   bool
 	// NotifyWindowStart / NotifyWindowCount are written together by the storm
 	// cap; a nil NotifyWindowStart with NotifyWindowCount set is not a valid
 	// combination and is ignored.
