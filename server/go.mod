@@ -307,7 +307,7 @@ require (
 	github.com/vanng822/go-premailer v1.38.0
 	github.com/wneessen/go-mail v0.8.2
 	github.com/xdg-go/scram v1.4.0
-	go.mongodb.org/mongo-driver/v2 v2.10.0
+	go.mongodb.org/mongo-driver/v2 v2.10.1
 	go.opentelemetry.io/contrib/bridges/otelslog v0.21.0
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.23.0
