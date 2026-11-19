@@ -33,7 +33,7 @@ const t = tFor(commonEn);
 const tFr = tFor(commonFr);
 
 describe("contactCanTest", () => {
-  it.each(["discord", "telegram", "phone", "whatsapp"])(
+  it.each(["discord", "telegram", "phone", "whatsapp", "email"])(
     "requires setup for %s contacts",
     (type) => {
       expect(contactCanTest(type, null)).toBe(false);
@@ -41,7 +41,7 @@ describe("contactCanTest", () => {
     },
   );
 
-  it.each(["email", "webpush", "future_channel"])(
+  it.each(["webpush", "future_channel"])(
     "keeps %s contacts testable without verification",
     (type) => {
       expect(contactCanTest(type, null)).toBe(true);
