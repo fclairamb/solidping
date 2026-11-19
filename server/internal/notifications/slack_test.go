@@ -1590,6 +1590,12 @@ func (m *mockDBService) FindActiveBurnIncident(
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListEnabledChecksByType(
+	_ context.Context, _ []string,
+) ([]*models.Check, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListChecksForDegradedEval(
 	_ context.Context, _ int,
 ) ([]*models.Check, error) {

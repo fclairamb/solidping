@@ -2457,6 +2457,10 @@ func (s *Service) prepareCheckUpdate(
 		if intervalErr := validateSMTPSendInterval(check.Type, check.Config, effectivePeriod); intervalErr != nil {
 			return nil, intervalErr
 		}
+
+		if delayErr := validateEmailDeliveryDelay(check.Type, check.Config, effectivePeriod); delayErr != nil {
+			return nil, delayErr
+		}
 	}
 
 	return &checkUpdatePlan{

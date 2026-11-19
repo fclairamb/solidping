@@ -2250,9 +2250,51 @@ func passiveVerdict(
 		return 0, nil, true, nil
 	}
 
+	if held := heldDeliveryTimeout(ctx, workerBackend, checkJob, lastSignal); held != nil {
+		return checkerdef.StatusDown, held, false, nil
+	}
+
 	status, output := passiveEvaluation(noun, period, lastSignal)
 
 	return status, output, false, nil
+}
+
+// heldDeliveryTimeout keeps an email check down after the DeliveryWatch
+// recorded a missed probe (spec 2026-11-18-03): without it the regular
+// once-per-period evaluation would read an older up signal and write `up`
+// over the timeout. It returns the output to re-write (the timeout's message
+// and markers), or nil when the newest row is no timeout or a real email
+// arrived after it.
+func heldDeliveryTimeout(
+	ctx context.Context, workerBackend backend.WorkerBackend, checkJob *models.CheckJob, lastSignal *models.Result,
+) map[string]any {
+	reader, ok := workerBackend.(backend.DeliveryTimeoutReader)
+	if !ok || checkerdef.CheckType(checkJob.Type) != checkerdef.CheckTypeEmail {
+		return nil
+	}
+
+	last, err := reader.LastEvaluation(ctx, checkJob.OrganizationUID, checkJob.CheckUID)
+	if err != nil || last == nil {
+		return nil
+	}
+
+	raw, _ := last.Output[outputKeyTimeoutAt].(string)
+
+	timeoutAt, parseErr := time.Parse(time.RFC3339Nano, raw)
+	if parseErr != nil {
+		return nil
+	}
+
+	if lastSignal != nil && lastSignal.PeriodStart.After(timeoutAt) {
+		return nil
+	}
+
+	output := make(map[string]any, len(last.Output))
+	for key, value := range last.Output {
+		output[key] = value
+	}
+
+	return output
 }
 
 // executePassiveJob handles a passive job that reached a CHECK WORKER.
