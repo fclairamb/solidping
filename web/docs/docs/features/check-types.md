@@ -885,7 +885,9 @@ X-SolidPing-Sent-At: <RFC3339 send time>
 ```
 
 If an intermediate mail server strips these headers, the Email Reception
-check still ticks up as normal — only the attribution and latency are lost.
+check still ticks up as normal — only the attribution is lost, and the latency
+falls back to the mail's `Date` header (see
+[maximum delivery delay](#email-max-delivery-delay)).
 
 **The two checks split responsibility cleanly:**
 - The **SMTP check**'s own result reflects **submission only** — a `250`
@@ -1052,10 +1054,20 @@ that has not received its first email yet.
 #### Maximum delivery delay {#email-max-delivery-delay}
 
 Set `max_delivery_delay` (a duration such as `10m`, at least `1m` and lower than
-the check period) to fail a probe that takes too long. It needs a paired
-[SMTP check in send mode](#smtp-send-mode): only a probe carrying the
-`X-SolidPing-Sent-At` header has a trustworthy send time, and a mail from any
-other sender is never judged late.
+the check period) to fail a mail that takes too long to arrive.
+
+The send time of a mail comes from one of two sources, recorded in the result
+as `sentAtSource`:
+
+- `header`: the `X-SolidPing-Sent-At` header that a paired
+  [SMTP check in send mode](#smtp-send-mode) puts on its probe. This is
+  SolidPing's own clock and always wins when present.
+- `date`: otherwise, the mail's `Date` header. Any sender (a cron report, an
+  application's own probe) gets a latency this way, but it is the sender's
+  clock: a skewed sender clock skews the latency.
+
+A mail with neither, or whose send time is after its reception or more than
+24 hours before it (a clock problem), gets no latency and is never judged late.
 
 The result duration of an email check is the delivery latency (send to receive),
 so the response-time chart and the slow rule see it. With a limit set:
@@ -1063,9 +1075,11 @@ so the response-time chart and the slow rule see it. With a limit set:
 - **Arrived late.** The result is `down` with `delivered after 13m29s, limit 10m`.
   An explicit `down` from the sender wins over the delay; when sender
   authentication also fails, both messages are joined.
-- **Never arrived.** The check goes `down` at send time + limit, without waiting
-  for its period, with `sent at 09:52, not received after 10m` (one row per
-  missed probe). A probe that arrives afterwards is recorded as late. The check
+- **Never arrived.** With a paired SMTP check, the check goes `down` at send
+  time + limit, without waiting for its period, with
+  `sent at 09:52, not received after 10m` (one row per missed probe). A check
+  fed only by third-party mail has no send to wait for, so it keeps the
+  period-based verdict. A probe that arrives afterwards is recorded as late. The check
   recovers on the next probe that arrives in time.
 
 Advice: a 10 minute limit calls for an **hourly** SMTP probe, not a daily one.
