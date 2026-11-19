@@ -56,6 +56,10 @@ Impact:
 - Whether the AI authoring loops (`aichecks` generate/repair) call the runner through any concurrency cap today.
 - Whether the MCP handler has the org UID in its context for every token type (PAT, MCP OAuth, session), to key the per-org cap.
 
-## Open questions
+## Resolved open questions
+
+- `run_js_script` and `browser_snapshot` require the `user` role, as the REST test run does; `fetch_page` stays at read with the shared cap. A read-only token gets a clear "needs a write-capable token" error. (autopilot: recommended answer)
+
+Original question:
 
 - Should the probes require the `user` role, as the REST test run does? Recommended: yes for `run_js_script` and `browser_snapshot`, which execute arbitrary code and hold a browser. `fetch_page` can stay at read with the shared cap. An AI client with a read-only token then gets a clear "needs a write-capable token" error.

@@ -58,6 +58,10 @@ Secondary: since an email contact is born verified, any member can also point th
   - positive control: a contact for the user's own verified email is usable at once.
 - Route-level test through the real router (like `server/internal/app/check_test_run_route_test.go`): a PAT-authenticated `POST …/notification-contacts` gets 403.
 
-## Open questions
+## Resolved open questions
+
+- A member's own session (not impersonated, not a PAT) still adds a contact without re-authentication; the notice email of step 4 covers it, as for Discord linking. (autopilot: recommended answer)
+
+Original question:
 
 - Should a member's own session (not impersonated, not a PAT) still add a contact without re-authentication? Recommended: yes. The notice email from step 4 is enough there, as for Discord linking.
