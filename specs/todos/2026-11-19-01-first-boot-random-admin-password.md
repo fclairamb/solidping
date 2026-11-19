@@ -77,22 +77,10 @@ public.
    entry flagged as a behaviour change for new installs (existing installs are untouched: the
    seed only runs on an empty database).
 
-## Open questions
+## Resolved open questions
 
-1. **Which run modes keep `solidpass`?** Recommended: `test` and `demo` keep it, the
-   default (production, `SP_RUN_MODE` unset) gets a random password. Trade-off: a mode-dependent posture
-   is what spec 2026-08-23-04 avoided ("one more thing that can be mis-detected"), but a
-   mis-detection here only falls back to the old behaviour, and the e2e, local dev and demo
-   flows keep working without change. Alternative: random everywhere, with the e2e and dev
-   scripts setting `SP_ADMIN_PASSWORD=solidpass`.
-2. **Reprint the random password at every boot until it is rotated?** Recommended: no, print
-   it once at seed time. Re-printing would need it stored in clear (or reversibly) in the
-   database, which defeats the point. Recovery for an operator who lost the line: while the
-   seeded admin still has `must_change_password` set (never logged in), a boot with
-   `SP_ADMIN_PASSWORD` set re-hashes that account's password to it (no other account, never
-   after the rotation). The only existing reset is the emailed token flow
-   (`solidping auth reset-password`), which needs SMTP. Trade-off: on PaaS with short log
-   retention the line can be missed, hence the `SP_ADMIN_PASSWORD` route in every PaaS doc.
+1. **Run modes keeping `solidpass`:** `test` and `demo` keep it; the default run mode (`SP_RUN_MODE` unset, production) seeds a random password. (autopilot: recommended answer)
+2. **Reprint at every boot:** no. Print the random password once, at seed time. Recovery: while the seeded admin still has `must_change_password` set, a boot with `SP_ADMIN_PASSWORD` set re-hashes that account's password to it (no other account, never after the rotation); document the `SP_ADMIN_PASSWORD` route in every PaaS doc. (autopilot: recommended answer)
 
 ## Closing the issue
 
