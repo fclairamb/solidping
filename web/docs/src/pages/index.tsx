@@ -229,8 +229,9 @@ export default function DocsHome(): React.JSX.Element {
               <CodeBlock language="bash">{DOCKER_RUN}</CodeBlock>
               <p className={styles.after}>
                 Then open <code>http://localhost:4000</code> and sign in as{" "}
-                <code>admin@solidping.io</code> / <code>solidpass</code>. The first login asks
-                for a new password.
+                <code>admin@solidping.io</code> with the password printed once in the logs
+                (<code>docker logs solidping 2&gt;&amp;1 | grep "First login"</code>). The first
+                login asks for a new password.
               </p>
               <Link
                 to="/installation/docker"

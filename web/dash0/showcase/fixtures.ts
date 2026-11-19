@@ -56,8 +56,9 @@ export const API_BASE = process.env.E2E_BASE_URL
 
 /**
  * Credentials used to bootstrap the recording. Defaults match a default-run-mode
- * server (`admin@solidping.io` / `solidpass`, org `default`). Override for a
- * server seeded differently.
+ * server started with `SP_ADMIN_PASSWORD=solidpass` (`admin@solidping.io` /
+ * `solidpass`, org `default`; without it the first password is random).
+ * Override for a server seeded differently.
  */
 export const BOOTSTRAP_ORG = process.env.SHOWCASE_BOOTSTRAP_ORG ?? "default";
 const BOOTSTRAP_EMAIL = process.env.SHOWCASE_EMAIL ?? "admin@solidping.io";

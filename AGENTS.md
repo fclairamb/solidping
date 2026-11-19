@@ -60,13 +60,15 @@ No Docker or Postgres is needed. SQLite is the default database. Full runbook: [
 
 | Mode | Email | Password | Org |
 |---|---|---|---|
-| Normal | `admin@solidping.io` | `solidpass` | `default` |
+| Normal | `admin@solidping.io` | generated, printed once in the log (`First login` line); `SP_ADMIN_PASSWORD` pins it | `default` |
+| Test or demo (`SP_RUNMODE=test`/`demo`) | `admin@solidping.io` | `solidpass` | `default` |
 | Test (`SP_RUNMODE=test`) | `test@test.com` | `test` | `test` |
 
 Rules:
 - The seeded `admin@solidping.io` has `users.must_change_password`. This applies to every fresh database, including `make dev`.
 - Its first login yields a session that reaches only `POST /auth/change-password`, `GET /auth/me` and `POST /auth/logout`. Everything else answers `403 PASSWORD_CHANGE_REQUIRED`, and dash0 lands on `/d/change-password`.
 - Pick a new password, then use it in place of `solidpass` in every example.
+- In the normal run mode the seed password is random and only appears in the first-boot log line (spec 2026-11-19-01). `make dev` and `make dev-backend` pin it to `solidpass` with `SP_ADMIN_PASSWORD`, and `make dev-test` runs in test mode, so all keep `solidpass`.
 - The test-mode user `test@test.com` is not flagged (created in `server/test/testdata/testdata.go`). Playwright suites sign in with these fixed credentials.
 
 ## SaaS mode & entitlements
