@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -133,4 +134,73 @@ func stripSQLComments(stmt string) string {
 	}
 
 	return strings.TrimSpace(strings.Join(kept, "\n"))
+}
+
+// TestTranslationsColumnsSQLite pins the status-update-translations section of
+// migration 038 on SQLite: the column exists, an existing row has NULL, the map
+// round-trips and is replaced or cleared by a publication patch, and the down
+// migration drops it.
+func TestTranslationsColumnsSQLite(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(svc.Initialize(ctx))
+	t.Cleanup(func() { _ = svc.Close() })
+
+	org := models.NewOrganization("acme", "Acme")
+	r.NoError(svc.CreateOrganization(ctx, org))
+
+	page := models.NewStatusPage(org.UID, "Status", "status")
+	r.NoError(svc.CreateStatusPage(ctx, page))
+
+	pub := models.NewIncidentPublication(org.UID, page.UID, "Outage", time.Now())
+	r.NoError(svc.CreateIncidentPublication(ctx, pub))
+
+	update := models.NewStatusUpdate(org.UID, page.UID, "")
+	update.Kind = models.StatusUpdateKindInfo
+	update.Title, update.BodyMarkdown = "Notice", "Body"
+	r.NoError(svc.CreateStatusUpdate(ctx, update))
+
+	var nulls int
+	r.NoError(svc.DB().NewRaw(
+		"select count(*) from status_updates where translations is null").Scan(ctx, &nulls))
+	r.Equal(1, nulls, "an existing row has NULL translations")
+
+	update.Translations = models.Translations{"fr": {Title: "Avis", Body: "Corps"}}
+	r.NoError(svc.UpdateStatusUpdate(ctx, update))
+	got, err := svc.GetStatusUpdateByUID(ctx, update.UID)
+	r.NoError(err)
+	r.Equal(models.Translation{Title: "Avis", Body: "Corps"}, got.Translations["fr"])
+
+	public, err := svc.ListPublicStatusUpdates(ctx, page.UID, 90)
+	r.NoError(err)
+	r.Len(public, 1)
+	r.Equal("Avis", public[0].Translations["fr"].Title)
+
+	r.NoError(svc.UpdateIncidentPublication(ctx, pub.UID, &models.IncidentPublicationUpdate{
+		Translations: models.Translations{"de": {Title: "Ausfall"}},
+	}))
+	gotPub, err := svc.GetIncidentPublication(ctx, org.UID, pub.UID)
+	r.NoError(err)
+	r.Equal("Ausfall", gotPub.Translations["de"].Title)
+
+	r.NoError(svc.UpdateIncidentPublication(ctx, pub.UID, &models.IncidentPublicationUpdate{ClearTranslations: true}))
+	gotPub, err = svc.GetIncidentPublication(ctx, org.UID, pub.UID)
+	r.NoError(err)
+	r.Nil(gotPub.Translations)
+
+	content, err := os.ReadFile(filepath.Join("migrations", "038_v0_52_0.tx.down.sql"))
+	r.NoError(err)
+
+	_, section, found := strings.Cut(string(content), "-- SECTION: status-update-translations")
+	r.True(found)
+	_, err = svc.DB().ExecContext(ctx, section)
+	r.NoError(err)
+
+	_, err = svc.DB().ExecContext(ctx, "select translations from status_updates")
+	r.Error(err, "the down migration drops the column")
 }

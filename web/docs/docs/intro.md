@@ -77,7 +77,7 @@ your own install shows nothing of the sort until you turn it on — see
 The fastest way to get started is with Docker:
 
 ```bash
-docker run -p 4000:4000 -v solidping-data:/data ghcr.io/fclairamb/solidping:latest
+docker run -p 4000:4000 --name solidping -v solidping-data:/data ghcr.io/fclairamb/solidping:latest
 ```
 
 The image stores the SQLite database and uploaded blobs (org logos,
@@ -87,15 +87,19 @@ S3 alternative.
 
 Then open [http://localhost:4000](http://localhost:4000) in your browser.
 
-**Default credentials:**
+**First login:**
 - Email: `admin@solidping.io`
-- Password: `solidpass`
+- Password: generated at the first start, printed once in the logs:
+  `docker logs solidping 2>&1 | grep "First login"`
 - Organization: `default`
 
+To choose the first password yourself, set `SP_ADMIN_PASSWORD` before the first
+start. See [Password of the first admin](/configuration/authentication#password-of-the-first-admin).
+
 :::warning First login sets a new password
-That password is published in the SolidPing repository, so it is only good for
-exactly one login. SolidPing takes you straight to a "set a new password"
-screen, and the account can do nothing else until you complete it.
+The first password is only good for exactly one login. SolidPing takes you
+straight to a "set a new password" screen, and the account can do nothing else
+until you complete it.
 :::
 
 The same screen asks for your own email address (optional, and changeable later

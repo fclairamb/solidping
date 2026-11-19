@@ -27,7 +27,8 @@ make dev-test           # same, with SP_RUNMODE=test
 ```
 
 Default credentials are in [`AGENTS.md`](AGENTS.md#default-credentials) — note
-that the normal seeded admin (`admin@solidping.io` / `solidpass`) is forced
+that the seeded admin (`admin@solidping.io`, password `solidpass` in test mode,
+generated and logged once otherwise) is forced
 through a password change on first login; the test-mode user
 (`test@test.com` / `test`) is not.
 

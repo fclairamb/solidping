@@ -86,11 +86,13 @@ type PublicStatusUpdate struct {
 	Title          string
 	BodyMarkdown   string
 	// TitleI18n / BodyI18n are the recipes of a machine-written update.
-	TitleI18n   *models.LocalizedText
-	BodyI18n    *models.LocalizedText
-	LinkURL     *string
-	Kind        string
-	PublishedAt time.Time
+	TitleI18n *models.LocalizedText
+	BodyI18n  *models.LocalizedText
+	// Translations is the hand-written text in other languages.
+	Translations models.Translations
+	LinkURL      *string
+	Kind         string
+	PublishedAt  time.Time
 }
 
 // UserTokenActivity is one user's most recent token/session activity, as

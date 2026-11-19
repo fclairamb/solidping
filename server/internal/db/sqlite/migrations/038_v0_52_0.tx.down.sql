@@ -5,3 +5,7 @@ alter table status_updates drop column body_i18n;
 alter table status_updates drop column title_i18n;
 alter table incident_publications drop column public_title_i18n;
 alter table incidents drop column title_i18n;
+
+-- SECTION: status-update-translations
+alter table incident_publications drop column translations;
+alter table status_updates drop column translations;

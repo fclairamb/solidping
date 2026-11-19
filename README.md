@@ -29,11 +29,16 @@ https://github.com/user-attachments/assets/fe207622-7957-4e85-8a3c-d33281799f4b
 ## Run it
 
 ```bash
-docker run -p 4000:4000 --hostname solidping -v solidping-data:/data ghcr.io/fclairamb/solidping
+docker run -p 4000:4000 --name solidping --hostname solidping -v solidping-data:/data ghcr.io/fclairamb/solidping
 ```
 
-Open http://localhost:4000 and sign in with `admin@solidping.io` / `solidpass`.
-You must pick a new password on first login: the pair is public, so the account can do nothing else until then.
+Open http://localhost:4000 and sign in as `admin@solidping.io` with the password printed once at the first start:
+
+```bash
+docker logs solidping 2>&1 | grep "First login"
+```
+
+Set `SP_ADMIN_PASSWORD` before the first start to choose it, or to recover a lost one while it has not been changed yet. You must pick a new password on first login: the account can do nothing else until then.
 
 - `--hostname` is required: the worker name comes from it and must match `^[a-z][a-z0-9-]{2,20}$` (or set `SP_NODE_NAME`).
 - Data (SQLite database and uploads) lives in `/data`, so keep the volume.

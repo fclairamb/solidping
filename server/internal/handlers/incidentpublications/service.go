@@ -225,15 +225,18 @@ type PublicationResponse struct {
 	Title         string  `json:"title"`
 	// TitleI18n is the recipe of a templated title, for rendering it in the
 	// reader's language. Absent once a person retitled the publication.
-	TitleI18n    *models.LocalizedText `json:"titleI18n,omitempty"`
-	State        string                `json:"state"`
-	Severity     *string               `json:"severity,omitempty"`
-	AutoCreated  bool                  `json:"autoCreated"`
-	HumanTouched bool                  `json:"humanTouched"`
-	PublishedAt  time.Time             `json:"publishedAt"`
-	ResolvedAt   *time.Time            `json:"resolvedAt,omitempty"`
-	CreatedAt    time.Time             `json:"createdAt"`
-	UpdatedAt    time.Time             `json:"updatedAt"`
+	TitleI18n *models.LocalizedText `json:"titleI18n,omitempty"`
+	// Translations is the title written by hand in other languages, keyed by
+	// language code. Absent when there is none.
+	Translations models.Translations `json:"translations,omitempty"`
+	State        string              `json:"state"`
+	Severity     *string             `json:"severity,omitempty"`
+	AutoCreated  bool                `json:"autoCreated"`
+	HumanTouched bool                `json:"humanTouched"`
+	PublishedAt  time.Time           `json:"publishedAt"`
+	ResolvedAt   *time.Time          `json:"resolvedAt,omitempty"`
+	CreatedAt    time.Time           `json:"createdAt"`
+	UpdatedAt    time.Time           `json:"updatedAt"`
 	// Updates is the append-only narrative, oldest first. Populated on the
 	// single-publication reads and on the public projection.
 	Updates []PublicationUpdateResponse `json:"updates,omitempty"`
@@ -259,9 +262,11 @@ type PublicationUpdateResponse struct {
 	Title        string `json:"title"`
 	BodyMarkdown string `json:"bodyMarkdown"`
 	// TitleI18n / BodyI18n are the recipes of a machine-written update.
-	TitleI18n   *models.LocalizedText `json:"titleI18n,omitempty"`
-	BodyI18n    *models.LocalizedText `json:"bodyI18n,omitempty"`
-	PublishedAt time.Time             `json:"publishedAt"`
+	TitleI18n *models.LocalizedText `json:"titleI18n,omitempty"`
+	BodyI18n  *models.LocalizedText `json:"bodyI18n,omitempty"`
+	// Translations is the update's hand-written text in other languages.
+	Translations models.Translations `json:"translations,omitempty"`
+	PublishedAt  time.Time           `json:"publishedAt"`
 	// AuthorUID is nil for machine-generated updates.
 	AuthorUID *string `json:"authorUid,omitempty"`
 }
@@ -275,6 +280,9 @@ type CreatePublicationRequest struct {
 	IncidentUID *string `json:"incidentUid,omitempty"`
 	// BodyMarkdown is the optional first narrative entry.
 	BodyMarkdown *string `json:"bodyMarkdown,omitempty"`
+	// Translations is the public title written by hand in other languages:
+	// {"fr": {"title": "..."}}.
+	Translations models.Translations `json:"translations,omitempty"`
 }
 
 // UpdatePublicationRequest patches a publication. Any field being present
@@ -283,6 +291,9 @@ type UpdatePublicationRequest struct {
 	Title    *string `json:"title,omitempty"`
 	State    *string `json:"state,omitempty"`
 	Severity *string `json:"severity,omitempty"`
+	// Translations replaces the whole map when present; null or {} clears it;
+	// an absent key leaves it untouched.
+	Translations models.TranslationsPatch `json:"translations,omitzero"`
 }
 
 // AppendUpdateRequest appends one narrative entry. Updates are append-only:
@@ -318,6 +329,7 @@ func toResponse(pub *models.IncidentPublication) PublicationResponse {
 		IncidentUID:   pub.IncidentUID,
 		Title:         pub.PublicTitle,
 		TitleI18n:     pub.PublicTitleI18n,
+		Translations:  pub.Translations,
 		State:         string(pub.PublicState),
 		Severity:      pub.Severity,
 		AutoCreated:   pub.AutoCreated,
@@ -339,6 +351,85 @@ func validateTitle(title string) error {
 	if len(title) > maxTitleLen {
 		return ErrTitleTooLong
 	}
+
+	return nil
+}
+
+// validateTranslations checks a publication's hand-written title translations
+// against the page's own language. A publication has no body to translate.
+func validateTranslations(page *models.StatusPage, translations models.Translations) error {
+	pageLanguage := ""
+	if page.Language != nil {
+		pageLanguage = *page.Language
+	}
+
+	return translations.Validate(models.TranslationRules{
+		PageLanguage: pageLanguage,
+		MaxTitle:     maxTitleLen,
+	})
+}
+
+// validateCreate checks the title, severity and translations of a manual
+// publication.
+func validateCreate(page *models.StatusPage, req *CreatePublicationRequest) error {
+	if err := validateTitle(req.Title); err != nil {
+		return err
+	}
+
+	if err := validateSeverity(req.Severity); err != nil {
+		return err
+	}
+
+	return validateTranslations(page, req.Translations)
+}
+
+// applySeverityPatch validates a severity PATCH and applies it to the row patch
+// and to the in-memory publication. An empty string clears the badge.
+func applySeverityPatch(
+	pub *models.IncidentPublication, update *models.IncidentPublicationUpdate, severity *string,
+) error {
+	if severity == nil {
+		return nil
+	}
+
+	if err := validateSeverity(severity); err != nil {
+		return err
+	}
+
+	if *severity == "" {
+		update.ClearSeverity = true
+		pub.Severity = nil
+	} else {
+		update.Severity = severity
+		pub.Severity = severity
+	}
+
+	return nil
+}
+
+// applyTranslationsPatch applies the presence-aware translations field of a
+// PATCH to the row patch and to the in-memory publication.
+func applyTranslationsPatch(
+	page *models.StatusPage, pub *models.IncidentPublication,
+	update *models.IncidentPublicationUpdate, patch models.TranslationsPatch,
+) error {
+	if !patch.Set {
+		return nil
+	}
+
+	if len(patch.Value) == 0 {
+		update.ClearTranslations = true
+		pub.Translations = nil
+
+		return nil
+	}
+
+	if err := validateTranslations(page, patch.Value); err != nil {
+		return err
+	}
+
+	update.Translations = patch.Value
+	pub.Translations = patch.Value
 
 	return nil
 }
@@ -612,11 +703,7 @@ func (s *Service) CreatePublication(
 		return PublicationResponse{}, err
 	}
 
-	if err = validateTitle(req.Title); err != nil {
-		return PublicationResponse{}, err
-	}
-
-	if err = validateSeverity(req.Severity); err != nil {
+	if err = validateCreate(page, req); err != nil {
 		return PublicationResponse{}, err
 	}
 
@@ -646,6 +733,7 @@ func (s *Service) CreatePublication(
 	pub.PublicState = state
 	pub.Severity = req.Severity
 	pub.HumanTouchedAt = &now
+	pub.Translations = req.Translations
 
 	if req.IncidentUID != nil && *req.IncidentUID != "" {
 		pub.IncidentUID = req.IncidentUID
@@ -749,18 +837,12 @@ func (s *Service) UpdatePublication(
 		pub.PublicTitle, pub.PublicTitleI18n = *req.Title, nil // a retitle drops the recipe
 	}
 
-	if req.Severity != nil {
-		if err := validateSeverity(req.Severity); err != nil {
-			return PublicationResponse{}, err
-		}
+	if err := applyTranslationsPatch(page, pub, update, req.Translations); err != nil {
+		return PublicationResponse{}, err
+	}
 
-		if *req.Severity == "" {
-			update.ClearSeverity = true
-			pub.Severity = nil
-		} else {
-			update.Severity = req.Severity
-			pub.Severity = req.Severity
-		}
+	if err := applySeverityPatch(pub, update, req.Severity); err != nil {
+		return PublicationResponse{}, err
 	}
 
 	if req.State != nil {
@@ -878,6 +960,7 @@ func (s *Service) AppendUpdate(
 		BodyMarkdown: written.BodyMarkdown,
 		TitleI18n:    written.TitleI18n,
 		BodyI18n:     written.BodyI18n,
+		Translations: written.Translations,
 		PublishedAt:  written.PublishedAt,
 		AuthorUID:    written.AuthorUID,
 	}, nil
@@ -1121,6 +1204,7 @@ func (s *Service) loadUpdates(
 			BodyMarkdown: upd.BodyMarkdown,
 			TitleI18n:    upd.TitleI18n,
 			BodyI18n:     upd.BodyI18n,
+			Translations: upd.Translations,
 			PublishedAt:  upd.PublishedAt,
 			AuthorUID:    upd.AuthorUID,
 		})
@@ -1363,6 +1447,7 @@ type PublicIncident struct {
 	UID               string                 `json:"uid"`
 	Title             string                 `json:"title"`
 	TitleI18n         *models.LocalizedText  `json:"titleI18n,omitempty"`
+	Translations      models.Translations    `json:"translations,omitempty"`
 	State             string                 `json:"state"`
 	Severity          *string                `json:"severity,omitempty"`
 	StartedAt         time.Time              `json:"startedAt"`
@@ -1379,6 +1464,7 @@ type PublicIncidentUpdate struct {
 	BodyMarkdown string                `json:"bodyMarkdown"`
 	TitleI18n    *models.LocalizedText `json:"titleI18n,omitempty"`
 	BodyI18n     *models.LocalizedText `json:"bodyI18n,omitempty"`
+	Translations models.Translations   `json:"translations,omitempty"`
 	PublishedAt  time.Time             `json:"publishedAt"`
 }
 
@@ -1416,6 +1502,7 @@ func (s *Service) ListPublicIncidents(
 			UID:               pub.UID,
 			Title:             pub.PublicTitle,
 			TitleI18n:         pub.PublicTitleI18n,
+			Translations:      pub.Translations,
 			State:             string(pub.PublicState),
 			Severity:          pub.Severity,
 			StartedAt:         pub.PublishedAt,
@@ -1432,6 +1519,7 @@ func (s *Service) ListPublicIncidents(
 				BodyMarkdown: updates[idx].BodyMarkdown,
 				TitleI18n:    updates[idx].TitleI18n,
 				BodyI18n:     updates[idx].BodyI18n,
+				Translations: updates[idx].Translations,
 				PublishedAt:  updates[idx].PublishedAt,
 			})
 		}

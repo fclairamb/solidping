@@ -104,7 +104,10 @@ function StatusUpdateRow({
           className="font-medium text-foreground hover:text-primary hover:underline transition-colors"
           data-testid="status-update-row-title"
         >
-          {localizeGenerated(t, update.titleI18n, update.title)}
+          {localizeGenerated(t, update.titleI18n, update.title, {
+            translations: update.translations,
+            field: "title",
+          })}
         </Link>
         {/* A threaded post points back at the publication it hangs under. A
             standalone post (maintenance, info) has no publication, so it gets

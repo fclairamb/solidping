@@ -11224,6 +11224,37 @@ components:
               type: number
               description: SLO burn rate, rounded to one decimal.
 
+    TranslationEntry:
+      type: object
+      description: >
+        The full text of one entry in one language. `body` is markdown and only
+        applies to status updates (a publication title has none).
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        body:
+          type: string
+          maxLength: 16384
+
+    Translations:
+      type: object
+      description: >
+        Hand-written text in other languages, keyed by UI language code (`en`,
+        `fr`, `de`, `es`). The literal `title` / `bodyMarkdown` stay the status
+        page's own language, so the page's language is rejected as a key. An
+        entry is complete or absent: an empty `title` is a VALIDATION_ERROR, and
+        on a status update so is an empty `body` while `bodyMarkdown` is not.
+        A reader in language L sees `translations[L]`, else the recipe
+        (`titleI18n` / `bodyI18n`), else the literal text.
+      additionalProperties:
+        $ref: "#/components/schemas/TranslationEntry"
+      example:
+        fr:
+          title: Panne des paiements
+          body: Nous enquêtons.
+
     # Management schemas
     VersionResponse:
       type: object
@@ -15788,6 +15819,8 @@ components:
         and probe diagnostics; none of that has a field here.
       required: [uid, title, state, startedAt]
       properties:
+        translations:
+          $ref: "#/components/schemas/Translations"
         uid:
           type: string
           format: uuid
@@ -15825,6 +15858,8 @@ components:
       type: object
       required: [uid, kind, title, bodyMarkdown, publishedAt]
       properties:
+        translations:
+          $ref: "#/components/schemas/Translations"
         uid:
           type: string
           format: uuid
@@ -15849,6 +15884,8 @@ components:
         The operator-facing view of a publication.
       required: [uid, statusPageUid, title, state, autoCreated, humanTouched, publishedAt]
       properties:
+        translations:
+          $ref: "#/components/schemas/Translations"
         uid:
           type: string
           format: uuid
@@ -15919,6 +15956,8 @@ components:
       type: object
       required: [uid, kind, title, bodyMarkdown, publishedAt]
       properties:
+        translations:
+          $ref: "#/components/schemas/Translations"
         uid:
           type: string
           format: uuid
@@ -15966,6 +16005,8 @@ components:
       type: object
       required: [title]
       properties:
+        translations:
+          $ref: "#/components/schemas/Translations"
         title:
           type: string
           maxLength: 200
@@ -15991,6 +16032,13 @@ components:
         the auto-resolve pipeline from closing the incident behind the
         operator's back.
       properties:
+        translations:
+          allOf:
+            - $ref: "#/components/schemas/Translations"
+          nullable: true
+          description: >-
+            Replaces the whole map. `{}` or null clears it. Omit the field to
+            leave it unchanged. Editing the literal text never touches it.
         title:
           type: string
           maxLength: 200
@@ -16780,6 +16828,8 @@ components:
         - createdAt
         - updatedAt
       properties:
+        translations:
+          $ref: "#/components/schemas/Translations"
         uid:
           type: string
           format: uuid
@@ -16832,6 +16882,8 @@ components:
       type: object
       required: [uid, title, bodyMarkdown, kind, publishedAt]
       properties:
+        translations:
+          $ref: "#/components/schemas/Translations"
         uid:
           type: string
           format: uuid
@@ -16872,6 +16924,8 @@ components:
       type: object
       required: [statusPageUid, title, bodyMarkdown, kind]
       properties:
+        translations:
+          $ref: "#/components/schemas/Translations"
         statusPageUid:
           type: string
           format: uuid
@@ -16899,6 +16953,13 @@ components:
     UpdateStatusUpdateRequest:
       type: object
       properties:
+        translations:
+          allOf:
+            - $ref: "#/components/schemas/Translations"
+          nullable: true
+          description: >-
+            Replaces the whole map. `{}` or null clears it. Omit the field to
+            leave it unchanged. Editing the literal text never touches it.
         sectionUid:
           type: string
           format: uuid

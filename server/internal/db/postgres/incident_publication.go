@@ -128,6 +128,12 @@ func (s *Service) UpdateIncidentPublication(
 			Set("public_title_i18n = NULL")
 	}
 
+	if update.ClearTranslations {
+		query = query.Set("translations = NULL")
+	} else if update.Translations != nil {
+		query = query.Set("translations = ?", update.Translations)
+	}
+
 	if update.PublicState != nil {
 		query = query.Set("public_state = ?", string(*update.PublicState))
 	}

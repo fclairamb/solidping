@@ -60,5 +60,17 @@
     "saving": "Saving…",
     "create": "Create",
     "saveChanges": "Save changes"
+  },
+  "translations": {
+    "heading": "Other languages",
+    "description": "Write the full title and body in another language. Visitors reading the page in that language see it; everyone else sees the text above. Leave a group empty for no translation.",
+    "titleLabel": "Title",
+    "bodyLabel": "Body (markdown)",
+    "languages": {
+      "en": "English",
+      "fr": "French",
+      "de": "German",
+      "es": "Spanish"
+    }
   }
 }

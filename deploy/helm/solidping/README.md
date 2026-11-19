@@ -30,4 +30,6 @@ Set `auth.existingSecret` (key `jwt-secret`) to manage it yourself.
 Logs are JSON, one object per line (`SP_LOG_FORMAT=json`). Set
 `extraEnv.SP_LOG_FORMAT` to change it.
 
-First login is `admin@solidping.io` / `solidpass`. Change it immediately.
+First login is `admin@solidping.io` with a password generated at the first start and printed once in the pod log
+(`kubectl logs -l app.kubernetes.io/instance=<release> | grep "First login"`). Set `extraEnv.SP_ADMIN_PASSWORD` to choose it, or to
+recover a lost one before the first login. It must be changed at first login.

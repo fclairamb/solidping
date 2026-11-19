@@ -1,6 +1,9 @@
 SolidPing {{ .Chart.AppVersion }} is starting.
 
-First login is admin@solidping.io / solidpass and you must change it right away.
+First login is admin@solidping.io with the password printed once in the pod log:
+  kubectl logs -n {{ .Release.Namespace }} deploy/{{ include "solidping.fullname" . }} | grep "First login"
+Set extraEnv.SP_ADMIN_PASSWORD to choose it (or recover a lost one before the
+first login). You must change it right away.
 {{- if .Values.ingress.enabled }}
 Open {{ .Values.baseUrl }}
 {{- else }}
