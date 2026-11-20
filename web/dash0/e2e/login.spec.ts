@@ -248,6 +248,21 @@ test.describe("Login: deep-link returnTo", () => {
   });
 });
 
+test.describe("Login: OAuth error nested in returnTo", () => {
+  test("shows a refused provider sign-in sent to a protected page", async ({ page }) => {
+    // A refused provider sign-in redirects to the post-login destination with
+    // the error; that page needs a session, so the guard bounces to the login
+    // page with the error nested in returnTo. It must still be shown.
+    const description = "No verified email found in GitHub profile";
+    await page.goto(
+      `orgs/test?error=EMAIL_NOT_VERIFIED&error_description=${encodeURIComponent(description)}`,
+    );
+
+    await expect(page).toHaveURL(/\/orgs\/test\/login/);
+    await expect(page.getByTestId("login-error")).toContainText(description);
+  });
+});
+
 test.describe("Login: forgot-password link placement", () => {
   test("renders the forgot-password link on the password label row", async ({
     page,
