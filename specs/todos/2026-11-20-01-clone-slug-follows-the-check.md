@@ -79,6 +79,11 @@ change the slug.
    never change a hand-set slug, since slugs appear in URLs, badges and the
    API. Trade-off: one extra click.
 
+## Resolved open questions
+
+1. Add a slug field on the edit form (proposal 3); no clone dialog. (autopilot: recommended answer)
+2. On rename, never change the slug automatically: offer a one-click "Update slug to `<derived>`" hint only while the slug is still the auto-generated one; never touch a hand-set slug. (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes fclairamb/solidping-business#96. The implementing PR body

@@ -76,6 +76,10 @@ starting around 20:00 UTC, in a new issue.
    budget would be misfiled as a pause; acceptable since the timer fires at 1x
    plus grace, so a real hang is caught on time and lands near 1x.
 
+## Resolved open questions
+
+1. Detect the pause with the elapsed-vs-budget ratio (self-contained, no new state). (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes fclairamb/solidping-business#97. The implementing PR body
