@@ -135,5 +135,7 @@
     "removedBody": "La ressource surveillée a été retirée. L'incident est résolu."
   },
   "unlockWrongPassword": "Mot de passe incorrect",
-  "unlockTooManyAttempts": "Trop de tentatives. Veuillez réessayer dans quelques minutes."
+  "unlockTooManyAttempts": "Trop de tentatives. Veuillez réessayer dans quelques minutes.",
+  "pageUnavailable": "Cette page de statut est indisponible pour le moment.",
+  "pageUnavailableReload": "Recharger"
 }
