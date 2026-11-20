@@ -1,6 +1,14 @@
 package checks
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/notifier"
+)
 
 func TestStripCopySuffix(t *testing.T) {
 	t.Parallel()
@@ -33,4 +41,38 @@ func TestStripCopyNameSuffix(t *testing.T) {
 			t.Errorf("stripCopyNameSuffix(%q) = %q, want %q", in, got, want)
 		}
 	}
+}
+
+func TestCloneOfACloneIsNumbered(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	require.NoError(t, err)
+	require.NoError(t, dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("clone-slug-org", "Clone Slug Org")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	svc := NewService(dbSvc, notifier.NewLocalEventNotifier(), nil, nil)
+	slug := "acme-site"
+	created, err := svc.CreateCheck(ctx, org.Slug, CreateCheckRequest{
+		Type:   "http",
+		Slug:   slug,
+		Config: map[string]any{"url": "https://example.com"},
+	})
+	require.NoError(t, err)
+
+	first, err := svc.CloneCheck(ctx, org.Slug, created.UID, &CloneCheckRequest{})
+	require.NoError(t, err)
+	require.Equal(t, "acme-site-copy", *first.Slug)
+
+	second, err := svc.CloneCheck(ctx, org.Slug, first.UID, &CloneCheckRequest{})
+	require.NoError(t, err)
+	require.Equal(t, "acme-site-copy-2", *second.Slug)
+
+	third, err := svc.CloneCheck(ctx, org.Slug, second.UID, &CloneCheckRequest{})
+	require.NoError(t, err)
+	require.Equal(t, "acme-site-copy-3", *third.Slug)
 }
