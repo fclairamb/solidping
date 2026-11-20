@@ -27,7 +27,8 @@ import (
 // in its "stun" query parameter first.
 const webRTCPage = `<!doctype html><html><head><title>waiting</title></head><body>
 <p data-testid="webrtc-page">webrtc</p>
-<iframe data-testid="static-frame" srcdoc="<script>parent.postMessage({frame: 'srcdoc', type: typeof RTCPeerConnection}, '*')</script>"></iframe>
+<iframe data-testid="static-frame"
+  srcdoc="<script>parent.postMessage({frame: 'srcdoc', type: typeof RTCPeerConnection}, '*')</script>"></iframe>
 <script>
 const q = new URLSearchParams(location.search);
 const report = { top: typeof RTCPeerConnection, webkit: typeof webkitRTCPeerConnection,

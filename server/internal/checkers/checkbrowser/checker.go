@@ -613,7 +613,7 @@ func egressExecFlags(pin *hostPin, proxy *egressProxy) map[string]any {
 		"proxy-server":        proxy.URL(),
 		"proxy-bypass-list":   egressProxyBypassList,
 		"host-resolver-rules": egressResolverRules(pin, proxy.host()),
-		// Both spellings, each honoured by one build and ignored by the
+		// Both spellings, each read by one build and ignored by the
 		// other (checked against a loopback STUN listener on 2026-11-20):
 		// desktop Chrome reads --webrtc-ip-handling-policy, chromedp's
 		// headless-shell only --force-webrtc-ip-handling-policy.

@@ -230,32 +230,11 @@ func openSessionPinned(sessionCtx, probeCtx context.Context, pin *hostPin) (*Ses
 		return nil, failure
 	}
 
-	// Under an enforcing policy WebRTC is removed from every page before any
-	// of its scripts runs (spec 2026-11-20-01), on both backends: a shared
-	// remote Chrome takes no per-check flag, so this is the one control that
-	// reaches it whatever its sidecar was started with.
-	if guard.Enforcing() {
-		if err := session.run(probeCtx, session.disableWebRTC()); err != nil {
-			session.Close()
-
-			failure := &infraError{msg: "failed to disable WebRTC in the browser: " + err.Error()}
-			recordOpenOutcome(failure)
-
-			return nil, failure
-		}
-	}
-
-	// The viewport is set HERE, before the Session is handed to anyone, so
-	// the first Navigate lays the page out at ViewportWidth from the start
-	// instead of resizing it after load (spec 2026-09-27-01). Both the browser
-	// check and the JS runtime open through this function, so both get it.
-	if err := session.run(probeCtx, viewportParams()); err != nil {
+	if err := session.preparePage(probeCtx, guard); err != nil {
 		session.Close()
+		recordOpenOutcome(err)
 
-		failure := &infraError{msg: "failed to set the browser viewport: " + err.Error()}
-		recordOpenOutcome(failure)
-
-		return nil, failure
+		return nil, err
 	}
 
 	recordOpenOutcome(nil)
@@ -284,6 +263,31 @@ func (s *Session) startProxy(probeCtx context.Context, guard *egress.Guard, curr
 	}
 
 	s.proxy = proxy
+
+	return nil
+}
+
+// preparePage sets up the session's page before it is handed to anyone.
+//
+// Under an enforcing policy WebRTC is removed from every page before any of
+// its scripts runs (spec 2026-11-20-01), on both backends: a shared remote
+// Chrome takes no per-check flag, so this is the one control that reaches it
+// whatever its sidecar was started with.
+//
+// The viewport is set so the first Navigate lays the page out at
+// ViewportWidth from the start instead of resizing it after load (spec
+// 2026-09-27-01). Both the browser check and the JS runtime open through
+// openSessionPinned, so both get it.
+func (s *Session) preparePage(probeCtx context.Context, guard *egress.Guard) error {
+	if guard.Enforcing() {
+		if err := s.run(probeCtx, s.disableWebRTC()); err != nil {
+			return &infraError{msg: "failed to disable WebRTC in the browser: " + err.Error()}
+		}
+	}
+
+	if err := s.run(probeCtx, viewportParams()); err != nil {
+		return &infraError{msg: "failed to set the browser viewport: " + err.Error()}
+	}
 
 	return nil
 }
