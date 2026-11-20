@@ -30,6 +30,7 @@ const (
 	fieldCode           = "code"
 	msgInvalidJSON      = "Invalid JSON format"
 	msgEmailRequired    = "Email is required"
+	msgInvalidEmail     = "Must be a valid email address"
 	msgPasswordRequired = "Password is required"
 	msgTokenRequired    = "Token is required"
 	msgCodeRequired     = "Code is required"
@@ -1305,6 +1306,10 @@ func (h *Handler) writeUpdateOrgSettingsError(writer http.ResponseWriter, req *h
 // handleRegistrationError handles errors from registration endpoints.
 func (h *Handler) handleRegistrationError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
+	case errors.Is(err, ErrInvalidEmail):
+		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+			{Name: keyEmail, Message: msgInvalidEmail},
+		})
 	case errors.Is(err, ErrRegistrationDisabled):
 		return h.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodeRegistrationDisabled,
 			"Registration is not enabled", err)
@@ -1337,6 +1342,10 @@ func (h *Handler) handleRegistrationError(writer http.ResponseWriter, request *h
 // handleInvitationError handles errors from invitation endpoints.
 func (h *Handler) handleInvitationError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
+	case errors.Is(err, ErrInvalidEmail):
+		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+			{Name: keyEmail, Message: msgInvalidEmail},
+		})
 	case errors.Is(err, ErrInvitationNotFound):
 		return h.WriteErrorErr(writer, request, http.StatusNotFound, base.ErrorCodeInvitationNotFound,
 			"Invitation not found", err)
