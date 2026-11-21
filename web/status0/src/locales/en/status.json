@@ -135,5 +135,7 @@
     "removedBody": "The monitored resource was removed. This incident is resolved."
   },
   "unlockWrongPassword": "Incorrect password",
-  "unlockTooManyAttempts": "Too many attempts. Please try again in a few minutes."
+  "unlockTooManyAttempts": "Too many attempts. Please try again in a few minutes.",
+  "pageUnavailable": "This status page is unavailable right now.",
+  "pageUnavailableReload": "Reload"
 }

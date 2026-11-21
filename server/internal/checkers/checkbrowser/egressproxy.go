@@ -25,8 +25,14 @@ import (
 // same-origin barrier, still delivered its frames to the page. Routing every
 // connection through this proxy moves the decision before the connection:
 // the proxy resolves and dials with the guard, so a non-public destination is
-// never contacted at all, whatever the protocol (navigation, subresource,
-// fetch/XHR, WebSocket — Chrome tunnels ws:// and wss:// through CONNECT).
+// never contacted by what Chrome sends through it: navigations, subresources,
+// fetch/XHR and WebSockets (Chrome tunnels ws:// and wss:// through CONNECT).
+//
+// WebRTC is the exception: its ICE checks are UDP and do not go through an
+// HTTP proxy. It is handled apart (spec 2026-11-20-01): the Chrome this
+// process starts runs with a WebRTC IP handling policy that forbids
+// non-proxied UDP (egressExecFlags), and every enforcing session removes
+// RTCPeerConnection from its pages (disableWebRTC).
 //
 // It listens on the loopback only, for the lifetime of one session.
 type egressProxy struct {

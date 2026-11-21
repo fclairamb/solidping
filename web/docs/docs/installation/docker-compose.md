@@ -218,6 +218,10 @@ services:
       - --remote-debugging-port=9222
       # Required from Chrome 111 on for a non-browser websocket client.
       - --remote-allow-origins=*
+      # No WebRTC UDP around SolidPing's egress proxy. headless-shell reads the
+      # "force-" spelling, a desktop Chrome image the other one.
+      - --force-webrtc-ip-handling-policy=disable_non_proxied_udp
+      - --webrtc-ip-handling-policy=disable_non_proxied_udp
       - --disable-gpu
       - --no-sandbox
     # Chrome mounts /dev/shm; Docker's 64 MB default makes tabs crash.

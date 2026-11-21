@@ -18,6 +18,11 @@ i18n
     },
     defaultNS: "status",
     fallbackLng: "en",
+    // `?lang=` is free text: only the supported languages are accepted, and a
+    // regional variant (fr-CA) resolves to its language (fr). Anything else
+    // falls back to English instead of reaching Intl as an invalid tag.
+    supportedLngs: ["en", "fr", "de", "es"],
+    nonExplicitSupportedLngs: true,
     interpolation: { escapeValue: false },
     detection: {
       order: ["querystring", "navigator"],

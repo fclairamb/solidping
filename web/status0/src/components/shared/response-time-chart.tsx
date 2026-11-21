@@ -26,6 +26,7 @@ import {
   classifyAvailabilityCounts,
   formatAvailabilityPct,
 } from "@/lib/availability-status";
+import { displayLocale } from "@/lib/display-locale";
 
 // Height of the plot area. Shared with ResponseTimeChartPlaceholder.
 const PLOT_HEIGHT_PX = 100;
@@ -75,11 +76,11 @@ function CustomTooltip({
   return (
     <div className="rounded-md border bg-background px-3 py-2 text-sm shadow-md">
       <p className="font-medium">
-        {date.toLocaleDateString(i18n.language, {
+        {date.toLocaleDateString(displayLocale(i18n), {
           month: "short",
           day: "numeric",
         })}{" "}
-        {date.toLocaleTimeString(i18n.language, {
+        {date.toLocaleTimeString(displayLocale(i18n), {
           hour: "numeric",
           minute: "2-digit",
         })}
@@ -305,7 +306,7 @@ export function ResponseTimeChart({
               domain={axis.domain}
               ticks={axis.ticks}
               tickFormatter={(v) =>
-                formatAxisTick(Number(v), spanMs, i18n.language)
+                formatAxisTick(Number(v), spanMs, displayLocale(i18n))
               }
               tick={{ fontSize: 10 }}
               tickLine={false}
@@ -332,7 +333,7 @@ export function ResponseTimeChart({
         </ResponsiveContainer>
         <AvailabilityStrip
           cells={singleSeriesCells}
-          locale={i18n.language}
+          locale={displayLocale(i18n)}
           noDataLabel={t("noData")}
           testId="response-time-chart-availability-strip"
         />
@@ -425,7 +426,7 @@ export function ResponseTimeChart({
             domain={axis.domain}
             ticks={axis.ticks}
             tickFormatter={(v) =>
-              formatAxisTick(Number(v), spanMs, i18n.language)
+              formatAxisTick(Number(v), spanMs, displayLocale(i18n))
             }
             tick={{ fontSize: 10 }}
             tickLine={false}
@@ -447,11 +448,11 @@ export function ResponseTimeChart({
               return (
                 <div className="rounded-md border bg-background px-3 py-2 text-sm shadow-md">
                   <p className="font-medium">
-                    {date.toLocaleDateString(i18n.language, {
+                    {date.toLocaleDateString(displayLocale(i18n), {
                       month: "short",
                       day: "numeric",
                     })}{" "}
-                    {date.toLocaleTimeString(i18n.language, {
+                    {date.toLocaleTimeString(displayLocale(i18n), {
                       hour: "numeric",
                       minute: "2-digit",
                     })}
@@ -507,7 +508,7 @@ export function ResponseTimeChart({
       </ResponsiveContainer>
       <AvailabilityStrip
         cells={multiSeriesCells}
-        locale={i18n.language}
+        locale={displayLocale(i18n)}
         noDataLabel={t("noData")}
         testId="response-time-chart-availability-strip"
       />
