@@ -92,7 +92,8 @@ email:
 SP_EMAIL_HOST=smtp.gmail.com
 SP_EMAIL_PORT=587
 SP_EMAIL_USERNAME=your-email@gmail.com
-SP_EMAIL_PASSWORD=your-app-password  # Use App Password, not your account password
+# Use App Password, not your account password
+SP_EMAIL_PASSWORD=your-app-password
 SP_EMAIL_AUTHTYPE=login
 ```
 
@@ -962,7 +963,8 @@ the browser registers a push subscription.
 SP_WEBPUSH_ENABLED=true
 SP_WEBPUSH_VAPID_PUBLIC_KEY=your-vapid-public-key
 SP_WEBPUSH_VAPID_PRIVATE_KEY=your-vapid-private-key
-SP_WEBPUSH_SUBJECT=mailto:admin@example.com   # contact URI advertised to push services
+# contact URI advertised to push services
+SP_WEBPUSH_SUBJECT=mailto:admin@example.com
 ```
 
 ### Configuration File
