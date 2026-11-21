@@ -94,6 +94,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/jobsadmin"
 	"github.com/fclairamb/solidping/server/internal/handlers/labels"
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
+	"github.com/fclairamb/solidping/server/internal/handlers/manifestapply"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
 	"github.com/fclairamb/solidping/server/internal/handlers/orglogo"
@@ -1297,7 +1298,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgSealingAdmin.POST("/rewrap", checksHandler.StartRewrap)
 	orgSealingAdmin.GET("/rewrap", checksHandler.RewrapStatus)
 	orgChecksAdmin.POST("/import", checksHandler.ImportChecks)
-	orgChecksAdmin.POST("/apply", checksHandler.ApplyChecks)
+	// Apply reconciles every kind (checks, channels, maintenance windows,
+	// status pages — spec 2026-11-21-01). `/checks/apply` keeps working; the
+	// kind-neutral alias is POST /orgs/:org/apply. The service behind it is
+	// wired once the later-built services exist (see manifestApplyHandler below).
+	manifestApplyHandler := manifestapply.NewHandler(s.config)
+	orgChecksAdmin.POST("/apply", manifestApplyHandler.Apply)
+	orgManifestAdmin := api.NewGroup("/orgs/:org").
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgManifestAdmin.POST("/apply", manifestApplyHandler.Apply)
+	orgManifestAdmin.GET("/export", manifestApplyHandler.Export)
 
 	// Third-party importers (Gatus / Better Stack / Uptime Kuma) convert a
 	// foreign config into the canonical export document and then reuse the very
@@ -2246,6 +2257,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Maintenance windows routes (authentication required)
 	mwService := maintenancewindows.NewService(s.dbService)
 	mwHandler := maintenancewindows.NewHandler(mwService, s.config)
+	manifestApplyHandler.SetService(manifestapply.NewService(
+		s.dbService, checksService, integrationsService, mwService, statusPagesService))
 	orgMW := orgGroup("/orgs/:org/maintenance-windows")
 	orgMW.GET("", mwHandler.List)
 	orgMW.POST("", mwHandler.Create)

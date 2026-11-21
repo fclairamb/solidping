@@ -4048,6 +4048,11 @@ type ExportDocument struct {
 	// UnmarshalJSON).
 	Secrets string        `json:"secrets,omitempty"`
 	Checks  []ExportCheck `json:"checks"`
+	// Channels, MaintenanceWindows and StatusPages are the other kinds `sp
+	// apply` reconciles (spec 2026-11-21-01). Optional.
+	Channels           []ExportChannel           `json:"channels,omitempty"`
+	MaintenanceWindows []ExportMaintenanceWindow `json:"maintenanceWindows,omitempty"`
+	StatusPages        []ExportStatusPage        `json:"statusPages,omitempty"`
 }
 
 // ExportCheck represents a single check in the export format. The alerting

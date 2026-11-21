@@ -38,6 +38,27 @@ docker run -d \
   ghcr.io/fclairamb/solidping:latest
 ```
 
+#### PostgreSQL over its Unix socket
+
+When PostgreSQL runs on the Docker host, mount its socket directory and leave
+the URL host empty: the socket **directory** goes in the `host` parameter.
+
+```bash
+docker run -d \
+  --name solidping \
+  -p 4000:4000 \
+  -v solidping-data:/data \
+  -v /var/run/postgresql:/var/run/postgresql \
+  -e SP_DB_TYPE=postgres \
+  -e SP_DB_URL="postgresql://user:password@/solidping?host=/var/run/postgresql&sslmode=disable" \
+  ghcr.io/fclairamb/solidping:latest
+```
+
+A non-default port needs `&port=5433` (it names the socket file,
+`.s.PGSQL.5433`). A percent-encoded host (`@%2Fvar%2Frun%2Fpostgresql/`) does
+not work: Go's URL parser rejects it before the driver sees it, so use the
+`host` parameter. More in [Database configuration](../configuration/database.md#unix-domain-socket).
+
 Every value can be overridden with `-e` — Postgres above is the usual reason,
 but the same applies to `SP_FILESTORAGE_LOCAL_ROOT` if you want uploads on a
 different path.
