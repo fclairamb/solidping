@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -198,7 +199,17 @@ func TestServiceInstallUser(t *testing.T) { //nolint:paralleltest // system seam
 	r.NoError(err)
 	r.Contains(string(unit), "WantedBy=default.target")
 	r.Contains(string(unit), "WorkingDirectory="+dataDir)
+	r.Contains(string(unit), "EnvironmentFile="+dataDir+"/config.env")
 	r.DirExists(dataDir)
+
+	envPath := filepath.Join(dataDir, "config.env")
+	envInfo, err := os.Stat(envPath)
+	r.NoError(err)
+	r.Equal(fs.FileMode(0o600), envInfo.Mode().Perm())
+	envBody, err := os.ReadFile(envPath)
+	r.NoError(err)
+	r.Contains(string(envBody), "SP_ADMIN_EMAIL")
+	r.Contains(string(envBody), "SP_DB_URL")
 	r.Equal([]commandCall{
 		{name: "systemctl", args: []string{"--user", "daemon-reload"}},
 		{name: "systemctl", args: []string{"--user", "enable", "solidping.service"}},
@@ -226,7 +237,7 @@ func TestServiceInstallRoot(t *testing.T) { //nolint:paralleltest // system seam
 	unit, err := os.ReadFile(filepath.Join(systemdSystemDir, "solidping.service"))
 	r.NoError(err)
 	r.Contains(string(unit), "User="+systemdServiceUser)
-	r.Equal([]int{4242}, chowned)
+	r.Equal([]int{4242, 4242}, chowned)
 	r.Empty(host.called("useradd"))
 	r.Len(host.called("systemctl"), 2)
 	r.Equal([]string{"daemon-reload"}, host.called("systemctl")[0].args)
@@ -602,8 +613,14 @@ func TestServiceInstallReusesDataDir(t *testing.T) { //nolint:paralleltest // sy
 	dir := filepath.Join(t.TempDir(), "data")
 	r.NoError(os.Mkdir(dir, 0o700))
 	r.NoError(os.WriteFile(filepath.Join(dir, "config.yml"), nil, 0o600))
+	r.NoError(os.WriteFile(filepath.Join(dir, "config.env"), []byte("SP_ADMIN_EMAIL=kept@example.com\n"), 0o600))
 
 	r.NoError(serviceInstall(context.Background(), "solidping", dir))
+
+	// The operator's config.env is never overwritten.
+	envBody, err := os.ReadFile(filepath.Join(dir, "config.env"))
+	r.NoError(err)
+	r.Equal("SP_ADMIN_EMAIL=kept@example.com\n", string(envBody))
 }
 
 func TestServiceRunRefusesDataDirOpenedAfterInstall(t *testing.T) {
@@ -617,4 +634,24 @@ func TestServiceRunRefusesDataDirOpenedAfterInstall(t *testing.T) {
 	err := serviceRun(context.Background(), "solidping", dir, "")
 	r.ErrorIs(err, errUntrustedDataDir)
 	r.ErrorIs(err, errPathWritable)
+}
+
+func TestWriteConfigEnvErrors(t *testing.T) { //nolint:paralleltest // system seams
+	r := require.New(t)
+	newFakeHost(t, true)
+
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	r.NoError(os.WriteFile(blocker, nil, 0o600))
+
+	// Lstat fails with ENOTDIR, not ENOENT.
+	r.ErrorContains(writeConfigEnv(blocker, -1), "check")
+
+	// The folder does not exist: the file cannot be created.
+	r.ErrorContains(writeConfigEnv(filepath.Join(t.TempDir(), "missing"), -1), "write")
+
+	// The file is created, but cannot be handed to the service user.
+	chownPath = func(string, int, int) error { return errFakeCommand }
+	dir := t.TempDir()
+	r.ErrorIs(writeConfigEnv(dir, 4242), errFakeCommand)
+	r.ErrorContains(writeConfigEnv(t.TempDir(), 4242), "hand")
 }

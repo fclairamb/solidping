@@ -117,6 +117,7 @@ holds your configuration and database. The service runs from that folder, so the
 ```
 /var/lib/solidping/
 ├── config.yml        (your configuration)
+├── config.env        (SP_* environment variables, loaded by the unit)
 ├── solidping.db      (the SQLite database, if you use SQLite)
 └── data/files/       (file storage)
 ```
@@ -126,6 +127,25 @@ Logs go to the journal (see [Logs](#logs)).
 Configure it in `config.yml` in that folder (see
 [Configuration File](#configuration-file) below), for example with
 `sudo -u solidping nano /var/lib/solidping/config.yml`.
+
+`install` also writes `config.env`, and the unit loads it with
+`EnvironmentFile=`. Every `SP_*` variable overrides the matching `config.yml`
+key (`SP_DB_URL` is `db.url`), so you can prepare the first start with
+environment variables alone — no YAML to edit:
+
+```bash
+sudo -u solidping nano /var/lib/solidping/config.env
+```
+
+```ini
+SP_ADMIN_EMAIL=admin@example.com
+SP_DB_TYPE=postgres
+SP_DB_URL=postgres://user:password@localhost:5432/solidping?sslmode=disable
+```
+
+The file is created `0600`, owned by the service user: it can hold secrets.
+An existing `config.env` is never overwritten. Restart the service after a
+change (`sudo systemctl restart solidping`).
 
 The unit is hardened: the whole system is read-only to the server except its
 data folder, and it gets a private `/tmp`. It gets only two capabilities:
@@ -193,8 +213,9 @@ sudo systemctl edit solidping
 
 ```ini
 [Service]
-# Environment variables rather than config.yml (keep the file private: chmod 600)
-EnvironmentFile=/var/lib/solidping/.env
+# The unit already loads config.env from the data folder; add another file
+# only if you need one (keep it private: chmod 600)
+EnvironmentFile=/var/lib/solidping/extra.env
 # Order the start after a local service
 After=docker.service
 ```
@@ -216,7 +237,7 @@ sudo solidping service install --dir /opt/solidping
 
 `--dir /opt/solidping` keeps your existing data folder, still owned by the
 `solidping` user. Turn the `Environment=` lines of the old unit into
-`config.yml` entries (or an `EnvironmentFile=` drop-in, see above), then run
+`config.yml` entries or `config.env` variables (see above), then run
 `sudo solidping service start`.
 
 ## Configuration File
