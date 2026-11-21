@@ -5629,6 +5629,14 @@ func (s *Service) UpdateChannel(
 		query = query.Set("settings = ?", *update.Settings)
 	}
 
+	if update.Slug != nil {
+		query = query.Set("slug = ?", *update.Slug)
+	}
+
+	if update.ManagedBy != nil {
+		query = query.Set("managed_by = ?", *update.ManagedBy)
+	}
+
 	switch {
 	case update.ClearSettingsPrivate:
 		query = query.Set("settings_private = NULL").
@@ -6096,6 +6104,10 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 
 	if update.Language != nil {
 		query = query.Set("language = ?", *update.Language)
+	}
+
+	if update.ManagedBy != nil {
+		query = query.Set("managed_by = ?", *update.ManagedBy)
 	}
 
 	query = applyStatusPagePublicationColumnsPg(query, update)
@@ -7076,6 +7088,14 @@ func (s *Service) UpdateMaintenanceWindow(
 
 	if update.RecurrenceEnd != nil {
 		query = query.Set("recurrence_end = ?", *update.RecurrenceEnd)
+	}
+
+	if update.Slug != nil {
+		query = query.Set("slug = ?", *update.Slug)
+	}
+
+	if update.ManagedBy != nil {
+		query = query.Set("managed_by = ?", *update.ManagedBy)
 	}
 
 	_, err := query.Exec(ctx)

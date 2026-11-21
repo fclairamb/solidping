@@ -91,6 +91,8 @@ type ApplyOptions struct {
 
 // ApplyPlanEntry is one reconcile decision for a single slug.
 type ApplyPlanEntry struct {
+	// Kind is the resource kind of the entry (KindCheck, KindChannel, ...).
+	Kind         string `json:"kind"`
 	Slug         string `json:"slug"`
 	PreviousSlug string `json:"previousSlug,omitempty"`
 	Action       string `json:"action"`
@@ -128,6 +130,18 @@ func manifestName(doc *ExportDocument, orgSlug string) string {
 	}
 
 	return orgSlug
+}
+
+// ManifestName is the exported form of manifestName, for the multi-kind apply
+// orchestrator, which must stamp the same owner on every kind.
+func ManifestName(doc *ExportDocument, orgSlug string) string {
+	return manifestName(doc, orgSlug)
+}
+
+// EnvRefAllow returns the operator allowlist of `${env:NAME}` names the
+// service was wired with (nil denies every reference).
+func (s *Service) EnvRefAllow() secretref.EnvAllowFunc {
+	return s.envRefAllow
 }
 
 // computeApplyPlan diffs the manifest against the managed scope and returns the
@@ -403,6 +417,9 @@ func (s *Service) ApplyChecks(
 	}
 
 	plan := s.computeApplyPlan(ctx, org, snapshot, doc, manifest)
+	for i := range plan {
+		plan[i].Kind = KindCheck
+	}
 	result.Plan = plan
 
 	changedSlugs := map[string][]string{}

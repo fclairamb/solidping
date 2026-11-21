@@ -207,7 +207,10 @@ type StatusPage struct {
 	Settings  StatusPageSettings `bun:"settings,type:jsonb,notnull"`
 	CreatedAt time.Time          `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt time.Time          `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt *time.Time         `bun:"deleted_at"`
+	// ManagedBy names the `sp apply` manifest that owns the page; prune only
+	// deletes pages it owns.
+	ManagedBy *string    `bun:"managed_by"`
+	DeletedAt *time.Time `bun:"deleted_at"`
 }
 
 // NewStatusPage creates a new status page with generated UID.
@@ -241,6 +244,8 @@ func NewStatusPage(orgUID, name, slug string) *StatusPage {
 
 // StatusPageUpdate represents fields that can be updated on a status page.
 type StatusPageUpdate struct {
+	// ManagedBy is written by `sp apply` only.
+	ManagedBy        *string
 	Name             *string
 	Slug             *string
 	Description      *string
