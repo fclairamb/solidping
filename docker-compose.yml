@@ -4,7 +4,7 @@
 # Production installs: https://solidping.io/docs/installation/docker-compose
 services:
   postgres:
-    image: postgres:18.7
+    image: postgres:19.0
     container_name: solidping-postgres
     environment:
       POSTGRES_USER: postgres
