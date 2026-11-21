@@ -7,7 +7,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -413,7 +416,17 @@ func (s *Service) SetChecks(
 		return err
 	}
 
-	if err := s.db.SetMaintenanceWindowChecks(ctx, windowUID, req.CheckUIDs, req.CheckGroupUIDs); err != nil {
+	checkUIDs, err := s.validateUIDs(ctx, org.UID, "checkUids", req.CheckUIDs, s.checkExists)
+	if err != nil {
+		return err
+	}
+
+	groupUIDs, err := s.validateUIDs(ctx, org.UID, "checkGroupUids", req.CheckGroupUIDs, s.groupExists)
+	if err != nil {
+		return err
+	}
+
+	if err := s.db.SetMaintenanceWindowChecks(ctx, windowUID, checkUIDs, groupUIDs); err != nil {
 		return err
 	}
 
@@ -423,8 +436,8 @@ func (s *Service) SetChecks(
 	audit.Record(ctx, s.db, org.UID, models.EventTypeMaintenanceWindowUpdated,
 		audit.Target{Type: "maintenance_window", UID: windowUID},
 		audit.ChangePayload(nil, nil, []string{"checks"}, models.JSONMap{
-			"check_count":       len(req.CheckUIDs),
-			"check_group_count": len(req.CheckGroupUIDs),
+			"check_count":       len(checkUIDs),
+			"check_group_count": len(groupUIDs),
 		}))
 
 	return nil
@@ -463,4 +476,72 @@ func convertWindowToResponse(window *models.MaintenanceWindow, now time.Time) Ma
 		Status:          models.Status(window, now),
 		NextOccurrences: models.NextOccurrences(window, now, nextOccurrencesCount),
 	}
+}
+
+// UnknownUIDError reports a check or check group uid that does not exist in the organization.
+type UnknownUIDError struct {
+	// Field is the request field with its index, e.g. "checkUids[1]".
+	Field string
+}
+
+func (e *UnknownUIDError) Error() string {
+	return e.Field + ": unknown uid"
+}
+
+func (s *Service) checkExists(ctx context.Context, orgUID, uid string) (bool, error) {
+	_, err := s.db.GetCheck(ctx, orgUID, uid)
+
+	return lookupFound(err)
+}
+
+func (s *Service) groupExists(ctx context.Context, orgUID, uid string) (bool, error) {
+	_, err := s.db.GetCheckGroup(ctx, orgUID, uid)
+
+	return lookupFound(err)
+}
+
+func lookupFound(err error) (bool, error) {
+	if err == nil {
+		return true, nil
+	}
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+
+	return false, err
+}
+
+// validateUIDs checks every uid exists in the org (not deleted) and returns the deduplicated list.
+func (s *Service) validateUIDs(
+	ctx context.Context, orgUID, field string, uids []string,
+	exists func(ctx context.Context, orgUID, uid string) (bool, error),
+) ([]string, error) {
+	seen := make(map[string]struct{}, len(uids))
+	result := make([]string, 0, len(uids))
+
+	for idx, uid := range uids {
+		if _, dup := seen[uid]; dup {
+			continue
+		}
+
+		seen[uid] = struct{}{}
+
+		if _, err := uuid.Parse(uid); err != nil {
+			return nil, &UnknownUIDError{Field: fmt.Sprintf("%s[%d]", field, idx)}
+		}
+
+		ok, err := exists(ctx, orgUID, uid)
+		if err != nil {
+			return nil, err
+		}
+
+		if !ok {
+			return nil, &UnknownUIDError{Field: fmt.Sprintf("%s[%d]", field, idx)}
+		}
+
+		result = append(result, uid)
+	}
+
+	return result, nil
 }
