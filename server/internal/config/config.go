@@ -1638,6 +1638,15 @@ type AuthConfig struct {
 	// POST /api/v1/system/users/:uid/impersonate answers 404. snake_case, so
 	// SP_AUTH_IMPERSONATION_ENABLED is bound by hand in applyAuthEnv.
 	ImpersonationEnabled bool `koanf:"impersonation_enabled"`
+	// LocalLoginEnabled is the switch for local password login (spec
+	// 2026-11-21-02): POST /auth/login (password and LDAP), registration and
+	// password reset. Default true. False is honored only while an SSO
+	// provider is available (Config.SSOProviders), otherwise local login stays
+	// on and a warning is logged at boot: fail open, so an instance can never
+	// lock everyone out. Resolved per request by
+	// systemconfig.ResolveLocalLogin, so a DB toggle needs no restart. Env:
+	// SP_LOCAL_LOGIN_ENABLED, the systemconfig.KeyLocalLoginEnabled parameter.
+	LocalLoginEnabled bool `koanf:"local_login_enabled"`
 	// AdminEmail is the email of the super admin seeded on the first start of
 	// an empty database (spec 2026-09-30-08). Empty means defaults.Email
 	// (admin@solidping.io). It is read only when no organization exists yet.
@@ -1659,6 +1668,9 @@ type AuthConfig struct {
 	// SP_AUTH_AUTO_PERSONAL_ORG is bound by hand in applyAuthEnv.
 	AutoPersonalOrg *bool `koanf:"auto_personal_org"`
 }
+
+// EnvLocalLoginEnabled is the env override of auth.local_login_enabled.
+const EnvLocalLoginEnabled = "SP_LOCAL_LOGIN_ENABLED"
 
 // EnvAuthAutoPersonalOrg is the env override of auth.auto_personal_org.
 const EnvAuthAutoPersonalOrg = "SP_AUTH_AUTO_PERSONAL_ORG"
@@ -2425,6 +2437,7 @@ func Load() (*Config, error) {
 			// Super-admin impersonation is on by default (spec 2026-09-29-03);
 			// auth.impersonation_enabled=false is the kill switch.
 			ImpersonationEnabled: true,
+			LocalLoginEnabled:    true,
 			WebAuthn: WebAuthnConfig{
 				Enabled:       true,
 				RPDisplayName: "SolidPing",
@@ -3148,6 +3161,10 @@ func applyAuthEnv(cfg *AuthConfig) {
 		} else {
 			slog.Warn("Ignoring unparseable "+EnvAuthAutoPersonalOrg, "value", raw, "error", err)
 		}
+	}
+	// auth.local_login_enabled (spec 2026-11-21-02).
+	if v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(EnvLocalLoginEnabled))); err == nil {
+		cfg.LocalLoginEnabled = v
 	}
 	// auth.admin_email: SP_ADMIN_EMAIL is the documented short name.
 	if v := strings.TrimSpace(os.Getenv("SP_AUTH_ADMIN_EMAIL")); v != "" {

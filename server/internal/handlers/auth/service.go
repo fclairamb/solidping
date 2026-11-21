@@ -751,6 +751,12 @@ func (s *Service) enqueueEmail(
 func (s *Service) Login(
 	ctx context.Context, orgSlug, email, password string, authContext Context,
 ) (*LoginResponse, error) {
+	// Local login off covers LDAP too: it is a password form all the same
+	// (spec 2026-11-21-02).
+	if err := s.requireLocalLogin(ctx); err != nil {
+		return nil, err
+	}
+
 	// Get user by email (global user lookup). sql.ErrNoRows is not fatal
 	// here — it just means the LDAP branch below may be auto-provisioning a
 	// brand-new identity.
@@ -3224,7 +3230,7 @@ func (s *Service) purgePasswordResets(ctx context.Context, userUID string) {
 // configured DisplayName — shared between the login-providers list
 // (ListProviders, providers_available.go) and the SSO password-reset email
 // (providerLabel below).
-const ssoFallbackLabel = "SSO"
+const ssoFallbackLabel = config.SSOFallbackLabel
 
 // providerTypeLabels maps a linked-provider type to the human-readable name
 // used in the SSO password-reset email (spec 2026-09-23-02). SAML and OIDC

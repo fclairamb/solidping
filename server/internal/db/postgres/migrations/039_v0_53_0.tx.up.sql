@@ -1,6 +1,7 @@
 -- v0.53.0 — postgres migration.
 --
 --   SECTION: apply-all-kinds   integrations / maintenance_windows slug, managed_by on three tables
+--   SECTION: oidc-only-mode    users.super_admin_source
 --
 -- ==========================================================================
 -- SECTION: apply-all-kinds
@@ -40,3 +41,14 @@ create unique index if not exists idx_integrations_org_slug
 create unique index if not exists idx_maintenance_windows_org_slug
     on maintenance_windows (organization_uid, slug)
     where slug is not null and deleted_at is null;
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: oidc-only-mode
+-- ==========================================================================
+-- Who granted users.super_admin (spec 2026-11-21-02). NULL: granted locally
+-- (seeded, or by a super admin), never touched by an IdP claim. 'oidc':
+-- granted by the OIDC super-admin group claim, and revoked by the next login
+-- that no longer carries the group.
+alter table users add column if not exists super_admin_source varchar(20);

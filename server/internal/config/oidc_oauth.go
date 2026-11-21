@@ -1,5 +1,7 @@
 package config
 
+import "strings"
+
 // OIDCOAuthConfig contains generic OpenID Connect provider configuration.
 //
 // Unlike the six bespoke social providers (Google, GitHub, GitLab, Microsoft,
@@ -35,4 +37,52 @@ type OIDCOAuthConfig struct {
 	EmailClaim  string `koanf:"email_claim"`
 	NameClaim   string `koanf:"name_claim"`
 	AvatarClaim string `koanf:"avatar_claim"`
+
+	// GroupsClaim names the ID token (or userinfo) claim that lists the
+	// user's IdP groups (spec 2026-11-21-02). Blank means "groups". The claim
+	// may be an array of strings, a single string, or a space-separated string.
+	GroupsClaim string `koanf:"groups_claim"`
+
+	// SuperAdminGroups is a comma-separated list of IdP groups whose members
+	// are super admins of the instance, synced on every OIDC login. Empty
+	// turns the mapping off.
+	SuperAdminGroups string `koanf:"super_admin_groups"`
+
+	// OrgAdminGroups is a comma-separated list of IdP groups whose members get
+	// the admin role in the organization they log into, joining it if needed.
+	// Empty turns the mapping off.
+	OrgAdminGroups string `koanf:"org_admin_groups"`
+}
+
+// DefaultOIDCGroupsClaim is the claim read when GroupsClaim is blank.
+const DefaultOIDCGroupsClaim = "groups"
+
+// Configured reports whether the generic OIDC provider can be used to sign
+// in: enabled, with an issuer and a client id/secret pair.
+func (c *OIDCOAuthConfig) Configured() bool {
+	return c.Enabled && c.IssuerURL != "" && c.ClientID != "" && c.ClientSecret != ""
+}
+
+// SuperAdminGroupList returns SuperAdminGroups split on commas, trimmed, with
+// blanks dropped.
+func (c *OIDCOAuthConfig) SuperAdminGroupList() []string {
+	return splitGroupList(c.SuperAdminGroups)
+}
+
+// OrgAdminGroupList returns OrgAdminGroups split on commas, trimmed, with
+// blanks dropped.
+func (c *OIDCOAuthConfig) OrgAdminGroupList() []string {
+	return splitGroupList(c.OrgAdminGroups)
+}
+
+func splitGroupList(raw string) []string {
+	var out []string
+
+	for _, part := range strings.Split(raw, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+
+	return out
 }

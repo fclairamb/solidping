@@ -151,6 +151,17 @@ const (
 	KeyOIDCEmailClaim   ParameterKey = "auth.oidc.email_claim"
 	KeyOIDCNameClaim    ParameterKey = "auth.oidc.name_claim"
 	KeyOIDCAvatarClaim  ParameterKey = "auth.oidc.avatar_claim"
+	// IdP group mapping (spec 2026-11-21-02): which claim lists the groups,
+	// and which groups grant super admin / org admin. See
+	// config.OIDCOAuthConfig.
+	KeyOIDCGroupsClaim      ParameterKey = "auth.oidc.groups_claim"
+	KeyOIDCSuperAdminGroups ParameterKey = "auth.oidc.super_admin_groups"
+	KeyOIDCOrgAdminGroups   ParameterKey = "auth.oidc.org_admin_groups"
+
+	// KeyLocalLoginEnabled switches local password login (password, LDAP,
+	// registration, password reset) on or off (spec 2026-11-21-02). Resolved
+	// per request by ResolveLocalLogin, so no restart is needed.
+	KeyLocalLoginEnabled ParameterKey = "auth.local_login.enabled"
 
 	// SAML 2.0 Service Provider keys (spec 2026-07-08-08, part 2). Global-only,
 	// single instance, SP-initiated only — see config.SAMLConfig. None of these
@@ -1072,6 +1083,44 @@ func getKnownParameters() []ParameterDefinition {
 				if v, ok := value.(string); ok {
 					cfg.OIDC.AvatarClaim = v
 				}
+			},
+		},
+		{
+			Key:    KeyOIDCGroupsClaim,
+			EnvVar: "SP_OIDC_GROUPS_CLAIM",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.GroupsClaim = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCSuperAdminGroups,
+			EnvVar: "SP_OIDC_SUPER_ADMIN_GROUPS",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.SuperAdminGroups = v
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCOrgAdminGroups,
+			EnvVar: "SP_OIDC_ORG_ADMIN_GROUPS",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.OrgAdminGroups = v
+				}
+			},
+		},
+		{
+			Key:    KeyLocalLoginEnabled,
+			EnvVar: config.EnvLocalLoginEnabled,
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.Auth.LocalLoginEnabled = parseBool(value, cfg.Auth.LocalLoginEnabled)
 			},
 		},
 		{

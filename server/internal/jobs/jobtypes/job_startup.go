@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/defaults"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
@@ -337,6 +338,13 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 
 	log.InfoContext(ctx, "Created default organization", "uid", defaultOrg.UID, "slug", defaultOrg.Slug)
 
+	// OIDC-only first boot (spec 2026-11-21-02): no password admin. The org
+	// stays empty until the first SSO login from a super-admin group, which
+	// makes that user its owner (OIDCOAuthService.syncGroupRoles).
+	if groups, ok := oidcOnlyBootstrapGroups(ctx, jctx); ok {
+		return r.seedOIDCOnly(ctx, jctx, defaultOrg, groups)
+	}
+
 	// Create admin user
 	adminEmail := seedAdminEmail(jctx.AppConfig)
 
@@ -401,6 +409,47 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 	}
 
 	return nil
+}
+
+// seedOIDCOnly finishes an OIDC-only first boot: no admin, the bootstrap
+// marker breakGlassAdmin keys on, and the sample checks.
+func (r *StartupJobRun) seedOIDCOnly(
+	ctx context.Context, jctx *jobdef.JobContext, org *models.Organization, groups []string,
+) error {
+	jctx.Logger.InfoContext(ctx, "OIDC-only mode: no password admin seeded, waiting for the first SSO login "+
+		"from a super-admin group", "groups", groups, "org", org.Slug)
+
+	if err := jctx.DBService.SetSystemParameter(ctx, paramOIDCOnlyBootstrap, true, false); err != nil {
+		return fmt.Errorf("failed to record the OIDC-only bootstrap: %w", err)
+	}
+
+	if err := r.loadSampleChecks(ctx, jctx, org.UID); err != nil {
+		return fmt.Errorf("failed to load sample checks: %w", err)
+	}
+
+	return nil
+}
+
+// oidcOnlyBootstrapGroups reports whether the first boot skips the password
+// super admin: local login is enforced off (it fails open, and so seeds the
+// admin, while no SSO provider is available), the generic OIDC provider is
+// configured, and auth.oidc.super_admin_groups names at least one group.
+func oidcOnlyBootstrapGroups(ctx context.Context, jctx *jobdef.JobContext) ([]string, bool) {
+	cfg := jctx.AppConfig
+	if cfg == nil || !cfg.OIDC.Configured() {
+		return nil, false
+	}
+
+	groups := cfg.OIDC.SuperAdminGroupList()
+	if len(groups) == 0 {
+		return nil, false
+	}
+
+	if systemconfig.ResolveLocalLogin(ctx, jctx.DBService, cfg).Enabled {
+		return nil, false
+	}
+
+	return groups, true
 }
 
 // loadSampleChecks creates sample checks for the organization if not already loaded.

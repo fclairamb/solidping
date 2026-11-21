@@ -8,3 +8,6 @@ alter table maintenance_windows drop column managed_by;
 alter table maintenance_windows drop column slug;
 alter table integrations drop column managed_by;
 alter table integrations drop column slug;
+
+-- SECTION: oidc-only-mode
+alter table users drop column super_admin_source;

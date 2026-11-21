@@ -15,6 +15,7 @@ Global user accounts with authentication.
 | password_hash | text | Argon2id hash (NULL for SSO-only) |
 | email_verified_at | timestamptz | Email verification timestamp |
 | super_admin | boolean | Can access all organizations |
+| super_admin_source | varchar(20) | Who granted `super_admin`: NULL = locally (seeded or by a super admin), never touched by an IdP claim; `oidc` = the OIDC super-admin group claim, revoked by the next login without the group |
 | last_active_at | timestamptz | Last login/activity |
 | totp_secret | text | Base32-encoded TOTP secret for 2FA (NULL if not configured) |
 | totp_enabled | boolean | Whether TOTP two-factor authentication is active |

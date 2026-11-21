@@ -77,6 +77,10 @@ Use a recovery code to bypass 2FA during login.
 
 ### GET /api/v1/auth/providers
 List enabled authentication providers (password, OAuth providers). Auth: public
+- `localLogin` (bool) is false while local password login is switched off (`auth.local_login.enabled`, spec 2026-11-21-02): the login page then hides the email/password form, the forgot-password and sign-up links. `registrationEnabled` is false too.
+
+### Local login switch
+While `auth.local_login.enabled` (env `SP_LOCAL_LOGIN_ENABLED`) is false, `POST /auth/login` (password and LDAP), `/register`, `/confirm-registration`, `/request-password-reset`, `/reset-password` and `/change-password` answer 403 `LOCAL_LOGIN_DISABLED`. The routes stay mounted and the value is read per request, so a DB toggle needs no restart. Passkeys, the OAuth/OIDC/SAML providers, API tokens, the device flow and the MCP OAuth server keep working. With no SSO provider configured and enabled, local login stays on (fail open, warning at boot) and `PUT /api/v1/system/parameters/auth.local_login.enabled` with `false` answers 400.
 
 ## Authenticated
 
@@ -272,6 +276,22 @@ Begin the OIDC authorization-code flow (redirects to the provider).
 ### GET /api/v1/auth/oidc/callback
 OIDC redirect target. Exchanges the code, provisions/links the user, and issues
 SolidPing tokens.
+
+Group mapping (spec 2026-11-21-02): the groups are read from the validated ID
+token claim `auth.oidc.groups_claim` (default `groups`; an array of strings, a
+string or a space-separated string), merged with the userinfo response of the
+same exchange when its `sub` matches. Never from the request or the state.
+- `auth.oidc.super_admin_groups`: members are super admins, synced on every
+  login. A claim grant is recorded as `users.super_admin_source = 'oidc'` and
+  revoked by the next login without the group; a local super admin is never
+  demoted, the last super admin never revoked. `auth.super_admin_changed` is
+  recorded on each grant and revoke.
+- `auth.oidc.org_admin_groups`: members get the `admin` role in the login org,
+  joining it if needed (grant-only: leaving the group does not demote, an owner
+  is never touched). `member.joined` / `member.role_changed` with source
+  `oidc_group`.
+- While super-admin groups are set, an empty org is not handed to the first
+  user who signs in: only a super-admin group member becomes its owner.
 
 ## SAML
 
