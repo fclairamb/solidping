@@ -416,7 +416,18 @@ func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 	res, sendErr := jctx.Services.EmailSender.Send(ctx, msg)
 	del.record(emailAddresses, res)
 
-	return sendErr
+	return retryableSendError(sendErr)
+}
+
+// retryableSendError marks a transient SMTP failure (a 4xx reply such as a
+// rate limit, a dropped connection) as retryable, so the job worker sends the
+// notification again after its backoff instead of dropping it.
+func retryableSendError(err error) error {
+	if err != nil && email.IsRetryableSendError(err) {
+		return jobdef.NewRetryableError(err)
+	}
+
+	return err
 }
 
 // sendPerRecipient sends one email per recipient with a personalized magic-
@@ -498,7 +509,7 @@ func (s *EmailSender) sendPerRecipient(
 		del.record([]string{address}, res)
 
 		if sendErr != nil {
-			return sendErr
+			return retryableSendError(sendErr)
 		}
 	}
 

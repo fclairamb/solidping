@@ -21,17 +21,20 @@ package agentws
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/google/uuid"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/audit"
@@ -245,6 +248,10 @@ func (h *Handler) serveEnrollment(
 	tokenHash := agentcrypto.HashEnrollmentToken(token)
 
 	if _, err := h.dbService.GetAgentEnrollmentTokenByHash(ctx, tokenHash); err != nil {
+		if !errors.Is(err, db.ErrEnrollmentTokenInvalid) {
+			return h.writeAuthUnavailable(ctx, writer, "agent enrollment token lookup failed", err)
+		}
+
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken,
 			"Enrollment token is invalid, expired, or already used")
 	}
@@ -493,6 +500,24 @@ func (h *Handler) validateEnrollmentScope(
 	return quotaErr
 }
 
+// authRetryAfterSec is the Retry-After of a 503 answered when the database
+// cannot be reached while authenticating an agent.
+const authRetryAfterSec = 5
+
+// writeAuthUnavailable answers 503 when agent authentication cannot complete
+// because the database or the nonce store failed. A 401 would read as a
+// revoked or broken identity on the agent, while this is a server-side blip
+// the agent retries.
+func (h *Handler) writeAuthUnavailable(
+	ctx context.Context, writer http.ResponseWriter, msg string, err error, attrs ...any,
+) error {
+	h.logger.WarnContext(ctx, msg, append([]any{"error", err}, attrs...)...)
+	writer.Header().Set("Retry-After", strconv.Itoa(authRetryAfterSec))
+
+	return h.WriteError(writer, http.StatusServiceUnavailable, base.ErrorCodeInternalError,
+		"Agent authentication is temporarily unavailable, retry later")
+}
+
 // serveReconnect handles a returning agent authenticating with signed headers:
 // Ed25519 over method|path|timestamp|nonce, ±5 min skew, replay-guarded.
 func (h *Handler) serveReconnect(
@@ -508,8 +533,18 @@ func (h *Handler) serveReconnect(
 			"Missing signed agent headers")
 	}
 
+	// A malformed UID can't name an agent: answer 401 before the lookup, which
+	// Postgres would fail as invalid uuid syntax (and so as a 503 below).
+	if uuid.Validate(agentUID) != nil {
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Unknown agent")
+	}
+
 	agent, err := h.dbService.GetAgent(ctx, agentUID)
 	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return h.writeAuthUnavailable(ctx, writer, "agent lookup failed", err)
+		}
+
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Unknown agent")
 	}
 
@@ -526,12 +561,12 @@ func (h *Handler) serveReconnect(
 	// the database, not in this replica's memory, because a multi-machine fly
 	// fleet reconnects through a load balancer and a per-process cache would
 	// let a captured signature be replayed against a different replica. Fails
-	// CLOSED — a store error rejects the reconnect, which the agent retries.
+	// CLOSED — a store error rejects the reconnect (503), which the agent retries.
 	if nonceErr := h.nonces.CheckAndStore(
 		ctx, agent.UID, nonce, time.Now(), nonceRetention,
 	); nonceErr != nil {
 		if !errors.Is(nonceErr, agentcrypto.ErrReplayedNonce) {
-			h.logger.ErrorContext(ctx, "agent nonce store failed", "error", nonceErr, "agent", agent.UID)
+			return h.writeAuthUnavailable(ctx, writer, "agent nonce store failed", nonceErr, "agent", agent.UID)
 		}
 
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Nonce already used")

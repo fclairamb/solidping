@@ -169,6 +169,9 @@ var (
 	ErrOrganizationNotFound = errors.New("organization not found")
 	// ErrCheckNotFound is returned when a check is not found.
 	ErrCheckNotFound = errors.New("check not found")
+	// ErrCheckGroupNotFound is returned when a check's checkGroupUid names no
+	// group of the org (neither a UID nor a slug of one).
+	ErrCheckGroupNotFound = errors.New("check group not found: pass the UID or slug of one of the org's check groups")
 	// ErrInvalidCheckType is returned when an unsupported check type is provided.
 	ErrInvalidCheckType = errors.New("invalid check type")
 	// ErrNotHeartbeatCheck is returned when a heartbeat-only operation (e.g.
@@ -1674,9 +1677,14 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	// makes those checks immutable to a demo session.
 	check.CreatedBy = createdByForCaller(ctx)
 
-	// Set check group
+	// Set check group, resolved within the org (a UID or a slug).
 	if req.CheckGroupUID != nil && *req.CheckGroupUID != "" {
-		check.CheckGroupUID = req.CheckGroupUID
+		groupUID, groupErr := s.resolveCheckGroupUID(ctx, org.UID, *req.CheckGroupUID)
+		if groupErr != nil {
+			return CheckResponse{}, groupErr
+		}
+
+		check.CheckGroupUID = &groupUID
 	}
 
 	// Set the name from the validated spec, falling back to the resolved slug.
@@ -2186,6 +2194,19 @@ func (s *Service) UpdateCheck(
 	check, err := s.db.GetCheckByUidOrSlug(ctx, org.UID, identifier)
 	if err != nil || check == nil {
 		return CheckResponse{}, ErrCheckNotFound
+	}
+
+	// "" keeps meaning "remove from its group"; anything else must name a
+	// group of this org. Resolved on a copy so the caller's request is kept.
+	if req.CheckGroupUID != nil && *req.CheckGroupUID != "" {
+		groupUID, groupErr := s.resolveCheckGroupUID(ctx, org.UID, *req.CheckGroupUID)
+		if groupErr != nil {
+			return CheckResponse{}, groupErr
+		}
+
+		resolved := *req
+		resolved.CheckGroupUID = &groupUID
+		req = &resolved
 	}
 
 	plan, err := s.prepareCheckUpdate(ctx, check, req)
@@ -5327,7 +5348,7 @@ func (s *Service) CloneCheck(
 	// The clone's SHAPE is still checked, so a demo session cannot use clone
 	// as a side door around the type allowlist or the period floor by copying
 	// a seeded check the catalog is allowed to have but a visitor is not.
-	if validateErr := s.cloneValidate(ctx, org.UID, clone); validateErr != nil {
+	if validateErr := s.clonePrepare(ctx, org.UID, clone, req); validateErr != nil {
 		return CheckResponse{}, validateErr
 	}
 
@@ -5536,6 +5557,41 @@ func resolveCloneDescription(source *models.Check, req *CloneCheckRequest) *stri
 	}
 
 	return nil
+}
+
+// resolveCheckGroupUID returns the UID of the org's check group named by
+// identifier (its UID or its slug), or ErrCheckGroupNotFound. Scoping the
+// lookup to the org keeps a check from being linked to another org's group,
+// and a slug no longer reaches the database as an invalid uuid.
+func (s *Service) resolveCheckGroupUID(ctx context.Context, orgUID, identifier string) (string, error) {
+	group, err := s.db.GetCheckGroupByUidOrSlug(ctx, orgUID, identifier)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && group == nil) {
+		return "", fmt.Errorf("%w (got %q)", ErrCheckGroupNotFound, identifier)
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("resolve check group: %w", err)
+	}
+
+	return group.UID, nil
+}
+
+// clonePrepare resolves, within the org, the group a clone request asked for
+// (an inherited source group is already the org's own), then runs
+// cloneValidate.
+func (s *Service) clonePrepare(
+	ctx context.Context, orgUID string, clone *models.Check, req *CloneCheckRequest,
+) error {
+	if clone.CheckGroupUID != nil && req != nil && req.CheckGroupUID != nil {
+		groupUID, err := s.resolveCheckGroupUID(ctx, orgUID, *clone.CheckGroupUID)
+		if err != nil {
+			return err
+		}
+
+		clone.CheckGroupUID = &groupUID
+	}
+
+	return s.cloneValidate(ctx, orgUID, clone)
 }
 
 func resolveCloneGroup(source *models.Check, req *CloneCheckRequest) *string {
