@@ -473,6 +473,11 @@ func GetCommands() []*cli.Command {
 							Usage: "Output format: yaml or json (default: inferred from --file's " +
 								"extension, else json)",
 						},
+						&cli.BoolFlag{
+							Name: "all-kinds",
+							Usage: "Also export channels, maintenance windows and status pages " +
+								"(a manifest `sp apply` can reconcile)",
+						},
 					},
 					Action: checksExportAction,
 				},
@@ -539,7 +544,7 @@ func GetCommands() []*cli.Command {
 				},
 				&cli.BoolFlag{
 					Name:  "prune",
-					Usage: "Delete managed checks that are absent from the manifest",
+					Usage: "Delete managed rows (checks, channels, windows, status pages) absent from the manifest",
 				},
 				&cli.BoolFlag{
 					Name:  "force",

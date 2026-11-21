@@ -137,6 +137,8 @@ requester IP, with a link to revoke the token.
 # 1. Export the current state (writes YAML because of the .yaml extension;
 #    pass --format explicitly to override, or write .json for the raw JSON).
 sp checks export --file config.yaml
+#    Add --all-kinds to also export channels, maintenance windows and status
+#    pages, which `sp apply` reconciles too (see Config as code).
 
 # 2. Edit config.yaml by hand (or with a script) — add/rename/tune checks.
 

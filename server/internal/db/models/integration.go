@@ -138,11 +138,16 @@ type Integration struct {
 	// SettingsPrivate / SettingsPrivateKeys mirror the credential-encryption
 	// shape used on Check.Config. Tokens, webhook URLs, API keys live here
 	// as an AES-GCM envelope at rest.
-	SettingsPrivate     *string    `bun:"settings_private,type:text,nullzero"`
-	SettingsPrivateKeys *string    `bun:"settings_private_keys,type:text,nullzero"`
-	CreatedAt           time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt           time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt           *time.Time `bun:"deleted_at"`
+	SettingsPrivate     *string `bun:"settings_private,type:text,nullzero"`
+	SettingsPrivateKeys *string `bun:"settings_private_keys,type:text,nullzero"`
+	// Slug is the optional per-org-unique manifest key `sp apply` matches on; a
+	// channel without one is never touched by apply. ManagedBy is the name of
+	// the manifest that owns the row: prune only deletes rows it owns.
+	Slug      *string    `bun:"slug"`
+	ManagedBy *string    `bun:"managed_by"`
+	CreatedAt time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt *time.Time `bun:"deleted_at"`
 
 	// Relations
 	Organization *Organization `bun:"rel:belongs-to,join:organization_uid=uid"`
@@ -174,6 +179,9 @@ type IntegrationUpdate struct {
 	SettingsPrivate      *string
 	SettingsPrivateKeys  *string
 	ClearSettingsPrivate bool
+	// Slug and ManagedBy are written by `sp apply` only.
+	Slug      *string
+	ManagedBy *string
 }
 
 // ListIntegrationsFilter represents filter options for listing integrations.

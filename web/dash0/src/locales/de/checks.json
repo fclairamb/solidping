@@ -320,6 +320,7 @@
     "organization": "Organisation",
     "slugOptional": "Slug (optional)",
     "slugHint": "URL-freundlicher Bezeichner für den Check",
+    "updateSlugToDerived": "Slug auf `{{slug}}` aktualisieren",
     "labelsHint": "Optionale Schlüssel/Wert-Tags zum Gruppieren und Filtern.",
     "groupOptional": "Gruppe (optional)",
     "noGroup": "Keine Gruppe",

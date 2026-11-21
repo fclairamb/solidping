@@ -143,6 +143,47 @@ func effectiveAbandonGrace() time.Duration {
 	return abandonGrace
 }
 
+// lastChanceReceive is how long the watchdog keeps listening for the checker's
+// outcome once its abandon timer fires (spec 2026-11-20-02). After a process
+// pause (VM freeze) the timer and the checker's own context deadline expire
+// together on resume; the checker needs a few ms to unwind and send. A result
+// that lands in this window is a normal (timeout) result, not an abandon.
+const lastChanceReceive = 250 * time.Millisecond
+
+// lastChanceOverride lets tests shrink or stretch lastChanceReceive. Zero (the
+// default) means "use lastChanceReceive".
+//
+//nolint:gochecknoglobals // test-only override, never mutated outside _test.go files
+var lastChanceOverride time.Duration
+
+func effectiveLastChance() time.Duration {
+	if lastChanceOverride > 0 {
+		return lastChanceOverride
+	}
+
+	return lastChanceReceive
+}
+
+// pausedBudgetRatio: a guarded run whose wall time exceeds this multiple of its
+// watchdog budget (execTimeout + grace) was not hung, the process was frozen
+// (spec 2026-11-20-02). The watchdog timer fires at 1x the budget, so a real
+// hang is caught near 1x and never reaches it.
+const pausedBudgetRatio = 2
+
+// abandonReason classifies a watchdog abandonment. A process pause wins over
+// an agent outage: the pause is the root cause, and the outage it triggers is
+// a symptom of it.
+func abandonReason(elapsed, budget time.Duration, connLost bool) string {
+	switch {
+	case elapsed > pausedBudgetRatio*budget:
+		return prommetrics.AbandonReasonProcessPaused
+	case connLost:
+		return prommetrics.AbandonReasonConnectionLost
+	default:
+		return prommetrics.AbandonReasonIgnoredContext
+	}
+}
+
 // CheckWorker executes check jobs from the queue.
 type CheckWorker struct {
 	// worker holds the registered worker identity. It is written once by
@@ -1770,14 +1811,46 @@ func (r *CheckWorker) runCheckerGuarded(
 		outcomeCh <- execOutcome{result: res, err: execErr}
 	}()
 
+	guardStart := time.Now()
+	budget := execTimeout + effectiveAbandonGrace()
+
 	select {
 	case out := <-outcomeCh:
 		return out.result, out.err
-	case <-time.After(execTimeout + effectiveAbandonGrace()):
-		abandoned.Store(true)
-
-		return r.abandonCheckerExecution(ctx, logger, checkJob, time.Since(startTime))
+	case <-time.After(budget):
 	}
+
+	// Measured when the abandon timer fires, before the last-chance window: a
+	// timer that fires far past its budget means the process was frozen.
+	elapsed := time.Since(guardStart)
+
+	// Last-chance receive: on resume from a process pause both deadlines are
+	// ready at once, and the checker that honored its context may need a few
+	// ms to send its timeout result (spec 2026-11-20-02).
+	select {
+	case out := <-outcomeCh:
+		return out.result, out.err
+	case <-time.After(effectiveLastChance()):
+	}
+
+	abandoned.Store(true)
+
+	return r.abandonCheckerExecution(ctx, logger, checkJob, abandonTiming{
+		duration:    time.Since(startTime),
+		elapsed:     elapsed,
+		execTimeout: execTimeout,
+		budget:      budget,
+	})
+}
+
+// abandonTiming is what abandonCheckerExecution needs to classify and log an
+// abandonment: the result duration (since the job started), the wall time of
+// the guarded run when the abandon timer fired, and its budget.
+type abandonTiming struct {
+	duration    time.Duration
+	elapsed     time.Duration
+	execTimeout time.Duration
+	budget      time.Duration
 }
 
 // abandonCheckerExecution implements the D3 abandon branch: loud logging,
@@ -1787,44 +1860,43 @@ func (r *CheckWorker) abandonCheckerExecution(
 	ctx context.Context,
 	logger *slog.Logger,
 	checkJob *models.CheckJob,
-	duration time.Duration,
+	timing abandonTiming,
 ) (*checkerdef.Result, error) {
 	region := ""
 	if checkJob.Region != nil {
 		region = *checkJob.Region
 	}
 
-	connLost := r.outage.active()
-	reason := prommetrics.AbandonReasonIgnoredContext
-	if connLost {
-		reason = prommetrics.AbandonReasonConnectionLost
-	}
+	reason := abandonReason(timing.elapsed, timing.budget, r.outage.active())
 
 	prommetrics.RecordCheckRunnerAbandoned(checkJob.Type, reason)
 	prommetrics.IncCheckRunnerAbandonedActive()
 
-	if connLost {
+	attrs := []any{
+		"check_uid", checkJob.CheckUID,
+		"check_type", checkJob.Type,
+		"org", checkJob.OrganizationUID,
+		"region", region,
+		"reason", reason,
+		"elapsed", timing.elapsed,
+		"exec_timeout", timing.execTimeout,
+		"abandon_count", 1,
+	}
+
+	switch reason {
+	case prommetrics.AbandonReasonProcessPaused:
+		// The process was frozen past every deadline: not a checker bug.
+		logger.WarnContext(ctx, "Checker abandoned: process paused", attrs...)
+	case prommetrics.AbandonReasonConnectionLost:
 		// Cut off while blocked on the dead agent connection: expected.
-		logger.WarnContext(ctx, "Checker abandoned: agent connection lost",
-			"check_uid", checkJob.CheckUID,
-			"check_type", checkJob.Type,
-			"org", checkJob.OrganizationUID,
-			"region", region,
-			"reason", reason,
-			"abandon_count", 1)
-	} else {
-		logger.ErrorContext(ctx, "Checker abandoned: did not honor context",
-			"check_uid", checkJob.CheckUID,
-			"check_type", checkJob.Type,
-			"org", checkJob.OrganizationUID,
-			"region", region,
-			"reason", reason,
-			"abandon_count", 1)
+		logger.WarnContext(ctx, "Checker abandoned: agent connection lost", attrs...)
+	default:
+		logger.ErrorContext(ctx, "Checker abandoned: did not honor context", attrs...)
 	}
 
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusTimeout,
-		Duration: duration,
+		Duration: timing.duration,
 		Output: map[string]any{
 			checkerdef.OutputKeyError: ErrCheckerAbandoned.Error(),
 		},

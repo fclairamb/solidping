@@ -17,12 +17,17 @@ import {
 import { captureLandingAttribution } from "@/lib/attribution";
 import { registerServiceWorker } from "@/lib/service-worker";
 import { reactRootErrorOptions } from "@/lib/react-root-error-handling";
+import { installTranslatorDomGuard } from "@/lib/translator-dom-guard";
 import "@fontsource-variable/inter/index.css";
 import "@fontsource-variable/jetbrains-mono/index.css";
 import { i18nReady } from "./i18n";
 import "./index.css";
 
 installErrorCollector();
+
+// Before React mounts: a browser translator moving React-owned text nodes must
+// not crash every page (see lib/translator-dom-guard.ts).
+installTranslatorDomGuard();
 
 // Campaign attribution forwarded by the marketing site (gclid, utm_*). Read
 // here, before the router mounts: the first thing `/login` does is redirect to

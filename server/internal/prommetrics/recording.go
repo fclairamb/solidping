@@ -190,14 +190,17 @@ func RecordJobLeaseLost(jobType string) {
 const (
 	AbandonReasonIgnoredContext = "ignored_context"
 	AbandonReasonConnectionLost = "connection_lost"
+	AbandonReasonProcessPaused  = "process_paused"
 )
 
 // RecordCheckRunnerAbandoned increments the abandoned-execution counter for
 // the given check type. Called once per watchdog abandonment (spec
 // 2026-07-05-05 D3).
 //
-// reason is AbandonReasonIgnoredContext (a checker bug) or
-// AbandonReasonConnectionLost (cut off by an agent connection loss).
+// reason is AbandonReasonIgnoredContext (a checker bug),
+// AbandonReasonConnectionLost (cut off by an agent connection loss) or
+// AbandonReasonProcessPaused (the process was frozen past the budget, e.g. a
+// VM pause).
 func RecordCheckRunnerAbandoned(checkType, reason string) {
 	CheckRunnerAbandoned.WithLabelValues(checkType, reason).Inc()
 }
