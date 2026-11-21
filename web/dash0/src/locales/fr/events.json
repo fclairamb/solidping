@@ -88,6 +88,7 @@
     "auth.token_misuse": "Tentative d'usage abusif de jeton",
     "auth.impersonation_started": "Session « voir en tant que » démarrée",
     "auth.email_changed": "Adresse e-mail modifiée",
+    "auth.super_admin_changed": "Super admin modifié",
     "agent.connected": "Agent connecté",
     "agent.disconnected": "Agent déconnecté",
     "discovery.scan_started": "Scan de découverte démarré",

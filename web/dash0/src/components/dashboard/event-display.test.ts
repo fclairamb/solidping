@@ -266,6 +266,8 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     ["auth.impersonation_started", "🎭"],
     // Sign-in email change (spec 2026-09-30-08).
     ["auth.email_changed", "📧"],
+    // OIDC super-admin group sync (spec 2026-11-21-02).
+    ["auth.super_admin_changed", "👑"],
   ];
 
   it.each(BINDING_PAIRS)("%s pairs with %s", (eventType, emoji) => {

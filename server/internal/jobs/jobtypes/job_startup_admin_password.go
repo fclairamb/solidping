@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/defaults"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
@@ -71,7 +72,7 @@ func (r *StartupJobRun) resetSeedAdminPassword(ctx context.Context, jctx *jobdef
 
 	user, err := jctx.DBService.GetUserByEmail(ctx, email)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && user == nil) {
-		return nil
+		return r.breakGlassAdmin(ctx, jctx, email)
 	}
 
 	if err != nil {
@@ -98,6 +99,50 @@ func (r *StartupJobRun) resetSeedAdminPassword(ctx context.Context, jctx *jobdef
 
 	log.WarnContext(ctx, "Reset the seeded admin password to SP_ADMIN_PASSWORD, "+
 		"you will be asked to change it at first login", "email", email)
+
+	return nil
+}
+
+// paramOIDCOnlyBootstrap marks an instance whose first boot seeded no
+// password admin (spec 2026-11-21-02). Only such an instance gets the
+// break-glass admin of breakGlassAdmin.
+const paramOIDCOnlyBootstrap = "auth.oidc_only_bootstrap"
+
+// breakGlassAdmin is the documented way back into an OIDC-only instance
+// whose IdP is gone (spec 2026-11-21-02): restarted with local login on and
+// SP_ADMIN_PASSWORD set, an instance whose first boot seeded no admin gets
+// that admin now, a super admin with the password to rotate at first login.
+// It never runs on an instance that seeded its admin at first boot.
+func (r *StartupJobRun) breakGlassAdmin(ctx context.Context, jctx *jobdef.JobContext, email string) error {
+	param, err := jctx.DBService.GetSystemParameter(ctx, paramOIDCOnlyBootstrap)
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %w", paramOIDCOnlyBootstrap, err)
+	}
+
+	if param == nil || param.Value["value"] != true {
+		return nil
+	}
+
+	if !systemconfig.ResolveLocalLogin(ctx, jctx.DBService, jctx.AppConfig).Enabled {
+		return nil
+	}
+
+	hash, err := passwords.HashBcrypt(jctx.AppConfig.Auth.AdminPassword)
+	if err != nil {
+		return fmt.Errorf("failed to hash admin password: %w", err)
+	}
+
+	admin := models.NewUser(email)
+	admin.PasswordHash = &hash
+	admin.SuperAdmin = true
+	admin.MustChangePassword = true
+
+	if err := jctx.DBService.CreateUser(ctx, admin); err != nil {
+		return fmt.Errorf("failed to create break-glass admin: %w", err)
+	}
+
+	jctx.Logger.WarnContext(ctx, "Break-glass: created a super admin with SP_ADMIN_PASSWORD on an "+
+		"OIDC-only instance, you will be asked to change it at first login", "email", email)
 
 	return nil
 }

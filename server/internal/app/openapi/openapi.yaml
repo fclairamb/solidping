@@ -892,6 +892,8 @@ paths:
             schema:
               $ref: "#/components/schemas/LoginRequest"
       responses:
+        "403":
+          description: Local password login is switched off (`auth.local_login.enabled`), code `LOCAL_LOGIN_DISABLED`.
         "200":
           description: Login successful
           content:
@@ -1184,6 +1186,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RegisterRequest"
       responses:
+        "403":
+          description: Local password login is switched off (`auth.local_login.enabled`), code `LOCAL_LOGIN_DISABLED`.
         "200":
           description: Registration accepted; confirmation email sent
           content:
@@ -1207,6 +1211,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ConfirmRegistrationRequest"
       responses:
+        "403":
+          description: Local password login is switched off (`auth.local_login.enabled`), code `LOCAL_LOGIN_DISABLED`.
         "200":
           description: Registration confirmed; user logged in
           content:
@@ -1228,6 +1234,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RequestPasswordResetRequest"
       responses:
+        "403":
+          description: Local password login is switched off (`auth.local_login.enabled`), code `LOCAL_LOGIN_DISABLED`.
         "200":
           description: Reset request accepted (always returned, anti-enumeration)
           content:
@@ -1249,6 +1257,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ResetPasswordRequest"
       responses:
+        "403":
+          description: Local password login is switched off (`auth.local_login.enabled`), code `LOCAL_LOGIN_DISABLED`.
         "200":
           description: Password reset
           content:
@@ -1310,7 +1320,9 @@ paths:
         "403":
           description: >
             The account has no password and the session's sign-in is more than
-            10 minutes old (error code `REAUTHENTICATION_REQUIRED`).
+            10 minutes old (error code `REAUTHENTICATION_REQUIRED`), or local
+            password login is switched off (`auth.local_login.enabled`, error
+            code `LOCAL_LOGIN_DISABLED`).
           content:
             application/json:
               schema:
@@ -1537,6 +1549,8 @@ paths:
           description: >-
             `INVITE_EMAIL_MISMATCH`: the signed-in account is not the invitee.
             `IMPERSONATION_FORBIDDEN` under impersonation.
+            `LOCAL_LOGIN_DISABLED`: local login is off and the acceptance would
+            create or use a password (sign in with SSO, then accept).
           content:
             application/json:
               schema:
@@ -11901,6 +11915,22 @@ components:
             membershipPending:
               type: string
               description: Slug of the org that has not admitted the user yet (org-less session only)
+            roleChanges:
+              type: array
+              items:
+                type: string
+                enum:
+                  - super_admin_granted
+                  - super_admin_revoked
+                  - super_admin_kept_last
+                  - org_owner_granted
+                  - org_admin_granted
+                  - org_admin_revoked
+                  - org_admin_kept_last
+              description: >-
+                Login diagnostics of the OIDC group claim: the roles it granted or
+                revoked during this login (`*_kept_last`: a revoke skipped to keep
+                the last admin). Omitted when nothing changed.
 
     LogoutRequest:
       type: object
@@ -12337,6 +12367,12 @@ components:
           type: boolean
         passkeysEnabled:
           type: boolean
+        localLogin:
+          type: boolean
+          description: |
+            False while local password login is switched off
+            (`auth.local_login.enabled`): the login page hides the
+            email/password form, the forgot-password and sign-up links.
 
     PublicConfigResponse:
       type: object

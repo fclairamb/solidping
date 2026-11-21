@@ -857,6 +857,28 @@ func (s *Service) ListUsers(ctx context.Context) ([]*models.User, error) {
 	return users, err
 }
 
+// setSuperAdminSource applies the super_admin_source half of a UserUpdate.
+func setSuperAdminSource(query *bun.UpdateQuery, update *models.UserUpdate) *bun.UpdateQuery {
+	if update.ClearSuperAdminSource {
+		return query.Set("super_admin_source = NULL")
+	}
+
+	if update.SuperAdminSource != nil {
+		return query.Set("super_admin_source = ?", *update.SuperAdminSource)
+	}
+
+	return query
+}
+
+// CountSuperAdmins counts the live super admins.
+func (s *Service) CountSuperAdmins(ctx context.Context) (int, error) {
+	return s.db.NewSelect().
+		Model((*models.User)(nil)).
+		Where("deleted_at IS NULL").
+		Where("super_admin = ?", true).
+		Count(ctx)
+}
+
 // SearchUsers pages the global user directory (super-admin only). Query, when
 // non-empty, matches a case-insensitive substring on email OR name; `%` and
 // `_` in Query are escaped so they are matched literally, never as SQL LIKE
@@ -935,6 +957,8 @@ func (s *Service) UpdateUser(ctx context.Context, uid string, update *models.Use
 	if update.SuperAdmin != nil {
 		query = query.Set("super_admin = ?", *update.SuperAdmin)
 	}
+
+	query = setSuperAdminSource(query, update)
 
 	if update.TOTPSecret != nil {
 		query = query.Set("totp_secret = ?", *update.TOTPSecret)
@@ -1175,7 +1199,9 @@ func (s *Service) UpdateOrganizationMember(
 		Set("updated_at = ?", time.Now())
 
 	if update.Role != nil {
-		query = query.Set("role = ?", *update.Role)
+		// Whoever sets the role owns it: a change naming no source is a
+		// local grant, which the OIDC group claim never revokes.
+		query = query.Set("role = ?", *update.Role).Set("role_source = ?", update.RoleSource)
 	}
 
 	if update.JoinedAt != nil {

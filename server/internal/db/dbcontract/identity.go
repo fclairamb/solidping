@@ -171,6 +171,81 @@ func runSystemParameters(t *testing.T, fix *fixture) {
 	must.Nil(gone, "a deleted parameter reads as absent")
 }
 
+// runSuperAdminSource: users.super_admin_source round-trips, clears, and
+// CountSuperAdmins counts live super admins only (spec 2026-11-21-02).
+func runSuperAdminSource(t *testing.T, fix *fixture) {
+	t.Helper()
+
+	ctx := t.Context()
+	must := require.New(t)
+	svc := fix.svc
+
+	before, err := svc.CountSuperAdmins(ctx)
+	must.NoError(err)
+
+	user := models.NewUser("super-source@acme.com")
+	must.NoError(svc.CreateUser(ctx, user))
+
+	granted, source := true, models.SuperAdminSourceOIDC
+	must.NoError(svc.UpdateUser(ctx, user.UID, &models.UserUpdate{SuperAdmin: &granted, SuperAdminSource: &source}))
+
+	got, err := svc.GetUser(ctx, user.UID)
+	must.NoError(err)
+	must.True(got.SuperAdmin)
+	must.NotNil(got.SuperAdminSource)
+	must.Equal(models.SuperAdminSourceOIDC, *got.SuperAdminSource)
+
+	count, err := svc.CountSuperAdmins(ctx)
+	must.NoError(err)
+	must.Equal(before+1, count)
+
+	revoked := false
+	must.NoError(svc.UpdateUser(ctx, user.UID, &models.UserUpdate{SuperAdmin: &revoked, ClearSuperAdminSource: true}))
+
+	got, err = svc.GetUser(ctx, user.UID)
+	must.NoError(err)
+	must.False(got.SuperAdmin)
+	must.Nil(got.SuperAdminSource)
+
+	count, err = svc.CountSuperAdmins(ctx)
+	must.NoError(err)
+	must.Equal(before, count)
+}
+
+// runMemberRoleSource: organization_members.role_source round-trips, and a
+// role change naming no source clears it (spec 2026-11-21-02).
+func runMemberRoleSource(t *testing.T, fix *fixture) {
+	t.Helper()
+
+	ctx := t.Context()
+	must := require.New(t)
+	svc := fix.svc
+
+	org := models.NewOrganization("role-source-org", "")
+	must.NoError(svc.CreateOrganization(ctx, org))
+
+	user := models.NewUser("role-source@acme.com")
+	must.NoError(svc.CreateUser(ctx, user))
+
+	source := models.MemberRoleSourceOIDCGroup
+	member := models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)
+	member.RoleSource = &source
+	must.NoError(svc.CreateOrganizationMember(ctx, member))
+
+	got, err := svc.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	must.NoError(err)
+	must.NotNil(got.RoleSource)
+	must.Equal(models.MemberRoleSourceOIDCGroup, *got.RoleSource)
+
+	role := models.MemberRoleUser
+	must.NoError(svc.UpdateOrganizationMember(ctx, member.UID, models.OrganizationMemberUpdate{Role: &role}))
+
+	got, err = svc.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	must.NoError(err)
+	must.Equal(models.MemberRoleUser, got.Role)
+	must.Nil(got.RoleSource, "a role change naming no source is a local grant")
+}
+
 func runEntitlements(t *testing.T, fix *fixture) {
 	t.Helper()
 

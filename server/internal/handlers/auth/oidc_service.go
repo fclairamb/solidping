@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -69,6 +70,9 @@ type oidcUserInfo struct {
 	EmailVerified bool
 	Name          string
 	AvatarURL     string
+	// Groups is the IdP groups claim (config.OIDCOAuthConfig.GroupsClaim),
+	// read from the validated ID token only — see parseGroupsClaim.
+	Groups []string
 }
 
 // OIDCOAuthService handles generic OpenID Connect authentication logic.
@@ -292,17 +296,58 @@ func (s *OIDCOAuthService) HandleCallback(ctx context.Context, code, orgSlug str
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
 
+	// IdP group → role mapping (spec 2026-11-21-02). The groups come from
+	// the ID token verified above, merged with the userinfo response of the
+	// same token exchange; never from the request or the state.
+	roleChanges, syncErr := s.applyGroupMapping(ctx, exchangeCtx, token, userInfo, user, org)
+	if syncErr != nil {
+		return nil, syncErr
+	}
+
 	// Admission policy + session minting, shared by every connector
 	// (see Service.JoinOrgViaLogin). A user the org does not admit gets
 	// login.Pending instead of a membership, with a session on an org they
 	// already belong to (login.FallbackOrgSlug) or an org-less one.
-	login, err := s.authService.CompleteOrgLogin(ctx, org, user,
-		WithLoginMethod(signupMethodOIDC))
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user, s.loginOptions()...)
 	if err != nil {
 		return nil, err
 	}
 
-	return login.Outcome(org.Slug, user.UID), nil
+	outcome := login.Outcome(org.Slug, user.UID)
+	outcome.RoleChanges = roleChanges
+
+	return outcome, nil
+}
+
+// userInfoGroups reads the groups claim from the IdP's userinfo endpoint,
+// called with the access token of the verified exchange. Some IdPs only put
+// groups there. Best-effort: no endpoint, an error, or a response whose
+// subject differs from the ID token's yields no group.
+func (s *OIDCOAuthService) userInfoGroups(ctx context.Context, token *oauth2.Token, subject string) []string {
+	provider, _, err := s.providerAndVerifier(ctx)
+	if err != nil || provider.UserInfoEndpoint() == "" {
+		return nil
+	}
+
+	info, err := provider.UserInfo(ctx, oauth2.StaticTokenSource(token))
+	if err != nil {
+		slog.WarnContext(ctx, "OIDC userinfo request failed, using the ID token groups only", "error", err)
+
+		return nil
+	}
+
+	if info.Subject != subject {
+		slog.WarnContext(ctx, "OIDC userinfo subject differs from the ID token's, ignoring its groups")
+
+		return nil
+	}
+
+	var claims map[string]any
+	if err := info.Claims(&claims); err != nil {
+		return nil
+	}
+
+	return parseGroupsClaim(claims[groupsClaimName(&s.cfg.OIDC)])
 }
 
 // mapClaims extracts email/name/avatar from the validated ID token's claims,
@@ -328,6 +373,7 @@ func (s *OIDCOAuthService) mapClaims(subject string, claims map[string]any) *oid
 		Email:     claimString(claims, emailClaim),
 		Name:      claimString(claims, nameClaim),
 		AvatarURL: claimString(claims, avatarClaim),
+		Groups:    parseGroupsClaim(claims[groupsClaimName(&s.cfg.OIDC)]),
 	}
 
 	// Only an actual boolean `true` counts as verified. A missing claim, a

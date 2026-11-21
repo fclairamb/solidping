@@ -54,18 +54,27 @@ type OrganizationProviderUpdate struct {
 	ClearMetadataPrivate bool
 }
 
+// SuperAdminSourceOIDC marks a super admin granted by the OIDC super-admin
+// group claim (users.super_admin_source).
+const SuperAdminSourceOIDC = "oidc"
+
 // User represents a global user account.
 type User struct {
-	UID               string     `bun:"uid,pk,type:varchar(36)"`
-	Email             string     `bun:"email,notnull"`
-	Name              string     `bun:"name"`
-	AvatarURL         string     `bun:"avatar_url"`
-	PasswordHash      *string    `bun:"password_hash"`
-	EmailVerifiedAt   *time.Time `bun:"email_verified_at"`
-	SuperAdmin        bool       `bun:"super_admin"`
-	TOTPSecret        *string    `bun:"totp_secret"`
-	TOTPEnabled       bool       `bun:"totp_enabled,notnull"`
-	TOTPRecoveryCodes []string   `bun:"totp_recovery_codes,type:jsonb"`
+	UID             string     `bun:"uid,pk,type:varchar(36)"`
+	Email           string     `bun:"email,notnull"`
+	Name            string     `bun:"name"`
+	AvatarURL       string     `bun:"avatar_url"`
+	PasswordHash    *string    `bun:"password_hash"`
+	EmailVerifiedAt *time.Time `bun:"email_verified_at"`
+	SuperAdmin      bool       `bun:"super_admin"`
+	// SuperAdminSource records who granted SuperAdmin (spec 2026-11-21-02):
+	// nil for a local grant (seeded, or set by a super admin), which an IdP
+	// claim never touches, and SuperAdminSourceOIDC for a grant by the OIDC
+	// super-admin group claim, revoked by the next login without the group.
+	SuperAdminSource  *string  `bun:"super_admin_source"`
+	TOTPSecret        *string  `bun:"totp_secret"`
+	TOTPEnabled       bool     `bun:"totp_enabled,notnull"`
+	TOTPRecoveryCodes []string `bun:"totp_recovery_codes,type:jsonb"`
 	// MustChangePassword forces a password rotation before the account can do
 	// anything else. It is a GENERAL user-level capability, not a property of
 	// the seeded bootstrap admin: an operator-initiated reset, an invited user
@@ -213,9 +222,13 @@ type UserUpdate struct {
 	// un-verifies the account). It wins over EmailVerifiedAt.
 	ClearEmailVerifiedAt bool
 	SuperAdmin           *bool
-	TOTPSecret           *string
-	TOTPEnabled          *bool
-	TOTPRecoveryCodes    *[]string
+	// SuperAdminSource sets super_admin_source; ClearSuperAdminSource sets it
+	// to NULL and wins over SuperAdminSource.
+	SuperAdminSource      *string
+	ClearSuperAdminSource bool
+	TOTPSecret            *string
+	TOTPEnabled           *bool
+	TOTPRecoveryCodes     *[]string
 	// MustChangePassword sets or clears the forced-rotation flag. Nil leaves it
 	// alone — so an unrelated profile update can never silently un-force a
 	// pending rotation.
@@ -354,12 +367,18 @@ type OrganizationMember struct {
 	UserUID         string     `bun:"user_uid,notnull"`
 	OrganizationUID string     `bun:"organization_uid,notnull"`
 	Role            MemberRole `bun:"role,notnull"`
-	InvitedByUID    *string    `bun:"invited_by_uid"`
-	InvitedAt       *time.Time `bun:"invited_at"`
-	JoinedAt        *time.Time `bun:"joined_at"`
-	CreatedAt       time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt       time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt       *time.Time `bun:"deleted_at"`
+	// RoleSource records who granted Role (spec 2026-11-21-02): nil for a
+	// local grant (invite, autojoin, an admin's role change), which an IdP
+	// claim never touches, and MemberRoleSourceOIDCGroup for the admin role
+	// granted by the OIDC org-admin group claim, revoked by the next login
+	// to the org without the group.
+	RoleSource   *string    `bun:"role_source"`
+	InvitedByUID *string    `bun:"invited_by_uid"`
+	InvitedAt    *time.Time `bun:"invited_at"`
+	JoinedAt     *time.Time `bun:"joined_at"`
+	CreatedAt    time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt    time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt    *time.Time `bun:"deleted_at"`
 
 	// Relations (for eager loading)
 	User         *User         `bun:"rel:belongs-to,join:user_uid=uid"`
@@ -384,9 +403,16 @@ func NewOrganizationMember(orgUID, userUID string, role MemberRole) *Organizatio
 
 // OrganizationMemberUpdate represents fields that can be updated.
 type OrganizationMemberUpdate struct {
-	Role     *MemberRole
-	JoinedAt *time.Time
+	// Role, when set, also overwrites role_source with RoleSource: a role
+	// change that names no source is a local grant (role_source = NULL).
+	Role       *MemberRole
+	RoleSource *string
+	JoinedAt   *time.Time
 }
+
+// MemberRoleSourceOIDCGroup marks a membership role granted by the OIDC
+// org-admin group claim (organization_members.role_source).
+const MemberRoleSourceOIDCGroup = "oidc_group"
 
 // TokenType represents the type of user token.
 type TokenType string

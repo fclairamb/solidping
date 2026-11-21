@@ -4291,6 +4291,8 @@ interface ProvidersResponse {
   data?: AuthProvider[];
   registrationEnabled?: boolean;
   passkeysEnabled?: boolean;
+  // False while local password login is switched off (spec 2026-11-21-02).
+  localLogin?: boolean;
 }
 
 /**
@@ -4316,6 +4318,8 @@ export function useProviders() {
         providers: response.data || [],
         registrationEnabled: response.registrationEnabled || false,
         passkeysEnabled: response.passkeysEnabled || false,
+        // Absent (an older server) means the password form is offered.
+        localLogin: response.localLogin ?? true,
       };
     },
     staleTime: Infinity,

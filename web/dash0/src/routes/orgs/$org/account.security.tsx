@@ -34,6 +34,7 @@ import { ReauthPasswordDialog, SignInAgainAlert } from "@/components/security/re
 import { isReauthRequired } from "@/components/security/reauth-errors";
 import { changePassword } from "@/api/password";
 import { ApiError, apiFetch } from "@/api/client";
+import { useProviders } from "@/api/hooks";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -204,6 +205,10 @@ function PasswordCard({
 
 function SecurityPage() {
   const { t } = useTranslation(["account", "common"]);
+  // Local login off (spec 2026-11-21-02): the server refuses a password
+  // change, so the card is not offered.
+  const { data: providersData } = useProviders();
+  const localLogin = providersData?.localLogin ?? true;
   const [me, setMe] = useState<MeSecurity | null>(null);
   const [passkeys, setPasskeys] = useState<PasskeyInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -343,7 +348,7 @@ function SecurityPage() {
 
       {signInRequired && <SignInAgainAlert />}
 
-      <PasswordCard hasPassword={me.hasPassword} onChanged={refreshAll} />
+      {localLogin && <PasswordCard hasPassword={me.hasPassword} onChanged={refreshAll} />}
 
       <Card>
         <CardHeader>

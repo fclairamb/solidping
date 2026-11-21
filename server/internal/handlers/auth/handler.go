@@ -137,6 +137,10 @@ func setAccessTokenCookie(writer http.ResponseWriter, req *http.Request, accessT
 // Login handles user login with email and password.
 // Org is read from the request body (optional).
 func (h *Handler) Login(writer http.ResponseWriter, req *http.Request) error {
+	if done, err := h.writeLocalLoginDisabled(writer, req); done {
+		return err
+	}
+
 	var loginReq LoginRequest
 	if err := json.NewDecoder(req.Body).Decode(&loginReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -566,6 +570,9 @@ func (h *Handler) handleAuthError(writer http.ResponseWriter, request *http.Requ
 			writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidCredentials, "Invalid credentials", err)
 	case errors.Is(err, ErrPATForbidden):
 		return h.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodePATForbidden, PATForbiddenMessage, err)
+	case errors.Is(err, ErrLocalLoginDisabled):
+		return h.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodeLocalLoginDisabled,
+			localLoginDisabledMessage, err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
@@ -670,6 +677,10 @@ func getClaimsFromContext(req *http.Request) (*Claims, bool) {
 
 // Register handles user self-registration.
 func (h *Handler) Register(writer http.ResponseWriter, req *http.Request) error {
+	if done, err := h.writeLocalLoginDisabled(writer, req); done {
+		return err
+	}
+
 	var regReq RegisterRequest
 	if err := json.NewDecoder(req.Body).Decode(&regReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -701,6 +712,10 @@ func (h *Handler) Register(writer http.ResponseWriter, req *http.Request) error 
 
 // ConfirmRegistration handles email confirmation for registration.
 func (h *Handler) ConfirmRegistration(writer http.ResponseWriter, req *http.Request) error {
+	if done, err := h.writeLocalLoginDisabled(writer, req); done {
+		return err
+	}
+
 	var confirmReq ConfirmRegistrationRequest
 	if err := json.NewDecoder(req.Body).Decode(&confirmReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -728,6 +743,10 @@ func (h *Handler) ConfirmRegistration(writer http.ResponseWriter, req *http.Requ
 
 // RequestPasswordReset handles password reset requests.
 func (h *Handler) RequestPasswordReset(writer http.ResponseWriter, req *http.Request) error {
+	if done, err := h.writeLocalLoginDisabled(writer, req); done {
+		return err
+	}
+
 	var resetReq RequestPasswordResetRequest
 	if err := json.NewDecoder(req.Body).Decode(&resetReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -756,6 +775,10 @@ func (h *Handler) RequestPasswordReset(writer http.ResponseWriter, req *http.Req
 
 // ResetPassword handles setting a new password with a reset token.
 func (h *Handler) ResetPassword(writer http.ResponseWriter, req *http.Request) error {
+	if done, err := h.writeLocalLoginDisabled(writer, req); done {
+		return err
+	}
+
 	var resetReq ResetPasswordRequest
 	if err := json.NewDecoder(req.Body).Decode(&resetReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -791,6 +814,10 @@ func (h *Handler) ChangePassword(writer http.ResponseWriter, req *http.Request) 
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+	}
+
+	if done, err := h.writeLocalLoginDisabled(writer, req); done {
+		return err
 	}
 
 	var changeReq ChangePasswordRequest
@@ -1342,6 +1369,8 @@ func (h *Handler) handleRegistrationError(writer http.ResponseWriter, request *h
 // handleInvitationError handles errors from invitation endpoints.
 func (h *Handler) handleInvitationError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
+	case errors.Is(err, ErrLocalLoginDisabled):
+		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeLocalLoginDisabled, localLoginDisabledMessage)
 	case errors.Is(err, ErrInvalidEmail):
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
 			{Name: keyEmail, Message: msgInvalidEmail},

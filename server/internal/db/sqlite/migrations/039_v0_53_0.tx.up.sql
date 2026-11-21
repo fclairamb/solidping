@@ -1,6 +1,7 @@
 -- v0.53.0 — sqlite migration.
 --
 --   SECTION: apply-all-kinds   integrations / maintenance_windows slug, managed_by on three tables
+--   SECTION: oidc-only-mode    users.super_admin_source, organization_members.role_source
 --
 -- ==========================================================================
 -- SECTION: apply-all-kinds
@@ -40,3 +41,22 @@ create unique index if not exists idx_integrations_org_slug
 create unique index if not exists idx_maintenance_windows_org_slug
     on maintenance_windows (organization_uid, slug)
     where slug is not null and deleted_at is null;
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: oidc-only-mode
+-- ==========================================================================
+-- Who granted users.super_admin (spec 2026-11-21-02). NULL: granted locally
+-- (seeded, or by a super admin), never touched by an IdP claim. 'oidc':
+-- granted by the OIDC super-admin group claim, and revoked by the next login
+-- that no longer carries the group.
+alter table users add column super_admin_source varchar(20);
+
+--bun:split
+
+-- Who granted organization_members.role. NULL: a local grant (invite,
+-- autojoin, an admin's role change). 'oidc_group': the admin role granted by
+-- the OIDC org-admin group claim, revoked by the next login to the org that
+-- no longer carries the group.
+alter table organization_members add column role_source varchar(20);

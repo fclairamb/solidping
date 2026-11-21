@@ -181,6 +181,9 @@ type Service interface {
 	GetUser(ctx context.Context, uid string) (*models.User, error)
 	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
 	ListUsers(ctx context.Context) ([]*models.User, error)
+	// CountSuperAdmins counts the live (not soft-deleted) super admins. The
+	// OIDC group sync never revokes the last one (spec 2026-11-21-02).
+	CountSuperAdmins(ctx context.Context) (int, error)
 	// SearchUsers pages the global user directory (super-admin only surface).
 	// It always excludes soft-deleted users and returns the total count of
 	// matches before Limit/Offset were applied, ordered by created_at DESC

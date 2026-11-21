@@ -91,6 +91,9 @@ type Session struct {
 	// token, and there is no access or refresh token.
 	Requires2FA bool   `json:"requires2Fa,omitempty"`
 	TempToken   string `json:"tempToken,omitempty"`
+	// RoleChanges are the roles the IdP group claim granted or revoked during
+	// the login (login diagnostics). Not a secret.
+	RoleChanges []string `json:"roleChanges,omitempty"`
 }
 
 // errBadTokens guards Issue against a session that carries neither or both of

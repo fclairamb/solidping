@@ -19,6 +19,12 @@ Standard error codes:
 - `ORGANIZATION_NOT_FOUND` - Organization does not exist
 - `USER_NOT_FOUND` - User does not exist
 - `CHECK_NOT_FOUND` - Check does not exist
+- `LOCAL_LOGIN_DISABLED` (403) - Local password login is switched off
+  (`auth.local_login.enabled` = false, env `SP_LOCAL_LOGIN_ENABLED`). Answered
+  by `POST /auth/login` (password and LDAP), `/register`,
+  `/confirm-registration`, `/request-password-reset`, `/reset-password`,
+  `/change-password`, and `/accept-invite` when it would create or use a
+  password. Sign in with SSO instead. See [auth.md](auth.md#local-login-switch)
 
 Domain-specific codes are documented alongside the endpoints that emit them —
 see [checks.md](checks.md), [discovery.md](discovery.md),

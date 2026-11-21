@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import {
   AlarmClockOff,
   AtSign,
+  Crown,
   BellOff,
   Calendar,
   CircleAlert,
@@ -166,6 +167,9 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   // A member's sign-in email changed, by themselves or by a super admin
   // (spec 2026-09-30-08). Amber: an account-takeover path worth noticing.
   "auth.email_changed": { emoji: "📧", tone: TONE_AMBER },
+  // The OIDC super-admin group claim granted or revoked instance super admin
+  // (spec 2026-11-21-02). Amber: a privilege change worth noticing.
+  "auth.super_admin_changed": { emoji: "👑", tone: TONE_AMBER },
 };
 
 // CONFIG_EVENT_FAMILIES are the audit families that describe a configuration
@@ -407,6 +411,7 @@ export const EVENT_TYPE_MARKS: Record<string, EventMark> = {
   "auth.token_misuse": { icon: ShieldAlert, tone: MARK_DANGER, loud: true },
   "auth.impersonation_started": { icon: Eye, tone: MARK_WARNING },
   "auth.email_changed": { icon: AtSign, tone: MARK_WARNING },
+  "auth.super_admin_changed": { icon: Crown, tone: MARK_WARNING },
 };
 
 export function getEventMark(eventType?: string): EventMark {

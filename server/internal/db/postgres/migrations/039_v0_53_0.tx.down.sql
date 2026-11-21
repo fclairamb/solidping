@@ -8,3 +8,7 @@ alter table maintenance_windows drop column if exists managed_by;
 alter table maintenance_windows drop column if exists slug;
 alter table integrations drop column if exists managed_by;
 alter table integrations drop column if exists slug;
+
+-- SECTION: oidc-only-mode
+alter table users drop column if exists super_admin_source;
+alter table organization_members drop column if exists role_source;

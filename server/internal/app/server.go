@@ -1113,6 +1113,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Auth providers endpoint (public)
 	providersHandler := auth.NewProvidersHandler(s.config, passkeyService.Enabled)
+	providersHandler.SetLocalLoginResolver(s.authService.LocalLoginEnabled)
 	api.GET("/auth/providers", providersHandler.ListProviders)
 
 	// Public, unauthenticated config blob the SPA reads at boot (spec
@@ -1897,6 +1898,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// System parameters routes (super admin only)
 	systemService := system.NewService(s.dbService)
+	systemService.SetAppConfig(s.config)
 	systemService.SetEmailFormatter(s.services.EmailFormatter)
 	systemService.SetEmailConfigProvider(func(ctx context.Context) (*config.EmailConfig, error) {
 		return systemconfig.EffectiveEmailConfig(ctx, s.dbService, &s.config.Email)
@@ -4544,6 +4546,10 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 	// Re-resolve and re-install the password-hashing policy now that the
 	// system-parameter overlay has mutated cfg.Auth.Password.* (see spec Q2).
 	reResolvePasswordPolicy(ctx, cfg)
+
+	// Local login configured off with no SSO provider fails open: say so
+	// loudly at boot (spec 2026-11-21-02).
+	systemconfig.WarnLocalLoginFailOpen(ctx, s.dbService, cfg)
 
 	// Update the server's auth config if JWT secret changed
 	if cfg.Auth.JWTSecret != s.config.Auth.JWTSecret {

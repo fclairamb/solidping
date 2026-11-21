@@ -40,6 +40,9 @@ type FieldKind =
   | "emailClaim"
   | "nameClaim"
   | "avatarClaim"
+  | "groupsClaim"
+  | "superAdminGroups"
+  | "orgAdminGroups"
   | "idpMetadataUrl"
   | "idpMetadataXml"
   | "spEntityId"
@@ -175,6 +178,24 @@ const providers: ProviderConfig[] = [
         secret: false,
         helpKey: "avatarClaim",
       },
+      {
+        key: "auth.oidc.groups_claim",
+        labelKey: "groupsClaim",
+        secret: false,
+        helpKey: "groupsClaim",
+      },
+      {
+        key: "auth.oidc.super_admin_groups",
+        labelKey: "superAdminGroups",
+        secret: false,
+        helpKey: "superAdminGroups",
+      },
+      {
+        key: "auth.oidc.org_admin_groups",
+        labelKey: "orgAdminGroups",
+        secret: false,
+        helpKey: "orgAdminGroups",
+      },
     ],
   },
   {
@@ -258,6 +279,9 @@ const providers: ProviderConfig[] = [
   },
 ];
 
+// auth.local_login.enabled (spec 2026-11-21-02): unset means on.
+const LOCAL_LOGIN_KEY = "auth.local_login.enabled";
+
 // The SAML endpoints an IdP administrator must be given (not UI copy).
 const SAML_METADATA_PATH = "/api/v1/auth/saml/metadata";
 const SAML_ACS_PATH = "/api/v1/auth/saml/acs";
@@ -298,6 +322,23 @@ function AuthSettingsPage() {
       setSwitchValues(newSwitchValues);
     }
   }, [params]);
+
+  const localLoginParam = params?.find((p: SystemParameter) => p.key === LOCAL_LOGIN_KEY);
+  const localLoginOn = localLoginParam?.value === undefined ? true : Boolean(localLoginParam.value);
+
+  // Saved at once: the server refuses "off" while no SSO provider is
+  // enabled, and that refusal is shown as the page error.
+  const handleToggleLocalLogin = async (next: boolean) => {
+    setError(null);
+    setSaved(false);
+    try {
+      await setParam.mutateAsync({ key: LOCAL_LOGIN_KEY, value: next });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("server:unexpectedError"));
+    }
+  };
 
   const isSecretStored = (key: string) =>
     params?.find((p: SystemParameter) => p.key === key)?.secret ?? false;
@@ -456,6 +497,27 @@ function AuthSettingsPage() {
       )}
 
       <p className="text-sm text-muted-foreground">{t("server:auth.helpText")}</p>
+
+      <Card data-testid="local-login-card">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div className="space-y-1.5">
+            <CardTitle className="text-lg">{t("server:auth.localLogin.title")}</CardTitle>
+            <CardDescription>{t("server:auth.localLogin.description")}</CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="local-login-switch" className="text-sm font-normal">
+              {t("server:auth.enabled")}
+            </Label>
+            <Switch
+              id="local-login-switch"
+              checked={localLoginOn}
+              disabled={setParam.isPending}
+              onCheckedChange={(next) => void handleToggleLocalLogin(next)}
+              data-testid="local-login-enabled"
+            />
+          </div>
+        </CardHeader>
+      </Card>
 
       {providers.map((provider) => (
         <Card key={provider.name} data-testid={`provider-card-${provider.name.toLowerCase()}`}>
