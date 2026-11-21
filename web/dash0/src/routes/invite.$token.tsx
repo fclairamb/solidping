@@ -31,12 +31,21 @@ const INVITE_LOGIN_REQUIRED = "INVITE_LOGIN_REQUIRED";
 const INVITE_EMAIL_MISMATCH = "INVITE_EMAIL_MISMATCH";
 
 export const Route = createFileRoute("/invite/$token")({
+  // A provider sign-in started from this invitation comes back here when it
+  // fails (the invitation is its redirect_uri), with the reason in
+  // error_description: show it, or the visitor sees the page again with no
+  // explanation.
+  validateSearch: (search: Record<string, unknown>): { error_description?: string } => ({
+    error_description:
+      typeof search.error_description === "string" ? search.error_description : undefined,
+  }),
   component: AcceptInvitePage,
 });
 
 function AcceptInvitePage() {
   const { t, i18n } = useTranslation(["auth", "common"]);
   const { token } = Route.useParams();
+  const { error_description: oauthErrorDescription } = Route.useSearch();
   const navigate = useNavigate();
   const {
     data: inviteInfo,
@@ -259,6 +268,13 @@ function AcceptInvitePage() {
             <Alert variant="destructive" className="mb-4">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {!error && oauthErrorDescription && (
+            <Alert variant="destructive" className="mb-4" data-testid="invite-oauth-error">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{oauthErrorDescription}</AlertDescription>
             </Alert>
           )}
 

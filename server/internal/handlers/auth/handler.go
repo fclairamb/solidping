@@ -70,6 +70,18 @@ func logOAuthFailure(req *http.Request, provider string, err error) string {
 	return OAuthDescGenericFailure
 }
 
+// logOAuthTokenExchangeFailure records why a provider refused to exchange the
+// authorization code (code already used, expired, redirect_uri mismatch, bad
+// client secret…) and returns the user-safe description for the redirect.
+// The user only ever sees OAuthDescTokenExchange; without this log the
+// provider's answer was lost and the failure could not be diagnosed.
+func logOAuthTokenExchangeFailure(req *http.Request, provider string, err error) string {
+	slog.WarnContext(req.Context(), "OAuth token exchange failed",
+		"provider", provider, "error", err)
+
+	return OAuthDescTokenExchange
+}
+
 // Handler provides HTTP handlers for authentication endpoints.
 type Handler struct {
 	base.HandlerBase

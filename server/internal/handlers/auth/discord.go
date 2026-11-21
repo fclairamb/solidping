@@ -136,7 +136,7 @@ func (h *DiscordOAuthHandler) handleOAuthError(
 		description = "Email address not verified in Discord profile"
 	case errors.Is(err, ErrDiscordTokenExchange):
 		code = OAuthCodeTokenExchange
-		description = OAuthDescTokenExchange
+		description = logOAuthTokenExchangeFailure(req, "discord", err)
 	default:
 		code = OAuthCodeFailed
 		description = logOAuthFailure(req, "discord", err)
