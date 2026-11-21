@@ -12,8 +12,6 @@ import (
 )
 
 // planWindows plans the manifest's maintenance windows.
-//
-//nolint:cyclop,funlen // validate → match → diff → closures
 func (s *Service) planWindows(
 	ctx context.Context, org *models.Organization, doc *checks.ExportDocument, manifest string, refs *refSets,
 ) (*kindPlan, error) {
@@ -70,37 +68,18 @@ func (s *Service) planWindows(
 			return nil, err
 		}
 
-		switch {
-		case !ownedBy(existing.ManagedBy, manifest):
-			entry.Action = checks.ApplyActionUnmanaged
-			entry.Reason = "slug exists without the managed marker for this manifest"
-			entry.Changes = changes
-		case len(changes) == 0:
-			entry.Action = checks.ApplyActionUnchanged
-		default:
-			entry.Action = checks.ApplyActionUpdate
-			entry.Changes = changes
-		}
+		classify(&entry, existing.ManagedBy, manifest, changes)
 
 		plan.upserts = append(plan.upserts, op{entry: entry, do: s.updateWindow(org, existing.UID, &win, manifest)})
 	}
 
-	for slug, row := range bySlug {
-		if ownedBy(row.ManagedBy, manifest) && !seen[slug] {
-			uid := row.UID
-			plan.deletes = append(plan.deletes, op{
-				entry: checks.ApplyPlanEntry{
-					Kind: checks.KindMaintenanceWindow, Slug: slug, Action: checks.ApplyActionDelete,
-					Reason: "managed maintenance window absent from manifest",
-				},
-				do: func(ctx context.Context) error {
-					return s.windows.DeleteMaintenanceWindow(ctx, org.Slug, uid)
-				},
-			})
-		}
-	}
-
-	sortDeletes(plan)
+	plan.deletes = deleteOps(checks.KindMaintenanceWindow, "managed maintenance window absent from manifest",
+		manifest, bySlug, seen,
+		func(row *models.MaintenanceWindow) *string { return row.ManagedBy },
+		func(row *models.MaintenanceWindow) string { return row.UID },
+		func(ctx context.Context, uid string) error {
+			return s.windows.DeleteMaintenanceWindow(ctx, org.Slug, uid)
+		})
 
 	return plan, nil
 }
@@ -169,7 +148,8 @@ func (s *Service) updateWindow(
 	org *models.Organization, uid string, win *checks.ExportMaintenanceWindow, manifest string,
 ) func(context.Context) error {
 	req := maintenancewindows.UpdateRequest{
-		ManagedBy: ptr(manifest), Slug: ptr(win.Slug), Title: ptr(win.Title), StartAt: ptr(win.StartAt), EndAt: ptr(win.EndAt),
+		ManagedBy: ptr(manifest), Slug: ptr(win.Slug), Title: ptr(win.Title),
+		StartAt: ptr(win.StartAt), EndAt: ptr(win.EndAt),
 		Recurrence: ptr(recurrenceOf(win.Recurrence)), RecurrenceEnd: win.RecurrenceEnd,
 		Description: ptr(win.Description),
 	}
@@ -186,7 +166,9 @@ func (s *Service) updateWindow(
 
 // setWindowChecks replaces the window's checks with the named ones, keeping any
 // check group the window already covers (groups are not part of the manifest).
-func (s *Service) setWindowChecks(ctx context.Context, org *models.Organization, uid string, slugs []string) error {
+func (s *Service) setWindowChecks(
+	ctx context.Context, org *models.Organization, uid string, slugs []string,
+) error {
 	uids, err := s.resolveCheckUIDs(ctx, org.UID, slugs)
 	if err != nil {
 		return err
@@ -221,7 +203,7 @@ func (s *Service) diffWindow(
 	}
 
 	add("title", existing.Title, win.Title)
-	add("description", derefOr(existing.Description, ""), win.Description)
+	add("description", deref(existing.Description), win.Description)
 	add("startAt", existing.StartAt.UTC().Format(time.RFC3339), win.StartAt.UTC().Format(time.RFC3339))
 	add("endAt", existing.EndAt.UTC().Format(time.RFC3339), win.EndAt.UTC().Format(time.RFC3339))
 	add("recurrence", existing.Recurrence, recurrenceOf(win.Recurrence))

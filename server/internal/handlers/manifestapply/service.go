@@ -31,7 +31,7 @@ var (
 )
 
 // slugPattern is the shape of a manifest key for channels and windows.
-var slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,98}$`) //nolint:gochecknoglobals // compiled once
+var slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,98}$`)
 
 // op is one planned mutation. do is nil for entries that write nothing
 // (unchanged, and unmanaged-skipped ones never exist: unmanaged is adopted).
@@ -290,9 +290,10 @@ func (s *Service) runUpserts(ctx context.Context, result *checks.ApplyResult, pl
 		}
 
 		if dry {
-			if entry.Action == checks.ApplyActionCreate {
+			switch entry.Action {
+			case checks.ApplyActionCreate:
 				result.Created++
-			} else if entry.Action == checks.ApplyActionUpdate || entry.Action == checks.ApplyActionUnmanaged {
+			case checks.ApplyActionUpdate, checks.ApplyActionUnmanaged:
 				result.Updated++
 			}
 
@@ -316,7 +317,9 @@ func (s *Service) runUpserts(ctx context.Context, result *checks.ApplyResult, pl
 }
 
 // runDeletes records the delete entries and, when pruning for real, performs them.
-func (s *Service) runDeletes(ctx context.Context, result *checks.ApplyResult, plan *kindPlan, opts checks.ApplyOptions) {
+func (s *Service) runDeletes(
+	ctx context.Context, result *checks.ApplyResult, plan *kindPlan, opts checks.ApplyOptions,
+) {
 	if !opts.Prune {
 		return
 	}
@@ -373,14 +376,59 @@ func validateSlug(kind, slug string, seen map[string]bool) error {
 	return nil
 }
 
+// reasonUnmanaged explains an `unmanaged` plan entry.
+const reasonUnmanaged = "slug exists without the managed marker for this manifest"
+
+// classify turns the diff of a matched row into a plan entry: the row is
+// `unmanaged` when this manifest does not own it (it is reported and adopted),
+// `unchanged` when nothing differs, else `update`.
+func classify(entry *checks.ApplyPlanEntry, managedBy *string, manifest string, changes []checks.CheckFieldChange) {
+	switch {
+	case !ownedBy(managedBy, manifest):
+		entry.Action = checks.ApplyActionUnmanaged
+		entry.Reason = reasonUnmanaged
+		entry.Changes = changes
+	case len(changes) == 0:
+		entry.Action = checks.ApplyActionUnchanged
+	default:
+		entry.Action = checks.ApplyActionUpdate
+		entry.Changes = changes
+	}
+}
+
 func ownedBy(managedBy *string, manifest string) bool {
 	return managedBy != nil && *managedBy == manifest
 }
 
-func derefOr(s *string, fallback string) string {
+func deref(s *string) string {
 	if s == nil {
-		return fallback
+		return ""
 	}
 
 	return *s
+}
+
+// deleteOps builds the delete-by-absence entries of one kind: rows owned by the
+// manifest whose slug it no longer lists, sorted by slug.
+func deleteOps[T any](
+	kind, reason, manifest string, rows map[string]T, seen map[string]bool,
+	managedBy func(T) *string, uid func(T) string, remove func(ctx context.Context, uid string) error,
+) []op {
+	var ops []op
+
+	for slug, row := range rows {
+		if !ownedBy(managedBy(row), manifest) || seen[slug] {
+			continue
+		}
+
+		rowUID := uid(row)
+		ops = append(ops, op{
+			entry: checks.ApplyPlanEntry{Kind: kind, Slug: slug, Action: checks.ApplyActionDelete, Reason: reason},
+			do:    func(ctx context.Context) error { return remove(ctx, rowUID) },
+		})
+	}
+
+	sort.Slice(ops, func(a, b int) bool { return ops[a].entry.Slug < ops[b].entry.Slug })
+
+	return ops
 }

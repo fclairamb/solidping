@@ -2093,6 +2093,93 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/orgs/{org}/apply:
+    post:
+      tags: [Checks]
+      summary: Reconcile a config-as-code manifest (checks, channels, maintenance windows, status pages)
+      description: >-
+        Kind-neutral alias of `POST /checks/apply`, which keeps working. The
+        body is a JSON or YAML manifest (the export document) that may carry
+        `checks`, `channels`, `maintenanceWindows` and `statusPages`; at least
+        one must be non-empty. A kind whose array is absent or empty is not
+        reconciled, so it is never pruned. Kinds are applied in dependency order
+        (checks, channels, maintenance windows, status pages); cross-references
+        are by check slug. Ownership of non-check rows is the `managedBy`
+        column (the manifest name); `prune=true` deletes only rows owned by the
+        manifest, under one deletion cap across all kinds. Admin only.
+      operationId: applyManifest
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: dryRun
+          in: query
+          description: Compute the plan and write nothing
+          schema:
+            type: boolean
+        - name: prune
+          in: query
+          description: Delete managed rows absent from the manifest
+          schema:
+            type: boolean
+        - name: force
+          in: query
+          description: Lift the deletion cap
+          schema:
+            type: boolean
+        - name: deletionCap
+          in: query
+          description: Deletion cap (default 10)
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+          application/yaml:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: The plan and the counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplyResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/orgs/{org}/export:
+    get:
+      tags: [Checks]
+      summary: Export every kind as one manifest
+      description: >-
+        The v2 export document with `checks`, `channels`, `maintenanceWindows`
+        and `statusPages`, a starting point for `sp apply`. Channel secrets are
+        never exported (`secrets: stripped`). Admin only.
+      operationId: exportManifest
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: The manifest
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/orgs/{org}/checks/validate:
     post:
       tags: [Checks]
@@ -15305,6 +15392,12 @@ components:
           description: Channel type (slack, discord, webhook, email, ...)
         name:
           type: string
+        slug:
+          type: string
+          description: Optional per-organization-unique manifest key set by `sp apply`.
+        managedBy:
+          type: string
+          description: Name of the `sp apply` manifest that owns this channel.
         enabled:
           type: boolean
         isDefault:
@@ -17786,6 +17879,66 @@ components:
           type: string
           format: date-time
 
+    ApplyPlanEntry:
+      type: object
+      required: [kind, slug, action]
+      properties:
+        kind:
+          type: string
+          enum: [check, channel, maintenanceWindow, statusPage]
+        slug:
+          type: string
+        previousSlug:
+          type: string
+        action:
+          type: string
+          enum: [create, update, unchanged, rename, delete, unmanaged]
+        reason:
+          type: string
+        changes:
+          type: array
+          description: Field-level diff behind an update; secret values are masked.
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              from:
+                type: string
+              to:
+                type: string
+    ApplyResult:
+      type: object
+      required: [manifest, dryRun, pruned, created, updated, unchanged, deleted, unmanaged, plan]
+      properties:
+        manifest:
+          type: string
+        dryRun:
+          type: boolean
+        pruned:
+          type: boolean
+        created:
+          type: integer
+        updated:
+          type: integer
+        unchanged:
+          type: integer
+        deleted:
+          type: integer
+        unmanaged:
+          type: integer
+        plan:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApplyPlanEntry"
+        warnings:
+          type: array
+          items:
+            type: string
+        errors:
+          type: array
+          items:
+            type: object
     MaintenanceWindow:
       type: object
       required:
@@ -17802,6 +17955,12 @@ components:
         uid:
           type: string
           format: uuid
+        slug:
+          type: string
+          description: Optional per-organization-unique manifest key set by `sp apply`.
+        managedBy:
+          type: string
+          description: Name of the `sp apply` manifest that owns this window.
         title:
           type: string
         description:
@@ -18287,6 +18446,9 @@ components:
       type: object
       required: [title, startAt, endAt]
       properties:
+        slug:
+          type: string
+          description: Optional per-organization-unique manifest key.
         title:
           type: string
         description:

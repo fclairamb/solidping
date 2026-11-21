@@ -18,8 +18,6 @@ import (
 // `${param:…}` reference where one is needed. A channel or window that has no
 // slug yet gets one derived from its name; the first apply adopts it by that
 // exact name.
-//
-//nolint:cyclop,funlen // one pass per kind
 func (s *Service) Export(ctx context.Context, orgSlug string) (*checks.ExportDocument, error) {
 	doc, err := s.checks.ExportChecks(ctx, orgSlug, checks.ListChecksOptions{})
 	if err != nil {
@@ -38,22 +36,40 @@ func (s *Service) Export(ctx context.Context, orgSlug string) (*checks.ExportDoc
 
 	doc.Secrets = checks.SecretsMarkerStripped
 
+	if err := s.exportChannels(ctx, org, doc); err != nil {
+		return nil, err
+	}
+
+	if err := s.exportWindows(ctx, org, doc, refs); err != nil {
+		return nil, err
+	}
+
+	if err := s.exportPages(ctx, org, doc, refs); err != nil {
+		return nil, err
+	}
+
+	return doc, nil
+}
+
+func (s *Service) exportChannels(ctx context.Context, org *models.Organization, doc *checks.ExportDocument) error {
 	channels, err := s.db.ListChannels(ctx, &models.ListIntegrationsFilter{OrganizationUID: org.UID})
 	if err != nil {
-		return nil, fmt.Errorf("list channels: %w", err)
+		return fmt.Errorf("list channels: %w", err)
 	}
 
 	used := map[string]bool{}
+
 	for _, row := range channels {
 		if row.Slug != nil {
 			used[*row.Slug] = true
 		}
 	}
 
+	// ListChannels is newest first: export oldest first.
 	for i := len(channels) - 1; i >= 0; i-- {
 		row := channels[i]
 
-		slug := derefOr(row.Slug, "")
+		slug := deref(row.Slug)
 		if slug == "" {
 			slug = uniqueSlug(row.Name, used)
 		}
@@ -73,12 +89,19 @@ func (s *Service) Export(ctx context.Context, orgSlug string) (*checks.ExportDoc
 		})
 	}
 
+	return nil
+}
+
+func (s *Service) exportWindows(
+	ctx context.Context, org *models.Organization, doc *checks.ExportDocument, refs *refSets,
+) error {
 	windows, err := s.db.ListMaintenanceWindows(ctx, org.UID, models.ListMaintenanceWindowsFilter{})
 	if err != nil {
-		return nil, fmt.Errorf("list maintenance windows: %w", err)
+		return fmt.Errorf("list maintenance windows: %w", err)
 	}
 
-	used = map[string]bool{}
+	used := map[string]bool{}
+
 	for _, row := range windows {
 		if row.Slug != nil {
 			used[*row.Slug] = true
@@ -86,53 +109,61 @@ func (s *Service) Export(ctx context.Context, orgSlug string) (*checks.ExportDoc
 	}
 
 	for _, row := range windows {
-		slug := derefOr(row.Slug, "")
+		slug := deref(row.Slug)
 		if slug == "" {
 			slug = uniqueSlug(row.Title, used)
 		}
 
 		assocs, err := s.db.ListMaintenanceWindowChecks(ctx, row.UID)
 		if err != nil {
-			return nil, fmt.Errorf("list maintenance window checks: %w", err)
+			return fmt.Errorf("list maintenance window checks: %w", err)
 		}
 
 		slugs := []string{}
 
 		for _, assoc := range assocs {
-			if assoc.CheckUID != nil {
-				if checkSlug, ok := refs.uidToSlug[*assoc.CheckUID]; ok {
-					slugs = append(slugs, checkSlug)
-				}
+			if assoc.CheckUID == nil {
+				continue
+			}
+
+			if checkSlug, ok := refs.uidToSlug[*assoc.CheckUID]; ok {
+				slugs = append(slugs, checkSlug)
 			}
 		}
 
 		doc.MaintenanceWindows = append(doc.MaintenanceWindows, checks.ExportMaintenanceWindow{
-			Slug: slug, Title: row.Title, Description: derefOr(row.Description, ""),
+			Slug: slug, Title: row.Title, Description: deref(row.Description),
 			StartAt: row.StartAt.UTC().Truncate(time.Second), EndAt: row.EndAt.UTC().Truncate(time.Second),
 			Recurrence: row.Recurrence, RecurrenceEnd: row.RecurrenceEnd, Checks: slugs,
 		})
 	}
 
+	return nil
+}
+
+func (s *Service) exportPages(
+	ctx context.Context, org *models.Organization, doc *checks.ExportDocument, refs *refSets,
+) error {
 	pages, err := s.db.ListStatusPages(ctx, org.UID)
 	if err != nil {
-		return nil, fmt.Errorf("list status pages: %w", err)
+		return fmt.Errorf("list status pages: %w", err)
 	}
 
 	for _, row := range pages {
 		sections, err := s.currentSections(ctx, row.UID, refs)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		doc.StatusPages = append(doc.StatusPages, checks.ExportStatusPage{
-			Slug: row.Slug, Name: row.Name, Description: derefOr(row.Description, ""),
+			Slug: row.Slug, Name: row.Name, Description: deref(row.Description),
 			Visibility: row.Visibility, Enabled: ptr(row.Enabled), IsDefault: ptr(row.IsDefault),
 			ShowAvailability: ptr(row.ShowAvailability), ShowResponseTime: ptr(row.ShowResponseTime),
-			Language: derefOr(row.Language, ""), Sections: sections,
+			Language: deref(row.Language), Sections: sections,
 		})
 	}
 
-	return doc, nil
+	return nil
 }
 
 // uniqueSlug derives a manifest key from a display name, unique within used.

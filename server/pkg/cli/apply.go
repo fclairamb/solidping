@@ -106,7 +106,7 @@ func printApplyPlan(res *applyResult) {
 	}
 
 	tbl := output.NewTable(os.Stdout)
-	tbl.AppendHeader(table.Row{"KIND", "ACTION", colSlug, "DETAIL"})
+	tbl.AppendHeader(table.Row{colKind, "ACTION", colSlug, "DETAIL"})
 
 	// Grouped by kind, in dependency order; the server order is kept within a kind.
 	for _, kind := range planKindOrder {
@@ -126,15 +126,18 @@ func printApplyPlan(res *applyResult) {
 	tbl.Render()
 }
 
+// kindCheck is the plan kind of a check entry.
+const kindCheck = flagCheck
+
 // planKindOrder is the order plan entries are grouped in (dependency order).
 //
 //nolint:gochecknoglobals // constant list
-var planKindOrder = []string{"check", "channel", "maintenanceWindow", "statusPage"}
+var planKindOrder = []string{kindCheck, "channel", "maintenanceWindow", "statusPage"}
 
 // planKind names an entry's kind; an older server sends none, meaning a check.
 func planKind(entry *applyPlanEntry) string {
 	if entry.Kind == "" {
-		return "check"
+		return kindCheck
 	}
 
 	return entry.Kind

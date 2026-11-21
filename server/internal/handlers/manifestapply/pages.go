@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
@@ -11,8 +12,6 @@ import (
 )
 
 // planPages plans the manifest's status pages, matched on slug.
-//
-//nolint:cyclop,funlen // validate → match → diff → closures
 func (s *Service) planPages(
 	ctx context.Context, org *models.Organization, doc *checks.ExportDocument, manifest string, refs *refSets,
 ) (*kindPlan, error) {
@@ -55,37 +54,15 @@ func (s *Service) planPages(
 			return nil, err
 		}
 
-		switch {
-		case !ownedBy(existing.ManagedBy, manifest):
-			entry.Action = checks.ApplyActionUnmanaged
-			entry.Reason = "slug exists without the managed marker for this manifest"
-			entry.Changes = changes
-		case len(changes) == 0:
-			entry.Action = checks.ApplyActionUnchanged
-		default:
-			entry.Action = checks.ApplyActionUpdate
-			entry.Changes = changes
-		}
+		classify(&entry, existing.ManagedBy, manifest, changes)
 
 		plan.upserts = append(plan.upserts, op{entry: entry, do: s.updatePage(org, existing.UID, &page, manifest)})
 	}
 
-	for slug, row := range bySlug {
-		if ownedBy(row.ManagedBy, manifest) && !seen[slug] {
-			uid := row.UID
-			plan.deletes = append(plan.deletes, op{
-				entry: checks.ApplyPlanEntry{
-					Kind: checks.KindStatusPage, Slug: slug, Action: checks.ApplyActionDelete,
-					Reason: "managed status page absent from manifest",
-				},
-				do: func(ctx context.Context) error {
-					return s.pages.DeleteStatusPage(ctx, org.Slug, uid)
-				},
-			})
-		}
-	}
-
-	sortDeletes(plan)
+	plan.deletes = deleteOps(checks.KindStatusPage, "managed status page absent from manifest", manifest, bySlug, seen,
+		func(row *models.StatusPage) *string { return row.ManagedBy },
+		func(row *models.StatusPage) string { return row.UID },
+		func(ctx context.Context, uid string) error { return s.pages.DeleteStatusPage(ctx, org.Slug, uid) })
 
 	return plan, nil
 }
@@ -181,10 +158,34 @@ func (s *Service) updatePage(
 	}
 }
 
+// upsertSection renames the existing section or creates it, returning its UID.
+func (s *Service) upsertSection(
+	ctx context.Context, org *models.Organization, pageUID string, existing *models.StatusPageSection,
+	want *checks.ExportStatusPageSection, position int,
+) (string, error) {
+	if existing == nil {
+		created, err := s.pages.CreateSection(ctx, org.Slug, pageUID, statuspages.CreateSectionRequest{
+			Name: want.Name, Slug: want.Slug, Position: ptr(position),
+		})
+		if err != nil {
+			return "", err
+		}
+
+		return created.UID, nil
+	}
+
+	if existing.Name != want.Name {
+		if _, err := s.pages.UpdateSection(ctx, org.Slug, pageUID, existing.UID,
+			statuspages.UpdateSectionRequest{Name: ptr(want.Name)}); err != nil {
+			return "", err
+		}
+	}
+
+	return existing.UID, nil
+}
+
 // reconcileSections makes the page's sections (and their check resources) match
 // the manifest. A nil list leaves the page's sections alone.
-//
-//nolint:cyclop,funlen // sections then resources, each: update/create/delete/reorder
 func (s *Service) reconcileSections(
 	ctx context.Context, org *models.Organization, pageUID string, desired []checks.ExportStatusPageSection,
 ) error {
@@ -210,27 +211,13 @@ func (s *Service) reconcileSections(
 		want := &desired[i]
 		wanted[want.Slug] = true
 
-		if existing := bySlug[want.Slug]; existing != nil {
-			sectionUIDs[i] = existing.UID
-
-			if existing.Name != want.Name {
-				if _, err := s.pages.UpdateSection(ctx, org.Slug, pageUID, existing.UID,
-					statuspages.UpdateSectionRequest{Name: ptr(want.Name)}); err != nil {
-					return err
-				}
-			}
-		} else {
-			created, err := s.pages.CreateSection(ctx, org.Slug, pageUID, statuspages.CreateSectionRequest{
-				Name: want.Name, Slug: want.Slug, Position: ptr(i),
-			})
-			if err != nil {
-				return err
-			}
-
-			sectionUIDs[i] = created.UID
+		uid, err := s.upsertSection(ctx, org, pageUID, bySlug[want.Slug], want, i)
+		if err != nil {
+			return err
 		}
 
-		ordered = append(ordered, sectionUIDs[i])
+		sectionUIDs[i] = uid
+		ordered = append(ordered, uid)
 	}
 
 	for _, section := range current {
@@ -281,15 +268,15 @@ func (s *Service) reconcileResources(
 			continue // a group resource is not part of the manifest: left alone
 		}
 
-		if !want[*row.CheckUID] {
-			if err := s.pages.DeleteResource(ctx, org.Slug, pageUID, sectionUID, row.UID); err != nil {
-				return err
-			}
+		if want[*row.CheckUID] {
+			have[*row.CheckUID] = true
 
 			continue
 		}
 
-		have[*row.CheckUID] = true
+		if err := s.pages.DeleteResource(ctx, org.Slug, pageUID, sectionUID, row.UID); err != nil {
+			return err
+		}
 	}
 
 	for _, uid := range uids {
@@ -303,16 +290,30 @@ func (s *Service) reconcileResources(
 		}
 	}
 
-	rows, err = s.db.ListStatusPageResources(ctx, sectionUID)
+	return s.orderResources(ctx, org, pageUID, sectionUID, uids)
+}
+
+// orderResources puts the manifest's checks first, in manifest order; rows the
+// manifest does not describe (check groups) follow.
+func (s *Service) orderResources(
+	ctx context.Context, org *models.Organization, pageUID, sectionUID string, uids []string,
+) error {
+	rows, err := s.db.ListStatusPageResources(ctx, sectionUID)
 	if err != nil {
 		return err
 	}
 
 	byCheck := map[string]string{}
+	wanted := map[string]bool{}
+
+	for _, uid := range uids {
+		wanted[uid] = true
+	}
+
 	rest := []string{}
 
 	for _, row := range rows {
-		if row.CheckUID != nil && want[*row.CheckUID] {
+		if row.CheckUID != nil && wanted[*row.CheckUID] {
 			byCheck[*row.CheckUID] = row.UID
 		} else {
 			rest = append(rest, row.UID)
@@ -349,14 +350,14 @@ func (s *Service) diffPage(
 	}
 
 	add("name", existing.Name, page.Name)
-	add("description", derefOr(existing.Description, ""), page.Description)
+	add("description", deref(existing.Description), page.Description)
 
 	if page.Visibility != "" {
 		add("visibility", existing.Visibility, page.Visibility)
 	}
 
 	if page.Language != "" {
-		add("language", derefOr(existing.Language, ""), page.Language)
+		add("language", deref(existing.Language), page.Language)
 	}
 
 	addBool("enabled", existing.Enabled, page.Enabled)
@@ -374,8 +375,8 @@ func (s *Service) diffPage(
 	}
 
 	want := make([]checks.ExportStatusPageSection, len(page.Sections))
-	for i, section := range page.Sections {
-		want[i] = checks.ExportStatusPageSection{Slug: section.Slug, Name: section.Name, Checks: section.Checks}
+	for i := range page.Sections {
+		want[i] = page.Sections[i]
 		if want[i].Checks == nil {
 			want[i].Checks = []string{}
 		}
@@ -424,15 +425,10 @@ func (s *Service) currentSections(
 }
 
 func renderSections(sections []checks.ExportStatusPageSection) string {
-	out := ""
-
+	parts := make([]string, len(sections))
 	for i := range sections {
-		if i > 0 {
-			out += "; "
-		}
-
-		out += fmt.Sprintf("%s%v", sections[i].Slug, sections[i].Checks)
+		parts[i] = fmt.Sprintf("%s%v", sections[i].Slug, sections[i].Checks)
 	}
 
-	return out
+	return strings.Join(parts, "; ")
 }

@@ -1,10 +1,12 @@
 package manifestapply
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -51,95 +53,72 @@ func (s *Service) planChannels(
 	seen := map[string]bool{}
 
 	for i := range doc.Channels {
-		ch := doc.Channels[i]
+		channel := doc.Channels[i]
 
-		if err := validateSlug(checks.KindChannel, ch.Slug, seen); err != nil {
+		if err := validateSlug(checks.KindChannel, channel.Slug, seen); err != nil {
 			return nil, err
 		}
 
-		if ch.Name == "" || ch.Type == "" {
-			return nil, invalidf("channel %q needs a name and a type", ch.Slug)
+		if channel.Name == "" || channel.Type == "" {
+			return nil, invalidf("channel %q needs a name and a type", channel.Slug)
 		}
 
-		settings, _, resolveErr := secretref.ResolveConfig(ctx, ch.Settings, resolve)
+		settings, _, resolveErr := secretref.ResolveConfig(ctx, channel.Settings, resolve)
 		if resolveErr != nil {
-			return nil, fmt.Errorf("channel %q: %w", ch.Slug, resolveErr)
+			return nil, fmt.Errorf("channel %q: %w", channel.Slug, resolveErr)
 		}
 
-		existing := bySlug[ch.Slug]
+		existing := bySlug[channel.Slug]
 		if existing == nil {
 			// A bootstrap export gives a slug to a channel that has none; the
 			// first apply adopts it by its exact name (and type) when that is
 			// unambiguous, instead of creating a duplicate.
-			if cands := byName[ch.Name]; len(cands) == 1 && string(cands[0].Type) == ch.Type {
+			if cands := byName[channel.Name]; len(cands) == 1 && string(cands[0].Type) == channel.Type {
 				existing = cands[0]
 			}
 		}
 
-		entry := checks.ApplyPlanEntry{Kind: checks.KindChannel, Slug: ch.Slug}
+		entry := checks.ApplyPlanEntry{Kind: checks.KindChannel, Slug: channel.Slug}
 
 		if existing == nil {
 			entry.Action = checks.ApplyActionCreate
-			plan.upserts = append(plan.upserts, op{entry: entry, do: s.createChannel(org, &ch, settings, manifest)})
+			plan.upserts = append(plan.upserts, op{entry: entry, do: s.createChannel(org, &channel, settings, manifest)})
 
 			continue
 		}
 
-		if string(existing.Type) != ch.Type {
+		if string(existing.Type) != channel.Type {
 			return nil, invalidf("channel %q: type cannot change from %s to %s (use a new slug)",
-				ch.Slug, existing.Type, ch.Type)
+				channel.Slug, existing.Type, channel.Type)
 		}
 
-		changes, err := s.diffChannel(ctx, existing, &ch, settings)
+		changes, err := s.diffChannel(ctx, existing, &channel, settings)
 		if err != nil {
 			return nil, err
 		}
 
-		switch {
-		case !ownedBy(existing.ManagedBy, manifest):
-			entry.Action = checks.ApplyActionUnmanaged
-			entry.Reason = "slug exists without the managed marker for this manifest"
-			entry.Changes = changes
-		case len(changes) == 0:
-			entry.Action = checks.ApplyActionUnchanged
-		default:
-			entry.Action = checks.ApplyActionUpdate
-			entry.Changes = changes
-		}
+		classify(&entry, existing.ManagedBy, manifest, changes)
 
-		plan.upserts = append(plan.upserts, op{entry: entry, do: s.updateChannel(org, existing.UID, &ch, settings, manifest)})
+		update := s.updateChannel(org, existing.UID, &channel, settings, manifest)
+		plan.upserts = append(plan.upserts, op{entry: entry, do: update})
 	}
 
-	for slug, row := range bySlug {
-		if ownedBy(row.ManagedBy, manifest) && !seen[slug] {
-			uid := row.UID
-			plan.deletes = append(plan.deletes, op{
-				entry: checks.ApplyPlanEntry{
-					Kind: checks.KindChannel, Slug: slug, Action: checks.ApplyActionDelete,
-					Reason: "managed channel absent from manifest",
-				},
-				do: func(ctx context.Context) error {
-					return s.integrations.DeleteIntegration(ctx, org.Slug, uid)
-				},
-			})
-		}
-	}
-
-	sortDeletes(plan)
+	plan.deletes = deleteOps(checks.KindChannel, "managed channel absent from manifest", manifest, bySlug, seen,
+		func(row *models.Integration) *string { return row.ManagedBy },
+		func(row *models.Integration) string { return row.UID },
+		func(ctx context.Context, uid string) error {
+			return s.integrations.DeleteIntegration(ctx, org.Slug, uid)
+		})
 
 	return plan, nil
 }
 
-func sortDeletes(plan *kindPlan) {
-	sort.Slice(plan.deletes, func(a, b int) bool { return plan.deletes[a].entry.Slug < plan.deletes[b].entry.Slug })
-}
-
 func (s *Service) createChannel(
-	org *models.Organization, ch *checks.ExportChannel, settings map[string]any, manifest string,
+	org *models.Organization, channel *checks.ExportChannel, settings map[string]any, manifest string,
 ) func(context.Context) error {
 	req := integrations.CreateIntegrationRequest{
-		Type: ch.Type, Name: ch.Name, Enabled: ch.Enabled, IsDefault: ch.IsDefault,
-		Settings: settings, Slug: ptr(ch.Slug), ManagedBy: ptr(manifest),
+		Type: channel.Type, Name: channel.Name, Enabled: channel.Enabled, IsDefault: channel.IsDefault,
+		Settings: settings, Slug: ptr(channel.Slug), ManagedBy: ptr(manifest),
 	}
 
 	return func(ctx context.Context) error {
@@ -150,11 +129,11 @@ func (s *Service) createChannel(
 }
 
 func (s *Service) updateChannel(
-	org *models.Organization, uid string, ch *checks.ExportChannel, settings map[string]any, manifest string,
+	org *models.Organization, uid string, channel *checks.ExportChannel, settings map[string]any, manifest string,
 ) func(context.Context) error {
 	req := integrations.UpdateIntegrationRequest{
-		Name: ptr(ch.Name), Enabled: ch.Enabled, IsDefault: ch.IsDefault,
-		Settings: settings, ManagedBy: ptr(manifest), Slug: ptr(ch.Slug),
+		Name: ptr(channel.Name), Enabled: channel.Enabled, IsDefault: channel.IsDefault,
+		Settings: settings, ManagedBy: ptr(manifest), Slug: ptr(channel.Slug),
 	}
 
 	return func(ctx context.Context) error {
@@ -168,20 +147,20 @@ func (s *Service) updateChannel(
 // settings keys the manifest names are compared (the server adds others, e.g. a
 // webhook signing secret); secret values are masked in the diff.
 func (s *Service) diffChannel(
-	ctx context.Context, existing *models.Integration, ch *checks.ExportChannel, settings map[string]any,
+	ctx context.Context, existing *models.Integration, channel *checks.ExportChannel, settings map[string]any,
 ) ([]checks.CheckFieldChange, error) {
 	var changes []checks.CheckFieldChange
 
-	if existing.Name != ch.Name {
-		changes = append(changes, checks.CheckFieldChange{Field: "name", From: existing.Name, To: ch.Name})
+	if existing.Name != channel.Name {
+		changes = append(changes, checks.CheckFieldChange{Field: "name", From: existing.Name, To: channel.Name})
 	}
 
-	if ch.Enabled != nil && existing.Enabled != *ch.Enabled {
-		changes = append(changes, boolChange("enabled", existing.Enabled, *ch.Enabled))
+	if channel.Enabled != nil && existing.Enabled != *channel.Enabled {
+		changes = append(changes, boolChange("enabled", existing.Enabled, *channel.Enabled))
 	}
 
-	if ch.IsDefault != nil && existing.IsDefault != *ch.IsDefault {
-		changes = append(changes, boolChange("isDefault", existing.IsDefault, *ch.IsDefault))
+	if channel.IsDefault != nil && existing.IsDefault != *channel.IsDefault {
+		changes = append(changes, boolChange("isDefault", existing.IsDefault, *channel.IsDefault))
 	}
 
 	if len(settings) == 0 {
@@ -190,7 +169,7 @@ func (s *Service) diffChannel(
 
 	current, err := s.integrations.EffectiveSettings(ctx, existing)
 	if err != nil {
-		return nil, fmt.Errorf("channel %q: read stored settings: %w", ch.Slug, err)
+		return nil, fmt.Errorf("channel %q: read stored settings: %w", channel.Slug, err)
 	}
 
 	secrets := map[string]bool{}
@@ -223,26 +202,26 @@ func (s *Service) diffChannel(
 }
 
 func boolChange(field string, from, to bool) checks.CheckFieldChange {
-	return checks.CheckFieldChange{Field: field, From: fmt.Sprint(from), To: fmt.Sprint(to)}
+	return checks.CheckFieldChange{Field: field, From: strconv.FormatBool(from), To: strconv.FormatBool(to)}
 }
 
 func jsonEqual(a, b any) bool {
 	left, errL := json.Marshal(a)
 	right, errR := json.Marshal(b)
 
-	return errL == nil && errR == nil && string(left) == string(right)
+	return errL == nil && errR == nil && bytes.Equal(left, right)
 }
 
-func renderValue(v any) string {
-	if v == nil {
+func renderValue(value any) string {
+	if value == nil {
 		return ""
 	}
 
-	if str, ok := v.(string); ok {
+	if str, ok := value.(string); ok {
 		return str
 	}
 
-	raw, err := json.Marshal(v)
+	raw, err := json.Marshal(value)
 	if err != nil {
 		return ""
 	}
