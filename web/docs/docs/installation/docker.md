@@ -57,7 +57,7 @@ docker run -d \
 A non-default port needs `&port=5433` (it names the socket file,
 `.s.PGSQL.5433`). A percent-encoded host (`@%2Fvar%2Frun%2Fpostgresql/`) does
 not work: Go's URL parser rejects it before the driver sees it, so use the
-`host` parameter. More in [Database configuration](../configuration/database.md#unix-domain-socket).
+`host` parameter, which also wins over a host in the URL (`@localhost:5432/`). More in [Database configuration](../configuration/database.md#unix-domain-socket).
 
 Every value can be overridden with `-e` — Postgres above is the usual reason,
 but the same applies to `SP_FILESTORAGE_LOCAL_ROOT` if you want uploads on a

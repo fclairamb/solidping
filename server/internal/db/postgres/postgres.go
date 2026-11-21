@@ -232,6 +232,12 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 		return svc, nil
 	}
 
+	if SocketOverridesAuthorityHost(cfg.DSN) {
+		// pg_hba.conf matches `local` and `host` connections differently: say
+		// which one this DSN gets rather than switching silently.
+		slog.InfoContext(ctx, "Postgres DSN has both a host and a host= socket parameter: connecting via the Unix socket")
+	}
+
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(DriverDSN(cfg.DSN))))
 	applyPoolLimits(sqldb, cfg)
 	bunDB := bun.NewDB(sqldb, pgdialect.New())
