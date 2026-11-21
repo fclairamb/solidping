@@ -59,31 +59,9 @@ manage more than checks, for people who prefer YAML over HCL.
 
 ## Proposal
 
-### Part A: `terraform-provider-solidping` (new repo, out of this tree)
+### Part A: moved to #965
 
-Follow the 2026-05-25 spec for the shape (Terraform Plugin Framework, handwritten thin client,
-`endpoint`/`org`/`token` provider config with `SOLIDPING_ENDPOINT`/`SOLIDPING_ORG`/
-`SOLIDPING_TOKEN` fallbacks, resource `id` = uid, `terraform import org/uid`, `404` on read →
-removed from state, `{title, code, detail}` → diagnostics, secret config keys `sensitive` and
-write-only so read-back placeholders never diff).
-
-v1 resources, matching the issue's minimum: `solidping_check`, `solidping_channel` (non-Slack
-types; Slack stays install-flow only, documented), `solidping_status_page` (page header;
-sections and their resources as `solidping_status_page_section` if the time allows, else v1.1),
-`solidping_maintenance_window` (with `check_uids` set through `PUT /:uid/checks`). Escalation
-policies and on-call schedules (already audited, uid addressing done) follow in v1.1. Data
-sources by uid or slug for checks, channels and status pages.
-
-Before writing resources, extend `wiki/terraform-provider-api-audit.md` in this repo with the
-maintenance-window row (same checklist: create returns the full object, GET read-back fidelity
-incl. recurrence fields, PATCH partial, DELETE 404, import by uid) and file any gap as a small
-follow-up spec.
-
-Release: GoReleaser + the HashiCorp `terraform-provider-scaffolding-framework` release
-workflow (GPG-signed `SHA256SUMS`), published to registry.terraform.io and to the OpenTofu
-registry (`opentofu/registry` PR with the provider and its GPG key). Acceptance tests
-(`TF_ACC=1`) against a SolidPing started in CI from the published Docker image: create, update,
-import, second `plan` empty, destroy, per resource.
+The provider repo, its release and the registry listings are tracked in #965 (operator setup needed). Nothing to do for Part A here.
 
 ### Part B: `sp apply` for status pages, channels and maintenance windows (this repo)
 
@@ -115,21 +93,11 @@ import, second `plan` empty, destroy, per resource.
   apply), the migration on both backends, and the integration authz sweep
   (`checks_validate_document_authz_test.go`) extended to the new route.
 
-## Open questions
+## Resolved open questions
 
-1. **Order of delivery.** Recommended: Part B first (it is in this repo, `/implement-todos` can
-   do it end to end), Part A next in its own repo. Trade-off: the issue's headline is the
-   provider; shipping B first answers the "YAML" half quickly but leaves the registry listing,
-   the thing IaC users search for, for later.
-2. **Who creates and signs the provider release.** Recommended: Florent creates
-   `fclairamb/terraform-provider-solidping`, generates a dedicated GPG key stored in gopass
-   (`personal/solidping/terraform-provider/gpg-*`) and adds it to the repo secrets and to both
-   registries; the implementer scaffolds everything else. Trade-off: registry sign-up and key
-   custody can't be automated from here, so Part A stops at "release workflow ready" until he
-   does it.
-3. **Identity for channels and maintenance windows.** Recommended: a new optional `slug`
-   column, as above. Alternative: match on `name`/`title`, no migration, but renaming in the UI
-   then makes apply create a duplicate and prune the original.
+1. **Order of delivery.** Ship Part B first, in this repo; Part A follows in its own repo (#965). (autopilot: recommended answer)
+2. **Who creates and signs the provider release.** Florent creates the repo and the GPG key; tracked in #965, out of scope here. (autopilot: recommended answer)
+3. **Identity for channels and maintenance windows.** Add a new optional, per-org-unique `slug` column. (autopilot: recommended answer)
 
 ## Closing the issue
 
