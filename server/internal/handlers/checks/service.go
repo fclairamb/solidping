@@ -4048,6 +4048,11 @@ type ExportDocument struct {
 	// UnmarshalJSON).
 	Secrets string        `json:"secrets,omitempty"`
 	Checks  []ExportCheck `json:"checks"`
+	// Channels, MaintenanceWindows and StatusPages are the other kinds `sp
+	// apply` reconciles (spec 2026-11-21-01). Optional.
+	Channels           []ExportChannel           `json:"channels,omitempty"`
+	MaintenanceWindows []ExportMaintenanceWindow `json:"maintenanceWindows,omitempty"`
+	StatusPages        []ExportStatusPage        `json:"statusPages,omitempty"`
 }
 
 // ExportCheck represents a single check in the export format. The alerting
@@ -5396,7 +5401,7 @@ func (s *Service) cloneResolveSlug(
 			base = source.Type
 		}
 
-		baseSlug = base + "-copy"
+		baseSlug = stripCopySuffix(base) + "-copy"
 	}
 
 	finalSlug, err := s.ensureUniqueSlug(ctx, orgUID, baseSlug, userProvidedSlug)
@@ -5476,10 +5481,34 @@ func resolveCloneName(source *models.Check, req *CloneCheckRequest, fallback str
 	}
 
 	if source.Name != nil && *source.Name != "" {
-		return *source.Name + " (copy)"
+		return stripCopyNameSuffix(*source.Name) + " (copy)"
 	}
 
 	return fallback
+}
+
+var (
+	copySlugSuffixRe = regexp.MustCompile(`-copy(-\d+)?$`)
+	copyNameSuffixRe = regexp.MustCompile(` \(copy\)$`)
+)
+
+// stripCopySuffix removes a trailing "-copy" or "-copy-<n>" so cloning a clone
+// does not stack suffixes; ensureUniqueSlug numbers the collisions instead.
+func stripCopySuffix(slug string) string {
+	if stripped := copySlugSuffixRe.ReplaceAllString(slug, ""); stripped != "" {
+		return stripped
+	}
+
+	return slug
+}
+
+// stripCopyNameSuffix removes a trailing " (copy)" from a check name.
+func stripCopyNameSuffix(name string) string {
+	if stripped := copyNameSuffixRe.ReplaceAllString(name, ""); stripped != "" {
+		return stripped
+	}
+
+	return name
 }
 
 func resolveCloneDescription(source *models.Check, req *CloneCheckRequest) *string {

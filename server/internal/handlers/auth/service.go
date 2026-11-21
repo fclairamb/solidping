@@ -2681,6 +2681,16 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		return nil, ErrRegistrationDisabled
 	}
 
+	// Before the pattern and before anything is stored: an address the mail
+	// sender cannot parse would get a 200 "check your inbox" while
+	// enqueueEmail drops the confirmation mail.
+	address, ok := plainSendableAddress(req.Email)
+	if !ok {
+		return nil, ErrInvalidEmail
+	}
+
+	req.Email = address
+
 	// Validate email against pattern
 	re, err := regexp.Compile(pattern)
 	if err != nil {
@@ -4029,25 +4039,54 @@ type AcceptInviteRequest struct {
 	Timezone string `json:"timezone,omitempty"`
 }
 
-// CreateInvitation creates an invitation for a user to join an organization.
-//
-//nolint:funlen // Validation, storage, indexing and email form one flow
-func (s *Service) CreateInvitation(
-	ctx context.Context, orgSlug, inviterUID string, req InviteRequest,
-) (*InviteResponse, error) {
+// validateInviteRequest checks the role, the app and the address of an
+// invitation, and returns the trimmed address.
+func validateInviteRequest(req *InviteRequest) (string, error) {
 	// Validate role. `owner` is deliberately NOT invitable: ownership is granted
 	// by an owner on the members page, where the caller's owner role is checked
 	// live (spec 2026-08-08-11). An invitation is consumed later, by whoever
 	// holds the link, long after the inviter's role could have changed.
 	if role := models.MemberRole(req.Role); role != models.MemberRoleAdmin &&
 		role != models.MemberRoleUser && role != models.MemberRoleViewer {
-		return nil, fmt.Errorf("%w: invalid role", ErrInvalidCredentials)
+		return "", fmt.Errorf("%w: invalid role", ErrInvalidCredentials)
 	}
 
 	// Validate app
 	if req.App != appNameDash0 && req.App != "dash" {
-		return nil, ErrInvalidApp
+		return "", ErrInvalidApp
 	}
+
+	return invitationAddress(req.Email)
+}
+
+// invitationAddress trims the invitee address. The invitation mail goes to
+// it, so one the mail sender cannot parse is refused instead of stored for an
+// invitation nobody receives. No address at all is a link-only invitation.
+func invitationAddress(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", nil
+	}
+
+	address, ok := plainSendableAddress(raw)
+	if !ok {
+		return "", ErrInvalidEmail
+	}
+
+	return address, nil
+}
+
+// CreateInvitation creates an invitation for a user to join an organization.
+//
+//nolint:funlen // Validation, storage, indexing and email form one flow
+func (s *Service) CreateInvitation(
+	ctx context.Context, orgSlug, inviterUID string, req InviteRequest,
+) (*InviteResponse, error) {
+	address, err := validateInviteRequest(&req)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Email = address
 
 	// Resolve expiration duration
 	ttl, ok := getAllowedInviteExpirations()[req.ExpiresIn]

@@ -48,7 +48,11 @@ func NewService(dbService db.Service) *Service {
 
 // MaintenanceWindowResponse represents a maintenance window in API responses.
 type MaintenanceWindowResponse struct {
-	UID           string     `json:"uid"`
+	UID string `json:"uid"`
+	// Slug is the optional per-org-unique manifest key set by `sp apply`;
+	// ManagedBy names the manifest that owns the row.
+	Slug          *string    `json:"slug,omitempty"`
+	ManagedBy     *string    `json:"managedBy,omitempty"`
 	Title         string     `json:"title"`
 	Description   *string    `json:"description,omitempty"`
 	StartAt       time.Time  `json:"startAt"`
@@ -72,6 +76,9 @@ const nextOccurrencesCount = 3
 
 // CreateRequest represents a request to create a new maintenance window.
 type CreateRequest struct {
+	// Slug is optional; ManagedBy is set by `sp apply` only (never decoded).
+	Slug          *string    `json:"slug,omitempty"`
+	ManagedBy     *string    `json:"-"`
 	Title         string     `json:"title"`
 	Description   *string    `json:"description"`
 	StartAt       time.Time  `json:"startAt"`
@@ -82,6 +89,8 @@ type CreateRequest struct {
 
 // UpdateRequest represents a request to update a maintenance window.
 type UpdateRequest struct {
+	Slug          *string    `json:"slug,omitempty"`
+	ManagedBy     *string    `json:"-"`
 	Title         *string    `json:"title,omitempty"`
 	Description   *string    `json:"description,omitempty"`
 	StartAt       *time.Time `json:"startAt,omitempty"`
@@ -148,6 +157,8 @@ func (s *Service) CreateMaintenanceWindow(
 	window := models.NewMaintenanceWindow(org.UID, req.Title, req.StartAt, req.EndAt)
 	window.Description = req.Description
 	window.RecurrenceEnd = req.RecurrenceEnd
+	window.Slug = req.Slug
+	window.ManagedBy = req.ManagedBy
 
 	if req.Recurrence != "" {
 		window.Recurrence = req.Recurrence
@@ -264,6 +275,8 @@ func (s *Service) UpdateMaintenanceWindow(
 		EndAt:         req.EndAt,
 		Recurrence:    req.Recurrence,
 		RecurrenceEnd: req.RecurrenceEnd,
+		Slug:          req.Slug,
+		ManagedBy:     req.ManagedBy,
 	}
 
 	if errUpdate := s.db.UpdateMaintenanceWindow(ctx, window.UID, update); errUpdate != nil {
@@ -400,6 +413,8 @@ func validateCreateRequest(req *CreateRequest) error {
 func convertWindowToResponse(window *models.MaintenanceWindow, now time.Time) MaintenanceWindowResponse {
 	return MaintenanceWindowResponse{
 		UID:             window.UID,
+		Slug:            window.Slug,
+		ManagedBy:       window.ManagedBy,
 		Title:           window.Title,
 		Description:     window.Description,
 		StartAt:         window.StartAt,

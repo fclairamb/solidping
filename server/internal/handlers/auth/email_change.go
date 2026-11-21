@@ -82,6 +82,24 @@ func normalizeEmail(raw string) (string, error) {
 	return normalized, nil
 }
 
+// plainSendableAddress trims raw and reports whether it is a single plain
+// address the mail sender can parse ("alice@acme.com", never
+// "Alice <alice@acme.com>" nor "alice@@acme.com"). Unlike normalizeEmail it
+// keeps the case: sign-up and invitation store the address as typed.
+func plainSendableAddress(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || len(trimmed) > maxEmailLength {
+		return "", false
+	}
+
+	addr, err := mail.ParseAddress(trimmed)
+	if err != nil || addr.Name != "" || addr.Address != trimmed {
+		return "", false
+	}
+
+	return trimmed, true
+}
+
 // mustChangeEmail reports whether the account still signs in with the
 // published seed address while it must rotate its password (spec
 // 2026-10-13-02). It is computed from the row only.

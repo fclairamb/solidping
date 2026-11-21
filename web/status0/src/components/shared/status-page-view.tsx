@@ -37,6 +37,7 @@ import {
   statusStyle,
 } from "@/lib/status-style";
 import { usePreviewCss } from "@/lib/preview-css";
+import { displayLocale } from "@/lib/display-locale";
 
 function getStatusColor(status: string) {
   return statusStyle(status).color;
@@ -261,7 +262,7 @@ function ResourceCard({
                 ? t("noDataLastChecked", {
                     time: formatLastChecked(
                       resource.check.lastResultAt,
-                      i18n.language,
+                      displayLocale(i18n),
                     ),
                   })
                 : t(getStatusLabelKey(status))}

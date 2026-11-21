@@ -573,22 +573,53 @@ func allocator(
 		opts = append(opts, chromedp.ExecPath(current.ChromePath))
 	}
 
-	// Egress (specs 2026-09-25-19 and 2026-11-19-04): this Chrome is started
-	// for this check only, so it is pointed at the session's guarded proxy
-	// for every connection, and its own resolver is told the ONE address the
-	// pre-flight approved for the main host and NOTHING else — whatever would
-	// not go through the proxy cannot resolve a name either.
-	if proxy != nil {
-		opts = append(opts,
-			chromedp.ProxyServer(proxy.URL()),
-			chromedp.Flag("proxy-bypass-list", egressProxyBypassList),
-			chromedp.Flag("host-resolver-rules", egressResolverRules(pin, proxy.host())),
-		)
-	} else if pin != nil {
-		opts = append(opts, chromedp.Flag("host-resolver-rules", pin.resolverRule()))
+	// Egress: this Chrome is started for this check only, so the policy is
+	// set on its command line (see egressExecFlags).
+	for name, value := range egressExecFlags(pin, proxy) {
+		opts = append(opts, chromedp.Flag(name, value))
 	}
 
 	return chromedp.NewExecAllocator(ctx, opts...)
+}
+
+// webRTCIPHandlingPolicy is the WebRTC IP handling policy of an enforcing
+// Chrome (spec 2026-11-20-01). WebRTC does not go through an HTTP proxy: under
+// Chrome's default policy ICE sends its STUN checks straight over UDP, to any
+// IP literal a page names, around the guarded proxy. disable_non_proxied_udp
+// forbids every UDP socket that does not go through the proxy, and Chrome's
+// HTTP proxy cannot carry UDP, so WebRTC is left with TURN over TCP through
+// the proxy, which the guard judges like any other connection.
+const webRTCIPHandlingPolicy = "disable_non_proxied_udp"
+
+// egressExecFlags is the command-line flags the egress policy adds to a
+// Chrome this process starts for one check (specs 2026-09-25-19,
+// 2026-11-19-04 and 2026-11-20-01).
+//
+// Under an enforcing policy (proxy set), every connection goes through the
+// session's guarded proxy, Chrome's own resolver knows the ONE address the
+// pre-flight approved for the main host and NOTHING else (whatever would not
+// go through the proxy cannot resolve a name either), and WebRTC may not send
+// UDP around the proxy. Without a proxy, only the pin applies.
+func egressExecFlags(pin *hostPin, proxy *egressProxy) map[string]any {
+	if proxy == nil {
+		if pin == nil {
+			return nil
+		}
+
+		return map[string]any{"host-resolver-rules": pin.resolverRule()}
+	}
+
+	return map[string]any{
+		"proxy-server":        proxy.URL(),
+		"proxy-bypass-list":   egressProxyBypassList,
+		"host-resolver-rules": egressResolverRules(pin, proxy.host()),
+		// Both spellings, each read by one build and ignored by the
+		// other (checked against a loopback STUN listener on 2026-11-20):
+		// desktop Chrome reads --webrtc-ip-handling-policy, chromedp's
+		// headless-shell only --force-webrtc-ip-handling-policy.
+		"force-webrtc-ip-handling-policy": webRTCIPHandlingPolicy,
+		"webrtc-ip-handling-policy":       webRTCIPHandlingPolicy,
+	}
 }
 
 // egressResolverRules is the deny-by-default --host-resolver-rules of an
