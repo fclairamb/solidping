@@ -132,7 +132,7 @@ func (h *GoogleOAuthHandler) handleOAuthError(
 		description = "Email address not verified in Google profile"
 	case errors.Is(err, ErrGoogleTokenExchange):
 		code = OAuthCodeTokenExchange
-		description = OAuthDescTokenExchange
+		description = logOAuthTokenExchangeFailure(req, "google", err)
 	default:
 		code = OAuthCodeFailed
 		description = logOAuthFailure(req, "google", err)

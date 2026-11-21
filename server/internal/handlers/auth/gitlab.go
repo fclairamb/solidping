@@ -135,7 +135,7 @@ func (h *GitLabOAuthHandler) handleOAuthError(
 		description = OAuthDescAccountExistsSignInFirst
 	case errors.Is(err, ErrGitLabTokenExchange):
 		code = OAuthCodeTokenExchange
-		description = OAuthDescTokenExchange
+		description = logOAuthTokenExchangeFailure(req, "gitlab", err)
 	default:
 		code = OAuthCodeFailed
 		description = logOAuthFailure(req, "gitlab", err)

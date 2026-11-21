@@ -127,7 +127,7 @@ func (h *OIDCOAuthHandler) handleOAuthError(
 		description = "Email address not verified with the OIDC provider"
 	case errors.Is(err, ErrOIDCTokenExchange):
 		code = OAuthCodeTokenExchange
-		description = OAuthDescTokenExchange
+		description = logOAuthTokenExchangeFailure(req, "oidc", err)
 	case errors.Is(err, ErrOIDCTokenInvalid):
 		code = "TOKEN_INVALID"
 		description = "ID token failed validation"

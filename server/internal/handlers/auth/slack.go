@@ -165,7 +165,7 @@ func (h *SlackOAuthHandler) handleOAuthError(
 		description = "Email address not verified in Slack profile"
 	case errors.Is(err, ErrSlackTokenExchange):
 		code = OAuthCodeTokenExchange
-		description = OAuthDescTokenExchange
+		description = logOAuthTokenExchangeFailure(req, "slack", err)
 	default:
 		code = OAuthCodeFailed
 		description = logOAuthFailure(req, "slack", err)

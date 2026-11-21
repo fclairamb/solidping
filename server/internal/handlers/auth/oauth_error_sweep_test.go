@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -45,5 +46,44 @@ func TestEveryProviderMapsEveryOAuthError(t *testing.T) {
 			require.NotEmpty(t, params.Get("error"), "%s: %v", name, sentinel)
 			require.NotEmpty(t, params.Get("error_description"), "%s: %v", name, sentinel)
 		}
+	}
+}
+
+// TestTokenExchangeFailureIsLogged: the user only sees "Failed to exchange
+// authorization code", so the provider's own answer (code already used,
+// expired, redirect_uri mismatch) must reach the server log, or a failed
+// sign-in cannot be diagnosed afterwards.
+//
+//nolint:paralleltest // Swaps the process-global slog default logger.
+func TestTokenExchangeFailureIsLogged(t *testing.T) {
+	cfg := &config.Config{}
+	cases := []struct {
+		provider string
+		handle   func(http.ResponseWriter, *http.Request, string, error) error
+		sentinel error
+	}{
+		{"discord", NewDiscordOAuthHandler(nil, cfg).handleOAuthError, ErrDiscordTokenExchange},
+		{"github", NewGitHubOAuthHandler(nil, cfg).handleOAuthError, ErrGitHubTokenExchange},
+		{"gitlab", NewGitLabOAuthHandler(nil, cfg).handleOAuthError, ErrGitLabTokenExchange},
+		{"google", NewGoogleOAuthHandler(nil, cfg).handleOAuthError, ErrGoogleTokenExchange},
+		{"microsoft", NewMicrosoftOAuthHandler(nil, cfg).handleOAuthError, ErrMicrosoftTokenExchange},
+		{"oidc", NewOIDCOAuthHandler(nil, cfg).handleOAuthError, ErrOIDCTokenExchange},
+		{"slack", NewSlackOAuthHandler(nil, cfg).handleOAuthError, ErrSlackTokenExchange},
+	}
+
+	for _, tc := range cases {
+		capture := captureDefaultLogs(t)
+		cause := fmt.Errorf("%w: invalid_grant: Bad Request", tc.sentinel)
+
+		params := redirectParams(t, func(w http.ResponseWriter, req *http.Request) error {
+			return tc.handle(w, req, "/d/orgs/acme", cause)
+		})
+		require.Equal(t, OAuthCodeTokenExchange, params.Get("error"), tc.provider)
+		require.Equal(t, OAuthDescTokenExchange, params.Get("error_description"), tc.provider)
+
+		logs := capture.String()
+		require.Contains(t, logs, "OAuth token exchange failed", tc.provider)
+		require.Contains(t, logs, "provider="+tc.provider, tc.provider)
+		require.Contains(t, logs, "invalid_grant", "%s: the provider's answer must be logged", tc.provider)
 	}
 }

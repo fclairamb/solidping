@@ -131,7 +131,7 @@ func (h *GitHubOAuthHandler) handleOAuthError(
 		description = "No verified email found in GitHub profile"
 	case errors.Is(err, ErrGitHubTokenExchange):
 		code = OAuthCodeTokenExchange
-		description = OAuthDescTokenExchange
+		description = logOAuthTokenExchangeFailure(req, "github", err)
 	default:
 		code = OAuthCodeFailed
 		description = logOAuthFailure(req, "github", err)

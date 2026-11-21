@@ -230,6 +230,39 @@ test.describe("Invitations", () => {
       expect(page.url()).toContain(`/invite/${token}`);
     });
 
+    test("a failed provider sign-in back on the invitation shows its error", async ({
+      authenticatedPage,
+      page,
+    }) => {
+      const createResp = await authenticatedPage.request.post(
+        `${API_BASE}/api/v1/orgs/test/invitations`,
+        {
+          data: {
+            email: `invite-oauth-error-${Date.now()}@example.com`,
+            role: "user",
+            expiresIn: "24h",
+            app: "dash0",
+          },
+        },
+      );
+      expect(createResp.status()).toBe(201);
+      const { token } = await createResp.json();
+
+      // The provider callback redirects a failed sign-in to its redirect_uri,
+      // the invitation here, with the reason in the query string.
+      await page.goto(
+        `invite/${token}?error=TOKEN_EXCHANGE_FAILED&error_description=${encodeURIComponent("Failed to exchange authorization code")}`,
+      );
+
+      await expect(page.getByTestId("invite-oauth-error")).toHaveText(
+        "Failed to exchange authorization code",
+      );
+      // The retry link still targets the bare invitation, not the error URL.
+      const href = await page.getByTestId("invite-sign-in-link").getAttribute("href");
+      expect(decodeURIComponent(href ?? "")).toContain(`/invite/${token}`);
+      expect(decodeURIComponent(href ?? "")).not.toContain("error");
+    });
+
     test("a bogus token shows the invalid invitation card", async ({
       page,
     }) => {

@@ -137,7 +137,7 @@ func (h *MicrosoftOAuthHandler) handleOAuthError(
 		description = "Microsoft did not confirm that you own this email address"
 	case errors.Is(err, ErrMicrosoftTokenExchange):
 		code = OAuthCodeTokenExchange
-		description = OAuthDescTokenExchange
+		description = logOAuthTokenExchangeFailure(req, "microsoft", err)
 	default:
 		code = OAuthCodeFailed
 		description = logOAuthFailure(req, "microsoft", err)
