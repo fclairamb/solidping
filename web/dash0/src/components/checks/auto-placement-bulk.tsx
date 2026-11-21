@@ -27,27 +27,30 @@ const AUTO_PLACEMENT = { placement: "auto" } as const;
  */
 export function AutoPlacementBulkDialog({
   org,
+  checkUids,
   open,
   onOpenChange,
 }: {
   org: string;
+  /** Explicit selection: when set, it replaces "every pinned check" as the scope. */
+  checkUids?: string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useTranslation("checks");
   const { t: tc } = useTranslation("common");
   const setOpen = onOpenChange;
-  const matching = useChecksMatching(org, {}, open);
+  const matching = useChecksMatching(org, {}, open && !checkUids);
   const pinned = useMemo(
-    () => (matching.data ?? []).filter((check) => check.placement === "pinned").map((check) => check.uid),
-    [matching.data],
+    () => checkUids ?? (matching.data ?? []).filter((check) => check.placement === "pinned").map((check) => check.uid),
+    [checkUids, matching.data],
   );
   const preview = useBulkUpdateChecksPreview(org, pinned, AUTO_PLACEMENT, open);
   const switchChecks = useBulkUpdateChecks(org);
 
   const eligible = preview.data?.data.map((check) => check.uid) ?? [];
   const count = eligible.length;
-  const loading = matching.isLoading || preview.isLoading;
+  const loading = (matching.isLoading && !checkUids) || preview.isLoading;
 
   const confirm = () => {
     switchChecks.mutate({ checkUids: eligible, changes: AUTO_PLACEMENT }, {

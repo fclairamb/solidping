@@ -1840,5 +1840,37 @@
         "unknown": "Noch nicht gemeldet — diese Region hat keinen aktiven Worker, der seine Fähigkeiten meldet, oder nutzt einen älteren Agent. Sie unterstützt Browser-Checks möglicherweise."
       }
     }
+  },
+  "bulkSelection": {
+    "selectAll": "Alle sichtbaren Checks auswählen",
+    "selectRow": "Check auswählen",
+    "bulk": {
+      "selected_one": "{{count}} ausgewählt",
+      "selected_other": "{{count}} ausgewählt",
+      "delete": "Löschen",
+      "clear": "Aufheben",
+      "deleteTitle_one": "{{count}} Check löschen",
+      "deleteTitle_other": "{{count}} Checks löschen",
+      "deleteDescription": "Die ausgewählten Checks und ihr Verlauf werden gelöscht. Das kann nicht rückgängig gemacht werden.",
+      "willDelete_one": "{{count}} Check wird gelöscht.",
+      "willDelete_other": "{{count}} Checks werden gelöscht.",
+      "skippedIntro_one": "{{count}} Check bleibt erhalten:",
+      "skippedIntro_other": "{{count}} Checks bleiben erhalten:",
+      "skip": {
+        "not_found": "nicht gefunden",
+        "read_only": "in der Demo schreibgeschützt",
+        "internal": "interner Check",
+        "managed": "per Config-as-Code verwaltet",
+        "tunnel_in_use": "wird von anderen Checks als Tunnel genutzt",
+        "error": "konnte nicht geprüft werden"
+      },
+      "typeCount": "Geben Sie {{count}} zur Bestätigung ein",
+      "confirm": "Löschen",
+      "deleted_one": "{{count}} Check gelöscht",
+      "deleted_other": "{{count}} Checks gelöscht",
+      "failed": "Die Checks konnten nicht gelöscht werden",
+      "partial_one": "{{count}} Check konnte nicht gelöscht werden",
+      "partial_other": "{{count}} Checks konnten nicht gelöscht werden"
+    }
   }
 }

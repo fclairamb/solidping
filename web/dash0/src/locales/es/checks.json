@@ -1840,5 +1840,37 @@
         "unknown": "Aún no informado — esta región no tiene ningún worker activo que informe sus capacidades, o usa un agente más antiguo. Es posible que admita comprobaciones de navegador."
       }
     }
+  },
+  "bulkSelection": {
+    "selectAll": "Seleccionar todos los checks visibles",
+    "selectRow": "Seleccionar el check",
+    "bulk": {
+      "selected_one": "{{count}} seleccionado",
+      "selected_other": "{{count}} seleccionados",
+      "delete": "Eliminar",
+      "clear": "Borrar",
+      "deleteTitle_one": "Eliminar {{count}} check",
+      "deleteTitle_other": "Eliminar {{count}} checks",
+      "deleteDescription": "Los checks seleccionados y su historial se eliminan. Esta acción no se puede deshacer.",
+      "willDelete_one": "Se eliminará {{count}} check.",
+      "willDelete_other": "Se eliminarán {{count}} checks.",
+      "skippedIntro_one": "Se conservará {{count}} check:",
+      "skippedIntro_other": "Se conservarán {{count}} checks:",
+      "skip": {
+        "not_found": "no encontrado",
+        "read_only": "solo lectura en la demo",
+        "internal": "check interno",
+        "managed": "gestionado por un apply de config-as-code",
+        "tunnel_in_use": "usado como túnel por otros checks",
+        "error": "no se pudo evaluar"
+      },
+      "typeCount": "Escriba {{count}} para confirmar",
+      "confirm": "Eliminar",
+      "deleted_one": "{{count}} check eliminado",
+      "deleted_other": "{{count}} checks eliminados",
+      "failed": "No se pudieron eliminar los checks",
+      "partial_one": "No se pudo eliminar {{count}} check",
+      "partial_other": "No se pudieron eliminar {{count}} checks"
+    }
   }
 }
