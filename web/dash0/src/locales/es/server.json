@@ -122,7 +122,10 @@
       "bindDn": "Bind DN",
       "bindPassword": "Contraseña de bind",
       "baseDn": "Base DN",
-      "userFilter": "Filtro de búsqueda de usuario"
+      "userFilter": "Filtro de búsqueda de usuario",
+      "groupsClaim": "Claim de grupos",
+      "superAdminGroups": "Grupos de superadministradores",
+      "orgAdminGroups": "Grupos de administradores de organización"
     },
     "fieldHelp": {
       "tenantId": "El ID de tu directorio (inquilino) de Entra, o un dominio verificado. Déjalo en blanco para \"common\" (multiinquilino). Usa \"organizations\" o \"consumers\" para restringir los tipos de cuenta.",
@@ -142,7 +145,14 @@
       "insecureSkipVerify": "Omite la verificación del certificado TLS. Úsalo solo para pruebas con un certificado autofirmado — esto permite ataques de intermediario (man-in-the-middle).",
       "bindDn": "Distinguished Name de la cuenta de servicio usada para buscar en el directorio, p. ej. cn=admin,dc=example,dc=com. Déjalo vacío para una búsqueda anónima (sin autenticar).",
       "baseDn": "Base DN bajo la que buscar usuarios, p. ej. ou=people,dc=example,dc=com.",
-      "userFilter": "Plantilla de filtro LDAP con un marcador \"%s\" para el nombre de usuario enviado (escapado antes de sustituirlo), p. ej. (sAMAccountName=%s). Por defecto (mail=%s) si está vacío."
+      "userFilter": "Plantilla de filtro LDAP con un marcador \"%s\" para el nombre de usuario enviado (escapado antes de sustituirlo), p. ej. (sAMAccountName=%s). Por defecto (mail=%s) si está vacío.",
+      "groupsClaim": "Claim del token de ID con los grupos del usuario: un array, una cadena o una cadena separada por espacios. Por defecto «groups».",
+      "superAdminGroups": "Grupos separados por comas cuyos miembros son superadministradores de la instancia, sincronizados en cada inicio de sesión. Vacío lo desactiva.",
+      "orgAdminGroups": "Grupos separados por comas cuyos miembros reciben el rol de administrador en la organización en la que inician sesión. Vacío lo desactiva."
+    },
+    "localLogin": {
+      "title": "Inicio de sesión local",
+      "description": "Inicio de sesión con contraseña y LDAP, registro y restablecimiento de contraseña. Solo se puede desactivar mientras haya un proveedor SSO activado."
     }
   },
   "hashing": {

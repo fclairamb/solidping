@@ -160,6 +160,9 @@ function LoginPage() {
   // one query answers both. This used to be a second fetch of the very same
   // endpoint through getAuthProviders() (spec 2026-09-09-02).
   const passkeysEnabled = providersData?.passkeysEnabled ?? false;
+  // Local login off (spec 2026-11-21-02): no email/password form, no
+  // forgot-password nor sign-up link, only the SSO buttons and passkeys.
+  const localLogin = providersData?.localLogin ?? true;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -769,16 +772,18 @@ function LoginPage() {
                       data-testid="passkey-login-button-promoted"
                     />
                   )}
-                  <div className="relative my-3">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
+                  {(localLogin || (gridProviders?.length ?? 0) > 0 || passkeySupported) && (
+                    <div className="relative my-3">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-card px-2 text-muted-foreground">
+                          {tc("or")}
+                        </span>
+                      </div>
                     </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-card px-2 text-muted-foreground">
-                        {tc("or")}
-                      </span>
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
 
@@ -788,61 +793,64 @@ function LoginPage() {
                 disabled={isLoading}
                 returnTo={returnTo}
                 testIdPrefix="login"
+                showDivider={localLogin}
               />
 
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">{tc("email")}</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="you@acme.com"
-                    autoComplete={passkeysEnabled ? "username webauthn" : "username"}
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    disabled={isLoading}
-                    // Autofocus when password was the last-used method so a
-                    // returning user can start typing immediately.
-                    autoFocus={promotePassword}
-                    data-testid="login-email"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="password">{tc("password")}</Label>
-                    <Link
-                      to="/forgot-password"
-                      search={{ email: email || undefined }}
-                      reloadDocument
-                      className="text-sm text-muted-foreground hover:underline"
-                    >
-                      {t("forgotPassword")}
-                    </Link>
+              {localLogin ? (
+                <form onSubmit={handleSubmit} className="space-y-4" data-testid="login-form">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">{tc("email")}</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="you@acme.com"
+                      autoComplete={passkeysEnabled ? "username webauthn" : "username"}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      disabled={isLoading}
+                      // Autofocus when password was the last-used method so a
+                      // returning user can start typing immediately.
+                      autoFocus={promotePassword}
+                      data-testid="login-email"
+                    />
                   </div>
-                  <PasswordInput
-                    id="password"
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    disabled={isLoading}
-                    data-testid="login-password"
-                  />
-                </div>
 
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={isLoading}
-                  data-testid="login-submit"
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {t("signingIn")}
-                    </>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="password">{tc("password")}</Label>
+                      <Link
+                        to="/forgot-password"
+                        search={{ email: email || undefined }}
+                        reloadDocument
+                        className="text-sm text-muted-foreground hover:underline"
+                        data-testid="login-forgot-password"
+                      >
+                        {t("forgotPassword")}
+                      </Link>
+                    </div>
+                    <PasswordInput
+                      id="password"
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      disabled={isLoading}
+                      data-testid="login-password"
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={isLoading}
+                    data-testid="login-submit"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        {t("signingIn")}
+                      </>
                   ) : (
                     <>
                       {t("signIn")}
@@ -874,6 +882,22 @@ function LoginPage() {
                     </Button>
                   )}
               </form>
+              ) : (
+                passkeySupported &&
+                !promotePasskey && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={handlePasskeyLogin}
+                    disabled={isLoading}
+                    data-testid="passkey-login-button"
+                  >
+                    <KeyRound className="mr-2 h-4 w-4" />
+                    {t("twoFactor.signInWithPasskey")}
+                  </Button>
+                )
+              )}
 
               {/* The live demo. Secondary to the real sign-in — an evaluator
                   wants it, a returning customer must not trip over it — and
@@ -899,8 +923,8 @@ function LoginPage() {
             </>
           )}
 
-          {registrationEnabled && (
-            <div className="mt-4 text-center text-sm text-muted-foreground">
+          {registrationEnabled && localLogin && (
+            <div className="mt-4 text-center text-sm text-muted-foreground" data-testid="login-signup">
               {t("dontHaveAccount")}{" "}
               <Link
                 to="/orgs/$org/register"

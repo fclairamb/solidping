@@ -15,6 +15,11 @@ export interface OAuthProviderButtonsProps {
   providers: AuthProvider[] | undefined;
   disabled?: boolean;
   /**
+   * The "or" divider above the password form. Off when there is no password
+   * form below (local login disabled, spec 2026-11-21-02).
+   */
+  showDivider?: boolean;
+  /**
    * The deep link captured on the way into /login, forwarded so the provider
    * round-trip lands back on it. /register omits it: a visitor creating an
    * account was not bounced off a protected page.
@@ -46,6 +51,7 @@ export function OAuthProviderButtons({
   disabled,
   returnTo,
   testIdPrefix,
+  showDivider = true,
 }: OAuthProviderButtonsProps) {
   const { t: tc } = useTranslation("common");
 
@@ -77,14 +83,16 @@ export function OAuthProviderButtons({
           </Button>
         ))}
       </div>
-      <div className="relative my-3">
-        <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t" />
+      {showDivider && (
+        <div className="relative my-3">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-card px-2 text-muted-foreground">{tc("or")}</span>
+          </div>
         </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-card px-2 text-muted-foreground">{tc("or")}</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

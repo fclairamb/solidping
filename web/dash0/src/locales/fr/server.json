@@ -122,7 +122,10 @@
       "bindDn": "Bind DN",
       "bindPassword": "Mot de passe de bind",
       "baseDn": "Base DN",
-      "userFilter": "Filtre de recherche utilisateur"
+      "userFilter": "Filtre de recherche utilisateur",
+      "groupsClaim": "Claim des groupes",
+      "superAdminGroups": "Groupes super admin",
+      "orgAdminGroups": "Groupes admin d'organisation"
     },
     "fieldHelp": {
       "tenantId": "L'ID de votre annuaire (locataire) Entra, ou un domaine vérifié. Laissez vide pour \"common\" (multi-locataire). Utilisez \"organizations\" ou \"consumers\" pour restreindre les types de comptes.",
@@ -142,7 +145,14 @@
       "insecureSkipVerify": "Ignore la vérification du certificat TLS. À utiliser uniquement pour les tests avec un certificat auto-signé — expose à une attaque de type homme du milieu.",
       "bindDn": "Distinguished Name du compte de service utilisé pour rechercher dans l'annuaire, par ex. cn=admin,dc=example,dc=com. Laissez vide pour une recherche anonyme (non authentifiée).",
       "baseDn": "Base DN sous laquelle rechercher les utilisateurs, par ex. ou=people,dc=example,dc=com.",
-      "userFilter": "Modèle de filtre LDAP avec un espace réservé \"%s\" pour le nom d'utilisateur soumis (échappé avant substitution), par ex. (sAMAccountName=%s). Par défaut (mail=%s) si vide."
+      "userFilter": "Modèle de filtre LDAP avec un espace réservé \"%s\" pour le nom d'utilisateur soumis (échappé avant substitution), par ex. (sAMAccountName=%s). Par défaut (mail=%s) si vide.",
+      "groupsClaim": "Claim du jeton d'identité qui liste les groupes de l'utilisateur : un tableau, une chaîne ou une chaîne séparée par des espaces. Par défaut « groups ».",
+      "superAdminGroups": "Groupes, séparés par des virgules, dont les membres sont super admins de l'instance, synchronisés à chaque connexion. Vide pour désactiver.",
+      "orgAdminGroups": "Groupes, séparés par des virgules, dont les membres deviennent admin de l'organisation où ils se connectent. Vide pour désactiver."
+    },
+    "localLogin": {
+      "title": "Connexion locale",
+      "description": "Connexion par mot de passe et LDAP, inscription et réinitialisation du mot de passe. Ne peut être désactivée que si un fournisseur SSO est activé."
     }
   },
   "hashing": {

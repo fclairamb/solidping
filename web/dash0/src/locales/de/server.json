@@ -122,7 +122,10 @@
       "bindDn": "Bind DN",
       "bindPassword": "Bind-Passwort",
       "baseDn": "Base DN",
-      "userFilter": "Benutzer-Suchfilter"
+      "userFilter": "Benutzer-Suchfilter",
+      "groupsClaim": "Gruppen-Claim",
+      "superAdminGroups": "Super-Admin-Gruppen",
+      "orgAdminGroups": "Organisations-Admin-Gruppen"
     },
     "fieldHelp": {
       "tenantId": "Die ID Ihres Entra-Verzeichnisses (Mandant) oder eine verifizierte Domäne. Leer lassen für \"common\" (mandantenübergreifend). Verwenden Sie \"organizations\" oder \"consumers\", um Kontotypen einzuschränken.",
@@ -142,7 +145,14 @@
       "insecureSkipVerify": "Überspringt die TLS-Zertifikatsprüfung. Nur zum Testen mit einem selbstsignierten Zertifikat verwenden — dies ermöglicht Man-in-the-Middle-Angriffe.",
       "bindDn": "Distinguished Name des Dienstkontos, das für die Verzeichnissuche verwendet wird, z. B. cn=admin,dc=example,dc=com. Leer lassen für eine anonyme (unauthentifizierte) Suche.",
       "baseDn": "Base DN, unter der nach Benutzern gesucht wird, z. B. ou=people,dc=example,dc=com.",
-      "userFilter": "LDAP-Filtervorlage mit einem \"%s\"-Platzhalter für den übermittelten Benutzernamen (vor der Ersetzung maskiert), z. B. (sAMAccountName=%s). Standardmäßig (mail=%s), wenn leer."
+      "userFilter": "LDAP-Filtervorlage mit einem \"%s\"-Platzhalter für den übermittelten Benutzernamen (vor der Ersetzung maskiert), z. B. (sAMAccountName=%s). Standardmäßig (mail=%s), wenn leer.",
+      "groupsClaim": "Claim des ID-Tokens mit den Gruppen des Benutzers: ein Array, ein String oder ein durch Leerzeichen getrennter String. Standard ist „groups“.",
+      "superAdminGroups": "Kommagetrennte Gruppen, deren Mitglieder Super-Admins der Instanz sind, bei jeder Anmeldung abgeglichen. Leer schaltet es ab.",
+      "orgAdminGroups": "Kommagetrennte Gruppen, deren Mitglieder die Admin-Rolle in der Organisation erhalten, bei der sie sich anmelden. Leer schaltet es ab."
+    },
+    "localLogin": {
+      "title": "Lokale Anmeldung",
+      "description": "Anmeldung per Passwort und LDAP, Registrierung und Passwort-Zurücksetzung. Lässt sich nur abschalten, solange ein SSO-Anbieter aktiv ist."
     }
   },
   "hashing": {

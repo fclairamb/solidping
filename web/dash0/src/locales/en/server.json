@@ -122,7 +122,10 @@
       "bindDn": "Bind DN",
       "bindPassword": "Bind Password",
       "baseDn": "Base DN",
-      "userFilter": "User Search Filter"
+      "userFilter": "User Search Filter",
+      "groupsClaim": "Groups Claim",
+      "superAdminGroups": "Super Admin Groups",
+      "orgAdminGroups": "Organization Admin Groups"
     },
     "fieldHelp": {
       "tenantId": "Your Entra directory (tenant) ID, or a verified domain. Leave blank for \"common\" (multi-tenant). Use \"organizations\" or \"consumers\" to restrict account types.",
@@ -142,7 +145,14 @@
       "insecureSkipVerify": "Skip TLS certificate verification. Only use for testing against a self-signed certificate — this allows man-in-the-middle attacks.",
       "bindDn": "Distinguished Name of the service account used to search the directory, e.g. cn=admin,dc=example,dc=com. Leave blank for an anonymous (unauthenticated) search bind.",
       "baseDn": "Base DN to search for users under, e.g. ou=people,dc=example,dc=com.",
-      "userFilter": "LDAP filter template with one \"%s\" placeholder for the submitted username (escaped before substitution), e.g. (sAMAccountName=%s). Defaults to (mail=%s) when blank."
+      "userFilter": "LDAP filter template with one \"%s\" placeholder for the submitted username (escaped before substitution), e.g. (sAMAccountName=%s). Defaults to (mail=%s) when blank.",
+      "groupsClaim": "ID token claim listing the user's groups: an array, a string or a space-separated string. Defaults to \"groups\".",
+      "superAdminGroups": "Comma-separated groups whose members are super admins of the instance, synced on every login. Blank turns it off.",
+      "orgAdminGroups": "Comma-separated groups whose members get the admin role in the organization they sign in to. Blank turns it off."
+    },
+    "localLogin": {
+      "title": "Local login",
+      "description": "Password and LDAP sign-in, sign-up and password reset. It can only be turned off while an SSO provider is enabled."
     }
   },
   "hashing": {
