@@ -2,6 +2,8 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -78,8 +80,13 @@ func (s *Service) GetAgentEnrollmentTokenByHash(
 		Where("expires_at > ?", time.Now()).
 		WhereGroup(" AND ", enrollmentTokenUsableScope).
 		Scan(ctx)
-	if err != nil {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, db.ErrEnrollmentTokenInvalid
+	}
+
+	if err != nil {
+		// A database failure is not a bad token: the caller answers 503.
+		return nil, fmt.Errorf("failed to get agent enrollment token: %w", err)
 	}
 
 	return &token, nil

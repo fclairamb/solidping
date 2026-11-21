@@ -874,6 +874,13 @@ func (b *WSBackend) dial(ctx context.Context, headers http.Header) (*websocket.C
 			status = resp.StatusCode
 		}
 
+		// A 5xx is a server-side blip (its database is unreachable, say), not
+		// a refused identity: report it as a lost connection, which the
+		// worker logs once at WARN and recovers from.
+		if status >= http.StatusInternalServerError {
+			return nil, fmt.Errorf("dial %s (status %d): %w: %w", wsPath, status, ErrConnLost, err)
+		}
+
 		return nil, fmt.Errorf("dial %s (status %d): %w", wsPath, status, err)
 	}
 
