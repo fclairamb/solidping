@@ -70,6 +70,12 @@ as a small follow-up spec in `specs/todos/` (do not fix it here).
    spec in `specs/todos/` with Step 2 pending. Trade-off: the issue stays tracked here while
    the provider work happens elsewhere.
 
+## Resolved open questions
+
+1. **Prerequisites** (autopilot: recommended answer): implement Step 1 only, in this repo. Step 2
+   needs operator setup and a repo that doesn't exist yet: it moves to a GitHub issue assigned to
+   Florent (without the `autopilot` label), and this spec is archived once Step 1 is done.
+
 ## Closing the issue
 
 This spec closes #965. The PR that completes Step 2 (or, if Step 2 lands only in the
