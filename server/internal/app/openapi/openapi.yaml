@@ -13427,6 +13427,9 @@ components:
         enabled: {type: boolean}
         resolveOpenIncidents: {type: boolean}
         period: {type: string}
+        checkGroupUid:
+          type: string
+          description: UID of a check group of the org; an empty string takes the checks out of their group.
         placement:
           type: string
           enum: [pinned, auto]

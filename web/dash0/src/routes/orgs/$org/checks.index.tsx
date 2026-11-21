@@ -36,8 +36,10 @@ import { useAIChecksEnabled } from "@/api/public-config";
 import { toast } from "sonner";
 import { AutoPlacementBulkDialog } from "@/components/checks/auto-placement-bulk";
 import { SetRegionsBulkDialog } from "@/components/checks/set-regions-bulk";
+import { MoveGroupBulkDialog } from "@/components/checks/move-group-bulk";
+import { SetPeriodBulkDialog } from "@/components/checks/set-period-bulk";
 import { DeleteBulkDialog } from "@/components/checks/delete-bulk";
-import { ChecksSelectionContext, useChecksSelection } from "@/components/checks/selection";
+import { ChecksSelectionContext, GroupSelectCheckbox, useChecksSelection } from "@/components/checks/selection";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   useInfiniteChecks,
@@ -710,7 +712,9 @@ function ChecksTable({
     <Table>
       <TableHeader className="bg-muted/30">
         <TableRow>
-          <TableHead className="w-10" />
+          <TableHead className="w-10 pr-0">
+            <GroupSelectCheckbox uids={checks.map((check) => check.uid)} />
+          </TableHead>
           <TableHead className="md:w-[40%]">{t("table.name")}</TableHead>
           <TableHead className="hidden sm:table-cell">{t("table.type")}</TableHead>
           <TableHead className="hidden md:table-cell w-[25%]">{t("table.target")}</TableHead>
@@ -1486,6 +1490,8 @@ function ChecksIndexPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [autoPlacementOpen, setAutoPlacementOpen] = useState(false);
   const [setRegionsOpen, setSetRegionsOpen] = useState(false);
+  const [moveGroupOpen, setMoveGroupOpen] = useState(false);
+  const [setPeriodOpen, setSetPeriodOpen] = useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   // Explicit row selection (spec 2026-11-21-03): kept across pagination.
   const [selectedUids, setSelectedUids] = useState<Set<string>>(() => new Set());
@@ -1502,10 +1508,37 @@ function ChecksIndexPage() {
           }
           return next;
         }),
+      setMany: (uids: string[], selected: boolean) =>
+        setSelectedUids((current) => {
+          const next = new Set(current);
+          uids.forEach((uid) => (selected ? next.add(uid) : next.delete(uid)));
+          return next;
+        }),
     }),
     [selectedUids],
   );
   const selectedList = useMemo(() => Array.from(selectedUids), [selectedUids]);
+  // The selection bar is fixed to the bottom of the screen, over the page's
+  // own column: it follows the column's edges as the sidebar opens or folds.
+  const hasSelection = selectedList.length > 0;
+  const pageRef = useRef<HTMLDivElement>(null);
+  const [barEdges, setBarEdges] = useState<{ left: number; width: number } | null>(null);
+  useEffect(() => {
+    const page = pageRef.current;
+    if (!hasSelection || !page) return;
+    const update = () => {
+      const rect = page.getBoundingClientRect();
+      setBarEdges({ left: rect.left, width: rect.width });
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(page);
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [hasSelection]);
   const [importSource, setImportSource] = useState<ImportSourceId>("solidping");
   const [importText, setImportText] = useState("");
   const [importToken, setImportToken] = useState("");
@@ -1712,7 +1745,7 @@ function ChecksIndexPage() {
 
   return (
     <ChecksSelectionContext.Provider value={selection}>
-    <div className="space-y-6">
+    <div ref={pageRef} className={hasSelection ? "space-y-6 pb-24" : "space-y-6"}>
       <PageHeader
         icon={ListChecks}
         title={t("title")}
@@ -1828,6 +1861,19 @@ function ChecksIndexPage() {
         open={setRegionsOpen}
         onOpenChange={setSetRegionsOpen}
       />
+      <MoveGroupBulkDialog
+        org={org}
+        checkUids={selectedList}
+        groups={groups || []}
+        open={moveGroupOpen}
+        onOpenChange={setMoveGroupOpen}
+      />
+      <SetPeriodBulkDialog
+        org={org}
+        checkUids={selectedList}
+        open={setPeriodOpen}
+        onOpenChange={setSetPeriodOpen}
+      />
       <DeleteBulkDialog
         org={org}
         checkUids={selectedList}
@@ -1842,49 +1888,6 @@ function ChecksIndexPage() {
         }
       />
 
-      {selectedList.length > 0 && (
-        <div
-          className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2 shadow-card"
-          data-testid="checks-bulk-bar"
-        >
-          <span className="px-2 text-sm font-medium" data-testid="checks-bulk-count">
-            {t("bulkSelection.bulk.selected", { count: selectedList.length })}
-          </span>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setBulkDeleteOpen(true)}
-            data-testid="checks-bulk-delete-button"
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            {t("bulkSelection.bulk.delete")}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSetRegionsOpen(true)}
-            data-testid="checks-bulk-set-regions-button"
-          >
-            {t("setRegions.button")}…
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setAutoPlacementOpen(true)}
-            data-testid="checks-bulk-auto-placement-button"
-          >
-            {t("autoPlacement.button")}…
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSelectedUids(new Set())}
-            data-testid="checks-bulk-clear-button"
-          >
-            {t("bulkSelection.bulk.clear")}
-          </Button>
-        </div>
-      )}
 
       {/*
         Directly under the header, above the filters: the gaps this explains are
@@ -2563,6 +2566,75 @@ function ChecksIndexPage() {
           </div>
         </DialogContent>
       </Dialog>
+      {/* Fixed, not in the flow: selecting never shifts the rows. */}
+      {selectedList.length > 0 && (
+        <div
+          className="fixed inset-x-3 bottom-3 z-40 flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2 shadow-lg"
+          style={barEdges ? { left: barEdges.left, width: barEdges.width } : undefined}
+          data-testid="checks-bulk-bar"
+        >
+          <span className="px-2 text-sm font-medium" data-testid="checks-bulk-count">
+            {t("bulkSelection.bulk.selected", { count: selectedList.length })}
+          </span>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setBulkDeleteOpen(true)}
+            data-testid="checks-bulk-delete-button"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {t("bulkSelection.bulk.delete")}
+          </Button>
+          {/* Automatic placement is one way of setting the regions, so it
+              sits under the same button. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" data-testid="checks-bulk-set-regions-button">
+                {t("setRegions.button")}
+                <ChevronDown className="ml-1 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem
+                onSelect={() => setSetRegionsOpen(true)}
+                data-testid="checks-bulk-choose-regions-item"
+              >
+                {t("bulkSelection.bulk.chooseRegions")}…
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => setAutoPlacementOpen(true)}
+                data-testid="checks-bulk-auto-placement-button"
+              >
+                {t("autoPlacement.button")}…
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSetPeriodOpen(true)}
+            data-testid="checks-bulk-set-period-button"
+          >
+            {t("bulkSelection.bulk.setPeriod")}…
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setMoveGroupOpen(true)}
+            data-testid="checks-bulk-move-group-button"
+          >
+            {t("bulkSelection.bulk.moveToGroup")}…
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedUids(new Set())}
+            data-testid="checks-bulk-clear-button"
+          >
+            {t("bulkSelection.bulk.clear")}
+          </Button>
+        </div>
+      )}
     </div>
     </ChecksSelectionContext.Provider>
   );

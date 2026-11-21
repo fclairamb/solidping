@@ -1844,7 +1844,34 @@
   "bulkSelection": {
     "selectAll": "Select all visible checks",
     "selectRow": "Select check",
+    "selectGroup": "Select the checks of this table",
+    "move": {
+      "title_one": "Move {{count}} check to a group",
+      "title_other": "Move {{count}} checks to a group",
+      "pick": "Choose the group these checks will join.",
+      "none": "No group (ungrouped)",
+      "confirm": "Move",
+      "moved_one": "{{count}} check moved",
+      "moved_other": "{{count}} checks moved",
+      "failed": "Could not move the checks"
+    },
+    "period": {
+      "title_one": "Set the period of {{count}} check",
+      "title_other": "Set the period of {{count}} checks",
+      "pick": "These checks will run every",
+      "willUpdate_one": "{{count}} check will be updated.",
+      "willUpdate_other": "{{count}} checks will be updated.",
+      "willSkip_one": "{{count}} check will be left untouched.",
+      "willSkip_other": "{{count}} checks will be left untouched.",
+      "confirm": "Set period",
+      "updated_one": "Period set on {{count}} check",
+      "updated_other": "Period set on {{count}} checks",
+      "failed": "Could not set the period"
+    },
     "bulk": {
+      "moveToGroup": "Move to group",
+      "setPeriod": "Set period",
+      "chooseRegions": "Choose regions",
       "selected_one": "{{count}} selected",
       "selected_other": "{{count}} selected",
       "delete": "Delete",

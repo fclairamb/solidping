@@ -1214,6 +1214,8 @@ export interface BulkCheckChanges {
   enabled?: boolean;
   resolveOpenIncidents?: boolean;
   period?: string;
+  /** The group to move the checks into; "" takes them out of their group. */
+  checkGroupUid?: string;
   placement?: CheckPlacement;
   regions?: string[];
   regionCount?: number;

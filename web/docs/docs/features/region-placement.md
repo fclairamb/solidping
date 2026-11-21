@@ -85,7 +85,8 @@ inside it.
   shaped like a single-check `PATCH` body, to every listed check (at most
   1000). For example `{"placement": "auto"}`, `{"regions": ["eu-fr-paris"]}`,
   `{"enabled": false}` or `{"period": "00:05:00"}`. A bulk update accepts
-  `enabled`, `resolveOpenIncidents`, `period`, `placement`, `regions`,
+  `enabled`, `resolveOpenIncidents`, `period`, `checkGroupUid` (a group of the
+  org, or `""` to ungroup), `placement`, `regions`,
   `regionCount`, `regionPool`, `confirmationPeriodSeconds` and
   `recoveryPeriodSeconds`; any other field is refused. The answer lists the
   updated checks in `data` and the `skipped` ones with their reason

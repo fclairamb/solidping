@@ -1844,7 +1844,34 @@
   "bulkSelection": {
     "selectAll": "Alle sichtbaren Checks auswählen",
     "selectRow": "Check auswählen",
+    "selectGroup": "Die Checks dieser Tabelle auswählen",
+    "move": {
+      "title_one": "{{count}} Check in eine Gruppe verschieben",
+      "title_other": "{{count}} Checks in eine Gruppe verschieben",
+      "pick": "Wählen Sie die Gruppe, in die diese Checks kommen.",
+      "none": "Keine Gruppe (ohne Gruppe)",
+      "confirm": "Verschieben",
+      "moved_one": "{{count}} Check verschoben",
+      "moved_other": "{{count}} Checks verschoben",
+      "failed": "Die Checks konnten nicht verschoben werden"
+    },
+    "period": {
+      "title_one": "Intervall von {{count}} Check ändern",
+      "title_other": "Intervall von {{count}} Checks ändern",
+      "pick": "Diese Checks laufen alle",
+      "willUpdate_one": "{{count}} Check wird geändert.",
+      "willUpdate_other": "{{count}} Checks werden geändert.",
+      "willSkip_one": "{{count}} Check bleibt unverändert.",
+      "willSkip_other": "{{count}} Checks bleiben unverändert.",
+      "confirm": "Intervall ändern",
+      "updated_one": "Intervall bei {{count}} Check geändert",
+      "updated_other": "Intervall bei {{count}} Checks geändert",
+      "failed": "Das Intervall konnte nicht geändert werden"
+    },
     "bulk": {
+      "moveToGroup": "In Gruppe verschieben",
+      "setPeriod": "Intervall ändern",
+      "chooseRegions": "Regionen auswählen",
       "selected_one": "{{count}} ausgewählt",
       "selected_other": "{{count}} ausgewählt",
       "delete": "Löschen",
