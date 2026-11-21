@@ -213,3 +213,52 @@ func TestSend_RecipientRejectedLoggedAsWarn(t *testing.T) {
 
 	resetSendSlots()
 }
+
+//nolint:paralleltest // mutates the process-wide semaphore
+func TestSend_RateLimitReplyIsRetryableAndRedacted(t *testing.T) {
+	for _, enhanced := range []bool{true, false} {
+		resetSendSlots()
+
+		port := fakeSMTPRejectingRcpt(t, enhanced, `452 4.4.5 Rate limit exceeded, try again later.`)
+
+		var buf bytes.Buffer
+
+		logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		sender := NewSender(&config.EmailConfig{
+			Enabled: true, Host: "127.0.0.1", Port: port, From: "a@acme.test",
+			Protocol: "none", AuthType: "noauth",
+		}, logger)
+
+		_, err := sender.Send(t.Context(), &Message{
+			Recipients: Recipients{To: []string{"alerts@acme.test"}}, Subject: "s", Text: "t",
+		})
+		require.Error(t, err)
+		require.True(t, IsRetryableSendError(err), err.Error())
+		require.False(t, IsRecipientRejection(err), err.Error())
+		require.Contains(t, err.Error(), "452")
+		require.NotContains(t, err.Error(), "alerts@acme.test")
+
+		logged := buf.String()
+		require.Contains(t, logged, "level=WARN msg=\"failed to send email\"")
+		require.NotContains(t, logged, "level=ERROR")
+		require.NotContains(t, logged, "affected recipient")
+	}
+
+	resetSendSlots()
+}
+
+func TestRedactRecipients(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, redactRecipients(nil))
+	require.Equal(t, io.EOF, redactRecipients(io.EOF))
+
+	err := redactRecipients(&textproto.Error{
+		Code: 452,
+		Msg:  "rate limited, affected recipient(s): a@acme.test, b@acme.test, affected message ID: <x@acme.test>",
+	})
+	require.Equal(t, `452 "rate limited, affected message ID: <x@acme.test>"`, err.Error())
+
+	var tpErr *textproto.Error
+	require.ErrorAs(t, err, &tpErr)
+}

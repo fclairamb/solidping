@@ -153,7 +153,7 @@ func (r *EmailJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	result, err := jctx.Services.EmailSender.Send(ctx, msg)
 	if err != nil {
 		// Check if this is a network error (retryable)
-		if isNetworkError(err) {
+		if isNetworkError(err) || email.IsRetryableSendError(err) {
 			log.WarnContext(ctx, "Email send failed due to network error, will retry",
 				"error", err,
 			)

@@ -381,7 +381,7 @@ func (r *NotificationJobRun) sendAndAudit(
 	if err := sender.Send(ctx, jctx, payload); err != nil {
 		// Network errors should be retryable — leave the audit row at pending
 		// so a subsequent retry can update it.
-		if notifications.IsNetworkError(err) {
+		if notifications.IsNetworkError(err) || jobdef.IsRetryable(err) {
 			_ = jctx.DBService.MarkIncidentNotificationFailedByJob(
 				ctx, jctx.Job.UID, time.Now(), err.Error(), true, payload.DeliveryDetails,
 			)

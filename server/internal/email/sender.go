@@ -358,6 +358,10 @@ func (s *SMTPSender) sendMessage(ctx context.Context, mailMsg *mail.Msg, msg *Me
 			level = slog.LevelWarn
 		}
 
+		// go-mail names the recipients in its error text: drop them so the
+		// address stays out of the logs and of the stored job error.
+		err = redactRecipients(err)
+
 		s.logger.Log(ctx, level, "failed to send email",
 			"to", msg.Recipients.To,
 			"subject", msg.Subject,
@@ -420,9 +424,10 @@ func IsRetryableSendError(err error) bool {
 		return true
 	}
 
-	var tpErr *textproto.Error
-	if errors.As(err, &tpErr) {
-		return tpErr.Code >= smtpTransientMin && tpErr.Code < smtpPermanentMin
+	// An SMTP reply, from a textproto error or from go-mail's SendError
+	// (whose code is parsed from the server reply): 4xx means "try later".
+	if code := smtpReply(err).code; code != 0 {
+		return code >= smtpTransientMin && code < smtpPermanentMin
 	}
 
 	// go-mail wraps some dial failures as plain text.
@@ -430,6 +435,31 @@ func IsRetryableSendError(err error) bool {
 
 	return strings.Contains(msg, "EOF") || strings.Contains(msg, "connection reset") ||
 		strings.Contains(msg, "connection refused")
+}
+
+// affectedRecipientsRe matches the recipient list go-mail appends to a
+// SendError text, up to the optional message ID part.
+var affectedRecipientsRe = regexp.MustCompile(`, affected recipient\(s\): .*?(, affected message ID: |$)`)
+
+// redactedSendError hides the recipient addresses of a go-mail error text and
+// keeps the original error for errors.As / errors.Is.
+type redactedSendError struct {
+	err error
+}
+
+func (e *redactedSendError) Error() string {
+	return affectedRecipientsRe.ReplaceAllString(e.err.Error(), "$1")
+}
+
+func (e *redactedSendError) Unwrap() error { return e.err }
+
+// redactRecipients wraps err so its text no longer names the recipients.
+func redactRecipients(err error) error {
+	if err == nil || !strings.Contains(err.Error(), "affected recipient(s): ") {
+		return err
+	}
+
+	return &redactedSendError{err: err}
 }
 
 const (
