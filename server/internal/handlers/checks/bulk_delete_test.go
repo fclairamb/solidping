@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 )
@@ -24,10 +25,15 @@ func bulkDeleteSkips(resp *checks.BulkDeleteChecksResponse) map[string]string {
 func TestBulkDeleteMixed(t *testing.T) {
 	t.Parallel()
 
+	svc, dbSvc, org := setupTunnelChecksService(t)
+	runBulkDeleteMixed(t, svc, dbSvc, org)
+}
+
+func runBulkDeleteMixed(t *testing.T, svc *checks.Service, dbSvc db.Service, org *models.Organization) {
+	t.Helper()
+
 	r := require.New(t)
 	ctx := t.Context()
-
-	svc, dbSvc, org := setupTunnelChecksService(t)
 
 	plain1, err := svc.CreateCheck(ctx, org.Slug, httpCheckReq())
 	r.NoError(err)
