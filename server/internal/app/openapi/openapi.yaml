@@ -1549,6 +1549,8 @@ paths:
           description: >-
             `INVITE_EMAIL_MISMATCH`: the signed-in account is not the invitee.
             `IMPERSONATION_FORBIDDEN` under impersonation.
+            `LOCAL_LOGIN_DISABLED`: local login is off and the acceptance would
+            create or use a password (sign in with SSO, then accept).
           content:
             application/json:
               schema:
@@ -11913,6 +11915,22 @@ components:
             membershipPending:
               type: string
               description: Slug of the org that has not admitted the user yet (org-less session only)
+            roleChanges:
+              type: array
+              items:
+                type: string
+                enum:
+                  - super_admin_granted
+                  - super_admin_revoked
+                  - super_admin_kept_last
+                  - org_owner_granted
+                  - org_admin_granted
+                  - org_admin_revoked
+                  - org_admin_kept_last
+              description: >-
+                Login diagnostics of the OIDC group claim: the roles it granted or
+                revoked during this login (`*_kept_last`: a revoke skipped to keep
+                the last admin). Omitted when nothing changed.
 
     LogoutRequest:
       type: object

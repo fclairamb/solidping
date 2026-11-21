@@ -37,6 +37,10 @@ type HandoffExchangeResponse struct {
 	// MembershipPending names the org that did not admit the user yet, for the
 	// no-org page. Empty when no join request was opened.
 	MembershipPending string `json:"membershipPending,omitempty"`
+	// RoleChanges are the login diagnostics of the IdP group claim: the roles
+	// it granted or revoked during this login (super_admin_granted,
+	// super_admin_revoked, org_admin_granted, ...). Empty when none.
+	RoleChanges []string `json:"roleChanges,omitempty"`
 }
 
 // ExchangeHandoffCode redeems a handoff code minted by a federated login
@@ -65,6 +69,7 @@ func (s *Service) ExchangeHandoffCode(ctx context.Context, code string) (*Handof
 			},
 			ReturnTo:          safeReturnTo(session.ReturnTo),
 			MembershipPending: session.MembershipPending,
+			RoleChanges:       session.RoleChanges,
 		}, nil
 	}
 
@@ -95,6 +100,7 @@ func (s *Service) ExchangeHandoffCode(ctx context.Context, code string) (*Handof
 		},
 		ReturnTo:          safeReturnTo(session.ReturnTo),
 		MembershipPending: session.MembershipPending,
+		RoleChanges:       session.RoleChanges,
 	}, nil
 }
 

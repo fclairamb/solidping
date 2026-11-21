@@ -12,6 +12,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 )
@@ -161,4 +162,85 @@ func TestListProviders_LocalLoginFlag(t *testing.T) {
 			require.Equal(t, tc.want, resp.RegistrationEnabled, "sign-up follows local login")
 		})
 	}
+}
+
+func TestLocalLoginEnabled_RegisterWorks(t *testing.T) {
+	t.Parallel()
+
+	svc, handler, _, ctx := localLoginWorld(t, true, true)
+	svc.fullCfg.Auth.RegistrationEmailPattern = ".*"
+
+	rec := postJSON(ctx, t, "/auth/register",
+		`{"name":"New User","email":"newuser@acme.com","password":"testpass1234"}`, handler.Register)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+}
+
+func TestLocalLoginEnabled_PasswordResetWorks(t *testing.T) {
+	t.Parallel()
+
+	_, handler, dbSvc, ctx := localLoginWorld(t, true, true)
+	user := passwordResetUser(t, ctx, dbSvc, "reset@acme.com")
+
+	rec := postJSON(ctx, t, "/auth/request-password-reset",
+		`{"email":"reset@acme.com"}`, handler.RequestPasswordReset)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	token := "token-for-the-reset-account"
+	ttl := passwordResetTTL
+	require.NoError(t, dbSvc.SetStateEntry(ctx, nil, passwordResetKeyPrefix+hashPendingToken(token),
+		&models.JSONMap{"userUid": user.UID}, &ttl))
+
+	rec = postJSON(ctx, t, "/auth/reset-password",
+		`{"token":"`+token+`","password":"brand-new-pass-1234"}`, handler.ResetPassword)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+}
+
+// localLoginOff switches local login off on the invite fixture's service,
+// with an SSO provider so the switch is really enforced.
+func (f *acceptInviteFixture) localLoginOff() *Handler {
+	f.svc.fullCfg.Auth.LocalLoginEnabled = false
+	f.svc.fullCfg.Google = config.GoogleOAuthConfig{Enabled: true, ClientID: "id", ClientSecret: "secret"}
+
+	return NewHandler(f.svc, f.svc.fullCfg)
+}
+
+// Accepting an invitation by creating a password account is local login:
+// refused with 403 LOCAL_LOGIN_DISABLED while it is off, and nothing written.
+func TestLocalLoginDisabled_AcceptInviteWithPasswordRefused(t *testing.T) {
+	t.Parallel()
+
+	f := newAcceptInviteFixture(t, "newcomer@acme.com")
+	handler := f.localLoginOff()
+	ctx := t.Context()
+
+	rec := postJSON(ctx, t, "/auth/accept-invite",
+		`{"token":"`+f.token+`","name":"New","password":"testpass1234"}`, handler.AcceptInvite)
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+	require.Equal(t, string(base.ErrorCodeLocalLoginDisabled), decodeErrorCode(t, rec))
+
+	_, err := f.db.GetUserByEmail(ctx, "newcomer@acme.com")
+	require.Error(t, err, "no password account is created")
+	f.assertNothingWritten(ctx, t, "")
+}
+
+// An invitee signed in through SSO accepts without a password: that still
+// works while local login is off.
+func TestLocalLoginDisabled_AcceptInviteViaSSOWorks(t *testing.T) {
+	t.Parallel()
+
+	f := newAcceptInviteFixture(t, "alice@acme.com")
+	f.localLoginOff()
+	ctx := t.Context()
+
+	// Sending a password along is still local login: refused.
+	_, err := f.svc.AcceptInvite(ctx, AcceptInviteRequest{Token: f.token, Password: "testpass1234"}, f.alice.UID)
+	require.ErrorIs(t, err, ErrLocalLoginDisabled)
+
+	resp, err := f.svc.AcceptInvite(ctx, AcceptInviteRequest{Token: f.token}, f.alice.UID)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	member, err := f.db.GetMemberByUserAndOrg(ctx, f.alice.UID, f.org.UID)
+	require.NoError(t, err)
+	require.Equal(t, models.MemberRoleUser, member.Role)
 }

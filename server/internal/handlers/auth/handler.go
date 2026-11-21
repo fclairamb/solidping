@@ -1369,6 +1369,8 @@ func (h *Handler) handleRegistrationError(writer http.ResponseWriter, request *h
 // handleInvitationError handles errors from invitation endpoints.
 func (h *Handler) handleInvitationError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
+	case errors.Is(err, ErrLocalLoginDisabled):
+		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeLocalLoginDisabled, localLoginDisabledMessage)
 	case errors.Is(err, ErrInvalidEmail):
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
 			{Name: keyEmail, Message: msgInvalidEmail},

@@ -212,6 +212,40 @@ func runSuperAdminSource(t *testing.T, fix *fixture) {
 	must.Equal(before, count)
 }
 
+// runMemberRoleSource: organization_members.role_source round-trips, and a
+// role change naming no source clears it (spec 2026-11-21-02).
+func runMemberRoleSource(t *testing.T, fix *fixture) {
+	t.Helper()
+
+	ctx := t.Context()
+	must := require.New(t)
+	svc := fix.svc
+
+	org := models.NewOrganization("role-source-org", "")
+	must.NoError(svc.CreateOrganization(ctx, org))
+
+	user := models.NewUser("role-source@acme.com")
+	must.NoError(svc.CreateUser(ctx, user))
+
+	source := models.MemberRoleSourceOIDCGroup
+	member := models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)
+	member.RoleSource = &source
+	must.NoError(svc.CreateOrganizationMember(ctx, member))
+
+	got, err := svc.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	must.NoError(err)
+	must.NotNil(got.RoleSource)
+	must.Equal(models.MemberRoleSourceOIDCGroup, *got.RoleSource)
+
+	role := models.MemberRoleUser
+	must.NoError(svc.UpdateOrganizationMember(ctx, member.UID, models.OrganizationMemberUpdate{Role: &role}))
+
+	got, err = svc.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	must.NoError(err)
+	must.Equal(models.MemberRoleUser, got.Role)
+	must.Nil(got.RoleSource, "a role change naming no source is a local grant")
+}
+
 func runEntitlements(t *testing.T, fix *fixture) {
 	t.Helper()
 

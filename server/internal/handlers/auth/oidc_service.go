@@ -299,7 +299,8 @@ func (s *OIDCOAuthService) HandleCallback(ctx context.Context, code, orgSlug str
 	// IdP group → role mapping (spec 2026-11-21-02). The groups come from
 	// the ID token verified above, merged with the userinfo response of the
 	// same token exchange; never from the request or the state.
-	if syncErr := s.applyGroupMapping(ctx, exchangeCtx, token, userInfo, user, org); syncErr != nil {
+	roleChanges, syncErr := s.applyGroupMapping(ctx, exchangeCtx, token, userInfo, user, org)
+	if syncErr != nil {
 		return nil, syncErr
 	}
 
@@ -312,7 +313,10 @@ func (s *OIDCOAuthService) HandleCallback(ctx context.Context, code, orgSlug str
 		return nil, err
 	}
 
-	return login.Outcome(org.Slug, user.UID), nil
+	outcome := login.Outcome(org.Slug, user.UID)
+	outcome.RoleChanges = roleChanges
+
+	return outcome, nil
 }
 
 // userInfoGroups reads the groups claim from the IdP's userinfo endpoint,

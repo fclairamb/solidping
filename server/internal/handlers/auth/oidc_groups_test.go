@@ -7,6 +7,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/authhandoff"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -55,6 +56,18 @@ func oidcLogin(
 ) *models.User {
 	t.Helper()
 
+	user, _ := oidcLoginOutcome(ctx, t, svc, idp, org, sub, email, groups)
+
+	return user
+}
+
+// oidcLoginOutcome is oidcLogin, also returning the callback outcome.
+func oidcLoginOutcome(
+	ctx context.Context, t *testing.T, svc *OIDCOAuthService, idp *fakeOIDCIdP, org *models.Organization,
+	sub, email string, groups []any,
+) (*models.User, *OIDCOAuthResult) {
+	t.Helper()
+
 	idp.nextIDToken = idp.issueIDToken(t, func(c jwt.MapClaims) {
 		c["sub"] = sub
 		c[keyEmail] = email
@@ -64,13 +77,13 @@ func oidcLogin(
 		}
 	})
 
-	_, err := svc.HandleCallback(ctx, "code", org.Slug)
+	outcome, err := svc.HandleCallback(ctx, "code", org.Slug)
 	require.NoError(t, err)
 
 	user, err := svc.db.GetUserByEmail(ctx, email)
 	require.NoError(t, err)
 
-	return user
+	return user, outcome
 }
 
 func countEvents(
@@ -250,4 +263,146 @@ func TestOIDCGroups_OffByDefault(t *testing.T) {
 	member, err := svc.db.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
 	require.NoError(t, err)
 	require.Equal(t, models.MemberRoleOwner, member.Role, "the empty-org bootstrap is unchanged")
+}
+
+// The grant and the revoke of super admin are reported in the login
+// response diagnostics, through the handoff code the dashboard redeems.
+func TestOIDCGroups_RoleChangesInLoginResponse(t *testing.T) {
+	t.Parallel()
+
+	idp := newFakeOIDCIdP(t)
+	svc, ctx := setupOIDCTestService(t, idp, nil)
+	svc.cfg.OIDC.SuperAdminGroups = "sp-admins"
+	org := setupOIDCTestOrg(ctx, t, svc)
+	seedLocalSuperAdmin(ctx, t, svc, org)
+	require.NoError(t, svc.db.CreateOrganizationMember(ctx, models.NewOrganizationMember(org.UID,
+		mustCreateUser(ctx, t, svc, "kim@acme.com").UID, models.MemberRoleUser)))
+
+	exchange := func(outcome *OIDCOAuthResult) []string {
+		t.Helper()
+
+		code, err := authhandoff.Issue(ctx, svc.db, outcome.handoffSession("/"))
+		require.NoError(t, err)
+
+		resp, err := svc.authService.ExchangeHandoffCode(ctx, code)
+		require.NoError(t, err)
+
+		return resp.RoleChanges
+	}
+
+	_, outcome := oidcLoginOutcome(ctx, t, svc, idp, org, "u11", "kim@acme.com", []any{"sp-admins"})
+	require.Equal(t, []string{RoleChangeSuperAdminGranted}, outcome.RoleChanges)
+	require.Equal(t, []string{RoleChangeSuperAdminGranted}, exchange(outcome))
+
+	_, outcome = oidcLoginOutcome(ctx, t, svc, idp, org, "u11", "kim@acme.com", []any{"sp-admins"})
+	require.Empty(t, outcome.RoleChanges, "nothing changed, nothing reported")
+	require.Empty(t, exchange(outcome))
+
+	_, outcome = oidcLoginOutcome(ctx, t, svc, idp, org, "u11", "kim@acme.com", nil)
+	require.Equal(t, []string{RoleChangeSuperAdminRevoked}, outcome.RoleChanges)
+	require.Equal(t, []string{RoleChangeSuperAdminRevoked}, exchange(outcome))
+}
+
+func mustCreateUser(ctx context.Context, t *testing.T, svc *OIDCOAuthService, email string) *models.User {
+	t.Helper()
+
+	user := models.NewUser(email)
+	require.NoError(t, svc.db.CreateUser(ctx, user))
+
+	return user
+}
+
+// The admin role the org-admin claim granted is demoted to user once the user
+// leaves the group; a locally granted admin role is never touched.
+func TestOIDCGroups_OrgAdminRevokedOnlyWhenClaimGranted(t *testing.T) {
+	t.Parallel()
+
+	idp := newFakeOIDCIdP(t)
+	svc, ctx := setupOIDCTestService(t, idp, nil)
+	svc.cfg.OIDC.OrgAdminGroups = "acme-admins"
+	org := setupOIDCTestOrg(ctx, t, svc)
+	seedLocalSuperAdmin(ctx, t, svc, org)
+
+	// Claim grant: joins as admin, source recorded.
+	user, outcome := oidcLoginOutcome(ctx, t, svc, idp, org, "u12", "leo@acme.com", []any{"acme-admins"})
+	require.Equal(t, []string{RoleChangeOrgAdminGranted}, outcome.RoleChanges)
+	member, err := svc.db.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	require.NoError(t, err)
+	require.Equal(t, models.MemberRoleAdmin, member.Role)
+	require.NotNil(t, member.RoleSource)
+	require.Equal(t, models.MemberRoleSourceOIDCGroup, *member.RoleSource)
+
+	// Out of the group: demoted to user, source cleared, audited.
+	before := countEvents(ctx, t, svc, org.UID, models.EventTypeMemberRoleChanged)
+	_, outcome = oidcLoginOutcome(ctx, t, svc, idp, org, "u12", "leo@acme.com", []any{"staff"})
+	require.Equal(t, []string{RoleChangeOrgAdminRevoked}, outcome.RoleChanges)
+	member, err = svc.db.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	require.NoError(t, err)
+	require.Equal(t, models.MemberRoleUser, member.Role)
+	require.Nil(t, member.RoleSource)
+	require.Equal(t, before+1, countEvents(ctx, t, svc, org.UID, models.EventTypeMemberRoleChanged))
+
+	// A plain member raised by the claim, then made admin locally: the local
+	// change owns the role, so leaving the group no longer demotes it.
+	user, _ = oidcLoginOutcome(ctx, t, svc, idp, org, "u12", "leo@acme.com", []any{"acme-admins"})
+	member, err = svc.db.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	require.NoError(t, err)
+	require.NotNil(t, member.RoleSource)
+
+	role := models.MemberRoleAdmin
+	require.NoError(t, svc.db.UpdateOrganizationMember(ctx, member.UID, models.OrganizationMemberUpdate{Role: &role}))
+
+	_, outcome = oidcLoginOutcome(ctx, t, svc, idp, org, "u12", "leo@acme.com", nil)
+	require.Empty(t, outcome.RoleChanges)
+	member, err = svc.db.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	require.NoError(t, err)
+	require.Equal(t, models.MemberRoleAdmin, member.Role, "a local admin role is never demoted")
+	require.Nil(t, member.RoleSource)
+}
+
+// The claim never demotes the last owner/admin of the org.
+func TestOIDCGroups_LastOrgAdminNeverDemoted(t *testing.T) {
+	t.Parallel()
+
+	idp := newFakeOIDCIdP(t)
+	svc, ctx := setupOIDCTestService(t, idp, nil)
+	svc.cfg.OIDC.OrgAdminGroups = "acme-admins"
+	org := setupOIDCTestOrg(ctx, t, svc)
+
+	// The org has a plain member only, so the claim admin is its only admin.
+	require.NoError(t, svc.db.CreateOrganizationMember(ctx, models.NewOrganizationMember(org.UID,
+		mustCreateUser(ctx, t, svc, "mia@acme.com").UID, models.MemberRoleUser)))
+
+	user, _ := oidcLoginOutcome(ctx, t, svc, idp, org, "u13", "noah@acme.com", []any{"acme-admins"})
+
+	_, outcome := oidcLoginOutcome(ctx, t, svc, idp, org, "u13", "noah@acme.com", nil)
+	require.Equal(t, []string{RoleChangeOrgAdminKept}, outcome.RoleChanges)
+
+	member, err := svc.db.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	require.NoError(t, err)
+	require.Equal(t, models.MemberRoleAdmin, member.Role, "the last admin is kept")
+}
+
+// An owner is never touched by the org-admin claim, in or out of the group.
+func TestOIDCGroups_OwnerUntouchedByOrgAdminClaim(t *testing.T) {
+	t.Parallel()
+
+	idp := newFakeOIDCIdP(t)
+	svc, ctx := setupOIDCTestService(t, idp, nil)
+	svc.cfg.OIDC.OrgAdminGroups = "acme-admins"
+	org := setupOIDCTestOrg(ctx, t, svc)
+	seedLocalSuperAdmin(ctx, t, svc, org)
+
+	owner := mustCreateUser(ctx, t, svc, "olga@acme.com")
+	require.NoError(t, svc.db.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(org.UID, owner.UID, models.MemberRoleOwner)))
+
+	for _, groups := range [][]any{{"acme-admins"}, nil} {
+		_, outcome := oidcLoginOutcome(ctx, t, svc, idp, org, "u14", "olga@acme.com", groups)
+		require.Empty(t, outcome.RoleChanges)
+	}
+
+	member, err := svc.db.GetMemberByUserAndOrg(ctx, owner.UID, org.UID)
+	require.NoError(t, err)
+	require.Equal(t, models.MemberRoleOwner, member.Role)
 }

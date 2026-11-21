@@ -1,7 +1,7 @@
 -- v0.53.0 — postgres migration.
 --
 --   SECTION: apply-all-kinds   integrations / maintenance_windows slug, managed_by on three tables
---   SECTION: oidc-only-mode    users.super_admin_source
+--   SECTION: oidc-only-mode    users.super_admin_source, organization_members.role_source
 --
 -- ==========================================================================
 -- SECTION: apply-all-kinds
@@ -52,3 +52,11 @@ create unique index if not exists idx_maintenance_windows_org_slug
 -- granted by the OIDC super-admin group claim, and revoked by the next login
 -- that no longer carries the group.
 alter table users add column if not exists super_admin_source varchar(20);
+
+--bun:split
+
+-- Who granted organization_members.role. NULL: a local grant (invite,
+-- autojoin, an admin's role change). 'oidc_group': the admin role granted by
+-- the OIDC org-admin group claim, revoked by the next login to the org that
+-- no longer carries the group.
+alter table organization_members add column if not exists role_source varchar(20);

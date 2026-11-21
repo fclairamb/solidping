@@ -966,6 +966,10 @@ type ProviderOutcome struct {
 	// fields are empty and the handoff carries the challenge instead.
 	Requires2FA bool
 	TempToken   string
+	// RoleChanges are the roles the IdP group claim granted or revoked
+	// during this login (RoleChange* constants, OIDC only), surfaced in the
+	// login response diagnostics (spec 2026-11-21-02).
+	RoleChanges []string
 }
 
 // handoffSession is the session a handoff code carries for this outcome. A
@@ -979,6 +983,7 @@ func (o *ProviderOutcome) handoffSession(returnTo string) *authhandoff.Session {
 		ExpiresIn:    o.ExpiresIn,
 		UserUID:      o.UserUID,
 		ReturnTo:     returnTo,
+		RoleChanges:  o.RoleChanges,
 	}
 
 	if o.Requires2FA {

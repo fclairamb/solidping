@@ -11,3 +11,4 @@ alter table integrations drop column slug;
 
 -- SECTION: oidc-only-mode
 alter table users drop column super_admin_source;
+alter table organization_members drop column role_source;

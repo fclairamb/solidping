@@ -4413,6 +4413,15 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, cal
 		return nil, err
 	}
 
+	// A password account (a new invitee, or a password sent along) is local
+	// login: refused while it is off. An invitee who signed in through SSO
+	// accepts with no password, which keeps working (spec 2026-11-21-02).
+	if user == nil || req.Password != "" {
+		if err = s.requireLocalLogin(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	now := time.Now()
 
 	if user == nil {

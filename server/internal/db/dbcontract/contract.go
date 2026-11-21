@@ -66,6 +66,7 @@ func Run(t *testing.T, svc db.Service) {
 		{"passkeys", runPasskeys},
 		{"system_parameters", runSystemParameters},
 		{"super_admin_source", runSuperAdminSource},
+		{"member_role_source", runMemberRoleSource},
 		{"entitlements", runEntitlements},
 		{"status_pages", runStatusPages},
 		{"check_connections", runCheckConnections},
