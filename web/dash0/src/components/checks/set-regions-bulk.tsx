@@ -32,11 +32,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 export function SetRegionsBulkDialog({
   org,
   filters,
+  checkUids,
   open,
   onOpenChange,
 }: {
   org: string;
   filters: BulkCheckFilters;
+  /** Explicit selection: when set, it replaces the filters as the scope. */
+  checkUids?: string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -45,8 +48,11 @@ export function SetRegionsBulkDialog({
   const [selected, setSelected] = useState<string[]>([]);
 
   const { data: regionsData } = useRegions(org);
-  const matching = useChecksMatching(org, filters, open);
-  const uids = useMemo(() => (matching.data ?? []).map((check) => check.uid), [matching.data]);
+  const matching = useChecksMatching(org, filters, open && !checkUids);
+  const uids = useMemo(
+    () => checkUids ?? (matching.data ?? []).map((check) => check.uid),
+    [checkUids, matching.data],
+  );
   const changes = useMemo(() => (selected.length > 0 ? { regions: selected } : null), [selected]);
   const preview = useBulkUpdateChecksPreview(org, uids, changes, open);
   const setRegions = useBulkUpdateChecks(org);
@@ -80,7 +86,7 @@ export function SetRegionsBulkDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>{t("setRegions.title")}</AlertDialogTitle>
           <AlertDialogDescription data-testid="set-regions-scope">
-            {matching.isLoading ? (
+            {matching.isLoading && !checkUids ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : uids.length > 0 ? (
               t("setRegions.scope", { count: uids.length })

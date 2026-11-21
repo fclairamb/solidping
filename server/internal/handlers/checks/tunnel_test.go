@@ -27,6 +27,16 @@ func setupTunnelChecksService(t *testing.T) (*checks.Service, db.Service, *model
 
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
+	return checksServiceOn(t, dbSvc)
+}
+
+// checksServiceOn builds the checks service and a fresh org on an initialized
+// database, whatever the engine.
+func checksServiceOn(t *testing.T, dbSvc db.Service) (*checks.Service, db.Service, *models.Organization) {
+	t.Helper()
+
+	ctx := t.Context()
+
 	org := models.NewOrganization("tunnel-test", "Tunnel Test Org")
 	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
 

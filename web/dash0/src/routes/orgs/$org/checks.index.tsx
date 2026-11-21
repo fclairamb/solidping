@@ -36,6 +36,9 @@ import { useAIChecksEnabled } from "@/api/public-config";
 import { toast } from "sonner";
 import { AutoPlacementBulkDialog } from "@/components/checks/auto-placement-bulk";
 import { SetRegionsBulkDialog } from "@/components/checks/set-regions-bulk";
+import { DeleteBulkDialog } from "@/components/checks/delete-bulk";
+import { ChecksSelectionContext, useChecksSelection } from "@/components/checks/selection";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   useInfiniteChecks,
   useRegions,
@@ -534,12 +537,22 @@ function CheckRow({
   }
 
   const durationMs = check.lastResult?.durationMs;
+  const selection = useChecksSelection();
 
   return (
     <TableRow
       className="hover:bg-muted/40 transition-colors"
       data-testid="check-row"
+      data-state={selection.selected.has(check.uid) ? "selected" : undefined}
     >
+      <TableCell className="w-10 pr-0">
+        <Checkbox
+          checked={selection.selected.has(check.uid)}
+          onCheckedChange={() => selection.toggle(check.uid)}
+          aria-label={t("bulkSelection.selectRow")}
+          data-testid="check-row-checkbox"
+        />
+      </TableCell>
       <TableCell className="max-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <Link
@@ -697,6 +710,7 @@ function ChecksTable({
     <Table>
       <TableHeader className="bg-muted/30">
         <TableRow>
+          <TableHead className="w-10" />
           <TableHead className="md:w-[40%]">{t("table.name")}</TableHead>
           <TableHead className="hidden sm:table-cell">{t("table.type")}</TableHead>
           <TableHead className="hidden md:table-cell w-[25%]">{t("table.target")}</TableHead>
@@ -1472,6 +1486,26 @@ function ChecksIndexPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [autoPlacementOpen, setAutoPlacementOpen] = useState(false);
   const [setRegionsOpen, setSetRegionsOpen] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  // Explicit row selection (spec 2026-11-21-03): kept across pagination.
+  const [selectedUids, setSelectedUids] = useState<Set<string>>(() => new Set());
+  const selection = useMemo(
+    () => ({
+      selected: selectedUids,
+      toggle: (uid: string) =>
+        setSelectedUids((current) => {
+          const next = new Set(current);
+          if (next.has(uid)) {
+            next.delete(uid);
+          } else {
+            next.add(uid);
+          }
+          return next;
+        }),
+    }),
+    [selectedUids],
+  );
+  const selectedList = useMemo(() => Array.from(selectedUids), [selectedUids]);
   const [importSource, setImportSource] = useState<ImportSourceId>("solidping");
   const [importText, setImportText] = useState("");
   const [importToken, setImportToken] = useState("");
@@ -1663,7 +1697,21 @@ function ChecksIndexPage() {
     queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
   };
 
+  const allVisibleSelected =
+    loadedChecks.length > 0 && loadedChecks.every((check) => selectedUids.has(check.uid));
+  const toggleSelectAllVisible = () =>
+    setSelectedUids((current) => {
+      const next = new Set(current);
+      if (allVisibleSelected) {
+        loadedChecks.forEach((check) => next.delete(check.uid));
+      } else {
+        loadedChecks.forEach((check) => next.add(check.uid));
+      }
+      return next;
+    });
+
   return (
+    <ChecksSelectionContext.Provider value={selection}>
     <div className="space-y-6">
       <PageHeader
         icon={ListChecks}
@@ -1763,11 +1811,13 @@ function ChecksIndexPage() {
       />
       <AutoPlacementBulkDialog
         org={org}
+        checkUids={selectedList.length > 0 ? selectedList : undefined}
         open={autoPlacementOpen}
         onOpenChange={setAutoPlacementOpen}
       />
       <SetRegionsBulkDialog
         org={org}
+        checkUids={selectedList.length > 0 ? selectedList : undefined}
         filters={{
           q: debouncedSearch || undefined,
           internal: internalFilter,
@@ -1778,6 +1828,63 @@ function ChecksIndexPage() {
         open={setRegionsOpen}
         onOpenChange={setSetRegionsOpen}
       />
+      <DeleteBulkDialog
+        org={org}
+        checkUids={selectedList}
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        onDeleted={(deleted) =>
+          setSelectedUids((current) => {
+            const next = new Set(current);
+            deleted.forEach((uid) => next.delete(uid));
+            return next;
+          })
+        }
+      />
+
+      {selectedList.length > 0 && (
+        <div
+          className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2 shadow-card"
+          data-testid="checks-bulk-bar"
+        >
+          <span className="px-2 text-sm font-medium" data-testid="checks-bulk-count">
+            {t("bulkSelection.bulk.selected", { count: selectedList.length })}
+          </span>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setBulkDeleteOpen(true)}
+            data-testid="checks-bulk-delete-button"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {t("bulkSelection.bulk.delete")}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSetRegionsOpen(true)}
+            data-testid="checks-bulk-set-regions-button"
+          >
+            {t("setRegions.button")}…
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAutoPlacementOpen(true)}
+            data-testid="checks-bulk-auto-placement-button"
+          >
+            {t("autoPlacement.button")}…
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedUids(new Set())}
+            data-testid="checks-bulk-clear-button"
+          >
+            {t("bulkSelection.bulk.clear")}
+          </Button>
+        </div>
+      )}
 
       {/*
         Directly under the header, above the filters: the gaps this explains are
@@ -1806,6 +1913,13 @@ function ChecksIndexPage() {
       <ChecksRegionOutageBanner org={org} checks={loadedChecks} regions={regionsData?.regions} />
 
       <div className="flex flex-wrap items-center gap-2">
+        <Checkbox
+          checked={allVisibleSelected}
+          onCheckedChange={toggleSelectAllVisible}
+          disabled={loadedChecks.length === 0}
+          aria-label={t("bulkSelection.selectAll")}
+          data-testid="checks-select-all"
+        />
         {/* basis-full, not w-full: flex-1's zero basis would override a width
             and squeeze the search next to the filters on a phone. */}
         <div className="relative min-w-[200px] grow basis-full sm:basis-0 sm:max-w-sm">
@@ -2450,6 +2564,7 @@ function ChecksIndexPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </ChecksSelectionContext.Provider>
   );
 }
 

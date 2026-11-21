@@ -232,6 +232,12 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 		return svc, nil
 	}
 
+	if SocketOverridesAuthorityHost(cfg.DSN) {
+		// pg_hba.conf matches `local` and `host` connections differently: say
+		// which one this DSN gets rather than switching silently.
+		slog.InfoContext(ctx, "Postgres DSN has both a host and a host= socket parameter: connecting via the Unix socket")
+	}
+
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(DriverDSN(cfg.DSN))))
 	applyPoolLimits(sqldb, cfg)
 	bunDB := bun.NewDB(sqldb, pgdialect.New())
@@ -7096,7 +7102,9 @@ func (s *Service) UpdateMaintenanceWindow(
 		query = query.Set("title = ?", *update.Title)
 	}
 
-	if update.Description != nil {
+	if update.ClearDescription {
+		query = query.Set("description = NULL")
+	} else if update.Description != nil {
 		query = query.Set("description = ?", *update.Description)
 	}
 
@@ -7112,7 +7120,9 @@ func (s *Service) UpdateMaintenanceWindow(
 		query = query.Set("recurrence = ?", *update.Recurrence)
 	}
 
-	if update.RecurrenceEnd != nil {
+	if update.ClearRecurrenceEnd {
+		query = query.Set("recurrence_end = NULL")
+	} else if update.RecurrenceEnd != nil {
 		query = query.Set("recurrence_end = ?", *update.RecurrenceEnd)
 	}
 
