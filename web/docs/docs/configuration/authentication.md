@@ -71,15 +71,22 @@ Two algorithms ship:
 SP_AUTH_PASSWORD_ALGORITHM=argon2id
 
 # argon2id cost parameters
-SP_AUTH_PASSWORD_ARGON2_MEMORY=65536   # KiB (default 65536 = 64 MiB)
-SP_AUTH_PASSWORD_ARGON2_TIME=3         # iterations (default 3)
-SP_AUTH_PASSWORD_ARGON2_THREADS=4      # parallelism (default 4)
-SP_AUTH_PASSWORD_ARGON2_KEY_LENGTH=32  # output bytes (default 32)
-SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH=16 # salt bytes (default 16)
-SP_AUTH_PASSWORD_ARGON2_AUTO_PROFILE=true # small-host profile (default true)
+# KiB (default 65536 = 64 MiB)
+SP_AUTH_PASSWORD_ARGON2_MEMORY=65536
+# iterations (default 3)
+SP_AUTH_PASSWORD_ARGON2_TIME=3
+# parallelism (default 4)
+SP_AUTH_PASSWORD_ARGON2_THREADS=4
+# output bytes (default 32)
+SP_AUTH_PASSWORD_ARGON2_KEY_LENGTH=32
+# salt bytes (default 16)
+SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH=16
+# small-host profile (default true)
+SP_AUTH_PASSWORD_ARGON2_AUTO_PROFILE=true
 
 # bcrypt cost (only used when algorithm is "bcrypt")
-SP_AUTH_PASSWORD_BCRYPT_COST=12        # range 10–31 (default 12)
+# range 10–31 (default 12)
+SP_AUTH_PASSWORD_BCRYPT_COST=12
 
 # Re-hash existing passwords on next sign-in (default true)
 SP_AUTH_PASSWORD_REHASH_ON_LOGIN=true
@@ -377,7 +384,8 @@ Sign in with Telegram reuses the [Telegram bot](telegram.md) that sends alerts.
 It needs no client ID or secret, only an opt-in:
 
 ```bash
-SP_TELEGRAM_BOT_TOKEN=123456789:AA...   # already set for Telegram alerts
+# already set for Telegram alerts
+SP_TELEGRAM_BOT_TOKEN=123456789:AA...
 SP_TELEGRAM_LOGIN_ENABLED=true
 ```
 
@@ -493,7 +501,8 @@ SP_LDAP_SERVER_URL=ldap://lldap:3890
 SP_LDAP_BIND_DN=uid=admin,ou=people,dc=acme,dc=com
 SP_LDAP_BIND_PASSWORD=the-lldap-admin-password
 SP_LDAP_BASE_DN=ou=people,dc=acme,dc=com
-SP_LDAP_USER_FILTER=(mail=%s)   # or (uid=%s) to sign in with the username
+# or (uid=%s) to sign in with the username
+SP_LDAP_USER_FILTER=(mail=%s)
 ```
 
 lldap exposes `mail` and `cn`, so the attribute defaults work. When you use `(uid=%s)`, the user still needs a `mail` value in lldap, because that is what SolidPing stores.

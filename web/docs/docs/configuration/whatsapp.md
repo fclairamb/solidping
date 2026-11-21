@@ -281,21 +281,27 @@ returns them from an API, and never sends them to a browser.
 
 ```bash
 SP_WHATSAPP_ENABLED=true
-SP_WHATSAPP_ACCESS_TOKEN=EAAG...            # permanent system-user token (SECRET)
-SP_WHATSAPP_PHONE_NUMBER_ID=123456789012345 # numeric id, not the phone number
-SP_WHATSAPP_WABA_ID=987654321098765         # optional, diagnostics only
-SP_WHATSAPP_APP_SECRET=abcdef0123456789     # signs inbound webhooks (SECRET)
+# permanent system-user token (SECRET)
+SP_WHATSAPP_ACCESS_TOKEN=EAAG...
+# numeric id, not the phone number
+SP_WHATSAPP_PHONE_NUMBER_ID=123456789012345
+# optional, diagnostics only
+SP_WHATSAPP_WABA_ID=987654321098765
+# signs inbound webhooks (SECRET)
+SP_WHATSAPP_APP_SECRET=abcdef0123456789
 SP_WHATSAPP_WEBHOOK_VERIFY_TOKEN=a-long-random-string
 ```
 
 Optional overrides:
 
 ```bash
-SP_WHATSAPP_API_VERSION=v23.0               # pinned Graph API version
+# pinned Graph API version
+SP_WHATSAPP_API_VERSION=v23.0
 SP_WHATSAPP_ALERT_TEMPLATE=solidping_alert
 SP_WHATSAPP_VERIFY_TEMPLATE=solidping_verify
 SP_WHATSAPP_TEMPLATE_LANGUAGE=en
-SP_WHATSAPP_BASE_URL=                       # override the Graph API base
+# override the Graph API base
+SP_WHATSAPP_BASE_URL=
 ```
 
 ```yaml
