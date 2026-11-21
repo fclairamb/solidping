@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.53.0](https://github.com/fclairamb/solidping/compare/v0.52.0...v0.53.0) (2026-11-21)
+
+
+### Features
+
+* **service:** install writes config.env, unit loads it via EnvironmentFile ([#948](https://github.com/fclairamb/solidping/issues/948)) ([e4b7fc4](https://github.com/fclairamb/solidping/commit/e4b7fc4190438df2594becce519cb9b425ed0ddb))
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([#955](https://github.com/fclairamb/solidping/issues/955)) ([7dfbcd6](https://github.com/fclairamb/solidping/commit/7dfbcd641a8bcfd47e33c34ceb8f2931146cacf2))
+* **deps:** update go dependencies (non-major) ([#968](https://github.com/fclairamb/solidping/issues/968)) ([6c09bae](https://github.com/fclairamb/solidping/commit/6c09baecfad78c0b89e636d63e9432b61229cdd1))
+* **deps:** update module go.mongodb.org/mongo-driver/v2 to v2.10.1 ([#950](https://github.com/fclairamb/solidping/issues/950)) ([9e684c4](https://github.com/fclairamb/solidping/commit/9e684c4e28b03a6642c6b5b0137ca5aca2af5a66))
+* email validation, OAuth error display, translator crash guard, clone slugs, watchdog pauses ([#959](https://github.com/fclairamb/solidping/issues/959)) ([a20f951](https://github.com/fclairamb/solidping/commit/a20f9513c23aae0de7dcaeffddaac6d6c229ab42))
+* **security:** block WebRTC around the browser egress proxy, survive an invalid status page ?lang= ([#957](https://github.com/fclairamb/solidping/issues/957)) ([79bdc82](https://github.com/fclairamb/solidping/commit/79bdc82985b42ca57f87b8826466a52e729ebdd9))
+
 ## [0.52.0](https://github.com/fclairamb/solidping/compare/v0.51.0...v0.52.0) (2026-11-19)
 
 
