@@ -1055,6 +1055,7 @@ func isCheckFieldValidationError(err error) bool {
 	var periodErr *periodBoundError
 
 	return models.IsLabelValidationError(err) ||
+		errors.Is(err, ErrCheckGroupNotFound) ||
 		errors.Is(err, errIncidentPeriodOutOfRange) ||
 		errors.Is(err, errReminderIntervalOutOfRange) ||
 		errors.Is(err, errRegionSpreadOutOfRange) ||
@@ -1195,6 +1196,9 @@ func (h *Handler) handleCloneError(writer http.ResponseWriter, request *http.Req
 					"and contain only lowercase letters, digits, or hyphens. UUIDs are not allowed.",
 			},
 		})
+	case errors.Is(err, ErrCheckGroupNotFound):
+		return h.WriteErrorErr(
+			writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
