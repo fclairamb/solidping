@@ -171,6 +171,47 @@ func runSystemParameters(t *testing.T, fix *fixture) {
 	must.Nil(gone, "a deleted parameter reads as absent")
 }
 
+// runSuperAdminSource: users.super_admin_source round-trips, clears, and
+// CountSuperAdmins counts live super admins only (spec 2026-11-21-02).
+func runSuperAdminSource(t *testing.T, fix *fixture) {
+	t.Helper()
+
+	ctx := t.Context()
+	must := require.New(t)
+	svc := fix.svc
+
+	before, err := svc.CountSuperAdmins(ctx)
+	must.NoError(err)
+
+	user := models.NewUser("super-source@acme.com")
+	must.NoError(svc.CreateUser(ctx, user))
+
+	granted, source := true, models.SuperAdminSourceOIDC
+	must.NoError(svc.UpdateUser(ctx, user.UID, &models.UserUpdate{SuperAdmin: &granted, SuperAdminSource: &source}))
+
+	got, err := svc.GetUser(ctx, user.UID)
+	must.NoError(err)
+	must.True(got.SuperAdmin)
+	must.NotNil(got.SuperAdminSource)
+	must.Equal(models.SuperAdminSourceOIDC, *got.SuperAdminSource)
+
+	count, err := svc.CountSuperAdmins(ctx)
+	must.NoError(err)
+	must.Equal(before+1, count)
+
+	revoked := false
+	must.NoError(svc.UpdateUser(ctx, user.UID, &models.UserUpdate{SuperAdmin: &revoked, ClearSuperAdminSource: true}))
+
+	got, err = svc.GetUser(ctx, user.UID)
+	must.NoError(err)
+	must.False(got.SuperAdmin)
+	must.Nil(got.SuperAdminSource)
+
+	count, err = svc.CountSuperAdmins(ctx)
+	must.NoError(err)
+	must.Equal(before, count)
+}
+
 func runEntitlements(t *testing.T, fix *fixture) {
 	t.Helper()
 
