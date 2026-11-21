@@ -43,7 +43,7 @@ same checklist as the others: create returns the full object, GET by uid read-ba
 DELETE → 404 when gone, import by `org/uid`. Ground each row in `file:line`. File every gap
 as a small follow-up spec in `specs/todos/` (do not fix it here).
 
-### Step 2, in `fclairamb/terraform-provider-solidping` (after the prerequisites)
+### Step 2, in `fclairamb/terraform-provider-solidping` (after the prerequisites): moved to #970
 
 - Terraform Plugin Framework, handwritten thin client. Provider config `endpoint` / `org` /
   `token` with `SOLIDPING_ENDPOINT` / `SOLIDPING_ORG` / `SOLIDPING_TOKEN` fallbacks.
