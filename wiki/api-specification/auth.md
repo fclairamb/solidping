@@ -68,6 +68,7 @@ Accept an organization invitation and return a session. Auth: optional.
 - Existing account: must be signed in as that account. Anonymous gets 401 `INVITE_LOGIN_REQUIRED`; another signed-in account gets 403 `INVITE_EMAIL_MISMATCH` (spec 2026-10-16-06).
 - A presented but invalid credential gets 401 (no anonymous fallback). Refused under impersonation (403 `IMPERSONATION_FORBIDDEN`).
 - Optional `locale` and `timezone` seed the `preferences` of a newly created account, leniently as on register. An existing account keeps its own.
+- While local login is off (`auth.local_login.enabled` false), a new account with a password, or any request carrying a `password`, gets 403 `LOCAL_LOGIN_DISABLED` and nothing is written. An invitee signed in through SSO accepts with no password, which keeps working.
 
 ### POST /api/v1/auth/2fa/verify
 Verify a 2FA code during login (when login returns a 2FA challenge).
@@ -80,7 +81,7 @@ List enabled authentication providers (password, OAuth providers). Auth: public
 - `localLogin` (bool) is false while local password login is switched off (`auth.local_login.enabled`, spec 2026-11-21-02): the login page then hides the email/password form, the forgot-password and sign-up links. `registrationEnabled` is false too.
 
 ### Local login switch
-While `auth.local_login.enabled` (env `SP_LOCAL_LOGIN_ENABLED`) is false, `POST /auth/login` (password and LDAP), `/register`, `/confirm-registration`, `/request-password-reset`, `/reset-password` and `/change-password` answer 403 `LOCAL_LOGIN_DISABLED`. The routes stay mounted and the value is read per request, so a DB toggle needs no restart. Passkeys, the OAuth/OIDC/SAML providers, API tokens, the device flow and the MCP OAuth server keep working. With no SSO provider configured and enabled, local login stays on (fail open, warning at boot) and `PUT /api/v1/system/parameters/auth.local_login.enabled` with `false` answers 400.
+While `auth.local_login.enabled` (env `SP_LOCAL_LOGIN_ENABLED`) is false, `POST /auth/login` (password and LDAP), `/register`, `/confirm-registration`, `/request-password-reset`, `/reset-password` and `/change-password` answer 403 `LOCAL_LOGIN_DISABLED`, and so does `/accept-invite` when it would create or use a password. The routes stay mounted and the value is read per request, so a DB toggle needs no restart. Passkeys, the OAuth/OIDC/SAML providers, API tokens, the device flow and the MCP OAuth server keep working. With no SSO provider configured and enabled, local login stays on (fail open, warning at boot) and `PUT /api/v1/system/parameters/auth.local_login.enabled` with `false` answers 400.
 
 ## Authenticated
 
@@ -235,7 +236,11 @@ credential).
   the state-cleanup job.
 - `200`: the login response shape (`accessToken`, `refreshToken`,
   `expiresIn`, `tokenType`, `user`, `organization`, `organizations`,
-  `loginAction`), plus `returnTo` and `membershipPending`. An org-less session
+  `loginAction`), plus `returnTo`, `membershipPending` and `roleChanges`
+  (login diagnostics of the OIDC group claim, omitted when empty:
+  `super_admin_granted`, `super_admin_revoked`, `super_admin_kept_last`,
+  `org_owner_granted`, `org_admin_granted`, `org_admin_revoked`,
+  `org_admin_kept_last`; see [features/sso.md](../features/sso.md)). An org-less session
   has no `refreshToken` and no `organization`, and `loginAction` is `noOrg`.
   Also sets the `access_token` cookie, like login.
 - `401 UNAUTHORIZED`: unknown, used, expired or forged code. Always the same

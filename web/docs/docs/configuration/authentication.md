@@ -464,18 +464,27 @@ when the provider only puts them there. They are applied on every sign-in:
   hand (the first admin, or one set from the user directory) is never removed
   by a group. The last super admin of the instance is never removed.
 - A member of a `SP_OIDC_ORG_ADMIN_GROUPS` group becomes `admin` of the
-  organization they sign in to. Leaving the group does not demote them, and an
-  `owner` stays `owner`.
+  organization they sign in to. When they leave the group, the next sign-in to
+  that organization makes them `user` again. A role given by hand (an invite,
+  or a change from the members page) is never changed by a group, an `owner`
+  stays `owner`, and the last owner or admin of an organization is never
+  demoted.
 
-Each change is recorded in the audit log (`auth.super_admin_changed`,
-`member.joined`, `member.role_changed`).
+Each change is logged, recorded in the audit log (`auth.super_admin_changed`,
+`member.joined`, `member.role_changed`) and returned in the sign-in response
+as `roleChanges` (`super_admin_granted`, `super_admin_revoked`,
+`org_admin_granted`, `org_admin_revoked`, `org_owner_granted`, and
+`super_admin_kept_last` / `org_admin_kept_last` when a removal was skipped to
+keep the last admin).
 
 ## Turning local login off
 
 Set `SP_LOCAL_LOGIN_ENABLED=false` (or the `auth.local_login.enabled` system
 parameter) to stop password sign-in. The login page then shows only the SSO
 buttons, and password login, LDAP login, sign-up, password reset and password
-change answer `403 LOCAL_LOGIN_DISABLED`. Passkeys, OAuth, OIDC, SAML, API
+change answer `403 LOCAL_LOGIN_DISABLED`. Accepting an invitation by
+creating a password account is refused too; an invited user signs in with SSO
+first, then accepts. Passkeys, OAuth, OIDC, SAML, API
 tokens and the device flow keep working. The system parameter takes effect
 without a restart.
 

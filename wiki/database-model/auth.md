@@ -159,6 +159,7 @@ Links users to organizations with role-based access control.
 | user_uid | uuid | FK to users |
 | organization_uid | uuid | FK to organizations |
 | role | text | Role: owner, admin, user, viewer (hierarchical: owner > admin > user > viewer). `viewer` is read-only and enforced as such by `RequireOrgWrite` — read everything, change nothing, except their own notification settings and their own API tokens |
+| role_source | varchar(20) | Who granted `role`: NULL = locally (invite, autojoin, an admin's role change), never touched by an IdP claim; `oidc_group` = the admin role granted by the OIDC org-admin group claim, demoted to `user` by the next login to the org without the group (never the last owner/admin) |
 | invited_by_uid | uuid | FK to users (who invited) |
 | invited_at | timestamptz | Invitation timestamp |
 | joined_at | timestamptz | Acceptance timestamp (NULL = pending) |
