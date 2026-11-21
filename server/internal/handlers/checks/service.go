@@ -2933,6 +2933,16 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		return ErrCheckNotFound
 	}
 
+	if guardErr := s.assertCheckDeletable(ctx, check); guardErr != nil {
+		return guardErr
+	}
+
+	return s.deleteCheckRow(ctx, org, check)
+}
+
+// assertCheckDeletable holds the rules shared by the single and the bulk
+// delete.
+func (s *Service) assertCheckDeletable(ctx context.Context, check *models.Check) error {
 	// A demo session deletes only what it created (spec 2026-09-06-02). This
 	// is also what stops the demo cleanup job — which runs with no claims and
 	// therefore is not a demo session — from being blocked by its own rule.
@@ -2942,10 +2952,11 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 
 	// Refuse to delete a bastion other checks tunnel through — they would all
 	// start failing on their next execution with no explanation.
-	if tunnelErr := s.assertNotUsedAsTunnel(ctx, check); tunnelErr != nil {
-		return tunnelErr
-	}
+	return s.assertNotUsedAsTunnel(ctx, check)
+}
 
+// deleteCheckRow deletes an already resolved and vetted check.
+func (s *Service) deleteCheckRow(ctx context.Context, org *models.Organization, check *models.Check) error {
 	// The active incidents DeleteCheck is about to resolve (it does so in the
 	// same transaction as the soft delete, spec 2026-10-08-02). Listed first so
 	// the event payload can count them and the notifier can tell whoever was
