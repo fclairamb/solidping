@@ -135,5 +135,7 @@
     "removedBody": "Die überwachte Ressource wurde entfernt. Die Störung ist behoben."
   },
   "unlockWrongPassword": "Falsches Passwort",
-  "unlockTooManyAttempts": "Zu viele Versuche. Bitte versuchen Sie es in einigen Minuten erneut."
+  "unlockTooManyAttempts": "Zu viele Versuche. Bitte versuchen Sie es in einigen Minuten erneut.",
+  "pageUnavailable": "Diese Statusseite ist im Moment nicht verfügbar.",
+  "pageUnavailableReload": "Neu laden"
 }

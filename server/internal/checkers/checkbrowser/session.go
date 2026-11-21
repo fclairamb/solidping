@@ -106,6 +106,10 @@ type Session struct {
 	// traffic through, nil when the policy is not enforcing or the browser
 	// cannot reach it (see proxyReachableFrom).
 	proxy *egressProxy
+
+	// webRTCScript is the new-document script that removes WebRTC from the
+	// page under an enforcing policy, empty otherwise (see disableWebRTC).
+	webRTCScript page.ScriptIdentifier
 }
 
 // NavResult is what a navigation reports back. Deliberately no HTTP status
@@ -226,17 +230,11 @@ func openSessionPinned(sessionCtx, probeCtx context.Context, pin *hostPin) (*Ses
 		return nil, failure
 	}
 
-	// The viewport is set HERE, before the Session is handed to anyone, so
-	// the first Navigate lays the page out at ViewportWidth from the start
-	// instead of resizing it after load (spec 2026-09-27-01). Both the browser
-	// check and the JS runtime open through this function, so both get it.
-	if err := session.run(probeCtx, viewportParams()); err != nil {
+	if err := session.preparePage(probeCtx, guard); err != nil {
 		session.Close()
+		recordOpenOutcome(err)
 
-		failure := &infraError{msg: "failed to set the browser viewport: " + err.Error()}
-		recordOpenOutcome(failure)
-
-		return nil, failure
+		return nil, err
 	}
 
 	recordOpenOutcome(nil)
@@ -265,6 +263,31 @@ func (s *Session) startProxy(probeCtx context.Context, guard *egress.Guard, curr
 	}
 
 	s.proxy = proxy
+
+	return nil
+}
+
+// preparePage sets up the session's page before it is handed to anyone.
+//
+// Under an enforcing policy WebRTC is removed from every page before any of
+// its scripts runs (spec 2026-11-20-01), on both backends: a shared remote
+// Chrome takes no per-check flag, so this is the one control that reaches it
+// whatever its sidecar was started with.
+//
+// The viewport is set so the first Navigate lays the page out at
+// ViewportWidth from the start instead of resizing it after load (spec
+// 2026-09-27-01). Both the browser check and the JS runtime open through
+// openSessionPinned, so both get it.
+func (s *Session) preparePage(probeCtx context.Context, guard *egress.Guard) error {
+	if guard.Enforcing() {
+		if err := s.run(probeCtx, s.disableWebRTC()); err != nil {
+			return &infraError{msg: "failed to disable WebRTC in the browser: " + err.Error()}
+		}
+	}
+
+	if err := s.run(probeCtx, viewportParams()); err != nil {
+		return &infraError{msg: "failed to set the browser viewport: " + err.Error()}
+	}
 
 	return nil
 }
@@ -919,4 +942,35 @@ func capPayload(value string) string {
 	}
 
 	return value[:MaxPayloadBytes]
+}
+
+// disableWebRTCScript removes WebRTC from a document before any of its own
+// scripts runs (spec 2026-11-20-01). WebRTC does not go through the egress
+// proxy (its ICE checks are UDP, sent straight to whatever IP literal the
+// page names), so under an enforcing policy a page must not be able to build
+// a peer connection at all. A monitoring browser has no use for one.
+//
+// Page.addScriptToEvaluateOnNewDocument runs it in every frame of the page:
+// a srcdoc iframe, the initial about:blank document of an iframe created by
+// script and a cross-site iframe all get it (TestBrowserWebRTCToAPrivate…
+// checks each). RTCPeerConnection is not exposed to workers. The properties
+// are redefined as non-configurable undefined so a page cannot put them back.
+const disableWebRTCScript = `(() => {
+  for (const name of ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel"]) {
+    try { delete window[name]; } catch (e) {}
+    try {
+      Object.defineProperty(window, name, { value: undefined, writable: false, configurable: false });
+    } catch (e) {}
+  }
+})();`
+
+// disableWebRTC installs disableWebRTCScript on every new document of the
+// session's page.
+func (s *Session) disableWebRTC() chromedp.Action {
+	return chromedp.ActionFunc(func(ctx context.Context) error {
+		id, err := page.AddScriptToEvaluateOnNewDocument(disableWebRTCScript).Do(ctx)
+		s.webRTCScript = id
+
+		return err
+	})
 }

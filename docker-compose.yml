@@ -4,7 +4,7 @@
 # Production installs: https://solidping.io/docs/installation/docker-compose
 services:
   postgres:
-    image: postgres:18.7
+    image: postgres:19.0
     container_name: solidping-postgres
     environment:
       POSTGRES_USER: postgres
@@ -26,7 +26,7 @@ services:
   # with `docker compose --profile browser up -d`. The main image is distroless
   # and carries no Chrome on purpose; the checker talks CDP to this container.
   browser:
-    image: chromedp/headless-shell:160.0.8157.0
+    image: chromedp/headless-shell:160.0.8171.0
     container_name: solidping-browser
     profiles: ["browser"]
     # Loopback only, CDP is unauthenticated. `make dev` on macOS drives this
@@ -43,6 +43,9 @@ services:
     # --host-resolver-rules sends a check on localhost / 127.0.0.1 to the host
     # (the Mac running `make dev`, or the `server` port published there):
     # inside this container, loopback is only Chrome itself.
+    # --force-webrtc-ip-handling-policy keeps WebRTC from sending UDP around
+    # the checks' egress proxy (spec 2026-11-20-01). headless-shell reads
+    # only this spelling, desktop Chrome only --webrtc-ip-handling-policy.
     entrypoint:
       - /bin/bash
       - -c
@@ -51,6 +54,8 @@ services:
         exec /headless-shell/headless-shell --no-sandbox --disable-gpu \
           --use-gl=angle --use-angle=swiftshader \
           --remote-debugging-port=9223 --remote-allow-origins='*' \
+          --force-webrtc-ip-handling-policy=disable_non_proxied_udp \
+          --webrtc-ip-handling-policy=disable_non_proxied_udp \
           --host-resolver-rules='MAP localhost host.docker.internal, MAP 127.0.0.1 host.docker.internal'
     # Chrome mounts /dev/shm and the Docker default (64 MB) makes tabs crash.
     shm_size: 1gb

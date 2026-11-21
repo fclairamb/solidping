@@ -8,6 +8,7 @@ import {
   isInviteReturnTo,
   isOAuthAuthorizeReturnTo,
   isSafeReturnTo,
+  oauthErrorFromReturnTo,
   orgCreationReturnTo,
   resolveDestination,
   returnToOrg,
@@ -430,5 +431,26 @@ describe("buildOAuthLoginUrl", () => {
     // Prove the negative: the authorize endpoint is never the redirect target
     // itself, only a returnTo carried through the login page.
     expect(redirectURI?.startsWith("/api/v1/oauth/authorize")).toBe(false);
+  });
+});
+
+describe("oauthErrorFromReturnTo", () => {
+  it("reads the error a refused provider sign-in nested in returnTo", () => {
+    const returnTo = `${BASE}/orgs/acme?error=EMAIL_NOT_VERIFIED&error_description=${encodeURIComponent(
+      "No verified email found in GitHub profile",
+    )}`;
+    expect(oauthErrorFromReturnTo(returnTo)).toBe("No verified email found in GitHub profile");
+    // The retry destination keeps the page, without the error.
+    expect(stripOAuthErrorParams(returnTo)).toBe(`${BASE}/orgs/acme`);
+  });
+
+  it("falls back to the error code", () => {
+    expect(oauthErrorFromReturnTo(`${BASE}/orgs/acme?error=OAUTH_FAILED`)).toBe("OAUTH_FAILED");
+  });
+
+  it("is undefined without an error", () => {
+    for (const returnTo of [undefined, "", `${BASE}/orgs/acme`, `${BASE}/orgs/acme/checks?q=x#error=y`]) {
+      expect(oauthErrorFromReturnTo(returnTo)).toBeUndefined();
+    }
   });
 });

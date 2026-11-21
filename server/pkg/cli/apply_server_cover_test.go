@@ -124,3 +124,30 @@ func TestServerRenderersViaCommands(t *testing.T) {
 	require.Error(t, coverRun(t, one("health", 500, `{}`), "server", "health"))
 	require.Error(t, coverRun(t, one("version", 500, `{}`), "server", "version"))
 }
+
+//nolint:paralleltest // coverRun swaps process-global stdio and HOME
+func TestApplyPlanGroupedByKind(t *testing.T) {
+	manifest := writeManifest(t, "kinds.yaml")
+	body := `{"manifest":"m","dryRun":true,"created":2,"updated":0,"unchanged":0,"deleted":0,"unmanaged":0,` +
+		`"plan":[{"kind":"statusPage","action":"create","slug":"public"},` +
+		`{"kind":"check","action":"create","slug":"web"},` +
+		`{"kind":"channel","action":"update","slug":"alerts","changes":[{"field":"settings.topic","from":"a","to":"b"}]},` +
+		`{"action":"delete","slug":"legacy"}]}`
+
+	require.NoError(t, coverRun(t, one("apply", 200, body), "apply", "-f", manifest, "--dry-run"))
+	require.NoError(t, coverRun(t, one("apply", 200, body), "-o", "json", "apply", "-f", manifest, "--dry-run"))
+}
+
+//nolint:paralleltest // coverRun swaps process-global stdio and HOME
+func TestChecksExportAllKinds(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "all.yaml")
+	routes := []coverRoute{
+		{path: "/orgs/", status: 200, body: `{"version":2,"organization":"acme","checks":[],"channels":[{"slug":"a"}]}`},
+	}
+
+	require.NoError(t, coverRun(t, routes, "checks", "export", "--all-kinds", "--file", out))
+
+	raw, err := os.ReadFile(out)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), "channels")
+}

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import type { BadgeProps } from "@/components/ui/badge";
 import type { StatusUpdatePublicResponse } from "@/api/hooks";
 import { localizeGenerated } from "@/lib/localized-text";
+import { displayLocale } from "@/lib/display-locale";
 
 // ALLOWED_SCHEMES defines URL schemes that are safe to render as links.
 const ALLOWED_SCHEMES = ["http", "https", "mailto"];
@@ -96,7 +97,7 @@ export function StatusUpdateCard({
 }: StatusUpdateCardProps) {
   const { t, i18n } = useTranslation();
   const exists = (key: string) => i18n.exists(key);
-  const lang = i18n.resolvedLanguage || i18n.language;
+  const lang = displayLocale(i18n);
   const body = localizeGenerated(t, exists, update.bodyI18n, update.bodyMarkdown, {
     translations: update.translations,
     field: "body",
@@ -148,7 +149,7 @@ export function StatusUpdateCard({
             data-testid="status-update-time"
             translate="no"
           >
-            {formatRelativeTime(update.publishedAt, i18n.language)}
+            {formatRelativeTime(update.publishedAt, displayLocale(i18n))}
           </time>
         </div>
       </div>

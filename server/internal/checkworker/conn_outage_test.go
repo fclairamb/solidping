@@ -102,11 +102,12 @@ func TestAbandonDuringOutageIsWarnWithDistinctReason(t *testing.T) {
 
 	logs := &bytes.Buffer{}
 	logger := slog.New(slog.NewTextHandler(logs, nil))
+	onTime := abandonTiming{duration: time.Second, elapsed: time.Second, execTimeout: time.Second, budget: time.Second}
 
 	worker.outage.noteLoss(context.Background(), logger, "claim", backend.ErrConnLost)
 	logs.Reset()
 
-	_, err := worker.abandonCheckerExecution(context.Background(), logger, job, time.Second)
+	_, err := worker.abandonCheckerExecution(context.Background(), logger, job, onTime)
 	r.NoError(err)
 	r.Zero(countLevel(logs.String(), "ERROR"))
 	r.Equal(1, countLevel(logs.String(), "WARN"))
@@ -115,7 +116,7 @@ func TestAbandonDuringOutageIsWarnWithDistinctReason(t *testing.T) {
 	worker.outage.noteRecovered(context.Background(), logger)
 	logs.Reset()
 
-	_, err = worker.abandonCheckerExecution(context.Background(), logger, job, time.Second)
+	_, err = worker.abandonCheckerExecution(context.Background(), logger, job, onTime)
 	r.NoError(err)
 	r.Equal(1, countLevel(logs.String(), "ERROR"))
 	r.Contains(logs.String(), "reason=ignored_context")

@@ -44,6 +44,10 @@ type exportDocumentV2 struct {
 	Secrets      string            `json:"secrets,omitempty"`
 	Defaults     *exportDefaultsV2 `json:"defaults,omitempty"`
 	Checks       []exportCheckV2   `json:"checks"`
+
+	Channels           []ExportChannel           `json:"channels,omitempty"`
+	MaintenanceWindows []ExportMaintenanceWindow `json:"maintenanceWindows,omitempty"`
+	StatusPages        []ExportStatusPage        `json:"statusPages,omitempty"`
 }
 
 // exportDefaultsV2 holds the document-wide default for every field a check may
@@ -149,6 +153,10 @@ func buildExportDocumentV2(doc *ExportDocument) (*exportDocumentV2, error) {
 		Organization: doc.Organization,
 		Secrets:      doc.Secrets,
 		Checks:       make([]exportCheckV2, 0, len(doc.Checks)),
+
+		Channels:           doc.Channels,
+		MaintenanceWindows: doc.MaintenanceWindows,
+		StatusPages:        doc.StatusPages,
 	}
 
 	if len(doc.Checks) == 0 {
@@ -318,6 +326,9 @@ func (d *ExportDocument) unmarshalV2(data []byte) error {
 	d.Organization = wire.Organization
 	d.Secrets = wire.Secrets
 	d.Checks = make([]ExportCheck, len(wire.Checks))
+	d.Channels = wire.Channels
+	d.MaintenanceWindows = wire.MaintenanceWindows
+	d.StatusPages = wire.StatusPages
 
 	defaults := wire.Defaults
 	if defaults == nil {

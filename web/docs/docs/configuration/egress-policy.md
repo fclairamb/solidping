@@ -188,6 +188,16 @@ guard. Under an enforcing policy a browser check (or a script's
    the page opens. The first non-public one fails the check with the egress
    error. Nothing read from the page after that (title, text, `evaluate`,
    screenshot) reaches the result.
+5. **WebRTC is off.** Its traffic does not go through an HTTP proxy (ICE
+   sends UDP straight to the addresses a page names), so every page, iframes
+   included, loses `RTCPeerConnection` before its own scripts run. A Chrome
+   SolidPing starts itself also runs with a WebRTC policy that forbids UDP
+   outside the proxy. Give a remote Chrome the same flags, as the
+   [Kubernetes](/installation/kubernetes#browser-checks-headless-chrome-sidecar)
+   and [Docker Compose](/installation/docker-compose#browser-checks-headless-chrome)
+   examples do: `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`
+   (headless-shell) and `--webrtc-ip-handling-policy=disable_non_proxied_udp`
+   (desktop Chrome).
 
 The proxy (layer 1) needs Chrome to reach the worker's loopback. That is
 the case when SolidPing starts Chrome itself, and for a remote Chrome whose

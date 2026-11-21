@@ -486,7 +486,7 @@ var (
 		prometheus.CounterOpts{
 			Name: "solidping_check_runner_abandoned_total",
 			Help: "Total checker executions abandoned by the watchdog, by reason " +
-				"(ignored_context or connection_lost)",
+				"(ignored_context, connection_lost or process_paused)",
 		},
 		[]string{labelCheckType, labelReason},
 	)

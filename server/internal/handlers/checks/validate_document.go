@@ -276,10 +276,11 @@ func validateDocumentShape(doc *ExportDocument) []DocumentIssue {
 		})
 	}
 
-	if len(doc.Checks) == 0 {
+	if doc.IsEmpty() {
 		issues = append(issues, DocumentIssue{
 			Where: docWhere, Field: fieldDocChecks, Code: CodeEmptyChecks,
-			Message: "checks must be a non-empty list",
+			Message: "checks must be a non-empty list (or the document must carry channels, " +
+				"maintenanceWindows or statusPages)",
 		})
 	}
 

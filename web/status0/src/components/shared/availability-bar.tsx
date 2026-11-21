@@ -9,6 +9,7 @@ import type { AvailabilityPoint } from "@/api/hooks";
 import { statusStyle } from "@/lib/status-style";
 import { isPartiallyMeasured } from "@/lib/availability-status";
 import { segmentGeometry } from "@/lib/segment-layout";
+import { displayLocale } from "@/lib/display-locale";
 
 // Preferred gap between two segments, in CSS pixels.
 const TARGET_GAP_PX = 3;
@@ -95,7 +96,7 @@ export function AvailabilityBar({
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr + "T00:00:00");
-    return date.toLocaleDateString(i18n.language, {
+    return date.toLocaleDateString(displayLocale(i18n), {
       month: "short",
       day: "numeric",
     });
@@ -105,7 +106,7 @@ export function AvailabilityBar({
   const formatHour = (point: AvailabilityPoint) => {
     const iso = point.time ?? `${point.date}T00:00:00Z`;
     const date = new Date(iso);
-    return date.toLocaleString(i18n.language, {
+    return date.toLocaleString(displayLocale(i18n), {
       month: "short",
       day: "numeric",
       hour: "2-digit",
