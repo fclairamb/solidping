@@ -218,6 +218,10 @@ func (m *mockDBService) ListUsers(_ context.Context) ([]*models.User, error) {
 	panic("not implemented")
 }
 
+func (m *mockDBService) CountSuperAdmins(_ context.Context) (int, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) SearchUsers(_ context.Context, _ models.UserSearchFilter) ([]*models.User, int, error) {
 	panic("not implemented")
 }

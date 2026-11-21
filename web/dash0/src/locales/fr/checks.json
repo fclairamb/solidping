@@ -1840,5 +1840,64 @@
         "unknown": "Pas encore signalé — cette région n'a aucun worker actif qui signale ses capacités, ou utilise un agent plus ancien. Elle prend peut-être en charge les contrôles navigateur."
       }
     }
+  },
+  "bulkSelection": {
+    "selectAll": "Sélectionner tous les checks affichés",
+    "selectRow": "Sélectionner le check",
+    "selectGroup": "Sélectionner les checks de ce tableau",
+    "move": {
+      "title_one": "Déplacer {{count}} check vers un groupe",
+      "title_other": "Déplacer {{count}} checks vers un groupe",
+      "pick": "Choisissez le groupe que ces checks vont rejoindre.",
+      "none": "Aucun groupe (non groupés)",
+      "confirm": "Déplacer",
+      "moved_one": "{{count}} check déplacé",
+      "moved_other": "{{count}} checks déplacés",
+      "failed": "Impossible de déplacer les checks"
+    },
+    "period": {
+      "title_one": "Changer la période de {{count}} check",
+      "title_other": "Changer la période de {{count}} checks",
+      "pick": "Ces checks s'exécuteront toutes les",
+      "willUpdate_one": "{{count}} check sera modifié.",
+      "willUpdate_other": "{{count}} checks seront modifiés.",
+      "willSkip_one": "{{count}} check restera inchangé.",
+      "willSkip_other": "{{count}} checks resteront inchangés.",
+      "confirm": "Changer la période",
+      "updated_one": "Période modifiée sur {{count}} check",
+      "updated_other": "Période modifiée sur {{count}} checks",
+      "failed": "Impossible de changer la période"
+    },
+    "bulk": {
+      "moveToGroup": "Déplacer vers un groupe",
+      "setPeriod": "Changer la période",
+      "chooseRegions": "Choisir les régions",
+      "selected_one": "{{count}} sélectionné",
+      "selected_other": "{{count}} sélectionnés",
+      "delete": "Supprimer",
+      "clear": "Effacer",
+      "deleteTitle_one": "Supprimer {{count}} check",
+      "deleteTitle_other": "Supprimer {{count}} checks",
+      "deleteDescription": "Les checks sélectionnés et leur historique sont supprimés. Action irréversible.",
+      "willDelete_one": "{{count}} check sera supprimé.",
+      "willDelete_other": "{{count}} checks seront supprimés.",
+      "skippedIntro_one": "{{count}} check sera conservé :",
+      "skippedIntro_other": "{{count}} checks seront conservés :",
+      "skip": {
+        "not_found": "introuvable",
+        "read_only": "en lecture seule dans la démo",
+        "internal": "check interne",
+        "managed": "géré par un apply config-as-code",
+        "tunnel_in_use": "utilisé comme tunnel par d'autres checks",
+        "error": "évaluation impossible"
+      },
+      "typeCount": "Saisissez {{count}} pour confirmer",
+      "confirm": "Supprimer",
+      "deleted_one": "{{count}} check supprimé",
+      "deleted_other": "{{count}} checks supprimés",
+      "failed": "Impossible de supprimer les checks",
+      "partial_one": "{{count}} check n'a pas pu être supprimé",
+      "partial_other": "{{count}} checks n'ont pas pu être supprimés"
+    }
   }
 }

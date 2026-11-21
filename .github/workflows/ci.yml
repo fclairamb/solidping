@@ -881,6 +881,25 @@ jobs:
           sudo "$exe" service uninstall
           if test -e /etc/systemd/system/solidping.service; then echo 'unit still installed'; exit 1; fi
 
+  # The solidping-bin AUR package (deploy/aur, issue #945): PKGBUILD and
+  # .SRCINFO match what update.sh renders, and the package builds from the
+  # real release assets in an Arch container, passes namcap and installs.
+  # Not in the `ci` gate: it depends on the Arch mirrors, and a packaging
+  # slip must not block a code PR.
+  aur-package:
+    name: AUR package
+    runs-on: ubuntu-26.04
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Render, build and install solidping-bin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: deploy/aur/test.sh
+
   # Guards for the tag-only release jobs (server-release, cli-release, docker):
   # they prove a release would still package, build its images and
   # cross-compile, on every PR, since those jobs cannot run before a tag exists.
@@ -1998,6 +2017,57 @@ jobs:
 
           # Wait for rollout to complete
           ./kubectl rollout status deployment/solidping -n solidping-dev --context=k8xp --timeout=5m
+
+  # Pushes solidping-bin for the release to the AUR (deploy/aur, issue #945).
+  # Needs the AUR_SSH_PRIVATE_KEY secret: the private half of an SSH key
+  # registered on the AUR account that maintains the package. Without it the
+  # job only renders the package and says so, it does not fail the release.
+  aur-publish:
+    name: Publish to the AUR
+    runs-on: ubuntu-26.04
+    needs: [server-release]
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Render and push solidping-bin
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          deploy/aur/update.sh "$VERSION"
+
+          if [[ -z "$AUR_SSH_PRIVATE_KEY" ]]; then
+            echo "::notice::AUR_SSH_PRIVATE_KEY is not set: solidping-bin $VERSION rendered, not published"
+            exit 0
+          fi
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          # Pinned, not keyscanned: aur.archlinux.org's ED25519 host key,
+          # fingerprint SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4
+          # as published on https://wiki.archlinux.org/title/AUR.
+          echo 'aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN' >> ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o IdentitiesOnly=yes"
+
+          git clone ssh://aur@aur.archlinux.org/solidping-bin.git "$RUNNER_TEMP/aur"
+          cp deploy/aur/solidping-bin/{PKGBUILD,.SRCINFO,solidping.service,solidping.sysusers,solidping-bin.install} "$RUNNER_TEMP/aur/"
+          cd "$RUNNER_TEMP/aur"
+          git config user.name "SolidPing release bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add PKGBUILD .SRCINFO solidping.service solidping.sysusers solidping-bin.install
+          if git diff --cached --quiet; then
+            echo "solidping-bin $VERSION already on the AUR"
+            exit 0
+          fi
+          git commit -m "Update to $VERSION"
+          git push origin HEAD:master
 
   mcp-registry:
     name: Publish to the MCP Registry

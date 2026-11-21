@@ -1,10 +1,12 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 )
 
 // ProvidersHandler handles the available auth providers endpoint.
@@ -12,6 +14,7 @@ type ProvidersHandler struct {
 	base.HandlerBase
 	cfg            *config.Config
 	passkeyEnabled func() bool
+	localLogin     func(ctx context.Context) bool
 }
 
 // NewProvidersHandler creates a new providers handler. When passkeyEnabled
@@ -26,6 +29,17 @@ func NewProvidersHandler(cfg *config.Config, passkeyEnabled func() bool) *Provid
 		HandlerBase:    base.NewHandlerBase(cfg),
 		cfg:            cfg,
 		passkeyEnabled: passkeyEnabled,
+		localLogin: func(ctx context.Context) bool {
+			return systemconfig.ResolveLocalLogin(ctx, nil, cfg).Enabled
+		},
+	}
+}
+
+// SetLocalLoginResolver replaces the env-and-config-only local-login lookup
+// with one that also reads the DB parameter (Service.LocalLoginEnabled).
+func (h *ProvidersHandler) SetLocalLoginResolver(resolve func(ctx context.Context) bool) {
+	if resolve != nil {
+		h.localLogin = resolve
 	}
 }
 
@@ -40,102 +54,29 @@ type ProvidersResponse struct {
 	Data                []ProviderInfo `json:"data"`
 	RegistrationEnabled bool           `json:"registrationEnabled"`
 	PasskeysEnabled     bool           `json:"passkeysEnabled"`
+	// LocalLogin is false while local password login is switched off: the
+	// login page then hides the email/password form, the forgot-password
+	// and the sign-up links.
+	LocalLogin bool `json:"localLogin"`
 }
 
-// ListProviders returns which auth providers are configured.
-//
-//nolint:cyclop,funlen // Linear sequence of provider checks with the same shape; flatter than splitting up.
-func (h *ProvidersHandler) ListProviders(writer http.ResponseWriter, _ *http.Request) error {
-	providers := make([]ProviderInfo, 0)
+// ListProviders returns which auth providers are configured, and whether the
+// email/password form is offered (localLogin, spec 2026-11-21-02).
+func (h *ProvidersHandler) ListProviders(writer http.ResponseWriter, req *http.Request) error {
+	sso := h.cfg.SSOProviders()
+	providers := make([]ProviderInfo, 0, len(sso))
 
-	if h.cfg.Slack.Enabled && h.cfg.Slack.ClientID != "" && h.cfg.Slack.ClientSecret != "" {
-		providers = append(providers, ProviderInfo{
-			Name: "Slack",
-			Type: "slack",
-		})
+	for i := range sso {
+		providers = append(providers, ProviderInfo{Name: sso[i].Name, Type: sso[i].Type})
 	}
 
-	if h.cfg.Google.Enabled && h.cfg.Google.ClientID != "" && h.cfg.Google.ClientSecret != "" {
-		providers = append(providers, ProviderInfo{
-			Name: "Google",
-			Type: "google",
-		})
-	}
-
-	if h.cfg.GitHub.Enabled && h.cfg.GitHub.ClientID != "" && h.cfg.GitHub.ClientSecret != "" {
-		providers = append(providers, ProviderInfo{
-			Name: "GitHub",
-			Type: "github",
-		})
-	}
-
-	if h.cfg.Microsoft.Enabled && h.cfg.Microsoft.ClientID != "" && h.cfg.Microsoft.ClientSecret != "" {
-		providers = append(providers, ProviderInfo{
-			Name: "Microsoft",
-			Type: "microsoft",
-		})
-	}
-
-	if h.cfg.GitLab.Enabled && h.cfg.GitLab.ClientID != "" && h.cfg.GitLab.ClientSecret != "" {
-		providers = append(providers, ProviderInfo{
-			Name: "GitLab",
-			Type: "gitlab",
-		})
-	}
-
-	// Login needs only the client id/secret pair — deliberately a weaker rule
-	// than DiscordOAuthConfig.BotConfigured(), which the bot half gates on.
-	if h.cfg.Discord.LoginConfigured() {
-		providers = append(providers, ProviderInfo{
-			Name: "Discord",
-			Type: "discord",
-		})
-	}
-
-	// Telegram is not OAuth: it needs the instance bot plus the explicit
-	// SP_TELEGRAM_LOGIN_ENABLED opt-in (the bot's domain is set by hand).
-	if h.cfg.Telegram.LoginActive() {
-		providers = append(providers, ProviderInfo{
-			Name: "Telegram",
-			Type: "telegram",
-		})
-	}
-
-	if h.cfg.OIDC.Enabled && h.cfg.OIDC.IssuerURL != "" &&
-		h.cfg.OIDC.ClientID != "" && h.cfg.OIDC.ClientSecret != "" {
-		name := h.cfg.OIDC.DisplayName
-		if name == "" {
-			name = ssoFallbackLabel
-		}
-
-		providers = append(providers, ProviderInfo{
-			Name: name,
-			Type: "oidc",
-		})
-	}
-
-	// SAML's wire protocol differs from the OAuth-shaped providers above
-	// (POST-back ACS instead of a GET callback, a metadata endpoint instead
-	// of a client id/secret pair), but from the login page's point of view
-	// it's the same shape: a full-page redirect to
-	// /api/v1/auth/saml/login?org=...&redirect_uri=... and back with tokens
-	// in the query string. It therefore fits this same discovery list rather
-	// than needing a bespoke UI element.
-	if h.cfg.SAML.Enabled && (h.cfg.SAML.IDPMetadataURL != "" || h.cfg.SAML.IDPMetadataXML != "") {
-		name := h.cfg.SAML.DisplayName
-		if name == "" {
-			name = ssoFallbackLabel
-		}
-
-		providers = append(providers, ProviderInfo{
-			Name: name,
-			Type: "saml",
-		})
-	}
+	localLogin := h.localLogin(req.Context())
 
 	return h.WriteJSON(writer, http.StatusOK, ProvidersResponse{
-		Data:                providers,
-		RegistrationEnabled: h.cfg.Auth.RegistrationEmailPattern != "",
+		Data: providers,
+		// Self-registration creates a password account: off with local login.
+		RegistrationEnabled: localLogin && h.cfg.Auth.RegistrationEmailPattern != "",
 		PasskeysEnabled:     h.passkeyEnabled(),
+		LocalLogin:          localLogin,
 	})
 }

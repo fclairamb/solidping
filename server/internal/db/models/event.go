@@ -230,6 +230,11 @@ const (
 	// user belongs to; the payload carries the old and new address and who
 	// made the change.
 	EventTypeAuthEmailChanged EventType = "auth.email_changed"
+	// EventTypeAuthSuperAdminChanged records the OIDC super-admin group claim
+	// granting or revoking instance super admin at login (spec 2026-11-21-02).
+	// Recorded in the organization the user logged into; the payload carries
+	// granted (true/false), the source ("oidc") and the matching groups.
+	EventTypeAuthSuperAdminChanged EventType = "auth.super_admin_changed"
 
 	// EventTypeMemberInvited records an invitation being sent.
 	EventTypeMemberInvited EventType = "member.invited"

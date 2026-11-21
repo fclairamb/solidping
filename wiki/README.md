@@ -58,6 +58,7 @@ the relevant code.
 - [features/entitlements.md](features/entitlements.md) — Per-org limits (`maxChecks`, `maxUsers`, `maxChecksPerMinute`) and where each is enforced; defaults per deployment mode, resolution (defaults → row → live usage), sources, stale fallback, audit log. Note: there are **no** feature toggles.
 - [features/saas-mode.md](features/saas-mode.md) — `SP_DEPLOYMENT_MODE=saas`: billing-service signed writes, signing-key rotation, the upgrade-token secret and its operator migration, `make dev-saas`.
 - [features/email-inbox-checks.md](features/email-inbox-checks.md) — Passive checks that succeed when an email arrives. JMAP supervisor, per-check token, status resolution priority, mailbox retention, distinction from email-as-channel.
+- [features/sso.md](features/sso.md) — Single sign-on and OIDC-only instances: the local login switch and its fail-open lock-out guard, the IdP group claim (super admin and org admin, source-tracked grants revoked at the next login, last-admin guards), the `roleChanges` login diagnostics, the OIDC-only first boot with no seeded password admin, and break-glass access.
 - [features/mcp.md](features/mcp.md) — Model Context Protocol surface: endpoint, scopes (`mcp` / `mcp:read`), tool inventory, prompts, sessions, protocol version negotiation, how to add a new tool.
 - [features/credentials-encryption.md](features/credentials-encryption.md) — Secrets at rest: the KEK/per-org-DEK envelope layers, how the wrapped DEK is stored in `parameters` (`encryption.dek`), the process-lifetime DEK cache and the cold-process failure it can hide, plus the diagnosis table for "credentials could not be decrypted".
 - [features/deported-agents.md](features/deported-agents.md) — Deported agents / private locations: customer-hosted check workers, outbound WebSocket protocol, Ed25519 enrollment & reconnect, age-sealed credentials the server cannot decrypt, private-region security boundary, and a competitor comparison.
@@ -129,6 +130,7 @@ Operational procedures for diagnosing the running system.
 - [distribution/casaos.md](distribution/casaos.md) — CasaOS/ZimaOS app store listing (`deploy/casaos/solidping/`): upstream `IceWhaleTech/CasaOS-AppStore` PR mechanics, the `x-casaos` metadata shape, and the per-release version/changelog bump recipe
 - [distribution/yunohost.md](distribution/yunohost.md) — YunoHost native package (`solidping_ynh`, an external repo, not created yet): catalog/`package_check` route, who merges the autoupdate bot's PRs, and why renaming the `solidping-linux-*` release assets silently breaks the package
 - [distribution/coolify.md](distribution/coolify.md) — Coolify one-click template (`deploy/coolify/solidping.yaml`, ready for direct "Docker Compose Empty" use): the 1,000-star catalog gate blocking `coollabsio/coolify`, and the three-part upstream PR recipe to run once it's crossed
+- [distribution/aur.md](distribution/aur.md) — Arch Linux AUR package `solidping-bin` (`deploy/aur/`, issue #945): `update.sh` renders PKGBUILD/.SRCINFO per release, `test.sh` builds it in an Arch container, the `aur-publish` job pushes it once the `AUR_SSH_PRIVATE_KEY` secret exists
 
 ## Research
 

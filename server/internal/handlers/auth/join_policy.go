@@ -128,6 +128,21 @@ type loginOptions struct {
 	// It never comes from a query parameter, a form field, or any other
 	// browser-supplied value.
 	slackTeamID string
+
+	// skipBootstrap disables rule 2 (the first member of an empty org becomes
+	// its owner). The OIDC connector sets it while super-admin groups are
+	// configured (spec 2026-11-21-02): an empty org is then reserved for a
+	// member of those groups, whom syncGroupRoles makes owner, so a random
+	// IdP user signing in first cannot take the instance over.
+	skipBootstrap bool
+}
+
+// WithoutOrgBootstrap disables the "first member of an empty org becomes its
+// owner" admission rule for this login.
+func WithoutOrgBootstrap() LoginOption {
+	return func(o *loginOptions) {
+		o.skipBootstrap = true
+	}
 }
 
 // WithSlackWorkspace attests that the user completing this login is a member
@@ -221,7 +236,7 @@ func (s *Service) JoinOrgViaLogin(
 		return nil, false, fmt.Errorf("failed to list members: %w", err)
 	}
 
-	if len(members) == 0 {
+	if len(members) == 0 && !resolveLoginOptions(opts).skipBootstrap {
 		created, createErr := s.createLoginMembership(ctx, org.UID, user, models.MemberRoleOwner, "", joinSourceBootstrap)
 		return created, false, createErr
 	}
@@ -951,6 +966,10 @@ type ProviderOutcome struct {
 	// fields are empty and the handoff carries the challenge instead.
 	Requires2FA bool
 	TempToken   string
+	// RoleChanges are the roles the IdP group claim granted or revoked
+	// during this login (RoleChange* constants, OIDC only), surfaced in the
+	// login response diagnostics (spec 2026-11-21-02).
+	RoleChanges []string
 }
 
 // handoffSession is the session a handoff code carries for this outcome. A
@@ -964,6 +983,7 @@ func (o *ProviderOutcome) handoffSession(returnTo string) *authhandoff.Session {
 		ExpiresIn:    o.ExpiresIn,
 		UserUID:      o.UserUID,
 		ReturnTo:     returnTo,
+		RoleChanges:  o.RoleChanges,
 	}
 
 	if o.Requires2FA {

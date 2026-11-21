@@ -1840,5 +1840,64 @@
         "unknown": "Not reported yet — this region has no live worker reporting its capabilities, or is running an older agent. It may well support browser checks."
       }
     }
+  },
+  "bulkSelection": {
+    "selectAll": "Select all visible checks",
+    "selectRow": "Select check",
+    "selectGroup": "Select the checks of this table",
+    "move": {
+      "title_one": "Move {{count}} check to a group",
+      "title_other": "Move {{count}} checks to a group",
+      "pick": "Choose the group these checks will join.",
+      "none": "No group (ungrouped)",
+      "confirm": "Move",
+      "moved_one": "{{count}} check moved",
+      "moved_other": "{{count}} checks moved",
+      "failed": "Could not move the checks"
+    },
+    "period": {
+      "title_one": "Set the period of {{count}} check",
+      "title_other": "Set the period of {{count}} checks",
+      "pick": "These checks will run every",
+      "willUpdate_one": "{{count}} check will be updated.",
+      "willUpdate_other": "{{count}} checks will be updated.",
+      "willSkip_one": "{{count}} check will be left untouched.",
+      "willSkip_other": "{{count}} checks will be left untouched.",
+      "confirm": "Set period",
+      "updated_one": "Period set on {{count}} check",
+      "updated_other": "Period set on {{count}} checks",
+      "failed": "Could not set the period"
+    },
+    "bulk": {
+      "moveToGroup": "Move to group",
+      "setPeriod": "Set period",
+      "chooseRegions": "Choose regions",
+      "selected_one": "{{count}} selected",
+      "selected_other": "{{count}} selected",
+      "delete": "Delete",
+      "clear": "Clear",
+      "deleteTitle_one": "Delete {{count}} check",
+      "deleteTitle_other": "Delete {{count}} checks",
+      "deleteDescription": "The selected checks and their history are deleted. This cannot be undone.",
+      "willDelete_one": "{{count}} check will be deleted.",
+      "willDelete_other": "{{count}} checks will be deleted.",
+      "skippedIntro_one": "{{count}} check will be left in place:",
+      "skippedIntro_other": "{{count}} checks will be left in place:",
+      "skip": {
+        "not_found": "not found",
+        "read_only": "read-only in the demo",
+        "internal": "internal check",
+        "managed": "managed by a config-as-code apply",
+        "tunnel_in_use": "used as a tunnel by other checks",
+        "error": "could not be evaluated"
+      },
+      "typeCount": "Type {{count}} to confirm",
+      "confirm": "Delete",
+      "deleted_one": "{{count}} check deleted",
+      "deleted_other": "{{count}} checks deleted",
+      "failed": "Could not delete the checks",
+      "partial_one": "{{count}} check could not be deleted",
+      "partial_other": "{{count}} checks could not be deleted"
+    }
   }
 }

@@ -438,6 +438,106 @@ Each provider also has an `_ENABLED` switch. The login routes of a provider are 
 | `SP_SLACK_SOCKET_MODE_ENABLED` | `false` | Receive Slack events over Socket Mode instead of HTTPS webhooks (needs `SP_SLACK_ENABLED`). See [notifications](notifications.md) |
 | `SP_SLACK_APP_TOKEN` | empty | Slack app-level token (`xapp-...`) used by Socket Mode. Secret |
 
+## OpenID Connect (OIDC)
+
+Any OpenID Connect identity provider (Keycloak, Authentik, Okta, Auth0, Azure
+AD, ...) can sign users in. SolidPing finds the endpoints through
+`{SP_OIDC_ISSUER_URL}/.well-known/openid-configuration`. Register
+`{SP_BASE_URL}/api/v1/auth/oidc/callback` as the redirect URI at the provider.
+A user is created on their first sign-in, and only if the provider says their
+email is verified (`email_verified: true`).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_OIDC_ENABLED` | `false` | Turns on OIDC sign-in |
+| `SP_OIDC_DISPLAY_NAME` | `SSO` | Label of the login button |
+| `SP_OIDC_ISSUER_URL` | empty | Issuer, e.g. `https://idp.acme.com/realms/acme` |
+| `SP_OIDC_CLIENT_ID` | empty | Client ID |
+| `SP_OIDC_CLIENT_SECRET` | empty | Client secret. Secret |
+| `SP_OIDC_SCOPES` | `openid email profile` | Space-separated scopes. Add the one that makes your provider send groups (often `groups`) |
+| `SP_OIDC_EMAIL_CLAIM` | `email` | Claim holding the email |
+| `SP_OIDC_NAME_CLAIM` | `name` | Claim holding the display name |
+| `SP_OIDC_AVATAR_CLAIM` | `picture` | Claim holding the avatar URL |
+| `SP_OIDC_GROUPS_CLAIM` | `groups` | Claim holding the user's groups: an array of strings, a string, or a space-separated string |
+| `SP_OIDC_SUPER_ADMIN_GROUPS` | empty | Comma-separated groups whose members are super admins of the instance. Empty turns it off |
+| `SP_OIDC_ORG_ADMIN_GROUPS` | empty | Comma-separated groups whose members get the `admin` role in the organization they sign in to, joining it if needed. Empty turns it off |
+
+### Admins from IdP groups
+
+The groups are read from the signed ID token, and from the userinfo endpoint
+when the provider only puts them there. They are applied on every sign-in:
+
+- A member of a `SP_OIDC_SUPER_ADMIN_GROUPS` group becomes a super admin. When
+  they leave the group, the next sign-in removes it. A super admin made by
+  hand (the first admin, or one set from the user directory) is never removed
+  by a group. The last super admin of the instance is never removed.
+- A member of a `SP_OIDC_ORG_ADMIN_GROUPS` group becomes `admin` of the
+  organization they sign in to. When they leave the group, the next sign-in to
+  that organization makes them `user` again. A role given by hand (an invite,
+  or a change from the members page) is never changed by a group, an `owner`
+  stays `owner`, and the last owner or admin of an organization is never
+  demoted.
+
+Each change is logged, recorded in the audit log (`auth.super_admin_changed`,
+`member.joined`, `member.role_changed`) and returned in the sign-in response
+as `roleChanges` (`super_admin_granted`, `super_admin_revoked`,
+`org_admin_granted`, `org_admin_revoked`, `org_owner_granted`, and
+`super_admin_kept_last` / `org_admin_kept_last` when a removal was skipped to
+keep the last admin).
+
+## Turning local login off
+
+Set `SP_LOCAL_LOGIN_ENABLED=false` (or the `auth.local_login.enabled` system
+parameter) to stop password sign-in. The login page then shows only the SSO
+buttons, and password login, LDAP login, sign-up, password reset and password
+change answer `403 LOCAL_LOGIN_DISABLED`. Accepting an invitation by
+creating a password account is refused too; an invited user signs in with SSO
+first, then accepts. Passkeys, OAuth, OIDC, SAML, API
+tokens and the device flow keep working. The system parameter takes effect
+without a restart.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_LOCAL_LOGIN_ENABLED` | `true` | Allows password (and LDAP) sign-in, sign-up and password reset |
+
+It only applies while at least one SSO provider is configured and enabled.
+Without one, local login stays on and the server logs a warning at boot, so a
+typo cannot lock everyone out. For the same reason, the API refuses to set the
+parameter to `false` while no SSO provider is enabled. To keep LDAP but not
+local passwords, use `SP_LDAP_ENABLED` instead.
+
+### OIDC only, from the first start
+
+With local login off and `SP_OIDC_SUPER_ADMIN_GROUPS` set before the first
+start, SolidPing seeds no password admin. It creates the default organization
+with no member and logs `waiting for the first SSO login from a super-admin
+group`. The first user of one of those groups to sign in becomes super admin
+and `owner` of the organization. Until then, nobody else can take it over.
+
+```yaml
+services:
+  solidping:
+    image: ghcr.io/fclairamb/solidping:latest
+    environment:
+      SP_BASE_URL: https://solidping.acme.com
+      SP_LOCAL_LOGIN_ENABLED: "false"
+      SP_OIDC_ENABLED: "true"
+      SP_OIDC_DISPLAY_NAME: Acme SSO
+      SP_OIDC_ISSUER_URL: https://idp.acme.com/realms/acme
+      SP_OIDC_CLIENT_ID: solidping
+      SP_OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      SP_OIDC_SCOPES: openid email profile groups
+      SP_OIDC_SUPER_ADMIN_GROUPS: solidping-admins
+      SP_OIDC_ORG_ADMIN_GROUPS: solidping-team-leads
+```
+
+**Locked out?** Restart with `SP_LOCAL_LOGIN_ENABLED=true` and
+`SP_ADMIN_PASSWORD` set. On an instance started OIDC-only, that boot creates
+the first admin (`SP_ADMIN_EMAIL`, default `admin@solidping.io`) as a super
+admin with that password, to change at first login. On an instance whose first
+admin was seeded, it resets that admin's password while it has not been
+changed yet. There is no other way in.
+
 ## Session lifetime
 
 | Variable | Default | Description |

@@ -66,6 +66,15 @@ type Service struct {
 	// emailConfig returns the effective email config (env over DB), the same
 	// one real notifications use. Nil falls back to the database only.
 	emailConfig email.ConfigProvider
+	// appConfig is the running config, read by the local-login lock-out guard
+	// (spec 2026-11-21-02). Nil refuses auth.local_login.enabled=false.
+	appConfig *config.Config
+}
+
+// SetAppConfig wires the running config, which the local-login lock-out guard
+// reads to know whether an SSO provider is available.
+func (s *Service) SetAppConfig(cfg *config.Config) {
+	s.appConfig = cfg
 }
 
 // SetEmailConfigProvider wires the effective-config resolver used by TestEmail.
@@ -231,7 +240,7 @@ func applyActivationEvent(row *ActivationFunnelRow, event *models.Event) {
 		models.EventTypeAuthLogout,
 		models.EventTypeAuthTokenCreated, models.EventTypeAuthTokenRevoked,
 		models.EventTypeAuthTokenMisuse, models.EventTypeAuthImpersonationStarted,
-		models.EventTypeAuthEmailChanged,
+		models.EventTypeAuthEmailChanged, models.EventTypeAuthSuperAdminChanged,
 		models.EventTypeMemberInvited, models.EventTypeMemberJoined,
 		models.EventTypeMemberRemoved, models.EventTypeMemberRoleChanged,
 		models.EventTypeIntegrationCreated, models.EventTypeIntegrationUpdated,
@@ -340,6 +349,14 @@ func (s *Service) SetParameter(ctx context.Context, key string, value any, secre
 	// only through the dedicated endpoint the dashboard uses.
 	if key == opsnotify.ParamOperatorNotifications {
 		if err := opsnotify.ValidateParameterWithDB(ctx, s.db, value); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidParameter, err)
+		}
+	}
+
+	// Switching local login off with no SSO provider would lock everyone out
+	// (spec 2026-11-21-02): refuse it while the operator can still fix it.
+	if key == string(systemconfig.KeyLocalLoginEnabled) {
+		if err := systemconfig.ValidateLocalLoginParameter(s.appConfig, value); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidParameter, err)
 		}
 	}

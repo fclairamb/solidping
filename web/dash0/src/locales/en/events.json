@@ -88,6 +88,7 @@
     "auth.token_misuse": "Token Misuse Attempt",
     "auth.impersonation_started": "Impersonation Started",
     "auth.email_changed": "Email Changed",
+    "auth.super_admin_changed": "Super Admin Changed",
     "agent.connected": "Agent Connected",
     "agent.disconnected": "Agent Disconnected",
     "discovery.scan_started": "Discovery Scan Started",

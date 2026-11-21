@@ -135,6 +135,10 @@ const (
 	// impersonate again. Distinct from ErrorCodeForbidden so the dashboard can
 	// explain it rather than render a dead "Permission denied".
 	ErrorCodeImpersonationForbidden ErrorCode = "IMPERSONATION_FORBIDDEN"
+	// ErrorCodeLocalLoginDisabled accompanies the 403 of a password login,
+	// sign-up, password reset or password change while local login is
+	// switched off (auth.local_login.enabled=false, spec 2026-11-21-02).
+	ErrorCodeLocalLoginDisabled ErrorCode = "LOCAL_LOGIN_DISABLED"
 	// ErrorCodePATForbidden accompanies the 403 a personal access token gets
 	// for anything outside its org binding (spec 2026-10-28-01): opening a
 	// session, approving a device grant, or changing a sign-in factor. The

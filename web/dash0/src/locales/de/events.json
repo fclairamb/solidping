@@ -88,6 +88,7 @@
     "auth.token_misuse": "Missbrauchsversuch mit Token",
     "auth.impersonation_started": "Identitätsübernahme gestartet",
     "auth.email_changed": "E-Mail-Adresse geändert",
+    "auth.super_admin_changed": "Super-Admin geändert",
     "agent.connected": "Agent verbunden",
     "agent.disconnected": "Agent getrennt",
     "discovery.scan_started": "Erkennungsscan gestartet",

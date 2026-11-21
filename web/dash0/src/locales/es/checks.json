@@ -1840,5 +1840,64 @@
         "unknown": "Aún no informado — esta región no tiene ningún worker activo que informe sus capacidades, o usa un agente más antiguo. Es posible que admita comprobaciones de navegador."
       }
     }
+  },
+  "bulkSelection": {
+    "selectAll": "Seleccionar todos los checks visibles",
+    "selectRow": "Seleccionar el check",
+    "selectGroup": "Seleccionar los checks de esta tabla",
+    "move": {
+      "title_one": "Mover {{count}} check a un grupo",
+      "title_other": "Mover {{count}} checks a un grupo",
+      "pick": "Elige el grupo al que se unirán estos checks.",
+      "none": "Sin grupo (sin agrupar)",
+      "confirm": "Mover",
+      "moved_one": "{{count}} check movido",
+      "moved_other": "{{count}} checks movidos",
+      "failed": "No se pudieron mover los checks"
+    },
+    "period": {
+      "title_one": "Cambiar el periodo de {{count}} check",
+      "title_other": "Cambiar el periodo de {{count}} checks",
+      "pick": "Estos checks se ejecutarán cada",
+      "willUpdate_one": "Se modificará {{count}} check.",
+      "willUpdate_other": "Se modificarán {{count}} checks.",
+      "willSkip_one": "{{count}} check no se modificará.",
+      "willSkip_other": "{{count}} checks no se modificarán.",
+      "confirm": "Cambiar el periodo",
+      "updated_one": "Periodo cambiado en {{count}} check",
+      "updated_other": "Periodo cambiado en {{count}} checks",
+      "failed": "No se pudo cambiar el periodo"
+    },
+    "bulk": {
+      "moveToGroup": "Mover a un grupo",
+      "setPeriod": "Cambiar el periodo",
+      "chooseRegions": "Elegir las regiones",
+      "selected_one": "{{count}} seleccionado",
+      "selected_other": "{{count}} seleccionados",
+      "delete": "Eliminar",
+      "clear": "Borrar",
+      "deleteTitle_one": "Eliminar {{count}} check",
+      "deleteTitle_other": "Eliminar {{count}} checks",
+      "deleteDescription": "Los checks seleccionados y su historial se eliminan. Esta acción no se puede deshacer.",
+      "willDelete_one": "Se eliminará {{count}} check.",
+      "willDelete_other": "Se eliminarán {{count}} checks.",
+      "skippedIntro_one": "Se conservará {{count}} check:",
+      "skippedIntro_other": "Se conservarán {{count}} checks:",
+      "skip": {
+        "not_found": "no encontrado",
+        "read_only": "solo lectura en la demo",
+        "internal": "check interno",
+        "managed": "gestionado por un apply de config-as-code",
+        "tunnel_in_use": "usado como túnel por otros checks",
+        "error": "no se pudo evaluar"
+      },
+      "typeCount": "Escriba {{count}} para confirmar",
+      "confirm": "Eliminar",
+      "deleted_one": "{{count}} check eliminado",
+      "deleted_other": "{{count}} checks eliminados",
+      "failed": "No se pudieron eliminar los checks",
+      "partial_one": "No se pudo eliminar {{count}} check",
+      "partial_other": "No se pudieron eliminar {{count}} checks"
+    }
   }
 }

@@ -702,6 +702,37 @@ func (h *Handler) BulkUpdateChecks(writer http.ResponseWriter, req *http.Request
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
+// BulkDeleteChecks handles DELETE /api/v1/orgs/:org/checks: deletes the listed
+// checks, per check, with the rules of a single delete.
+func (h *Handler) BulkDeleteChecks(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+
+	req.Body = http.MaxBytesReader(writer, req.Body, MaxBulkRequestBytes)
+
+	var body BulkDeleteChecksRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	resp, err := h.svc.BulkDeleteChecks(req.Context(), orgSlug, &body)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrOrganizationNotFound):
+			return h.WriteErrorErr(
+				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		case IsBulkUpdateRequestError(err):
+			return h.WriteErrorErr(
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+		default:
+			return h.WriteInternalError(writer, req, err)
+		}
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
 // ExportChecks handles exporting all checks for an organization as JSON.
 func (h *Handler) ExportChecks(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")

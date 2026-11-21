@@ -88,6 +88,7 @@
     "auth.token_misuse": "Intento de uso indebido de token",
     "auth.impersonation_started": "Suplantación iniciada",
     "auth.email_changed": "Correo electrónico cambiado",
+    "auth.super_admin_changed": "Superadministrador cambiado",
     "agent.connected": "Agente conectado",
     "agent.disconnected": "Agente desconectado",
     "discovery.scan_started": "Escaneo de descubrimiento iniciado",

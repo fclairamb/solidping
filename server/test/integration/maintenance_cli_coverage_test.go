@@ -107,3 +107,70 @@ func TestCLICoverage_MaintenanceWindowLifecycle(t *testing.T) {
 	r.Equal(404, goneResp.StatusCode())
 	r.Nil(goneResp.JSON200)
 }
+
+// TestMaintenanceWindowSetChecks_ValidatesUIDs checks that foreign-org and unknown
+// uids are rejected with a validation error and leave the associations unchanged.
+func TestMaintenanceWindowSetChecks_ValidatesUIDs(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ts := NewTestServer(t)
+	ctx := t.Context()
+
+	validUID := "40000000-0000-0000-0000-0000000000e0"
+	otherValidUID := "40000000-0000-0000-0000-0000000000e1"
+	foreignUID := "40000000-0000-0000-0000-0000000000e2"
+	cliCovSeedCheck(ctx, t, ts, validUID, "mw-valid", "http", models.JSONMap{"url": "https://example.com"})
+	cliCovSeedCheck(ctx, t, ts, otherValidUID, "mw-valid-2", "http", models.JSONMap{"url": "https://example.com"})
+
+	name := "foreign"
+	now := time.Now()
+	r.NoError(ts.Server.DBService().CreateCheck(ctx, &models.Check{
+		UID: foreignUID, OrganizationUID: "10000000-0000-0000-0000-000000000010",
+		Name: &name, Slug: &name, Type: "http", Config: models.JSONMap{"url": "https://example.com"},
+		Enabled: true, CreatedAt: now, UpdatedAt: now,
+	}))
+
+	apiClient := cliCovAuthedClient(ctx, t, ts)
+	start := time.Now().UTC().Add(time.Hour).Truncate(time.Second)
+	createResp, err := apiClient.CreateMaintenanceWindowWithResponse(ctx, TestOrgSlug,
+		client.CreateMaintenanceWindowJSONRequestBody{Title: "w", StartAt: start, EndAt: start.Add(time.Hour)})
+	r.NoError(err)
+	r.Equal(201, createResp.StatusCode())
+	windowUID := createResp.JSON201.Uid
+
+	set := func(uids ...string) int {
+		parsed := make([]openapi_types.UUID, 0, len(uids))
+		for _, u := range uids {
+			parsed = append(parsed, uuid.MustParse(u))
+		}
+		resp, setErr := apiClient.SetMaintenanceWindowChecksWithResponse(ctx, TestOrgSlug, windowUID,
+			client.SetMaintenanceWindowChecksJSONRequestBody{CheckUids: &parsed})
+		r.NoError(setErr)
+
+		return resp.StatusCode()
+	}
+	listed := func() []string {
+		resp, listErr := apiClient.ListMaintenanceWindowChecksWithResponse(ctx, TestOrgSlug, windowUID)
+		r.NoError(listErr)
+		out := make([]string, 0, len(*resp.JSON200.Data))
+		for _, c := range *resp.JSON200.Data {
+			out = append(out, c.CheckUid.String())
+		}
+
+		return out
+	}
+
+	// Valid set with a duplicate: deduplicated.
+	r.Equal(204, set(validUID, validUID))
+	r.Equal([]string{validUID}, listed())
+
+	// Foreign-org and unknown uids: 422, associations unchanged.
+	r.Equal(422, set(otherValidUID, foreignUID))
+	r.Equal(422, set("40000000-0000-0000-0000-0000000000ff"))
+	r.Equal([]string{validUID}, listed())
+
+	// A valid set replaces the previous one.
+	r.Equal(204, set(otherValidUID))
+	r.Equal([]string{otherValidUID}, listed())
+}

@@ -147,6 +147,14 @@ var docsDefaultAccessors = map[string]func(*config.Config) string{
 	"SP_LDAP_USER_FILTER":     fixed(config.LDAPDefaultUserFilter),
 	"SP_LDAP_EMAIL_ATTRIBUTE": fixed(config.LDAPDefaultEmailAttribute),
 	"SP_LDAP_NAME_ATTRIBUTE":  fixed(config.LDAPDefaultNameAttribute),
+	// Blank in the struct, resolved at sign-in time (handlers/auth/oidc_service.go).
+	"SP_OIDC_DISPLAY_NAME":   fixed(config.SSOFallbackLabel),
+	"SP_OIDC_SCOPES":         fixed("openid email profile"),
+	"SP_OIDC_EMAIL_CLAIM":    fixed("email"),
+	"SP_OIDC_NAME_CLAIM":     fixed("name"),
+	"SP_OIDC_AVATAR_CLAIM":   fixed("picture"),
+	"SP_OIDC_GROUPS_CLAIM":   fixed(config.DefaultOIDCGroupsClaim),
+	"SP_LOCAL_LOGIN_ENABLED": boolOf(func(c *config.Config) bool { return c.Auth.LocalLoginEnabled }),
 
 	"SP_STATUS_SUBSCRIBERS_CONFIRM_PER_RECIPIENT_PER_HOUR": intOf(func(c *config.Config) int {
 		return c.StatusSubscribers.ConfirmPerRecipientPerHour

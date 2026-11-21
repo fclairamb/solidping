@@ -44,6 +44,9 @@ type fakeOIDCIdP struct {
 	// nextIDToken is served as the "id_token" field of the next /token
 	// response. Set per (sub)test before invoking the flow under test.
 	nextIDToken string
+
+	// userInfo, when set, is served by /userinfo; nil answers 404.
+	userInfo map[string]any
 }
 
 func newFakeOIDCIdP(t *testing.T) *fakeOIDCIdP {
@@ -85,6 +88,17 @@ func newFakeOIDCIdP(t *testing.T) *fakeOIDCIdP {
 			"expires_in":   3600,
 			"id_token":     idp.nextIDToken,
 		})
+	})
+
+	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, _ *http.Request) {
+		if idp.userInfo == nil {
+			http.NotFound(w, nil)
+
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(idp.userInfo)
 	})
 
 	idp.server = httptest.NewServer(mux)

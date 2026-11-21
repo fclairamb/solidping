@@ -52,7 +52,13 @@ func DriverDSN(dsn string) string {
 // notifier uses. It is the inverse of DriverDSN: lib/pq wants the socket
 // directory in `host` and appends the socket file name itself, so a `host`
 // naming the socket file ("<dir>/.s.PGSQL.<port>") is split back into the
-// directory and the `port` query parameter. Any other DSN is returned unchanged.
+// directory and the `port` query parameter.
+//
+// The `host` query parameter wins over the URL's authority host, as in libpq.
+// lib/pq would pick whichever sorts last (it sorts the converted key=value
+// pairs), so `localhost` beat `/var/run/postgresql` and the notifier went over
+// TCP while the pool used the socket: the authority host is dropped, its port
+// kept as the `port` query parameter. Any other DSN is returned unchanged.
 func ListenerDSN(dsn string) string {
 	parsed, query, socketHost, ok := parseSocketDSN(dsn)
 	if !ok {
@@ -60,15 +66,36 @@ func ListenerDSN(dsn string) string {
 	}
 
 	base := path.Base(socketHost)
-	if !strings.HasPrefix(base, socketFilePrefix) {
+	isSocketFile := strings.HasPrefix(base, socketFilePrefix)
+
+	if !isSocketFile && parsed.Host == "" {
 		return dsn
 	}
 
-	query.Set("host", path.Dir(socketHost))
-	query.Set("port", strings.TrimPrefix(base, socketFilePrefix))
+	if parsed.Host != "" {
+		if port := parsed.Port(); port != "" && query.Get("port") == "" {
+			query.Set("port", port)
+		}
+
+		parsed.Host = ""
+	}
+
+	if isSocketFile {
+		query.Set("host", path.Dir(socketHost))
+		query.Set("port", strings.TrimPrefix(base, socketFilePrefix))
+	}
+
 	parsed.RawQuery = query.Encode()
 
 	return parsed.String()
+}
+
+// SocketOverridesAuthorityHost reports whether dsn names both a TCP authority
+// host and a Unix-socket `host` query parameter, in which case the socket wins.
+func SocketOverridesAuthorityHost(dsn string) bool {
+	parsed, _, _, ok := parseSocketDSN(dsn)
+
+	return ok && parsed.Host != ""
 }
 
 // parseSocketDSN parses a postgres:// URL DSN whose `host` query parameter is

@@ -1,0 +1,2 @@
+# System account the solidping service runs as (no login shell, home in the data folder).
+u solidping - "SolidPing monitoring" /var/lib/solidping /usr/bin/nologin

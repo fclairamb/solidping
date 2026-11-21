@@ -1214,6 +1214,8 @@ export interface BulkCheckChanges {
   enabled?: boolean;
   resolveOpenIncidents?: boolean;
   period?: string;
+  /** The group to move the checks into; "" takes them out of their group. */
+  checkGroupUid?: string;
   placement?: CheckPlacement;
   regions?: string[];
   regionCount?: number;
@@ -1268,6 +1270,47 @@ export function useBulkUpdateChecks(org: string) {
       queryClient.invalidateQueries({ queryKey: ["check", org] });
       queryClient.invalidateQueries({ queryKey: ["checksMatching", org] });
       queryClient.invalidateQueries({ queryKey: ["bulkUpdateChecksPreview", org] });
+    },
+  });
+}
+
+/** Response of DELETE /checks (spec 2026-11-21-03). */
+export interface DeleteSelectedChecksResponse {
+  dryRun: boolean;
+  deleted: string[];
+  skipped: { checkUid: string; code: string; detail?: string }[];
+}
+
+function deleteSelectedChecks(org: string, body: { checkUids: string[]; dryRun?: boolean }) {
+  return apiFetch<DeleteSelectedChecksResponse>(`/api/v1/orgs/${org}/checks`, {
+    method: "DELETE",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Dry-runs a bulk delete: which of the given checks would go, and why the rest stay. */
+export function useDeleteSelectedChecksPreview(org: string, checkUids: string[], enabled: boolean) {
+  return useQuery({
+    queryKey: ["bulkDeleteChecksPreview", org, checkUids],
+    queryFn: () => deleteSelectedChecks(org, { checkUids, dryRun: true }),
+    enabled: !!org && enabled && checkUids.length > 0,
+    staleTime: 0,
+  });
+}
+
+/** Deletes several checks at once. */
+export function useDeleteSelectedChecks(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: { checkUids: string[] }) => deleteSelectedChecks(org, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+      queryClient.invalidateQueries({ queryKey: ["check", org] });
+      queryClient.invalidateQueries({ queryKey: ["checksMatching", org] });
+      queryClient.invalidateQueries({ queryKey: ["bulkDeleteChecksPreview", org] });
+      queryClient.invalidateQueries({ queryKey: ["checkStats", org] });
     },
   });
 }
@@ -4291,6 +4334,8 @@ interface ProvidersResponse {
   data?: AuthProvider[];
   registrationEnabled?: boolean;
   passkeysEnabled?: boolean;
+  // False while local password login is switched off (spec 2026-11-21-02).
+  localLogin?: boolean;
 }
 
 /**
@@ -4316,6 +4361,8 @@ export function useProviders() {
         providers: response.data || [],
         registrationEnabled: response.registrationEnabled || false,
         passkeysEnabled: response.passkeysEnabled || false,
+        // Absent (an older server) means the password form is offered.
+        localLogin: response.localLogin ?? true,
       };
     },
     staleTime: Infinity,
