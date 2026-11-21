@@ -5,6 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { routeTree } from "./routeTree.gen";
 import { ApiError, NetworkError } from "@/api/client";
 import i18n from "./i18n";
+import { AppErrorBoundary } from "@/components/app-error-boundary";
+import { displayLocale } from "@/lib/display-locale";
 
 const basepath = import.meta.env.VITE_BASE_URL || "";
 
@@ -84,8 +86,7 @@ declare module "@tanstack/react-router" {
 function useSyncHtmlLang() {
   useEffect(() => {
     const sync = () => {
-      document.documentElement.lang =
-        i18n.resolvedLanguage || i18n.language || "en";
+      document.documentElement.lang = displayLocale(i18n);
     };
     sync();
     i18n.on("languageChanged", sync);
@@ -98,10 +99,12 @@ function useSyncHtmlLang() {
 export function App() {
   useSyncHtmlLang();
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider delayDuration={300}>
-        <RouterProvider router={router} context={{ queryClient }} />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider delayDuration={300}>
+          <RouterProvider router={router} context={{ queryClient }} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </AppErrorBoundary>
   );
 }

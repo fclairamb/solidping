@@ -135,5 +135,7 @@
     "removedBody": "El recurso supervisado se ha eliminado. La incidencia está resuelta."
   },
   "unlockWrongPassword": "Contraseña incorrecta",
-  "unlockTooManyAttempts": "Demasiados intentos. Vuelva a intentarlo en unos minutos."
+  "unlockTooManyAttempts": "Demasiados intentos. Vuelva a intentarlo en unos minutos.",
+  "pageUnavailable": "Esta página de estado no está disponible en este momento.",
+  "pageUnavailableReload": "Recargar"
 }
