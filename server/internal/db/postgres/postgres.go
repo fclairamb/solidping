@@ -7102,7 +7102,9 @@ func (s *Service) UpdateMaintenanceWindow(
 		query = query.Set("title = ?", *update.Title)
 	}
 
-	if update.Description != nil {
+	if update.ClearDescription {
+		query = query.Set("description = NULL")
+	} else if update.Description != nil {
 		query = query.Set("description = ?", *update.Description)
 	}
 
@@ -7118,7 +7120,9 @@ func (s *Service) UpdateMaintenanceWindow(
 		query = query.Set("recurrence = ?", *update.Recurrence)
 	}
 
-	if update.RecurrenceEnd != nil {
+	if update.ClearRecurrenceEnd {
+		query = query.Set("recurrence_end = NULL")
+	} else if update.RecurrenceEnd != nil {
 		query = query.Set("recurrence_end = ?", *update.RecurrenceEnd)
 	}
 

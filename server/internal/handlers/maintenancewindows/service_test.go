@@ -1,6 +1,7 @@
 package maintenancewindows
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -142,4 +143,31 @@ func TestIsValidRecurrence(t *testing.T) {
 	r.False(isValidRecurrence("FREQ=MONTHLY;BYMONTHDAY=1"))
 	r.False(isValidRecurrence("yearly"))
 	r.False(isValidRecurrence(""))
+}
+
+func TestUpdateRequest_UnmarshalNullClears(t *testing.T) {
+	t.Parallel()
+
+	var req UpdateRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"description": null, "recurrenceEnd": null}`), &req))
+	require.True(t, req.ClearDescription)
+	require.True(t, req.ClearRecurrenceEnd)
+	require.Nil(t, req.Description)
+	require.Nil(t, req.RecurrenceEnd)
+}
+
+func TestUpdateRequest_UnmarshalAbsentKeepsAndValueSets(t *testing.T) {
+	t.Parallel()
+
+	var req UpdateRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"title": "x"}`), &req))
+	require.False(t, req.ClearDescription)
+	require.False(t, req.ClearRecurrenceEnd)
+
+	var set UpdateRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"description": "d", "recurrenceEnd": "2026-07-01T00:00:00Z"}`), &set))
+	require.False(t, set.ClearDescription)
+	require.False(t, set.ClearRecurrenceEnd)
+	require.Equal(t, "d", *set.Description)
+	require.NotNil(t, set.RecurrenceEnd)
 }

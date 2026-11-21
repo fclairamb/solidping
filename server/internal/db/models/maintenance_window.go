@@ -51,6 +51,10 @@ type MaintenanceWindowUpdate struct {
 	EndAt         *time.Time
 	Recurrence    *string
 	RecurrenceEnd *time.Time
+	// ClearDescription and ClearRecurrenceEnd set the column to NULL. They win
+	// over the matching pointer field.
+	ClearDescription   bool
+	ClearRecurrenceEnd bool
 	// Slug and ManagedBy are written by `sp apply` only.
 	Slug      *string
 	ManagedBy *string

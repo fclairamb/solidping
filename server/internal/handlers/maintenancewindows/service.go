@@ -2,8 +2,10 @@
 package maintenancewindows
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -97,6 +99,37 @@ type UpdateRequest struct {
 	EndAt         *time.Time `json:"endAt,omitempty"`
 	Recurrence    *string    `json:"recurrence,omitempty"`
 	RecurrenceEnd *time.Time `json:"recurrenceEnd,omitempty"`
+
+	// ClearDescription / ClearRecurrenceEnd are set when the JSON body carries
+	// the key with an explicit null (absent key means "unchanged").
+	ClearDescription   bool `json:"-"`
+	ClearRecurrenceEnd bool `json:"-"`
+}
+
+// UnmarshalJSON decodes the request and records explicit nulls for the
+// clearable fields.
+func (r *UpdateRequest) UnmarshalJSON(data []byte) error {
+	type plain UpdateRequest
+
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	*r = UpdateRequest(decoded)
+	r.ClearDescription = isJSONNull(raw["description"])
+	r.ClearRecurrenceEnd = isJSONNull(raw["recurrenceEnd"])
+
+	return nil
+}
+
+func isJSONNull(value json.RawMessage) bool {
+	return value != nil && string(bytes.TrimSpace(value)) == "null"
 }
 
 // SetChecksRequest represents a request to set the checks for a maintenance window.
@@ -277,6 +310,9 @@ func (s *Service) UpdateMaintenanceWindow(
 		RecurrenceEnd: req.RecurrenceEnd,
 		Slug:          req.Slug,
 		ManagedBy:     req.ManagedBy,
+
+		ClearDescription:   req.ClearDescription,
+		ClearRecurrenceEnd: req.ClearRecurrenceEnd,
 	}
 
 	if errUpdate := s.db.UpdateMaintenanceWindow(ctx, window.UID, update); errUpdate != nil {
