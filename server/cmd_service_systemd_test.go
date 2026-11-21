@@ -59,6 +59,7 @@ After=network-online.target postgresql.service
 
 [Service]
 Type=simple
+EnvironmentFile=/srv/sp%%1/config.env
 ExecStart="/usr/local/bin/solidping" "service" "run" "--name" "solidping" "--dir" "/srv/sp%%1"
 WorkingDirectory=/srv/sp%%1
 Restart=on-failure
@@ -90,6 +91,7 @@ Description=SolidPing monitoring
 
 [Service]
 Type=simple
+EnvironmentFile=/home/alice/.local/share/solidping/config.env
 ExecStart="/home/alice/bin/solidping" "service" "run" "--name" "solidping" "--dir" "/home/alice/.local/share/solidping"
 WorkingDirectory=/home/alice/.local/share/solidping
 Restart=on-failure

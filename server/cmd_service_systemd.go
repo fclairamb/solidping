@@ -104,6 +104,9 @@ func systemdUnit(args []string, absDir string, root bool) []byte {
 	}
 
 	unit.WriteString("\n[Service]\nType=simple\n")
+	// config.env is written by install next to config.yml; the operator edits
+	// it to prepare the first start with SP_* variables instead of YAML.
+	fmt.Fprintf(&unit, "EnvironmentFile=%s/config.env\n", dir)
 	fmt.Fprintf(&unit, "ExecStart=%s\n", strings.Join(quoted, " "))
 	fmt.Fprintf(&unit, "WorkingDirectory=%s\n", dir)
 	fmt.Fprintf(&unit, "Restart=on-failure\nRestartSec=%d\nTimeoutStopSec=%d\n", systemdRestartSec, systemdStopTimeoutSec)
