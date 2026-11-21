@@ -320,6 +320,7 @@
     "organization": "Organisation",
     "slugOptional": "Identifiant (optionnel)",
     "slugHint": "Identifiant compatible URL pour le contrôle",
+    "updateSlugToDerived": "Mettre le slug à `{{slug}}`",
     "labelsHint": "Étiquettes clé/valeur optionnelles pour le regroupement et le filtrage.",
     "groupOptional": "Groupe (optionnel)",
     "noGroup": "Aucun groupe",

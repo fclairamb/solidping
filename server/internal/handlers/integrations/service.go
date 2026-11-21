@@ -244,9 +244,13 @@ func NewService(
 
 // IntegrationResponse represents a connection in API responses.
 type IntegrationResponse struct {
-	UID       string         `json:"uid"`
-	Type      string         `json:"type"`
-	Name      string         `json:"name"`
+	UID  string `json:"uid"`
+	Type string `json:"type"`
+	Name string `json:"name"`
+	// Slug is the optional per-org-unique manifest key set by `sp apply`;
+	// ManagedBy names the manifest that owns the channel.
+	Slug      *string        `json:"slug,omitempty"`
+	ManagedBy *string        `json:"managedBy,omitempty"`
 	Enabled   bool           `json:"enabled"`
 	IsDefault bool           `json:"isDefault"`
 	Settings  map[string]any `json:"settings,omitempty"`
@@ -266,6 +270,9 @@ type ListConnectionsResponse struct {
 
 // CreateIntegrationRequest represents the request to create a connection.
 type CreateIntegrationRequest struct {
+	// Slug is optional; ManagedBy is set by `sp apply` only (never decoded).
+	Slug      *string        `json:"slug,omitempty"`
+	ManagedBy *string        `json:"-"`
 	Type      string         `json:"type"`
 	Name      string         `json:"name"`
 	Enabled   *bool          `json:"enabled,omitempty"`
@@ -275,6 +282,8 @@ type CreateIntegrationRequest struct {
 
 // UpdateIntegrationRequest represents the request to update a connection.
 type UpdateIntegrationRequest struct {
+	Slug      *string        `json:"slug,omitempty"`
+	ManagedBy *string        `json:"-"`
 	Name      *string        `json:"name,omitempty"`
 	Enabled   *bool          `json:"enabled,omitempty"`
 	IsDefault *bool          `json:"isDefault,omitempty"`
@@ -290,6 +299,8 @@ func toResponse(conn *models.Integration, includeSettings bool) *IntegrationResp
 		UID:       conn.UID,
 		Type:      string(conn.Type),
 		Name:      conn.Name,
+		Slug:      conn.Slug,
+		ManagedBy: conn.ManagedBy,
 		Enabled:   conn.Enabled,
 		IsDefault: conn.IsDefault,
 		CreatedAt: conn.CreatedAt,
@@ -499,6 +510,8 @@ func (s *Service) CreateIntegration(
 	}
 
 	conn := models.NewIntegration(org.UID, connType, req.Name)
+	conn.Slug = req.Slug
+	conn.ManagedBy = req.ManagedBy
 
 	if req.Enabled != nil {
 		conn.Enabled = *req.Enabled
@@ -1168,6 +1181,8 @@ func (s *Service) UpdateIntegration(
 		Name:      req.Name,
 		Enabled:   req.Enabled,
 		IsDefault: req.IsDefault,
+		Slug:      req.Slug,
+		ManagedBy: req.ManagedBy,
 	}
 
 	if req.Settings != nil {
@@ -2239,4 +2254,12 @@ func statusCodeFromErr(err error) int {
 	}
 
 	return code
+}
+
+// EffectiveSettings returns the plaintext effective settings of a channel
+// (public and private merged). It exists for `sp apply`, which diffs a
+// manifest against the stored channel; the result must never be logged or
+// echoed.
+func (s *Service) EffectiveSettings(ctx context.Context, conn *models.Integration) (map[string]any, error) {
+	return s.loadDecryptedSettings(ctx, conn)
 }

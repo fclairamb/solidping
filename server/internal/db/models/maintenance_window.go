@@ -16,10 +16,15 @@ type MaintenanceWindow struct {
 	EndAt           time.Time  `bun:"end_at,notnull"`
 	Recurrence      string     `bun:"recurrence,notnull"`
 	RecurrenceEnd   *time.Time `bun:"recurrence_end"`
-	CreatedBy       *string    `bun:"created_by"`
-	CreatedAt       time.Time  `bun:"created_at,notnull"`
-	UpdatedAt       time.Time  `bun:"updated_at,notnull"`
-	DeletedAt       *time.Time `bun:"deleted_at"`
+	// Slug is the optional per-org-unique manifest key `sp apply` matches on.
+	// ManagedBy names the manifest that owns the row; prune only deletes rows
+	// it owns.
+	Slug      *string    `bun:"slug"`
+	ManagedBy *string    `bun:"managed_by"`
+	CreatedBy *string    `bun:"created_by"`
+	CreatedAt time.Time  `bun:"created_at,notnull"`
+	UpdatedAt time.Time  `bun:"updated_at,notnull"`
+	DeletedAt *time.Time `bun:"deleted_at"`
 }
 
 // NewMaintenanceWindow creates a new maintenance window with generated UID.
@@ -46,6 +51,9 @@ type MaintenanceWindowUpdate struct {
 	EndAt         *time.Time
 	Recurrence    *string
 	RecurrenceEnd *time.Time
+	// Slug and ManagedBy are written by `sp apply` only.
+	Slug      *string
+	ManagedBy *string
 }
 
 // ListMaintenanceWindowsFilter provides filtering options for listing maintenance windows.

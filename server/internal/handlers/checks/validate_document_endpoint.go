@@ -34,7 +34,8 @@ type ValidateDocumentResponse struct {
 }
 
 // IsDocumentBody reports whether a request body is a whole export/manifest
-// document — a mapping with a top-level `checks` list — as opposed to a single
+// document — a mapping with a top-level `checks` (or `channels`,
+// `maintenanceWindows`, `statusPages`) list — as opposed to a single
 // check definition. JSON first, then YAML, mirroring ParseManifest's sniffing
 // and the CLI's isExportDocumentShape.
 //
@@ -50,9 +51,15 @@ func IsDocumentBody(body []byte) bool {
 		}
 	}
 
-	_, ok := generic["checks"].([]any)
+	// A manifest of only channels, windows or status pages (spec
+	// 2026-11-21-01) is a document too.
+	for _, key := range []string{"checks", "channels", "maintenanceWindows", "statusPages"} {
+		if _, ok := generic[key].([]any); ok {
+			return true
+		}
+	}
 
-	return ok
+	return false
 }
 
 // ValidateDocumentForOrg validates a whole document FOR ONE ORGANIZATION: the

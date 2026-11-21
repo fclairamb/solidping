@@ -772,6 +772,18 @@ func (c *SolidPingClient) ExportChecks(ctx context.Context, org string) (json.Ra
 	return doc, nil
 }
 
+// ExportAll fetches every kind the org holds (checks, channels, maintenance
+// windows, status pages) as one raw export document.
+func (c *SolidPingClient) ExportAll(ctx context.Context, org string) (json.RawMessage, error) {
+	var doc json.RawMessage
+	if _, err := c.rawRequest(ctx, http.MethodGet,
+		fmt.Sprintf("/api/v1/orgs/%s/export", org), nil, &doc); err != nil {
+		return nil, err
+	}
+
+	return doc, nil
+}
+
 // ValidateChecks posts a body to POST /checks/validate. It is hand-written
 // rather than taken from the generated client for one reason: the endpoint is
 // content-negotiated, so a single-check definition and a whole config-as-code

@@ -26,6 +26,7 @@ var (
 
 // applyPlanEntry mirrors the server-side ApplyPlanEntry for pretty-printing.
 type applyPlanEntry struct {
+	Kind         string             `json:"kind,omitempty"`
 	Slug         string             `json:"slug"`
 	PreviousSlug string             `json:"previousSlug,omitempty"`
 	Action       string             `json:"action"`
@@ -105,16 +106,41 @@ func printApplyPlan(res *applyResult) {
 	}
 
 	tbl := output.NewTable(os.Stdout)
-	tbl.AppendHeader(table.Row{"ACTION", colSlug, "DETAIL"})
-	for i := range res.Plan {
-		entry := &res.Plan[i]
-		slug := entry.Slug
-		if entry.PreviousSlug != "" {
-			slug = entry.PreviousSlug + " -> " + entry.Slug
+	tbl.AppendHeader(table.Row{colKind, "ACTION", colSlug, "DETAIL"})
+
+	// Grouped by kind, in dependency order; the server order is kept within a kind.
+	for _, kind := range planKindOrder {
+		for i := range res.Plan {
+			entry := &res.Plan[i]
+			if planKind(entry) != kind {
+				continue
+			}
+
+			slug := entry.Slug
+			if entry.PreviousSlug != "" {
+				slug = entry.PreviousSlug + " -> " + entry.Slug
+			}
+			tbl.AppendRow(table.Row{kind, strings.ToUpper(entry.Action), slug, changeSummary(entry)})
 		}
-		tbl.AppendRow(table.Row{strings.ToUpper(entry.Action), slug, changeSummary(entry)})
 	}
 	tbl.Render()
+}
+
+// kindCheck is the plan kind of a check entry.
+const kindCheck = flagCheck
+
+// planKindOrder is the order plan entries are grouped in (dependency order).
+//
+//nolint:gochecknoglobals // constant list
+var planKindOrder = []string{kindCheck, "channel", "maintenanceWindow", "statusPage"}
+
+// planKind names an entry's kind; an older server sends none, meaning a check.
+func planKind(entry *applyPlanEntry) string {
+	if entry.Kind == "" {
+		return kindCheck
+	}
+
+	return entry.Kind
 }
 
 // printApplySummary prints the counts and any warnings/errors.
@@ -257,7 +283,12 @@ func checksExportAction(ctx context.Context, cmd *cli.Command) error {
 		return cliCtx.HandleAuthError(err)
 	}
 
-	doc, err := apiClient.ExportChecks(ctx, cliCtx.GetOrg())
+	var doc json.RawMessage
+	if cmd.Bool("all-kinds") {
+		doc, err = apiClient.ExportAll(ctx, cliCtx.GetOrg())
+	} else {
+		doc, err = apiClient.ExportChecks(ctx, cliCtx.GetOrg())
+	}
 	if err != nil {
 		return cliCtx.HandleError("Failed to export checks", err)
 	}

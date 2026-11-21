@@ -1,8 +1,10 @@
 package checkworker
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -2302,4 +2304,150 @@ func TestNextPollDelay(t *testing.T) {
 	r.Equal(fallbackPollInterval, nextPollDelay(fallbackPollInterval), "an exactly-fallback hint stays the fallback")
 	r.Equal(5*time.Second, nextPollDelay(5*time.Second), "a sub-minute hint is honored as-is")
 	r.Equal(minPollDelay, nextPollDelay(time.Millisecond), "a tiny hint is floored so the fetcher cannot spin")
+}
+
+// lateTimeoutChecker ignores its context, sleeps for delay, then returns its
+// own StatusTimeout: the shape of a checker that honored its deadline but
+// needed a few ms to unwind after a process pause (spec 2026-11-20-02).
+type lateTimeoutChecker struct{ delay time.Duration }
+
+func (lateTimeoutChecker) Type() checkerdef.CheckType {
+	return checkerdef.CheckType("test-late-timeout")
+}
+func (lateTimeoutChecker) Validate(*checkerdef.CheckSpec) error { return nil }
+
+func (c lateTimeoutChecker) Execute(context.Context, checkerdef.Config) (*checkerdef.Result, error) {
+	time.Sleep(c.delay)
+
+	return &checkerdef.Result{
+		Status: checkerdef.StatusTimeout,
+		Output: map[string]any{checkerdef.OutputKeyError: "checker own timeout"},
+	}, nil
+}
+
+// TestRunCheckerGuarded_ReturnsJustAfterAbandonTimer_NotAbandoned: a checker
+// whose result lands inside the last-chance window is a normal result.
+//
+//nolint:paralleltest // mutates the package-level abandonGraceOverride
+func TestRunCheckerGuarded_ReturnsJustAfterAbandonTimer_NotAbandoned(t *testing.T) {
+	withShortAbandonGrace(t, 50*time.Millisecond)
+	lastChanceOverride = 500 * time.Millisecond
+	t.Cleanup(func() { lastChanceOverride = 0 })
+
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	checkJob := testCheckJob("test-late-timeout")
+	execTimeout := 20 * time.Millisecond
+	// Returns 80ms after the abandon timer (20ms + 50ms), inside the window.
+	checker := lateTimeoutChecker{delay: 150 * time.Millisecond}
+
+	before := abandonedCount(checkJob.Type, prommetrics.AbandonReasonIgnoredContext)
+	pausedBefore := abandonedCount(checkJob.Type, prommetrics.AbandonReasonProcessPaused)
+
+	result, err := runner.runCheckerGuarded(
+		ctx, runner.logger, checker, hangingConfig{}, checkJob, execTimeout, time.Now(),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, checkerdef.StatusTimeout, result.Status)
+	assert.Equal(t, "checker own timeout", result.Output[checkerdef.OutputKeyError],
+		"the checker's result, not the watchdog's")
+
+	assert.InDelta(t, before, abandonedCount(checkJob.Type, prommetrics.AbandonReasonIgnoredContext), metricDelta)
+	assert.InDelta(t, pausedBefore, abandonedCount(checkJob.Type, prommetrics.AbandonReasonProcessPaused), metricDelta)
+}
+
+// TestRunCheckerGuarded_HangingChecker_LogsIgnoredContextWithTiming: a checker
+// that never returns is still abandoned at ERROR with ignored_context, and the
+// line carries elapsed and exec_timeout.
+//
+//nolint:paralleltest // mutates the package-level abandonGraceOverride
+func TestRunCheckerGuarded_HangingChecker_LogsIgnoredContextWithTiming(t *testing.T) {
+	withShortAbandonGrace(t, 50*time.Millisecond)
+	lastChanceOverride = 20 * time.Millisecond
+	t.Cleanup(func() { lastChanceOverride = 0 })
+
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	checkJob := testCheckJob("test-hanging-timing")
+	before := abandonedCount(checkJob.Type, prommetrics.AbandonReasonIgnoredContext)
+
+	logs := &bytes.Buffer{}
+	logger := slog.New(slog.NewTextHandler(logs, nil))
+
+	result, err := runner.runCheckerGuarded(
+		ctx, logger, newHangingChecker(t), hangingConfig{}, checkJob, 20*time.Millisecond, time.Now(),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, checkerdef.StatusTimeout, result.Status)
+	assert.Contains(t, result.Output[checkerdef.OutputKeyError], "abandoned")
+
+	out := logs.String()
+	assert.Equal(t, 1, countLevel(out, "ERROR"))
+	assert.Contains(t, out, "reason=ignored_context")
+	assert.Contains(t, out, "exec_timeout=20ms")
+	assert.Contains(t, out, "elapsed=")
+	assert.InDelta(t, before+1, abandonedCount(checkJob.Type, prommetrics.AbandonReasonIgnoredContext), metricDelta)
+}
+
+func TestAbandonReason(t *testing.T) {
+	t.Parallel()
+
+	budget := 10 * time.Second
+	cases := []struct {
+		name     string
+		elapsed  time.Duration
+		connLost bool
+		want     string
+	}{
+		{"hang caught on time", 10*time.Second + 300*time.Millisecond, false, prommetrics.AbandonReasonIgnoredContext},
+		{"exactly twice the budget", 20 * time.Second, false, prommetrics.AbandonReasonIgnoredContext},
+		{"frozen past twice the budget", 20*time.Second + time.Millisecond, false, prommetrics.AbandonReasonProcessPaused},
+		{"outage, on time", 10 * time.Second, true, prommetrics.AbandonReasonConnectionLost},
+		{"outage caused by a pause", 5 * time.Minute, true, prommetrics.AbandonReasonProcessPaused},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, abandonReason(tc.elapsed, budget, tc.connLost))
+		})
+	}
+}
+
+// TestAbandonAfterPauseIsWarnProcessPaused: a run whose wall time is far past
+// its budget (the process was frozen) is WARN + reason=process_paused, with
+// elapsed and exec_timeout on the line. Not parallel: newCheckWorker writes
+// package-level checkjs hooks.
+//
+//nolint:paralleltest // newCheckWorker mutates package-level checkjs hooks
+func TestAbandonAfterPauseIsWarnProcessPaused(t *testing.T) {
+	worker := newCheckWorker(&config.Config{}, newClaimFailBackend(nil))
+	job := testCheckJob("test-process-paused")
+	pausedBefore := abandonedCount(job.Type, prommetrics.AbandonReasonProcessPaused)
+	ignoredBefore := abandonedCount(job.Type, prommetrics.AbandonReasonIgnoredContext)
+
+	logs := &bytes.Buffer{}
+	logger := slog.New(slog.NewTextHandler(logs, nil))
+
+	result, err := worker.abandonCheckerExecution(context.Background(), logger, job, abandonTiming{
+		duration:    2 * time.Minute,
+		elapsed:     2 * time.Minute,
+		execTimeout: 10 * time.Second,
+		budget:      15 * time.Second,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, checkerdef.StatusTimeout, result.Status)
+
+	out := logs.String()
+	assert.Zero(t, countLevel(out, "ERROR"))
+	assert.Equal(t, 1, countLevel(out, "WARN"))
+	assert.Contains(t, out, "Checker abandoned: process paused")
+	assert.Contains(t, out, "reason=process_paused")
+	assert.Contains(t, out, "elapsed=2m0s")
+	assert.Contains(t, out, "exec_timeout=10s")
+	assert.InDelta(t, pausedBefore+1, abandonedCount(job.Type, prommetrics.AbandonReasonProcessPaused), metricDelta)
+	assert.InDelta(t, ignoredBefore, abandonedCount(job.Type, prommetrics.AbandonReasonIgnoredContext), metricDelta)
 }

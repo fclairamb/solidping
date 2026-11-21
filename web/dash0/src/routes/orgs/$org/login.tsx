@@ -58,9 +58,11 @@ import {
   isOAuthAuthorizeReturnTo,
   resolveDestination,
   isInviteReturnTo,
+  oauthErrorFromReturnTo,
   orgCreationReturnTo,
   parseLoginNotice,
   startOAuthLogin,
+  stripOAuthErrorParams,
   type LoginDestination,
   type LoginNotice,
 } from "@/lib/login-destination";
@@ -94,7 +96,9 @@ export const Route = createFileRoute("/orgs/$org/login")({
     // by every escalating refresh failure) landed on the login page with
     // the "your session expired" banner silently suppressed.
     session_expired: search.session_expired === true || search.session_expired === "true",
-    returnTo: typeof search.returnTo === "string" ? search.returnTo : undefined,
+    // An OAuth error nested in returnTo (see oauthErrorFromReturnTo) is lifted
+    // into error_description below and dropped from the retry destination.
+    returnTo: typeof search.returnTo === "string" ? stripOAuthErrorParams(search.returnTo) : undefined,
     // `?demo=1` signs the visitor straight into the shared live demo on load
     // (spec 2026-09-06-02), so the marketing site can deep-link into a working
     // dashboard rather than into a login form. The coercion lives in
@@ -109,7 +113,9 @@ export const Route = createFileRoute("/orgs/$org/login")({
     // A provider login that failed server-side (unknown org, denied consent…)
     // lands here with the reason, so the visitor always sees something.
     error_description:
-      typeof search.error_description === "string" ? search.error_description : undefined,
+      typeof search.error_description === "string"
+        ? search.error_description
+        : oauthErrorFromReturnTo(typeof search.returnTo === "string" ? search.returnTo : undefined),
   }),
   component: LoginPage,
 });

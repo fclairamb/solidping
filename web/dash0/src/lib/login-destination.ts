@@ -255,6 +255,27 @@ export function stripOAuthErrorParams(path: string): string {
 }
 
 /**
+ * The OAuth error carried inside `returnTo`, or undefined.
+ *
+ * A refused provider sign-in sends the browser to the post-login destination
+ * with `?error=…&error_description=…`. That destination usually needs a
+ * session, so the route guard bounces to the login page with the whole URL,
+ * error included, nested in `returnTo`: the login page must read it there,
+ * or the visitor never sees why the sign-in failed.
+ */
+export function oauthErrorFromReturnTo(returnTo: string | undefined): string | undefined {
+  if (!returnTo) return undefined;
+
+  const withoutHash = returnTo.split("#", 1)[0];
+  const queryAt = withoutHash.indexOf("?");
+  if (queryAt === -1) return undefined;
+
+  const params = new URLSearchParams(withoutHash.slice(queryAt + 1));
+
+  return params.get("error_description") || params.get("error") || undefined;
+}
+
+/**
  * True when `returnTo` is a same-origin relative path pointing at an in-app
  * org route under the app base path. Rejects absolute URLs (`https://…`),
  * protocol-relative (`//host`) and backslash-obfuscated (`/\host`) forms so

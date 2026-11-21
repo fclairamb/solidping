@@ -719,7 +719,10 @@ function CheckDetailPage() {
   const startEditingSlug = () => {
     setSlugValue(check?.slug || "");
     setEditingSlug(true);
-    setTimeout(() => slugInputRef.current?.focus(), 0);
+    setTimeout(() => {
+      slugInputRef.current?.focus();
+      slugInputRef.current?.select();
+    }, 0);
   };
 
   const saveSlug = async () => {
@@ -1059,6 +1062,7 @@ function CheckDetailPage() {
                   <button
                     type="button"
                     onClick={startEditingSlug}
+                    data-testid="check-slug-edit-button"
                     className="text-muted-foreground hover:text-foreground p-0.5 rounded"
                   >
                     <Pencil className="h-3 w-3" />
@@ -1070,6 +1074,7 @@ function CheckDetailPage() {
                   <Hash className="h-3 w-3" aria-hidden="true" />
                   <input
                     ref={slugInputRef}
+                    data-testid="check-slug-inline-input"
                     value={slugValue}
                     onChange={(e) => setSlugValue(e.target.value)}
                     onKeyDown={(e) => {
@@ -1082,6 +1087,7 @@ function CheckDetailPage() {
                   <button
                     type="button"
                     onClick={saveSlug}
+                    data-testid="check-slug-save-button"
                     disabled={updateCheck.isPending}
                     className="text-muted-foreground hover:text-green-500 p-0.5 rounded"
                   >
@@ -1224,6 +1230,7 @@ function CheckDetailPage() {
                 <DropdownMenuItem
                   disabled={cloneCheck.isPending}
                   onSelect={handleClone}
+                  data-testid="check-clone-menu-item"
                 >
                   <Copy className="mr-2 h-4 w-4" />
                   {t("checks:detail.clone")}

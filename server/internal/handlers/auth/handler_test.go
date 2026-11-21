@@ -206,3 +206,76 @@ func TestCreateInvitationHandlerAppField(t *testing.T) { //nolint:tparallel // s
 		r.Equal(string(base.ErrorCodeValidationError), code)
 	})
 }
+
+// TestRegisterHandlerRejectsUnsendableEmail is the regression test for a
+// sign-up accepted with an address the mail sender cannot parse: Register used
+// to answer 200 "check your inbox", store the pending entry, then drop the
+// confirmation mail in enqueueEmail. It must now answer 422 VALIDATION_ERROR with a field error
+// on email and store nothing.
+func TestRegisterHandlerRejectsUnsendableEmail(t *testing.T) {
+	t.Parallel()
+
+	for _, address := range []string{"alice..b@acme.com", "ali ce@acme.com", "alice@@acme.com", "Alice <alice@acme.com>"} {
+		t.Run(address, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			svc, dbSvc, ctx := setupAuthTestService(t)
+			svc.fullCfg.Auth.RegistrationEmailPattern = ".*"
+			handler := NewHandler(svc, &config.Config{})
+
+			body, err := json.Marshal(map[string]string{
+				"name": "New User", "email": address, "password": "longenough123",
+			})
+			r.NoError(err)
+
+			httpReq := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/auth/register",
+				strings.NewReader(string(body)))
+			rec := httptest.NewRecorder()
+
+			r.NoError(handler.Register(rec, httpReq))
+			r.Equal(http.StatusUnprocessableEntity, rec.Code, rec.Body.String())
+			r.Contains(rec.Body.String(), `"email"`)
+
+			entry, err := dbSvc.GetStateEntry(ctx, nil, registrationKeyPrefix+address)
+			r.NoError(err)
+			r.Nil(entry)
+		})
+	}
+}
+
+// TestRegisterTrimsEmailBeforeStoring pins that storage and sending see the
+// same trimmed address.
+func TestRegisterTrimsEmailBeforeStoring(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, ctx := setupAuthTestService(t)
+	svc.fullCfg.Auth.RegistrationEmailPattern = ".*"
+
+	_, err := svc.Register(ctx, RegisterRequest{
+		Name: "New User", Email: "  alice@acme.com ", Password: "longenough123",
+	})
+	r.NoError(err)
+
+	entry, err := dbSvc.GetStateEntry(ctx, nil, registrationKeyPrefix+"alice@acme.com")
+	r.NoError(err)
+	r.NotNil(entry)
+}
+
+// TestCreateInvitationRejectsUnsendableEmail: an invitation to an address the
+// mail sender cannot parse is refused instead of stored unsent.
+func TestCreateInvitationRejectsUnsendableEmail(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, ctx := setupAuthTestService(t)
+
+	org := models.NewOrganization("invite-bad-email", "Invite Bad Email")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	_, err := svc.CreateInvitation(ctx, "invite-bad-email", "inviter", InviteRequest{
+		Email: "bob..x@acme.com", Role: "user", ExpiresIn: "24h", App: "dash0",
+	})
+	r.ErrorIs(err, ErrInvalidEmail)
+}

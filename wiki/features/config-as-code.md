@@ -374,3 +374,69 @@ sp checks import checks.json
 it prompts for confirmation before applying. The file extension selects the body
 format (`.json` → JSON, otherwise YAML). All three commands require an admin
 session.
+
+## Beyond checks (channels, maintenance windows, status pages)
+
+A manifest can also carry `channels`, `maintenanceWindows` and `statusPages`
+next to `checks` (same `version`). At least one kind must be non-empty, so a
+manifest of only status pages is valid. A kind whose array is absent or empty is
+**not reconciled at all**: it is never pruned, so you can manage one kind per
+file.
+
+```yaml
+version: 2
+organization: prod            # the manifest name; owns every row it creates
+checks:
+  - { name: Web, slug: web, type: http, config: { url: https://acme.example } }
+channels:
+  - slug: ops-alerts
+    name: Ops alerts
+    type: ntfy
+    settings:
+      topic: acme-ops
+      auth_token: ${env:ACME_NTFY_TOKEN}
+maintenanceWindows:
+  - slug: nightly-patching
+    title: Nightly patching
+    startAt: 2030-01-01T02:00:00Z
+    endAt: 2030-01-01T03:00:00Z
+    recurrence: daily
+    checks: [web]              # check slugs
+statusPages:
+  - slug: public
+    name: Public status
+    visibility: public
+    sections:
+      - { slug: core, name: Core, checks: [web] }
+```
+
+- **Identity.** Status pages match on `slug`. Channels and maintenance windows
+  have an optional, per-organization-unique `slug` (settable through the API as
+  well); `sp apply` matches on it. A row that has no slug is never touched,
+  except that a manifest entry whose slug is unused adopts a slug-less row with
+  exactly the same name (title for a window) when that is unambiguous, so a
+  bootstrapped manifest does not create duplicates.
+- **Ownership.** Every row apply writes is stamped with the manifest name
+  (`managed_by`). `--prune` only deletes rows owned by the manifest, under the
+  same deletion cap (counted across all kinds). An existing row with the slug
+  but another owner shows as `unmanaged` in the plan and is adopted by the
+  apply, like a check.
+- **Order.** Checks, channels, maintenance windows, status pages; prune runs
+  pages, windows, channels. References (`checks:` of a window or a section) are
+  check slugs, resolved after the checks of the same manifest, so a window can
+  reference a check created by the same apply. An unknown reference refuses the
+  whole manifest before anything is written.
+- **Status page sections.** `sections` is authoritative when present (sections
+  absent from it are removed; resources follow the manifest order); omit it to
+  leave a page's sections alone.
+- **Channel secrets.** Write `${env:NAME}` or `${param:key}` references, never
+  values. Notification senders do not resolve references at send time, so a
+  channel's references are resolved **when the manifest is applied** and the
+  value is stored encrypted like any channel secret; rotating the secret means
+  applying again. The plan masks secret settings.
+
+`sp checks export --all-kinds` (API: `GET /orgs/:org/export`) writes all four
+kinds from a live organization. Secrets are left out (`secrets: stripped`); a
+channel or window without a slug gets one derived from its name. The plan
+printed by `sp apply` is grouped by kind. The kind-neutral endpoint is
+`POST /orgs/:org/apply`; `POST /orgs/:org/checks/apply` keeps working.

@@ -999,6 +999,8 @@ type SettingsInput struct {
 
 // CreateStatusPageRequest represents a request to create a status page.
 type CreateStatusPageRequest struct {
+	// ManagedBy is set by `sp apply` only (never decoded from a body).
+	ManagedBy        *string `json:"-"`
 	Name             string  `json:"name"`
 	Slug             string  `json:"slug"`
 	Description      *string `json:"description,omitempty"`
@@ -1050,6 +1052,8 @@ type CreateStatusPageRequest struct {
 
 // UpdateStatusPageRequest represents a request to update a status page.
 type UpdateStatusPageRequest struct {
+	// ManagedBy is set by `sp apply` only (never decoded from a body).
+	ManagedBy        *string `json:"-"`
 	Name             *string `json:"name,omitempty"`
 	Slug             *string `json:"slug,omitempty"`
 	Description      *string `json:"description,omitempty"`
@@ -1215,6 +1219,8 @@ func applyCreatePublicationFields(page *models.StatusPage, req *CreateStatusPage
 }
 
 func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
+	page.ManagedBy = req.ManagedBy
+
 	if req.Description != nil {
 		page.Description = req.Description
 	}
@@ -1587,6 +1593,7 @@ func (s *Service) UpdateStatusPage(
 	}
 
 	update := models.StatusPageUpdate{
+		ManagedBy:        req.ManagedBy,
 		Name:             req.Name,
 		Slug:             req.Slug,
 		Description:      req.Description,
