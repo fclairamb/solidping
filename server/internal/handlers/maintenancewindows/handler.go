@@ -154,6 +154,13 @@ func (h *Handler) SetChecks(writer http.ResponseWriter, req *http.Request) error
 	}
 
 	if err := h.svc.SetChecks(req.Context(), orgSlug, uid, setReq); err != nil {
+		var unknown *UnknownUIDError
+		if errors.As(err, &unknown) {
+			return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+				{Name: unknown.Field, Message: "Unknown check or check group uid"},
+			})
+		}
+
 		return h.handleWindowError(writer, req, err)
 	}
 

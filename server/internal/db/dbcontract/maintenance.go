@@ -57,7 +57,45 @@ func runMaintenanceWindows(t *testing.T, fix *fixture) {
 	must.NoError(err)
 	must.Equal(title, got.Title)
 
+	runMaintenanceWindowClear(t, fix, win.UID)
+
 	must.NoError(svc.DeleteMaintenanceWindow(ctx, fix.org.UID, win.UID))
 	_, err = svc.GetMaintenanceWindow(ctx, fix.org.UID, win.UID)
 	must.Error(err)
+}
+
+func runMaintenanceWindowClear(t *testing.T, fix *fixture, uid string) {
+	t.Helper()
+
+	ctx := t.Context()
+	must := require.New(t)
+	svc := fix.svc
+	now := time.Now()
+	title := "DB upgrade (cleared)"
+
+	// Clearing description / recurrence end sets them back to NULL.
+	desc := "notes"
+	recEnd := now.Add(48 * time.Hour)
+	must.NoError(svc.UpdateMaintenanceWindow(ctx, uid, models.MaintenanceWindowUpdate{
+		Description: &desc, RecurrenceEnd: &recEnd,
+	}))
+	got, err := svc.GetMaintenanceWindow(ctx, fix.org.UID, uid)
+	must.NoError(err)
+	must.NotNil(got.Description)
+	must.NotNil(got.RecurrenceEnd)
+
+	// A plain update leaves them untouched.
+	must.NoError(svc.UpdateMaintenanceWindow(ctx, uid, models.MaintenanceWindowUpdate{Title: &title}))
+	got, err = svc.GetMaintenanceWindow(ctx, fix.org.UID, uid)
+	must.NoError(err)
+	must.NotNil(got.Description)
+	must.NotNil(got.RecurrenceEnd)
+
+	must.NoError(svc.UpdateMaintenanceWindow(ctx, uid, models.MaintenanceWindowUpdate{
+		ClearDescription: true, ClearRecurrenceEnd: true,
+	}))
+	got, err = svc.GetMaintenanceWindow(ctx, fix.org.UID, uid)
+	must.NoError(err)
+	must.Nil(got.Description)
+	must.Nil(got.RecurrenceEnd)
 }

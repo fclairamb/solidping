@@ -1,0 +1,16 @@
+post_install() {
+  cat <<'MSG'
+==> SolidPing runs as the systemd unit solidping.service:
+      sudo systemctl enable --now solidping
+==> It listens on http://localhost:4000. Its data (config.yml, config.env,
+    the SQLite database) lives in /var/lib/solidping. The first login is
+    printed in the journal: sudo journalctl -u solidping
+==> Don't run `solidping service install`: the package already ships the unit.
+MSG
+}
+
+post_upgrade() {
+  if systemctl is-active --quiet solidping.service 2>/dev/null; then
+    echo '==> Restart SolidPing to run the new version: sudo systemctl restart solidping'
+  fi
+}

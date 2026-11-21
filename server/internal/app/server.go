@@ -1269,6 +1269,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecks.POST("/vendor-status/components", checkTypesHandler.ListVendorStatusComponents)
 	// Bulk update: one PATCH body applied to many checks (spec 2026-11-05-01).
 	orgChecks.PATCH("", checksHandler.BulkUpdateChecks)
+	// Bulk delete: a list of check UIDs, per-check skips.
+	orgChecks.DELETE("", checksHandler.BulkDeleteChecks)
 	// Bulk "Switch to automatic placement" (spec 2026-09-25-06). A literal
 	// segment, registered ahead of the "/:checkUid" routes. Deprecated by the
 	// bulk PATCH above, removed after 2026-12-15.

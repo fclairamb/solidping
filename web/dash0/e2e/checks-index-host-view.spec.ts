@@ -187,9 +187,9 @@ test.describe("Checks index host view", () => {
     const row = page.getByRole("row").filter({ has: page.getByRole("link", { name: "No Duration Node", exact: true }) });
     await expect(row).toBeVisible();
 
-    // The duration column is the 5th cell: Name, Type, Target, Status,
-    // Duration, Actions.
-    const durationCell = row.getByRole("cell").nth(4);
+    // The duration column is the 6th cell: Select, Name, Type, Target,
+    // Status, Duration, Actions.
+    const durationCell = row.getByRole("cell").nth(5);
     await expect(durationCell).toHaveText("—");
 
     const rowText = (await row.innerText()).trim();

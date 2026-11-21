@@ -131,6 +131,12 @@ func TestBulkUpdateRejectsBadRequests(t *testing.T) {
 	w := newPlacementWorld(t, 0, "gravelines", "paris")
 	check := w.create(t, checks.CreateCheckRequest{})
 
+	otherOrg := models.NewOrganization("other-org", "Other Org")
+	require.NoError(t, w.db.CreateOrganization(ctx, otherOrg))
+
+	foreignGroup := models.NewCheckGroup(otherOrg.UID, "foreign", "foreign")
+	require.NoError(t, w.db.CreateCheckGroup(ctx, foreignGroup))
+
 	tooMany := make([]string, checks.MaxBulkUpdateChecks+1)
 	for idx := range tooMany {
 		tooMany[idx] = strings.Repeat("a", 8) + string(rune('a'+idx%26)) + strings.Repeat("b", idx/26)
@@ -147,7 +153,8 @@ func TestBulkUpdateRejectsBadRequests(t *testing.T) {
 		{"changes missing", bulkRequest([]string{check.UID}, ``, false)},
 		{"changes not an object", bulkRequest([]string{check.UID}, `[1]`, false)},
 		{"unsupported field", bulkRequest([]string{check.UID}, `{"enabled": false, "name": "x"}`, false)},
-		{"org reference", bulkRequest([]string{check.UID}, `{"checkGroupUid": "x"}`, false)},
+		{"unknown group", bulkRequest([]string{check.UID}, `{"checkGroupUid": "x"}`, false)},
+		{"group of another org", bulkRequest([]string{check.UID}, `{"checkGroupUid": "`+foreignGroup.UID+`"}`, false)},
 		{"wrong type", bulkRequest([]string{check.UID}, `{"enabled": "no"}`, false)},
 		{"unknown region", bulkRequest([]string{check.UID}, `{"regions": ["atlantis"]}`, false)},
 	}
@@ -440,4 +447,44 @@ func testBulkRegionChangeSkipsBrowserSealed(t *testing.T, env sealingEnv) {
 	r.NoError(err)
 	r.Equal([]string{sealTestRegion}, got.Regions, "the sealed check keeps its regions")
 	r.Equal("browser", *got.SecretsEncryption)
+}
+
+// TestBulkUpdateMovesChecksToAGroup: the group of every listed check changes,
+// and an empty UID takes them out of their group.
+func TestBulkUpdateMovesChecksToAGroup(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	w := newPlacementWorld(t, 0, "gravelines")
+
+	group := models.NewCheckGroup(w.org.UID, "prod", "prod")
+	r.NoError(w.db.CreateCheckGroup(ctx, group))
+
+	first := w.create(t, checks.CreateCheckRequest{})
+	second := w.create(t, checks.CreateCheckRequest{})
+	untouched := w.create(t, checks.CreateCheckRequest{})
+
+	resp, err := w.svc.BulkUpdateChecks(ctx, w.org.Slug, bulkRequest(
+		[]string{first.UID, second.UID}, `{"checkGroupUid": "`+group.UID+`"}`, false))
+	r.NoError(err)
+	r.Len(resp.Data, 2)
+
+	for _, uid := range []string{first.UID, second.UID} {
+		got, getErr := w.svc.GetCheck(ctx, w.org.Slug, uid, checks.GetCheckOptions{})
+		r.NoError(getErr)
+		r.NotNil(got.CheckGroupUID)
+		r.Equal(group.UID, *got.CheckGroupUID)
+	}
+
+	other, err := w.svc.GetCheck(ctx, w.org.Slug, untouched.UID, checks.GetCheckOptions{})
+	r.NoError(err)
+	r.Nil(other.CheckGroupUID, "a check that was not listed keeps its group")
+
+	_, err = w.svc.BulkUpdateChecks(ctx, w.org.Slug, bulkRequest([]string{first.UID}, `{"checkGroupUid": ""}`, false))
+	r.NoError(err)
+
+	got, err := w.svc.GetCheck(ctx, w.org.Slug, first.UID, checks.GetCheckOptions{})
+	r.NoError(err)
+	r.Nil(got.CheckGroupUID, "an empty UID ungroups the check")
 }

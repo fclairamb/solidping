@@ -1947,6 +1947,69 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+    delete:
+      tags: [Checks]
+      summary: Delete several checks at once
+      description: >-
+        Deletes the checks of `checkUids` with the rules of a single check
+        delete (spec 2026-11-21-03). Per-check: a check that cannot be deleted
+        is reported in `skipped` with a code and the others are still deleted.
+        Codes: `not_found` (also a check of another organization), `read_only`
+        (demo), `internal`, `managed` (carries the `solidping-managed` label,
+        the next apply would recreate it), `tunnel_in_use`, `error`. `dryRun`
+        evaluates every check and deletes nothing. Same permission as a single
+        delete.
+      operationId: bulkDeleteChecks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [checkUids]
+              properties:
+                checkUids:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items: {type: string}
+                dryRun: {type: boolean}
+      responses:
+        "200":
+          description: Per-check results
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted, skipped, dryRun]
+                properties:
+                  dryRun: {type: boolean}
+                  deleted:
+                    type: array
+                    description: The checks deleted (or, on a dry run, that would be).
+                    items: {type: string}
+                  skipped:
+                    type: array
+                    items:
+                      type: object
+                      required: [checkUid, code]
+                      properties:
+                        checkUid: {type: string}
+                        code:
+                          type: string
+                          enum: [not_found, read_only, internal, managed, tunnel_in_use, error]
+                        detail: {type: string}
+        "400":
+          description: No check, or more than 1000 entries in `checkUids`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/orgs/{org}/checks/stats:
     get:
       tags: [Checks]
@@ -13364,6 +13427,9 @@ components:
         enabled: {type: boolean}
         resolveOpenIncidents: {type: boolean}
         period: {type: string}
+        checkGroupUid:
+          type: string
+          description: UID of a check group of the org; an empty string takes the checks out of their group.
         placement:
           type: string
           enum: [pinned, auto]

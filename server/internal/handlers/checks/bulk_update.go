@@ -3,6 +3,7 @@ package checks
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,12 +35,12 @@ const (
 )
 
 // bulkUpdatableFields are the PATCH fields a bulk update accepts: values that
-// make sense on many checks at once and reference nothing else of the org.
-// Anything else (name, slug, config, labels, checkGroupUid...) is refused, never
-// silently ignored.
+// make sense on many checks at once. checkGroupUid is the one reference to
+// another object of the org, validated once for the whole batch. Anything else
+// (name, slug, config, labels...) is refused, never silently ignored.
 func bulkUpdatableFields() []string {
 	return []string{
-		"enabled", "resolveOpenIncidents", "period",
+		"enabled", "resolveOpenIncidents", "period", "checkGroupUid",
 		"placement", "regions", "regionCount", "regionPool",
 		"confirmationPeriodSeconds", "recoveryPeriodSeconds",
 	}
@@ -57,6 +58,7 @@ var (
 	errBulkInvalidChanges   = errors.New("changes: invalid")
 	errBulkUnsupportedField = errors.New("changes: field not supported by a bulk update")
 	errBulkUnknownRegion    = errors.New("changes.regions: unknown region")
+	errBulkUnknownGroup     = errors.New("changes.checkGroupUid: unknown check group")
 	errBulkPassive          = errors.New("a passive check has no regions")
 	errBulkInternal         = errors.New("internal error")
 )
@@ -67,6 +69,7 @@ func IsBulkUpdateRequestError(err error) bool {
 	return errors.Is(err, errBulkNoChecks) || errors.Is(err, errBulkTooManyChecks) ||
 		errors.Is(err, errBulkNoChanges) || errors.Is(err, errBulkInvalidChanges) ||
 		errors.Is(err, errBulkUnsupportedField) || errors.Is(err, errBulkUnknownRegion) ||
+		errors.Is(err, errBulkUnknownGroup) ||
 		errors.Is(err, regions.ErrForeignPrivateRegion) || errors.Is(err, regions.ErrInvalidPrivateRegionSlug)
 }
 
@@ -144,6 +147,10 @@ func (s *Service) BulkUpdateChecks(
 		if regionErr := s.validateBulkRegions(ctx, org.UID, *changes.Regions); regionErr != nil {
 			return nil, regionErr
 		}
+	}
+
+	if groupErr := s.validateBulkGroup(ctx, org.UID, changes.CheckGroupUID); groupErr != nil {
+		return nil, groupErr
 	}
 
 	var rows []*models.Check
@@ -293,6 +300,25 @@ func (s *Service) validateBulkRegions(ctx context.Context, orgUID string, reques
 		if !slices.ContainsFunc(declared, func(def regions.RegionDefinition) bool { return def.Slug == slug }) {
 			return fmt.Errorf("%w: %q", errBulkUnknownRegion, slug)
 		}
+	}
+
+	return nil
+}
+
+// validateBulkGroup checks the requested group once for the whole batch: it
+// must be a group of the org. An empty UID (leave every group) has nothing to
+// check.
+func (s *Service) validateBulkGroup(ctx context.Context, orgUID string, groupUID *string) error {
+	if groupUID == nil || *groupUID == "" {
+		return nil
+	}
+
+	if _, err := s.db.GetCheckGroup(ctx, orgUID, *groupUID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: %q", errBulkUnknownGroup, *groupUID)
+		}
+
+		return fmt.Errorf("load check group: %w", err)
 	}
 
 	return nil

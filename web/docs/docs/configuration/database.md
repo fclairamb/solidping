@@ -78,6 +78,12 @@ too. A percent-encoded host (`@%2Fvar%2Frun%2Fpostgresql/`) is not: use the
 `host` parameter. In a container, mount the host's socket directory
 (`- /var/run/postgresql:/var/run/postgresql`) and use the same URL.
 
+A `host` parameter wins over a host in the URL, as with `psql`:
+`postgresql://u:p@localhost:5432/solidping?host=/var/run/postgresql` connects
+through the socket (the port, 5432 here, names the socket file), and SolidPing
+logs it at startup. `pg_hba.conf` matches socket connections with its `local`
+lines, not its `host` lines.
+
 :::caution PgBouncer and LISTEN/NOTIFY
 SolidPing keeps one PostgreSQL `LISTEN` session per API instance for
 [live dashboard updates](../features/live-updates.md) and job wake-ups.

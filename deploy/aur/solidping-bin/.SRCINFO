@@ -1,0 +1,26 @@
+pkgbase = solidping-bin
+	pkgdesc = Distributed, self-hostable uptime monitoring (prebuilt binary)
+	pkgver = 0.52.0
+	pkgrel = 1
+	url = https://github.com/fclairamb/solidping
+	install = solidping-bin.install
+	arch = x86_64
+	arch = aarch64
+	arch = riscv64
+	license = AGPL-3.0-only
+	provides = solidping
+	conflicts = solidping
+	options = !strip
+	options = !debug
+	source = solidping.service
+	source = solidping.sysusers
+	sha256sums = 2a178aad8e7c4101e8f9a1c5868a5b80f07469edd9a7aa60526090ae2d51801d
+	sha256sums = 6cac7195b439a95a902a562e5ed9c7f630a21695a7dfe415f6a4360145039b73
+	source_x86_64 = solidping-0.52.0-x86_64.gz::https://github.com/fclairamb/solidping/releases/download/v0.52.0/solidping-linux-amd64.gz
+	sha256sums_x86_64 = f85ec3f244e9f655d6056c837f5c9822ae99411277a2f86778a98ac0568435d0
+	source_aarch64 = solidping-0.52.0-aarch64.gz::https://github.com/fclairamb/solidping/releases/download/v0.52.0/solidping-linux-arm64.gz
+	sha256sums_aarch64 = 9f0173cfa0e5d1c66b1ad7a3bfd1d44f6713f2d73d5dcff528a8078c3bff2853
+	source_riscv64 = solidping-0.52.0-riscv64.gz::https://github.com/fclairamb/solidping/releases/download/v0.52.0/solidping-linux-riscv64.gz
+	sha256sums_riscv64 = f81f9e8e25d5d6491ef322d3280996648d35ce9244eabf81fc951046426e7cda
+
+pkgname = solidping-bin
