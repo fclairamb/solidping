@@ -132,22 +132,12 @@ Behaviour, in `HandleCallback` after `findOrCreateUser`:
   user becomes owner of the default org.
 - Playwright: login page without the password form when `localLogin` is false.
 
-## Open questions
+## Resolved open questions
 
-1. **Local login off but no working SSO provider**: fail open (keep local login, warn) or
-   fail closed (instance unreachable)? *Recommended: fail open at boot, refuse the toggle in
-   the API.* Trade-off: fail open can silently re-enable a password path an operator wanted
-   gone; fail closed can lock everybody out after an IdP misconfiguration.
-2. **Does the switch also cover LDAP?** *Recommended: yes, a separate
-   `auth.ldap.enabled` already exists for operators who want LDAP only.* Trade-off: an
-   operator using LDAP + OIDC with "local login off" might expect LDAP to stay.
-3. **Where to record that super admin came from the claim**: a new column on `users`
-   (migration) or an attribute on the `user_providers` row? *Recommended: a nullable
-   `super_admin_source` column, explicit and queryable.* Trade-off: a migration on `users`
-   (both Postgres and SQLite).
-4. **Break-glass access** on an OIDC-only instance when the IdP is down: rely on
-   `SP_LOCAL_LOGIN_ENABLED=true` + `SP_ADMIN_PASSWORD` recovery at restart? *Recommended: yes,
-   document it; no hidden back door.*
+1. Local login off with no working SSO provider: fail open at boot (keep local login on and log a warning); the API refuses to turn local login off while no SSO provider is enabled. (autopilot: recommended answer)
+2. The switch also covers LDAP; operators who want LDAP-only keep using the existing `auth.ldap.enabled`. (autopilot: recommended answer)
+3. Record the claim-granted super admin in a new nullable `users.super_admin_source` column (migration on Postgres and SQLite). (autopilot: recommended answer)
+4. Break-glass access is `SP_LOCAL_LOGIN_ENABLED=true` + `SP_ADMIN_PASSWORD` at restart, documented; no hidden back door. (autopilot: recommended answer)
 
 ## Closing the issue
 
