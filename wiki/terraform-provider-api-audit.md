@@ -106,6 +106,24 @@ PATCHes it on update. Sections/resources are nested sub-resources under their ow
 (`/status-pages/:uid/sections/...`) — a v1 `solidping_status_page` resource manages the page
 header; section/resource management is a future nested-resource concern, not a read-back gap.
 
+### `solidping_maintenance_window` → `handlers/maintenancewindows/` ⚠️ (clearing + check-validation gaps)
+
+Added by spec `2026-11-21-04-terraform-provider-repo` (Step 1). Routes: `orgs/:org/maintenance-windows`
+(`server.go:2266-2273`). Files below are under `server/internal/handlers/maintenancewindows/`
+unless stated.
+
+| Property | Status | Evidence |
+|---|---|---|
+| Create returns full object | ✅ | `Create` → `201` with `MaintenanceWindowResponse` incl. `uid`, `recurrence`, `recurrenceEnd`, computed `status`/`nextOccurrences` (`handler.go:64-81`, `service.go:145-183`). Does **not** accept `checkUids`: the provider calls `PUT /:uid/checks` right after (not a gap, but a two-step create that can leave a window without checks if the second call fails). |
+| GET by uid read-back fidelity | ✅ | `GET /:uid` returns every Create field: title, description, startAt, endAt, recurrence, recurrenceEnd, slug (`service.go:51-71`, `413-428`, `handler.go:83-94`). `check_uids` are **not** in that body: read them with `GET /:uid/checks` (`{data:[{uid,checkUid,checkGroupUid}]}`, `handler.go:130-143`, `service.go:326-360`), ordered by `created_at`, so the provider must sort/treat as a set. `status`, `nextOccurrences`, `createdAt`, `updatedAt`, `createdBy`, `managedBy` are computed/read-only. |
+| PATCH partial | ⚠️ | Partial update works (`UpdateRequest` pointers, `service.go:76-85`, `234-299`), validates time range against stored values. **Cannot clear** `description` or `recurrenceEnd`: `nil` means "unchanged", and the DB layer only sets the column when non-nil (`db/postgres/postgres.go:7092-7135`, same in sqlite `sqlite.go:7041`). Dropping `recurrence_end` from the Terraform config would never reach the server: perpetual diff. Gap 1. |
+| `check_uids` via `PUT /:uid/checks` | ⚠️ | Replace-all semantics in one transaction (`service.go:362-395`, `db/postgres/postgres.go:7152-7195`), `204`. But `checkUids`/`checkGroupUids` are **not validated** to exist or to belong to the org: a foreign or unknown uid is inserted (cross-tenant link, or an FK/500 error instead of a `VALIDATION_ERROR`). Gap 2. |
+| DELETE → 404 when gone | ✅ | Soft delete; a second call hits `GetMaintenanceWindow` (`deleted_at IS NULL`) → `ErrMaintenanceWindowNotFound` → `404 MAINTENANCE_WINDOW_NOT_FOUND` (`service.go:301-324`, `handler.go:174-186`). GET and PATCH on a deleted window give the same `404`, which maps to "removed from state". |
+| Import by `org/uid` | ✅ | All routes take `:uid` (`server.go:2268-2273`). |
+
+No secret fields. `slug`/`managedBy` are set by `sp apply`; the provider should not expose
+`managed_by` (a window written by the provider is not manifest-owned).
+
 ## Cross-cutting (all resources) ✅
 
 - **Auth** — org-scoped PAT via `POST /api/v1/orgs/:org/tokens` (`server.go:374-376`,
@@ -121,6 +139,8 @@ header; section/resource management is a future nested-resource concern, not a r
 | # | Gap | Severity | Follow-up |
 |---|---|---|---|
 | 1 | `escalation-policies` and `on-call-schedules` are only addressable by **slug**, not **uid**; `terraform import org/uid` cannot fetch them. | Blocks clean `import org/uid` for 2 of 5 resources. | `specs/todos/2026-05-25-14-uid-addressing-escalation-oncall.md` |
+| 3 | `PATCH /maintenance-windows/:uid` cannot clear `description` or `recurrenceEnd`. | Perpetual diff when removed from config. | `specs/todos/2026-11-21-05-maintenance-window-patch-clear-fields.md` |
+| 4 | `PUT /maintenance-windows/:uid/checks` does not validate check / check-group uids (existence, org). | Cross-tenant link or 500 instead of a validation error. | `specs/todos/2026-11-21-06-maintenance-window-set-checks-validate-uids.md` |
 | 2 | `escalation-policies` and `on-call-schedules` are missing from `wiki/api-specification/`. | Docs only; non-blocking. | Folded into task `14` (doc the endpoints while adding uid routes). |
 
 Everything else required for a clean declarative lifecycle (create-returns-full-object,
