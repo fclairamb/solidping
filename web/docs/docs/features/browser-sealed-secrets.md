@@ -59,8 +59,10 @@ Each private location seals either:
 To use a shared key: **Organization → Private locations → Use a shared region key**. The browser generates the key, shows the secret `AGE-SECRET-KEY-1…` once (copy or download it, and keep a copy in your password manager) and sends only the public `age1…` half to SolidPing. Give the secret to every agent of the location:
 
 ```bash
-SP_AGENT_REGION_KEYS=AGE-SECRET-KEY-1...      # comma-separated
-SP_AGENT_REGION_KEYS_FILE=/run/secrets/region-keys   # one key per line, # comments
+# comma-separated
+SP_AGENT_REGION_KEYS=AGE-SECRET-KEY-1...
+# one key per line, # comments
+SP_AGENT_REGION_KEYS_FILE=/run/secrets/region-keys
 ```
 
 The agent logs the fingerprint of each key it loads and advertises it to the server (never the key). The location page warns when no active agent holds the current key.

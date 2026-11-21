@@ -194,7 +194,8 @@ BytePlus ModelArk example:
 SP_AI_PROVIDER=openai
 SP_AI_BASE_URL=https://ark.ap-southeast.bytepluses.com/api/v3
 SP_AI_MODEL=glm-5.3-flash
-SP_AI_API_KEY=...          # activate the model in the Ark console first
+# activate the model in the Ark console first
+SP_AI_API_KEY=...
 ```
 
 Every LLM call is logged with the organization, the check, the purpose

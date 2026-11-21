@@ -84,7 +84,8 @@ itself on its first boot and remembers.
 So the whole configuration is:
 
 ```bash
-SP_TELEGRAM_BOT_TOKEN=123456789:AAExampleTokenReplaceMe   # SECRET
+# SECRET
+SP_TELEGRAM_BOT_TOKEN=123456789:AAExampleTokenReplaceMe
 ```
 
 or, in the config file:
