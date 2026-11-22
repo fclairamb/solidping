@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.53.0](https://github.com/fclairamb/solidping/compare/v0.52.0...v0.53.0) (2026-11-22)
+
+
+### Features
+
+* **auth:** OIDC-only sign-in mode, with admin roles granted from the identity provider's groups ([#966](https://github.com/fclairamb/solidping/issues/966)) ([1b51f89](https://github.com/fclairamb/solidping/commit/1b51f898e7fcf279af841177fad43a8450655604))
+* **service:** `install` writes a `config.env` file that the systemd unit loads through `EnvironmentFile` ([#948](https://github.com/fclairamb/solidping/issues/948)) ([e4b7fc4](https://github.com/fclairamb/solidping/commit/e4b7fc4190438df2594becce519cb9b425ed0ddb))
+
+
+### Bug Fixes
+
+* **security:** admin rights granted from OIDC groups stay revocable, resolved notification channel references are masked, and browser check popups are contained ([#976](https://github.com/fclairamb/solidping/issues/976)) ([6e0f09e](https://github.com/fclairamb/solidping/commit/6e0f09e46b6d4de164cce4625a44c4c3c8fe57f7))
+* **security:** WebRTC is blocked around the browser egress proxy, and an invalid `?lang=` no longer breaks a status page ([#957](https://github.com/fclairamb/solidping/issues/957)) ([79bdc82](https://github.com/fclairamb/solidping/commit/79bdc82985b42ca57f87b8826466a52e729ebdd9))
+* **aggregation:** the raw results backlog is drained in a single run, and the aggregation lag is logged ([#978](https://github.com/fclairamb/solidping/issues/978)) ([26b93cd](https://github.com/fclairamb/solidping/commit/26b93cd90e1dc6dd711fe8635a42349702e5a7fd))
+* **auth:** OAuth code-exchange failures are logged and shown, including a refused sign-in on the invitation page ([#959](https://github.com/fclairamb/solidping/issues/959), [#974](https://github.com/fclairamb/solidping/issues/974)) ([a20f951](https://github.com/fclairamb/solidping/commit/a20f9513c23aae0de7dcaeffddaac6d6c229ab42), [c4a8dca](https://github.com/fclairamb/solidping/commit/c4a8dca5918a874863d4613306c5d83926d94db5))
+* SMTP 4xx replies are retried, agent authentication answers 503 on a database error, and check group lookups are scoped to the organization ([#973](https://github.com/fclairamb/solidping/issues/973)) ([88179aa](https://github.com/fclairamb/solidping/commit/88179aaa9e00b5f824a7becebe009f1944ff9212))
+* stricter email validation, a guard against translator crashes, unique slugs for cloned checks, and watchdog pauses ([#959](https://github.com/fclairamb/solidping/issues/959)) ([a20f951](https://github.com/fclairamb/solidping/commit/a20f9513c23aae0de7dcaeffddaac6d6c229ab42))
+* **deps:** Go dependency updates: goja, oapi-codegen v2.9.0, mongo-driver v2.10.1 and non-major bumps ([#950](https://github.com/fclairamb/solidping/issues/950), [#955](https://github.com/fclairamb/solidping/issues/955), [#968](https://github.com/fclairamb/solidping/issues/968), [#972](https://github.com/fclairamb/solidping/issues/972), [#975](https://github.com/fclairamb/solidping/issues/975), [#979](https://github.com/fclairamb/solidping/issues/979))
+
 ## [0.52.0](https://github.com/fclairamb/solidping/compare/v0.51.0...v0.52.0) (2026-11-19)
 
 
