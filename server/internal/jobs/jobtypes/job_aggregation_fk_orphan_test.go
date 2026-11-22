@@ -195,7 +195,7 @@ func TestAggregatePeriod_OrphanBucketIsInert(t *testing.T) {
 	run := &AggregationJobRun{}
 	jctx := &jobdef.JobContext{DBService: dbSvc, Logger: slog.Default()}
 
-	aggregated, err := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
+	aggregated, _, err := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
 	r.NoError(err, "an orphan bucket must not surface an error from aggregatePeriod")
 	r.False(aggregated)
 
@@ -244,10 +244,10 @@ func TestRun_OrphanDoesNotHaltAggregation(t *testing.T) {
 	_, err := dbSvc.GetResult(ctx, orphanUID)
 	r.NoError(err, "the orphan raw row must remain, never consumed by the rollup")
 
-	// Work was done, so the follow-up is scheduled immediately (not halted).
+	// The backlog was drained, so the follow-up is scheduled ~1h out (not halted).
 	r.Len(jobs.scheduledAt, 1)
-	r.WithinDuration(time.Now(), jobs.scheduledAt[0], 2*time.Minute,
-		"a run that aggregated must reschedule immediately, proving aggregation is alive")
+	r.WithinDuration(time.Now().Add(1*time.Hour), jobs.scheduledAt[0], 2*time.Minute,
+		"a drained run must still schedule its follow-up, proving aggregation is alive")
 }
 
 // TestRun_OrphanOnlyBacklogReschedules pins that when the entire old backlog is

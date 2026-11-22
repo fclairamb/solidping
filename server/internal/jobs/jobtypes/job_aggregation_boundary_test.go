@@ -37,7 +37,7 @@ func TestAggregatePeriod_CompactsFinalMillisecondRow(t *testing.T) {
 	run := &AggregationJobRun{}
 	jctx := &jobdef.JobContext{DBService: dbSvc, Logger: slog.Default()}
 
-	aggregated, err := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
+	aggregated, _, err := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
 	r.NoError(err)
 	r.True(aggregated, "a raw row on the final millisecond of the hour must be compacted, not stranded")
 

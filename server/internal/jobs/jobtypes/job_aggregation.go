@@ -64,6 +64,10 @@ func (d *AggregationJobDefinition) CreateJobRun(config json.RawMessage) (jobdef.
 // AggregationJobRun is an executable aggregation job instance.
 type AggregationJobRun struct {
 	config AggregationJobConfig
+
+	// Drain limits; zero means the defaults (tests shrink them).
+	budget     time.Duration
+	maxBuckets int
 }
 
 // Run executes the aggregation job.
@@ -78,50 +82,28 @@ func (r *AggregationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 	// maybeSampleResultsRowCount for why this must not run on every org's job.
 	maybeSampleResultsRowCount(ctx, jctx)
 
-	// Define aggregation stages in priority order
-	aggregations := []struct {
-		sourcePeriod string
-		targetPeriod string
-	}{
-		{periodRaw, periodHour},  // Priority 1: raw → hour
-		{periodHour, periodDay},  // Priority 2: hour → day
-		{periodDay, periodMonth}, // Priority 3: day → month
-	}
+	// Drain the backlog inside this run: each pass rolls up one bucket of the
+	// highest-priority stage that has work, and passes repeat until nothing is
+	// left, a stage errors, or the run's budget is spent. Rolling up a single
+	// bucket per job run made an org with many check × region pairs pay one job
+	// round-trip (pickup latency, competing jobs) per bucket, so a busy queue let
+	// the hourly raw backlog outgrow the raw retention.
+	//
+	// A stage error is captured (not returned early) so the "schedule next run"
+	// below still fires: a poisoned bucket must degrade to "this bucket is
+	// stuck", never "aggregation for the org is dead" (spec 2026-07-12-01 §1).
+	// Discovery (§2) already excludes the FK-orphan buckets that caused the
+	// original halt; this is the backend-independent safety net for any other
+	// persistent stage error.
+	stats, stageErr := r.drain(ctx, jctx, orgUID)
 
-	// Try each aggregation stage until one succeeds or errors. A stage error is
-	// captured (not returned early) so the "schedule next run" below still fires:
-	// a poisoned bucket must degrade to "this bucket is stuck", never
-	// "aggregation for the org is dead" (spec 2026-07-12-01 §1). Discovery (§2)
-	// already excludes the FK-orphan buckets that caused the original halt; this
-	// is the backend-independent safety net for any other persistent stage error.
-	workDone := false
-	var stageErr error
-	for i := range aggregations {
-		agg := &aggregations[i]
-		aggregated, err := r.aggregatePeriod(ctx, jctx, orgUID, agg.sourcePeriod, agg.targetPeriod)
-		if err != nil {
-			log.ErrorContext(ctx, "Aggregation error", "error", err, "source", agg.sourcePeriod, "target", agg.targetPeriod)
-			stageErr = err
+	logAggregationRun(ctx, jctx, stats, stageErr)
 
-			break // Stop after a failing stage, but still schedule the follow-up.
-		}
-		if aggregated {
-			workDone = true
-			log.DebugContext(ctx, "Aggregated data", "source", agg.sourcePeriod, "target", agg.targetPeriod)
-
-			break // Process one aggregation per run
-		}
-	}
-
-	if stageErr == nil && !workDone {
-		log.DebugContext(ctx, "No aggregation work found")
-	}
-
-	// Schedule next run. Only a run that actually rolled a bucket up retries
-	// immediately (delay=0) to drain the backlog; a stage error uses the +1h
-	// delay so a persistently poisoned bucket can never spin at delay=0.
+	// Schedule next run. Only a run that stopped on its budget with work left
+	// retries immediately (delay=0); a drained run, or a stage error, waits
+	// +1h so a persistently poisoned bucket can never spin at delay=0.
 	delay := 1 * time.Hour
-	if workDone {
+	if stageErr == nil && stats.budgetExhausted {
 		delay = 0
 	}
 
@@ -148,21 +130,184 @@ func (r *AggregationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 	return nil
 }
 
-// aggregatePeriod performs a single aggregation operation for a specific period type.
+// Default per-run drain limits. A run stops rolling up buckets once either is
+// reached and, with work left, reschedules itself immediately: the budget
+// keeps one org's backlog from monopolizing a job runner, the cap bounds a run
+// even when buckets are very cheap.
+const (
+	defaultAggregationRunBudget     = 30 * time.Second
+	defaultAggregationRunMaxBuckets = 1000
+)
+
+// aggregationLagReportThreshold is how far behind its retention boundary the
+// oldest raw bucket rolled up in a run must be for the run to be logged at
+// INFO. The idle reschedule is +1h, so up to an hour of lag is the normal
+// cadence; beyond it the aggregation is falling behind.
+const aggregationLagReportThreshold = time.Hour
+
+// aggregationRunStats summarizes one aggregation run.
+type aggregationRunStats struct {
+	buckets         map[string]int // rolled-up buckets per source period
+	budgetExhausted bool           // stopped on budget/cap with work possibly left
+	oldestRawStart  time.Time      // oldest raw bucket rolled up (zero if none)
+	rawBoundary     time.Time      // raw retention boundary at the end of the run
+	duration        time.Duration
+}
+
+func (s *aggregationRunStats) total() int {
+	n := 0
+	for _, count := range s.buckets {
+		n += count
+	}
+
+	return n
+}
+
+// rawLag is how far the oldest raw bucket rolled up in the run lagged behind
+// the raw retention boundary (zero when no raw bucket was rolled up).
+func (s *aggregationRunStats) rawLag() time.Duration {
+	if s.oldestRawStart.IsZero() || s.rawBoundary.IsZero() {
+		return 0
+	}
+
+	// The bucket became aggregatable once the boundary passed its end.
+	lag := s.rawBoundary.Sub(s.oldestRawStart.Truncate(time.Hour).Add(time.Hour))
+	if lag < 0 {
+		return 0
+	}
+
+	return lag
+}
+
+// drain rolls up buckets, highest-priority stage first, until no stage has
+// work, a stage errors, or the run's budget or bucket cap is reached.
+func (r *AggregationJobRun) drain(
+	ctx context.Context, jctx *jobdef.JobContext, orgUID string,
+) (*aggregationRunStats, error) {
+	log := jctx.Logger
+
+	// Aggregation stages in priority order.
+	aggregations := []struct {
+		sourcePeriod string
+		targetPeriod string
+	}{
+		{periodRaw, periodHour},  // Priority 1: raw → hour
+		{periodHour, periodDay},  // Priority 2: hour → day
+		{periodDay, periodMonth}, // Priority 3: day → month
+	}
+
+	budget := r.budget
+	if budget <= 0 {
+		budget = defaultAggregationRunBudget
+	}
+
+	maxBuckets := r.maxBuckets
+	if maxBuckets <= 0 {
+		maxBuckets = defaultAggregationRunMaxBuckets
+	}
+
+	start := time.Now()
+	stats := &aggregationRunStats{buckets: map[string]int{}}
+
+	defer func() { stats.duration = time.Since(start) }()
+
+	for {
+		if ctx.Err() != nil {
+			return stats, ctx.Err()
+		}
+
+		if stats.total() >= maxBuckets || time.Since(start) >= budget {
+			stats.budgetExhausted = true
+
+			return stats, nil
+		}
+
+		workDone := false
+
+		for i := range aggregations {
+			agg := &aggregations[i]
+
+			aggregated, periodStart, err := r.aggregatePeriod(ctx, jctx, orgUID, agg.sourcePeriod, agg.targetPeriod)
+			if err != nil {
+				log.ErrorContext(ctx, "Aggregation error", "error", err, "source", agg.sourcePeriod, "target", agg.targetPeriod)
+
+				return stats, err
+			}
+
+			if aggregated {
+				workDone = true
+				stats.buckets[agg.sourcePeriod]++
+
+				if agg.sourcePeriod == periodRaw &&
+					(stats.oldestRawStart.IsZero() || periodStart.Before(stats.oldestRawStart)) {
+					stats.oldestRawStart = periodStart
+				}
+
+				log.DebugContext(ctx, "Aggregated data", "source", agg.sourcePeriod, "target", agg.targetPeriod)
+
+				break // Re-check the highest-priority stage first.
+			}
+		}
+
+		if !workDone {
+			return stats, nil
+		}
+	}
+}
+
+// logAggregationRun reports a run. A run that fell behind its raw retention
+// boundary by more than aggregationLagReportThreshold, or that stopped on its
+// budget, is logged at INFO so a lagging org shows up in the logs before its
+// charts notice; any other run stays at DEBUG.
+func logAggregationRun(ctx context.Context, jctx *jobdef.JobContext, stats *aggregationRunStats, stageErr error) {
+	if !stats.oldestRawStart.IsZero() {
+		rawHours, _, _ := retentionFromConfig(ctx, jctx)
+		if boundary, err := calculateAggregationBoundary(periodRaw, rawHours, 1, 1); err == nil {
+			stats.rawBoundary = boundary
+		}
+	}
+
+	args := []any{
+		"buckets", stats.total(),
+		"raw_buckets", stats.buckets[periodRaw],
+		"hour_buckets", stats.buckets[periodHour],
+		"day_buckets", stats.buckets[periodDay],
+		"duration_ms", stats.duration.Milliseconds(),
+		"budget_exhausted", stats.budgetExhausted,
+	}
+
+	lag := stats.rawLag()
+	if lag > 0 {
+		args = append(args, "oldest_raw_start", stats.oldestRawStart, "raw_lag_minutes", int(lag.Minutes()))
+	}
+
+	switch {
+	case stageErr == nil && stats.total() == 0:
+		jctx.Logger.DebugContext(ctx, "No aggregation work found")
+	case stats.budgetExhausted || lag > aggregationLagReportThreshold:
+		jctx.Logger.InfoContext(ctx, "Aggregation is behind its raw retention", args...)
+	default:
+		jctx.Logger.DebugContext(ctx, "Aggregation run complete", args...)
+	}
+}
+
+// aggregatePeriod performs a single aggregation operation for a specific
+// period type. It also returns the start of the target bucket it rolled up
+// (zero when nothing was aggregated).
 func (r *AggregationJobRun) aggregatePeriod(
 	ctx context.Context,
 	jctx *jobdef.JobContext,
 	orgUID, sourcePeriod, targetPeriod string,
-) (bool, error) {
+) (bool, time.Time, error) {
 	log := jctx.Logger
 
 	// 1. Find work: get one check-region pair with data ready to aggregate
 	checkUID, region, periodStart, found, err := r.findAggregatableResults(ctx, jctx, orgUID, sourcePeriod)
 	if err != nil {
-		return false, err
+		return false, time.Time{}, err
 	}
 	if !found {
-		return false, nil // Nothing to aggregate
+		return false, time.Time{}, nil // Nothing to aggregate
 	}
 
 	log.DebugContext(ctx, "Found data to aggregate",
@@ -175,7 +320,7 @@ func (r *AggregationJobRun) aggregatePeriod(
 	// 2. Calculate period boundaries for the target period.
 	periodStart, periodEnd, err := calculatePeriodBoundaries(periodStart, targetPeriod)
 	if err != nil {
-		return false, err
+		return false, time.Time{}, err
 	}
 
 	// 3. Bound the source fetch by the exclusive next-bucket start
@@ -222,11 +367,11 @@ func (r *AggregationJobRun) aggregatePeriod(
 			return aggregateResults(sources, targetPeriod, periodStart, periodEnd), sourceUIDs, nil
 		})
 	if err != nil {
-		return false, fmt.Errorf("failed to compact results: %w", err)
+		return false, time.Time{}, fmt.Errorf("failed to compact results: %w", err)
 	}
 
 	if outcome.Fetched == 0 {
-		return false, nil // Nothing to aggregate.
+		return false, time.Time{}, nil // Nothing to aggregate.
 	}
 
 	// Progress guard (spec 2026-07-11-16 §2): a marker-only bucket has nothing to
@@ -239,7 +384,7 @@ func (r *AggregationJobRun) aggregatePeriod(
 			"check_uid", checkUID, "region", region, "period_start", periodStart,
 			"fetched", outcome.Fetched)
 
-		return false, nil
+		return false, time.Time{}, nil
 	}
 
 	if outcome.DeletedCount == 0 {
@@ -251,7 +396,7 @@ func (r *AggregationJobRun) aggregatePeriod(
 	log.DebugContext(ctx, "Aggregation complete",
 		"source_count", outcome.Fetched, "deleted_count", outcome.DeletedCount)
 
-	return true, nil
+	return true, periodStart, nil
 }
 
 // findAggregatableResults finds one check-region pair with data ready to aggregate.
