@@ -24,6 +24,11 @@ const maskedValue = "***"
 // value is the resolved one, encrypted by the integrations service like any
 // other channel secret. The plan never prints a resolved value.
 //
+// A `${param:}` / `${env:}` reference is only accepted under a key the channel
+// type declares secret (credentials.ConnectionSecretFields): any other key is
+// stored in the public `settings` column, which the integrations list and the
+// export return in clear, so a resolved value there would be readable.
+//
 //nolint:cyclop,funlen // validate → match → diff → closures
 func (s *Service) planChannels(
 	ctx context.Context, org *models.Organization, doc *checks.ExportDocument, manifest string,
@@ -63,6 +68,11 @@ func (s *Service) planChannels(
 			return nil, invalidf("channel %q needs a name and a type", channel.Slug)
 		}
 
+		refKeys, err := channelRefKeys(&channel)
+		if err != nil {
+			return nil, err
+		}
+
 		settings, _, resolveErr := secretref.ResolveConfig(ctx, channel.Settings, resolve)
 		if resolveErr != nil {
 			return nil, fmt.Errorf("channel %q: %w", channel.Slug, resolveErr)
@@ -92,7 +102,7 @@ func (s *Service) planChannels(
 				channel.Slug, existing.Type, channel.Type)
 		}
 
-		changes, err := s.diffChannel(ctx, existing, &channel, settings)
+		changes, err := s.diffChannel(ctx, existing, &channel, settings, refKeys)
 		if err != nil {
 			return nil, err
 		}
@@ -145,9 +155,12 @@ func (s *Service) updateChannel(
 
 // diffChannel compares the manifest entry with the stored channel. Only the
 // settings keys the manifest names are compared (the server adds others, e.g. a
-// webhook signing secret); secret values are masked in the diff.
+// webhook signing secret). A value is masked in the diff when its key is
+// declared secret for the type, when the manifest fed it from a reference
+// (refKeys), or when the stored row keeps it in its private settings.
 func (s *Service) diffChannel(
 	ctx context.Context, existing *models.Integration, channel *checks.ExportChannel, settings map[string]any,
+	refKeys map[string]bool,
 ) ([]checks.CheckFieldChange, error) {
 	var changes []checks.CheckFieldChange
 
@@ -172,10 +185,7 @@ func (s *Service) diffChannel(
 		return nil, fmt.Errorf("channel %q: read stored settings: %w", channel.Slug, err)
 	}
 
-	secrets := map[string]bool{}
-	for _, key := range credentials.ConnectionSecretFields(existing.Type) {
-		secrets[key] = true
-	}
+	secrets := maskedKeys(existing, current, refKeys)
 
 	keys := make([]string, 0, len(settings))
 	for key := range settings {
@@ -199,6 +209,78 @@ func (s *Service) diffChannel(
 	}
 
 	return changes, nil
+}
+
+// maskedKeys returns the settings keys whose values a plan diff never prints:
+// the type's declared secret keys, the keys the manifest fed from a reference,
+// and any key of the effective settings that is not in the public column (it
+// comes from the encrypted private one, e.g. a key no longer in the registry).
+func maskedKeys(existing *models.Integration, current map[string]any, refKeys map[string]bool) map[string]bool {
+	secrets := map[string]bool{}
+	for _, key := range credentials.ConnectionSecretFields(existing.Type) {
+		secrets[key] = true
+	}
+
+	for key := range refKeys {
+		secrets[key] = true
+	}
+
+	for key := range current {
+		if _, public := existing.Settings[key]; !public {
+			secrets[key] = true
+		}
+	}
+
+	return secrets
+}
+
+// channelRefKeys returns the top-level settings keys whose value carries a
+// `${param:}` / `${env:}` reference (`${var:}` carries no secret and stays
+// visible, as in the checks differ). It refuses a reference under a key the
+// channel type does not declare secret: only declared keys reach the encrypted
+// private column, any other one would land in clear in the public settings.
+func channelRefKeys(channel *checks.ExportChannel) (map[string]bool, error) {
+	refKeys := map[string]bool{}
+
+	secretref.VisitStrings(channel.Settings, func(key, value string) {
+		if secretref.ContainsSecretRef(value) {
+			refKeys[key] = true
+		}
+	})
+
+	if len(refKeys) == 0 {
+		return refKeys, nil
+	}
+
+	declared := credentials.ConnectionSecretFields(models.ConnectionType(channel.Type))
+	allowed := map[string]bool{}
+
+	for _, key := range declared {
+		allowed[key] = true
+	}
+
+	var refused []string
+
+	for key := range refKeys {
+		if !allowed[key] {
+			refused = append(refused, key)
+		}
+	}
+
+	if len(refused) == 0 {
+		return refKeys, nil
+	}
+
+	sort.Strings(refused)
+
+	if len(declared) == 0 {
+		return nil, invalidf("channel %q: settings %v hold a ${param:} / ${env:} reference, "+
+			"but a %s channel has no secret setting to take one", channel.Slug, refused, channel.Type)
+	}
+
+	return nil, invalidf("channel %q: settings %v hold a ${param:} / ${env:} reference, "+
+		"which a %s channel only accepts in its secret settings %v", channel.Slug, refused, channel.Type,
+		sortedCopy(declared))
 }
 
 func boolChange(field string, from, to bool) checks.CheckFieldChange {

@@ -2,6 +2,7 @@ package manifestapply_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/manifestapply"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/paramkeys"
 	"github.com/fclairamb/solidping/server/internal/secretref"
 )
 
@@ -533,6 +535,117 @@ func TestApplyChannelSecretReferences(t *testing.T) {
 	doc.Channels[0].Settings["auth_token"] = "${env:NOT_ALLOWED}"
 	_, err := e.apply(t, doc, checks.ApplyOptions{})
 	r.ErrorIs(err, checks.ErrUnresolvedSecretRef)
+}
+
+// TestApplyChannelRefusesReferenceInPublicKey: a reference to a secret org
+// parameter under a key the type does not declare secret would land, resolved,
+// in the public settings column. Both the dry run and the apply refuse it,
+// without echoing the value, and nothing is written.
+func TestApplyChannelRefusesReferenceInPublicKey(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := setup(t)
+	ctx := t.Context()
+
+	const leaked = "ps_leaked_value"
+
+	r.NoError(e.db.SetOrgParameter(ctx, e.org.UID, paramkeys.StorageKey("acme_secret"), leaked, true))
+
+	// Create path: an extra, undeclared key.
+	doc := manifest("prod")
+	ch := channel("alerts")
+	ch.Settings["extra"] = "prefix-${param:acme_secret}"
+	doc.Channels = []checks.ExportChannel{ch}
+
+	for _, dry := range []bool{true, false} {
+		_, err := e.apply(t, doc, checks.ApplyOptions{DryRun: dry})
+		r.ErrorIs(err, manifestapply.ErrInvalidManifest)
+		r.NotContains(err.Error(), leaked)
+		r.Contains(err.Error(), "extra")
+		r.Contains(err.Error(), "auth_token", "the error names the keys that take secrets")
+	}
+
+	r.Empty(e.channels(t))
+
+	// Update path: a declared-public key of an existing channel.
+	doc.Channels = []checks.ExportChannel{channel("alerts")}
+	e.mustApply(t, doc, checks.ApplyOptions{})
+
+	doc.Channels[0].Settings["topic"] = "${param:acme_secret}"
+
+	for _, dry := range []bool{true, false} {
+		res, err := e.apply(t, doc, checks.ApplyOptions{DryRun: dry})
+		r.ErrorIs(err, manifestapply.ErrInvalidManifest)
+		r.NotContains(err.Error(), leaked)
+		r.Nil(res)
+	}
+
+	rows := e.channels(t)
+	r.Len(rows, 1)
+	r.Equal("alerts", rows[0].Settings["topic"])
+
+	raw, err := json.Marshal(rows[0].Settings)
+	r.NoError(err)
+	r.NotContains(string(raw), leaked)
+}
+
+// TestApplyChannelPlainChangeStaysVisible: the masking does not hide an
+// ordinary change of a non-secret key.
+func TestApplyChannelPlainChangeStaysVisible(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := setup(t)
+
+	doc := manifest("prod")
+	doc.Channels = []checks.ExportChannel{channel("alerts")}
+	e.mustApply(t, doc, checks.ApplyOptions{})
+
+	doc.Channels[0].Settings["topic"] = "ops-2"
+	res := e.mustApply(t, doc, checks.ApplyOptions{DryRun: true})
+
+	var found bool
+
+	for _, entry := range res.Plan {
+		for _, change := range entry.Changes {
+			if change.Field == "settings.topic" {
+				found = true
+
+				r.Equal("alerts", change.From)
+				r.Equal("ops-2", change.To)
+			}
+		}
+	}
+
+	r.True(found, "the topic change is in the plan")
+}
+
+// TestExportOmitsChannelSecretReference: after an apply with a reference under
+// a declared secret key, the export carries neither the value nor the key.
+func TestExportOmitsChannelSecretReference(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := setup(t)
+	ctx := t.Context()
+
+	const secret = "ps_export_secret"
+
+	r.NoError(e.db.SetOrgParameter(ctx, e.org.UID, paramkeys.StorageKey("ntfy_token"), secret, true))
+
+	doc := manifest("prod")
+	ch := channel("alerts")
+	ch.Settings["auth_token"] = "${param:ntfy_token}"
+	doc.Channels = []checks.ExportChannel{ch}
+	e.mustApply(t, doc, checks.ApplyOptions{})
+
+	exported, err := e.svc.Export(ctx, orgSlug)
+	r.NoError(err)
+	r.Len(exported.Channels, 1)
+	r.NotContains(exported.Channels[0].Settings, "auth_token")
+
+	raw, err := json.Marshal(exported)
+	r.NoError(err)
+	r.NotContains(string(raw), secret)
+	r.NotContains(string(raw), "auth_token")
 }
 
 func TestExportBootstrapRoundTrip(t *testing.T) {

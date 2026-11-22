@@ -79,6 +79,9 @@ func (s *Service) exportChannels(ctx context.Context, org *models.Organization, 
 			settings[key] = value
 		}
 
+		// Dropping the declared secret keys is enough: apply refuses a
+		// `${param:}` / `${env:}` reference under any other key (see
+		// channelRefKeys), so a non-secret key never carries a resolved value.
 		for _, key := range credentials.ConnectionSecretFields(row.Type) {
 			delete(settings, key)
 		}

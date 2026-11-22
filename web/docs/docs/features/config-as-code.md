@@ -295,7 +295,11 @@ statusPages:
   values. Notification senders do not resolve references at send time, so a
   channel's references are resolved **when the manifest is applied** and the
   value is stored encrypted like any channel secret; rotating the secret means
-  applying again. The plan masks secret settings.
+  applying again. The plan masks secret settings. A reference is only
+  accepted under a setting the channel type keeps encrypted (for example
+  `auth_token` for ntfy, `access_token` for Slack): under any other setting,
+  such as a webhook URL, the apply is refused, because that setting is stored
+  and exported in clear.
 
 `sp checks export --all-kinds` (API: `GET /orgs/:org/export`) writes all four
 kinds from a live organization. Secrets are left out (`secrets: stripped`); a
