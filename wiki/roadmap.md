@@ -140,7 +140,8 @@ quiet hours / holiday mode. Backlog spec:
 design notes in `research/alerting-patterns.md` §5.
 
 ### 3.3 Terraform provider import fixes
-The provider lives out of tree (`terraform-provider-solidping`); the API audit
+The provider lives out of tree (`fclairamb/terraform-provider-solidping`, v0.1.0 released
+2026-11-22, user docs at `web/docs/docs/terraform.md`); the API audit
 (`terraform-provider-api-audit.md`) found 2 of 5 resources are slug-only and
 break `terraform import org/uid`. Fix the API gaps here, then verify the
 provider's published state.

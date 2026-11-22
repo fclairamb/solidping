@@ -10,6 +10,9 @@ against it: export the current state, edit it, validate it in CI, and apply it
 back. The file is the export document — there is no second schema to learn, and
 no translation layer to drift.
 
+Already on Terraform or OpenTofu? The [`fclairamb/solidping` provider](/terraform)
+manages the same objects from there.
+
 ```bash
 sp checks export --file config.yaml   # bootstrap from live state
 sp checks validate config.yaml        # offline: no token, no network
