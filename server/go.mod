@@ -236,7 +236,7 @@ require (
 	github.com/crewjam/saml v0.6.3
 	github.com/dlclark/regexp2/v2 v2.13.2
 	github.com/docker/go-units v0.5.0
-	github.com/dop251/goja v0.0.0-20261122121755-dcce7f63c23a
+	github.com/dop251/goja v0.0.0-20261122185237-35fdc4b88e39
 	github.com/dreamscached/minequery/v2 v2.5.0
 	github.com/dustin/go-humanize v1.1.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
