@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -82,6 +83,29 @@ const webRTCFrame = `<!doctype html><html><body><script>
 parent.postMessage({frame: "cross", type: typeof RTCPeerConnection}, "*");
 </script></body></html>`
 
+// popupOpenerPage opens /popup, with its own query string, either with
+// window.open (the "open-popup" button, which then puts what window.open
+// returned in the title) or through a target=_blank link ("popup-link").
+const popupOpenerPage = `<!doctype html><html><head><title>opener</title></head><body>
+<button data-testid="open-popup"
+  onclick="document.title = 'opened:' + String(window.open('/popup' + location.search))">open</button>
+<a data-testid="popup-link" target="_blank" href="/popup">link</a>
+<script>document.querySelector("[data-testid=popup-link]").href = "/popup" + location.search;</script>
+</body></html>`
+
+// popupPage gathers ICE candidates against the STUN server in its "stun"
+// query parameter as soon as it loads.
+const popupPage = `<!doctype html><html><head><title>popup</title></head><body>
+<p data-testid="popup-page">popup</p>
+<script>
+const q = new URLSearchParams(location.search);
+if (typeof RTCPeerConnection === "function") {
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:" + q.get("stun") }] });
+  pc.createDataChannel("probe");
+  pc.createOffer().then((offer) => pc.setLocalDescription(offer));
+}
+</script></body></html>`
+
 // stunListener counts the STUN messages (magic cookie 0x2112A442) received on
 // a UDP port of the IPv4 loopback, which the egress guard classes as private.
 func stunListener(t *testing.T) (string, *atomic.Int32) {
@@ -126,6 +150,14 @@ func webRTCServer(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/frame", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(webRTCFrame))
+	})
+	mux.HandleFunc("/opener", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(popupOpenerPage))
+	})
+	mux.HandleFunc("/popup", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(popupPage))
 	})
 
 	var lc net.ListenConfig
@@ -329,6 +361,137 @@ func TestBrowserWebRTCToAPrivateAddressIsRefused(t *testing.T) {
 		r.Equal("function", report.Top, "the script is really gone")
 
 		time.Sleep(stunSettleTime)
+		r.Zero(received.Load(), "the private STUN listener never saw a packet")
+	})
+}
+
+// popupSettleTime is how long a popup is given to send its STUN request.
+const popupSettleTime = 3 * time.Second
+
+// TestBrowserPopupCannotReachAPrivateAddress is spec 2026-11-22-03's
+// regression. A popup is a separate top-level target: the WebRTC removal
+// script and the egress watch of the session's page do not reach it. The
+// Chrome is started WITHOUT the WebRTC policy flags, the way a remote
+// sidecar deployed before spec 2026-11-20-01 runs, so the only defenses
+// left are the session's: window.open returns null, and a popup opened by a
+// target=_blank link is closed at once and poisons the session. The
+// positive control, with a non-enforcing guard, proves the popup does send
+// the STUN request when nothing stops it.
+//
+//nolint:paralleltest // mutates the process-wide settings
+func TestBrowserPopupCannotReachAPrivateAddress(t *testing.T) {
+	settings, ok := liveBrowserSettings()
+	if !ok {
+		t.Skip(liveBrowserSkipReason)
+	}
+
+	if !proxyReachableFrom(settings) {
+		t.Skip("the remote Chrome cannot reach this process's loopback: the STUN listener is out of its reach")
+	}
+
+	withSettings(t, settings)
+	widenChromeStart(t)
+
+	omitWebRTCPolicyFlags.Store(true)
+	t.Cleanup(func() { omitWebRTCPolicyFlags.Store(false) })
+
+	server := webRTCServer(t)
+
+	_, port, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "http://"))
+	require.NoError(t, err)
+
+	named := egress.New(false, egress.WithPublicOverride(net.ParseIP("::1")), egress.WithLookup(
+		func(_ context.Context, host string) ([]net.IPAddr, error) {
+			if strings.HasSuffix(host, ".acme.test") {
+				return []net.IPAddr{{IP: net.ParseIP("::1")}}, nil
+			}
+
+			return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+		},
+	))
+
+	openEnforcing := func(t *testing.T, pageURL string) (context.Context, *Session) {
+		t.Helper()
+
+		ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+		t.Cleanup(cancel)
+
+		ctx = egress.WithGuard(ctx, named)
+
+		pin, err := preflightEgress(ctx, pageURL)
+		require.NoError(t, err)
+
+		session, err := openSessionPinned(ctx, ctx, pin)
+		require.NoError(t, err)
+		t.Cleanup(session.Close)
+
+		return ctx, session
+	}
+
+	t.Run("not enforcing: the popup's STUN request reaches the listener", func(t *testing.T) {
+		r := require.New(t)
+		stunAddr, received := stunListener(t)
+
+		ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+		defer cancel()
+
+		ctx = egress.WithGuard(ctx, egress.New(true))
+
+		session, err := Open(ctx)
+		r.NoError(err)
+
+		defer session.Close()
+
+		_, err = session.Navigate(ctx, server.URL+"/opener?stun="+url.QueryEscape(stunAddr))
+		r.NoError(err)
+		r.NoError(session.Click(ctx, "[data-testid=popup-link]"))
+
+		r.Eventually(func() bool { return received.Load() > 0 }, 10*time.Second, 50*time.Millisecond,
+			"the control must see the popup's STUN request, or the enforcing cases prove nothing")
+		r.NoError(session.deniedByEgress())
+	})
+
+	t.Run("enforcing: window.open returns null", func(t *testing.T) {
+		r := require.New(t)
+		stunAddr, received := stunListener(t)
+
+		pageURL := "http://www.acme.test:" + port + "/opener?stun=" + url.QueryEscape(stunAddr)
+		ctx, session := openEnforcing(t, pageURL)
+
+		_, err := session.Navigate(ctx, pageURL)
+		r.NoError(err)
+		r.NoError(session.Click(ctx, "[data-testid=open-popup]"))
+
+		title, err := pollTitleFor(ctx, session, 10*time.Second,
+			func(title string) bool { return strings.HasPrefix(title, "opened:") })
+		r.NoError(err)
+		r.Equal("opened:null", title)
+
+		time.Sleep(popupSettleTime)
+		r.Zero(received.Load(), "the private STUN listener never saw a packet")
+	})
+
+	t.Run("enforcing: a target=_blank popup is closed and poisons the session", func(t *testing.T) {
+		r := require.New(t)
+		stunAddr, received := stunListener(t)
+
+		pageURL := "http://www.acme.test:" + port + "/opener?stun=" + url.QueryEscape(stunAddr)
+		ctx, session := openEnforcing(t, pageURL)
+
+		_, err := session.Navigate(ctx, pageURL)
+		r.NoError(err)
+
+		if err := session.Click(ctx, "[data-testid=popup-link]"); err != nil {
+			r.ErrorIs(err, errPopupRefused)
+		}
+
+		r.Eventually(func() bool {
+			_, err := session.Evaluate(ctx, "document.title")
+
+			return errors.Is(err, errPopupRefused)
+		}, 10*time.Second, 50*time.Millisecond, "the popup poisons the session")
+
+		time.Sleep(popupSettleTime)
 		r.Zero(received.Load(), "the private STUN listener never saw a packet")
 	})
 }

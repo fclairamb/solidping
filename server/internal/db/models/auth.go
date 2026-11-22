@@ -403,8 +403,10 @@ func NewOrganizationMember(orgUID, userUID string, role MemberRole) *Organizatio
 
 // OrganizationMemberUpdate represents fields that can be updated.
 type OrganizationMemberUpdate struct {
-	// Role, when set, also overwrites role_source with RoleSource: a role
-	// change that names no source is a local grant (role_source = NULL).
+	// Role, when set to a different value than the current one, also
+	// overwrites role_source with RoleSource: a role change that names no
+	// source is a local grant (role_source = NULL). Setting the role it
+	// already has keeps role_source.
 	Role       *MemberRole
 	RoleSource *string
 	JoinedAt   *time.Time

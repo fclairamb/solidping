@@ -9,6 +9,7 @@ import (
 	"net"
 	neturl "net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/chromedp/cdproto"
@@ -609,18 +610,28 @@ func egressExecFlags(pin *hostPin, proxy *egressProxy) map[string]any {
 		return map[string]any{"host-resolver-rules": pin.resolverRule()}
 	}
 
-	return map[string]any{
+	flags := map[string]any{
 		"proxy-server":        proxy.URL(),
 		"proxy-bypass-list":   egressProxyBypassList,
 		"host-resolver-rules": egressResolverRules(pin, proxy.host()),
+	}
+
+	if !omitWebRTCPolicyFlags.Load() {
 		// Both spellings, each read by one build and ignored by the
 		// other (checked against a loopback STUN listener on 2026-11-20):
 		// desktop Chrome reads --webrtc-ip-handling-policy, chromedp's
 		// headless-shell only --force-webrtc-ip-handling-policy.
-		"force-webrtc-ip-handling-policy": webRTCIPHandlingPolicy,
-		"webrtc-ip-handling-policy":       webRTCIPHandlingPolicy,
+		flags["force-webrtc-ip-handling-policy"] = webRTCIPHandlingPolicy
+		flags["webrtc-ip-handling-policy"] = webRTCIPHandlingPolicy
 	}
+
+	return flags
 }
+
+// omitWebRTCPolicyFlags is a test seam: set, a Chrome this process starts
+// lacks the WebRTC IP handling policy, the way a remote sidecar whose
+// manifest predates spec 2026-11-20-01 does. Nothing outside tests sets it.
+var omitWebRTCPolicyFlags atomic.Bool //nolint:gochecknoglobals // test seam, see the doc above
 
 // egressResolverRules is the deny-by-default --host-resolver-rules of an
 // enforcing session: the pinned navigation host maps to its approved

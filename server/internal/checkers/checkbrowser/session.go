@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	neturl "net/url"
 	"strings"
@@ -11,10 +12,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	cdpruntime "github.com/chromedp/cdproto/runtime"
+	cdptarget "github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/kb"
 
@@ -98,6 +101,19 @@ type Session struct {
 	// from under an enforcing egress policy (see watchEgress). Once set, the
 	// session only ever answers with it.
 	egressDenied atomic.Pointer[egress.DeniedError]
+
+	// popupRefused is set when a page of the session opened a second page
+	// (window.open, a target=_blank link) under an enforcing policy. The
+	// popup is closed at once (see onTargetCreated) and, like an egress
+	// refusal, the session only ever answers with errPopupRefused.
+	popupRefused atomic.Bool
+
+	// ownTarget and browserContextID identify the session's own page and
+	// its browser context, recorded by watchEgress: a page target in that
+	// context that is not ownTarget is a popup. browserContextID is empty
+	// on the exec path, whose whole Chrome belongs to the session.
+	ownTarget        cdptarget.ID
+	browserContextID cdp.BrowserContextID
 
 	// auth is the HTTP Basic credentials armed by BasicAuth, if any.
 	auth basicAuth
@@ -548,8 +564,19 @@ func preflightEgress(ctx context.Context, rawURL string) (*hostPin, error) {
 // evaluate, screenshot) returns the refusal instead of the page, so nothing
 // read from an internal address ever reaches a result.
 //
+// It also closes every popup the page opens (see onTargetCreated): a popup is
+// a separate top-level target, which neither this listener nor the WebRTC
+// removal script reaches.
+//
 //nolint:contextcheck // the listener belongs to the session's browser context, not the caller's
 func (s *Session) watchEgress(recordCtx context.Context, guard *egress.Guard) {
+	if c := chromedp.FromContext(s.browserCtx); c != nil {
+		s.browserContextID = c.BrowserContextID
+		if c.Target != nil {
+			s.ownTarget = c.Target.TargetID
+		}
+	}
+
 	chromedp.ListenTarget(s.browserCtx, func(ev any) {
 		s.onEgressEvent(recordCtx, guard, ev)
 	})
@@ -574,7 +601,63 @@ func (s *Session) onEgressEvent(recordCtx context.Context, guard *egress.Guard, 
 		// fires before the handshake is sent: the session is poisoned before
 		// a frame can be read.
 		s.checkWebSocket(recordCtx, guard, event.URL)
+	case *cdptarget.EventTargetCreated:
+		s.onTargetCreated(event.TargetInfo) //nolint:contextcheck // the close runs on the session's browser context
 	}
+}
+
+// errPopupRefused is what a session that opened a popup answers with.
+var errPopupRefused = errors.New("the page opened a new window or tab, which a check may not do " +
+	"under the egress policy: it was closed")
+
+// prerenderSubtype is the target subtype of a speculation-rules prerender.
+const prerenderSubtype = "prerender"
+
+// popupCloseTimeout bounds the Target.closeTarget of a popup.
+const popupCloseTimeout = 5 * time.Second
+
+// onTargetCreated closes a popup of the session's page (spec 2026-11-22-03).
+//
+// window.open and target=_blank links open a separate top-level target: it
+// gets a fresh document without disableWebRTCScript, and its responses never
+// reach watchEgress. On a remote Chrome started without the WebRTC policy
+// flags, its RTCPeerConnection could send STUN to any internal address. A
+// check never needs a second tab, so the popup is closed at once and the
+// session poisoned BEFORE the close is sent, so that nothing read afterwards
+// reaches a result. Targets of another browser context (another session on a
+// shared Chrome) and non-page targets (iframes, workers) are left alone.
+func (s *Session) onTargetCreated(info *cdptarget.Info) {
+	if info == nil || info.Type != "page" || info.TargetID == s.ownTarget {
+		return
+	}
+
+	if s.browserContextID != "" && info.BrowserContextID != s.browserContextID {
+		return
+	}
+
+	// A speculation-rules prerender is a page target the browser opens on
+	// its own, not the page: it is closed, but the check is not failed for it.
+	if info.Subtype != prerenderSubtype {
+		s.popupRefused.Store(true)
+	}
+
+	chromedpCtx := chromedp.FromContext(s.browserCtx)
+	if chromedpCtx == nil || chromedpCtx.Browser == nil {
+		return
+	}
+
+	browser := chromedpCtx.Browser
+
+	// Listeners run on chromedp's event loop: a CDP command sent from it
+	// would deadlock, so the close goes out from its own goroutine.
+	go func() {
+		ctx, cancel := context.WithTimeout(s.browserCtx, popupCloseTimeout)
+		defer cancel()
+
+		if err := cdptarget.CloseTarget(info.TargetID).Do(cdp.WithExecutor(ctx, browser)); err != nil {
+			slog.DebugContext(ctx, "Failed to close a popup of a browser check", "error", err)
+		}
+	}()
 }
 
 // webSocketCheckTimeout bounds the lookup of a WebSocket's host. It runs on
@@ -648,6 +731,10 @@ func (s *Session) deny(err error) {
 func (s *Session) deniedByEgress() error {
 	if denied := s.egressDenied.Load(); denied != nil {
 		return denied
+	}
+
+	if s.popupRefused.Load() {
+		return errPopupRefused
 	}
 
 	return nil
@@ -955,6 +1042,12 @@ func capPayload(value string) string {
 // script and a cross-site iframe all get it (TestBrowserWebRTCToAPrivate…
 // checks each). RTCPeerConnection is not exposed to workers. The properties
 // are redefined as non-configurable undefined so a page cannot put them back.
+//
+// It also makes window.open return null (spec 2026-11-22-03): a popup is a
+// separate target the script does not reach, and the opener of a
+// window.open popup holds its window synchronously, before the popup can be
+// closed. A popup opened any other way (a target=_blank link, a form) has no
+// such handle and is closed by onTargetCreated.
 const disableWebRTCScript = `(() => {
   for (const name of ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel"]) {
     try { delete window[name]; } catch (e) {}
@@ -962,6 +1055,9 @@ const disableWebRTCScript = `(() => {
       Object.defineProperty(window, name, { value: undefined, writable: false, configurable: false });
     } catch (e) {}
   }
+  try {
+    Object.defineProperty(window, "open", { value: () => null, writable: false, configurable: false });
+  } catch (e) {}
 })();`
 
 // disableWebRTC installs disableWebRTCScript on every new document of the

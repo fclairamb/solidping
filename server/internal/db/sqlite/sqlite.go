@@ -1199,9 +1199,13 @@ func (s *Service) UpdateOrganizationMember(
 		Set("updated_at = ?", time.Now())
 
 	if update.Role != nil {
-		// Whoever sets the role owns it: a change naming no source is a
-		// local grant, which the OIDC group claim never revokes.
-		query = query.Set("role = ?", *update.Role).Set("role_source = ?", update.RoleSource)
+		// Whoever changes the role owns it: a change naming no source is a
+		// local grant, which the OIDC group claim never revokes. Re-setting
+		// the current role keeps its source (the right-hand side reads the
+		// row's old values), so a same-role write can't launder a claim grant.
+		query = query.
+			Set("role_source = CASE WHEN role = ? THEN role_source ELSE ? END", *update.Role, update.RoleSource).
+			Set("role = ?", *update.Role)
 	}
 
 	if update.JoinedAt != nil {

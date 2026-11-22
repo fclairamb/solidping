@@ -349,7 +349,27 @@ func TestOIDCGroups_OrgAdminRevokedOnlyWhenClaimGranted(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, member.RoleSource)
 
+	// Re-setting the role it already has is not a change: the claim keeps it
+	// (security scan 2026-11-22, AU1), so leaving the group still demotes it.
 	role := models.MemberRoleAdmin
+	require.NoError(t, svc.db.UpdateOrganizationMember(ctx, member.UID, models.OrganizationMemberUpdate{Role: &role}))
+	member, err = svc.db.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	require.NoError(t, err)
+	require.NotNil(t, member.RoleSource, "a same-role write keeps the claim source")
+
+	_, outcome = oidcLoginOutcome(ctx, t, svc, idp, org, "u12", "leo@acme.com", nil)
+	require.Equal(t, []string{RoleChangeOrgAdminRevoked}, outcome.RoleChanges)
+
+	// Back in the group, then a real local change (user, then admin): the
+	// local change owns the role, and leaving the group leaves it alone.
+	user, _ = oidcLoginOutcome(ctx, t, svc, idp, org, "u12", "leo@acme.com", []any{"acme-admins"})
+	member, err = svc.db.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	require.NoError(t, err)
+	require.NotNil(t, member.RoleSource)
+
+	userRole := models.MemberRoleUser
+	require.NoError(t, svc.db.UpdateOrganizationMember(ctx, member.UID,
+		models.OrganizationMemberUpdate{Role: &userRole}))
 	require.NoError(t, svc.db.UpdateOrganizationMember(ctx, member.UID, models.OrganizationMemberUpdate{Role: &role}))
 
 	_, outcome = oidcLoginOutcome(ctx, t, svc, idp, org, "u12", "leo@acme.com", nil)

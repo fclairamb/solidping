@@ -213,7 +213,8 @@ func runSuperAdminSource(t *testing.T, fix *fixture) {
 }
 
 // runMemberRoleSource: organization_members.role_source round-trips, and a
-// role change naming no source clears it (spec 2026-11-21-02).
+// role change naming no source clears it (spec 2026-11-21-02), while a
+// same-role update keeps it (security scan 2026-11-22, AU1).
 func runMemberRoleSource(t *testing.T, fix *fixture) {
 	t.Helper()
 
@@ -235,6 +236,16 @@ func runMemberRoleSource(t *testing.T, fix *fixture) {
 	got, err := svc.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
 	must.NoError(err)
 	must.NotNil(got.RoleSource)
+	must.Equal(models.MemberRoleSourceOIDCGroup, *got.RoleSource)
+
+	// Re-setting the current role is not a change: the source stays.
+	same := models.MemberRoleAdmin
+	must.NoError(svc.UpdateOrganizationMember(ctx, member.UID, models.OrganizationMemberUpdate{Role: &same}))
+
+	got, err = svc.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	must.NoError(err)
+	must.Equal(models.MemberRoleAdmin, got.Role)
+	must.NotNil(got.RoleSource, "a same-role update keeps the source")
 	must.Equal(models.MemberRoleSourceOIDCGroup, *got.RoleSource)
 
 	role := models.MemberRoleUser
