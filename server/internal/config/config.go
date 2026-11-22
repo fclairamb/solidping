@@ -265,6 +265,32 @@ type AgentConfig struct {
 	AllowInsecureServer bool `koanf:"allow_insecure_server"`
 }
 
+// AgentsConfig is the server side of the deported agents (as opposed to
+// AgentConfig, which configures a process running AS an agent).
+type AgentsConfig struct {
+	// AutoUpgradeDisabled turns the rolling agent upgrade off (spec
+	// 2026-11-22-04) — SP_AGENTS_AUTO_UPGRADE=false. Stored inverted so the
+	// zero value keeps it on: a drifted agent is asked to restart on the
+	// server's version, one agent per region at a time. Read by hand in
+	// applyAgentsEnv (koanf would turn the underscores into dots).
+	AutoUpgradeDisabled bool `koanf:"-"`
+}
+
+// AutoUpgrade reports whether drifted agents are asked to upgrade.
+func (a AgentsConfig) AutoUpgrade() bool {
+	return !a.AutoUpgradeDisabled
+}
+
+// applyAgentsEnv reads SP_AGENTS_AUTO_UPGRADE. An unparseable value keeps the
+// default (on).
+func applyAgentsEnv(cfg *AgentsConfig) {
+	if v := os.Getenv("SP_AGENTS_AUTO_UPGRADE"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.AutoUpgradeDisabled = !b
+		}
+	}
+}
+
 // checkServerTransport refuses a cleartext server URL unless overridden. With
 // the override, a cleartext server is not authenticated, so the re-wrap is
 // turned off unless the operator asked for it explicitly.
@@ -698,6 +724,7 @@ type Config struct {
 	LDAP         LDAPConfig         `koanf:"ldap"`
 	Node         NodeConfig         `koanf:"node"`
 	Agent        AgentConfig        `koanf:"agent"`
+	Agents       AgentsConfig       `koanf:"agents"`
 	Profiler     ProfilerConfig     `koanf:"profiler"`
 	Runtime      RuntimeConfig      `koanf:"runtime"`
 	OTel         OTelConfig         `koanf:"otel"`
@@ -2692,6 +2719,7 @@ func Load() (*Config, error) {
 	applyRateLimitingEnv(&cfg.Server.RateLimiting)
 	applyCheckersEnv(&cfg.Checkers)
 	applyAgentEnv(&cfg.Agent)
+	applyAgentsEnv(&cfg.Agents)
 	applyAuthEnv(&cfg.Auth)
 	resolveRegistrationLimit(&cfg, fileKoanf.Exists(registrationLimitFileKey))
 	applyPasswordHashingEnv(&cfg.Auth.Password)

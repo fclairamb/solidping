@@ -165,6 +165,8 @@ func manualReaderAgentEnvVars() []string {
 		"SP_AGENT_DISCOVERY_CIDRS",
 		"SP_AGENT_REWRAP_ENABLED",
 		"SP_AGENT_ALLOW_INSECURE_SERVER",
+		// applyAgentsEnv: the server side of the agents (spec 2026-11-22-04).
+		"SP_AGENTS_AUTO_UPGRADE",
 	}
 }
 
