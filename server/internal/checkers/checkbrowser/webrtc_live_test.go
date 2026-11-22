@@ -372,7 +372,7 @@ const popupSettleTime = 3 * time.Second
 // regression. A popup is a separate top-level target: the WebRTC removal
 // script and the egress watch of the session's page do not reach it. The
 // Chrome is started WITHOUT the WebRTC policy flags, the way a remote
-// sidecar deployed before spec 2026-11-20-01 runs, so the only defences
+// sidecar deployed before spec 2026-11-20-01 runs, so the only defenses
 // left are the session's: window.open returns null, and a popup opened by a
 // target=_blank link is closed at once and poisons the session. The
 // positive control, with a non-enforcing guard, proves the popup does send

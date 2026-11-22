@@ -602,7 +602,7 @@ func (s *Session) onEgressEvent(recordCtx context.Context, guard *egress.Guard, 
 		// a frame can be read.
 		s.checkWebSocket(recordCtx, guard, event.URL)
 	case *cdptarget.EventTargetCreated:
-		s.onTargetCreated(event.TargetInfo)
+		s.onTargetCreated(event.TargetInfo) //nolint:contextcheck // the close runs on the session's browser context
 	}
 }
 
@@ -626,8 +626,6 @@ const popupCloseTimeout = 5 * time.Second
 // session poisoned BEFORE the close is sent, so that nothing read afterwards
 // reaches a result. Targets of another browser context (another session on a
 // shared Chrome) and non-page targets (iframes, workers) are left alone.
-//
-//nolint:contextcheck // the close belongs to the session's browser context, not the caller's
 func (s *Session) onTargetCreated(info *cdptarget.Info) {
 	if info == nil || info.Type != "page" || info.TargetID == s.ownTarget {
 		return
@@ -643,10 +641,12 @@ func (s *Session) onTargetCreated(info *cdptarget.Info) {
 		s.popupRefused.Store(true)
 	}
 
-	c := chromedp.FromContext(s.browserCtx)
-	if c == nil || c.Browser == nil {
+	chromedpCtx := chromedp.FromContext(s.browserCtx)
+	if chromedpCtx == nil || chromedpCtx.Browser == nil {
 		return
 	}
+
+	browser := chromedpCtx.Browser
 
 	// Listeners run on chromedp's event loop: a CDP command sent from it
 	// would deadlock, so the close goes out from its own goroutine.
@@ -654,7 +654,7 @@ func (s *Session) onTargetCreated(info *cdptarget.Info) {
 		ctx, cancel := context.WithTimeout(s.browserCtx, popupCloseTimeout)
 		defer cancel()
 
-		if err := cdptarget.CloseTarget(info.TargetID).Do(cdp.WithExecutor(ctx, c.Browser)); err != nil {
+		if err := cdptarget.CloseTarget(info.TargetID).Do(cdp.WithExecutor(ctx, browser)); err != nil {
 			slog.DebugContext(ctx, "Failed to close a popup of a browser check", "error", err)
 		}
 	}()
