@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -114,4 +115,146 @@ func TestWebRTCScriptFailureFailsTheOpen(t *testing.T) {
 	r.Error(err)
 	r.True(Infra(err))
 	r.Contains(err.Error(), "failed to disable WebRTC")
+}
+
+// popupFake is a fake browser whose session lives in the browser context
+// "ctx-1" and that records every Target.closeTarget.
+func popupFake(t *testing.T) (*fakeBrowser, func() []string) {
+	t.Helper()
+
+	fake := newFakeBrowser(t)
+	fake.on("Target.createBrowserContext", func(json.RawMessage) (any, *fakeCDPError) {
+		return map[string]any{"browserContextId": "ctx-1"}, nil
+	})
+
+	var (
+		mu     sync.Mutex
+		closed []string
+	)
+
+	fake.on("Target.closeTarget", func(params json.RawMessage) (any, *fakeCDPError) {
+		var in struct {
+			TargetID string `json:"targetId"`
+		}
+
+		_ = json.Unmarshal(params, &in)
+
+		mu.Lock()
+		closed = append(closed, in.TargetID)
+		mu.Unlock()
+
+		return map[string]any{"success": true}, nil
+	})
+
+	return fake, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+
+		return append([]string(nil), closed...)
+	}
+}
+
+// targetCreated emits Target.targetCreated for one target.
+func targetCreated(fake *fakeBrowser, id, kind, subtype, browserContext string) {
+	info := map[string]any{
+		"targetId": id, "type": kind, "title": "", "url": "about:blank",
+		"attached": false, "canAccessOpener": false, "browserContextId": browserContext,
+	}
+	if subtype != "" {
+		info["subtype"] = subtype
+	}
+
+	fake.emit("Target.targetCreated", map[string]any{"targetInfo": info})
+}
+
+// Spec 2026-11-22-03: under an enforcing policy, a page target that a page
+// of the session opens in the session's browser context is closed at once
+// and poisons the session. The session's own page, a page of another
+// browser context (another session on a shared Chrome) and a non-page
+// target are left alone, and a prerender is closed without failing the check.
+//
+//nolint:paralleltest // mutates the process-wide settings
+func TestEnforcingSessionClosesPopups(t *testing.T) {
+	t.Run("a popup is closed and poisons the session", func(t *testing.T) {
+		r := require.New(t)
+		fake, closed := popupFake(t)
+
+		withSettings(t, Settings{CDPURL: fake.url()})
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+
+		ctx = egress.WithGuard(ctx, egress.New(false))
+
+		session, err := Open(ctx)
+		r.NoError(err)
+
+		defer session.Close()
+
+		_, err = session.Evaluate(ctx, "1")
+		r.NoError(err)
+
+		targetCreated(fake, "popup-1", "page", "", "ctx-1")
+
+		r.Eventually(func() bool { return len(closed()) > 0 }, 5*time.Second, 10*time.Millisecond)
+		r.Equal([]string{"popup-1"}, closed())
+
+		_, err = session.Evaluate(ctx, "1")
+		r.ErrorIs(err, errPopupRefused)
+		r.False(Infra(err), "a popup is the page's doing, not the worker's")
+	})
+
+	t.Run("foreign, own and non-page targets are ignored", func(t *testing.T) {
+		r := require.New(t)
+		fake, closed := popupFake(t)
+
+		withSettings(t, Settings{CDPURL: fake.url()})
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+
+		ctx = egress.WithGuard(ctx, egress.New(false))
+
+		session, err := Open(ctx)
+		r.NoError(err)
+
+		defer session.Close()
+
+		targetCreated(fake, "foreign-1", "page", "", "ctx-other")
+		targetCreated(fake, "fake-target", "page", "", "ctx-1")
+		targetCreated(fake, "frame-1", "iframe", "", "ctx-1")
+		targetCreated(fake, "worker-1", "worker", "", "ctx-1")
+		// Events are handled in order: once the prerender is closed, every
+		// event above has been seen.
+		targetCreated(fake, "prerender-1", "page", prerenderSubtype, "ctx-1")
+
+		r.Eventually(func() bool { return len(closed()) > 0 }, 5*time.Second, 10*time.Millisecond)
+		r.Equal([]string{"prerender-1"}, closed())
+
+		_, err = session.Evaluate(ctx, "1")
+		r.NoError(err)
+	})
+
+	t.Run("not enforcing: popups are left alone", func(t *testing.T) {
+		r := require.New(t)
+		fake, closed := popupFake(t)
+
+		withSettings(t, Settings{CDPURL: fake.url()})
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+
+		ctx = egress.WithGuard(ctx, egress.New(true))
+
+		session, err := Open(ctx)
+		r.NoError(err)
+
+		defer session.Close()
+
+		targetCreated(fake, "popup-1", "page", "", "ctx-1")
+
+		_, err = session.Evaluate(ctx, "1")
+		r.NoError(err)
+		r.Never(func() bool { return len(closed()) > 0 }, 300*time.Millisecond, 10*time.Millisecond)
+	})
 }
