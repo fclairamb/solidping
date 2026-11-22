@@ -36,14 +36,8 @@ export function agentImage(version: string | undefined, origin: string): AgentIm
 
   const pinnedImage = `${AGENT_UPSTREAM_IMAGE}:${release}`;
 
-  let url: URL | null = null;
-  try {
-    url = new URL(origin);
-  } catch {
-    url = null;
-  }
-
-  if (url && url.protocol === "https:") {
+  const url = URL.canParse(origin) ? new URL(origin) : null;
+  if (url?.protocol === "https:") {
     return { image: `${url.host}/solidping:current`, followsServer: true, pinnedImage };
   }
 
