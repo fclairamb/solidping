@@ -66,7 +66,7 @@ Ship in this order. Step 1 is useful on its own.
    - Agent side (`server/internal/agentmode/agentmode.go`): on `upgrade`, stop claiming, finish
      in-flight jobs (bounded by their timeout), close the socket and exit 0. Agents that don't know
      the frame ignore it (same as `jobs-available`).
-   - Opt-out: server config `SP_AGENTS_AUTO_UPGRADE` (default `true`). See open question for per-org.
+   - Opt-out: server config `SP_AGENTS_AUTO_UPGRADE` (default `true`), no per-org setting. System agents are included.
 
 6. **Docs and snippets switch to the server registry**: `<server-host>/solidping:current`, with
    `imagePullPolicy: Always` in the k8s / Helm examples (kubelet re-pulls on every container
@@ -99,10 +99,13 @@ Ship in this order. Step 1 is useful on its own.
 - Whether the `/v2/` path conflicts with any existing route or the SPA fallback.
 - How `agentmode` exits today and whether the job loop can drain cleanly.
 
-## Open questions
+## Resolved open questions
 
-1. Opt-out scope: server config only, or also a per-org setting so a SaaS customer can pin their
-   agents? **Recommended: server config only for now**, the SaaS server always wants its agents on
-   its version; add per-org when someone asks.
-2. Should system agents (platform-operated, `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS`) get the same
-   rollout? **Recommended: yes**, same code path.
+Answered by Florent on 2026-11-22.
+
+1. **Opt-out scope.** **Decision:** server config only (`SP_AGENTS_AUTO_UPGRADE`, default
+   `true`). No per-org setting: the SaaS server always wants its agents on its own version. Add
+   per-org only when someone asks.
+2. **System agents.** **Decision:** platform-operated system agents
+   (`SP_SYSTEM_AGENT_ENROLLMENT_TOKENS`) get the same rolling upgrade, through the same code path
+   and the same one-agent-per-region rule.
