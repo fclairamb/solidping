@@ -177,8 +177,8 @@ github.com/docker/go-connections v0.8.2 h1:9d9DEokx5W7qlr0shkFXIxEA7+TTD+llwzcyk
 github.com/docker/go-connections v0.8.2/go.mod h1:no1qkHdjq7kLMGUXYAduOhYPSJxxvgWBh7ogVvptn3Q=
 github.com/docker/go-units v0.5.0 h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4=
 github.com/docker/go-units v0.5.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
-github.com/dop251/goja v0.0.0-20261122121755-dcce7f63c23a h1:hIc8woyGWNfebI6xXZFH5aQ2lq9NKcLtzJXevCMFXXA=
-github.com/dop251/goja v0.0.0-20261122121755-dcce7f63c23a/go.mod h1:L1yoLBco9M3b2Gdh1UZHg+BIePeAdV1bwknaLLxAgoc=
+github.com/dop251/goja v0.0.0-20261122185237-35fdc4b88e39 h1:njdoK99Ob0Aa/s2LfWKFvC47tNqC0GnCpb1uBkkPrLU=
+github.com/dop251/goja v0.0.0-20261122185237-35fdc4b88e39/go.mod h1:L1yoLBco9M3b2Gdh1UZHg+BIePeAdV1bwknaLLxAgoc=
 github.com/dreamscached/minequery/v2 v2.5.0 h1:hUkN//4x96xUJ7pz1Cr1Gs7IISXkE3LoNCcXui1AfvY=
 github.com/dreamscached/minequery/v2 v2.5.0/go.mod h1:zRAFqhE8tFyRUmwkxu3hoNy6H/shys59bickqJRc/yg=
 github.com/dustin/go-humanize v1.1.0 h1:dbKTrvD0klcbBV/h4AWJdMuZogJACoMlvWIWZ5b2xWg=
