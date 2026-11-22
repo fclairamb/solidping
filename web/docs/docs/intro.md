@@ -120,3 +120,4 @@ the **Load sample** picker of the new check form.
 - [Maintenance Windows](/features/maintenance-windows) - Suppress alerts during planned work
 - [MCP Server](/features/mcp) - Connect AI assistants to your monitoring data
 - [CLI Client](/cli) - Drive SolidPing from the terminal
+- [Terraform / OpenTofu](/terraform) - Manage checks, channels and status pages as code
