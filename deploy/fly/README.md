@@ -111,6 +111,13 @@ fly deploy -c fly.cdg.toml
 > stop being claimed. The `[[restart]] policy = "always"` block is the active
 > always-on counterpart.
 
+> **Upgrades.** The API asks a drifted agent to restart on its version (spec
+> 2026-11-22-04): the agent exits 0 and fly restarts the machine, but on the
+> image of its last `fly deploy` — fly never pulls again on a restart. Redeploy
+> the agent apps with the server's tag when you upgrade the API (the API stops
+> asking after three restarts for one version), or set
+> `SP_AGENTS_AUTO_UPGRADE=false` on the API.
+
 ### The secret set
 
 | Variable | Where | Value |
