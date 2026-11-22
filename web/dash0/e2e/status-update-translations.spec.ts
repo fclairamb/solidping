@@ -87,8 +87,13 @@ test.describe("Status update translations", () => {
     await expect(card(publicPage)).toHaveText(title, { timeout: 30000 });
     await expect(publicPage.getByTestId("status-update-body")).toHaveText(body);
 
-    // The edit route round-trips the translation.
-    await page.getByTestId("status-update-row-title").first().click();
+    // The edit route round-trips the translation. Pick this test's row by its
+    // title: other specs add updates to the same org in parallel, so the first
+    // row is not always ours.
+    await page
+      .locator(`[data-testid="status-update-row"][data-update-title=${JSON.stringify(title)}]`)
+      .getByTestId("status-update-row-title")
+      .click();
     await page.waitForURL(/\/status-updates\/[0-9a-f-]{36}\/edit/, { timeout: 15000 });
     await expect(page.getByTestId("translation-fr-title")).toHaveValue(frTitle);
   });
