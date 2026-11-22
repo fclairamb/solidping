@@ -106,3 +106,8 @@ Ship in this order. Step 1 is useful on its own.
    its version; add per-org when someone asks.
 2. Should system agents (platform-operated, `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS`) get the same
    rollout? **Recommended: yes**, same code path.
+
+## Resolved open questions
+
+1. Opt-out scope: server config only. No per-org setting for now. (autopilot: recommended answer)
+2. System agents (`SP_SYSTEM_AGENT_ENROLLMENT_TOKENS`) get the same rollout, same code path. (autopilot: recommended answer)
