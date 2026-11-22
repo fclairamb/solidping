@@ -136,6 +136,11 @@ type WSBackend struct {
 	// pingInterval is the keepalive cadence (overridable in tests).
 	pingInterval time.Duration
 
+	// upgradeRequested is closed (once, upgradeOnce) when the server sends an
+	// upgrade frame (spec 2026-11-22-04, ws_upgrade.go).
+	upgradeRequested chan struct{}
+	upgradeOnce      sync.Once
+
 	// onIdentityChange persists the identity after enrollment.
 	onIdentityChange func(*Identity)
 
@@ -227,6 +232,7 @@ func NewWSBackend(
 		identity:         identity,
 		pending:          map[string]chan agents.ServerFrame{},
 		reconnectSignal:  make(chan struct{}, 1),
+		upgradeRequested: make(chan struct{}),
 		pingInterval:     defaultPingInterval,
 		onIdentityChange: onIdentityChange,
 		tunnels:          map[string]*tunnelSnapshot{},
@@ -924,6 +930,10 @@ func (b *WSBackend) readPump(ctx context.Context, conn *websocket.Conn) {
 			// (uncancellable) context so it outlives the request that produced
 			// the capture.
 			go b.handleUploadRequest(ctx, &frame)
+		case frame.Type == agents.MsgTypeUpgrade:
+			// The server wants this agent on its version: drain and exit
+			// (agentmode.Run watches UpgradeRequested).
+			b.handleUpgradeRequest(ctx, &frame)
 		case frame.Type == agents.MsgTypeTraceRequest:
 			// The server wants a path trace run FROM HERE — this agent's route
 			// to the target is the one that failed. Same posture as the upload

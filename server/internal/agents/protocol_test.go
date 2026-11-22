@@ -215,3 +215,46 @@ func TestClaimFrameUnknownExtraFieldIsIgnored(t *testing.T) {
 	r.Equal("0.17.0", frame.Version)
 	r.Equal(4, frame.MaxJobs)
 }
+
+// TestHelloCarriesServerVersion: the hello frame announces the server's build
+// version (spec 2026-11-22-04), and omits the field when it is unknown.
+func TestHelloCarriesServerVersion(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	raw, err := json.Marshal(agents.ServerFrame{Type: agents.MsgTypeHello, ServerVersion: "1.2.3"})
+	r.NoError(err)
+	r.Contains(string(raw), `"serverVersion":"1.2.3"`)
+
+	var decoded agents.ServerFrame
+	r.NoError(json.Unmarshal(raw, &decoded))
+	r.Equal("1.2.3", decoded.ServerVersion)
+
+	raw, err = json.Marshal(agents.ServerFrame{Type: agents.MsgTypeHello})
+	r.NoError(err)
+	r.NotContains(string(raw), "serverVersion")
+}
+
+// TestOldAgentIgnoresUpgradeFrame: an agent that predates the upgrade frame
+// decodes it into its older frame shape without error, and the frame carries
+// no correlation id, so it is never mistaken for the answer to a request: the
+// old read pump drops it like any unsolicited frame it does not know.
+func TestOldAgentIgnoresUpgradeFrame(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	raw, err := json.Marshal(agents.ServerFrame{Type: agents.MsgTypeUpgrade, TargetVersion: "1.2.3"})
+	r.NoError(err)
+	r.Equal(`{"type":"upgrade","targetVersion":"1.2.3"}`, string(raw))
+
+	// The frame shape of an agent built before the field existed.
+	var old struct {
+		Type string `json:"type"`
+		ID   string `json:"id,omitempty"`
+		Jobs []any  `json:"jobs,omitempty"`
+	}
+
+	r.NoError(json.Unmarshal(raw, &old))
+	r.Equal("upgrade", old.Type)
+	r.Empty(old.ID, "uncorrelated: never routed to a pending request")
+}

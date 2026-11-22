@@ -2,6 +2,7 @@ package agentws_test
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -268,4 +269,42 @@ func TestUpgradeTimeoutMovesOn(t *testing.T) {
 
 	r.Contains(timeoutLine, enrolledA.AgentUID, "the WARN names the agent that did not come back")
 	r.Contains(timeoutLine, "level=WARN")
+}
+
+// TestHelloAnnouncesServerVersion: both hellos of an enrollment carry the
+// server's version.
+//
+//nolint:paralleltest // mutates version.Version
+func TestHelloAnnouncesServerVersion(t *testing.T) {
+	withServerVersion(t, upgradeServer)
+
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	keys, err := agentcrypto.GenerateAgentKeys()
+	r.NoError(err)
+
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+e.mintToken())
+
+	conn, _, err := e.dial(headers)
+	r.NoError(err)
+	t.Cleanup(func() { _ = conn.CloseNow() })
+
+	var hello agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn, &hello))
+	r.Equal(agentcrypto.MsgTypeHello, hello.Type)
+	r.Equal(upgradeServer, hello.ServerVersion)
+
+	r.NoError(wsjson.Write(ctx, conn, agentcrypto.ClientFrame{
+		Type: agentcrypto.MsgTypeEnroll, ID: "enroll-1", Name: "dc1-a",
+		Ed25519PublicKey: keys.Ed25519PublicKey, X25519PublicKey: keys.X25519Recipient,
+	}))
+
+	var enrolled, identityHello agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn, &enrolled))
+	r.NoError(wsjson.Read(ctx, conn, &identityHello))
+	r.Equal(agentcrypto.MsgTypeHello, identityHello.Type)
+	r.Equal(upgradeServer, identityHello.ServerVersion)
 }
