@@ -266,9 +266,10 @@ func (h *Handler) serveEnrollment(
 
 	// Identity is unknown until the enroll frame lands.
 	if writeErr := wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
-		Type:       agentcrypto.MsgTypeHello,
-		Protocol:   agentcrypto.ProtocolVersion,
-		ServerTime: time.Now().UTC().Format(time.RFC3339),
+		Type:          agentcrypto.MsgTypeHello,
+		Protocol:      agentcrypto.ProtocolVersion,
+		ServerTime:    time.Now().UTC().Format(time.RFC3339),
+		ServerVersion: version.Get().Version,
 	}); writeErr != nil {
 		return nil //nolint:nilerr // client already gone; the socket is the response channel
 	}
@@ -922,6 +923,7 @@ func (h *Handler) runAgentConnection(
 		Region:     agent.Region,
 		// Same rule as the agenttasks routes, which answer a system agent 403.
 		NoWorkerTasks: agent.IsSystem(),
+		ServerVersion: version.Get().Version,
 	}); err != nil {
 		return
 	}

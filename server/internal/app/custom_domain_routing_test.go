@@ -122,6 +122,8 @@ func TestIsCustomHostForbidden(t *testing.T) {
 		// redirect a visitor into the SolidPing dashboard, not even via the
 		// legacy hop.
 		"/dash0", "/dash0/orgs/acme",
+		// The agent image registry is main-host only (spec 2026-11-22-04).
+		"/v2", "/v2/", "/v2/solidping/manifests/current",
 	} {
 		r.True(isCustomHostForbidden(p), "expected forbidden: %s", p)
 	}
