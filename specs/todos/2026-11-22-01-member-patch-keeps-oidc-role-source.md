@@ -34,5 +34,5 @@ In OIDC-only mode this is the simple way to keep the role. With local login off,
 - `server/internal/db/dbcontract/identity.go`: a same-role `UpdateOrganizationMember` keeps `role_source`. The existing real-change case still clears it.
 - Audit: the real change that clears `oidc_group` records one `member.role_changed` event carrying the previous source.
 
-## Open questions
-- Should admins be refused from changing their own role at all (except an owner demoting themselves as an ownership transfer)? Recommended: no, the no-op fix is enough and keeps the transfer flow.
+## Resolved open questions
+- Do not refuse admins from changing their own role: the no-op fix (a same-role PATCH writes nothing and keeps `role_source`) is enough and keeps the ownership-transfer flow. (autopilot: recommended answer)
