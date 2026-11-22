@@ -134,7 +134,7 @@ func TestBaseEndpoint(t *testing.T) {
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
 		rec := do(t, reg, method, "/v2/")
 		require.Equal(t, http.StatusOK, rec.Code, method)
-		require.Equal(t, "registry/2.0", rec.Header().Get("Docker-Distribution-API-Version"))
+		require.Equal(t, "registry/2.0", rec.Header().Get("Docker-Distribution-Api-Version"))
 	}
 
 	rec := do(t, reg, http.MethodPut, "/v2/solidping/manifests/current")

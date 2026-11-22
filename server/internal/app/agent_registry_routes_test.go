@@ -18,15 +18,14 @@ import (
 // 2026-11-22-04): /v2/ answers the registry handshake instead of the SPA
 // catch-all, an unknown repository is a registry-shaped 404, and `current` on
 // an untagged build is MANIFEST_UNKNOWN without any upstream call.
-//
-//nolint:paralleltest // pins the process-wide version.Version
+// Test binaries carry no version ldflags: version.Get() is "dev".
 func TestAgentRegistryRoutes(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
-	previous := version.Version
-	version.Version = "dev"
-	t.Cleanup(func() { version.Version = previous })
+	r.Equal("dev", version.Get().Version, "test binaries are untagged builds")
 
 	cfg := &config.Config{}
 	cfg.Database.Type = dbTypeSQLiteMemory
@@ -47,13 +46,14 @@ func TestAgentRegistryRoutes(t *testing.T) {
 	ts := httptest.NewServer(server.Handler())
 	t.Cleanup(ts.Close)
 
-	get := func(path string) (*http.Response, string) {
+	get := func(path string) (int, http.Header, string) {
 		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+path, nil)
 		r.NoError(reqErr)
 
 		resp, doErr := http.DefaultClient.Do(req)
 		r.NoError(doErr)
-		t.Cleanup(func() { _ = resp.Body.Close() })
+
+		defer func() { _ = resp.Body.Close() }()
 
 		var payload struct {
 			Errors []struct {
@@ -68,20 +68,20 @@ func TestAgentRegistryRoutes(t *testing.T) {
 			code = payload.Errors[0].Code
 		}
 
-		return resp, code
+		return resp.StatusCode, resp.Header, code
 	}
 
 	for _, path := range []string{"/v2/", "/v2"} {
-		resp, _ := get(path)
-		r.Equal(http.StatusOK, resp.StatusCode, path)
-		r.Equal("registry/2.0", resp.Header.Get("Docker-Distribution-API-Version"), path)
+		status, header, _ := get(path)
+		r.Equal(http.StatusOK, status, path)
+		r.Equal("registry/2.0", header.Get("Docker-Distribution-Api-Version"), path)
 	}
 
-	resp, code := get("/v2/other/manifests/current")
-	r.Equal(http.StatusNotFound, resp.StatusCode)
+	status, _, code := get("/v2/other/manifests/current")
+	r.Equal(http.StatusNotFound, status)
 	r.Equal("NAME_UNKNOWN", code)
 
-	resp, code = get("/v2/solidping/manifests/current")
-	r.Equal(http.StatusNotFound, resp.StatusCode)
+	status, _, code = get("/v2/solidping/manifests/current")
+	r.Equal(http.StatusNotFound, status)
 	r.Equal("MANIFEST_UNKNOWN", code)
 }

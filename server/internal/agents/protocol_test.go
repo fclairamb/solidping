@@ -245,7 +245,7 @@ func TestOldAgentIgnoresUpgradeFrame(t *testing.T) {
 
 	raw, err := json.Marshal(agents.ServerFrame{Type: agents.MsgTypeUpgrade, TargetVersion: "1.2.3"})
 	r.NoError(err)
-	r.Equal(`{"type":"upgrade","targetVersion":"1.2.3"}`, string(raw))
+	r.JSONEq(`{"type":"upgrade","targetVersion":"1.2.3"}`, string(raw))
 
 	// The frame shape of an agent built before the field existed.
 	var old struct {

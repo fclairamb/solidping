@@ -62,12 +62,10 @@ const (
 // client asked for: the answer is then the same for every client and can be
 // cached by digest. Multi-arch images are an index, which every current client
 // (Docker, containerd, CRI-O) understands.
-var manifestAccept = strings.Join([]string{
-	"application/vnd.oci.image.index.v1+json",
-	"application/vnd.docker.distribution.manifest.list.v2+json",
-	"application/vnd.oci.image.manifest.v1+json",
-	"application/vnd.docker.distribution.manifest.v2+json",
-}, ", ")
+const manifestAccept = "application/vnd.oci.image.index.v1+json, " +
+	"application/vnd.docker.distribution.manifest.list.v2+json, " +
+	"application/vnd.oci.image.manifest.v1+json, " +
+	"application/vnd.docker.distribution.manifest.v2+json"
 
 var (
 	digestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
@@ -176,7 +174,7 @@ func New(cfg Config) *Registry {
 
 // ServeHTTP implements http.Handler.
 func (r *Registry) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
-	writer.Header().Set("Docker-Distribution-API-Version", "registry/2.0")
+	writer.Header().Set("Docker-Distribution-Api-Version", "registry/2.0")
 
 	if req.Method != http.MethodGet && req.Method != http.MethodHead {
 		writeError(writer, http.StatusMethodNotAllowed, "UNSUPPORTED", "the registry is read-only")
@@ -534,11 +532,23 @@ func (r *Registry) pullToken(ctx context.Context, refresh bool) (string, error) 
 	return token, nil
 }
 
+// registryError is one entry of the registry error shape.
+type registryError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// registryErrors is the registry error body.
+type registryErrors struct {
+	Errors []registryError `json:"errors"`
+}
+
 // writeError writes the registry error shape.
 func writeError(writer http.ResponseWriter, status int, code, message string) {
-	body, _ := json.Marshal(map[string]any{
-		"errors": []map[string]string{{"code": code, "message": message}},
-	})
+	body, err := json.Marshal(registryErrors{Errors: []registryError{{Code: code, Message: message}}})
+	if err != nil {
+		body = []byte(`{"errors":[]}`)
+	}
 
 	writer.Header().Set("Content-Type", "application/json")
 	writer.Header().Set("Content-Length", strconv.Itoa(len(body)))

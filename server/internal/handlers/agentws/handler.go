@@ -86,6 +86,9 @@ const (
 	nonceRetention = 2 * agentcrypto.DefaultClockSkew
 )
 
+// defaultAgentName names an agent whose enroll frame carried no name.
+const defaultAgentName = "agent"
+
 // signed reconnect headers.
 const (
 	headerAgentUID  = "X-Sp-Agent-Uid"
@@ -359,7 +362,7 @@ func (h *Handler) awaitEnroll(
 
 	name := frame.Name
 	if name == "" {
-		name = "agent"
+		name = defaultAgentName
 	}
 
 	fingerprint := agentcrypto.KeyFingerprint(frame.Ed25519PublicKey)
@@ -977,6 +980,11 @@ func (h *Handler) runAgentConnection(
 		upgrade:  upgradeTick,
 	})
 
+	h.finishConnection(ctx, agent, reason)
+}
+
+// finishConnection records why an agent connection ended.
+func (h *Handler) finishConnection(ctx context.Context, agent *models.Agent, reason string) {
 	prommetrics.RecordAgentWSClosed(reason)
 
 	if reason == models.AgentDisconnectReasonServerShutdown {
@@ -1119,12 +1127,8 @@ func (h *Handler) serveConnEvents(
 
 			return disconnectReason(ctx, state)
 		case probe := <-chans.probes:
-			if ctx.Err() != nil {
-				return models.AgentDisconnectReasonServerShutdown
-			}
-
-			if !h.handleProbe(ctx, conn, state, probe) {
-				return disconnectReason(ctx, state)
+			if reason, done := stepConn(ctx, state, func() bool { return h.handleProbe(ctx, conn, state, probe) }); done {
+				return reason
 			}
 		case <-chans.observed:
 			h.handleObserved(ctx, state)
@@ -1133,12 +1137,8 @@ func (h *Handler) serveConnEvents(
 				return disconnectReason(ctx, state)
 			}
 		case <-chans.upgrade:
-			if ctx.Err() != nil {
-				return models.AgentDisconnectReasonServerShutdown
-			}
-
-			if !h.handleUpgradeTick(ctx, conn, state) {
-				return disconnectReason(ctx, state)
+			if reason, done := stepConn(ctx, state, func() bool { return h.handleUpgradeTick(ctx, conn, state) }); done {
+				return reason
 			}
 		case <-chans.hints:
 			// Express hint: a check was created somewhere. The agent's claim is
@@ -1149,15 +1149,28 @@ func (h *Handler) serveConnEvents(
 			// select picks among ready cases at random: a frame drained after
 			// shutdown began must not be handled on a dead context (its
 			// revocation lookup would fail and misreport the close as revoked).
-			if ctx.Err() != nil {
-				return models.AgentDisconnectReasonServerShutdown
-			}
-
-			if !h.handleFrame(ctx, conn, state, &frame) {
-				return disconnectReason(ctx, state)
+			// stepConn checks that before handling.
+			if reason, done := stepConn(ctx, state, func() bool { return h.handleFrame(ctx, conn, state, &frame) }); done {
+				return reason
 			}
 		}
 	}
+}
+
+// stepConn runs one event handler of the connection loop, unless shutdown began
+// (select picks among ready cases at random, so an event drained after the
+// context was canceled must not be handled on a dead context). It returns the
+// disconnect reason and true when the connection is over.
+func stepConn(ctx context.Context, state *connState, handle func() bool) (string, bool) {
+	if ctx.Err() != nil {
+		return models.AgentDisconnectReasonServerShutdown, true
+	}
+
+	if !handle() {
+		return disconnectReason(ctx, state), true
+	}
+
+	return "", false
 }
 
 // disconnectReason is the reason the server recorded when it closed the

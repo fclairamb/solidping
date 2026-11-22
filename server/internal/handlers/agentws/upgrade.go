@@ -52,6 +52,8 @@ const (
 	// candidateStaleAfter (in check intervals) drops a candidate whose
 	// connection stopped refreshing it.
 	candidateStaleIntervals = 3
+	// logKeyAgent is the log attribute naming the agent.
+	logKeyAgent = "agent"
 	// systemScope prefixes the region key of a system agent's shared region.
 	systemScope = "system"
 )
@@ -329,7 +331,7 @@ func (h *Handler) tryAcquireUpgradeSlot(ctx context.Context, state *connState, t
 func (h *Handler) logUpgradeStart(ctx context.Context, state *connState, target string, live int) {
 	agent := state.agent
 	attrs := []any{
-		"agent", agent.UID, "region", agent.Region,
+		logKeyAgent, agent.UID, "region", agent.Region,
 		"agent_version", state.upgrade.agentVersion, "server_version", target,
 	}
 
@@ -387,7 +389,7 @@ func (h *Handler) nextUpgradeCandidate(
 
 	if len(stale) > 0 {
 		if _, err := db.NewDelete().Model((*upgradeCandidateRow)(nil)).
-			Where("agent_uid IN (?)", bun.In(stale)).
+			Where("agent_uid IN (?)", bun.List(stale)).
 			Exec(ctx); err != nil {
 			h.logger.DebugContext(ctx, "could not prune stale upgrade candidates", "error", err)
 		}

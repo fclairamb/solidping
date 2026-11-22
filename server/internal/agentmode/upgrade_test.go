@@ -37,7 +37,7 @@ func (s *upgradeServer) serve(t *testing.T, targetURL string, jobStarted <-chan 
 		}
 		defer func() { _ = conn.CloseNow() }()
 
-		ctx := context.Background()
+		ctx := req.Context()
 
 		if wsjson.Write(ctx, conn, agents.ServerFrame{
 			Type: agents.MsgTypeHello, AgentUID: "agent-uid-1", WorkerUID: "worker-1", Region: "test-1",
