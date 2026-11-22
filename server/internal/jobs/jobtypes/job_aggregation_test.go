@@ -943,7 +943,7 @@ func TestAggregatePeriod_KeepsLifecycleMarkerRows(t *testing.T) {
 	}
 
 	run := &AggregationJobRun{}
-	aggregated, aggErr := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
+	aggregated, _, aggErr := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
 	r.NoError(aggErr)
 	r.True(aggregated, "expected an hour aggregation to be produced from the raw window")
 
@@ -1049,17 +1049,17 @@ func TestAggregatePeriod_SparseLongPeriodSeries(t *testing.T) {
 	// Aggregate repeatedly: each call finds and compacts exactly one
 	// check-region's ready bucket (findAggregatableResults returns ONE
 	// pair per call), so two calls are needed to roll up both sparse rows.
-	aggregatedOnce, aggErr := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
+	aggregatedOnce, _, aggErr := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
 	r.NoError(aggErr)
 	r.True(aggregatedOnce, "expected the first sparse bucket to aggregate")
 
-	aggregatedTwice, aggErr := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
+	aggregatedTwice, _, aggErr := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
 	r.NoError(aggErr)
 	r.True(aggregatedTwice, "expected the second sparse bucket (2 weeks later) to aggregate")
 
 	// A third call must find nothing left to aggregate — no phantom
 	// zero-row buckets were ever created for the ~335 empty hours between.
-	aggregatedThrice, aggErr := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
+	aggregatedThrice, _, aggErr := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
 	r.NoError(aggErr)
 	r.False(aggregatedThrice, "no third bucket should exist to aggregate")
 

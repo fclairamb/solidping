@@ -177,7 +177,7 @@ func TestAggregatePeriod_MarkerOnlyBucketIsInert(t *testing.T) {
 	run := &AggregationJobRun{}
 	jctx := &jobdef.JobContext{DBService: dbSvc, Logger: slog.Default()}
 
-	aggregated, err := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
+	aggregated, _, err := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
 	r.NoError(err)
 	r.False(aggregated, "a marker-only bucket must not report work done (the loop must terminate)")
 
@@ -209,7 +209,7 @@ func TestAggregatePeriod_TerminatesLoopAfterMixedBucket(t *testing.T) {
 	jctx := &jobdef.JobContext{DBService: dbSvc, Logger: slog.Default()}
 
 	// First pass: the two measurable rows roll up into a single hour row.
-	first, err := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
+	first, _, err := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
 	r.NoError(err)
 	r.True(first, "a bucket with measurable rows must aggregate")
 
@@ -229,7 +229,7 @@ func TestAggregatePeriod_TerminatesLoopAfterMixedBucket(t *testing.T) {
 	// Second pass: the leftover marker is all that remains in the bucket. It
 	// must NOT be re-discovered/re-aggregated, and no duplicate hour row may
 	// appear — this is the poison-pill loop neutralized.
-	second, err := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
+	second, _, err := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
 	r.NoError(err)
 	r.False(second, "the leftover marker-only bucket must be inert")
 
@@ -376,9 +376,9 @@ func TestRetentionFromConfig_EnvOverrides(t *testing.T) {
 	r.Equal(9, raw, "an env override must win over the DB parameter")
 }
 
-// TestRun_WorkDoneReschedulesImmediately is the contrast: when a bucket really
-// aggregates, Run reschedules immediately (delay=0) to drain the backlog.
-func TestRun_WorkDoneReschedulesImmediately(t *testing.T) {
+// TestRun_WorkDoneDrainsThenReschedulesInOneHour is the contrast: when a bucket
+// really aggregates, Run drains it in the same run and reschedules ~1h out.
+func TestRun_WorkDoneDrainsThenReschedulesInOneHour(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -401,7 +401,7 @@ func TestRun_WorkDoneReschedulesImmediately(t *testing.T) {
 	r.NoError(run.Run(ctx, jctx))
 
 	r.Len(jobs.scheduledAt, 1)
-	r.WithinDuration(time.Now(), jobs.scheduledAt[0], 2*time.Minute,
-		"a run that aggregated must reschedule immediately")
+	r.WithinDuration(time.Now().Add(1*time.Hour), jobs.scheduledAt[0], 2*time.Minute,
+		"a run that drained its backlog must reschedule ~1h out")
 	r.Len(listHourRows(t, dbSvc, org, check), 1)
 }
