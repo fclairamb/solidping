@@ -139,6 +139,10 @@ type Handler struct {
 	// legacyWarn throttles the v1 reconnect deprecation WARN to one line per
 	// agent per interval (nil: every reconnect logs).
 	legacyWarn *agentcrypto.DeprecationThrottle
+	// rejectWarn throttles the "result rejected" WARN to one line per agent,
+	// job and reason per interval. A rejected result is otherwise invisible
+	// server-side: the check simply stops reporting and later goes stale.
+	rejectWarn *agentcrypto.DeprecationThrottle
 
 	// Shutdown machinery (spec 2026-09-28-03 §4). shutdownCtx is canceled by
 	// Close and cancels every live connection's loop; connsWG counts live
@@ -199,6 +203,7 @@ func NewHandler(
 		logger:       slog.Default().With("component", "agent_ws"),
 		pingInterval: defaultPingInterval,
 		legacyWarn:   agentcrypto.NewDeprecationThrottle(agentcrypto.DefaultDeprecationLogInterval),
+		rejectWarn:   agentcrypto.NewDeprecationThrottle(agentcrypto.DefaultDeprecationLogInterval),
 	}
 }
 
@@ -1547,10 +1552,7 @@ func (h *Handler) handleResult(
 	ctx context.Context, conn *websocket.Conn, state *connState, frame *agentcrypto.ClientFrame,
 ) {
 	if reason := validateResultFrame(frame); reason != "" {
-		_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
-			Type: agentcrypto.MsgTypeError, ID: frame.ID,
-			Code: string(base.ErrorCodeValidationError), Title: reason,
-		})
+		h.rejectResult(ctx, conn, state, frame, base.ErrorCodeValidationError, reason, nil)
 
 		return
 	}
@@ -1561,10 +1563,7 @@ func (h *Handler) handleResult(
 	// cloud region legitimately spans every org (the same jobs it may claim).
 	job, err := h.dbService.GetCheckJobByUID(ctx, frame.JobUID)
 	if err != nil || !agentOwnsJob(state.agent, job) {
-		_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
-			Type: agentcrypto.MsgTypeError, ID: frame.ID,
-			Code: string(base.ErrorCodeForbidden), Title: "job is outside this agent's scope",
-		})
+		h.rejectResult(ctx, conn, state, frame, base.ErrorCodeForbidden, "job is outside this agent's scope", err)
 
 		return
 	}
@@ -1588,10 +1587,7 @@ func (h *Handler) handleResult(
 		FromProbe: true,
 	})
 	if err != nil {
-		_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
-			Type: agentcrypto.MsgTypeError, ID: frame.ID,
-			Code: string(base.ErrorCodeInternalError), Title: "result submission failed",
-		})
+		h.rejectResult(ctx, conn, state, frame, base.ErrorCodeInternalError, "result submission failed", err)
 
 		return
 	}
@@ -1616,6 +1612,44 @@ func agentOwnsJob(agent *models.Agent, job *models.CheckJob) bool {
 	return job.OrganizationUID == agent.OrgUID()
 }
 
+// rejectResult answers a refused result frame with an error frame and logs it.
+// Without the log a refusal is invisible server-side: no result row is
+// written, the job's lease runs out, the next claim is refused the same way,
+// and the check ends up stale with nothing explaining why.
+func (h *Handler) rejectResult(
+	ctx context.Context, conn *websocket.Conn, state *connState, frame *agentcrypto.ClientFrame,
+	code base.ErrorCode, reason string, cause error,
+) {
+	if ok, suppressed := h.rejectWarn.Allow(state.agent.UID + "|" + frame.JobUID + "|" + reason); ok {
+		h.logger.WarnContext(ctx, "agent result rejected",
+			"agent", state.agent.UID, "job_uid", frame.JobUID, "status", frame.Status,
+			"code", string(code), "reason", reason, "error", cause, "suppressed", suppressed)
+	}
+
+	_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
+		Type: agentcrypto.MsgTypeError, ID: frame.ID,
+		Code: string(code), Title: reason,
+	})
+}
+
+// agentMayReport reports whether a deported agent may report status: every
+// probe outcome its checkers can return. Degraded and Warning are probe
+// outcomes too (an expiring certificate, a slow browser journey), and
+// refusing them silenced every such check run on a private location.
+// ResultStatusAbandoned stays out: only the server's reaper mints it.
+func agentMayReport(status models.ResultStatus) bool {
+	switch status {
+	case models.ResultStatusCreated, models.ResultStatusRunning, models.ResultStatusUp,
+		models.ResultStatusDown, models.ResultStatusTimeout, models.ResultStatusError,
+		models.ResultStatusDegraded, models.ResultStatusWarning:
+		return true
+	case models.ResultStatusAbandoned:
+		return false
+	default:
+		return false
+	}
+}
+
 // validateResultFrame applies the untrusted-input checks on a result frame.
 // Returns a human-readable rejection reason, or "" when valid.
 func validateResultFrame(frame *agentcrypto.ClientFrame) string {
@@ -1623,7 +1657,7 @@ func validateResultFrame(frame *agentcrypto.ClientFrame) string {
 		return "jobUid is required"
 	}
 
-	if frame.Status < int(models.ResultStatusCreated) || frame.Status > int(models.ResultStatusError) {
+	if !agentMayReport(models.ResultStatus(frame.Status)) {
 		return "status out of range"
 	}
 

@@ -3,6 +3,7 @@ package agentws_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -335,6 +336,45 @@ func TestEnrollClaimResultIncident(t *testing.T) {
 	incidents, _, err := e.dbSvc.ListIncidents(ctx, &models.ListIncidentsFilter{OrganizationUID: e.org.UID})
 	r.NoError(err)
 	r.NotEmpty(incidents, "a DOWN result with 0s confirmation must open an incident server-side")
+}
+
+// TestWarningAndDegradedResultsAccepted pins the fix for a private-location
+// SSL check that went silent: once its certificate entered warningDays the
+// checker returned Warning, the server refused the result frame ("status out
+// of range"), no row was written and the check went stale instead of showing
+// the warning. Every probe outcome a checker can return must round-trip.
+func TestWarningAndDegradedResultsAccepted(t *testing.T) {
+	t.Parallel()
+
+	for _, status := range []models.ResultStatus{models.ResultStatusWarning, models.ResultStatusDegraded} {
+		t.Run(fmt.Sprintf("status %d", status), func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+			e := newEnv(t)
+			ctx := t.Context()
+
+			check := e.createCheck("tls", []string{testRegion})
+			conn, _, _ := e.enroll(e.mintToken(), "dc1-agent")
+
+			jobsResp := roundTrip(t, conn, agentcrypto.ClientFrame{Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 10})
+			r.Len(jobsResp.Jobs, 1)
+
+			ack := roundTrip(t, conn, agentcrypto.ClientFrame{
+				Type:   agentcrypto.MsgTypeResult,
+				ID:     "r1",
+				JobUID: jobsResp.Jobs[0].UID,
+				Status: int(status),
+				Output: map[string]any{"severity": "warning", "certExpiryWarning": true},
+			})
+			r.Equal(agentcrypto.MsgTypeAck, ack.Type, "a %d result must be acked, got %q (%s)", status, ack.Type, ack.Title)
+
+			results, err := e.dbSvc.GetLastResultForChecks(ctx, e.org.UID, []string{check.UID})
+			r.NoError(err)
+			got, ok := results[check.UID]
+			r.True(ok, "result row must exist")
+			r.Equal(int(status), *got.Status)
+		})
+	}
 }
 
 // TestClaimIsOrgScoped asserts the organization_uid half of the claim's hard
