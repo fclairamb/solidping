@@ -1,10 +1,12 @@
 package members
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -164,4 +166,101 @@ func TestErrorVariables(t *testing.T) {
 	r.Contains(ErrCannotRemoveLastAdmin.Error(), "last admin")
 	r.Contains(ErrCannotDemoteLastAdmin.Error(), "last admin")
 	r.Contains(ErrInvalidRole.Error(), "role")
+}
+
+// seedClaimAdmin seeds an org with an owner and an admin whose role came from
+// the OIDC org-admin group claim (role_source = 'oidc_group').
+func seedClaimAdmin(
+	ctx context.Context, t *testing.T, dbService db.Service,
+) (*models.Organization, *models.OrganizationMember, *models.OrganizationMember) {
+	t.Helper()
+
+	org, members := seedOrg(ctx, t, dbService, "claim-org", map[string]models.MemberRole{
+		"owner@acme.com": models.MemberRoleOwner,
+	})
+
+	user := models.NewUser("claim-admin@acme.com")
+	require.NoError(t, dbService.CreateUser(ctx, user))
+
+	source := models.MemberRoleSourceOIDCGroup
+	admin := models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)
+	admin.RoleSource = &source
+	require.NoError(t, dbService.CreateOrganizationMember(ctx, admin))
+
+	return org, members["owner@acme.com"], admin
+}
+
+func roleChangedEvents(
+	ctx context.Context, t *testing.T, dbService db.Service, orgUID string,
+) []*models.Event {
+	t.Helper()
+
+	var events []*models.Event
+
+	require.NoError(t, dbService.DB().NewSelect().Model(&events).
+		Where("organization_uid = ?", orgUID).
+		Where("event_type = ?", string(models.EventTypeMemberRoleChanged)).
+		Scan(ctx))
+
+	return events
+}
+
+// A claim admin re-sending their own role must not launder the claim grant
+// into a local one (security scan 2026-11-22, AU1): the PATCH is a no-op that
+// keeps role_source, so leaving the IdP group still demotes them.
+func TestUpdateMemberSameRoleKeepsClaimSource(t *testing.T) {
+	t.Parallel()
+
+	svc, dbService, ctx := setupMembersTest(t)
+	org, _, admin := seedClaimAdmin(ctx, t, dbService)
+
+	role := string(models.MemberRoleAdmin)
+	resp, err := svc.UpdateMember(ctx, org.Slug, admin.UID, UpdateMemberRequest{Role: &role}, callerFor(admin))
+	require.NoError(t, err)
+	require.Equal(t, role, resp.Role)
+
+	got, err := dbService.GetOrganizationMember(ctx, admin.UID)
+	require.NoError(t, err)
+	require.Equal(t, models.MemberRoleAdmin, got.Role)
+	require.NotNil(t, got.RoleSource, "a same-role PATCH keeps the claim source")
+	require.Equal(t, models.MemberRoleSourceOIDCGroup, *got.RoleSource)
+	require.Empty(t, roleChangedEvents(ctx, t, dbService, org.UID), "a no-op PATCH records nothing")
+}
+
+// Positive control: a real change by the owner takes the role over. Down to
+// user and back to admin leaves a local grant, and the change clearing the
+// claim source is audited with that previous source.
+func TestUpdateMemberRealChangeTakesOverClaimGrant(t *testing.T) {
+	t.Parallel()
+
+	svc, dbService, ctx := setupMembersTest(t)
+	org, owner, admin := seedClaimAdmin(ctx, t, dbService)
+
+	userRole := string(models.MemberRoleUser)
+	_, err := svc.UpdateMember(ctx, org.Slug, admin.UID, UpdateMemberRequest{Role: &userRole}, callerFor(owner))
+	require.NoError(t, err)
+
+	events := roleChangedEvents(ctx, t, dbService, org.UID)
+	require.Len(t, events, 1)
+	require.Equal(t, models.MemberRoleSourceOIDCGroup, events[0].Payload["previous_role_source"])
+	require.Equal(t, string(models.MemberRoleAdmin), events[0].Payload["previous_role"])
+
+	adminRole := string(models.MemberRoleAdmin)
+	_, err = svc.UpdateMember(ctx, org.Slug, admin.UID, UpdateMemberRequest{Role: &adminRole}, callerFor(owner))
+	require.NoError(t, err)
+
+	got, err := dbService.GetOrganizationMember(ctx, admin.UID)
+	require.NoError(t, err)
+	require.Equal(t, models.MemberRoleAdmin, got.Role)
+	require.Nil(t, got.RoleSource, "a real role change naming no source is a local grant")
+
+	events = roleChangedEvents(ctx, t, dbService, org.UID)
+	require.Len(t, events, 2)
+
+	for _, ev := range events {
+		if ev.Payload["role"] == string(models.MemberRoleAdmin) {
+			_, hasSource := ev.Payload["previous_role_source"]
+			require.False(t, hasSource, "the local user role had no source")
+		}
+	}
 }

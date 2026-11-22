@@ -379,6 +379,7 @@ func (s *Service) UpdateMember(
 	}
 
 	previousRole := member.Role
+	previousRoleSource := member.RoleSource
 
 	// Prepare update
 	update := models.OrganizationMemberUpdate{}
@@ -389,12 +390,18 @@ func (s *Service) UpdateMember(
 			return nil, roleErr
 		}
 
-		update.Role = &newRole
+		// A PATCH re-sending the current role writes nothing: writing it would
+		// clear role_source and silently turn an OIDC group claim grant into a
+		// permanent local one that revokeOrgAdmin never touches.
+		if newRole != member.Role {
+			update.Role = &newRole
+		}
 	}
 
-	updateErr := s.db.UpdateOrganizationMember(ctx, memberUID, update)
-	if updateErr != nil {
-		return nil, updateErr
+	if update.Role != nil || update.JoinedAt != nil {
+		if updateErr := s.db.UpdateOrganizationMember(ctx, memberUID, update); updateErr != nil {
+			return nil, updateErr
+		}
 	}
 
 	// Reload member and user
@@ -412,11 +419,7 @@ func (s *Service) UpdateMember(
 	// role is not a privilege change and must not read as one in the trail.
 	if member.Role != previousRole {
 		audit.Record(ctx, s.db, org.UID, models.EventTypeMemberRoleChanged,
-			auditMemberTarget(member, user), models.JSONMap{
-				fieldEmail:      user.Email,
-				"previous_role": string(previousRole),
-				fieldRole:       string(member.Role),
-			})
+			auditMemberTarget(member, user), roleChangedPayload(user.Email, previousRole, member.Role, previousRoleSource))
 	}
 
 	return &MemberResponse{
@@ -429,6 +432,25 @@ func (s *Service) UpdateMember(
 		JoinedAt:  member.JoinedAt,
 		CreatedAt: member.CreatedAt,
 	}, nil
+}
+
+// roleChangedPayload is the member.role_changed payload. A hand-made change
+// takes over a sourced role (an OIDC group claim grant): the previous source is
+// kept so the trail shows the grant became a local one.
+func roleChangedPayload(
+	email string, previousRole, role models.MemberRole, previousRoleSource *string,
+) models.JSONMap {
+	payload := models.JSONMap{
+		fieldEmail:      email,
+		"previous_role": string(previousRole),
+		fieldRole:       string(role),
+	}
+
+	if previousRoleSource != nil {
+		payload["previous_role_source"] = *previousRoleSource
+	}
+
+	return payload
 }
 
 // authorizeRoleChange validates a member role change: the role itself, the
