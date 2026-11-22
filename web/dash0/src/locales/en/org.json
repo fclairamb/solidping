@@ -340,6 +340,9 @@
         "gotcha1": "The token is single-use: it enrolls exactly one agent, then it's consumed.",
         "gotcha2": "The agent persists its identity to /data/agent-keys.json (SP_AGENT_KEYS_FILE) — that volume must survive restarts, or the agent will enroll again with a new identity.",
         "k8sNote": "This first run persists the identity on a PVC, exactly like the docker run volume. For a no-persistent-volume setup, read the value out of the file the agent wrote (kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json) and store it as SP_AGENT_KEYS in a Secret. The agent never prints its private keys to the logs — see the docs link at the top of this card.",
+        "imageFollows": "{{image}} is served by this server and always resolves to its version: when the server is upgraded, it asks the agent to restart on the new version. Kubernetes pulls it again on restart (imagePullPolicy: Always); with Docker, a restart reuses the local image, so add the update timer from the docs. To pin this exact version instead, use {{pinned}}.",
+        "imagePinned": "{{image}} is this server's version. Change the tag when you upgrade the server.",
+        "imageDev": "This server is a development build with no published image of its own: the snippets use {{image}}.",
         "continue": "Continue — I started the agent"
       },
       "step4": {

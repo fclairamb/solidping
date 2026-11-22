@@ -68,6 +68,7 @@ import { LiveDurationAgo } from "@/components/shared/relative-time";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { RegionKeyCell } from "@/components/shared/region-key-cell";
 import { SecretText } from "@/components/ui/secret-text";
+import { agentImage } from "@/lib/agent-image";
 
 export const Route = createFileRoute("/orgs/$org/organization/private-locations/")({
   component: PrivateLocationsPage,
@@ -429,12 +430,12 @@ function RegionsCard({ org }: { org: string }) {
 // the server stores only its hash and can never display it again.
 // The enrollment command shown once a token is minted: a shell command the
 // operator copies verbatim, not UI copy.
-function dockerRunCommand(serverUrl: string, token: string): string {
+function dockerRunCommand(serverUrl: string, token: string, image: string): string {
   return `docker run -v agent-data:/data \\
   -e SP_NODE_ROLE=agent \\
   -e SP_AGENT_SERVER_URL=${serverUrl} \\
   -e SP_AGENT_ENROLLMENT_TOKEN=${token} \\
-  ghcr.io/fclairamb/solidping:latest`;
+  ${image}`;
 }
 
 function TokenRevealDialog({
@@ -446,6 +447,8 @@ function TokenRevealDialog({
 }) {
   const { t } = useTranslation(["org"]);
   const [copied, setCopied] = useState(false);
+  const { data: versionData } = useVersion();
+  const { image } = agentImage(versionData?.version, window.location.origin);
 
   const copy = async () => {
     if (!minted) return;
@@ -487,7 +490,7 @@ function TokenRevealDialog({
               className="max-w-full overflow-x-auto rounded bg-muted p-2 text-xs"
               data-testid="docker-run-command"
             >
-              {dockerRunCommand(window.location.origin, minted.token)}
+              {dockerRunCommand(window.location.origin, minted.token, image)}
             </SecretText>
           </div>
         )}

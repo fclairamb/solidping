@@ -340,6 +340,9 @@
         "gotcha1": "Der Token ist einmalig verwendbar: Er registriert genau einen Agenten und wird dann verbraucht.",
         "gotcha2": "Der Agent speichert seine Identität dauerhaft in /data/agent-keys.json (SP_AGENT_KEYS_FILE) — dieses Volume muss Neustarts überstehen, sonst registriert sich der Agent erneut mit einer neuen Identität.",
         "k8sNote": "Dieser erste Lauf persistiert die Identität auf einer PVC, genau wie das docker-run-Volume. Für eine Einrichtung ohne persistentes Volume lesen Sie den Wert aus der vom Agenten geschriebenen Datei (kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json) und speichern Sie ihn als SP_AGENT_KEYS in einem Secret. Der Agent gibt seine privaten Schlüssel niemals in den Logs aus — siehe den Dokumentationslink oben auf dieser Karte.",
+        "imageFollows": "{{image}} wird von diesem Server bereitgestellt und entspricht immer seiner Version: Wird der Server aktualisiert, bittet er den Agenten, mit der neuen Version neu zu starten. Kubernetes lädt das Image beim Neustart erneut (imagePullPolicy: Always); mit Docker verwendet ein Neustart das lokale Image weiter, richten Sie daher den Update-Timer aus der Dokumentation ein. Um genau diese Version festzulegen, verwenden Sie {{pinned}}.",
+        "imagePinned": "{{image}} ist die Version dieses Servers. Ändern Sie das Tag, wenn Sie den Server aktualisieren.",
+        "imageDev": "Dieser Server ist ein Entwicklungs-Build ohne eigenes veröffentlichtes Image: Die Beispiele verwenden {{image}}.",
         "continue": "Weiter — ich habe den Agenten gestartet"
       },
       "step4": {
