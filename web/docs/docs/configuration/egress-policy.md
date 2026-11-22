@@ -189,15 +189,27 @@ guard. Under an enforcing policy a browser check (or a script's
    error. Nothing read from the page after that (title, text, `evaluate`,
    screenshot) reaches the result.
 5. **WebRTC is off.** Its traffic does not go through an HTTP proxy (ICE
-   sends UDP straight to the addresses a page names), so every page, iframes
-   included, loses `RTCPeerConnection` before its own scripts run. A Chrome
-   SolidPing starts itself also runs with a WebRTC policy that forbids UDP
-   outside the proxy. Give a remote Chrome the same flags, as the
-   [Kubernetes](/installation/kubernetes#browser-checks-headless-chrome-sidecar)
-   and [Docker Compose](/installation/docker-compose#browser-checks-headless-chrome)
-   examples do: `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`
-   (headless-shell) and `--webrtc-ip-handling-policy=disable_non_proxied_udp`
-   (desktop Chrome).
+   sends UDP straight to the addresses a page names), so the checked page
+   and its iframes lose `RTCPeerConnection` before their own scripts run. A
+   Chrome SolidPing starts itself also runs with a WebRTC policy that
+   forbids UDP outside the proxy.
+6. **No popups.** A check never needs a second tab, and a popup is a page
+   of its own that layers 4 and 5 do not reach. `window.open` returns
+   `null`. A popup opened another way (a `target="_blank"` link, a form) is
+   closed as soon as Chrome creates it, and the check fails with "the page
+   opened a new window or tab". A browser or JS check that clicks such a link
+   has to navigate to its URL instead.
+
+A remote Chrome **must** be started with the WebRTC policy flags, as the
+[Kubernetes](/installation/kubernetes#browser-checks-headless-chrome-sidecar)
+and [Docker Compose](/installation/docker-compose#browser-checks-headless-chrome)
+examples do: `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`
+(headless-shell) and `--webrtc-ip-handling-policy=disable_non_proxied_udp`
+(desktop Chrome). They are not optional: without them, WebRTC containment
+rests on SolidPing's script alone, and a page that runs before the script
+reaches it (a popup closed a moment too late) can still send UDP to an
+internal address. A sidecar deployed before these flags were documented
+needs its manifest updated.
 
 The proxy (layer 1) needs Chrome to reach the worker's loopback. That is
 the case when SolidPing starts Chrome itself, and for a remote Chrome whose
