@@ -10,8 +10,7 @@ OpenTofu: checks, notification channels, status pages and their sections, and ma
 windows. It talks to the same REST API as the dashboard and the [CLI](/cli).
 
 - Source and issues: [github.com/fclairamb/terraform-provider-solidping](https://github.com/fclairamb/terraform-provider-solidping)
-- Reference documentation: [Terraform Registry](https://registry.terraform.io/providers/fclairamb/solidping/latest/docs),
-  [OpenTofu Registry](https://search.opentofu.org/provider/fclairamb/solidping/latest)
+- Reference documentation: [Terraform Registry](https://registry.terraform.io/providers/fclairamb/solidping/latest/docs)
 
 ## Setting up
 
@@ -41,8 +40,10 @@ variable "solidping_token" {
 }
 ```
 
-The same block works with `terraform init` and `tofu init`: each CLI resolves the provider from
-its own registry.
+The same block works with `terraform init` and `tofu init`. OpenTofu resolves `fclairamb/solidping`
+from its own registry; if `tofu init` reports it missing there, write the full address
+`registry.terraform.io/fclairamb/solidping` as the `source`, which OpenTofu installs and verifies
+just as well.
 
 ## What it manages
 
