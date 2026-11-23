@@ -594,6 +594,7 @@ function AgentsCard({ org }: { org: string }) {
                       <AgentVersionCell
                         agentVersion={agent.version}
                         serverVersion={versionData?.version}
+                        pinned={agent.versionPinned}
                         data-testid={`agent-version-${agent.uid}`}
                       />
                     </TableCell>

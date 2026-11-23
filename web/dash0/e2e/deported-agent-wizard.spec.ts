@@ -163,6 +163,52 @@ test.describe.serial("Register an agent wizard", () => {
     await expect(kubernetes).not.toContainText(":latest");
   });
 
+  // An agent run with SP_AGENT_IGNORE_VERSION_DRIFT=true stays on its version
+  // (spec 2026-11-22-04): the list keeps the Drifted badge and labels it
+  // Pinned. The agent list and the server version are stubbed: a real agent
+  // only exists over the agent WS protocol.
+  test("a pinned drifted agent shows Drifted plus Pinned", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+
+    await page.route("**/api/mgmt/version", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ version: "1.2.3", commit: "abc123" }),
+      }),
+    );
+
+    const agent = (uid: string, versionPinned: boolean) => ({
+      uid,
+      name: uid,
+      region: `@${REGION_SLUG}`,
+      fingerprint: `fp-${uid}`,
+      status: "active",
+      enrolledAt: new Date().toISOString(),
+      version: "1.2.0",
+      versionPinned,
+      online: true,
+    });
+
+    await page.route("**/api/v1/orgs/test/agents", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({
+        json: { data: [agent("e2e-pinned-agent", true), agent("e2e-drifted-agent", false)] },
+      });
+    });
+
+    await page.goto("orgs/test/organization/private-locations");
+
+    const pinnedCell = page.getByTestId("agent-version-e2e-pinned-agent");
+    await expect(pinnedCell).toHaveAttribute("data-agent-version", "drifted");
+    await expect(pinnedCell).toContainText("Drifted");
+    await expect(page.getByTestId("agent-version-e2e-pinned-agent-pinned")).toHaveText("Pinned");
+
+    const driftedCell = page.getByTestId("agent-version-e2e-drifted-agent");
+    await expect(driftedCell).toContainText("Drifted");
+    await expect(page.getByTestId("agent-version-e2e-drifted-agent-pinned")).toHaveCount(0);
+  });
+
   // Regression for the "Token no longer available" bug: when the agent enrolls
   // while the user is still reading step 3 (typical — the docker run connects
   // within seconds), the agent is already inside step 4's new-agent baseline

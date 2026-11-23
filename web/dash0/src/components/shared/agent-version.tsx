@@ -44,11 +44,15 @@ export function agentVersionState(
 export function AgentVersionCell({
   agentVersion,
   serverVersion,
+  pinned,
   className,
   "data-testid": testId,
 }: {
   agentVersion?: string | null;
   serverVersion?: string | null;
+  /** The agent runs with SP_AGENT_IGNORE_VERSION_DRIFT=true (spec
+   * 2026-11-22-04): its drift is deliberate, labelled "Pinned". */
+  pinned?: boolean;
   className?: string;
   "data-testid"?: string;
 }) {
@@ -86,10 +90,20 @@ export function AgentVersionCell({
           >
             <span className="text-sm">{agentVersion}</span>
             <Badge variant="warning">{t("agentVersion.drifted")}</Badge>
+            {pinned && (
+              <Badge
+                variant="secondary"
+                data-testid={testId ? `${testId}-pinned` : undefined}
+                data-agent-version-pinned="true"
+              >
+                {t("agentVersion.pinned")}
+              </Badge>
+            )}
           </span>
         </TooltipTrigger>
         <TooltipContent className="max-w-xs">
           {t("agentVersion.serverRuns", { version: serverVersion })}
+          {pinned && <> {t("agentVersion.pinnedHint")}</>}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

@@ -155,7 +155,9 @@
   "agentVersion": {
     "unknown": "desconocido",
     "drifted": "Desactualizado",
-    "serverRuns": "Este servidor ejecuta la v{{version}}."
+    "serverRuns": "Este servidor ejecuta la v{{version}}.",
+    "pinned": "Fijada",
+    "pinnedHint": "Este agente ignora las solicitudes de actualización (SP_AGENT_IGNORE_VERSION_DRIFT=true): se queda en su versión."
   },
   "noData": "Sin datos",
   "labelPicker": {

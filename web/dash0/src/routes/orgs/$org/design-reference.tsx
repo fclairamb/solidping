@@ -2739,10 +2739,11 @@ function ButtonsBadgesSection() {
             <div className="flex flex-col items-start gap-2">
               <AgentVersionCell agentVersion="0.17.0" serverVersion="0.17.0" />
               <AgentVersionCell agentVersion="0.16.2" serverVersion="0.17.0" />
+              <AgentVersionCell agentVersion="0.16.2" serverVersion="0.17.0" pinned />
               <AgentVersionCell agentVersion={null} serverVersion="0.17.0" />
             </div>
           }
-          importLine={`import { AgentVersionCell } from "@/components/shared/agent-version";\n\n<AgentVersionCell\n  agentVersion={agent.version}\n  serverVersion={versionData?.version}\n/>`}
+          importLine={`import { AgentVersionCell } from "@/components/shared/agent-version";\n\n<AgentVersionCell\n  agentVersion={agent.version}\n  serverVersion={versionData?.version}\n  pinned={agent.versionPinned}\n/>`}
         />
 
         <h3 className="text-sm font-medium">Check group status header</h3>
