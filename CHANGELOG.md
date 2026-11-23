@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.54.0](https://github.com/fclairamb/solidping/compare/v0.53.0...v0.54.0) (2026-11-23)
+
+
+### Features
+
+* **agents:** auto-upgrade private-location agents to the server's version ([#985](https://github.com/fclairamb/solidping/issues/985)) ([a03b2f6](https://github.com/fclairamb/solidping/commit/a03b2f68cac07b7f7fbea563d9dd5591e60bc563))
+
+
+### Bug Fixes
+
+* **agent:** accept Warning and Degraded results from private locations ([#983](https://github.com/fclairamb/solidping/issues/983)) ([1414991](https://github.com/fclairamb/solidping/commit/1414991924cea06f5e27e54820f3c8e69ac7fe14))
+* **deps:** update github.com/dop251/goja digest to 35fdc4b ([#982](https://github.com/fclairamb/solidping/issues/982)) ([7ab48c5](https://github.com/fclairamb/solidping/commit/7ab48c5e71305c99d0847296cc4af41789aa5f08))
+* **security:** bound the agent result rejection log throttle ([#988](https://github.com/fclairamb/solidping/issues/988)) ([c971ecd](https://github.com/fclairamb/solidping/commit/c971ecd4ade44791cce6241e3decf751553b18c8))
+
 ## [0.53.0](https://github.com/fclairamb/solidping/compare/v0.52.0...v0.53.0) (2026-11-22)
 
 
