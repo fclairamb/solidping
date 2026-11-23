@@ -70,6 +70,7 @@ import {
 import { cn } from "@/lib/utils";
 import { regionDisplayLabel, sortRegionSlugs } from "@/lib/region-label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { checkTargetOf } from "@/lib/check-target";
 import { CheckRegionOutageBanner } from "@/components/shared/region-outage-banner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -332,18 +333,6 @@ function parsePeriodMs(period?: string): number | undefined {
   const [h, m, s] = parts;
   const ms = (h * 3600 + m * 60 + s) * 1000;
   return ms > 0 ? ms : undefined;
-}
-
-/** The check's probed target for the header meta line: url, else host. Types
- * with neither (heartbeat, email, …) have none and the item is omitted. */
-function headerTargetOf(check: {
-  config?: Record<string, unknown>;
-}): string | undefined {
-  const url = check.config?.url;
-  if (typeof url === "string" && url) return url;
-  const host = check.config?.host;
-  if (typeof host === "string" && host) return host;
-  return undefined;
 }
 
 function CheckDetailPage() {
@@ -898,7 +887,7 @@ function CheckDetailPage() {
   const headerStatus = check.status ?? check.lastResult?.status;
   const checkDisplayName =
     check.name || check.slug || check.uid?.slice(0, 8) || "";
-  const headerTarget = headerTargetOf(check);
+  const headerTarget = checkTargetOf(check.config);
   const headerTargetIsUrl = headerTarget
     ? /^https?:\/\//i.test(headerTarget)
     : false;
