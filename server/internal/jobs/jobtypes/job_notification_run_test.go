@@ -175,6 +175,8 @@ func TestNotificationJob_DeliveryOutcomes(t *testing.T) {
 		status, errMsg, _ := env.audit(t)
 		r.Equal(models.IncidentNotificationStatusFailed, status)
 		r.Contains(errMsg, "status 400")
+		// retryable=false: the row is settled as failed, not left pending.
+		r.NotEqual(models.IncidentNotificationStatusPending, status)
 	})
 
 	t.Run("receiver unavailable is retried", func(t *testing.T) {
