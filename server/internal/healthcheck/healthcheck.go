@@ -34,6 +34,13 @@ var errUnhealthy = errors.New("healthcheck: unexpected status")
 // the probe always targets 127.0.0.1 since it runs inside the same
 // container/process group as the server it checks.
 func URLFromListen(listen string) string {
+	return "http://" + LoopbackAddr(listen) + healthPath
+}
+
+// LoopbackAddr maps a listen address such as ":4000" to "127.0.0.1:4000": the
+// address the probe targets, and the one agent mode binds its health listener
+// to.
+func LoopbackAddr(listen string) string {
 	var port string
 
 	if _, p, err := net.SplitHostPort(listen); err == nil {
@@ -42,7 +49,43 @@ func URLFromListen(listen string) string {
 		port = strings.TrimPrefix(listen, ":")
 	}
 
-	return "http://127.0.0.1:" + port + healthPath
+	return "127.0.0.1:" + port
+}
+
+// readHeaderTimeout bounds how long the agent health listener waits for a
+// request's headers (gosec G112).
+const readHeaderTimeout = 5 * time.Second
+
+// Serve answers GET /api/mgmt/health on listener until ctx is canceled: 200
+// while healthy() is true, 503 otherwise, 404 for any other path. Agent mode
+// runs it on loopback (it has no HTTP server of its own), so the image's
+// HEALTHCHECK reports whether the agent holds its link to the server (issue
+// #995).
+func Serve(ctx context.Context, listener net.Listener, healthy func() bool) error {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET "+healthPath, func(writer http.ResponseWriter, _ *http.Request) {
+		if !healthy() {
+			writer.WriteHeader(http.StatusServiceUnavailable)
+
+			return
+		}
+
+		writer.WriteHeader(http.StatusOK)
+	})
+
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: readHeaderTimeout}
+
+	go func() {
+		<-ctx.Done()
+
+		_ = srv.Close()
+	}()
+
+	if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("health listener: %w", err)
+	}
+
+	return nil
 }
 
 // Check performs a single GET against url and returns nil only when the

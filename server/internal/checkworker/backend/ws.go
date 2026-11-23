@@ -812,6 +812,15 @@ func (b *WSBackend) dialEnroll(ctx context.Context) error {
 	return nil
 }
 
+// Connected reports whether the agent currently holds a live connection to the
+// server. Agent mode's health listener answers with it.
+func (b *WSBackend) Connected() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.conn != nil
+}
+
 // activateConn publishes a freshly dialed connection and starts its read pump
 // and keepalive ping loop. Both loops run on WithoutCancel so a per-request ctx
 // cancellation cannot tear down the shared connection; they end when the conn
