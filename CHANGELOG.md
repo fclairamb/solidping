@@ -5,7 +5,9 @@
 
 ### Bug Fixes
 
-* multi-word check search, webhook retry classification, iOS session diagnostics ([#990](https://github.com/fclairamb/solidping/issues/990)) ([8d26677](https://github.com/fclairamb/solidping/commit/8d2667762d22f17ee0969224f940273cf417eb8e))
+* **checks:** a multi-word search matches checks whose name or slug contains every word, and `%` or `_` are matched literally ([#990](https://github.com/fclairamb/solidping/issues/990)) ([8d26677](https://github.com/fclairamb/solidping/commit/8d2667762d22f17ee0969224f940273cf417eb8e))
+* **webhooks:** 4xx replies are permanent failures; 5xx, 429 and 408 are retried, honouring `Retry-After`, with the same `webhook-id` on every retry ([#990](https://github.com/fclairamb/solidping/issues/990)) ([8d26677](https://github.com/fclairamb/solidping/commit/8d2667762d22f17ee0969224f940273cf417eb8e))
+* **ios:** diagnostics to track down sessions lost on iOS Safari; the escalation policy editor no longer logs a React warning ([#990](https://github.com/fclairamb/solidping/issues/990)) ([8d26677](https://github.com/fclairamb/solidping/commit/8d2667762d22f17ee0969224f940273cf417eb8e))
 
 ## [0.54.0](https://github.com/fclairamb/solidping/compare/v0.53.0...v0.54.0) (2026-11-23)
 
