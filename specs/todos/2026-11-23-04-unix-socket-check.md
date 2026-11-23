@@ -90,10 +90,8 @@ New check type `unix_socket` (constant `CheckTypeUnixSocket`), in its own packag
   only on the egress guard.
 - Whether the `tcp` send/expect exchange is reusable as is from another package.
 
-## Open questions
+## Resolved open questions
 
-- Name: `unix_socket` or `file_socket` (both floated in the issue)? **Recommended: `unix_socket`**,
-  the standard term, and the one Go and systemd use.
-- HTTP over a socket: a mode of `unix_socket` (this spec), or a `socket_path` field on the `http`
-  check so every HTTP assertion applies? **Recommended: the mode in `unix_socket`** with status and
-  body only; move to `http` later if users ask for the full HTTP assertions.
+- **Decision:** name the type `unix_socket` (not `file_socket`).
+- **Decision:** HTTP over a socket is a mode of `unix_socket` (`http_path`, `expected_status`,
+  `body_expect`). Do not add a `socket_path` field to the `http` check.

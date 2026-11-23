@@ -75,9 +75,8 @@ New check type `systemd` (constant `CheckTypeSystemd`), package
   `systemd` to the same rule.
 - Whether the private-location agent image ships `systemctl` (if not, the docs say so).
 
-## Open questions
+## Resolved open questions
 
-- Unit types: services only, or any unit (`.timer`, `.socket`, `.mount`)? **Recommended: any
-  unit**, a bare name defaulting to `.service`; it costs nothing more.
-- Should a unit stuck in `activating` for longer than a threshold count as down? **Recommended:
-  no** for now; the check interval and a failed restart (`failed`) already catch it.
+- **Decision:** accept any unit type (`.service`, `.timer`, `.socket`, `.mount`, ...). A bare name
+  gets `.service` appended.
+- **Decision:** `activating` stays up however long it lasts. No threshold.
