@@ -5,7 +5,7 @@ title: Check Types
 
 # Check Types
 
-SolidPing supports **44 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
+SolidPing supports **45 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
 
 <!--
   Keep this number equal to the number of `###` sections above "Common Options"
@@ -1391,6 +1391,63 @@ docker://hostname:2375
 | Port | Docker API port | `2375`, `2376` (TLS) |
 | TLS | Enable TLS | `true` / `false` |
 | Timeout | Connection timeout | `10s` |
+
+### Unix socket {#unix-socket}
+
+Monitor a service on the same host as SolidPing that only listens on a Unix
+domain socket file (an application server configured with
+`unix:/run/app/app.sock`, a database, a local daemon), without going through a
+reverse proxy. The check runs in one of three modes:
+
+- **Connect only**: up when a connection to the socket succeeds.
+- **Raw**: send a payload and wait for a reply, with the same `send_data` /
+  `expect_data` / `expect_pattern` options as [TCP](#send-and-expect).
+- **HTTP**: send `GET <http_path>` over the socket (with `Host: localhost`) and
+  check the status and, optionally, the body. Redirects are not followed.
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `path` | Absolute path of the socket file (required). Abstract sockets (`@name`) are not supported | `/run/app/app.sock` |
+| `timeout` | Connection and reply timeout, up to `30s` (default `5s`) | `5s` |
+| `send_data`, `send_encoding`, `expect_data`, `expect_encoding`, `expect_pattern` | Raw mode, as for [TCP](#send-and-expect) | `PING\r\n` |
+| `http_path` | HTTP mode: path of the GET request. Cannot be combined with the raw-mode options | `/healthcheck` |
+| `expected_status` | HTTP mode: the exact status expected. Default: any 2xx or 3xx | `204` |
+| `body_expect` | HTTP mode: a substring the response body must contain | `"status":"ok"` |
+
+When the connection fails, the result is down and its `errno` output tells the
+causes apart: `ENOENT` (the socket file does not exist), `ECONNREFUSED`
+(nothing is listening on it), `EACCES` (SolidPing may not open it). Metrics:
+`connect_time_ms`, plus `response_time_ms` and `status_code` in HTTP mode.
+
+**Connect only:**
+```json
+{ "type": "unix_socket", "config": { "path": "/run/app/app.sock" } }
+```
+
+**HTTP mode:**
+```json
+{
+  "type": "unix_socket",
+  "config": {
+    "path": "/run/app/app.sock",
+    "http_path": "/healthcheck",
+    "expected_status": 200,
+    "body_expect": "ok"
+  }
+}
+```
+
+The SolidPing process needs read and write permission on the socket file
+(usually by being in the socket's group). A SolidPing running in a container
+only sees the sockets mounted into it, for example
+`-v /run/app:/run/app`.
+
+:::note Private locations only on SolidPing Cloud
+On SolidPing Cloud (SaaS), a unix_socket check must run from one of your
+organization's [private locations](./private-locations.md): a socket path is
+read on the host that runs the check, and a shared region never probes its own
+host. A unix_socket check cannot run through an SSH tunnel either.
+:::
 
 ### A2S Game Server (Source / Steam) {#a2s-game-server-source--steam}
 
