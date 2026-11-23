@@ -24,6 +24,15 @@ func TestValidateResultFrameRejectsServerMintedStatuses(t *testing.T) {
 		return &agentcrypto.ClientFrame{JobUID: "job-1", Status: status}
 	}
 
+	t.Run("statuses outside the enum are rejected", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		for _, status := range []int{0, -1, 10, 42} {
+			r.Equal("status out of range", validateResultFrame(frame(status)), "status %d must be rejected", status)
+		}
+	})
+
 	t.Run("abandoned is rejected", func(t *testing.T) {
 		t.Parallel()
 
@@ -43,6 +52,10 @@ func TestValidateResultFrameRejectsServerMintedStatuses(t *testing.T) {
 			models.ResultStatusDown,
 			models.ResultStatusTimeout,
 			models.ResultStatusError,
+			// Probe outcomes too: an SSL check inside its warningDays returns
+			// Warning, and refusing it left private-location checks stale.
+			models.ResultStatusDegraded,
+			models.ResultStatusWarning,
 		} {
 			r.Empty(validateResultFrame(frame(int(status))), "status %d must be accepted", status)
 		}

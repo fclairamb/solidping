@@ -132,6 +132,13 @@ slug on the caller's side, not a wrong key.
   sender still gets junked. Behind a Kubernetes LoadBalancer that SNATs (the default
   `externalTrafficPolicy: Cluster`), the mail server sees every client as a cluster IP
   and SPF always fails; `externalTrafficPolicy: Local` keeps the client IP.
+- A private-location check stuck in `stale` (status 10) while its siblings in the same
+  region report: look at its `check_jobs` row. A `scheduled_at` that no longer moves and a
+  growing `lease_starts` mean the agent claims the job and the server refuses its result.
+  The server logs `agent result rejected` with the reason. Up to v0.53 it logged nothing,
+  and it refused Warning and Degraded results from agents ("status out of range"), so an
+  SSL check went stale as soon as its certificate entered `warningDays`. Stale never
+  notifies.
 - A maintenance window with no attached checks or groups suppresses nothing (see
   [notifications](../features/notifications-and-escalation.md#maintenance-windows)).
 
