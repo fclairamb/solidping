@@ -52,6 +52,7 @@ export type BuiltinCheckType =
   | "snmp"
   | "prometheus"
   | "docker"
+  | "unix_socket"
   | "browser"
   | "freebox_line"
   | "dnsbl"

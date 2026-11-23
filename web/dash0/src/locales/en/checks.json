@@ -462,6 +462,8 @@
     "snmpDescription": "Monitor devices via SNMP",
     "docker": "Docker",
     "dockerDescription": "Monitor Docker container health",
+    "unix_socket": "Unix socket",
+    "unix_socketDescription": "Check a Unix domain socket",
     "browser": "Browser",
     "browserDescription": "Monitor pages with headless Chrome",
     "freebox_line": "Freebox Line",
@@ -1533,7 +1535,9 @@
     "vendorStatusHttps": "Status page URL must start with https://",
     "pluginInvalidJson": "The config is not valid JSON: {{detail}}",
     "pluginNotAnObject": "The config must be a JSON object.",
-    "fieldRequired": "This field is required"
+    "fieldRequired": "This field is required",
+    "socketPathRequired": "Socket path is required",
+    "socketPathAbsolute": "Socket path must be absolute (start with /)"
   },
   "health": {
     "format": "Health format",
@@ -1899,5 +1903,17 @@
       "partial_one": "{{count}} check could not be deleted",
       "partial_other": "{{count}} checks could not be deleted"
     }
+  },
+  "unixSocket": {
+    "path": "Socket path",
+    "pathHelp": "Absolute path of the socket file on the host that runs the check. SolidPing needs read and write permission on it; in a container, only mounted sockets are visible.",
+    "mode": "Mode",
+    "mode_connect": "Connect only",
+    "mode_raw": "Send and expect",
+    "mode_http": "HTTP request",
+    "httpPath": "HTTP path",
+    "expectedStatusOptional": "Expected status (optional)",
+    "expectedStatusHelp": "Default: any 2xx or 3xx status.",
+    "bodyExpectOptional": "Body contains (optional)"
   }
 }

@@ -46,9 +46,8 @@ export const PAYLOAD_ENCODINGS: readonly PayloadEncoding[] = [
  */
 export type ExpectMode = "contains" | "regex";
 
-export interface HostPortState {
-  host: string;
-  port: string;
+/** The send/expect half of a check, shared by `tcp`, `udp` and `unix_socket`. */
+export interface PayloadState {
   sendData: string;
   sendEncoding: PayloadEncoding;
   expectMode: ExpectMode;
@@ -56,65 +55,79 @@ export interface HostPortState {
   expectEncoding: PayloadEncoding;
 }
 
+export interface HostPortState extends PayloadState {
+  host: string;
+  port: string;
+}
+
+/** Config keys the payload half writes, for a module's `ownedKeys`. */
+export const PAYLOAD_KEYS = [
+  "send_data",
+  "send_encoding",
+  "expect_data",
+  "expect_encoding",
+  "expect_pattern",
+] as const;
+
 const asEncoding = (raw: string, fallback: PayloadEncoding): PayloadEncoding =>
   (PAYLOAD_ENCODINGS as readonly string[]).includes(raw)
     ? (raw as PayloadEncoding)
     : fallback;
 
+export function payloadFromConfig(config: CheckConfig): PayloadState {
+  const sendData = getConfigField(config, "send_data");
+  const expectPattern = getConfigField(config, "expect_pattern");
+  const expectData = getConfigField(config, "expect_data");
+  return {
+    sendData,
+    // A STORED payload with no explicit encoding is `text` — that is the
+    // backend default and changing it would change what the check sends.
+    // With nothing stored there is nothing to preserve, so a new check gets
+    // `escaped`: a <textarea> cannot produce a CR any other way.
+    sendEncoding: asEncoding(
+      getConfigField(config, "send_encoding"),
+      sendData ? "text" : "escaped",
+    ),
+    expectMode: expectPattern ? "regex" : "contains",
+    expectValue: expectPattern || expectData,
+    expectEncoding: asEncoding(
+      getConfigField(config, "expect_encoding"),
+      "text",
+    ),
+  };
+}
+
+export function applyPayload(cfg: CheckConfig, state: PayloadState): void {
+  if (state.sendData) {
+    cfg.send_data = state.sendData;
+    // `text` is the backend default; writing it out would be noise.
+    if (state.sendEncoding !== "text") cfg.send_encoding = state.sendEncoding;
+  }
+  if (state.expectValue) {
+    if (state.expectMode === "regex") {
+      cfg.expect_pattern = state.expectValue;
+    } else {
+      cfg.expect_data = state.expectValue;
+      if (state.expectEncoding !== "text") {
+        cfg.expect_encoding = state.expectEncoding;
+      }
+    }
+  }
+}
+
 export const tcpModule: CheckTypeModule<HostPortState> = {
   types: ["tcp", "udp"],
-  ownedKeys: [
-    "host",
-    "port",
-    "send_data",
-    "send_encoding",
-    "expect_data",
-    "expect_encoding",
-    "expect_pattern",
-  ],
-  fromConfig: (config) => {
-    const sendData = getConfigField(config, "send_data");
-    const expectPattern = getConfigField(config, "expect_pattern");
-    const expectData = getConfigField(config, "expect_data");
-    return {
-      host: getConfigField(config, "host"),
-      port: getConfigField(config, "port"),
-      sendData,
-      // A STORED payload with no explicit encoding is `text` — that is the
-      // backend default and changing it would change what the check sends.
-      // With nothing stored there is nothing to preserve, so a new check gets
-      // `escaped`: a <textarea> cannot produce a CR any other way.
-      sendEncoding: asEncoding(
-        getConfigField(config, "send_encoding"),
-        sendData ? "text" : "escaped",
-      ),
-      expectMode: expectPattern ? "regex" : "contains",
-      expectValue: expectPattern || expectData,
-      expectEncoding: asEncoding(
-        getConfigField(config, "expect_encoding"),
-        "text",
-      ),
-    };
-  },
+  ownedKeys: ["host", "port", ...PAYLOAD_KEYS],
+  fromConfig: (config) => ({
+    host: getConfigField(config, "host"),
+    port: getConfigField(config, "port"),
+    ...payloadFromConfig(config),
+  }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
     if (state.host) cfg.host = state.host;
     if (state.port) cfg.port = parseInt(state.port, 10);
-    if (state.sendData) {
-      cfg.send_data = state.sendData;
-      // `text` is the backend default; writing it out would be noise.
-      if (state.sendEncoding !== "text") cfg.send_encoding = state.sendEncoding;
-    }
-    if (state.expectValue) {
-      if (state.expectMode === "regex") {
-        cfg.expect_pattern = state.expectValue;
-      } else {
-        cfg.expect_data = state.expectValue;
-        if (state.expectEncoding !== "text") {
-          cfg.expect_encoding = state.expectEncoding;
-        }
-      }
-    }
+    applyPayload(cfg, state);
     return { config: cfg, errors: hostRequired(state.host) };
   },
   Fields: TcpFields,
@@ -148,6 +161,96 @@ function EncodingSelect({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+/**
+ * The send and expect inputs of a payload exchange, shared by the `tcp`/`udp`
+ * form and the `unix_socket` raw mode.
+ */
+export function PayloadFields<S extends PayloadState>({
+  state,
+  onChange,
+  sendPlaceholder,
+}: {
+  state: S;
+  onChange: (next: S) => void;
+  sendPlaceholder: string;
+}) {
+  const { t } = useTranslation("checks");
+  return (
+    <>
+      <div className="space-y-2">
+        <Label htmlFor="sendData">{t("network.sendOptional")}</Label>
+        <div className="flex gap-2">
+          <Textarea
+            id="sendData"
+            rows={2}
+            placeholder={sendPlaceholder}
+            value={state.sendData}
+            onChange={(e) => onChange({ ...state, sendData: e.target.value })}
+            className="flex-1 font-mono text-xs"
+            data-testid="check-send-data-input"
+          />
+          <EncodingSelect
+            id="sendEncoding"
+            value={state.sendEncoding}
+            onValueChange={(sendEncoding) =>
+              onChange({ ...state, sendEncoding })
+            }
+            testId="check-send-encoding-select"
+          />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="expectValue">{t("network.expectOptional")}</Label>
+        <div className="flex gap-2">
+          <Select
+            value={state.expectMode}
+            onValueChange={(mode) =>
+              onChange({ ...state, expectMode: mode as ExpectMode })
+            }
+          >
+            <SelectTrigger
+              id="expectMode"
+              className="w-40"
+              data-testid="check-expect-mode-select"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="contains">
+                {t("network.expectModeContains")}
+              </SelectItem>
+              <SelectItem value="regex">
+                {t("network.expectModeRegex")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            id="expectValue"
+            type="text"
+            placeholder={state.expectMode === "regex" ? "^\\+PONG" : "+PONG"}
+            value={state.expectValue}
+            onChange={(e) =>
+              onChange({ ...state, expectValue: e.target.value })
+            }
+            className="flex-1 font-mono text-xs"
+            data-testid="check-expect-input"
+          />
+          {state.expectMode === "contains" && (
+            <EncodingSelect
+              id="expectEncoding"
+              value={state.expectEncoding}
+              onValueChange={(expectEncoding) =>
+                onChange({ ...state, expectEncoding })
+              }
+              testId="check-expect-encoding-select"
+            />
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -206,78 +309,13 @@ function TcpFields({
         defaultOpen={Boolean(state.sendData || state.expectValue)}
         data-testid="check-payload-section"
       >
-        <div className="space-y-2">
-          <Label htmlFor="sendData">{t("network.sendOptional")}</Label>
-          <div className="flex gap-2">
-            <Textarea
-              id="sendData"
-              rows={2}
-              placeholder={
-                type === "udp" ? "5350 0100 0001" : String.raw`PING\r\n`
-              }
-              value={state.sendData}
-              onChange={(e) => onChange({ ...state, sendData: e.target.value })}
-              className="flex-1 font-mono text-xs"
-              data-testid="check-send-data-input"
-            />
-            <EncodingSelect
-              id="sendEncoding"
-              value={state.sendEncoding}
-              onValueChange={(sendEncoding) =>
-                onChange({ ...state, sendEncoding })
-              }
-              testId="check-send-encoding-select"
-            />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="expectValue">{t("network.expectOptional")}</Label>
-          <div className="flex gap-2">
-            <Select
-              value={state.expectMode}
-              onValueChange={(mode) =>
-                onChange({ ...state, expectMode: mode as ExpectMode })
-              }
-            >
-              <SelectTrigger
-                id="expectMode"
-                className="w-40"
-                data-testid="check-expect-mode-select"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="contains">
-                  {t("network.expectModeContains")}
-                </SelectItem>
-                <SelectItem value="regex">
-                  {t("network.expectModeRegex")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <Input
-              id="expectValue"
-              type="text"
-              placeholder={state.expectMode === "regex" ? "^\\+PONG" : "+PONG"}
-              value={state.expectValue}
-              onChange={(e) =>
-                onChange({ ...state, expectValue: e.target.value })
-              }
-              className="flex-1 font-mono text-xs"
-              data-testid="check-expect-input"
-            />
-            {state.expectMode === "contains" && (
-              <EncodingSelect
-                id="expectEncoding"
-                value={state.expectEncoding}
-                onValueChange={(expectEncoding) =>
-                  onChange({ ...state, expectEncoding })
-                }
-                testId="check-expect-encoding-select"
-              />
-            )}
-          </div>
-        </div>
+        <PayloadFields
+          state={state}
+          onChange={onChange}
+          sendPlaceholder={
+            type === "udp" ? "5350 0100 0001" : String.raw`PING\r\n`
+          }
+        />
         <p className="text-xs text-muted-foreground">
           {t("network.payloadHelp")}
           {type === "udp" ? ` ${t("network.payloadHelpUdp")}` : ""}
@@ -815,11 +853,11 @@ export const icmpBurstSummary = (
 const burstCustomized = (state: IcmpState): boolean =>
   Boolean(
     state.count.trim() ||
-      state.interval.trim() ||
-      state.packetSize.trim() ||
-      state.ttl.trim() ||
-      state.maxPacketLossPercent.trim() ||
-      state.maxAvgRttMs.trim(),
+    state.interval.trim() ||
+    state.packetSize.trim() ||
+    state.ttl.trim() ||
+    state.maxPacketLossPercent.trim() ||
+    state.maxAvgRttMs.trim(),
   );
 
 export const icmpModule: CheckTypeModule<IcmpState> = {
@@ -1052,9 +1090,7 @@ function IcmpFields({
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="icmp-interval">
-              {t("network.burstInterval")}
-            </Label>
+            <Label htmlFor="icmp-interval">{t("network.burstInterval")}</Label>
             <Input
               id="icmp-interval"
               type="text"
@@ -1062,9 +1098,7 @@ function IcmpFields({
               placeholder="100"
               disabled={!intervalEnabled}
               value={state.interval}
-              onChange={(e) =>
-                onChange({ ...state, interval: e.target.value })
-              }
+              onChange={(e) => onChange({ ...state, interval: e.target.value })}
               className={cn(
                 getFieldError(errors, "interval") && "border-destructive",
               )}
@@ -1143,9 +1177,12 @@ function IcmpFields({
               step="any"
               placeholder="100"
               value={state.maxPacketLossPercent}
-              onChange={(e) => onChange({ ...state, maxPacketLossPercent: e.target.value })}
+              onChange={(e) =>
+                onChange({ ...state, maxPacketLossPercent: e.target.value })
+              }
               className={cn(
-                getFieldError(errors, "max_packet_loss_percent") && "border-destructive",
+                getFieldError(errors, "max_packet_loss_percent") &&
+                  "border-destructive",
               )}
               data-testid="check-icmp-max-loss-input"
             />
@@ -1156,7 +1193,9 @@ function IcmpFields({
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="icmp-max-avg-rtt">{t("network.burstMaxAvgRtt")}</Label>
+            <Label htmlFor="icmp-max-avg-rtt">
+              {t("network.burstMaxAvgRtt")}
+            </Label>
             <Input
               id="icmp-max-avg-rtt"
               type="number"
@@ -1164,7 +1203,9 @@ function IcmpFields({
               step="any"
               placeholder="1000"
               value={state.maxAvgRttMs}
-              onChange={(e) => onChange({ ...state, maxAvgRttMs: e.target.value })}
+              onChange={(e) =>
+                onChange({ ...state, maxAvgRttMs: e.target.value })
+              }
               className={cn(
                 getFieldError(errors, "max_avg_rtt_ms") && "border-destructive",
               )}
@@ -1185,7 +1226,10 @@ function IcmpFields({
             {t("network.burstLossCountHint")}
           </p>
         )}
-        <p className="text-xs text-muted-foreground" data-testid="icmp-burst-line">
+        <p
+          className="text-xs text-muted-foreground"
+          data-testid="icmp-burst-line"
+        >
           {burstLine}
         </p>
       </CollapsibleSection>

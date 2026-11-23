@@ -462,6 +462,8 @@
     "snmpDescription": "Surveiller les appareils via SNMP",
     "docker": "Docker",
     "dockerDescription": "Surveiller la santé des conteneurs Docker",
+    "unix_socket": "Socket Unix",
+    "unix_socketDescription": "Vérifier un socket de domaine Unix",
     "browser": "Navigateur",
     "browserDescription": "Surveiller les pages avec Chrome headless",
     "freebox_line": "Qualité de ligne Freebox",
@@ -1533,7 +1535,9 @@
     "vendorStatusHttps": "L'URL de la page de statut doit commencer par https://",
     "pluginInvalidJson": "La configuration n'est pas du JSON valide : {{detail}}",
     "pluginNotAnObject": "La configuration doit être un objet JSON.",
-    "fieldRequired": "Ce champ est obligatoire"
+    "fieldRequired": "Ce champ est obligatoire",
+    "socketPathRequired": "Le chemin du socket est requis",
+    "socketPathAbsolute": "Le chemin du socket doit être absolu (commencer par /)"
   },
   "health": {
     "format": "Format de santé",
@@ -1899,5 +1903,17 @@
       "partial_one": "{{count}} check n'a pas pu être supprimé",
       "partial_other": "{{count}} checks n'ont pas pu être supprimés"
     }
+  },
+  "unixSocket": {
+    "path": "Chemin du socket",
+    "pathHelp": "Chemin absolu du fichier socket sur la machine qui exécute le check. SolidPing doit pouvoir le lire et y écrire ; dans un conteneur, seuls les sockets montés sont visibles.",
+    "mode": "Mode de test",
+    "mode_connect": "Connexion seule",
+    "mode_raw": "Envoi et réponse attendue",
+    "mode_http": "Requête HTTP",
+    "httpPath": "Chemin HTTP",
+    "expectedStatusOptional": "Statut attendu (facultatif)",
+    "expectedStatusHelp": "Par défaut : tout statut 2xx ou 3xx.",
+    "bodyExpectOptional": "Le corps contient (facultatif)"
   }
 }

@@ -462,6 +462,8 @@
     "snmpDescription": "Geräte per SNMP überwachen",
     "docker": "Docker",
     "dockerDescription": "Zustand von Docker-Containern überwachen",
+    "unix_socket": "Unix-Socket",
+    "unix_socketDescription": "Einen Unix-Domain-Socket prüfen",
     "browser": "Browser",
     "browserDescription": "Seiten mit Headless-Chrome überwachen",
     "dnsbl": "DNSBL",
@@ -1533,7 +1535,9 @@
     "vendorStatusHttps": "Die URL der Statusseite muss mit https:// beginnen",
     "pluginInvalidJson": "Die Konfiguration ist kein gültiges JSON: {{detail}}",
     "pluginNotAnObject": "Die Konfiguration muss ein JSON-Objekt sein.",
-    "fieldRequired": "Dieses Feld ist erforderlich"
+    "fieldRequired": "Dieses Feld ist erforderlich",
+    "socketPathRequired": "Socket-Pfad ist erforderlich",
+    "socketPathAbsolute": "Socket-Pfad muss absolut sein (mit / beginnen)"
   },
   "health": {
     "format": "Health-Format",
@@ -1899,5 +1903,17 @@
       "partial_one": "{{count}} Check konnte nicht gelöscht werden",
       "partial_other": "{{count}} Checks konnten nicht gelöscht werden"
     }
+  },
+  "unixSocket": {
+    "path": "Socket-Pfad",
+    "pathHelp": "Absoluter Pfad der Socket-Datei auf dem Host, der die Prüfung ausführt. SolidPing braucht Lese- und Schreibrechte darauf; in einem Container sind nur eingebundene Sockets sichtbar.",
+    "mode": "Modus",
+    "mode_connect": "Nur verbinden",
+    "mode_raw": "Senden und erwarten",
+    "mode_http": "HTTP-Anfrage",
+    "httpPath": "HTTP-Pfad",
+    "expectedStatusOptional": "Erwarteter Status (optional)",
+    "expectedStatusHelp": "Standard: jeder 2xx- oder 3xx-Status.",
+    "bodyExpectOptional": "Body enthält (optional)"
   }
 }

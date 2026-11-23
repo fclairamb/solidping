@@ -48,6 +48,7 @@ import {
   Network,
   Moon,
   Pickaxe,
+  Plug,
   PhoneCall,
   Rabbit,
   Radar,
@@ -173,6 +174,7 @@ export const CHECK_TYPE_IDENTITY: Partial<Record<string, CheckTypeIdentity>> = {
 
   // Infra.
   docker: { label: "Docker", tone: TONE_SKY, icon: Container },
+  unix_socket: { label: "Unix socket", tone: TONE_SKY, icon: Plug },
   prometheus: { label: "Prometheus", tone: TONE_SKY, icon: Flame },
   freebox_line: { label: "Freebox Line", tone: TONE_SKY, icon: Wifi },
   // Not yet creatable in this form (see check-type-docs-anchors.ts), but has

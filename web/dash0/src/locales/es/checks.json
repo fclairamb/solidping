@@ -462,6 +462,8 @@
     "snmpDescription": "Monitoriza dispositivos mediante SNMP",
     "docker": "Docker",
     "dockerDescription": "Monitoriza el estado de contenedores Docker",
+    "unix_socket": "Socket Unix",
+    "unix_socketDescription": "Comprobar un socket de dominio Unix",
     "browser": "Navegador",
     "browserDescription": "Monitoriza páginas con Chrome headless",
     "dnsbl": "DNSBL",
@@ -1533,7 +1535,9 @@
     "vendorStatusHttps": "La URL de la página de estado debe empezar por https://",
     "pluginInvalidJson": "La configuración no es JSON válido: {{detail}}",
     "pluginNotAnObject": "La configuración debe ser un objeto JSON.",
-    "fieldRequired": "Este campo es obligatorio"
+    "fieldRequired": "Este campo es obligatorio",
+    "socketPathRequired": "La ruta del socket es obligatoria",
+    "socketPathAbsolute": "La ruta del socket debe ser absoluta (empezar por /)"
   },
   "health": {
     "format": "Formato de salud",
@@ -1899,5 +1903,17 @@
       "partial_one": "No se pudo eliminar {{count}} check",
       "partial_other": "No se pudieron eliminar {{count}} checks"
     }
+  },
+  "unixSocket": {
+    "path": "Ruta del socket",
+    "pathHelp": "Ruta absoluta del archivo socket en el host que ejecuta la comprobación. SolidPing necesita permiso de lectura y escritura; en un contenedor solo se ven los sockets montados.",
+    "mode": "Modo",
+    "mode_connect": "Solo conectar",
+    "mode_raw": "Enviar y esperar",
+    "mode_http": "Petición HTTP",
+    "httpPath": "Ruta HTTP",
+    "expectedStatusOptional": "Estado esperado (opcional)",
+    "expectedStatusHelp": "Por defecto: cualquier estado 2xx o 3xx.",
+    "bodyExpectOptional": "El cuerpo contiene (opcional)"
   }
 }
