@@ -27,6 +27,7 @@ import {
   PlayCircle,
 } from "lucide-react";
 import { ApiError } from "@/api/client";
+import { reportSessionMissingOnLoad } from "@/lib/session-diagnostics";
 import { useVersion, useProviders } from "@/api/hooks";
 import {
   useBugReportEnabled,
@@ -600,6 +601,13 @@ function LoginPage() {
 
   if (isAuthenticated && !showOrgPicker) {
     return null;
+  }
+
+  // The sign-in form is about to show to a visitor with no session: record
+  // what is left of one (spec 2026-11-23-03, solidping-business#107). Once
+  // per page load, booleans only.
+  if (!authLoading && !isAuthenticated) {
+    reportSessionMissingOnLoad("org-login");
   }
 
   const handleOrgSelect = async (orgSlug: string) => {

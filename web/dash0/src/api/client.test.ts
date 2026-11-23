@@ -17,6 +17,8 @@ import frOrg from "@/locales/fr/org.json";
 import enOrg from "@/locales/en/org.json";
 import { toast } from "sonner";
 import { DASH_BASE } from "@/lib/base-path";
+import * as analytics from "@/lib/analytics";
+import { SESSION_CLEARED_KEY } from "@/lib/session-diagnostics";
 
 vi.mock("sonner", () => ({
   toast: { info: vi.fn(), error: vi.fn(), success: vi.fn(), warning: vi.fn() },
@@ -53,6 +55,38 @@ describe("setSession", () => {
     setSession("at-1", "rt-1", 3600);
 
     expect(getToken()).toBe("at-1");
+  });
+
+  // Spec 2026-11-23-03: clearToken leaves the reason for the next page load,
+  // and a new session drops it.
+  it("records why the session was cleared, and forgets it on the next session", () => {
+    setSession("at-1", "rt-1", 3600);
+    clearToken("refresh-rejected");
+
+    expect(getToken()).toBeNull();
+    expect(JSON.parse(store[SESSION_CLEARED_KEY]).reason).toBe("refresh-rejected");
+
+    setSession("at-2", "rt-2", 3600);
+    expect(store[SESSION_CLEARED_KEY]).toBeUndefined();
+  });
+
+  it("reports and rethrows a storage write failure", () => {
+    const quota = new Error("quota");
+    quota.name = "QuotaExceededError";
+    vi.stubGlobal("localStorage", {
+      getItem: () => null,
+      setItem: () => {
+        throw quota;
+      },
+      removeItem: () => {},
+    });
+    const captured: string[] = [];
+    vi.spyOn(analytics, "captureEventQueued").mockImplementation((event: string) => {
+      captured.push(event);
+    });
+
+    expect(() => setSession("at-1", "rt-1", 3600)).toThrow(quota);
+    expect(captured).toEqual(["session_persist_failed"]);
   });
 
   it("refuses to persist a falsy access token instead of writing the string \"undefined\"", () => {
@@ -467,7 +501,7 @@ describe("session epoch and stale-token 401s", () => {
     setSession("at-4", "rt-2", 900);
     expect(getSessionEpoch()).toBe(afterLogin + 1);
 
-    clearToken();
+    clearToken("logout");
     expect(getSessionEpoch()).toBe(afterLogin + 2);
   });
 
@@ -477,6 +511,7 @@ describe("session epoch and stale-token 401s", () => {
     await expect(
       handleResponse(new Response(null, { status: 401 }), flags("current-token")),
     ).rejects.toMatchObject({ status: 401, code: "UNAUTHORIZED" });
+    expect(JSON.parse(store[SESSION_CLEARED_KEY]).reason).toBe("api-401");
 
     expect(getToken()).toBeNull();
     expect(hrefSetter).toHaveBeenCalledWith(expect.stringContaining("session_expired=true"));

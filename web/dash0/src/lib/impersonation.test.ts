@@ -86,7 +86,7 @@ describe("the request token", () => {
 
   it("a cleared session takes the impersonation with it", () => {
     startImpersonation(SESSION);
-    clearToken();
+    clearToken("logout");
     expect(getImpersonation()).toBeNull();
   });
 });

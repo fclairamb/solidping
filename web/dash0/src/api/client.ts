@@ -12,14 +12,20 @@ import { clearImpersonation, getImpersonationToken } from "@/lib/impersonation";
 // bundle — a dynamic import here bought nothing and split no chunk.
 import { toast } from "sonner";
 import { getAnalyticsRequestHeaders } from "@/lib/analytics";
+import {
+  forgetSessionCleared,
+  recordSessionCleared,
+  recordSessionPersistFailed,
+  REFRESH_TOKEN_KEY,
+  TOKEN_KEY,
+  type SessionClearReason,
+} from "@/lib/session-diagnostics";
 // i18next is usable outside React components/hooks — this module runs below
 // any component tree, so it calls the singleton directly rather than going
 // through useTranslation. Used to localize the DEMO_READ_ONLY message (see
 // announceDemoReadOnly and the ApiError construction below).
 import i18n from "@/i18n";
 
-const TOKEN_KEY = "solidping_session_token";
-const REFRESH_TOKEN_KEY = "solidping_refresh_token";
 const EXPIRES_AT_KEY = "solidping_expires_at";
 
 // Timestamp of the most recent apiFetch activity (request start or
@@ -116,20 +122,34 @@ export function setSession(
     console.error("setSession called with no access token — refusing to persist a session");
     return;
   }
-  localStorage.setItem(TOKEN_KEY, accessToken);
-  if (refreshToken) {
-    if (refreshToken !== localStorage.getItem(REFRESH_TOKEN_KEY)) {
-      sessionEpoch++;
+  try {
+    localStorage.setItem(TOKEN_KEY, accessToken);
+    if (refreshToken) {
+      if (refreshToken !== localStorage.getItem(REFRESH_TOKEN_KEY)) {
+        sessionEpoch++;
+      }
+      localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
     }
-    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+    if (typeof expiresIn === "number" && !isNaN(expiresIn)) {
+      localStorage.setItem(EXPIRES_AT_KEY, String(Date.now() + expiresIn * 1000));
+      localStorage.setItem("solidping_expires_in", String(expiresIn));
+    }
+  } catch (error) {
+    // A WebKit quota or privacy-mode failure (cause (b) of
+    // solidping-business#107): report it, then fail as before.
+    recordSessionPersistFailed(error);
+    throw error;
   }
-  if (typeof expiresIn === "number" && !isNaN(expiresIn)) {
-    localStorage.setItem(EXPIRES_AT_KEY, String(Date.now() + expiresIn * 1000));
-    localStorage.setItem("solidping_expires_in", String(expiresIn));
-  }
+  forgetSessionCleared();
 }
 
-export function clearToken(): void {
+/**
+ * Ends the stored session. `reason` names the caller: it is recorded as a
+ * `session_cleared` event and kept for the next page load's
+ * `session_missing_on_load` (spec 2026-11-23-03).
+ */
+export function clearToken(reason: SessionClearReason): void {
+  recordSessionCleared(reason);
   // A session that is over takes any impersonation riding on it with it.
   clearImpersonation();
   sessionEpoch++;
@@ -570,7 +590,7 @@ export async function handleResponse<T>(
     // Read before clearing: a 401 with no token behind it is a visitor who
     // never had a session, and must not be told theirs expired.
     const hadSession = hadSessionBeforeRequest ?? Boolean(getToken() || getRefreshToken());
-    clearToken();
+    clearToken("api-401");
     if (!suppress401Redirect) {
       redirectToExpiredLogin({ hadSession });
     }

@@ -72,7 +72,7 @@ function logRefreshFailure(reason: RefreshFailureReason): void {
  * on a token that will never become valid again. */
 function escalate(reason: "no-refresh-token" | "rejected"): void {
   logRefreshFailure(reason);
-  clearToken();
+  clearToken(reason === "rejected" ? "refresh-rejected" : "refresh-no-refresh-token");
   redirectToExpiredLogin();
 }
 

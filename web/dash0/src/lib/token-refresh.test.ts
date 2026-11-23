@@ -12,7 +12,9 @@ let storedRefreshToken: string | null = null;
 const setSessionMock = vi.fn((_accessToken: string, refreshToken?: string) => {
   if (refreshToken) storedRefreshToken = refreshToken;
 });
-const clearTokenMock = vi.fn(() => {
+// Takes the reason so tests can assert which escalation cleared the session.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const clearTokenMock = vi.fn((_reason?: string) => {
   storedAccessToken = null;
   storedRefreshToken = null;
 });
@@ -27,7 +29,7 @@ vi.mock("@/api/client", () => ({
   getSessionEpoch: () => sessionEpoch,
   setSession: (accessToken: string, refreshToken?: string, expiresIn?: number) =>
     setSessionMock(accessToken, refreshToken, expiresIn),
-  clearToken: () => clearTokenMock(),
+  clearToken: (reason?: string) => clearTokenMock(reason),
   redirectToExpiredLogin: () => redirectToExpiredLoginMock(),
 }));
 
@@ -74,6 +76,7 @@ describe("refreshAccessToken", () => {
     // A.2/A.4). This is the genuinely inconsistent state doRefresh's
     // no-refresh-token branch exists to catch.
     expect(clearTokenMock).toHaveBeenCalledTimes(1);
+    expect(clearTokenMock).toHaveBeenCalledWith("refresh-no-refresh-token");
     expect(redirectToExpiredLoginMock).toHaveBeenCalledTimes(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "[auth] token refresh failed: no-refresh-token"
@@ -134,6 +137,7 @@ describe("refreshAccessToken", () => {
 
     expect(result).toBeNull();
     expect(clearTokenMock).toHaveBeenCalledTimes(1);
+    expect(clearTokenMock).toHaveBeenCalledWith("refresh-rejected");
     expect(redirectToExpiredLoginMock).toHaveBeenCalledTimes(1);
   });
 

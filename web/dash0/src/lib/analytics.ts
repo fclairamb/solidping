@@ -217,6 +217,12 @@ let loading: Promise<PostHogLike | null> | null = null;
 // Remembered so identify() calls that land before the async import resolves
 // are replayed once the client is up, rather than dropped.
 let pendingIdentity: string | null = null;
+// Events captured through captureEventQueued before posthog-js is loaded
+// (spec 2026-11-23-03): a page-load diagnostic fires on the first render,
+// well ahead of the /api/v1/config round trip. In memory only, bounded,
+// replayed by initAnalytics and dropped when analytics turns out to be off.
+const PENDING_EVENTS_LIMIT = 10;
+const pendingEvents: { event: string; properties: Record<string, unknown> }[] = [];
 
 /**
  * Error-boundary de-duplication (spec 2026-09-25-13). `ErrorBoundary` and
@@ -307,6 +313,7 @@ export async function initAnalytics(config: PublicConfig | null | undefined): Pr
     // Analytics stays off: discard anything identifyAnalytics queued while the
     // config fetch was in flight. It was only ever held in memory.
     pendingIdentity = null;
+    pendingEvents.length = 0;
 
     return false;
   }
@@ -391,11 +398,15 @@ export async function initAnalytics(config: PublicConfig | null | undefined): Pr
           posthog.identify(pendingIdentity);
           pendingIdentity = null;
         }
+        for (const { event, properties } of pendingEvents.splice(0)) {
+          posthog.capture(event, properties);
+        }
         return posthog;
       })
       .catch(() => {
         // A blocked or failed analytics chunk must never break the dashboard.
         loading = null;
+        pendingEvents.length = 0;
         return null;
       });
   }
@@ -439,6 +450,22 @@ export function resetAnalytics(): void {
  */
 export function captureEvent(event: string, properties?: Record<string, unknown>): void {
   client?.capture(event, properties ?? {});
+}
+
+/**
+ * Like {@link captureEvent}, but an event captured before analytics finished
+ * loading is held (in memory, at most {@link PENDING_EVENTS_LIMIT}) and sent
+ * once it has; it is dropped if analytics turns out to be off. For events
+ * that fire on page load, ahead of the config fetch.
+ */
+export function captureEventQueued(event: string, properties?: Record<string, unknown>): void {
+  if (client) {
+    client.capture(event, properties ?? {});
+    return;
+  }
+  if (pendingEvents.length < PENDING_EVENTS_LIMIT) {
+    pendingEvents.push({ event, properties: properties ?? {} });
+  }
 }
 
 /**
@@ -514,6 +541,7 @@ export function __resetAnalyticsForTests(): void {
   client = null;
   loading = null;
   pendingIdentity = null;
+  pendingEvents.length = 0;
   recentExplicitExceptionSignatures.length = 0;
 }
 

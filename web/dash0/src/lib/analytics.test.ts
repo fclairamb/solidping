@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
+  captureEventQueued,
   captureException,
   dedupeAutocapturedBoundaryExceptions,
   distinctId,
@@ -85,6 +86,51 @@ describe("initAnalytics", () => {
     ).toBe(true);
 
     expect(identified).toEqual(["org:org-uid/user:user-uid"]);
+    vi.doUnmock("./posthog-loader");
+  });
+
+  // A page-load diagnostic (spec 2026-11-23-03) fires before the config fetch
+  // resolves: it is held and sent once posthog-js is loaded.
+  it("queues an early captureEventQueued and replays it after init", async () => {
+    captureEventQueued("session_missing_on_load", { where: "root-redirect" });
+
+    const captured: [string, unknown][] = [];
+    vi.doMock("./posthog-loader", () => ({
+      default: {
+        init: () => {},
+        identify: () => {},
+        reset: () => {},
+        capture: (event: string, props: unknown) => captured.push([event, props]),
+      },
+    }));
+
+    expect(
+      await initAnalytics({ posthog: { enabled: true, projectApiKey: "phc_k" } }),
+    ).toBe(true);
+    expect(captured).toEqual([["session_missing_on_load", { where: "root-redirect" }]]);
+
+    captureEventQueued("session_cleared", { reason: "logout" });
+    expect(captured[1]).toEqual(["session_cleared", { reason: "logout" }]);
+    vi.doUnmock("./posthog-loader");
+  });
+
+  it("drops queued events when analytics turns out to be off", async () => {
+    captureEventQueued("session_cleared", { reason: "logout" });
+    expect(await initAnalytics({ posthog: { enabled: false } })).toBe(false);
+
+    const captured: string[] = [];
+    vi.doMock("./posthog-loader", () => ({
+      default: {
+        init: () => {},
+        identify: () => {},
+        reset: () => {},
+        capture: (event: string) => captured.push(event),
+      },
+    }));
+    expect(
+      await initAnalytics({ posthog: { enabled: true, projectApiKey: "phc_k" } }),
+    ).toBe(true);
+    expect(captured).toEqual([]);
     vi.doUnmock("./posthog-loader");
   });
 
