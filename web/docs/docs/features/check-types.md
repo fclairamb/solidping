@@ -716,11 +716,18 @@ Check whether an IP address or hostname is listed on DNS-based blocklists (DNSBL
 | Nameserver | Custom DNS resolver (`host:port`) | system resolver |
 | Timeout | Query timeout (max `60s`) | `10s` |
 
-Hostnames are resolved to IPv4 before lookup. The check **fails** when the target is listed on at least one blocklist, and **succeeds** when it is clean. If every queried zone errors out, the result is inconclusive (timeout).
+Hostnames are resolved to IPv4 before lookup. The result status follows this table:
 
-**Error/status codes.** DNSBLs reserve the `127.255.255.0/24` range for error and status replies rather than real listings — Spamhaus, for example, returns `127.255.255.254` when a query arrives via a public/open resolver (refused) and `127.255.255.255` when a rate limit is exceeded. SolidPing treats any `127.255.255.x` answer as an error code, **not** a listing: the affected zone is reported as inconclusive and the raw code is surfaced under `error_codes` in the check output.
+| Outcome | Status |
+|---|---|
+| Listed on at least one blocklist | **Down** |
+| Not listed, but at least one blocklist refused to answer with a `127.255.255.x` code | **Warning** (shown as **Degraded**, counts as up, opens no incident) |
+| Clean on at least one blocklist, the others clean or timed out | **Up** |
+| Every blocklist timed out or failed (SERVFAIL) without a refusal code | **Timeout** |
 
-**Spamhaus from cloud IPs.** Because workers run on public cloud (and use the provider's shared resolvers), the public `zen.spamhaus.org` zone will typically be **refused** with `127.255.255.254`. For reliable Spamhaus results, use the Spamhaus [Data Query Service (DQS)](https://www.spamhaus.com/product/data-query-service/): configure the DQS account-key blocklist zones and a dedicated resolver via the **Blocklists** and **Nameserver** options rather than querying the public `zen.spamhaus.org` zone.
+**Error/status codes.** DNSBLs reserve the `127.255.255.0/24` range for error and status replies rather than real listings — Spamhaus, for example, returns `127.255.255.254` when a query arrives via a public/open resolver (refused) and `127.255.255.255` when a rate limit is exceeded. SolidPing treats any `127.255.255.x` answer as an error code, **not** a listing: the affected zone is reported as inconclusive and the raw code is surfaced under `error_codes` in the check output. The check turns **degraded** (Warning) rather than down, because a refusal means *we could not check*, not *the target is listed*, and the output `message` names the zone, the code, its meaning and the fix, e.g. `zen.spamhaus.org returned 127.255.255.254: query via a public resolver refused, use a private resolver (nameserver option) or a Spamhaus DQS key`.
+
+**Spamhaus from cloud IPs.** Because workers run on public cloud (and use the provider's shared resolvers), the public `zen.spamhaus.org` zone will typically be **refused** with `127.255.255.254`, which leaves the check degraded. To fix it and get reliable Spamhaus results, use the Spamhaus [Data Query Service (DQS)](https://www.spamhaus.com/product/data-query-service/): configure the DQS account-key blocklist zones and a dedicated resolver via the **Blocklists** and **Nameserver** options rather than querying the public `zen.spamhaus.org` zone.
 
 ## Database Checks
 
