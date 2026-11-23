@@ -29,14 +29,21 @@ var ErrDockerNotAvailableInSaaS = errors.New("docker checks are not available on
 // host that runs the check, so a SaaS check must be pinned to private regions.
 var ErrUnixSocketNotAvailableInSaaS = errors.New("unix_socket checks are not available on this deployment")
 
+// ErrSystemdNotAvailableInSaaS is the systemd twin (issue #1000): a unit is
+// read on the host that runs the check.
+var ErrSystemdNotAvailableInSaaS = errors.New("systemd checks are not available on this deployment")
+
 // hostLocalRejection returns the config field and the message the SaaS gate
 // rejects a host-local check type with.
 func hostLocalRejection(checkType checkerdef.CheckType) error {
-	if checkType == checkerdef.CheckTypeUnixSocket {
+	switch checkType { //nolint:exhaustive // only host-local types reach here
+	case checkerdef.CheckTypeUnixSocket:
 		return checkerdef.NewConfigError("path", ErrUnixSocketNotAvailableInSaaS.Error())
+	case checkerdef.CheckTypeSystemd:
+		return checkerdef.NewConfigError("unit", ErrSystemdNotAvailableInSaaS.Error())
+	default:
+		return checkerdef.NewConfigError("host", ErrDockerNotAvailableInSaaS.Error())
 	}
-
-	return checkerdef.NewConfigError("host", ErrDockerNotAvailableInSaaS.Error())
 }
 
 // ErrPluginTypeDisabled is returned when a check of a plugin type this
@@ -467,7 +474,7 @@ func (s *Service) configValidationErrors(
 		errs = append(errs, err)
 	}
 
-	// docker and unix_socket checks hand whoever executes them a local socket
+	// docker, unix_socket and systemd checks hand whoever executes them a local resource
 	// of the executing host. On a SaaS shared worker that is any org member
 	// reading the host's own containers or services; these types are only safe
 	// when every job runs on the customer's own agent (spec 2026-09-25-22).
@@ -499,7 +506,7 @@ func validateMultiStepPlacement(checkType string, checkRegions []string) error {
 }
 
 // validateHostLocalDeploymentConfig rejects a host-local check (docker, spec
-// 2026-09-25-22; unix_socket, issue #1000; see checkerdef.CheckType.IsHostLocal)
+// 2026-09-25-22; unix_socket and systemd, issue #1000; see checkerdef.CheckType.IsHostLocal)
 // in SaaS mode unless checkRegions resolves to private (agent-hosted) regions
 // only. checkRegions is the CALLER's already-resolved placement (auto
 // placement included), never the raw request, so an auto-placed check — which

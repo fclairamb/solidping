@@ -181,6 +181,45 @@ func TestExecuteJob_UnixSocketAllowedOnAgentWorkerEvenInSaaS(t *testing.T) {
 	r.Contains(fmt.Sprint(result.Output[checkerdef.OutputKeyError]), "ENOENT", "output: %v", result.Output)
 }
 
+// TestExecuteJob_SystemdBlockedOnSaaSSharedWorker is the systemd twin of the
+// docker backstop (issue #1000): refused with the gate's own message, before
+// the checker runs systemctl.
+func TestExecuteJob_SystemdBlockedOnSaaSSharedWorker(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	_, dbSvc, ctx := setupTestRunner(t)
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	runner := newDockerGateRunner(t, dbSvc, config.DeploymentModeSaaS, "")
+
+	result := runGateJob(t, ctx, runner, dbSvc, checkerdef.CheckTypeSystemd, models.JSONMap{
+		"unit": "solidping-gate-test",
+	})
+	r.NotNil(result.Status)
+	r.Equal(int(checkerdef.StatusError), *result.Status, "output: %v", result.Output)
+	r.Equal(ErrSystemdNotAvailableInSaaS.Error(), result.Output[checkerdef.OutputKeyError])
+}
+
+// TestExecuteJob_SystemdAllowedOnAgentWorkerEvenInSaaS is its control: an
+// agent reaches the checker.
+func TestExecuteJob_SystemdAllowedOnAgentWorkerEvenInSaaS(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	_, dbSvc, ctx := setupTestRunner(t)
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	runner := newDockerGateRunner(t, dbSvc, config.DeploymentModeSaaS, config.NodeRoleAgent)
+
+	result := runGateJob(t, ctx, runner, dbSvc, checkerdef.CheckTypeSystemd, models.JSONMap{
+		"unit": "solidping-gate-test",
+	})
+	r.NotNil(result.Status)
+	r.NotEqual(ErrSystemdNotAvailableInSaaS.Error(), result.Output[checkerdef.OutputKeyError])
+	r.Equal("solidping-gate-test.service", result.Output["unit"], "output: %v", result.Output)
+}
+
 // TestExecuteJob_DockerAllowedOnAgentWorkerEvenInSaaS proves the guard keys on
 // THIS PROCESS's role, not the check row or the deployment mode alone: a
 // deported agent — the supported way to run docker checks under SaaS — keeps
@@ -292,6 +331,13 @@ func TestNewDeploymentGate(t *testing.T) {
 		}
 
 		require.Equal(t, wantUnix, gate(checkerdef.CheckTypeUnixSocket), "mode=%s role=%s", tc.mode, tc.role)
+
+		wantSystemd := ""
+		if tc.blocked {
+			wantSystemd = ErrSystemdNotAvailableInSaaS.Error()
+		}
+
+		require.Equal(t, wantSystemd, gate(checkerdef.CheckTypeSystemd), "mode=%s role=%s", tc.mode, tc.role)
 		require.Empty(t, gate(checkerdef.CheckTypeHTTP), "mode=%s role=%s", tc.mode, tc.role)
 		require.Equal(t, tc.blocked, cfg.DockerChecksBlocked(), "mode=%s role=%s", tc.mode, tc.role)
 	}

@@ -78,6 +78,9 @@ var (
 	// ErrDockerNotAvailableInSaaS (issue #1000): a SaaS shared worker never
 	// dials a socket file of its own host.
 	ErrUnixSocketNotAvailableInSaaS = errors.New("unix_socket checks are not available on this deployment")
+	// ErrSystemdNotAvailableInSaaS is the systemd twin (issue #1000): a SaaS
+	// shared worker never reports on its own host's units.
+	ErrSystemdNotAvailableInSaaS = errors.New("systemd checks are not available on this deployment")
 
 	// ErrCheckerPanic wraps a recovered panic from inside a checker's
 	// Execute call (spec 2026-07-05-05 D2). The runner survives; the panic
@@ -1994,7 +1997,7 @@ func (r *CheckWorker) selectRegion(checkConfig checkerdef.Config, checkJob *mode
 }
 
 // dockerBlockedOnThisWorker reports whether THIS process must refuse a
-// host-local job (docker, unix_socket) rather than execute it: a SaaS shared worker, never a deported agent
+// host-local job (docker, unix_socket, systemd) rather than execute it: a SaaS shared worker, never a deported agent
 // (spec 2026-09-25-22). Named function rather than an inline expression
 // because executeJob shadows the `config` package identifier with a local
 // variable of the same name a few lines above the call site.
@@ -2003,7 +2006,7 @@ func (r *CheckWorker) dockerBlockedOnThisWorker() bool {
 }
 
 // NewDeploymentGate builds the js sub-check deployment gate for this process's
-// config: it refuses a nested host-local sub-check (docker, unix_socket)
+// config: it refuses a nested host-local sub-check (docker, unix_socket, systemd)
 // exactly where executeJob refuses a top-level one, with the same message (spec 2026-10-16-09).
 func NewDeploymentGate(cfg *config.Config) checkjs.DeploymentGateFunc {
 	dockerBlocked := cfg.DockerChecksBlocked()
@@ -2018,13 +2021,16 @@ func NewDeploymentGate(cfg *config.Config) checkjs.DeploymentGateFunc {
 }
 
 // hostLocalBlockedError is the refusal of a host-local check type (docker,
-// unix_socket) on a SaaS shared worker.
+// unix_socket, systemd) on a SaaS shared worker.
 func hostLocalBlockedError(checkType checkerdef.CheckType) error {
-	if checkType == checkerdef.CheckTypeUnixSocket {
+	switch checkType { //nolint:exhaustive // only host-local types reach here
+	case checkerdef.CheckTypeUnixSocket:
 		return ErrUnixSocketNotAvailableInSaaS
+	case checkerdef.CheckTypeSystemd:
+		return ErrSystemdNotAvailableInSaaS
+	default:
+		return ErrDockerNotAvailableInSaaS
 	}
-
-	return ErrDockerNotAvailableInSaaS
 }
 
 // saveErrorResult submits an error result (with a plain lease release) when

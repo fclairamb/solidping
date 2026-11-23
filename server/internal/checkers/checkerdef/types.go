@@ -247,6 +247,9 @@ const (
 	// CheckTypeUnixSocket checks a service listening on a Unix domain socket
 	// of the host that runs the check: connect, raw send/expect, or HTTP.
 	CheckTypeUnixSocket CheckType = "unix_socket"
+	// CheckTypeSystemd reports the state of a systemd unit of the host that
+	// runs the check, through `systemctl show`.
+	CheckTypeSystemd CheckType = "systemd"
 	// CheckTypeBrowser performs headless Chrome browser health checks.
 	CheckTypeBrowser CheckType = "browser"
 	// CheckTypeFreeboxLine monitors xDSL/FTTH line quality via the Freebox OS API.
@@ -317,13 +320,13 @@ func (t CheckType) IsPassive() bool {
 }
 
 // IsHostLocal reports whether the type reads a resource local to the host
-// that executes it (the Docker socket, a Unix socket file) rather than a
+// that executes it (the Docker socket, a Unix socket file, a systemd unit) rather than a
 // network target. On a SaaS deployment such a type only runs pinned to the
 // org's own private locations: a shared worker must never become a probe of
 // its own host. Keep this the single list the create-time gate, the worker
 // gate and the catalog advisory read.
 func (t CheckType) IsHostLocal() bool {
-	return t == CheckTypeDocker || t == CheckTypeUnixSocket
+	return t == CheckTypeDocker || t == CheckTypeUnixSocket || t == CheckTypeSystemd
 }
 
 // IsMultiStep reports whether the type runs as a series of resumable slices
@@ -388,6 +391,7 @@ const (
 	labelReqScripting       = "requires:scripting-runtime"
 	labelReqDockerSocket    = "requires:docker-socket"
 	labelReqLocalSocket     = "requires:local-socket"
+	labelReqSystemd         = "requires:systemd"
 	labelReqChrome          = "requires:chrome"
 	labelReqK8sCluster      = "requires:kubernetes-cluster"
 
@@ -515,6 +519,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeSNMP, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor devices via SNMP"},
 	{Type: CheckTypeDocker, Labels: []string{labelUnsafe, labelReqDockerSocket, labelCatInfrastructure}, Description: "Monitor Docker container health"},
 	{Type: CheckTypeUnixSocket, Labels: []string{labelUnsafe, labelReqLocalSocket, labelCatInfrastructure}, Description: "Check a Unix domain socket"},
+	{Type: CheckTypeSystemd, Labels: []string{labelUnsafe, labelReqSystemd, labelCatInfrastructure}, Description: "Check the state of a systemd unit"},
 	{Type: CheckTypeBrowser, Labels: []string{labelUnsafe, labelReqChrome, labelCatOther}, Description: "Monitor pages with headless Chrome", MinPeriod: time.Minute, DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeFreeboxLine, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor Freebox xDSL/FTTH line quality", DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeDNSBL, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Check if an IP/domain is on DNS blocklists", MinPeriod: 15 * time.Minute, DefaultPeriod: time.Hour, SupportsIPVersion: true},
@@ -708,6 +713,7 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeSNMP,
 		CheckTypeDocker,
 		CheckTypeUnixSocket,
+		CheckTypeSystemd,
 		CheckTypeBrowser,
 		CheckTypeFreeboxLine,
 		CheckTypeDNSBL,

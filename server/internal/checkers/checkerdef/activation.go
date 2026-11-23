@@ -106,7 +106,7 @@ func (r *ActivationResolver) ListAllWithStatus(orgDisabled []string) []CheckType
 }
 
 // hostLocalAdvisoryFor is the catalog's half of the SaaS gate on host-local
-// types (docker, spec 2026-09-25-22; unix_socket, issue #1000). The per-org
+// types (docker, spec 2026-09-25-22; unix_socket and systemd, issue #1000). The per-org
 // exception — such a check is fine in SaaS when it is pinned to one of THIS
 // org's private locations — needs the org's own regions, which this resolver
 // does not have (it is built once at startup and shared by every org, see

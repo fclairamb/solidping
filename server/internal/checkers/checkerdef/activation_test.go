@@ -133,6 +133,7 @@ func TestIsHostLocal(t *testing.T) {
 
 	r.True(checkerdef.CheckTypeDocker.IsHostLocal())
 	r.True(checkerdef.CheckTypeUnixSocket.IsHostLocal())
+	r.True(checkerdef.CheckTypeSystemd.IsHostLocal())
 	r.False(checkerdef.CheckTypeTCP.IsHostLocal())
 	r.False(checkerdef.CheckTypeHTTP.IsHostLocal())
 }

@@ -87,3 +87,26 @@ func TestValidateHostLocalDeploymentConfig_UnixSocket(t *testing.T) {
 		r.Equal(ErrUnixSocketNotAvailableInSaaS.Error(), configErr.Message)
 	}
 }
+
+// A systemd check reads a unit of the executing host (issue #1000): the same
+// SaaS rule applies, with its own message, on its `unit` field.
+func TestValidateHostLocalDeploymentConfig_Systemd(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	saas := &Service{deploymentMode: config.DeploymentModeSaaS}
+	selfHosted := &Service{deploymentMode: config.DeploymentModeSelfHosted}
+	systemd := string(checkerdef.CheckTypeSystemd)
+
+	r.NoError(selfHosted.validateHostLocalDeploymentConfig(systemd, nil))
+	r.NoError(selfHosted.validateHostLocalDeploymentConfig(systemd, []string{"eu-west"}))
+	r.NoError(saas.validateHostLocalDeploymentConfig(systemd, []string{"@office"}))
+
+	for _, placement := range [][]string{nil, {"eu-west"}, {"@office", "eu-west"}} {
+		err := saas.validateHostLocalDeploymentConfig(systemd, placement)
+		configErr := checkerdef.IsConfigError(err)
+		r.NotNil(configErr, "placement %v must be rejected", placement)
+		r.Equal("unit", configErr.Parameter)
+		r.Equal(ErrSystemdNotAvailableInSaaS.Error(), configErr.Message)
+	}
+}
