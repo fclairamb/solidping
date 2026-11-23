@@ -59,8 +59,6 @@ func (c *DNSBLChecker) Validate(spec *checkerdef.CheckSpec) error {
 }
 
 // Execute performs the DNSBL check and returns the result.
-//
-//nolint:funlen // DNSBL checking aggregates several zones with inverted DNS semantics
 func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
 	cfg, err := checkerdef.AssertConfig[*DNSBLConfig](config)
 	if err != nil {
@@ -118,7 +116,8 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 	clean := sortedKeysExcept(res.clean, res.listed)
 	inconclusive := sortedKeysExcept(res.inconclusive, mergeSets(res.listed, res.clean))
 
-	status := classifyStatus(len(listedOn), len(clean), len(inconclusive))
+	refused := refusedZones(inconclusive, res.errorCodes)
+	status := classifyStatus(len(listedOn), len(clean), len(inconclusive), len(refused))
 
 	result := &checkerdef.Result{
 		Status:   status,
@@ -137,21 +136,36 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 		},
 	}
 
+	addOptionalOutput(result.Output, res, refused, cfg.Nameserver, status)
+
+	return result, nil
+}
+
+// addOptionalOutput adds the output keys that only appear when relevant: the
+// listing and error codes, the refusal message of a degraded result, and the
+// custom nameserver.
+func addOptionalOutput(
+	output map[string]any, res *zoneResults, refused []string, nameserver string, status checkerdef.Status,
+) {
 	if len(res.returnCodes) > 0 {
-		result.Output["return_codes"] = res.returnCodes
+		output["return_codes"] = res.returnCodes
 	}
 
 	// Surface reserved 127.255.255.x error/status codes (e.g. .254 = query via
 	// public resolver refused) so operators see why a zone was inconclusive.
 	if len(res.errorCodes) > 0 {
-		result.Output["error_codes"] = res.errorCodes
+		output["error_codes"] = res.errorCodes
 	}
 
-	if cfg.Nameserver != "" {
-		result.Output["nameserver"] = cfg.Nameserver
+	// A zone that refused to answer means "we could not check", not "listed":
+	// say which zone, what its code means and how to fix it.
+	if status == checkerdef.StatusWarning {
+		output[checkerdef.OutputKeyMessage] = refusalMessage(refused, res.errorCodes)
 	}
 
-	return result, nil
+	if nameserver != "" {
+		output["nameserver"] = nameserver
+	}
 }
 
 // zoneResults accumulates per-zone classification while querying DNSBL zones.
@@ -195,14 +209,22 @@ func (r *zoneResults) recordAnswer(zone string, addrs []string) {
 	}
 }
 
-// classifyStatus maps zone counts to a check status per the spec table:
-//   - listed on ≥1 zone        → Down
-//   - clean on ≥1 zone         → Up
-//   - every zone inconclusive  → Timeout
-func classifyStatus(listed, clean, inconclusive int) checkerdef.Status {
+// classifyStatus maps zone counts to a check status:
+//   - listed on ≥1 zone                                  → Down
+//   - ≥1 inconclusive zone refused with a 127.255.255.x  → Warning (degraded:
+//     the blocklist would not answer, the target is not known to be listed)
+//   - clean on ≥1 zone                                   → Up (plain timeouts or
+//     SERVFAILs on other zones are transient and not reported)
+//   - every zone plainly inconclusive (timeout/SERVFAIL) → Timeout
+//
+// refused counts the inconclusive zones that answered only with reserved
+// 127.255.255.x codes; it is a subset of inconclusive.
+func classifyStatus(listed, clean, inconclusive, refused int) checkerdef.Status {
 	switch {
 	case listed > 0:
 		return checkerdef.StatusDown
+	case refused > 0:
+		return checkerdef.StatusWarning
 	case clean > 0:
 		return checkerdef.StatusUp
 	case inconclusive > 0:
@@ -210,6 +232,50 @@ func classifyStatus(listed, clean, inconclusive int) checkerdef.Status {
 	default:
 		// No zones queried at all — treat as clean.
 		return checkerdef.StatusUp
+	}
+}
+
+// refusedZones returns the inconclusive zones that answered with a reserved
+// 127.255.255.x error/status code, in the (sorted) order of inconclusive.
+func refusedZones(inconclusive []string, errorCodes map[string][]string) []string {
+	var refused []string
+
+	for _, zone := range inconclusive {
+		if len(errorCodes[zone]) > 0 {
+			refused = append(refused, zone)
+		}
+	}
+
+	return refused
+}
+
+// refusalMessage renders one readable sentence per refused zone and code:
+// the code, what it means and how to fix it.
+func refusalMessage(refused []string, errorCodes map[string][]string) string {
+	parts := make([]string, 0, len(refused))
+
+	for _, zone := range refused {
+		for _, code := range errorCodes[zone] {
+			parts = append(parts, fmt.Sprintf("%s returned %s: %s", zone, code, describeErrorCode(code)))
+		}
+	}
+
+	return "blocklist could not be checked, the target is not known to be listed: " + strings.Join(parts, "; ")
+}
+
+// describeErrorCode explains a reserved 127.255.255.x DNSBL reply (Spamhaus
+// semantics, the only zone known to use them) and its fix.
+func describeErrorCode(code string) string {
+	switch code {
+	case "127.255.255.254":
+		return "query via a public resolver refused, use a private resolver (nameserver option) or a Spamhaus DQS key"
+	case "127.255.255.255":
+		return "query volume limit exceeded (rate limited), use a private resolver (nameserver option) " +
+			"or a Spamhaus DQS key"
+	case "127.255.255.252":
+		return "typo or malformed query, check the blocklist zone name"
+	default:
+		return "the blocklist refused to answer (reserved error code)"
 	}
 }
 
