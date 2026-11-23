@@ -90,6 +90,11 @@ Not reproduced (needs an iOS device or WebKit). What the code says:
    once step 1/2 shows they do not precede the sign-out; dropping them earlier would hide
    the only signal of cause (c).
 
+## Resolved open questions
+
+1. If WebKit emulation does not reproduce the bug, ship the instrumentation (step 2) alone, then reopen the diagnosis with the production events. (autopilot: recommended answer)
+2. Do not drop stackless `Script error.` events in `before_send` in this spec: drop them only once steps 1/2 show they do not precede the sign-out. (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes fclairamb/solidping-business#107 (its first finding is already fixed by

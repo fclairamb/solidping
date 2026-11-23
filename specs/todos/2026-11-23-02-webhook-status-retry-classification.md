@@ -105,6 +105,11 @@ Related facts found while diagnosing:
    of scope here, file separately if wanted; this spec only fixes classification, retries and
    logging.
 
+## Resolved open questions
+
+1. A retried notification webhook keeps the same `webhook-id`: derive it from the job chain (the root job UID, the first `previous_job_uid`) so receivers can deduplicate. (autopilot: recommended answer)
+2. Surfacing repeated permanent failures to the org (integration health) is out of scope: this spec only fixes classification, retries and logging. (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes fclairamb/solidping-business#106. The implementing PR body **must** carry
