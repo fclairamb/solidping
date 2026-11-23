@@ -1224,6 +1224,30 @@ func testChecksWithOrg(ctx context.Context, t *testing.T, svc db.Service) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(0), total)
 		assert.Empty(t, results)
+
+		// Several words: every word must match (AND), each on name or slug
+		results, total, err = svc.ListChecks(ctx, searchOrg.UID, &models.ListChecksFilter{Query: "gamma-  api"})
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total, "gamma- AND api should only match gamma-api")
+		require.Len(t, results, 1)
+		assert.Equal(t, gamma.UID, results[0].UID)
+
+		results, total, err = svc.ListChecks(ctx, searchOrg.UID, &models.ListChecksFilter{Query: "api service"})
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total, "api (slug) AND service (name) should match gamma only")
+		require.Len(t, results, 1)
+		assert.Equal(t, gamma.UID, results[0].UID)
+
+		results, total, err = svc.ListChecks(ctx, searchOrg.UID, &models.ListChecksFilter{Query: "alpha beta"})
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), total, "no check matches both alpha and beta")
+		assert.Empty(t, results)
+
+		// LIKE wildcards are literal
+		results, total, err = svc.ListChecks(ctx, searchOrg.UID, &models.ListChecksFilter{Query: "%"})
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), total)
+		assert.Empty(t, results)
 	})
 
 	t.Run("ListWithSearchAndPagination", func(t *testing.T) {

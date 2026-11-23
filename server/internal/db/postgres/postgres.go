@@ -2051,6 +2051,21 @@ func (s *Service) ListChecksByTunnelCheckUID(
 	return checks, nil
 }
 
+// applyCheckSearchFilter narrows a checks query to the free-text search. The
+// search is split on whitespace and every word must match, as a
+// case-insensitive substring of the name or the slug: "ts- ssh" finds
+// "ts-prod-ssh" but not "ts-prod-http". LIKE wildcards in the words are
+// matched literally.
+func applyCheckSearchFilter(query *bun.SelectQuery, search string) *bun.SelectQuery {
+	for _, word := range strings.Fields(strings.ToLower(search)) {
+		pattern := "%" + escapeLikePrefix(word) + "%"
+		query = query.Where(
+			"(LOWER(name) LIKE ? ESCAPE '\\' OR LOWER(slug) LIKE ? ESCAPE '\\')", pattern, pattern)
+	}
+
+	return query
+}
+
 // applyCheckTypeFilter narrows a checks query to the requested types. It is
 // extracted from ListChecks so the row query and the count query share one
 // definition of the filter, and so ListChecks stays inside its complexity
@@ -2170,7 +2185,6 @@ func applyChecksOrdering(query *bun.SelectQuery, filter *models.ListChecksFilter
 	return query.Order("created_at DESC", "uid DESC")
 }
 
-//nolint:funlen // List query builder handles many optional filters inline
 func (s *Service) ListChecks(
 	ctx context.Context, orgUID string, filter *models.ListChecksFilter,
 ) ([]*models.Check, int64, error) {
@@ -2210,11 +2224,8 @@ func (s *Service) ListChecks(
 		}
 
 		// Apply search filter
-		if filter.Query != "" {
-			pattern := "%" + strings.ToLower(filter.Query) + "%"
-			query = query.Where("(LOWER(name) LIKE ? OR LOWER(slug) LIKE ?)", pattern, pattern)
-			countQuery = countQuery.Where("(LOWER(name) LIKE ? OR LOWER(slug) LIKE ?)", pattern, pattern)
-		}
+		query = applyCheckSearchFilter(query, filter.Query)
+		countQuery = applyCheckSearchFilter(countQuery, filter.Query)
 
 		query = applyCheckTypeFilter(query, filter.Types)
 		countQuery = applyCheckTypeFilter(countQuery, filter.Types)
