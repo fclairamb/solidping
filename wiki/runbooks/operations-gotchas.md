@@ -135,7 +135,9 @@ slug on the caller's side, not a wrong key.
 - A private-location check stuck in `stale` (status 10) while its siblings in the same
   region report: look at its `check_jobs` row. A `scheduled_at` that no longer moves and a
   growing `lease_starts` mean the agent claims the job and the server refuses its result.
-  The server logs `agent result rejected` with the reason. Up to v0.53 it logged nothing,
+  The server logs `agent result rejected` with the reason, once per agent and reason per
+  hour: its `job_uid` is the first refused job of that hour, not every one, and
+  `suppressed` counts the others. Up to v0.53 it logged nothing,
   and it refused Warning and Degraded results from agents ("status out of range"), so an
   SSL check went stale as soon as its certificate entered `warningDays`. Stale never
   notifies.
