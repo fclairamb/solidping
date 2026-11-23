@@ -175,7 +175,11 @@ func TestHTTP(t *testing.T) {
 		{"body match is up", map[string]any{"http_path": "/healthcheck", "body_expect": `"ok"`}, checkerdef.StatusUp, 200},
 		{"body miss is down", map[string]any{"http_path": "/healthcheck", "body_expect": "nope"}, checkerdef.StatusDown, 200},
 		{"expected 404 is up", map[string]any{"http_path": "/missing", "expected_status": 404}, checkerdef.StatusUp, 404},
-		{"expected 404 on 200 is down", map[string]any{"http_path": "/healthcheck", "expected_status": 404}, checkerdef.StatusDown, 200},
+		{
+			"expected 404 on 200 is down",
+			map[string]any{"http_path": "/healthcheck", "expected_status": 404},
+			checkerdef.StatusDown, 200,
+		},
 	}
 
 	for _, tc := range cases {

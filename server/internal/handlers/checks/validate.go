@@ -509,8 +509,8 @@ func validateMultiStepPlacement(checkType string, checkRegions []string) error {
 // unaffected — reading the local daemon or socket is the feature working as
 // intended there.
 func (s *Service) validateHostLocalDeploymentConfig(checkType string, checkRegions []string) error {
-	ct := checkerdef.CheckType(checkType)
-	if !ct.IsHostLocal() {
+	hostLocalType := checkerdef.CheckType(checkType)
+	if !hostLocalType.IsHostLocal() {
 		return nil
 	}
 
@@ -519,12 +519,12 @@ func (s *Service) validateHostLocalDeploymentConfig(checkType string, checkRegio
 	}
 
 	if len(checkRegions) == 0 {
-		return hostLocalRejection(ct)
+		return hostLocalRejection(hostLocalType)
 	}
 
 	for _, region := range checkRegions {
 		if !regions.IsPrivateRegion(region) {
-			return hostLocalRejection(ct)
+			return hostLocalRejection(hostLocalType)
 		}
 	}
 

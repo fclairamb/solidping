@@ -15,18 +15,20 @@ func TestValidateSpec_Rejects(t *testing.T) {
 		cfg   map[string]any
 		param string
 	}{
-		"empty path":           {map[string]any{"path": ""}, KeyPath},
-		"missing path":         {map[string]any{}, KeyPath},
-		"relative path":        {map[string]any{"path": "run/app.sock"}, KeyPath},
-		"unclean path":         {map[string]any{"path": "/run/../run/app.sock"}, KeyPath},
-		"NUL byte":             {map[string]any{"path": "/run/app\x00.sock"}, KeyPath},
-		"abstract socket":      {map[string]any{"path": "@app"}, KeyPath},
-		"non-string path":      {map[string]any{"path": 12}, KeyPath},
-		"http and send_data":   {map[string]any{"path": "/run/app.sock", "http_path": "/", "send_data": "x"}, KeyHTTPPath},
-		"http and expect":      {map[string]any{"path": "/run/app.sock", "http_path": "/", "expect_data": "x"}, KeyHTTPPath},
-		"http path no slash":   {map[string]any{"path": "/run/app.sock", "http_path": "health"}, KeyHTTPPath},
-		"http path spaces":     {map[string]any{"path": "/run/app.sock", "http_path": "/a b"}, KeyHTTPPath},
-		"bad status":           {map[string]any{"path": "/run/app.sock", "http_path": "/", "expected_status": 42}, KeyExpectedStatus},
+		"empty path":         {map[string]any{"path": ""}, KeyPath},
+		"missing path":       {map[string]any{}, KeyPath},
+		"relative path":      {map[string]any{"path": "run/app.sock"}, KeyPath},
+		"unclean path":       {map[string]any{"path": "/run/../run/app.sock"}, KeyPath},
+		"NUL byte":           {map[string]any{"path": "/run/app\x00.sock"}, KeyPath},
+		"abstract socket":    {map[string]any{"path": "@app"}, KeyPath},
+		"non-string path":    {map[string]any{"path": 12}, KeyPath},
+		"http and send_data": {map[string]any{"path": "/run/app.sock", "http_path": "/", "send_data": "x"}, KeyHTTPPath},
+		"http and expect":    {map[string]any{"path": "/run/app.sock", "http_path": "/", "expect_data": "x"}, KeyHTTPPath},
+		"http path no slash": {map[string]any{"path": "/run/app.sock", "http_path": "health"}, KeyHTTPPath},
+		"http path spaces":   {map[string]any{"path": "/run/app.sock", "http_path": "/a b"}, KeyHTTPPath},
+		"bad status": {
+			map[string]any{"path": "/run/app.sock", "http_path": "/", "expected_status": 42}, KeyExpectedStatus,
+		},
 		"status without http":  {map[string]any{"path": "/run/app.sock", "expected_status": 200}, KeyExpectedStatus},
 		"body without http":    {map[string]any{"path": "/run/app.sock", "body_expect": "ok"}, KeyBodyExpect},
 		"timeout too long":     {map[string]any{"path": "/run/app.sock", "timeout": "31s"}, KeyTimeout},
@@ -51,8 +53,10 @@ func TestValidateSpec_Accepts(t *testing.T) {
 	cases := map[string]map[string]any{
 		"connect only": {"path": "/run/app/app.sock"},
 		"raw":          {"path": "/run/app/app.sock", "send_data": "PING\\r\\n", "expect_data": "PONG", "timeout": "2s"},
-		"http":         {"path": "/run/app/app.sock", "http_path": "/healthcheck", "expected_status": 204, "body_expect": "ok"},
-		"json status":  {"path": "/run/app/app.sock", "http_path": "/", "expected_status": float64(200)},
+		"http": {
+			"path": "/run/app/app.sock", "http_path": "/healthcheck", "expected_status": 204, "body_expect": "ok",
+		},
+		"json status": {"path": "/run/app/app.sock", "http_path": "/", "expected_status": float64(200)},
 	}
 
 	for name, cfg := range cases {
