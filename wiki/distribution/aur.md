@@ -30,6 +30,9 @@ It doesn't need bumping in the repo: the release job renders the tag's version.
   then, if the `AUR_SSH_PRIVATE_KEY` secret exists, clones
   `ssh://aur@aur.archlinux.org/solidping-bin.git` and pushes the update. Without the
   secret it logs a notice and succeeds. The AUR host key is pinned in the job.
+  **Disabled for now**: it only runs when the repository variable `AUR_PUBLISH_ENABLED` is
+  `true` (v0.54.0 failed with `Permission denied (publickey)`). Turn it on with
+  `gh variable set AUR_PUBLISH_ENABLED --body true` once the AUR account accepts the key.
 
 ## Publishing for the first time (operator)
 

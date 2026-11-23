@@ -2022,11 +2022,14 @@ jobs:
   # Needs the AUR_SSH_PRIVATE_KEY secret: the private half of an SSH key
   # registered on the AUR account that maintains the package. Without it the
   # job only renders the package and says so, it does not fail the release.
+  # Disabled until the AUR side accepts our key (v0.54.0 failed with
+  # "Permission denied (publickey)"): set the repository variable
+  # AUR_PUBLISH_ENABLED=true to turn it back on.
   aur-publish:
     name: Publish to the AUR
     runs-on: ubuntu-26.04
     needs: [server-release]
-    if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+    if: ${{ vars.AUR_PUBLISH_ENABLED == 'true' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
     permissions:
       contents: read
     steps:
