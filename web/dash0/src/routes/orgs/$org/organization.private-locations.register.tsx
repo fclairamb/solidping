@@ -38,12 +38,14 @@ import {
   useEnrollmentTokens,
   useMintEnrollmentToken,
   usePrivateRegions,
+  useVersion,
   type AgentInfo,
   type EnrollmentToken,
   type MintedEnrollmentToken,
   type PrivateRegion,
 } from "@/api/hooks";
 import { SecretText } from "@/components/ui/secret-text";
+import { agentImage } from "@/lib/agent-image";
 
 export const Route = createFileRoute(
   "/orgs/$org/organization/private-locations/register",
@@ -543,17 +545,21 @@ function StepRunAgent({
   const { t } = useTranslation(["org"]);
   const [tab, setTab] = useState("docker-run");
   const serverUrl = window.location.origin;
+  const { data: versionData } = useVersion();
+  const { image, followsServer, pinnedImage } = agentImage(versionData?.version, serverUrl);
+  // kubelet re-pulls `current` on every container restart only with Always.
+  const pullPolicy = followsServer ? "\n          imagePullPolicy: Always" : "";
 
   const dockerRun = `docker run -d --name solidping-agent \\
   -v agent-data:/data \\
   -e SP_NODE_ROLE=agent \\
   -e SP_AGENT_SERVER_URL=${serverUrl} \\
   -e SP_AGENT_ENROLLMENT_TOKEN=${minted.token} \\
-  ghcr.io/fclairamb/solidping:latest`;
+  ${image}`;
 
   const dockerCompose = `services:
   solidping-agent:
-    image: ghcr.io/fclairamb/solidping:latest
+    image: ${image}
     restart: unless-stopped
     volumes:
       - agent-data:/data
@@ -579,7 +585,7 @@ spec:
     spec:
       containers:
         - name: agent
-          image: ghcr.io/fclairamb/solidping:latest
+          image: ${image}${pullPolicy}
           env:
             - name: SP_NODE_ROLE
               value: agent
@@ -638,6 +644,26 @@ spec:
             </p>
           </AlertDescription>
         </Alert>
+
+        <p className="text-xs text-muted-foreground" data-testid="wizard-image-note">
+          {followsServer
+            ? t(
+                "privateLocations.wizard.step3.imageFollows",
+                "{{image}} is served by this server and always resolves to its version: when the server is upgraded, it asks the agent to restart on the new version. Kubernetes pulls it again on restart (imagePullPolicy: Always); with Docker, a restart reuses the local image, so add the update timer from the docs. To pin this exact version instead, use {{pinned}}.",
+                { image, pinned: pinnedImage },
+              )
+            : pinnedImage
+              ? t(
+                  "privateLocations.wizard.step3.imagePinned",
+                  "{{image}} is this server's version. Change the tag when you upgrade the server.",
+                  { image },
+                )
+              : t(
+                  "privateLocations.wizard.step3.imageDev",
+                  "This server is a development build with no published image of its own: the snippets use {{image}}.",
+                  { image },
+                )}
+        </p>
 
         <div className="overflow-x-auto">
           <Tabs value={tab} onValueChange={setTab}>

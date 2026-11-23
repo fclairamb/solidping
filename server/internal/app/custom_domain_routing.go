@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/agentregistry"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
@@ -58,6 +59,10 @@ const (
 	// host (the footer renders the build it is talking to).
 	routeMgmtVersion = "/api/mgmt/version"
 	routeMgmtHealth  = "/api/mgmt/health"
+
+	// The agent image registry (spec 2026-11-22-04). Main host only: a
+	// customer's status domain is not a SolidPing registry.
+	routeAgentRegistry = agentregistry.PathPrefix
 )
 
 // resolvedCustomDomain is the cached resolution of a custom host to a servable
@@ -522,7 +527,8 @@ func isCustomHostForbidden(reqPath string) bool {
 		matchesRoute(reqPath, routeDocs) ||
 		matchesRoute(reqPath, routeDemo) ||
 		reqPath == "/openapi" || reqPath == "/openapi.yaml" ||
-		reqPath == routeMetrics
+		reqPath == routeMetrics ||
+		matchesRoute(reqPath, routeAgentRegistry)
 }
 
 // matchesRoute reports whether reqPath IS route or lives under it, without ever

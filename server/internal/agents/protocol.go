@@ -58,6 +58,15 @@ const (
 	// UNSOLICITED AND UNCORRELATED, exactly like the upload request: no id, no
 	// response on the socket, and an agent that predates it ignores it.
 	MsgTypeTraceRequest = "trace-request"
+	// MsgTypeUpgrade asks the agent to restart on the server's version (spec
+	// 2026-11-22-04): it stops claiming, finishes its in-flight jobs, closes
+	// the socket and exits 0, so its supervisor (kubelet with
+	// imagePullPolicy: Always, a compose updater) starts it again on the
+	// image the server's registry now resolves `current` to.
+	//
+	// UNSOLICITED AND UNCORRELATED, like the two frames above: an agent that
+	// predates it ignores it, which is what keeps the rollout order free.
+	MsgTypeUpgrade = "upgrade"
 )
 
 // ClientFrame is the envelope every agent->server frame decodes into. Fields
@@ -109,6 +118,14 @@ type ClientFrame struct {
 	// ignores it. Detection only: this never gates execution, throttles, or
 	// disconnects an agent on a stale version.
 	Version string `json:"version,omitempty"`
+	// AutoUpgrade is the agent's answer to the rolling upgrade (spec
+	// 2026-11-22-04), sent on the enroll frame and every claim. `false` means
+	// the agent is pinned (SP_AGENT_IGNORE_VERSION_DRIFT=true): it ignores any
+	// `upgrade` frame, so the server never sends one and skips it in the
+	// rollout. OPTIONAL AND THREE-STATE ON THE WIRE, but absent reads as
+	// `true`: an older agent omits it and is upgraded as before. Use
+	// VersionPinned rather than reading the pointer.
+	AutoUpgrade *bool `json:"autoUpgrade,omitempty"`
 	// Plugins are the plugin check types the agent loaded, with their schema
 	// (spec 2026-10-17-05 §18). Sent on the first claim of each connection
 	// only; the server stores them per org so the form and the validation of
@@ -196,6 +213,12 @@ type AgentJobTunnel struct {
 	ConfigSealed *string `json:"configSealed,omitempty"`
 }
 
+// VersionPinned reports whether the agent announced it ignores upgrade frames
+// (AutoUpgrade explicitly false). An absent field is not a pin.
+func (f *ClientFrame) VersionPinned() bool {
+	return f.AutoUpgrade != nil && !*f.AutoUpgrade
+}
+
 // ServerFrame is the envelope for every server->agent frame.
 type ServerFrame struct {
 	Type string `json:"type"`
@@ -213,6 +236,10 @@ type ServerFrame struct {
 	// regions' tasks), so it never starts its task loop. Absent from old
 	// servers, which keeps the loop on.
 	NoWorkerTasks bool `json:"noWorkerTasks,omitempty"`
+	// ServerVersion is the server's build version (version.Get().Version),
+	// carried on every hello (spec 2026-11-22-04). Informational: older
+	// agents ignore it, older servers omit it.
+	ServerVersion string `json:"serverVersion,omitempty"`
 
 	// jobs
 	Jobs []AgentJob `json:"jobs,omitempty"`
@@ -251,6 +278,13 @@ type ServerFrame struct {
 	// its own object rather than as more flat fields so a frame that is not a
 	// trace request costs nothing on the wire.
 	Trace *TraceRequestFrame `json:"trace,omitempty"`
+
+	// upgrade
+	//
+	// TargetVersion is the version the server expects the agent to come back
+	// on (its own). Informational: the agent does not pick an image, its
+	// supervisor does.
+	TargetVersion string `json:"targetVersion,omitempty"`
 }
 
 // TraceRequestFrame is the payload of MsgTypeTraceRequest.

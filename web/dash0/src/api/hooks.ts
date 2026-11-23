@@ -8440,6 +8440,9 @@ export interface AgentInfo {
    * predating this feature, or one that has not sent a claim frame yet —
    * and must be rendered as unknown, never as drifted. */
   version?: string | null;
+  /** The agent runs with SP_AGENT_IGNORE_VERSION_DRIFT=true (spec
+   * 2026-11-22-04): never asked to upgrade, its drift is deliberate. */
+  versionPinned?: boolean;
   /** Active and seen within the liveness window — the same rule the
    * location's liveness monitor uses, computed server-side (spec
    * 2026-09-25-05). */

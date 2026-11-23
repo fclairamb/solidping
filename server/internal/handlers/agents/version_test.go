@@ -85,3 +85,43 @@ func TestListAgentsMissingWorkerRowIsNilVersion(t *testing.T) {
 	r.Len(list.Data, 1)
 	r.Nil(list.Data[0].Version)
 }
+
+// TestListAgentsSurfacesVersionPin: an agent pinned with
+// SP_AGENT_IGNORE_VERSION_DRIFT (workers.version_pinned) is reported as such,
+// on the org view and the fleet view (spec 2026-11-22-04).
+func TestListAgentsSurfacesVersionPin(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newSetup(t)
+	ctx := t.Context()
+
+	agent := models.NewAgent(env.org.UID, "@dc1", "pinned-agent", "ed1", "age1x", "fp1")
+	_, err := env.dbSvc.DB().NewInsert().Model(agent).Exec(ctx)
+	r.NoError(err)
+
+	reported := "0.17.0"
+	worker, err := env.dbSvc.RegisterOrUpdateWorker(ctx, &models.Worker{
+		UID: agent.UID, Slug: agentcrypto.WorkerSlug(agent.UID),
+		Name: "agent:" + agent.Name, Version: &reported,
+	})
+	r.NoError(err)
+
+	list, err := env.svc.ListAgents(ctx, env.org.Slug)
+	r.NoError(err)
+	r.Len(list.Data, 1)
+	r.False(list.Data[0].VersionPinned, "not pinned by default")
+
+	_, err = env.dbSvc.DB().NewUpdate().Model((*models.Worker)(nil)).
+		Set("version_pinned = ?", true).Where("uid = ?", worker.UID).Exec(ctx)
+	r.NoError(err)
+
+	list, err = env.svc.ListAgents(ctx, env.org.Slug)
+	r.NoError(err)
+	r.True(list.Data[0].VersionPinned)
+
+	fleet, err := env.svc.ListAllAgents(ctx)
+	r.NoError(err)
+	r.Len(fleet.Data, 1)
+	r.True(fleet.Data[0].VersionPinned)
+}

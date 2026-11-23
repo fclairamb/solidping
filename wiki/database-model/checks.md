@@ -15,6 +15,7 @@ Distributed workers that execute monitoring checks. Global, not org-scoped.
 | last_active_at | timestamptz | Last heartbeat |
 | capabilities | text[] (SQLite: JSON text) | Self-reported capability set — `NULL` = never reported (unknown), `{}` = reported and has none, a populated set = reported this exact set. See [../features/deported-agents.md](../features/deported-agents.md#ipv6-egress) |
 | version | text, nullable | Self-reported build version (`internal/version.Get().Version`), refreshed alongside `capabilities`. `NULL` = never reported (unknown) — must never be rendered as "drifted". Two-state, not three: a real build version is never the empty string, so a `CHECK` constraint refuses one outright. See [../features/deported-agents.md](../features/deported-agents.md#build-version) |
+| version_pinned | boolean, default false | The agent behind this row announced `autoUpgrade: false` (`SP_AGENT_IGNORE_VERSION_DRIFT=true`): never asked to upgrade, its drift is labelled "Pinned". Refreshed on each connection's first report. See [../features/agent-auto-upgrade.md](../features/agent-auto-upgrade.md) |
 
 **Foreign Keys**: None
 

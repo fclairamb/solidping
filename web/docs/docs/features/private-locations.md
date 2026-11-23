@@ -58,8 +58,16 @@ docker run -d --name solidping-agent \
   -e SP_NODE_ROLE=agent \
   -e SP_AGENT_SERVER_URL=https://solidping.example.com \
   -e SP_AGENT_ENROLLMENT_TOKEN=spe_… \
-  ghcr.io/fclairamb/solidping:latest
+  solidping.example.com/solidping:current
 ```
+
+`solidping.example.com/solidping:current` is served by your SolidPing server
+itself and always resolves to the image of **the server's own version** (see
+[Keeping agents on the server's version](#keeping-agents-on-the-servers-version)).
+If you would rather pin an image, use the tag matching your server, e.g.
+`ghcr.io/fclairamb/solidping:0.54.0` — not `:latest`, which runs agents newer
+than a server you pinned. The dashboard's snippets fill in the right reference
+for you.
 
 On first start the agent:
 
@@ -149,6 +157,7 @@ drain.
 | `SP_AGENT_DISCOVERY_ENABLED` | `false` | Lets this agent run [network discovery](#scan-the-locations-network) scans. Never set it on a system agent |
 | `SP_AGENT_DISCOVERY_CIDRS` | — | Comma-separated IPv4 prefixes discovery may probe, e.g. `10.0.0.0/8,192.168.0.0/16`. Required when discovery is enabled |
 | `SP_AGENT_REWRAP_ENABLED` | `true` | Lets this agent [re-seal sealed secrets](./browser-sealed-secrets.md#re-sealing-on-an-agent) for the recipients the server sends. Set `false` on every agent of a location to keep the server out of that loop entirely |
+| `SP_AGENT_IGNORE_VERSION_DRIFT` | `false` | Pins this agent to the image it runs: it tells the server it does not auto-upgrade and ignores upgrade requests. It still reports its version, so it keeps its "Drifted" badge, labelled "Pinned". See [Keeping agents on the server's version](#keeping-agents-on-the-servers-version) |
 | `SP_AGENT_PRINT_KEYS` | `false` | Prints the agent's **private key material** to stdout — opt-in bootstrap only (honoured on every start); unset it again afterwards |
 
 **Version reporting needs no configuration.** Every agent automatically
@@ -158,7 +167,84 @@ to, that shows up on **Server → Agents** (superadmin) or on this
 organization's **Private locations** page as an amber "Drifted" badge next
 to the agent, so identifying a stale deployment no longer means shelling
 into every machine one by one. An agent that predates this feature simply
-shows as "unknown" — never as drifted.
+shows as "unknown" — never as drifted. A drifted agent is also asked to
+upgrade itself, see below.
+
+### Keeping agents on the server's version
+
+When an agent reports a version different from the server's, the server asks
+it to upgrade: the agent stops claiming checks, finishes the ones it is
+running, closes its connection and **exits with status 0**. Whatever supervises
+it (kubelet, Docker, systemd) starts it again, and with the image reference
+below it comes back on the server's version — after a server upgrade as well as
+after a rollback.
+
+- **One agent per location at a time.** The server waits for that agent to
+  reconnect on its version (up to 10 minutes) before asking the next one, so a
+  location with several agents keeps running checks throughout. A location with
+  a single agent is upgraded too, with a short gap while it restarts. An agent
+  that does not come back in time is logged at WARN and the next one is asked;
+  after three requests for the same version, the server stops asking that
+  agent.
+- **Development builds are left alone**: nothing happens when the server or the
+  agent is an untagged (`dev`) build.
+- **Turning it off**: set `SP_AGENTS_AUTO_UPGRADE=false` on the **server**. It
+  applies to every agent, private locations and platform-operated agents alike.
+- **Pinning one agent**: set `SP_AGENT_IGNORE_VERSION_DRIFT=true` on the
+  **agent** (for instance while you test a release on one machine). The server
+  never asks it to upgrade and skips it in the rollout, so it never makes the
+  other agents of its location wait. The drift stays visible: a warning in the
+  server log and the "Drifted" badge, with a "Pinned" label next to it.
+
+The image has to be pulled again when the agent restarts, which is what the
+server's own registry is for:
+
+- **The registry** answers at the root of your server's host:
+  `<server-host>/solidping:current`. It needs HTTPS (Docker and containerd
+  refuse a plain-HTTP registry) and the host root: a server published under a
+  path prefix cannot serve it, so pin `ghcr.io/fclairamb/solidping:<version>`
+  there instead. It stores nothing: manifests are fetched from `ghcr.io` and
+  layers are downloaded straight from GitHub's CDN.
+- **Kubernetes**: use `imagePullPolicy: Always` (as in the manifests below).
+  The kubelet pulls `current` again on every container restart, so exiting is
+  enough.
+- **Docker / Docker Compose**: a restart policy (`unless-stopped`, `always`)
+  restarts the container **on the image already on the machine** — it never
+  pulls. Use `restart: unless-stopped` or `always` (not `on-failure`: the agent
+  exits 0) and add an updater that pulls the new image, for example a systemd
+  timer next to your `docker-compose.yml`:
+
+  ```ini
+  # /etc/systemd/system/solidping-agent-update.service
+  [Unit]
+  Description=Pull and restart the SolidPing agent on a new image
+
+  [Service]
+  Type=oneshot
+  WorkingDirectory=/opt/solidping-agent
+  ExecStart=/usr/bin/docker compose pull
+  ExecStart=/usr/bin/docker compose up -d
+  ```
+
+  ```ini
+  # /etc/systemd/system/solidping-agent-update.timer
+  [Unit]
+  Description=Check for a new SolidPing agent image
+
+  [Timer]
+  OnBootSec=5min
+  OnUnitActiveSec=15min
+
+  [Install]
+  WantedBy=timers.target
+  ```
+
+  ```bash
+  sudo systemctl enable --now solidping-agent-update.timer
+  ```
+
+  `docker compose up -d` only recreates the container when the pulled image
+  changed, so the timer is a no-op the rest of the time.
 
 ### Kubernetes
 
@@ -189,7 +275,7 @@ spec:
     fsGroup: 65532
   containers:
     - name: agent
-      image: ghcr.io/fclairamb/solidping:latest
+      image: solidping.example.com/solidping:current
       env:
         - name: SP_NODE_ROLE
           value: agent
@@ -255,7 +341,10 @@ spec:
         runAsNonRoot: true
       containers:
         - name: agent
-          image: ghcr.io/fclairamb/solidping:latest
+          image: solidping.example.com/solidping:current
+          # Pull on every restart: the server asks the agent to restart when
+          # its version changes, and `current` then resolves to the new one.
+          imagePullPolicy: Always
           env:
             - name: SP_NODE_ROLE
               value: agent

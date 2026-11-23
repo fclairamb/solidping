@@ -86,3 +86,41 @@ One row per (org, type): the latest report wins. Rows are never pruned.
 
 **Indexes**:
 - Unique on (organization_uid, check_type)
+
+---
+
+### agent_upgrade_slots
+The rolling agent upgrade's per-region slot (spec 2026-11-22-04): the agent
+currently asked to upgrade, shared by every server replica. Free once
+`released` or past `deadline`; taken with an insert or a compare-and-swap on
+`generation`. See [../features/agent-auto-upgrade.md](../features/agent-auto-upgrade.md).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| region_key | text PK | `<org uid>\|<region>` for an org agent (its region is org-relative), `system\|<region>` for a system agent |
+| agent_uid | text | Agent asked to upgrade |
+| target_version | text | Server version it should come back on |
+| deadline | timestamptz | When the next agent may be asked (10 min after the request) |
+| released | boolean | Set when the agent came back on the target version |
+| generation | bigint | Bumped on every write; the takeover's compare-and-swap |
+| updated_at | timestamptz | |
+
+### agent_upgrade_candidates
+Drifted agents currently connected, refreshed by their connection (`seen_at`),
+and how many times each was asked to upgrade to `target_version` (reset when
+the target changes). The next agent asked has the fewest attempts, then the
+oldest row. Deleted when the agent reports the server's version; stale rows are
+pruned by the next contender.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| agent_uid | text PK | Agent |
+| region_key | text | Same key as agent_upgrade_slots |
+| target_version | text | Server version |
+| attempts | integer | Upgrade requests for this target (capped at 3) |
+| seen_at | timestamptz | Last refresh by the agent's connection |
+| created_at | timestamptz | |
+
+**Indexes**:
+- Index on (region_key)
+

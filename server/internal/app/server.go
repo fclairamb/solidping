@@ -2717,6 +2717,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// robots.txt: indexable on solidping.io only, Disallow everywhere else.
 	mainGroup.GET("/robots.txt", s.serveRobotsTxt)
 
+	// Read-only agent image registry at the host root (spec 2026-11-22-04).
+	s.registerAgentRegistry(ctx, mainGroup)
+
 	mainGroup.GET("/llms.txt", s.serveRootLLMsTxt)
 	mainGroup.GET("/llms-full.txt", s.serveRootLLMsFullTxt)
 

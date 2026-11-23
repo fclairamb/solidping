@@ -113,6 +113,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		// Shared region keys (spec 2026-11-08-01): opened next to the agent's
 		// own key, advertised to the server by fingerprint only.
 		backend.WithRegionIdentities(regionIdentities),
+		// SP_AGENT_IGNORE_VERSION_DRIFT (spec 2026-11-22-04): stay on this image.
+		backend.WithIgnoreVersionDrift(cfg.Agent.IgnoreVersionDrift),
 	)
 
 	// Wire the SSH-tunnel resolver to this agent's in-memory unsealed snapshots.
@@ -125,7 +127,9 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	logger.InfoContext(ctx, "Starting deported agent",
 		"server", cfg.Agent.ServerURL,
 		"enrolled", identity.AgentUID != "",
-		"region", identity.Region)
+		"region", identity.Region,
+		// SP_AGENT_IGNORE_VERSION_DRIFT: the server will not ask it to upgrade.
+		"version_pinned", cfg.Agent.IgnoreVersionDrift)
 
 	// Peer re-wrap of sealed secrets (spec 2026-11-10-03): this agent opens a
 	// blob with its keys and seals it to the list the server sends. Registered
@@ -154,7 +158,49 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	// One slot: an agent runs one long task at a time.
 	worker.EnableTasks(wsBackend.TaskClient(), agentTaskSlots)
 
-	return worker.Run(ctx)
+	return runUntilUpgrade(ctx, logger, worker, wsBackend)
+}
+
+// workerLoop is the part of the check worker runUntilUpgrade drives.
+type workerLoop interface {
+	Run(ctx context.Context) error
+}
+
+// upgradeSource is the part of the WS backend runUntilUpgrade watches.
+type upgradeSource interface {
+	UpgradeRequested() <-chan struct{}
+	Close()
+}
+
+// runUntilUpgrade runs the worker loop until ctx ends or the server asks this
+// agent to upgrade (spec 2026-11-22-04). On an upgrade request it cancels the
+// loop — which stops claiming and lets the in-flight jobs finish and submit
+// their results, each bounded by its own timeout — closes the socket, and
+// returns nil so the process exits 0 and its supervisor starts it again on the
+// server's image.
+func runUntilUpgrade(ctx context.Context, logger *slog.Logger, worker workerLoop, source upgradeSource) error {
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	go func() {
+		select {
+		case <-source.UpgradeRequested():
+			cancel()
+		case <-runCtx.Done():
+		}
+	}()
+
+	err := worker.Run(runCtx)
+
+	select {
+	case <-source.UpgradeRequested():
+		source.Close()
+		logger.InfoContext(ctx, "Agent drained for its upgrade; exiting so it restarts on the server's version")
+
+		return nil
+	default:
+		return err
+	}
 }
 
 // loadIdentity loads the persisted identity: SP_AGENT_KEYS (base64 JSON) wins,

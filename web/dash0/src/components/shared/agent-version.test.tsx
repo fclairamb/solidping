@@ -55,6 +55,28 @@ describe("AgentVersionCell", () => {
     expect(screen.getByText("Drifted")).toBeTruthy();
   });
 
+  it("renders a pinned drifted agent with Drifted plus Pinned (spec 2026-11-22-04)", () => {
+    render(
+      <AgentVersionCell agentVersion="0.16.2" serverVersion="0.17.0" pinned data-testid="v" />
+    );
+
+    const cell = screen.getByTestId("v");
+    expect(cell.getAttribute("data-agent-version")).toBe("drifted");
+    expect(screen.getByText("Drifted")).toBeTruthy();
+    expect(screen.getByTestId("v-pinned").textContent).toBe("Pinned");
+  });
+
+  it("shows no Pinned label on an unpinned drifted agent, nor on a pinned matching one", () => {
+    render(<AgentVersionCell agentVersion="0.16.2" serverVersion="0.17.0" data-testid="v" />);
+    expect(screen.queryByTestId("v-pinned")).toBeNull();
+    cleanup();
+
+    render(
+      <AgentVersionCell agentVersion="0.17.0" serverVersion="0.17.0" pinned data-testid="v" />
+    );
+    expect(screen.queryByTestId("v-pinned")).toBeNull();
+  });
+
   it("renders null as unknown, NEVER as drifted — the regression this spec calls out", () => {
     render(<AgentVersionCell agentVersion={null} serverVersion="0.17.0" data-testid="v" />);
 

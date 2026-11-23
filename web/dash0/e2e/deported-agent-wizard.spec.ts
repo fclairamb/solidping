@@ -115,6 +115,100 @@ test.describe.serial("Register an agent wizard", () => {
     await expect(page.getByTestId("wizard-step-waiting")).toBeVisible();
   });
 
+  // Spec 2026-11-22-04: the snippets run the image of the server's own
+  // version, never `:latest`. The E2E server is an untagged http build, so
+  // its version is stubbed: on http the exact upstream tag is pinned (Docker
+  // only talks to an HTTPS registry, so `<host>/solidping:current` is for
+  // HTTPS servers — covered by the agent-image unit test).
+  test("snippets pin the server's version tag, not :latest", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    await page.route("**/api/mgmt/version", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ version: "1.2.3", commit: "abc123" }),
+      }),
+    );
+
+    const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/private-regions`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { slug: REGION_SLUG, name: "E2E Wizard DC" },
+    });
+    expect(resp.ok()).toBeTruthy();
+
+    await page.goto("orgs/test/organization/private-locations/register");
+    await page.getByTestId(`wizard-region-${REGION_SLUG}`).click();
+    await page.getByTestId("wizard-mint-token").click();
+    await expect(page.getByTestId("wizard-minted-token")).toBeVisible();
+    await page.getByTestId("wizard-continue-to-run").click();
+    await expect(page.getByTestId("wizard-step-run-agent")).toBeVisible();
+
+    const pinned = "ghcr.io/fclairamb/solidping:1.2.3";
+
+    const dockerRun = page.getByTestId("wizard-snippet-docker-run");
+    await expect(dockerRun).toContainText(pinned);
+    await expect(dockerRun).not.toContainText(":latest");
+    await expect(page.getByTestId("wizard-image-note")).toContainText(pinned);
+
+    await page.getByTestId("wizard-tab-docker-compose").click();
+    const dockerCompose = page.getByTestId("wizard-snippet-docker-compose");
+    await expect(dockerCompose).toContainText(pinned);
+    await expect(dockerCompose).not.toContainText(":latest");
+
+    await page.getByTestId("wizard-tab-kubernetes").click();
+    const kubernetes = page.getByTestId("wizard-snippet-kubernetes");
+    await expect(kubernetes).toContainText(pinned);
+    await expect(kubernetes).not.toContainText(":latest");
+  });
+
+  // An agent run with SP_AGENT_IGNORE_VERSION_DRIFT=true stays on its version
+  // (spec 2026-11-22-04): the list keeps the Drifted badge and labels it
+  // Pinned. The agent list and the server version are stubbed: a real agent
+  // only exists over the agent WS protocol.
+  test("a pinned drifted agent shows Drifted plus Pinned", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+
+    await page.route("**/api/mgmt/version", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ version: "1.2.3", commit: "abc123" }),
+      }),
+    );
+
+    const agent = (uid: string, versionPinned: boolean) => ({
+      uid,
+      name: uid,
+      region: `@${REGION_SLUG}`,
+      fingerprint: `fp-${uid}`,
+      status: "active",
+      enrolledAt: new Date().toISOString(),
+      version: "1.2.0",
+      versionPinned,
+      online: true,
+    });
+
+    await page.route("**/api/v1/orgs/test/agents", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({
+        json: { data: [agent("e2e-pinned-agent", true), agent("e2e-drifted-agent", false)] },
+      });
+    });
+
+    await page.goto("orgs/test/organization/private-locations");
+
+    const pinnedCell = page.getByTestId("agent-version-e2e-pinned-agent");
+    await expect(pinnedCell).toHaveAttribute("data-agent-version", "drifted");
+    await expect(pinnedCell).toContainText("Drifted");
+    await expect(page.getByTestId("agent-version-e2e-pinned-agent-pinned")).toHaveText("Pinned");
+
+    const driftedCell = page.getByTestId("agent-version-e2e-drifted-agent");
+    await expect(driftedCell).toContainText("Drifted");
+    await expect(page.getByTestId("agent-version-e2e-drifted-agent-pinned")).toHaveCount(0);
+  });
+
   // Regression for the "Token no longer available" bug: when the agent enrolls
   // while the user is still reading step 3 (typical — the docker run connects
   // within seconds), the agent is already inside step 4's new-agent baseline

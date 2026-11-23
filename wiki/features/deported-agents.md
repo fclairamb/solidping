@@ -307,6 +307,7 @@ No separate binary. Same container, different role:
 | `SP_AGENT_KEYS_FILE` | `/data/agent-keys.json` (falls back to `./agent-keys.json`) | Identity persistence |
 | `SP_AGENT_KEYS` | — | Base64 identity JSON; wins over the file (Kubernetes secret) |
 | `SP_AGENT_NAME` | hostname | Display name |
+| `SP_AGENT_IGNORE_VERSION_DRIFT` | `false` | Pins the agent to its image: announces `autoUpgrade: false`, ignores `upgrade` frames ([agent-auto-upgrade.md](agent-auto-upgrade.md)) |
 | `SP_AGENT_PRINT_KEYS` | `false` | **Prints private key material to stdout** — opt-in bootstrap only, honoured on every start; unset it again afterwards |
 
 > These are read by a hand-rolled reader rather than koanf, because koanf
@@ -394,15 +395,27 @@ and is rendered in the dashboard against this server's own version
 |---|---|
 | Agent version == server version | Plain text — nothing to flag |
 | Agent version != server version | Amber "Drifted" badge |
+| Drifted, agent pinned (`SP_AGENT_IGNORE_VERSION_DRIFT=true`) | "Drifted" plus a "Pinned" label |
 | Agent version is `null` | Plain "unknown" text — **never** the drifted badge |
 
 **Server-side drift WARN.** The server logs one WARN per connection when a
 reported version differs from its own, skipped entirely when either side
 looks like a dev/untagged build (`version.Version`'s default, `"dev"`) — so a
-local dev loop or CI run never spams the log. This is **detection only**:
-nothing here blocks, throttles, or disconnects an agent on a stale version,
-and there is no automated remediation (a Prometheus per-version gauge is a
-possible follow-up, not shipped here).
+local dev loop or CI run never spams the log. The WARN itself is detection
+only: it blocks, throttles or disconnects nothing (a Prometheus per-version
+gauge is a possible follow-up, not shipped here). Remediation is the rolling
+upgrade below.
+
+**`serverVersion` in `hello`.** Every hello frame carries the server's
+version (`ServerFrame.ServerVersion`, `omitempty`); older agents ignore it.
+
+### Rolling upgrade and agent image registry
+
+Drifted agents are asked to restart on the server's version, one per region at
+a time, and pull `<server-host>/solidping:current` from the server's own
+read-only registry: see [agent-auto-upgrade.md](agent-auto-upgrade.md). An
+agent started with `SP_AGENT_IGNORE_VERSION_DRIFT=true` is pinned: never asked,
+skipped in the rollout, its drift labelled "Pinned".
 
 ### Surfaces
 
@@ -591,8 +604,10 @@ secrets. Surveyed 2026-07-20; see [sources](#sources).
    handshake is refused by every replica.
 2. **No standby/failover story** comparable to Site24x7's designated standby
    poller and poller groups, and no documented sizing formula like Datadog's.
-3. **No CLI**, and no agent auto-update — Checkly and Datadog both ship Helm
-   charts with upgrade paths.
+3. **No CLI.** Agent auto-update shipped with spec `2026-11-22-04` (rolling
+   `upgrade` frame plus the server's own `<host>/solidping:current` registry,
+   [agent-auto-upgrade.md](agent-auto-upgrade.md));
+   Checkly and Datadog also ship Helm charts, which we do not.
 4. **Revocation is not retroactive.** A revoked agent already saw past
    credentials; rotation is manual.
 5. **Windows support** — Site24x7 and Datadog ship Windows service installers.
@@ -644,7 +659,8 @@ packages.
    `SP_AGENT_REWRAP_ENABLED=false` (spec 2026-11-10-04): no executor, no
    `rewrap` capability, and the server reports `rewrap_not_offered` when the
    key holders are online but none re-wraps. Also `solidping seal`, `solidping agent region-key generate`
-   and `sealedSecrets` in config-as-code. Agent auto-update stays out of scope.
+   and `sealedSecrets` in config-as-code. Agent auto-update shipped later (spec
+   `2026-11-22-04`, [agent-auto-upgrade.md](agent-auto-upgrade.md)).
    Spec 2026-11-11-01 binds a browser blob to its target: the plaintext carries
    `_binding` (`type` + SHA-256 of the canonical target fields, the checker's
    `TargetFields()`, `credentials/binding.go`, fixture shared with dash0 in
