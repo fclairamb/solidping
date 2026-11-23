@@ -291,6 +291,7 @@ func TestDNSBLChecker_Execute(t *testing.T) {
 		wantListings     int
 		wantReturnCodes  map[string][]string
 		wantErrorCodes   map[string][]string
+		wantMessage      string
 	}{
 		{
 			name:   "listed on one zone",
@@ -342,8 +343,8 @@ func TestDNSBLChecker_Execute(t *testing.T) {
 		},
 		{
 			// Spamhaus refuses queries from public cloud resolvers with
-			// 127.255.255.254 — an error reply, not a listing. The clean zone
-			// keeps the check Up.
+			// 127.255.255.254 — an error reply, not a listing. The other zone
+			// is clean, but Spamhaus was never checked: degraded, not up.
 			name:   "error code only zone is inconclusive not listed",
 			config: &DNSBLConfig{Target: sampleMailServerIP, Blocklists: []string{zoneSpamhaus, zoneSpamcop}},
 			lookuper: &fakeLookuper{
@@ -352,11 +353,46 @@ func TestDNSBLChecker_Execute(t *testing.T) {
 					cleanQuery:  {err: errNXDOMAIN},
 				},
 			},
-			wantStatus:       checkerdef.StatusUp,
+			wantStatus:       checkerdef.StatusWarning,
 			wantClean:        []string{zoneSpamcop},
 			wantInconclusive: []string{zoneSpamhaus},
 			wantListings:     0,
 			wantErrorCodes:   map[string][]string{zoneSpamhaus: {"127.255.255.254"}},
+			wantMessage: zoneSpamhaus + " returned 127.255.255.254: query via a public resolver refused, " +
+				"use a private resolver (nameserver option) or a Spamhaus DQS key",
+		},
+		{
+			// Only Spamhaus is queried and it refuses: we could not check, the
+			// target is not listed. Warning (degraded), never Timeout (down).
+			name:   "spamhaus only refused is warning not timeout",
+			config: &DNSBLConfig{Target: sampleMailServerIP, Blocklists: []string{zoneSpamhaus}},
+			lookuper: &fakeLookuper{
+				responses: map[string]fakeResp{
+					listedQuery: {addrs: []string{"127.255.255.254"}},
+				},
+			},
+			wantStatus:       checkerdef.StatusWarning,
+			wantInconclusive: []string{zoneSpamhaus},
+			wantListings:     0,
+			wantErrorCodes:   map[string][]string{zoneSpamhaus: {"127.255.255.254"}},
+			wantMessage:      zoneSpamhaus + " returned 127.255.255.254",
+		},
+		{
+			// One zone refused, the other plainly timed out: the refusal code
+			// still makes it degraded rather than Timeout.
+			name:   "refused and timed out zones is warning",
+			config: &DNSBLConfig{Target: sampleMailServerIP, Blocklists: []string{zoneSpamhaus, zoneSpamcop}},
+			lookuper: &fakeLookuper{
+				responses: map[string]fakeResp{
+					listedQuery: {addrs: []string{"127.255.255.255"}},
+					cleanQuery:  {err: &net.DNSError{Err: "timeout", IsTimeout: true}},
+				},
+			},
+			wantStatus:       checkerdef.StatusWarning,
+			wantInconclusive: []string{zoneSpamcop, zoneSpamhaus},
+			wantListings:     0,
+			wantErrorCodes:   map[string][]string{zoneSpamhaus: {"127.255.255.255"}},
+			wantMessage:      zoneSpamhaus + " returned 127.255.255.255: query volume limit exceeded",
 		},
 		{
 			name:   "multiple error codes only is inconclusive",
@@ -367,11 +403,12 @@ func TestDNSBLChecker_Execute(t *testing.T) {
 					cleanQuery:  {err: errNXDOMAIN},
 				},
 			},
-			wantStatus:       checkerdef.StatusUp,
+			wantStatus:       checkerdef.StatusWarning,
 			wantClean:        []string{zoneSpamcop},
 			wantInconclusive: []string{zoneSpamhaus},
 			wantListings:     0,
 			wantErrorCodes:   map[string][]string{zoneSpamhaus: {"127.255.255.255", "127.255.255.252"}},
+			wantMessage:      zoneSpamhaus + " returned 127.255.255.252: typo or malformed query",
 		},
 		{
 			// A genuine 127.0.0.x listing must still drive Down (no regression).
@@ -444,6 +481,12 @@ func TestDNSBLChecker_Execute(t *testing.T) {
 				r.Equal(tt.wantErrorCodes, result.Output["error_codes"])
 			} else {
 				r.NotContains(result.Output, "error_codes")
+			}
+
+			if tt.wantMessage != "" {
+				r.Contains(result.Output[checkerdef.OutputKeyMessage], tt.wantMessage)
+			} else {
+				r.NotContains(result.Output, checkerdef.OutputKeyMessage)
 			}
 		})
 	}
