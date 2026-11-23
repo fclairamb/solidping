@@ -16,7 +16,7 @@ type ActivationResolver struct {
 // configuration. deploymentMode is config.Config.Deployment.Mode
 // (config.DeploymentModeSaaS / DeploymentModeSelfHosted); it is process-wide,
 // never per-org, which is what lets this resolver stay a single value built
-// once at startup and shared by every org (see dockerAdvisoryFor).
+// once at startup and shared by every org (see hostLocalAdvisoryFor).
 func NewActivationResolver(cfg *config.CheckersConfig, deploymentMode string) *ActivationResolver {
 	allMetas := ListCheckTypeMetas()
 	enabled := resolveServerEnabled(cfg, allMetas)
@@ -97,7 +97,7 @@ func (r *ActivationResolver) ListAllWithStatus(orgDisabled []string) []CheckType
 			}
 		}
 
-		status.Advisory = dockerAdvisoryFor(all[idx].Type, r.deploymentMode)
+		status.Advisory = hostLocalAdvisoryFor(all[idx].Type, r.deploymentMode)
 
 		result = append(result, status)
 	}
@@ -105,24 +105,24 @@ func (r *ActivationResolver) ListAllWithStatus(orgDisabled []string) []CheckType
 	return result
 }
 
-// dockerAdvisoryFor is the catalog's half of the SaaS docker gate (spec
-// 2026-09-25-22). The per-org exception — a docker check is fine in SaaS when
-// it is pinned to one of THIS org's private locations — needs the org's own
-// regions, which this resolver does not have (it is built once at startup and
-// shared by every org, see NewActivationResolver). So the listing does not
-// hide `docker` in SaaS mode: doing that would also be wrong for an org that
-// does have a private location. Instead it stays listed and enabled, with an
-// advisory string spelling out the rule that checks.Service.
-// validateDockerDeploymentConfig actually enforces, so the dashboard/MCP
-// caller can explain the constraint up front instead of only after a
-// rejected create.
-func dockerAdvisoryFor(checkType CheckType, deploymentMode string) string {
-	if checkType != CheckTypeDocker || deploymentMode != config.DeploymentModeSaaS {
+// hostLocalAdvisoryFor is the catalog's half of the SaaS gate on host-local
+// types (docker, spec 2026-09-25-22; unix_socket, issue #1000). The per-org
+// exception — such a check is fine in SaaS when it is pinned to one of THIS
+// org's private locations — needs the org's own regions, which this resolver
+// does not have (it is built once at startup and shared by every org, see
+// NewActivationResolver). So the listing does not hide these types in SaaS
+// mode: doing that would also be wrong for an org that does have a private
+// location. Instead they stay listed and enabled, with an advisory string
+// spelling out the rule that checks.Service.validateHostLocalDeploymentConfig
+// actually enforces, so the dashboard/MCP caller can explain the constraint up
+// front instead of only after a rejected create.
+func hostLocalAdvisoryFor(checkType CheckType, deploymentMode string) string {
+	if !checkType.IsHostLocal() || deploymentMode != config.DeploymentModeSaaS {
 		return ""
 	}
 
-	return "On this deployment, docker checks only run when pinned to one of your organization's " +
-		"private locations (an agent in your own network) — shared regions reject them."
+	return "On this deployment, " + string(checkType) + " checks only run when pinned to one of your " +
+		"organization's private locations (an agent in your own network) — shared regions reject them."
 }
 
 // CheckTypeStatus extends CheckTypeMeta with activation status.

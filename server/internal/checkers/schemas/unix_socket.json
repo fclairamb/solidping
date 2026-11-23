@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://solidping.io/schemas/checks/unix_socket.json",
+  "properties": {
+    "path": {
+      "type": "string"
+    },
+    "timeout": {
+      "type": "string",
+      "x-solidping-go-type": "time.Duration"
+    },
+    "send_data": {
+      "type": "string"
+    },
+    "send_encoding": {
+      "type": "string"
+    },
+    "expect_data": {
+      "type": "string"
+    },
+    "expect_encoding": {
+      "type": "string"
+    },
+    "expect_pattern": {
+      "type": "string"
+    },
+    "http_path": {
+      "type": "string"
+    },
+    "expected_status": {
+      "type": "integer"
+    },
+    "body_expect": {
+      "type": "string"
+    }
+  },
+  "type": "object",
+  "required": [
+    "path"
+  ],
+  "title": "unix_socket check config",
+  "description": "Check a Unix domain socket.\n\nDESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected.\n\n`path` must be an absolute, clean path without a NUL byte. Abstract sockets (`@name`) are not supported.\n\n`http_path` (HTTP mode) and the raw-mode keys (`send_data`, `expect_data`, `expect_pattern`) are mutually exclusive; with neither set the check only connects.\n\n`expected_status` and `body_expect` apply to HTTP mode only. Without `expected_status`, any 2xx or 3xx status is up.\n\nA SaaS shared region never runs this type: it must be pinned to a private location.",
+  "x-solidping-check-type": "unix_socket",
+  "x-solidping-notes": [
+    "`path` must be an absolute, clean path without a NUL byte. Abstract sockets (`@name`) are not supported.",
+    "`http_path` (HTTP mode) and the raw-mode keys (`send_data`, `expect_data`, `expect_pattern`) are mutually exclusive; with neither set the check only connects.",
+    "`expected_status` and `body_expect` apply to HTTP mode only. Without `expected_status`, any 2xx or 3xx status is up.",
+    "A SaaS shared region never runs this type: it must be pinned to a private location."
+  ],
+  "x-solidping-secret-fields": [],
+  "x-solidping-validation": {
+    "authority": "go",
+    "command": "sp checks validate <manifest>",
+    "note": "DESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected."
+  }
+}

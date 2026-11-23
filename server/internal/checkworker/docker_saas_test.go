@@ -142,6 +142,45 @@ func TestExecuteJob_DockerBlockedOnSaaSSharedWorker(t *testing.T) {
 	r.Equal("docker checks are not available on this deployment", result.Output[checkerdef.OutputKeyError])
 }
 
+// TestExecuteJob_UnixSocketBlockedOnSaaSSharedWorker is the unix_socket twin
+// of the docker backstop (issue #1000): the job is refused with the gate's own
+// message, never the checker's dial error, so no dial was attempted.
+func TestExecuteJob_UnixSocketBlockedOnSaaSSharedWorker(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	_, dbSvc, ctx := setupTestRunner(t)
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	runner := newDockerGateRunner(t, dbSvc, config.DeploymentModeSaaS, "")
+
+	result := runGateJob(t, ctx, runner, dbSvc, checkerdef.CheckTypeUnixSocket, models.JSONMap{
+		"path": "/nonexistent/solidping-gate-test.sock",
+	})
+	r.NotNil(result.Status)
+	r.Equal(int(checkerdef.StatusError), *result.Status, "output: %v", result.Output)
+	r.Equal(ErrUnixSocketNotAvailableInSaaS.Error(), result.Output[checkerdef.OutputKeyError])
+}
+
+// TestExecuteJob_UnixSocketAllowedOnAgentWorkerEvenInSaaS is its control: an
+// agent reaches the checker, which fails on the missing socket file.
+func TestExecuteJob_UnixSocketAllowedOnAgentWorkerEvenInSaaS(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	_, dbSvc, ctx := setupTestRunner(t)
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	runner := newDockerGateRunner(t, dbSvc, config.DeploymentModeSaaS, config.NodeRoleAgent)
+
+	result := runGateJob(t, ctx, runner, dbSvc, checkerdef.CheckTypeUnixSocket, models.JSONMap{
+		"path": "/nonexistent/solidping-gate-test.sock",
+	})
+	r.NotNil(result.Status)
+	r.NotEqual(ErrUnixSocketNotAvailableInSaaS.Error(), result.Output[checkerdef.OutputKeyError])
+	r.Contains(fmt.Sprint(result.Output[checkerdef.OutputKeyError]), "ENOENT", "output: %v", result.Output)
+}
+
 // TestExecuteJob_DockerAllowedOnAgentWorkerEvenInSaaS proves the guard keys on
 // THIS PROCESS's role, not the check row or the deployment mode alone: a
 // deported agent — the supported way to run docker checks under SaaS — keeps
@@ -246,6 +285,13 @@ func TestNewDeploymentGate(t *testing.T) {
 		}
 
 		require.Equal(t, want, gate(checkerdef.CheckTypeDocker), "mode=%s role=%s", tc.mode, tc.role)
+
+		wantUnix := ""
+		if tc.blocked {
+			wantUnix = ErrUnixSocketNotAvailableInSaaS.Error()
+		}
+
+		require.Equal(t, wantUnix, gate(checkerdef.CheckTypeUnixSocket), "mode=%s role=%s", tc.mode, tc.role)
 		require.Empty(t, gate(checkerdef.CheckTypeHTTP), "mode=%s role=%s", tc.mode, tc.role)
 		require.Equal(t, tc.blocked, cfg.DockerChecksBlocked(), "mode=%s role=%s", tc.mode, tc.role)
 	}

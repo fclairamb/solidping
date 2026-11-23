@@ -12,6 +12,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdns"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdnsbl"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdocker"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkunixsocket"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdomain"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkemail"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -99,6 +100,7 @@ var builtinCheckers = []struct {
 	{checkerdef.CheckTypeRabbitMQ, func() checkerdef.Checker { return &checkrabbitmq.RabbitMQChecker{} }},
 	{checkerdef.CheckTypeSNMP, func() checkerdef.Checker { return &checksnmp.SNMPChecker{} }},
 	{checkerdef.CheckTypeDocker, func() checkerdef.Checker { return &checkdocker.DockerChecker{} }},
+	{checkerdef.CheckTypeUnixSocket, func() checkerdef.Checker { return &checkunixsocket.UnixSocketChecker{} }},
 	{checkerdef.CheckTypeBrowser, func() checkerdef.Checker { return &checkbrowser.BrowserChecker{} }},
 	{checkerdef.CheckTypeFreeboxLine, func() checkerdef.Checker { return &checkfreeboxline.FreeboxLineChecker{} }},
 	{checkerdef.CheckTypeDNSBL, func() checkerdef.Checker { return &checkdnsbl.DNSBLChecker{} }},

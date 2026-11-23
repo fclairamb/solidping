@@ -111,6 +111,7 @@ func TestCheckTypesRefuseLoopbackTargetsUnderAnEnforcingPolicy(t *testing.T) {
 		checkerdef.CheckTypeDNSBL:        {"target": "8.8.8.8", "nameserver": host + ":53"},
 		checkerdef.CheckTypeWebSocket:    {"url": "ws://" + ln.Addr().String() + "/"},
 		checkerdef.CheckTypeDocker:       {"host": "tcp://" + ln.Addr().String(), "containerName": "web"},
+		checkerdef.CheckTypeUnixSocket:   {"path": "/nonexistent/solidping-egress.sock"},
 		checkerdef.CheckTypeJS: {"script": fmt.Sprintf(
 			`var r = solidping.check("http", { url: %q }); return { status: r.status, output: r.output };`,
 			httpServer.URL,
