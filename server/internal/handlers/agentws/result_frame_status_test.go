@@ -21,7 +21,7 @@ func TestValidateResultFrameRejectsServerMintedStatuses(t *testing.T) {
 	t.Parallel()
 
 	frame := func(status int) *agentcrypto.ClientFrame {
-		return &agentcrypto.ClientFrame{JobUID: "job-1", Status: status}
+		return &agentcrypto.ClientFrame{JobUID: "3f2a8c1e-5b7d-4e9f-a1c2-6d8e0b4f7a93", Status: status}
 	}
 
 	t.Run("statuses outside the enum are rejected", func(t *testing.T) {
