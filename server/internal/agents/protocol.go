@@ -118,6 +118,14 @@ type ClientFrame struct {
 	// ignores it. Detection only: this never gates execution, throttles, or
 	// disconnects an agent on a stale version.
 	Version string `json:"version,omitempty"`
+	// AutoUpgrade is the agent's answer to the rolling upgrade (spec
+	// 2026-11-22-04), sent on the enroll frame and every claim. `false` means
+	// the agent is pinned (SP_AGENT_IGNORE_VERSION_DRIFT=true): it ignores any
+	// `upgrade` frame, so the server never sends one and skips it in the
+	// rollout. OPTIONAL AND THREE-STATE ON THE WIRE, but absent reads as
+	// `true`: an older agent omits it and is upgraded as before. Use
+	// VersionPinned rather than reading the pointer.
+	AutoUpgrade *bool `json:"autoUpgrade,omitempty"`
 	// Plugins are the plugin check types the agent loaded, with their schema
 	// (spec 2026-10-17-05 §18). Sent on the first claim of each connection
 	// only; the server stores them per org so the form and the validation of
@@ -203,6 +211,12 @@ type AgentJobTunnel struct {
 	// plaintext self-hosted fallback), in which case Config alone must carry the
 	// credentials.
 	ConfigSealed *string `json:"configSealed,omitempty"`
+}
+
+// VersionPinned reports whether the agent announced it ignores upgrade frames
+// (AutoUpgrade explicitly false). An absent field is not a pin.
+func (f *ClientFrame) VersionPinned() bool {
+	return f.AutoUpgrade != nil && !*f.AutoUpgrade
 }
 
 // ServerFrame is the envelope for every server->agent frame.

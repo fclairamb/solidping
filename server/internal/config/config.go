@@ -263,6 +263,12 @@ type AgentConfig struct {
 	// non-loopback host — SP_AGENT_ALLOW_INSECURE_SERVER. It also turns the
 	// peer re-wrap off unless SP_AGENT_REWRAP_ENABLED=true is set.
 	AllowInsecureServer bool `koanf:"allow_insecure_server"`
+	// IgnoreVersionDrift pins this agent to the image it runs (spec
+	// 2026-11-22-04) — SP_AGENT_IGNORE_VERSION_DRIFT. The agent announces
+	// `autoUpgrade: false` on its enroll and claim frames and ignores any
+	// `upgrade` frame; it still reports its version, so the drift stays
+	// visible. Read by hand in applyAgentSecurityEnv.
+	IgnoreVersionDrift bool `koanf:"-"`
 }
 
 // AgentsConfig is the server side of the deported agents (as opposed to
@@ -3039,6 +3045,12 @@ func applyAgentSecurityEnv(cfg *AgentConfig) {
 	if v := os.Getenv("SP_AGENT_ALLOW_INSECURE_SERVER"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			cfg.AllowInsecureServer = b
+		}
+	}
+
+	if v := os.Getenv("SP_AGENT_IGNORE_VERSION_DRIFT"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.IgnoreVersionDrift = b
 		}
 	}
 }

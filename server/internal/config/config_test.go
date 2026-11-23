@@ -2202,3 +2202,21 @@ func TestApplyAgentsEnvAutoUpgrade(t *testing.T) {
 	applyAgentsEnv(&cfg)
 	r.True(cfg.AutoUpgrade())
 }
+
+// TestApplyAgentEnvIgnoreVersionDrift: an agent follows the server's version by
+// default and SP_AGENT_IGNORE_VERSION_DRIFT=true pins it (spec 2026-11-22-04).
+func TestApplyAgentEnvIgnoreVersionDrift(t *testing.T) {
+	r := require.New(t)
+
+	cfg := AgentConfig{}
+	applyAgentSecurityEnv(&cfg)
+	r.False(cfg.IgnoreVersionDrift, "not pinned by default")
+
+	t.Setenv("SP_AGENT_IGNORE_VERSION_DRIFT", "true")
+	applyAgentSecurityEnv(&cfg)
+	r.True(cfg.IgnoreVersionDrift)
+
+	t.Setenv("SP_AGENT_IGNORE_VERSION_DRIFT", "false")
+	applyAgentSecurityEnv(&cfg)
+	r.False(cfg.IgnoreVersionDrift)
+}

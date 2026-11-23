@@ -140,6 +140,10 @@ type WSBackend struct {
 	// upgrade frame (spec 2026-11-22-04, ws_upgrade.go).
 	upgradeRequested chan struct{}
 	upgradeOnce      sync.Once
+	// ignoreVersionDrift pins the agent (SP_AGENT_IGNORE_VERSION_DRIFT): it
+	// announces autoUpgrade: false and ignores upgrade frames.
+	ignoreVersionDrift bool
+	ignoredUpgradeOnce sync.Once
 
 	// onIdentityChange persists the identity after enrollment.
 	onIdentityChange func(*Identity)
@@ -187,6 +191,13 @@ func WithPingInterval(interval time.Duration) Option {
 // WithEnvRefAllow sets the agent's `${env:}` allowlist (config.Config.EnvRefAllowed).
 func WithEnvRefAllow(allow secretref.EnvAllowFunc) Option {
 	return func(b *WSBackend) { b.envRefAllow = allow }
+}
+
+// WithIgnoreVersionDrift pins the agent to the image it runs (spec
+// 2026-11-22-04): it tells the server it does not auto-upgrade and ignores
+// any upgrade frame it still receives.
+func WithIgnoreVersionDrift(ignore bool) Option {
+	return func(b *WSBackend) { b.ignoreVersionDrift = ignore }
 }
 
 // WithRegionIdentities sets the shared region keys this agent unseals with.
@@ -339,6 +350,7 @@ func (b *WSBackend) claim(
 		// The worker put the plugin types its activation gate enables on ctx.
 		Capabilities: b.claimCapabilities(ctx),
 		Version:      version.Get().Version,
+		AutoUpgrade:  b.autoUpgrade(),
 		Plugins:      manifests,
 	})
 	if err != nil {
@@ -757,6 +769,7 @@ func (b *WSBackend) dialEnroll(ctx context.Context) error {
 		X25519PublicKey:  b.identity.X25519Recipient,
 		BootID:           b.bootID,
 		Version:          version.Get().Version,
+		AutoUpgrade:      b.autoUpgrade(),
 	}); err != nil {
 		_ = conn.Close(websocket.StatusProtocolError, "enroll write failed")
 

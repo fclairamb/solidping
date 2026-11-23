@@ -113,6 +113,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		// Shared region keys (spec 2026-11-08-01): opened next to the agent's
 		// own key, advertised to the server by fingerprint only.
 		backend.WithRegionIdentities(regionIdentities),
+		// SP_AGENT_IGNORE_VERSION_DRIFT (spec 2026-11-22-04): stay on this image.
+		backend.WithIgnoreVersionDrift(cfg.Agent.IgnoreVersionDrift),
 	)
 
 	// Wire the SSH-tunnel resolver to this agent's in-memory unsealed snapshots.
@@ -121,6 +123,11 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	// claim (spec 2026-07-18-07). Without this, tunneled jobs fail every
 	// execution with "resolver is not configured".
 	sshtunnel.ResolverFunc = wsBackend.ResolveTunnel
+
+	if cfg.Agent.IgnoreVersionDrift {
+		logger.InfoContext(ctx, "Agent pinned to its version (SP_AGENT_IGNORE_VERSION_DRIFT=true): "+
+			"the server will not ask it to upgrade")
+	}
 
 	logger.InfoContext(ctx, "Starting deported agent",
 		"server", cfg.Agent.ServerURL,

@@ -258,3 +258,27 @@ func TestOldAgentIgnoresUpgradeFrame(t *testing.T) {
 	r.Equal("upgrade", old.Type)
 	r.Empty(old.ID, "uncorrelated: never routed to a pending request")
 }
+
+// TestClientFrameVersionPinned: only an explicit autoUpgrade: false pins an
+// agent; an older agent omitting the field follows the server (spec
+// 2026-11-22-04).
+func TestClientFrameVersionPinned(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	for raw, pinned := range map[string]bool{
+		`{"type":"claim"}`:                    false,
+		`{"type":"claim","autoUpgrade":true}`:  false,
+		`{"type":"claim","autoUpgrade":false}`: true,
+	} {
+		var frame agents.ClientFrame
+		r.NoError(json.Unmarshal([]byte(raw), &frame))
+		r.Equal(pinned, frame.VersionPinned(), raw)
+	}
+
+	follow := false
+	out, err := json.Marshal(agents.ClientFrame{Type: agents.MsgTypeClaim, AutoUpgrade: &follow})
+	r.NoError(err)
+	r.Contains(string(out), `"autoUpgrade":false`, "a pin survives omitempty")
+}

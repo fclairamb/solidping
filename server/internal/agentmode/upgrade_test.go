@@ -11,6 +11,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
@@ -24,6 +25,7 @@ type upgradeServer struct {
 	upgradeSentAt time.Time
 	claimsAfter   int
 	results       []agents.ClientFrame
+	claims        []agents.ClientFrame
 	jobGiven      bool
 }
 
@@ -73,6 +75,9 @@ func (s *upgradeServer) serve(t *testing.T, targetURL string, jobStarted <-chan 
 
 			switch frame.Type {
 			case agents.MsgTypeClaim:
+				s.mu.Lock()
+				s.claims = append(s.claims, frame)
+				s.mu.Unlock()
 				write(s.claim(frame.ID, targetURL))
 			case agents.MsgTypeResult:
 				s.mu.Lock()
@@ -193,4 +198,68 @@ func TestRunUntilUpgradeKeepsShutdownError(t *testing.T) {
 	err := runUntilUpgrade(ctx, bufferLogger(&bytes.Buffer{}), fakeLoop{}, source)
 	require.ErrorIs(t, err, context.Canceled)
 	require.False(t, source.closed)
+}
+
+// TestPinnedAgentIgnoresUpgrade: with SP_AGENT_IGNORE_VERSION_DRIFT=true the
+// agent announces autoUpgrade: false on its claims and keeps running (and
+// claiming) when an upgrade frame arrives anyway.
+func TestPinnedAgentIgnoresUpgrade(t *testing.T) {
+	t.Chdir(t.TempDir())
+	r := require.New(t)
+
+	// Run registers the worker's Prometheus collector on the default
+	// registerer, once per process: this second Run in the package gets its own.
+	previous := prometheus.DefaultRegisterer
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+
+	t.Cleanup(func() { prometheus.DefaultRegisterer = previous })
+
+	sendNow := make(chan struct{})
+	close(sendNow)
+
+	fake := &upgradeServer{}
+	master := httptest.NewServer(fake.serve(t, "", sendNow))
+	t.Cleanup(master.Close)
+
+	_, encoded := newTestIdentity(t)
+
+	cfg := &config.Config{}
+	cfg.Agent.Keys = encoded
+	cfg.Agent.Name = "acme-agent"
+	cfg.Agent.ServerURL = master.URL
+	cfg.Agent.RewrapDisabled = true
+	cfg.Agent.IgnoreVersionDrift = true
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	done := make(chan error, 1)
+
+	go func() { done <- Run(ctx, cfg) }()
+
+	select {
+	case err := <-done:
+		r.FailNow("a pinned agent must not exit on an upgrade frame", "Run returned %v", err)
+	case <-time.After(1500 * time.Millisecond):
+	}
+
+	fake.mu.Lock()
+	r.False(fake.upgradeSentAt.IsZero(), "the upgrade was sent")
+	r.Positive(fake.claimsAfter, "the agent keeps claiming after the upgrade frame")
+	r.NotEmpty(fake.claims)
+
+	for _, claim := range fake.claims {
+		r.NotNil(claim.AutoUpgrade, "a pinned agent announces autoUpgrade")
+		r.False(*claim.AutoUpgrade)
+		r.True(claim.VersionPinned())
+	}
+	fake.mu.Unlock()
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		r.FailNow("Run did not stop on shutdown")
+	}
 }

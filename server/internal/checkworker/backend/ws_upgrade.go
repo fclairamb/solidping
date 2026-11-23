@@ -19,8 +19,26 @@ func (b *WSBackend) UpgradeRequested() <-chan struct{} {
 	return b.upgradeRequested
 }
 
-// handleUpgradeRequest records the server's request, once.
+// autoUpgrade is the agent's autoUpgrade announcement: false when pinned.
+func (b *WSBackend) autoUpgrade() *bool {
+	follow := !b.ignoreVersionDrift
+
+	return &follow
+}
+
+// handleUpgradeRequest records the server's request, once. A pinned agent
+// (SP_AGENT_IGNORE_VERSION_DRIFT=true) ignores it: an older server may still
+// send one.
 func (b *WSBackend) handleUpgradeRequest(ctx context.Context, frame *agents.ServerFrame) {
+	if b.ignoreVersionDrift {
+		b.ignoredUpgradeOnce.Do(func() {
+			b.logger.InfoContext(ctx, "server asked this agent to upgrade; ignoring it (SP_AGENT_IGNORE_VERSION_DRIFT=true)",
+				"agent_version", version.Get().Version, "server_version", frame.TargetVersion)
+		})
+
+		return
+	}
+
 	b.upgradeOnce.Do(func() {
 		b.logger.InfoContext(ctx, "server asked this agent to upgrade: draining, then exiting",
 			"agent_version", version.Get().Version, "server_version", frame.TargetVersion)
