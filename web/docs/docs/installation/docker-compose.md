@@ -211,7 +211,7 @@ and point SolidPing at it over the Chrome DevTools Protocol:
 ```yaml
 services:
   browser:
-    image: chromedp/headless-shell:158.0.8127.37
+    image: chromedp/headless-shell:159.0.8154.13
     restart: unless-stopped
     command:
       - --remote-debugging-address=0.0.0.0
