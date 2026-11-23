@@ -81,3 +81,8 @@ New check type `systemd` (constant `CheckTypeSystemd`), package
   unit**, a bare name defaulting to `.service`; it costs nothing more.
 - Should a unit stuck in `activating` for longer than a threshold count as down? **Recommended:
   no** for now; the check interval and a failed restart (`failed`) already catch it.
+
+## Resolved open questions
+
+- Accept any unit type (`.service`, `.timer`, `.socket`, `.mount`…); a bare name defaults to `.service`. (autopilot: recommended answer)
+- A unit stuck in `activating` does not count as down; no threshold for now. (autopilot: recommended answer)

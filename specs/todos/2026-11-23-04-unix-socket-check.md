@@ -97,3 +97,8 @@ New check type `unix_socket` (constant `CheckTypeUnixSocket`), in its own packag
 - HTTP over a socket: a mode of `unix_socket` (this spec), or a `socket_path` field on the `http`
   check so every HTTP assertion applies? **Recommended: the mode in `unix_socket`** with status and
   body only; move to `http` later if users ask for the full HTTP assertions.
+
+## Resolved open questions
+
+- Name the check type `unix_socket`. (autopilot: recommended answer)
+- HTTP over a socket is a mode of `unix_socket`, asserting status and body only; no `socket_path` on the `http` check for now. (autopilot: recommended answer)
