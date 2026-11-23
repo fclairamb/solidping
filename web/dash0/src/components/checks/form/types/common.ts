@@ -53,6 +53,7 @@ export type BuiltinCheckType =
   | "prometheus"
   | "docker"
   | "unix_socket"
+  | "systemd"
   | "browser"
   | "freebox_line"
   | "dnsbl"

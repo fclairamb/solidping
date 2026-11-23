@@ -27,6 +27,7 @@ import {
   CalendarClock,
   ChartColumn,
   Clock,
+  Cog,
   Container,
   Database,
   DatabaseZap,
@@ -175,6 +176,7 @@ export const CHECK_TYPE_IDENTITY: Partial<Record<string, CheckTypeIdentity>> = {
   // Infra.
   docker: { label: "Docker", tone: TONE_SKY, icon: Container },
   unix_socket: { label: "Unix socket", tone: TONE_SKY, icon: Plug },
+  systemd: { label: "systemd unit", tone: TONE_SKY, icon: Cog },
   prometheus: { label: "Prometheus", tone: TONE_SKY, icon: Flame },
   freebox_line: { label: "Freebox Line", tone: TONE_SKY, icon: Wifi },
   // Not yet creatable in this form (see check-type-docs-anchors.ts), but has

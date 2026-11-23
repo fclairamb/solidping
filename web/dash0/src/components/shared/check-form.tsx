@@ -199,6 +199,7 @@ export const checkTypes: {
   { value: "prometheus", label: "Prometheus", description: "Alert on Prometheus metric thresholds" },
   { value: "docker", label: "Docker", description: "Monitor Docker container health" },
   { value: "unix_socket", label: "Unix socket", description: "Check a Unix domain socket" },
+  { value: "systemd", label: "systemd unit", description: "Check the state of a systemd unit" },
   { value: "browser", label: "Browser", description: "Monitor pages with headless Chrome" },
   { value: "freebox_line", label: "Freebox Line", description: "Monitor xDSL/FTTH line quality via Freebox OS" },
   { value: "dnsbl", label: "DNSBL", description: "Check if an IP/domain is on DNS blocklists" },

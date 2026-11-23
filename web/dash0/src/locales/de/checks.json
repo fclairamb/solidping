@@ -464,6 +464,8 @@
     "dockerDescription": "Zustand von Docker-Containern überwachen",
     "unix_socket": "Unix-Socket",
     "unix_socketDescription": "Einen Unix-Domain-Socket prüfen",
+    "systemd": "systemd-Unit",
+    "systemdDescription": "Den Zustand einer systemd-Unit prüfen",
     "browser": "Browser",
     "browserDescription": "Seiten mit Headless-Chrome überwachen",
     "dnsbl": "DNSBL",
@@ -1537,7 +1539,9 @@
     "pluginNotAnObject": "Die Konfiguration muss ein JSON-Objekt sein.",
     "fieldRequired": "Dieses Feld ist erforderlich",
     "socketPathRequired": "Socket-Pfad ist erforderlich",
-    "socketPathAbsolute": "Socket-Pfad muss absolut sein (mit / beginnen)"
+    "socketPathAbsolute": "Socket-Pfad muss absolut sein (mit / beginnen)",
+    "systemdUnitRequired": "Unit-Name ist erforderlich",
+    "systemdUnitInvalid": "Der Unit-Name darf nur Buchstaben, Ziffern und :_.@- enthalten (höchstens 256 Zeichen, nicht mit - beginnend)"
   },
   "health": {
     "format": "Health-Format",
@@ -1915,5 +1919,12 @@
     "expectedStatusOptional": "Erwarteter Status (optional)",
     "expectedStatusHelp": "Standard: jeder 2xx- oder 3xx-Status.",
     "bodyExpectOptional": "Body enthält (optional)"
+  },
+  "systemd": {
+    "unit": "Unit-Name",
+    "unitHelp": "Name der Unit auf dem Host, auf dem SolidPing läuft. Ein Name ohne Suffix erhält .service (nginx → nginx.service); Timer, Sockets und Mounts funktionieren ebenfalls.",
+    "expectedState": "Erwarteter Zustand",
+    "state_active": "Aktiv (läuft)",
+    "state_inactive": "Inaktiv (darf nicht laufen)"
   }
 }
