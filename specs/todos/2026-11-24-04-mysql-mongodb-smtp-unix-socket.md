@@ -19,7 +19,7 @@ Same shape as the Redis/Postgres spec, for each of `checkmysql`, `checkmongodb` 
 (their `config/config.go`):
 
 1. `Socket string` (`json:"socket,omitempty"`), mutually exclusive with `host`/`port`; the config
-   implements `checkerdef.LocalSocketTarget`.
+   implements `checkerdef.LocalSocketTarget`, and the type sets `SupportsLocalSocket`.
 2. Dial through `checkerdef.DialLocalSocket` via each driver's dial hook, never the driver's own
    socket support:
    - MySQL: register a dial function with `mysql.RegisterDialContext` under a private network name
@@ -29,7 +29,8 @@ Same shape as the Redis/Postgres spec, for each of `checkmysql`, `checkmongodb` 
      refused with a socket.
 3. URL forms (`mysql+unix://`, `mongodb+unix://`, `smtp+unix://`) only where the type already has a
    URL form.
-4. dash0: the same target switch on the three forms, with `data-testid`s.
+4. dash0: the same target switch on the three forms, with `data-testid`s, offered through the same
+   shared hook.
 5. Docs: three rows in the Unix sockets table.
 
 ## Tests

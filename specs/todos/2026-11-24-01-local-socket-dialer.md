@@ -51,10 +51,14 @@ decided in one place, never by each check.
    `ECONNREFUSED` (nobody listening), `EACCES` (SolidPing lacks permission on the file).
    Also export `checkerdef.SocketHTTPTransport(ctx, path)` returning an `*http.Transport` whose
    `DialContext` ignores the requested address and calls `DialLocalSocket`; the `http` spec uses it.
+   The two path rules (syntax, then allowlist) live in exported functions that `DialLocalSocket`
+   calls, so the save-time gate (item 5) applies exactly the same rules.
 3. **Config contract**: an optional interface in `checkerdef`,
-   `type LocalSocketTarget interface { LocalSocket() string }`. A check config that implements it
-   and returns a non-empty path is a host-local check. Every gate below reads it, so a new check
-   gets the rules by implementing one method.
+   `type LocalSocketTarget interface { LocalSocket() (field, path string) }`. `field` is the config
+   key that holds the path (`socket`, or `unix_socket` for `http`), so a validation error lands on
+   the right form field. A check config that implements it and returns a non-empty path is a
+   host-local check. Every gate below reads it, so a new check gets the rules by implementing one
+   method.
 4. **Host-local gates, single source.** Today four places hard-code `CheckTypeDocker`: the create
    gate (`handlers/checks/validate.go:495-518`), the worker gate (`checkworker/worker.go:1450`),
    the JS sub-check gate (`checkworker/worker.go:2001-2012`, `checkjs.DeploymentGateFunc` at
@@ -69,23 +73,56 @@ decided in one place, never by each check.
      (same as `dockerBlockedOnThisWorker`, `worker.go:1997`);
    - JS sub-checks: the gate receives the sub-check's config too;
    - advisory: the `tcp` (and later `http`, `redis`…) catalog entries get no advisory, since only
-     some configs are host-local; the create error explains it instead.
-5. **`tcp` accepts a socket**: add `Socket string` (`json:"socket,omitempty"`) to the `tcp` config.
+     some configs are host-local; the capability flags of item 6 and the create error explain it
+     instead.
+5. **Refuse at save, not at the first run.** Without this, a check with a path outside the
+   allowlist saves fine and fails on every run. In `configValidationErrors`
+   (`handlers/checks/validate.go`, shared by create, update and `POST .../checks/validate`), a
+   config with a non-empty socket path gets:
+   - the syntax rules, always;
+   - the allowlist rule when the server's own workers run it, meaning at least one resolved region
+     is not private, or there is no region at all. A path outside the list (or an empty list) is a
+     config error on `field` that names `checkers.unix_socket_paths`;
+   - no allowlist rule when every resolved region is private. The allowlist is the agent's, the
+     server does not know it, and the agent refuses at dial time.
+
+   The dial-time check stays: the allowlist can change after the check is saved.
+6. **Capability flags for clients**, same pattern as `SupportsTunnel`
+   (`checkerdef/types.go:418`), served by the authenticated check-types listing:
+   - `SupportsLocalSocket bool` (`json:"supportsLocalSocket"`) on `CheckTypeMeta`: the type's
+     config accepts a socket path. Set for `tcp` here, and by each later spec of this PR for its
+     type.
+   - `LocalSocketOnServer bool` (`json:"localSocketOnServer"`) on `CheckTypeStatus`
+     (`checkerdef/activation.go:133`), set in `ListAllWithStatus`: true when the type supports
+     sockets, the server allowlist is not empty and the deployment is not SaaS. The paths
+     themselves are never served, and nothing goes in the unauthenticated `GET /api/v1/config`.
+   - Add both to the check-type schema of `openapi.yaml`.
+7. **`tcp` accepts a socket**: add `Socket string` (`json:"socket,omitempty"`) to the `tcp` config.
    `socket` and `host`/`port`/`url` are mutually exclusive (declare it with
    `checkerdef.SchemaExclusiveGrouper`). The URL form `unix:///run/app/app.sock` sets `socket`;
    add `"unix": checkerdef.CheckTypeTCP` to `schemeMapping`
    (`checkers/urlparse/urlparse.go:42`). Send/expect works unchanged over the socket; TLS
    (`tcps`) is refused with a socket. The `tcp` config implements `LocalSocketTarget`.
-6. Regenerate the schemas (`go generate ./internal/checkers/schemas/...`).
-7. **Docs**: a "Unix sockets" section on the check-types page (`web/docs/docs/features/check-types.md`)
+8. Regenerate the schemas (`go generate ./internal/checkers/schemas/...`).
+9. **Docs**: a "Unix sockets" section on the check-types page (`web/docs/docs/features/check-types.md`)
    and the setting on the configuration page: off by default, the allowlist, the per-check URL or
    field forms (a table this PR's later specs fill in), refused on SaaS shared regions and under
    the egress guard, needs read/write permission on the socket file, and a containerised SolidPing
    only sees sockets mounted into it. Warn that allowlisting `/var/run/docker.sock` or `/run/`
-   gives every check author root on the host.
-8. **dash0**: the `tcp` form gets a target switch "Host and port / Unix socket" with a socket path
-   input (`data-testid="tcp-target-mode"`, `tcp-socket-path`), per the design reference.
-9. `CHANGELOG.md` entry linking issue #1000.
+   gives every check author root on the host. Say that the dashboard only offers the socket target
+   once the allowlist is set, or on a check pinned to private locations.
+10. **dash0**: the `tcp` form gets a target switch "Host and port / Unix socket" with a socket path
+    input (`data-testid="tcp-target-mode"`, `tcp-socket-path`), per the design reference.
+    - Add `supportsLocalSocket` and `localSocketOnServer` to `CheckTypeInfo` (`api/hooks.ts`).
+    - One shared hook decides whether the socket target is offered, for this form and the ones of
+      the later specs. It is offered when `supportsLocalSocket` is true and either
+      `localSocketOnServer` is true or the check is pinned to private regions only (every slug
+      starts with `@`, as `check-form.tsx:851` tests it).
+    - Never a hard-coded type list, same rule as `tunnel-select.tsx`.
+    - A check that already stores a socket path always shows it when edited, even when the target
+      is no longer offered. Otherwise the form would hide the stored value.
+    - Errors from item 5 show on the socket input through the existing validate findings.
+11. `CHANGELOG.md` entry linking issue #1000.
 
 ## Tests
 
@@ -102,9 +139,22 @@ decided in one place, never by each check.
 - `handlers/checks`: on SaaS, a `tcp` check with `socket` on a shared region is rejected and
   accepted on a private region; the same check with `host`/`port` is accepted on a shared region
   (positive control); self-hosted accepts both. Docker cases keep passing unchanged.
+- `handlers/checks`, self-hosted with the allowlist `/run/app/`: a `tcp` check on
+  `/run/app/a.sock` is accepted (positive control); `/run/other/a.sock` is a config error on
+  `socket` that names `checkers.unix_socket_paths`; with an empty allowlist every path is
+  refused; `/run/other/a.sock` pinned to a private region is accepted; `POST .../checks/validate`
+  returns the same finding as create.
+- `checkerdef`: for every registered type, `SupportsLocalSocket` equals "its config implements
+  `LocalSocketTarget`", so a later spec cannot wire one and forget the other.
+- `checktypes`: `tcp` has `supportsLocalSocket` true and `icmp` false; `localSocketOnServer` is
+  true with an allowlist on self-hosted, false with an empty one, false on SaaS.
 - `checkworker`: a shared SaaS worker refuses a socket `tcp` job without dialing; an agent worker
   runs it; a JS sub-check with a socket is refused where the top-level one is.
-- dash0 Playwright: create a `tcp` check in socket mode, it is saved with `socket`.
+- dash0 Playwright: create a `tcp` check in socket mode, it is saved with `socket`. The E2E server
+  runs with an allowlist (see To verify).
+- dash0 component test (vitest): with `localSocketOnServer` false and no private region the switch
+  is absent; selecting only private regions shows it (positive control); editing a check that
+  stores a socket path shows it.
 
 ## To verify
 
@@ -115,6 +165,10 @@ decided in one place, never by each check.
   load the stored config to know whether the check is host-local.
 - Whether the private-location agent loads `CheckersConfig` from its own env, or receives config
   from the server (the allowlist must be the agent's, never the server's).
+- Where the E2E server gets its environment (CI and `wiki/testing/local-e2e.md`), to set
+  `SP_CHECKERS_UNIX_SOCKET_PATHS` to a temp directory there.
+- How the `ActivationResolver` gets the allowlist: it is built once at startup with the deployment
+  mode (`NewActivationResolver`), the allowlist comes the same way.
 
 ## Open questions
 

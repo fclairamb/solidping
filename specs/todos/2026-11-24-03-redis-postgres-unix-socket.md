@@ -18,7 +18,7 @@ Depends on spec `local-socket-dialer` of this PR.
 
 1. **Config**: add `Socket string` (`json:"socket,omitempty"`) to both configs, mutually exclusive
    with `host`/`port` (`checkerdef.SchemaExclusiveGrouper`). Both implement
-   `checkerdef.LocalSocketTarget`.
+   `checkerdef.LocalSocketTarget`, and both types set `SupportsLocalSocket`.
    - Redis: `socket` is the socket file path.
    - Postgres: `socket` is the socket file path (`/var/run/postgresql/.s.PGSQL.5432`), not libpq's
      directory form, so the allowlist check stays an exact file path.
@@ -34,7 +34,7 @@ Depends on spec `local-socket-dialer` of this PR.
    - `postgres+unix:///var/run/postgresql/.s.PGSQL.5432?dbname=app&user=monitor`
 4. **dash0**: the Redis and Postgres forms get the same "Host and port / Unix socket" switch as `tcp`
    (`data-testid="redis-target-mode"`, `redis-socket-path`, `postgres-target-mode`,
-   `postgres-socket-path`).
+   `postgres-socket-path`), offered through the same shared hook.
 5. **Docs**: Redis and Postgres rows in the Unix sockets table of the check-types page.
 
 ## Tests

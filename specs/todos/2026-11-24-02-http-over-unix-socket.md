@@ -20,7 +20,8 @@ latency) sent through the socket, like `curl --unix-socket`. Depends on spec
 1. **Config**: add `UnixSocket string` (`json:"unix_socket,omitempty"`) to the `http` config
    (`server/internal/checkers/checkhttp/config/config.go:84`). The `url` stays required: its path
    and query are the request, its host is the `Host` header (typically `http://localhost/health`).
-   The config implements `checkerdef.LocalSocketTarget`.
+   The config implements `checkerdef.LocalSocketTarget` (field `unix_socket`), and the `http` type
+   sets `SupportsLocalSocket`.
 2. **URL form** for quick create: `http+unix:///run/app/app.sock:/health` sets `unix_socket` to the
    part before `:/` and `url` to `http://localhost/health`. Add `http+unix` to `schemeMapping`
    (`checkers/urlparse/urlparse.go:42`). `https+unix` is refused (no TLS over a local socket).
@@ -34,7 +35,8 @@ latency) sent through the socket, like `curl --unix-socket`. Depends on spec
      IP version, resolver and proxy settings, and an `https` URL (see To verify for the exact
      field names).
 4. **dash0**: the `http` form gets an optional "Unix socket path" input under an advanced toggle
-   (`data-testid="http-unix-socket"`), per the design reference.
+   (`data-testid="http-unix-socket"`), per the design reference. It is offered under the same
+   condition as the `tcp` switch, through the shared hook of spec `local-socket-dialer`.
 5. **Docs**: an `http` row in the Unix sockets table of the check-types page, with a curl
    equivalent.
 
