@@ -38,8 +38,9 @@ var unitSuffixes = []string{ //nolint:gochecknoglobals // constant lookup table
 
 // SystemdConfig holds the configuration of a systemd unit check.
 type SystemdConfig struct {
-	Unit          string        `json:"unit"`
-	ExpectedState string        `json:"expected_state,omitempty" jsonschema:"enum=active,enum=inactive"` //nolint:tagliatelle // API uses snake_case
+	Unit string `json:"unit"`
+	//nolint:tagliatelle // API uses snake_case
+	ExpectedState string        `json:"expected_state,omitempty" jsonschema:"enum=active,enum=inactive"`
 	Timeout       time.Duration `json:"timeout,omitempty"`
 }
 

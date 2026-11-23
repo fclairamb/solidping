@@ -26,7 +26,7 @@ const (
 func TestGrade(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, 11, 23, 10, 0, 0, 0, time.Local)
+	now := time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)
 	enteredAt := now.Add(-90 * time.Second).Format("Mon 2006-01-02 15:04:05 MST")
 	activeRunning := sprintf(showActiveRunning, enteredAt)
 
@@ -74,7 +74,7 @@ func TestGradeActiveSince(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	now := time.Date(2026, 11, 23, 10, 0, 0, 0, time.Local)
+	now := time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)
 	enteredAt := now.Add(-90 * time.Second).Format("Mon 2006-01-02 15:04:05 MST")
 
 	result := checksystemd.Grade(checksystemd.ParseShow([]byte(sprintf(showActiveRunning, enteredAt))), true, now)

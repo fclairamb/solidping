@@ -92,7 +92,8 @@ func (c *SystemdChecker) Validate(spec *checkerdef.CheckSpec) error {
 func Args(unit string) []string {
 	return []string{
 		"show",
-		"--property=" + strings.Join([]string{propLoadState, propActiveState, propSubState, propResult, propActiveEnter}, ","),
+		"--property=" + strings.Join(
+			[]string{propLoadState, propActiveState, propSubState, propResult, propActiveEnter}, ","),
 		"--no-pager",
 		"--",
 		unit,
@@ -113,7 +114,7 @@ func (c *SystemdChecker) Execute(ctx context.Context, config checkerdef.Config) 
 		return finish(errorResult(refusal.Error()), unit, start), nil
 	}
 
-	// Defence in depth: the create path validated the unit already, but a
+	// Defense in depth: the create path validated the unit already, but a
 	// config may reach Execute another way (a js sub-check, a stale row).
 	if validateErr := checkconfig.ValidateUnit(cfg.Unit); validateErr != nil {
 		return finish(errorResult(validateErr.Error()), unit, start), nil
@@ -307,7 +308,8 @@ func activeSince(raw string, now time.Time) (float64, bool) {
 		return 0, false
 	}
 
-	at, err := time.ParseInLocation(timestampLayout, raw, time.Local)
+	// systemctl prints in the host zone, the one this process runs in.
+	at, err := time.ParseInLocation(timestampLayout, raw, time.Local) //nolint:gosmopolitan // host zone
 	if err != nil {
 		return 0, false
 	}

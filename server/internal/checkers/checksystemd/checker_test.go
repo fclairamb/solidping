@@ -12,6 +12,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checksystemd"
 )
 
+var errNotBooted = errors.New("exit status 1: System has not been booted with systemd")
+
 func TestExecuteArgv(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -61,7 +63,7 @@ func TestExecuteSystemctlFailureIsError(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	fake := &fakeRunner{err: errors.New("exit status 1: System has not been booted with systemd")}
+	fake := &fakeRunner{err: errNotBooted}
 	result := run(t, t.Context(), fake.run, map[string]any{"unit": "nginx"})
 
 	r.Equal(checkerdef.StatusError, result.Status)
