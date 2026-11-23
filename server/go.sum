@@ -358,8 +358,8 @@ github.com/jcmturner/gokrb5/v8 v8.4.4 h1:x1Sv4HaTpepFkXbt2IkL29DXRf8sOfZXo8eRKh6
 github.com/jcmturner/gokrb5/v8 v8.4.4/go.mod h1:1btQEpgT6k+unzCwX1KdWMEwPPkkgBtP+F6aCACiMrs=
 github.com/jcmturner/rpc/v2 v2.0.3 h1:7FXXj8Ti1IaVFpSAziCZWNzbNuZmnvw/i6CqLNdWfZY=
 github.com/jcmturner/rpc/v2 v2.0.3/go.mod h1:VUJYCIDm3PVOEHw8sgt091/20OJjskO/YJki3ELg/Hc=
-github.com/jedib0t/go-pretty/v6 v6.9.2 h1:aS5VZAJR1zSFNS45+pBywhe4CZYKU27Owl1SF/432Rs=
-github.com/jedib0t/go-pretty/v6 v6.9.2/go.mod h1:rDsMESQ3QyK0VMr1aeq/BErQLPk0tJ+ORkcjMMpnjeg=
+github.com/jedib0t/go-pretty/v6 v6.9.3 h1:JprieNeffKslmUAk7GTJZcGAhgJxnS0TLi29DCegFG4=
+github.com/jedib0t/go-pretty/v6 v6.9.3/go.mod h1:rDsMESQ3QyK0VMr1aeq/BErQLPk0tJ+ORkcjMMpnjeg=
 github.com/jimlambrt/gldap v0.1.14 h1:InG9kldhIu6OoQK0hvfkW1Lqpc5eLJhxiiDTNmRnrDM=
 github.com/jimlambrt/gldap v0.1.14/go.mod h1:yobW9JIAmqe23dVNOaMWewPaff6jGaHgYjspPIIgYmg=
 github.com/jinzhu/inflection v1.0.0 h1:K317FqzuhWc8YvSVlFMCCUb36O/S9MCKRDI7QkRKD/E=
