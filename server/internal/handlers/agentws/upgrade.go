@@ -90,6 +90,11 @@ type upgradeState struct {
 	sent bool
 	// gaveUpLogged keeps the "giving up" WARN to one per connection.
 	gaveUpLogged bool
+	// pinned is set when the agent announced autoUpgrade: false
+	// (SP_AGENT_IGNORE_VERSION_DRIFT): it is never asked and never takes the
+	// region's slot. pinReported records that the workers row holds it.
+	pinned      bool
+	pinReported bool
 }
 
 // SetAutoUpgradeTimings overrides the upgrade check cadence and timeout for
@@ -130,16 +135,25 @@ func (h *Handler) upgradeTarget(reported string) (string, bool) {
 	return serverVersion, true
 }
 
-// noteAgentVersion records the version an agent reported on this connection.
-// On the server's version, it releases the agent's upgrade slot and drops its
-// candidate row: the upgrade worked. Drifted, it registers the agent as a
-// candidate; the connection's upgrade ticker does the rest.
-func (h *Handler) noteAgentVersion(ctx context.Context, state *connState, reported string) {
-	if reported == "" || reported == state.upgrade.agentVersion {
+// noteAgentVersion records the version an agent reported on this connection,
+// and whether it is pinned (autoUpgrade: false). On the server's version, it
+// releases the agent's upgrade slot and drops its candidate row: the upgrade
+// worked. Drifted, it registers the agent as a candidate; the connection's
+// upgrade ticker does the rest. Pinned, it withdraws the agent from the
+// rollout instead, so it never holds up the other agents of its region.
+func (h *Handler) noteAgentVersion(ctx context.Context, state *connState, reported string, pinned bool) {
+	if reported == "" {
+		return
+	}
+
+	h.recordVersionPin(ctx, state, pinned)
+
+	if reported == state.upgrade.agentVersion && pinned == state.upgrade.pinned {
 		return
 	}
 
 	state.upgrade.agentVersion = reported
+	state.upgrade.pinned = pinned
 
 	if !h.autoUpgrade {
 		return
@@ -151,11 +165,67 @@ func (h *Handler) noteAgentVersion(ctx context.Context, state *connState, report
 		return
 	}
 
+	if pinned {
+		h.withdrawFromUpgrade(ctx, state)
+
+		return
+	}
+
 	if target, ok := h.upgradeTarget(reported); ok {
 		if _, err := h.touchCandidate(ctx, state.agent, target, time.Now()); err != nil {
 			h.logger.WarnContext(ctx, "could not register the agent for an upgrade",
 				"agent", state.agent.UID, "error", err)
 		}
+	}
+}
+
+// recordVersionPin stores the agent's pin on its workers row, once per
+// connection and again whenever it changes, for the dashboard's "Pinned"
+// label. Best effort: a failure is logged.
+func (h *Handler) recordVersionPin(ctx context.Context, state *connState, pinned bool) {
+	if state.upgrade.pinReported && pinned == state.upgrade.pinned {
+		return
+	}
+
+	if _, err := h.dbService.DB().NewUpdate().Model((*models.Worker)(nil)).
+		Set("version_pinned = ?", pinned).
+		Where("uid = ?", state.workerUID).
+		Exec(ctx); err != nil {
+		h.logger.WarnContext(ctx, "could not record the agent's version pin", "agent", state.agent.UID, "error", err)
+
+		return
+	}
+
+	state.upgrade.pinReported = true
+}
+
+// withdrawFromUpgrade takes a pinned agent out of the rollout: it frees its
+// region's slot if it held it (asked before it was pinned) and drops its
+// candidate row, so the next agent is asked right away, without waiting for
+// the timeout.
+func (h *Handler) withdrawFromUpgrade(ctx context.Context, state *connState) {
+	agent := state.agent
+	db := h.dbService.DB()
+
+	h.logger.InfoContext(ctx, "agent is pinned to its version (SP_AGENT_IGNORE_VERSION_DRIFT): not asking it to upgrade",
+		logKeyAgent, agent.UID, "region", agent.Region,
+		"agent_version", state.upgrade.agentVersion, "server_version", version.Get().Version)
+
+	if _, err := db.NewUpdate().Model((*upgradeSlotRow)(nil)).
+		Set("released = ?", true).
+		Set("generation = generation + 1").
+		Set("updated_at = ?", time.Now().UTC()).
+		Where("region_key = ?", upgradeRegionKey(agent)).
+		Where("agent_uid = ?", agent.UID).
+		Where("released = ?", false).
+		Exec(ctx); err != nil {
+		h.logger.WarnContext(ctx, "could not release the pinned agent's upgrade slot", logKeyAgent, agent.UID, "error", err)
+	}
+
+	if _, err := db.NewDelete().Model((*upgradeCandidateRow)(nil)).
+		Where("agent_uid = ?", agent.UID).
+		Exec(ctx); err != nil {
+		h.logger.WarnContext(ctx, "could not clear the pinned agent's upgrade candidacy", logKeyAgent, agent.UID, "error", err)
 	}
 }
 
@@ -223,7 +293,7 @@ func (h *Handler) touchCandidate(
 // handleUpgradeTick is the connection's periodic rollout step. It returns
 // false when writing to the socket failed (the connection is over).
 func (h *Handler) handleUpgradeTick(ctx context.Context, conn *websocket.Conn, state *connState) bool {
-	if state.upgrade.sent {
+	if state.upgrade.sent || state.upgrade.pinned {
 		return true
 	}
 

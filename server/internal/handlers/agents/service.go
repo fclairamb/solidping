@@ -683,6 +683,10 @@ type AgentResponse struct {
 	// reported", not an absent key that could be confused with "loading".
 	// nil must always render as unknown, never as drifted.
 	Version *string `json:"version"`
+	// VersionPinned is set when the agent runs with
+	// SP_AGENT_IGNORE_VERSION_DRIFT=true (spec 2026-11-22-04): the server
+	// never asks it to upgrade, and the dashboard labels its drift "Pinned".
+	VersionPinned bool `json:"versionPinned"`
 	// Online reports whether the agent is connected: active and seen within
 	// the liveness window — regions.IsAgentLive, the rule the location's
 	// liveness monitor uses (spec 2026-09-25-05). Computed server-side so the
@@ -738,12 +742,20 @@ func (s *Service) ListAgents(ctx context.Context, orgSlug string) (*ListAgentsRe
 			LastSeenAt:            row.LastSeenAt,
 			EnrolledAt:            row.EnrolledAt,
 			RevokedAt:             row.RevokedAt,
-			Version:               versions[row.UID],
+			Version:               versions[row.UID].version,
+			VersionPinned:         versions[row.UID].pinned,
 			Online:                regions.IsAgentLive(row.Status, row.LastSeenAt, cutoff),
 		})
 	}
 
 	return &ListAgentsResponse{Data: data}, nil
+}
+
+// agentVersion is an agent's self-reported version and its pin
+// (workers.version_pinned).
+type agentVersion struct {
+	version *string
+	pinned  bool
 }
 
 // agentVersions resolves each agent's self-reported build version
@@ -757,7 +769,7 @@ func (s *Service) ListAgents(ctx context.Context, orgSlug string) (*ListAgentsRe
 // A missing worker row (should not happen — ensureWorkerRow runs at every
 // enroll and reconnect) resolves to nil, i.e. unknown, rather than an error:
 // version is advisory-only and must never make the agent list itself fail.
-func (s *Service) agentVersions(ctx context.Context, rows []*models.Agent) (map[string]*string, error) {
+func (s *Service) agentVersions(ctx context.Context, rows []*models.Agent) (map[string]agentVersion, error) {
 	if len(rows) == 0 {
 		return nil, nil //nolint:nilnil // empty input, empty (nil) map is the natural answer
 	}
@@ -772,11 +784,11 @@ func (s *Service) agentVersions(ctx context.Context, rows []*models.Agent) (map[
 		bySlug[worker.Slug] = worker
 	}
 
-	versions := make(map[string]*string, len(rows))
+	versions := make(map[string]agentVersion, len(rows))
 
 	for _, row := range rows {
 		if worker, ok := bySlug[agentcrypto.WorkerSlug(row.UID)]; ok {
-			versions[row.UID] = worker.Version
+			versions[row.UID] = agentVersion{version: worker.Version, pinned: worker.VersionPinned}
 		}
 	}
 
@@ -817,17 +829,18 @@ func (s *Service) ListAllAgents(ctx context.Context) (*ListAgentsResponse, error
 		}
 
 		data = append(data, AgentResponse{
-			UID:         row.UID,
-			Name:        row.Name,
-			Kind:        row.Kind,
-			Org:         orgSlug,
-			Region:      row.Region,
-			Fingerprint: row.Fingerprint,
-			Status:      row.Status,
-			LastSeenAt:  row.LastSeenAt,
-			EnrolledAt:  row.EnrolledAt,
-			RevokedAt:   row.RevokedAt,
-			Version:     versions[row.UID],
+			UID:           row.UID,
+			Name:          row.Name,
+			Kind:          row.Kind,
+			Org:           orgSlug,
+			Region:        row.Region,
+			Fingerprint:   row.Fingerprint,
+			Status:        row.Status,
+			LastSeenAt:    row.LastSeenAt,
+			EnrolledAt:    row.EnrolledAt,
+			RevokedAt:     row.RevokedAt,
+			Version:       versions[row.UID].version,
+			VersionPinned: versions[row.UID].pinned,
 		})
 	}
 

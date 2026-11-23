@@ -1,6 +1,7 @@
 -- v0.54.0 — postgres migration.
 --
 --   SECTION: agent-auto-upgrade   agent_upgrade_slots, agent_upgrade_candidates
+--   SECTION: agent-version-pin    workers.version_pinned
 --
 -- ==========================================================================
 -- SECTION: agent-auto-upgrade
@@ -43,3 +44,14 @@ create table if not exists agent_upgrade_candidates (
 --bun:split
 
 create index if not exists idx_agent_upgrade_candidates_region on agent_upgrade_candidates (region_key);
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: agent-version-pin
+-- ==========================================================================
+-- An agent started with SP_AGENT_IGNORE_VERSION_DRIFT=true announces
+-- autoUpgrade: false (spec 2026-11-22-04). The server skips it in the rollout
+-- and the dashboard labels its drift "Pinned". Refreshed on each connection's
+-- first report; false (the default) for every other worker.
+alter table workers add column version_pinned boolean     not null default false;

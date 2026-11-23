@@ -268,7 +268,7 @@ func TestClientFrameVersionPinned(t *testing.T) {
 	r := require.New(t)
 
 	for raw, pinned := range map[string]bool{
-		`{"type":"claim"}`:                    false,
+		`{"type":"claim"}`:                     false,
 		`{"type":"claim","autoUpgrade":true}`:  false,
 		`{"type":"claim","autoUpgrade":false}`: true,
 	} {

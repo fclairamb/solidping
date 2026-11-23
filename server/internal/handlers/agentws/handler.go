@@ -291,7 +291,7 @@ func (h *Handler) serveEnrollment(
 		return nil //nolint:nilerr // client already gone; the socket is the response channel
 	}
 
-	agent, enrollVersion, err := h.awaitEnroll(ctx, conn, tokenHash)
+	agent, enrollReport, err := h.awaitEnroll(ctx, conn, tokenHash)
 	if err != nil {
 		h.logger.WarnContext(ctx, "agent enrollment failed", "error", err)
 		_ = conn.Close(CloseAuthFailed, "enrollment failed")
@@ -314,7 +314,7 @@ func (h *Handler) serveEnrollment(
 	// leaves the drift check for the first claim to perform, same as a bare
 	// reconnect.
 	// The enroll path already recorded the boot ID (awaitEnroll).
-	h.runAgentConnection(ctx, conn, live, agent, enrollVersion, "")
+	h.runAgentConnection(ctx, conn, live, agent, enrollReport, "")
 
 	return nil
 }
@@ -323,46 +323,46 @@ func (h *Handler) serveEnrollment(
 // the agent, and acknowledges with the agent identity.
 //
 // The second return is the version the enroll frame reported ("" when the
-// agent omitted it). Non-empty tells the caller this call already ran the
+// agent omitted it), with its pin (autoUpgrade: false). Non-empty tells the caller this call already ran the
 // version-drift comparison for real — as opposed to having nothing to compare
 // because the agent omitted the field. The caller threads it into runAgentConnection's
 // connState so a claim landing right after enrollment on the SAME connection
 // warns again only if enrollment itself had nothing to check.
 func (h *Handler) awaitEnroll(
 	ctx context.Context, conn *websocket.Conn, tokenHash string,
-) (*models.Agent, string, error) {
+) (*models.Agent, versionReport, error) {
 	readCtx, cancel := context.WithTimeout(ctx, enrollTimeout)
 	defer cancel()
 
 	var frame agentcrypto.ClientFrame
 	if err := wsjson.Read(readCtx, conn, &frame); err != nil {
-		return nil, "", fmt.Errorf("read enroll frame: %w", err)
+		return nil, versionReport{}, fmt.Errorf("read enroll frame: %w", err)
 	}
 
 	if frame.Type != agentcrypto.MsgTypeEnroll {
-		return nil, "", fmt.Errorf("expected enroll frame, got %q", frame.Type) //nolint:err113 // protocol diagnostic
+		return nil, versionReport{}, fmt.Errorf("expected enroll frame, got %q", frame.Type) //nolint:err113 // protocol diagnostic
 	}
 
 	if _, err := agentcrypto.ParsePublicKey(frame.Ed25519PublicKey); err != nil {
-		return nil, "", err
+		return nil, versionReport{}, err
 	}
 
 	if frame.X25519PublicKey == "" || !strings.HasPrefix(frame.X25519PublicKey, "age1") {
 		//nolint:err113 // protocol diagnostic
-		return nil, "", errors.New("x25519PublicKey must be an age recipient (age1…)")
+		return nil, versionReport{}, errors.New("x25519PublicKey must be an age recipient (age1…)")
 	}
 
 	token, err := h.dbService.GetAgentEnrollmentTokenByHash(ctx, tokenHash)
 	if err != nil {
-		return nil, "", fmt.Errorf("lookup enrollment token: %w", err)
+		return nil, versionReport{}, fmt.Errorf("lookup enrollment token: %w", err)
 	}
 
 	if enrollErr := h.validateEnrollmentScope(ctx, conn, token, frame.ID); enrollErr != nil {
-		return nil, "", enrollErr
+		return nil, versionReport{}, enrollErr
 	}
 
 	if keyErr := h.refuseDuplicateKey(ctx, conn, token, &frame); keyErr != nil {
-		return nil, "", keyErr
+		return nil, versionReport{}, keyErr
 	}
 
 	name := frame.Name
@@ -376,7 +376,7 @@ func (h *Handler) awaitEnroll(
 		ctx, tokenHash, name, frame.Ed25519PublicKey, frame.X25519PublicKey, fingerprint,
 	)
 	if err != nil {
-		return nil, "", err
+		return nil, versionReport{}, err
 	}
 
 	// The enroll frame is the agent's FIRST report of its build version — see
@@ -385,7 +385,7 @@ func (h *Handler) awaitEnroll(
 	// report at all). Both the write and the drift WARN happen here, once.
 	workerUID, err := h.ensureWorkerRow(ctx, agent, frame.Version)
 	if err != nil {
-		return nil, "", err
+		return nil, versionReport{}, err
 	}
 
 	h.warnIfVersionDrift(ctx, agent.UID, frame.Version)
@@ -402,10 +402,10 @@ func (h *Handler) awaitEnroll(
 		Region:      agent.Region,
 		Fingerprint: agent.Fingerprint,
 	}); err != nil {
-		return nil, "", fmt.Errorf("write enrolled frame: %w", err)
+		return nil, versionReport{}, fmt.Errorf("write enrolled frame: %w", err)
 	}
 
-	return agent, frame.Version, nil
+	return agent, versionReport{version: frame.Version, pinned: frame.VersionPinned()}, nil
 }
 
 // ErrDuplicateAgentKey refuses an enrollment whose X25519 key is another live
@@ -607,7 +607,7 @@ func (h *Handler) serveReconnect(
 	// false: a bare reconnect carries no frame at all, so the version-drift
 	// check has never had a chance to run yet — the first claim on this
 	// connection does it.
-	h.runAgentConnection(ctx, conn, live, agent, "", req.Header.Get(agentcrypto.HeaderBootID))
+	h.runAgentConnection(ctx, conn, live, agent, versionReport{}, req.Header.Get(agentcrypto.HeaderBootID))
 
 	return nil
 }
@@ -709,6 +709,13 @@ func (h *Handler) ensureWorkerRow(ctx context.Context, agent *models.Agent, repo
 	return worker.UID, nil
 }
 
+// versionReport is what an agent frame said about its version: the version
+// itself ("" when not reported) and whether the agent is pinned to it.
+type versionReport struct {
+	version string
+	pinned  bool
+}
+
 // connState is the per-connection state threaded through the frame handlers.
 // It is touched only from the connection's own read loop, so the throttle
 // bookkeeping below needs no locking.
@@ -784,7 +791,7 @@ func (h *Handler) recordAgentEgress(
 	// cadence is — a busy agent claiming several times a second must not spam
 	// the log once per claim.
 	h.warnOnVersionDrift(ctx, state, frame.Version)
-	h.noteAgentVersion(ctx, state, frame.Version)
+	h.noteAgentVersion(ctx, state, frame.Version, frame.VersionPinned())
 
 	now := time.Now()
 	if !state.egressWrittenAt.IsZero() && now.Sub(state.egressWrittenAt) < agentEgressReportInterval {
@@ -874,7 +881,7 @@ func isDevBuild(v string) bool {
 // runAgentConnection sends hello (for reconnects) and serves frames until the
 // connection ends.
 //
-// enrollVersion is the version the enroll frame reported. Non-empty means the
+// enrollReport is the version (and pin) the enroll frame reported. Non-empty means the
 // caller (serveEnrollment, via awaitEnroll) already ran the version-drift WARN
 // for this connection off the enroll frame; empty for a bare reconnect (serveReconnect), which carries no frame
 // at all and so has never had the chance. Either way this function's own
@@ -885,7 +892,7 @@ func isDevBuild(v string) bool {
 // bootID is the reconnecting agent's process ID (agents.HeaderBootID), empty
 // on the enroll path, which already recorded it (spec 2026-11-14-03).
 func (h *Handler) runAgentConnection(
-	ctx context.Context, conn *websocket.Conn, live *liveness, agent *models.Agent, enrollVersion string,
+	ctx context.Context, conn *websocket.Conn, live *liveness, agent *models.Agent, enrollReport versionReport,
 	bootID string,
 ) {
 	if !h.beginConnection() {
@@ -908,13 +915,13 @@ func (h *Handler) runAgentConnection(
 	h.releaseOnNewBoot(ctx, agent, workerUID, bootID)
 
 	state := &connState{
-		agent: agent, workerUID: workerUID, versionChecked: enrollVersion != "",
+		agent: agent, workerUID: workerUID, versionChecked: enrollReport.version != "",
 		keepalive: keepalive{sensor: live},
 	}
 
 	// The enroll frame's version feeds the rolling upgrade (spec
 	// 2026-11-22-04); a reconnect reports its version on the first claim.
-	h.noteAgentVersion(ctx, state, enrollVersion)
+	h.noteAgentVersion(ctx, state, enrollReport.version, enrollReport.pinned)
 
 	// Publish the connection so the incident pipeline can reach this agent, and
 	// retire it on the way out. The registration is identity-checked on removal
