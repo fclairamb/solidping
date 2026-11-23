@@ -5,7 +5,7 @@
 # SolidPing
 
 **Distributed, self-hostable uptime monitoring.**
-45 check types, multi-region workers, private agents, status pages,
+46 check types, multi-region workers, private agents, status pages,
 incidents and on-call escalation, in a single Go binary.
 
 https://github.com/user-attachments/assets/fe207622-7957-4e85-8a3c-d33281799f4b
@@ -106,6 +106,7 @@ Other ways to run it:
 | [SNMP](https://solidping.io/docs/features/check-types#snmp) | `snmp` | Device monitoring |
 | [Docker](https://solidping.io/docs/features/check-types#docker) | `docker` | Container health |
 | [Unix socket](https://solidping.io/docs/features/check-types#unix-socket) | `unix_socket` | Service on a local Unix socket |
+| [systemd](https://solidping.io/docs/features/check-types#systemd) | `systemd` | State of a local systemd unit |
 | [Kubernetes](https://solidping.io/docs/features/check-types#kubernetes-workload-replica-health) | `kubernetes` | Workload replica health |
 | [A2S](https://solidping.io/docs/features/check-types#a2s-game-server-source--steam) | `a2s` | Source / Steam game server query |
 | [Minecraft](https://solidping.io/docs/features/check-types#minecraft) | `minecraft` | Java and Bedrock server query |
