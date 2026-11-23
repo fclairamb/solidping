@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { readCachedDemoOrgSlug } from "@/api/public-config";
 import { parseDemoFlag } from "@/lib/demo";
 import { getRefreshToken, getToken } from "@/api/client";
+import { reportSessionMissingOnLoad } from "@/lib/session-diagnostics";
 
 export const Route = createFileRoute("/")({
   // `/d/?demo=true` is a deep link into the shared live demo, not a request
@@ -63,6 +64,9 @@ function RootRedirect() {
   // A visitor with no session at all (no access and no refresh token) is not a
   // zero-org user: send them to sign in, without an expired-session banner.
   if (!org && !isLoading && !getToken() && !getRefreshToken()) {
+    // Diagnostics for solidping-business#107: which session keys are left and
+    // why the session went (spec 2026-11-23-03). Once per page load.
+    reportSessionMissingOnLoad("root-redirect");
     return (
       <Navigate
         to="/orgs/$org/login"

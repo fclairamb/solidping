@@ -146,7 +146,7 @@ type Service interface {
 
 	// RetryJob creates a new job from a failed job
 	// Copies config, increments nb_tries, sets previous_job_uid
-	RetryJob(ctx context.Context, job *models.Job) (*models.Job, error)
+	RetryJob(ctx context.Context, job *models.Job, after time.Duration) (*models.Job, error)
 
 	// ReapStuckJobs recovers jobs stuck in 'running' whose updated_at is older
 	// than now-timeout (orphaned by a dead/redeployed worker, since nothing
@@ -970,9 +970,10 @@ func (s *serviceImpl) writeJobStatus(
 	return rows, nil
 }
 
-// RetryJob creates a new job from a failed job.
+// RetryJob creates a new job from a failed job. A positive after hint
+// (Retry-After) lengthens the backoff, capped at its last step.
 // Copies config, increments retry_count, sets previous_job_uid.
-func (s *serviceImpl) RetryJob(ctx context.Context, job *models.Job) (*models.Job, error) {
+func (s *serviceImpl) RetryJob(ctx context.Context, job *models.Job, after time.Duration) (*models.Job, error) {
 	if job.RetryCount >= MaxRetryCount {
 		return nil, ErrMaxRetriesReached
 	}
@@ -983,13 +984,15 @@ func (s *serviceImpl) RetryJob(ctx context.Context, job *models.Job) (*models.Jo
 		return nil, fmt.Errorf("failed to mark job as retried: %w", err)
 	}
 
-	return s.createRetryClone(ctx, job)
+	return s.createRetryClone(ctx, job, after)
 }
 
 // createRetryClone inserts a backoff clone of job with retry_count+1 and
 // previous_job_uid set. Used by both RetryJob (worker path) and ReapStuckJobs
 // (reaper path) so the clone shape and backoff schedule stay identical.
-func (s *serviceImpl) createRetryClone(ctx context.Context, job *models.Job) (*models.Job, error) {
+func (s *serviceImpl) createRetryClone(
+	ctx context.Context, job *models.Job, after time.Duration,
+) (*models.Job, error) {
 	retryJob := models.NewJob(job.OrganizationUID, job.Type)
 	retryJob.Config = job.Config
 	retryJob.RetryCount = job.RetryCount + 1
@@ -998,7 +1001,14 @@ func (s *serviceImpl) createRetryClone(ctx context.Context, job *models.Job) (*m
 	// Schedule with exponential backoff: 1min, 5min, 15min
 	backoff := []time.Duration{1 * time.Minute, 5 * time.Minute, 15 * time.Minute}
 	if job.RetryCount < len(backoff) {
-		retryJob.ScheduledAt = time.Now().Add(backoff[job.RetryCount])
+		delay := backoff[job.RetryCount]
+		// A receiver hint (Retry-After) can only lengthen the wait, up to the
+		// last backoff step.
+		if after > delay {
+			delay = min(after, backoff[len(backoff)-1])
+		}
+
+		retryJob.ScheduledAt = time.Now().Add(delay)
 	}
 
 	if _, err := s.db.NewInsert().Model(retryJob).Exec(ctx); err != nil {
@@ -1089,7 +1099,7 @@ func (s *serviceImpl) reapOneStuckJob(
 			return "", nil
 		}
 
-		if _, err := s.createRetryClone(ctx, job); err != nil {
+		if _, err := s.createRetryClone(ctx, job, 0); err != nil {
 			return "", err
 		}
 

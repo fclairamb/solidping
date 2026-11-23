@@ -579,7 +579,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // freshly-issued OAuth token, or the next page load redirects to login.
       const isAuthFailure = e instanceof ApiError && (e.status === 401 || e.status === 403);
       if (isAuthFailure) {
-        clearToken();
+        clearToken("auth-me-rejected");
         clearStoredOrg();
         setUser(null);
         setOrg(null);
@@ -849,7 +849,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // setSession does NOT overwrite a stored refresh token when the new
       // session has none (the org-less case) — leaving it in place would make
       // the next proactive refresh spend a dead token and log the user out.
-      clearToken();
+      clearToken("org-deletion-swap");
       setSession(session.accessToken, session.refreshToken, session.expiresIn);
     }
 
@@ -940,7 +940,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore logout errors
     } finally {
-      clearToken();
+      clearToken("logout");
       clearStoredOrg();
       setUser(null);
       setOrg(null);

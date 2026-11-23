@@ -169,11 +169,30 @@ func TestNotificationJob_DeliveryOutcomes(t *testing.T) {
 		err := env.run(t, env.webhook.UID, env.incident.UID)
 		r.ErrorIs(err, notifications.ErrWebhookRequestFailed)
 		r.False(jobdef.IsRetryable(err))
+		r.True(jobdef.IsPermanent(err), "a 4xx is a permanent failure")
 		r.Equal(int64(1), env.received.Load())
 
 		status, errMsg, _ := env.audit(t)
 		r.Equal(models.IncidentNotificationStatusFailed, status)
 		r.Contains(errMsg, "status 400")
+		// retryable=false: the row is settled as failed, not left pending.
+		r.NotEqual(models.IncidentNotificationStatusPending, status)
+	})
+
+	t.Run("receiver unavailable is retried", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		env := newNotificationEnv(t)
+		env.status.Store(http.StatusServiceUnavailable)
+
+		err := env.run(t, env.webhook.UID, env.incident.UID)
+		r.ErrorIs(err, notifications.ErrWebhookRequestFailed)
+		r.True(jobdef.IsRetryable(err))
+		r.False(jobdef.IsPermanent(err))
+
+		status, _, _ := env.audit(t)
+		r.Equal(models.IncidentNotificationStatusPending, status, "the retry will settle the row")
 	})
 
 	t.Run("receiver unreachable", func(t *testing.T) {

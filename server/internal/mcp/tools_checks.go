@@ -24,7 +24,7 @@ func listChecksDef() ToolDefinition {
 			"get_check is more direct. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			"q": stringProp(
-				"Case-insensitive substring match on check name or slug, e.g. \"api\".",
+				"Case-insensitive substring match on check name or slug; several words must all match, e.g. \"api prod\".",
 			),
 			propLabels: objectProp(
 				"Label filter as a JSON object. Returns checks that have ALL of the " +

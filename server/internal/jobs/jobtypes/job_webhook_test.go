@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -168,4 +169,49 @@ func TestWebhookJobDeliversToAllowedTargets(t *testing.T) {
 			r.JSONEq(`{"event":"publication.updated"}`, string(rec.lastBody()))
 		})
 	}
+}
+
+func TestWebhookJobClassifiesStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status    int
+		retryable bool
+		permanent bool
+	}{
+		{http.StatusMethodNotAllowed, false, true},
+		{http.StatusNotFound, false, true},
+		{http.StatusServiceUnavailable, true, false},
+		{http.StatusTooManyRequests, true, false},
+		{http.StatusRequestTimeout, true, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(http.StatusText(tt.status), func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			_, server := newWebhookReceiver(t, tt.status, "no")
+
+			err := runWebhookJob(t, server.URL+"/hook", nil)
+			r.ErrorIs(err, ErrWebhookHTTPError)
+			r.Equal(tt.retryable, jobdef.IsRetryable(err))
+			r.Equal(tt.permanent, jobdef.IsPermanent(err))
+			r.Equal(tt.status, jobdef.HTTPStatusCodeOf(err))
+		})
+	}
+
+	t.Run("retry-after hint", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Retry-After", "30")
+			w.WriteHeader(http.StatusTooManyRequests)
+		}))
+		t.Cleanup(server.Close)
+
+		err := runWebhookJob(t, server.URL, nil)
+		r.Equal(30*time.Second, jobdef.RetryAfterHint(err))
+	})
 }
