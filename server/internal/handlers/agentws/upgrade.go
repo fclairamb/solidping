@@ -225,7 +225,8 @@ func (h *Handler) withdrawFromUpgrade(ctx context.Context, state *connState) {
 	if _, err := db.NewDelete().Model((*upgradeCandidateRow)(nil)).
 		Where("agent_uid = ?", agent.UID).
 		Exec(ctx); err != nil {
-		h.logger.WarnContext(ctx, "could not clear the pinned agent's upgrade candidacy", logKeyAgent, agent.UID, "error", err)
+		h.logger.WarnContext(ctx, "could not clear the pinned agent's upgrade candidacy",
+			logKeyAgent, agent.UID, "error", err)
 	}
 }
 

@@ -340,7 +340,8 @@ func (h *Handler) awaitEnroll(
 	}
 
 	if frame.Type != agentcrypto.MsgTypeEnroll {
-		return nil, versionReport{}, fmt.Errorf("expected enroll frame, got %q", frame.Type) //nolint:err113 // protocol diagnostic
+		//nolint:err113 // protocol diagnostic
+		return nil, versionReport{}, fmt.Errorf("expected enroll frame, got %q", frame.Type)
 	}
 
 	if _, err := agentcrypto.ParsePublicKey(frame.Ed25519PublicKey); err != nil {

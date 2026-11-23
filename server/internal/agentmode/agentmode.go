@@ -124,15 +124,12 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	// execution with "resolver is not configured".
 	sshtunnel.ResolverFunc = wsBackend.ResolveTunnel
 
-	if cfg.Agent.IgnoreVersionDrift {
-		logger.InfoContext(ctx, "Agent pinned to its version (SP_AGENT_IGNORE_VERSION_DRIFT=true): "+
-			"the server will not ask it to upgrade")
-	}
-
 	logger.InfoContext(ctx, "Starting deported agent",
 		"server", cfg.Agent.ServerURL,
 		"enrolled", identity.AgentUID != "",
-		"region", identity.Region)
+		"region", identity.Region,
+		// SP_AGENT_IGNORE_VERSION_DRIFT: the server will not ask it to upgrade.
+		"version_pinned", cfg.Agent.IgnoreVersionDrift)
 
 	// Peer re-wrap of sealed secrets (spec 2026-11-10-03): this agent opens a
 	// blob with its keys and seals it to the list the server sends. Registered

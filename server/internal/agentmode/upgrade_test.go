@@ -237,10 +237,21 @@ func TestPinnedAgentIgnoresUpgrade(t *testing.T) {
 
 	go func() { done <- Run(ctx, cfg) }()
 
-	select {
-	case err := <-done:
-		r.FailNow("a pinned agent must not exit on an upgrade frame", "Run returned %v", err)
-	case <-time.After(1500 * time.Millisecond):
+	// Wait (bounded) until the agent claimed well after the upgrade frame;
+	// it must not exit in the meantime.
+	deadline := time.After(20 * time.Second)
+
+	for claimedAfter := false; !claimedAfter; {
+		select {
+		case err := <-done:
+			r.FailNow("a pinned agent must not exit on an upgrade frame", "Run returned %v", err)
+		case <-deadline:
+			r.FailNow("the pinned agent stopped claiming after the upgrade frame")
+		case <-time.After(50 * time.Millisecond):
+			fake.mu.Lock()
+			claimedAfter = fake.claimsAfter >= 3
+			fake.mu.Unlock()
+		}
 	}
 
 	fake.mu.Lock()
@@ -258,7 +269,8 @@ func TestPinnedAgentIgnoresUpgrade(t *testing.T) {
 	cancel()
 
 	select {
-	case <-done:
+	case err := <-done:
+		r.ErrorIs(err, context.Canceled, "a shutdown, not an upgrade")
 	case <-time.After(10 * time.Second):
 		r.FailNow("Run did not stop on shutdown")
 	}
