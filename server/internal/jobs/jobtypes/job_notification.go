@@ -386,6 +386,11 @@ func (r *NotificationJobRun) sendAndAudit(
 				ctx, jctx.Job.UID, time.Now(), err.Error(), true, payload.DeliveryDetails,
 			)
 
+			if jobdef.IsRetryable(err) {
+				// Keep the typed error: it may carry a Retry-After hint.
+				return err
+			}
+
 			return jobdef.NewRetryableError(err)
 		}
 

@@ -179,7 +179,7 @@ func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 		return err
 	}
 
-	webhookID := uuid.New().String()
+	webhookID := webhookIDFor(payload)
 	webhookTimestamp := strconv.FormatInt(time.Now().Unix(), 10)
 
 	signature, err := signRequest(secrets, webhookID, webhookTimestamp, body)
@@ -274,7 +274,9 @@ func (s *WebhookSender) sendAndCapture(
 	payload.DeliveryDetails = details
 
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("%w: status %d: %s", ErrWebhookRequestFailed, resp.StatusCode, string(respBody))
+		return jobdef.ClassifyHTTPStatus(resp.StatusCode,
+			jobdef.ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now()),
+			fmt.Errorf("%w: status %d: %s", ErrWebhookRequestFailed, resp.StatusCode, string(respBody)))
 	}
 
 	return nil
@@ -478,4 +480,16 @@ func (s *WebhookSender) buildPayload(payload *Payload) WebhookPayload {
 			Acknowledgment: payload.Acknowledgment,
 		},
 	}
+}
+
+// webhookIDFor returns the Standard Webhooks `webhook-id` of a delivery. It is
+// the root job UID of the retry chain (Payload.EventKey), so every retry of a
+// notification carries the id of the first attempt and receivers can
+// deduplicate. Without one a fresh id is drawn.
+func webhookIDFor(payload *Payload) string {
+	if payload.EventKey != "" {
+		return payload.EventKey
+	}
+
+	return uuid.New().String()
 }

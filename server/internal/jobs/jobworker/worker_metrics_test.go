@@ -71,7 +71,7 @@ func (f *fakeJobSvc) ReapStuckJobs(_ context.Context, _ time.Duration) (jobsvc.R
 	return jobsvc.ReapResult{}, errNotImplemented
 }
 
-func (f *fakeJobSvc) RetryJob(_ context.Context, job *models.Job) (*models.Job, error) {
+func (f *fakeJobSvc) RetryJob(_ context.Context, job *models.Job, _ time.Duration) (*models.Job, error) {
 	if f.retryErr != nil {
 		return nil, f.retryErr
 	}

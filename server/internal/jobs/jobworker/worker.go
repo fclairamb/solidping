@@ -531,8 +531,15 @@ func (w *JobWorker) handleResult(
 	retryable := jobdef.IsRetryable(err)
 	willRetry := retryable && job.RetryCount < jobsvc.MaxRetryCount
 	level, msg := jobFailureLog(permanent, willRetry)
-	logger.Log(ctx, level, msg, "job_uid", job.UID, "job_type", job.Type,
-		"permanent", permanent, "retryable", retryable, "retry_count", job.RetryCount)
+	attrs := []any{
+		"job_uid", job.UID, "job_type", job.Type,
+		"permanent", permanent, "retryable", retryable, "retry_count", job.RetryCount,
+	}
+	if statusCode := jobdef.HTTPStatusCodeOf(err); statusCode != 0 {
+		attrs = append(attrs, "status_code", statusCode)
+	}
+
+	logger.Log(ctx, level, msg, attrs...)
 
 	if willRetry {
 		return outcomeRetried, w.handleRetry(ctx, logger, job, err)
@@ -581,7 +588,7 @@ func (w *JobWorker) handleRetry(
 
 	// Reuse the clone half of the retry machinery. The job is already 'retried'
 	// in memory, so RetryJob's own flip is an idempotent no-op WHERE uid match.
-	retryJob, retryErr := w.jobSvc.RetryJob(ctx, job)
+	retryJob, retryErr := w.jobSvc.RetryJob(ctx, job, jobdef.RetryAfterHint(jobErr))
 	if retryErr != nil {
 		logger.ErrorContext(ctx, "Failed to create retry job", "job_uid", job.UID, "error", retryErr)
 

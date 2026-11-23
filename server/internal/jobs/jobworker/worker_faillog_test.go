@@ -75,3 +75,27 @@ func TestHandleResultFailureLogLevel(t *testing.T) {
 		})
 	}
 }
+
+func TestHandleResultFailureLogCarriesStatusCode(t *testing.T) {
+	t.Parallel()
+
+	run := func(jobErr error) string {
+		var buf bytes.Buffer
+
+		logger := slog.New(slog.NewTextHandler(&buf, nil))
+		w := &JobWorker{
+			jobSvc: &fakeJobSvc{},
+			logger: logger,
+			stats:  stats.NewProcessingStats(time.Minute, time.Minute, logger),
+		}
+
+		_, err := w.handleResult(context.Background(), logger, models.NewJob(nil, "webhook"), jobErr)
+		require.NoError(t, err)
+
+		return buf.String()
+	}
+
+	require.Contains(t, run(jobdef.ClassifyHTTPStatus(405, 0, errTerminal)), "status_code=405")
+	require.Contains(t, run(jobdef.ClassifyHTTPStatus(503, 0, errTerminal)), "status_code=503")
+	require.NotContains(t, run(errTerminal), "status_code")
+}

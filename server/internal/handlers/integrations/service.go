@@ -14,7 +14,6 @@ import (
 	"maps"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -2225,35 +2224,10 @@ func buildTestPayload(conn *models.Integration, orgSlug string) *notifications.P
 	}
 }
 
-// statusCodeFromErr extracts the HTTP status from a webhook request-failed
-// error, defaulting to 0 for transport-level failures (DNS, refused, timeout).
-// The error is formatted as "webhook request failed: status <code>: <body>".
+// statusCodeFromErr extracts the HTTP status from a typed webhook failure,
+// defaulting to 0 for transport-level failures (DNS, refused, timeout).
 func statusCodeFromErr(err error) int {
-	if !errors.Is(err, notifications.ErrWebhookRequestFailed) {
-		return 0
-	}
-
-	const marker = "status "
-
-	msg := err.Error()
-	idx := strings.Index(msg, marker)
-	if idx < 0 {
-		return 0
-	}
-
-	rest := msg[idx+len(marker):]
-
-	end := strings.IndexByte(rest, ':')
-	if end >= 0 {
-		rest = rest[:end]
-	}
-
-	code, convErr := strconv.Atoi(strings.TrimSpace(rest))
-	if convErr != nil {
-		return 0
-	}
-
-	return code
+	return jobdef.HTTPStatusCodeOf(err)
 }
 
 // EffectiveSettings returns the plaintext effective settings of a channel

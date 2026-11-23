@@ -731,3 +731,84 @@ func TestWebhookPayloadCarriesTheReminderCount(t *testing.T) {
 	r.NoError(err)
 	r.NotContains(string(raw), "reminderCount")
 }
+
+func TestWebhookSender_Send_StatusClassification(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		status    int
+		header    string
+		retryable bool
+		permanent bool
+		hint      time.Duration
+	}{
+		{name: "ok", status: http.StatusOK},
+		{name: "method not allowed", status: http.StatusMethodNotAllowed, permanent: true},
+		{name: "unavailable", status: http.StatusServiceUnavailable, retryable: true},
+		{
+			name: "too many requests", status: http.StatusTooManyRequests,
+			header: "30", retryable: true, hint: 30 * time.Second,
+		},
+		{name: "request timeout", status: http.StatusRequestTimeout, retryable: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tt.header != "" {
+					w.Header().Set("Retry-After", tt.header)
+				}
+				w.WriteHeader(tt.status)
+			}))
+			defer srv.Close()
+
+			secret, err := GenerateWebhookSecret()
+			r.NoError(err)
+
+			payload := testPayload(models.JSONMap{"url": srv.URL, settingsKeySigningSecret: secret})
+			err = (&WebhookSender{}).Send(context.Background(), newJobCtx(), payload)
+
+			if tt.status == http.StatusOK {
+				r.NoError(err)
+
+				return
+			}
+
+			r.ErrorIs(err, ErrWebhookRequestFailed)
+			r.Equal(tt.retryable, jobdef.IsRetryable(err))
+			r.Equal(tt.permanent, jobdef.IsPermanent(err))
+			r.Equal(tt.status, jobdef.HTTPStatusCodeOf(err))
+			r.Equal(tt.hint, jobdef.RetryAfterHint(err))
+		})
+	}
+}
+
+// TestWebhookSender_Send_WebhookIDIsStableAcrossRetries checks that the
+// webhook-id is the root job UID carried by the payload event key.
+func TestWebhookSender_Send_WebhookIDIsStableAcrossRetries(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	var gotID string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		gotID = req.Header.Get(headerWebhookID)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	secret, err := GenerateWebhookSecret()
+	r.NoError(err)
+
+	payload := testPayload(models.JSONMap{"url": srv.URL, settingsKeySigningSecret: secret})
+	payload.EventKey = "root-job-uid"
+
+	r.NoError((&WebhookSender{}).Send(context.Background(), newJobCtx(), payload))
+	r.Equal("root-job-uid", gotID)
+	r.Equal("root-job-uid", payload.MessageID)
+}

@@ -153,7 +153,9 @@ func (r *WebhookJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 
 	// Check for success status codes
 	if resp.StatusCode >= httpSuccessThreshold {
-		return fmt.Errorf("%w: HTTP %d: %s", ErrWebhookHTTPError, resp.StatusCode, string(respBody))
+		return jobdef.ClassifyHTTPStatus(resp.StatusCode,
+			jobdef.ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now()),
+			fmt.Errorf("%w: HTTP %d: %s", ErrWebhookHTTPError, resp.StatusCode, string(respBody)))
 	}
 
 	return nil
