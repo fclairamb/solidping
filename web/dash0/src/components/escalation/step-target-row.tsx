@@ -113,7 +113,7 @@ function ScheduleSelect({
 
   return (
     <div className="flex flex-1 items-center gap-2">
-      <Select value={value || undefined} onValueChange={onChange}>
+      <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="h-8 flex-1">
           <SelectValue placeholder={t("escalation:editor.pickSchedule")} />
         </SelectTrigger>
@@ -169,7 +169,7 @@ function UserSelect({
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
-      <Select value={value || undefined} onValueChange={onChange}>
+      <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="h-8 min-w-0 flex-1">
           <SelectValue placeholder={t("escalation:editor.pickUser")} />
         </SelectTrigger>
@@ -227,7 +227,7 @@ function ConnectionSelect({
 
   return (
     <div className="flex flex-1 items-center gap-2">
-      <Select value={value || undefined} onValueChange={onChange}>
+      <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="h-8 flex-1">
           <SelectValue placeholder={t("escalation:editor.pickConnection")} />
         </SelectTrigger>
