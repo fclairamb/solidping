@@ -68,6 +68,7 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { checkTargetOf } from "@/lib/check-target";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
 import { PageHeader } from "@/components/shared/page-header";
@@ -531,11 +532,7 @@ function CheckRow({
       return <EmailCheckTarget token={token} domain={emailDomain} />;
     }
 
-    return (
-      (check.config?.url as string) ||
-      (check.config?.host as string) ||
-      check.slug
-    );
+    return checkTargetOf(check.config) || check.slug;
   }
 
   const durationMs = check.lastResult?.durationMs;
