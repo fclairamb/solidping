@@ -151,3 +151,18 @@ func TestServe(t *testing.T) {
 		t.Fatal("Serve() did not return after ctx cancel")
 	}
 }
+
+func TestServe_ListenerError(t *testing.T) {
+	t.Parallel()
+
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+
+	_ = listener.Close()
+
+	if err := Serve(t.Context(), listener, func() bool { return true }); err == nil {
+		t.Fatal("Serve() on a closed listener = nil, want an error")
+	}
+}
