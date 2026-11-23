@@ -66,7 +66,14 @@ Ship in this order. Step 1 is useful on its own.
    - Agent side (`server/internal/agentmode/agentmode.go`): on `upgrade`, stop claiming, finish
      in-flight jobs (bounded by their timeout), close the socket and exit 0. Agents that don't know
      the frame ignore it (same as `jobs-available`).
-   - Opt-out: server config `SP_AGENTS_AUTO_UPGRADE` (default `true`). See open question for per-org.
+   - Opt-out: server config `SP_AGENTS_AUTO_UPGRADE` (default `true`), no per-org setting. System agents are included.
+   - Agent-side opt-out: `SP_AGENT_IGNORE_VERSION_DRIFT` (default `false`) on the agent. The agent
+     announces it as `autoUpgrade: false` on its enroll and claim frames (new optional field on
+     `ClientFrame`, `server/internal/agents/protocol.go:59`), and ignores any `upgrade` frame it
+     still receives. The server never sends `upgrade` to such an agent and **skips it in the
+     rollout**: it does not take the region's upgrade slot or wait for its timeout, so a pinned
+     agent never blocks the others. It still reports its version: the drift WARN and the dashboard
+     badge stay, with a "Pinned" label next to "Drifted" so the operator sees it is deliberate.
 
 6. **Docs and snippets switch to the server registry**: `<server-host>/solidping:current`, with
    `imagePullPolicy: Always` in the k8s / Helm examples (kubelet re-pulls on every container
@@ -90,6 +97,11 @@ Ship in this order. Step 1 is useful on its own.
   with two handler instances sharing one DB); timeout moves on; `SP_AGENTS_AUTO_UPGRADE=false`
   sends nothing.
 - `agentmode`: on `upgrade` the agent stops claiming, submits the in-flight result, exits 0.
+- `agentmode`: with `SP_AGENT_IGNORE_VERSION_DRIFT=true` the agent sends `autoUpgrade: false` and
+  keeps running when it receives an `upgrade` frame.
+- `agentws` handler: a pinned drifted agent gets no `upgrade`, and in a region with one pinned and
+  one unpinned drifted agent, the unpinned one is upgraded right away (no wait on the pinned one).
+- dash0: a pinned drifted agent shows "Drifted" plus "Pinned".
 - dash0 Playwright: the register page snippet shows the server's version tag, not `:latest`.
 
 ## To verify
@@ -99,15 +111,13 @@ Ship in this order. Step 1 is useful on its own.
 - Whether the `/v2/` path conflicts with any existing route or the SPA fallback.
 - How `agentmode` exits today and whether the job loop can drain cleanly.
 
-## Open questions
-
-1. Opt-out scope: server config only, or also a per-org setting so a SaaS customer can pin their
-   agents? **Recommended: server config only for now**, the SaaS server always wants its agents on
-   its version; add per-org when someone asks.
-2. Should system agents (platform-operated, `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS`) get the same
-   rollout? **Recommended: yes**, same code path.
-
 ## Resolved open questions
 
-1. Opt-out scope: server config only. No per-org setting for now. (autopilot: recommended answer)
-2. System agents (`SP_SYSTEM_AGENT_ENROLLMENT_TOKENS`) get the same rollout, same code path. (autopilot: recommended answer)
+Answered by Florent on 2026-11-22.
+
+1. **Opt-out scope.** **Decision:** server config only (`SP_AGENTS_AUTO_UPGRADE`, default
+   `true`). No per-org setting: the SaaS server always wants its agents on its own version. Add
+   per-org only when someone asks.
+2. **System agents.** **Decision:** platform-operated system agents
+   (`SP_SYSTEM_AGENT_ENROLLMENT_TOKENS`) get the same rolling upgrade, through the same code path
+   and the same one-agent-per-region rule.
