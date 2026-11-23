@@ -157,6 +157,7 @@ drain.
 | `SP_AGENT_DISCOVERY_ENABLED` | `false` | Lets this agent run [network discovery](#scan-the-locations-network) scans. Never set it on a system agent |
 | `SP_AGENT_DISCOVERY_CIDRS` | — | Comma-separated IPv4 prefixes discovery may probe, e.g. `10.0.0.0/8,192.168.0.0/16`. Required when discovery is enabled |
 | `SP_AGENT_REWRAP_ENABLED` | `true` | Lets this agent [re-seal sealed secrets](./browser-sealed-secrets.md#re-sealing-on-an-agent) for the recipients the server sends. Set `false` on every agent of a location to keep the server out of that loop entirely |
+| `SP_AGENT_IGNORE_VERSION_DRIFT` | `false` | Pins this agent to the image it runs: it tells the server it does not auto-upgrade and ignores upgrade requests. It still reports its version, so it keeps its "Drifted" badge, labelled "Pinned". See [Keeping agents on the server's version](#keeping-agents-on-the-servers-version) |
 | `SP_AGENT_PRINT_KEYS` | `false` | Prints the agent's **private key material** to stdout — opt-in bootstrap only (honoured on every start); unset it again afterwards |
 
 **Version reporting needs no configuration.** Every agent automatically
@@ -189,6 +190,11 @@ after a rollback.
   agent is an untagged (`dev`) build.
 - **Turning it off**: set `SP_AGENTS_AUTO_UPGRADE=false` on the **server**. It
   applies to every agent, private locations and platform-operated agents alike.
+- **Pinning one agent**: set `SP_AGENT_IGNORE_VERSION_DRIFT=true` on the
+  **agent** (for instance while you test a release on one machine). The server
+  never asks it to upgrade and skips it in the rollout, so it never makes the
+  other agents of its location wait. The drift stays visible: a warning in the
+  server log and the "Drifted" badge, with a "Pinned" label next to it.
 
 The image has to be pulled again when the agent restarts, which is what the
 server's own registry is for:

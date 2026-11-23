@@ -307,6 +307,7 @@ No separate binary. Same container, different role:
 | `SP_AGENT_KEYS_FILE` | `/data/agent-keys.json` (falls back to `./agent-keys.json`) | Identity persistence |
 | `SP_AGENT_KEYS` | — | Base64 identity JSON; wins over the file (Kubernetes secret) |
 | `SP_AGENT_NAME` | hostname | Display name |
+| `SP_AGENT_IGNORE_VERSION_DRIFT` | `false` | Pins the agent to its image: announces `autoUpgrade: false`, ignores `upgrade` frames ([agent-auto-upgrade.md](agent-auto-upgrade.md)) |
 | `SP_AGENT_PRINT_KEYS` | `false` | **Prints private key material to stdout** — opt-in bootstrap only, honoured on every start; unset it again afterwards |
 
 > These are read by a hand-rolled reader rather than koanf, because koanf
@@ -394,6 +395,7 @@ and is rendered in the dashboard against this server's own version
 |---|---|
 | Agent version == server version | Plain text — nothing to flag |
 | Agent version != server version | Amber "Drifted" badge |
+| Drifted, agent pinned (`SP_AGENT_IGNORE_VERSION_DRIFT=true`) | "Drifted" plus a "Pinned" label |
 | Agent version is `null` | Plain "unknown" text — **never** the drifted badge |
 
 **Server-side drift WARN.** The server logs one WARN per connection when a
@@ -411,7 +413,9 @@ version (`ServerFrame.ServerVersion`, `omitempty`); older agents ignore it.
 
 Drifted agents are asked to restart on the server's version, one per region at
 a time, and pull `<server-host>/solidping:current` from the server's own
-read-only registry: see [agent-auto-upgrade.md](agent-auto-upgrade.md).
+read-only registry: see [agent-auto-upgrade.md](agent-auto-upgrade.md). An
+agent started with `SP_AGENT_IGNORE_VERSION_DRIFT=true` is pinned: never asked,
+skipped in the rollout, its drift labelled "Pinned".
 
 ### Surfaces
 

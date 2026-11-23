@@ -38,6 +38,19 @@ that predates it drops it in its read pump's default case.
   10 min forever.
 - **Opt-out**: `SP_AGENTS_AUTO_UPGRADE=false` (server config only, no per-org
   setting; system agents follow the same path).
+- **Agent-side pin**: `SP_AGENT_IGNORE_VERSION_DRIFT=true` on the agent
+  (`config.AgentConfig.IgnoreVersionDrift`). The agent sends `autoUpgrade: false`
+  on its enroll and claim frames (`ClientFrame.AutoUpgrade`, a `*bool`: absent
+  reads as `true`, so older agents are upgraded as before;
+  `ClientFrame.VersionPinned()`), and ignores any `upgrade` frame
+  (`backend/ws_upgrade.go`, one INFO). The server (`noteAgentVersion`) never
+  registers a pinned agent as a candidate and its tick never sends it a frame;
+  when it was asked before being pinned, `withdrawFromUpgrade` releases its
+  slot and deletes its candidate row, so the next agent is asked at once rather
+  than after the 10 min timeout. The drift WARN stays. The pin is stored in
+  `workers.version_pinned` (refreshed on each connection's first report) and
+  exposed as `versionPinned` on the agent lists; dash0 shows a "Pinned" label
+  next to "Drifted" (`AgentVersionCell`, test id `<cell>-pinned`).
 - **The image**: `<server-host>/solidping:current` from the read-only registry
   below, pulled again by kubelet with `imagePullPolicy: Always`. Docker restart
   policies reuse the local image: the docs ship a systemd timer running
