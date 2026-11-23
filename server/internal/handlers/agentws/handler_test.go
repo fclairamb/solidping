@@ -21,6 +21,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
@@ -76,6 +77,17 @@ func newEnvConfigured(
 ) *env {
 	t.Helper()
 
+	return newEnvWrapped(t, provision, configure, nil)
+}
+
+// newEnvWrapped is newEnvConfigured plus a wrapper around the database the
+// handler sees (nil: the plain sqlite service), so a test can intercept calls.
+func newEnvWrapped(
+	t *testing.T, provision entitlementsProvisioner, configure func(*agentws.Handler),
+	wrapDB func(db.Service) db.Service,
+) *env {
+	t.Helper()
+
 	ctx := t.Context()
 	r := require.New(t)
 
@@ -102,7 +114,12 @@ func newEnvConfigured(
 		dbSvc, checkJobSvc, incidents.NewService(dbSvc, jobs, clock.Real{}, nil), scheduling.Params{},
 	)
 
-	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, entSvc, events, nil, nil)
+	var handlerDB db.Service = dbSvc
+	if wrapDB != nil {
+		handlerDB = wrapDB(dbSvc)
+	}
+
+	handler := agentws.NewHandler(&config.Config{}, handlerDB, checkJobSvc, workersSvc, entSvc, events, nil, nil)
 	if configure != nil {
 		configure(handler)
 	}

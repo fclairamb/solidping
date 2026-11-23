@@ -142,8 +142,8 @@ type Handler struct {
 	// legacyWarn throttles the v1 reconnect deprecation WARN to one line per
 	// agent per interval (nil: every reconnect logs).
 	legacyWarn *agentcrypto.DeprecationThrottle
-	// rejectWarn throttles the "result rejected" WARN to one line per agent,
-	// job and reason per interval. A rejected result is otherwise invisible
+	// rejectWarn throttles the "result rejected" WARN to one line per agent
+	// and reason per interval (never keyed on agent-supplied values). A rejected result is otherwise invisible
 	// server-side: the check simply stops reporting and later goes stale.
 	rejectWarn *agentcrypto.DeprecationThrottle
 	// autoUpgrade, upgradeCheckInterval and upgradeTimeout drive the rolling
@@ -1673,9 +1673,11 @@ func (h *Handler) rejectResult(
 	ctx context.Context, conn *websocket.Conn, state *connState, frame *agentcrypto.ClientFrame,
 	code base.ErrorCode, reason string, cause error,
 ) {
-	if ok, suppressed := h.rejectWarn.Allow(state.agent.UID + "|" + frame.JobUID + "|" + reason); ok {
+	// The key is server-chosen only (agent uid and a fixed reason): keying on
+	// the agent's jobUid let one agent grow the map and the logs at will.
+	if ok, suppressed := h.rejectWarn.Allow(state.agent.UID + "|" + reason); ok {
 		h.logger.WarnContext(ctx, "agent result rejected",
-			"agent", state.agent.UID, "job_uid", frame.JobUID, "status", frame.Status,
+			"agent", state.agent.UID, "job_uid", logPrefix(frame.JobUID), "status", frame.Status,
 			"code", string(code), "reason", reason, "error", cause, "suppressed", suppressed)
 	}
 
@@ -1684,6 +1686,36 @@ func (h *Handler) rejectResult(
 		Code: string(code), Title: reason,
 	})
 }
+
+// maxLoggedJobUIDBytes caps the agent-supplied job UID written in a log line.
+const maxLoggedJobUIDBytes = 64
+
+// logPrefix truncates an agent-supplied value to maxLoggedJobUIDBytes, so one
+// log line stays small whatever the agent sent.
+func logPrefix(value string) string {
+	if len(value) <= maxLoggedJobUIDBytes {
+		return value
+	}
+
+	return strings.ToValidUTF8(value[:maxLoggedJobUIDBytes], "") + "…"
+}
+
+// validJobUID reports whether uid is a canonical job UID: a server-minted
+// UUID in its 36-character form. Checked before the job lookup so an
+// arbitrary (up to frame-sized) string never reaches the database.
+func validJobUID(uid string) bool {
+	if len(uid) != uuidCanonicalLen {
+		return false
+	}
+
+	_, err := uuid.Parse(uid)
+
+	return err == nil
+}
+
+// uuidCanonicalLen is the length of a UUID in its canonical
+// xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx form.
+const uuidCanonicalLen = 36
 
 // agentMayReport reports whether a deported agent may report status: every
 // probe outcome its checkers can return. Degraded and Warning are probe
@@ -1708,6 +1740,10 @@ func agentMayReport(status models.ResultStatus) bool {
 func validateResultFrame(frame *agentcrypto.ClientFrame) string {
 	if frame.JobUID == "" {
 		return "jobUid is required"
+	}
+
+	if !validJobUID(frame.JobUID) {
+		return "jobUid is not a job UID"
 	}
 
 	if !agentMayReport(models.ResultStatus(frame.Status)) {
