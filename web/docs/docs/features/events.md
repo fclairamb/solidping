@@ -79,3 +79,50 @@ An incident's own timeline (acknowledged, escalated, resolved, comments…) is
 the same event stream, scoped to that one incident — see
 [Incident Management → Events](incidents.md#events) for the incident-specific
 view and its "Get Incident Events" endpoint.
+
+## Private Atom feed
+
+The Events page needs a session. For a feed reader, a NOC wall or an
+automation hook, an org admin can create a **private Atom feed** of the same
+events instead: **Organization → Settings → Event feeds**, or
+`POST /api/v1/orgs/:org/event-feeds`.
+
+The feed URL carries a secret and nothing else:
+
+```
+https://solidping.acme.com/api/v1/org-feeds/spf_<43 characters>/feed.xml
+```
+
+- **The URL is the credential.** Anyone who has it can read the feed, with no
+  sign-in. The secret is shown once, when the feed is created or rotated;
+  SolidPing only stores its SHA-256, so it cannot show it again. Treat the
+  URL like a password (it starts with `spf_` so secret scanners can flag it).
+- **What it contains**: the newest 100 events of the last 30 days, whichever
+  is smaller, newest first, from the same query as the Events page. Each entry
+  is titled with the Events page label (in the reader's `Accept-Language`,
+  English by default) and the check it is about, and links to the incident or
+  the check in the dashboard. Incidents never published to a status page are
+  included.
+- **Scope, per feed**: by default `incident.*` plus `check.created`,
+  `check.updated` and `check.deleted`. A feed can also carry
+  `status_update.*` and `maintenance_window.*`. Sign-in, membership, token and
+  integration events are never offered: they belong to the
+  [audit log](audit-log.md).
+- **Several feeds per organization** (up to 10), each with its own name, so
+  one consumer can be cut off without breaking the others. The settings card
+  shows when each feed was last read.
+- **Rotate** a feed to replace its secret, or **revoke** it. Either way the
+  old URL answers `410 Gone`, the signal feed readers take to stop polling;
+  an unknown URL answers the same. Creating, rotating and revoking a feed are
+  written to the audit log (`org.settings_updated`, target type `event_feed`).
+- The feed is rate limited per URL and sent with
+  `Cache-Control: private, max-age=60` and `X-Robots-Tag: noindex`.
+
+### How it differs from the status page feed
+
+Each [status page](status-pages.md) also has a public Atom feed
+(`/api/v1/status-pages/:org/:slug/feed.xml`). That one is for your
+customers: it only shows the status updates you published on that page, and
+it follows the page's visibility. The private event feed is for your own team:
+it shows the raw incident and check events of the whole organization, whether
+or not anything was published.
