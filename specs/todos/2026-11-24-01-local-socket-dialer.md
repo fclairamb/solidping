@@ -93,7 +93,7 @@ decided in one place, never by each check.
      config accepts a socket path. Set for `tcp` here, and by each later spec of this PR for its
      type.
    - `LocalSocketOnServer bool` (`json:"localSocketOnServer"`) on `CheckTypeStatus`
-     (`checkerdef/activation.go:133`), set in `ListAllWithStatus`: true when the type supports
+     (`checkerdef/activation.go:129`), set in `ListAllWithStatus`: true when the type supports
      sockets, the server allowlist is not empty and the deployment is not SaaS. The paths
      themselves are never served, and nothing goes in the unauthenticated `GET /api/v1/config`.
    - Add both to the check-type schema of `openapi.yaml`.
