@@ -5,7 +5,7 @@ title: Check Types
 
 # Check Types
 
-SolidPing supports **44 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
+SolidPing supports **45 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
 
 <!--
   Keep this number equal to the number of `###` sections above "Common Options"
@@ -1394,6 +1394,50 @@ docker://hostname:2375
 | Port | Docker API port | `2375`, `2376` (TLS) |
 | TLS | Enable TLS | `true` / `false` |
 | Timeout | Connection timeout | `10s` |
+
+### systemd unit {#systemd}
+
+Report the state of a systemd unit (a service, a timer, a socket, a mount...)
+of the host SolidPing runs on: a service that listens on nothing reachable from
+the network can still be watched. The check runs
+`systemctl show <unit> --property=LoadState,ActiveState,SubState,Result,ActiveEnterTimestamp`,
+which needs no root.
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `unit` | Unit name (required). Letters, digits and `:_.@-` only, at most 256 characters. A name without a unit-type suffix gets `.service` appended | `nginx`, `app@1.service`, `backup.timer` |
+| `expected_state` | `active` (default) or `inactive` (the unit must not run) | `active` |
+| `timeout` | systemctl timeout, up to `30s` (default `5s`) | `5s` |
+
+With `expected_state: active`, the check is up when the unit is `active`,
+`activating` (a unit restarting under `Restart=` is not an outage) or
+`reloading`, and down when it is `failed`, `inactive` or `deactivating`.
+`inactive` inverts this. A unit systemd does not know (`LoadState=not-found`)
+is always down, with the output "unit not found".
+
+The output shows `state` (`ActiveState/SubState`, e.g. `active/running` or
+`failed/failed`) and `result` (systemd's `Result`, e.g. `exit-code`). Metric:
+`active_since_s`, the seconds since the unit became active.
+
+```json
+{ "type": "systemd", "config": { "unit": "nginx" } }
+```
+
+The check reads the systemd of the host that runs it, so SolidPing must run on
+that host itself (the binary, or a systemd service). The container image
+(distroless, also used for private-location agents) ships no `systemctl`: a
+check run from a container, or from a host without systemd, ends in error
+("systemctl not found"), not down. A container only sees the host's units when
+it has a `systemctl` binary and the host's D-Bus socket
+(`/run/dbus/system_bus_socket`) mounted, so install the agent as a binary or a
+systemd service on the host instead.
+
+:::note Private locations only on SolidPing Cloud
+On SolidPing Cloud (SaaS), a systemd check must run from one of your
+organization's [private locations](./private-locations.md) installed on the
+host, and a shared region never reports on its own host. A systemd check
+cannot run through an SSH tunnel either.
+:::
 
 ### A2S Game Server (Source / Steam) {#a2s-game-server-source--steam}
 
