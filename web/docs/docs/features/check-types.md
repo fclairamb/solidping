@@ -314,6 +314,7 @@ tcps://hostname:port  # With TLS
 | `expect_encoding` | How `expect_data` becomes bytes: `text` (default), `escaped`, `hex` | `hex` |
 | `expect_pattern` | [RE2](https://github.com/google/re2/wiki/Syntax) regex the reply must match | `^220 .* ESMTP` |
 | SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) — the hostname is resolved by the bastion | An `ssh` check with `expected_fingerprint` set |
+| `socket` | Connect to a local [Unix socket](#unix-sockets) instead of a host and port (or `unix:///run/app/app.sock` as the URL). Not with `host`, `port` or TLS | `/run/app/app.sock` |
 
 ### UDP {#udp}
 
@@ -2061,6 +2062,43 @@ only ever be a claim the worker cannot honor.
 cannot originate fails with an explicit error saying so — it names the worker's
 missing egress rather than blaming the target. If you see it, change the check's
 region rather than investigating your service.
+
+### Unix sockets {#unix-sockets}
+
+A service that only listens on a Unix socket (a web app on `/run/app/app.sock`,
+Redis on `/run/redis/redis.sock`, Postgres in `/var/run/postgresql/`) can be
+monitored by the usual check of its protocol, with a socket path in place of the
+host and port.
+
+| Check | Field | URL form |
+|-------|-------|----------|
+| [TCP](#tcp) | `socket` | `unix:///run/app/app.sock` |
+
+The feature is **off by default**. An operator turns it on by listing the
+sockets checks may reach in `checkers.unix_socket_paths`
+(`SP_CHECKERS_UNIX_SOCKET_PATHS`, comma-separated): exact socket paths, or
+directory prefixes ending in `/`. A path outside the list is refused when the
+check is saved and again when it runs. Paths must be absolute and clean (no
+`..`); abstract sockets (`@name`) are not supported.
+
+- **Shared regions on SaaS refuse sockets.** A socket check must be pinned to
+  one of your [private locations](./private-locations.md). The agent then
+  applies its *own* `SP_CHECKERS_UNIX_SOCKET_PATHS`, not the server's.
+- **The egress guard refuses sockets**: a worker that blocks private targets
+  never opens one, and neither does an SSH-tunneled check.
+- **Permissions**: the SolidPing process needs read and write permission on the
+  socket file. A missing file reports `ENOENT`, a dead service `ECONNREFUSED`,
+  a permission problem `EACCES`.
+- **Containers**: a SolidPing running in a container only sees the sockets
+  mounted into it (for instance `-v /run/app:/run/app`).
+- The dashboard only offers the socket target once the allowlist is set, or on a
+  check pinned to private locations only.
+
+:::danger
+Never allowlist `/var/run/docker.sock`, a directory holding it, or `/run/`. One
+request on the Docker socket is root on the host, and the allowlist applies to
+every member who can create a check.
+:::
 
 ### SSH tunnel
 
