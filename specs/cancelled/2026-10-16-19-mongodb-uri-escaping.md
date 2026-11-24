@@ -5,6 +5,14 @@ effort: medium
 
 # Build the MongoDB check URI with escaped credentials
 
+> **CANCELLED 2026-11-24 — superseded by
+> [`2026-11-24-07-mongodb-structured-client-options`](../todos/2026-11-24-07-mongodb-structured-client-options.md)**
+> (GHSA-38m7-jhhr-79xx). Escaping the URI is replaced by building the client
+> from structured options. This spec's claim that the dialer is always the
+> guarded one, "so no egress bypass", was wrong: injected OIDC options make the
+> driver read a local token file or fetch a metadata-service token with its own
+> HTTP client.
+
 **Status:** backlog. Split out of `specs/done/2026/10/2026-10-16-04-mysql-dsn-injection.md` (resolved open question 1).
 
 ## Problem

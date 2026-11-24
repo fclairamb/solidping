@@ -4,6 +4,7 @@ package checkmongodb
 import (
 	"context"
 	"net"
+	"strconv"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -51,10 +52,7 @@ func (c *MongoDBChecker) Execute(
 
 	start := time.Now()
 
-	clientOpts := options.Client().
-		ApplyURI(cfg.BuildURI()).
-		SetConnectTimeout(timeout).
-		SetTimeout(timeout)
+	clientOpts := clientOptions(cfg, timeout)
 
 	// Tunneled: dial through the bastion. mongo-driver's ContextDialer matches
 	// checkerdef.ContextDialer, and the driver hands it the raw host:port (no
@@ -87,6 +85,52 @@ func (c *MongoDBChecker) Execute(
 	defer func() { _ = client.Disconnect(ctx) }()
 
 	return c.ping(ctx, client, cfg, tunneled, start)
+}
+
+// socketPlaceholderHost is the host of a socket check: the checker's dialer
+// ignores it and dials the socket through the shared gates.
+const socketPlaceholderHost = "localhost"
+
+// authSourceDefault is the database the credentials authenticate against.
+const authSourceDefault = "admin"
+
+// clientOptions builds the driver options from the structured config, never
+// from a URI string (GHSA-38m7-jhhr-79xx): no config value reaches the
+// driver's URI parser, so none can move the host or add a URI option
+// (authMechanism, authMechanismProperties, appname, tlsCAFile...).
+//
+// The auth mechanism is left empty so the server negotiates SCRAM, and
+// AuthMechanismProperties is never set: no config key may select OIDC, AWS,
+// X.509 or GSSAPI.
+func clientOptions(cfg *MongoDBConfig, timeout time.Duration) *options.ClientOptions {
+	host := socketPlaceholderHost
+	if cfg.Socket == "" {
+		port := cfg.Port
+		if port == 0 {
+			port = defaultPort
+		}
+
+		host = net.JoinHostPort(cfg.Host, strconv.Itoa(port))
+	}
+
+	opts := options.Client().
+		SetHosts([]string{host}).
+		SetConnectTimeout(timeout).
+		SetTimeout(timeout)
+
+	if cfg.Username != "" {
+		// AuthSource stays "admin", what the former URI (which never carried a
+		// database path) resolved to: a monitoring user created in admin keeps
+		// authenticating when the check pings another database.
+		opts.SetAuth(options.Credential{
+			AuthSource:  authSourceDefault,
+			Username:    cfg.Username,
+			Password:    cfg.Password,
+			PasswordSet: cfg.Password != "",
+		})
+	}
+
+	return opts
 }
 
 // ping runs the MongoDB probe and builds the result.
