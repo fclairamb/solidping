@@ -860,7 +860,7 @@ func (c *HTTPConfig) BasicAuthCredentials() (string, string, bool) {
 // without it a sealed blob could be pointed at another socket (spec
 // 2026-11-24-10).
 func (c *HTTPConfig) TargetFields() []string {
-	return []string{"url", configKeyUnixSocket}
+	return append(c.LegacyTargetFields(), configKeyUnixSocket)
 }
 
 // LegacyTargetFields is the list blobs were bound to before the Unix socket

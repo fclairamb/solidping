@@ -30,7 +30,7 @@ func (c *SMTPConfig) ExportRedactedFields() []string {
 // without it a sealed blob could be pointed at another socket (spec
 // 2026-11-24-10).
 func (c *SMTPConfig) TargetFields() []string {
-	return []string{"host", "port", configKeySocket}
+	return append(c.LegacyTargetFields(), configKeySocket)
 }
 
 // LegacyTargetFields is the list blobs were bound to before the Unix socket
