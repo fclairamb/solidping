@@ -780,6 +780,11 @@ mongodb://user:password@hostname:27017/database
 | URL | Connection string | `mongodb://user:pass@db:27017/mydb` |
 | Timeout | Connection timeout | `10s` |
 
+Usernames and passwords may contain any character, `@`, `:`, `/` and `?` included:
+SolidPing passes them to the driver as they are, never inside a connection string.
+Credentials authenticate against the `admin` database with SCRAM. The host must be
+a hostname or an IP address.
+
 ### Redis {#redis}
 
 Monitor Redis server availability using the PING command.
