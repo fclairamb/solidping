@@ -280,7 +280,7 @@ require (
 	github.com/oapi-codegen/runtime v1.9.1
 	github.com/ohler55/ojg v1.28.9
 	github.com/pires/go-proxyproto v0.16.0
-	github.com/pkg/sftp v1.13.12
+	github.com/pkg/sftp v1.13.13
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/posthog/posthog-go/v2 v2.1.1
 	github.com/pquerna/otp v1.5.0
@@ -289,7 +289,7 @@ require (
 	github.com/prometheus/common v0.74.0
 	github.com/quic-go/quic-go v0.66.0
 	github.com/rabbitmq/amqp091-go v1.17.0
-	github.com/redis/go-redis/v9 v9.23.0
+	github.com/redis/go-redis/v9 v9.24.0
 	github.com/rumblefrog/go-a2s v1.0.3
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/sijms/go-ora/v3 v3.0.1
