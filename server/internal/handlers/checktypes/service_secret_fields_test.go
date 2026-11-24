@@ -67,8 +67,8 @@ func TestListServerCheckTypesCarriesTargetFields(t *testing.T) {
 
 	svc := NewService(checkerdef.NewActivationResolver(&config.CheckersConfig{}, ""), "https://example.com")
 	want := map[string][]string{
-		"http":  {"tunnelCheckUid", "url"},
-		"mysql": {"database", "host", "port", "tunnelCheckUid"},
+		"http":  {"tunnelCheckUid", "unix_socket", "url"},
+		"mysql": {"database", "host", "port", "socket", "tunnelCheckUid"},
 		"kafka": {"brokers", "tunnelCheckUid"},
 		"js":    {"env", "script", "tunnelCheckUid"},
 	}

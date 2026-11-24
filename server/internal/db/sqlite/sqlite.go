@@ -25,6 +25,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkfilter"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
@@ -2032,7 +2033,7 @@ func (s *Service) ListChecksByTunnelCheckUID(
 // "ts-prod-ssh" but not "ts-prod-http". LIKE wildcards in the words are
 // matched literally.
 func applyCheckSearchFilter(query *bun.SelectQuery, search string) *bun.SelectQuery {
-	for _, word := range strings.Fields(strings.ToLower(search)) {
+	for _, word := range checkfilter.SearchTerms(strings.ToLower(search)) {
 		pattern := "%" + escapeLikePrefix(word) + "%"
 		query = query.Where(
 			"(LOWER(name) LIKE ? ESCAPE '\\' OR LOWER(slug) LIKE ? ESCAPE '\\')", pattern, pattern)

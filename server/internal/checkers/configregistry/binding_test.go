@@ -54,7 +54,7 @@ func TestBindingCheckFor(t *testing.T) {
 	known := configregistry.BindingCheckFor("http", config)
 	require.Equal(t, "http", known.Type)
 	require.Equal(t, config, known.Config)
-	require.Equal(t, []string{"tunnelCheckUid", "url"}, known.TargetFields)
+	require.Equal(t, []string{"tunnelCheckUid", "unix_socket", "url"}, known.TargetFields)
 	require.NotNil(t, known.SecretFields, "a known type lists its secret fields")
 
 	unknown := configregistry.BindingCheckFor("acme-plugin", config)
