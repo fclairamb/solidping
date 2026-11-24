@@ -108,6 +108,7 @@ import type { HealthState } from "./health";
 import { crawlModule, CrawlAdvancedFields, crawlAdvancedSummary } from "./crawl";
 import type { CrawlState } from "./crawl";
 import { pluginModule } from "./plugin";
+import { systemdModule } from "./systemd";
 
 // Widen a concrete `CheckTypeModule<S>` to the registry's `unknown` state type.
 // The form only ever pairs a module with the `configState` it produced, so the
@@ -143,6 +144,7 @@ const modules: CheckTypeModule[] = [
   entry(snmpModule),
   entry(prometheusModule),
   entry(dockerModule),
+  entry(systemdModule),
   entry(freeboxLineModule),
   entry(sslModule),
   entry(ntpModule),

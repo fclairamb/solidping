@@ -61,6 +61,7 @@ export const checkTypeDocsAnchors: Partial<Record<string, string>> = {
   snmp: "snmp",
   prometheus: "prometheus-metric",
   docker: "docker",
+  systemd: "systemd",
   a2s: "a2s-game-server-source--steam",
   minecraft: "minecraft",
   freebox_line: "freebox-line-xdsl--ftth",

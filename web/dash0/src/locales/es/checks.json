@@ -462,6 +462,8 @@
     "snmpDescription": "Monitoriza dispositivos mediante SNMP",
     "docker": "Docker",
     "dockerDescription": "Monitoriza el estado de contenedores Docker",
+    "systemd": "Unidad systemd",
+    "systemdDescription": "Comprobar el estado de una unidad systemd",
     "browser": "Navegador",
     "browserDescription": "Monitoriza páginas con Chrome headless",
     "dnsbl": "DNSBL",
@@ -1539,7 +1541,9 @@
     "pluginInvalidJson": "La configuración no es JSON válido: {{detail}}",
     "pluginNotAnObject": "La configuración debe ser un objeto JSON.",
     "fieldRequired": "Este campo es obligatorio",
-    "socketRequired": "La ruta del socket es obligatoria"
+    "socketRequired": "La ruta del socket es obligatoria",
+    "systemdUnitRequired": "El nombre de la unidad es obligatorio",
+    "systemdUnitInvalid": "El nombre de la unidad solo puede contener letras, dígitos y :_.@- (256 caracteres como máximo, sin - al principio)"
   },
   "health": {
     "format": "Formato de salud",
@@ -1905,5 +1909,12 @@
       "partial_one": "No se pudo eliminar {{count}} check",
       "partial_other": "No se pudieron eliminar {{count}} checks"
     }
+  },
+  "systemd": {
+    "unit": "Unidad",
+    "unitHelp": "Nombre de la unidad en el host donde se ejecuta SolidPing. Un nombre sin sufijo recibe .service (nginx → nginx.service); timers, sockets y montajes también funcionan.",
+    "expectedState": "Estado esperado",
+    "state_active": "Activa (en ejecución)",
+    "state_inactive": "Inactiva (no debe ejecutarse)"
   }
 }

@@ -462,6 +462,8 @@
     "snmpDescription": "Geräte per SNMP überwachen",
     "docker": "Docker",
     "dockerDescription": "Zustand von Docker-Containern überwachen",
+    "systemd": "systemd-Unit",
+    "systemdDescription": "Den Zustand einer systemd-Unit prüfen",
     "browser": "Browser",
     "browserDescription": "Seiten mit Headless-Chrome überwachen",
     "dnsbl": "DNSBL",
@@ -1539,7 +1541,9 @@
     "pluginInvalidJson": "Die Konfiguration ist kein gültiges JSON: {{detail}}",
     "pluginNotAnObject": "Die Konfiguration muss ein JSON-Objekt sein.",
     "fieldRequired": "Dieses Feld ist erforderlich",
-    "socketRequired": "Socket-Pfad ist erforderlich"
+    "socketRequired": "Socket-Pfad ist erforderlich",
+    "systemdUnitRequired": "Unit-Name ist erforderlich",
+    "systemdUnitInvalid": "Der Unit-Name darf nur Buchstaben, Ziffern und :_.@- enthalten (höchstens 256 Zeichen, nicht mit - beginnend)"
   },
   "health": {
     "format": "Health-Format",
@@ -1905,5 +1909,12 @@
       "partial_one": "{{count}} Check konnte nicht gelöscht werden",
       "partial_other": "{{count}} Checks konnten nicht gelöscht werden"
     }
+  },
+  "systemd": {
+    "unit": "Unit-Name",
+    "unitHelp": "Name der Unit auf dem Host, auf dem SolidPing läuft. Ein Name ohne Suffix erhält .service (nginx → nginx.service); Timer, Sockets und Mounts funktionieren ebenfalls.",
+    "expectedState": "Erwarteter Zustand",
+    "state_active": "Aktiv (läuft)",
+    "state_inactive": "Inaktiv (darf nicht laufen)"
   }
 }

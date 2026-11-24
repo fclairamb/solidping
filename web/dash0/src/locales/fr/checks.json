@@ -462,6 +462,8 @@
     "snmpDescription": "Surveiller les appareils via SNMP",
     "docker": "Docker",
     "dockerDescription": "Surveiller la santé des conteneurs Docker",
+    "systemd": "Unité systemd",
+    "systemdDescription": "Vérifier l'état d'une unité systemd",
     "browser": "Navigateur",
     "browserDescription": "Surveiller les pages avec Chrome headless",
     "freebox_line": "Qualité de ligne Freebox",
@@ -1539,7 +1541,9 @@
     "pluginInvalidJson": "La configuration n'est pas du JSON valide : {{detail}}",
     "pluginNotAnObject": "La configuration doit être un objet JSON.",
     "fieldRequired": "Ce champ est obligatoire",
-    "socketRequired": "Le chemin du socket est requis"
+    "socketRequired": "Le chemin du socket est requis",
+    "systemdUnitRequired": "Le nom de l'unité est requis",
+    "systemdUnitInvalid": "Le nom de l'unité ne peut contenir que des lettres, des chiffres et :_.@- (256 caractères au plus, sans - au début)"
   },
   "health": {
     "format": "Format de santé",
@@ -1905,5 +1909,12 @@
       "partial_one": "{{count}} check n'a pas pu être supprimé",
       "partial_other": "{{count}} checks n'ont pas pu être supprimés"
     }
+  },
+  "systemd": {
+    "unit": "Unité",
+    "unitHelp": "Nom de l'unité sur l'hôte où tourne SolidPing. Un nom sans suffixe reçoit .service (nginx → nginx.service) ; les timers, sockets et montages fonctionnent aussi.",
+    "expectedState": "État attendu",
+    "state_active": "Active (en marche)",
+    "state_inactive": "Inactive (ne doit pas tourner)"
   }
 }
