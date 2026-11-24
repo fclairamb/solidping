@@ -256,3 +256,25 @@ func SocketHTTPTransport(ctx context.Context, path string) *http.Transport {
 
 	return transport
 }
+
+// NoLocalSocketDialer wraps base (a plain net.Dialer when nil) so that it
+// refuses every Unix network (`unix`, `unixgram`, `unixpacket`) with
+// ErrLocalSocketNotAllowed and passes every other dial through. It backs the
+// host:port path of a checker whose driver picks the network from the address
+// (lib/pq dials `unix` for an absolute or `@` host, go-redis for an address
+// starting with `/`; spec 2026-11-24-08): the only way to a socket stays
+// LocalSocketDialer and its allowlist.
+func NoLocalSocketDialer(base ContextDialer) ContextDialer {
+	if base == nil {
+		base = &net.Dialer{}
+	}
+
+	return DialerFunc(func(ctx context.Context, network, address string) (net.Conn, error) {
+		if strings.HasPrefix(network, "unix") {
+			return nil, fmt.Errorf("%w: %s is a host-local socket; use the socket field and %s",
+				ErrLocalSocketNotAllowed, address, LocalSocketSetting)
+		}
+
+		return base.DialContext(ctx, network, address)
+	})
+}

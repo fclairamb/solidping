@@ -10,6 +10,7 @@ package config
 
 import (
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -278,6 +279,14 @@ func (c *PostgreSQLConfig) validateTarget() error {
 	if c.Socket == "" {
 		if c.Host == "" {
 			return checkerdef.NewRequiredConfigError("host")
+		}
+
+		// lib/pq dials a Unix socket for an absolute or `@` host: a path here
+		// would skip the socket allowlist (spec 2026-11-24-08).
+		if filepath.IsAbs(c.Host) || strings.HasPrefix(c.Host, "@") || strings.Contains(c.Host, "/") {
+			return checkerdef.NewConfigErrorf("host",
+				"must be a hostname or an IP address, not a path; for a local socket use the socket field "+
+					"(the .s.PGSQL.<port> file) with %s", checkerdef.LocalSocketSetting)
 		}
 
 		return nil

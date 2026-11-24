@@ -2162,6 +2162,10 @@ check is saved and again when it runs. Paths must be absolute and clean (no
 - **Permissions**: the SolidPing process needs read and write permission on the
   socket file. A missing file reports `ENOENT`, a dead service `ECONNREFUSED`,
   a permission problem `EACCES`.
+- **A host is never a path.** The PostgreSQL `host` must be a hostname or an
+  IP address: a directory (`/var/run/postgresql`) or an `@name` is refused, and
+  a local socket goes through `socket` plus the allowlist. No check opens a
+  socket from its host field, even for a row saved before this rule.
 - **Containers**: a SolidPing running in a container only sees the sockets
   mounted into it (for instance `-v /run/app:/run/app`).
 - The dashboard only offers the socket target once the allowlist is set, or on a

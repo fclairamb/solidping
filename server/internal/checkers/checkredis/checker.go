@@ -114,8 +114,8 @@ func durationMs(duration time.Duration) float64 {
 }
 
 // setRedisDialer picks the dial path: the shared Unix socket dialer, the SSH
-// tunnel or the egress guard. Untunneled and unguarded, opts.Dialer stays nil
-// and go-redis uses its default net.Dialer.
+// tunnel or the egress guard. Every non-socket path refuses a Unix network, so
+// only the socket field reaches a socket.
 func setRedisDialer(
 	ctx context.Context, cfg *RedisConfig, opts *redis.Options, timeout time.Duration, output map[string]any,
 ) {
@@ -127,11 +127,15 @@ func setRedisDialer(
 		opts.Addr = cfg.Socket
 		opts.Dialer = checkerdef.LocalSocketDialer(ctx, cfg.Socket, timeout).DialContext
 	} else if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
-		opts.Dialer = dialer.DialContext
+		opts.Dialer = checkerdef.NoLocalSocketDialer(dialer).DialContext
 		output["tunneled"] = true
-	} else if checkerdef.EgressEnforcing(ctx) {
-		// Egress guard (spec 2026-09-25-19). The check sets no TLSConfig, so a
-		// guarded net.Dialer with go-redis's DialTimeout is its default dial.
-		opts.Dialer = checkerdef.GuardedNetDialer(ctx, &net.Dialer{Timeout: timeout}).DialContext
+	} else {
+		// Egress guard (spec 2026-09-25-19), a pass-through when not enforcing.
+		// The check sets no TLSConfig, so a (guarded) net.Dialer with go-redis's
+		// DialTimeout is its default dial. go-redis would switch to `unix` for
+		// an address starting with `/`: refused here (spec 2026-11-24-08).
+		opts.Dialer = checkerdef.NoLocalSocketDialer(
+			checkerdef.GuardedNetDialer(ctx, &net.Dialer{Timeout: timeout}),
+		).DialContext
 	}
 }

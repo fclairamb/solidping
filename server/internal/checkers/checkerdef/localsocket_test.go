@@ -230,3 +230,31 @@ func TestIsHostLocal(t *testing.T) {
 	r.NoError(cfg.FromMap(map[string]any{"socket": "/run/app/app.sock"}))
 	r.True(checkerdef.IsHostLocal(checkerdef.CheckTypeTCP, cfg))
 }
+
+var errBaseDialed = errors.New("base dialed")
+
+// TestNoLocalSocketDialer: the host:port backstop refuses every Unix network
+// before dialing and passes TCP through (spec 2026-11-24-08).
+func TestNoLocalSocketDialer(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+
+	base := checkerdef.DialerFunc(func(_ context.Context, _, _ string) (net.Conn, error) {
+		calls.Add(1)
+
+		return nil, errBaseDialed
+	})
+	dialer := checkerdef.NoLocalSocketDialer(base)
+
+	for _, network := range []string{"unix", "unixgram", "unixpacket"} {
+		_, err := dialer.DialContext(t.Context(), network, "/var/run/postgresql/.s.PGSQL.5432")
+		require.ErrorIs(t, err, checkerdef.ErrLocalSocketNotAllowed, network)
+	}
+
+	require.Zero(t, calls.Load(), "a unix network must never reach the base dialer")
+
+	_, err := dialer.DialContext(t.Context(), "tcp", "127.0.0.1:5432")
+	require.ErrorIs(t, err, errBaseDialed)
+	require.Equal(t, int32(1), calls.Load())
+}
