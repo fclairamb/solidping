@@ -86,6 +86,13 @@ The report is right: the status-page half already exists, only the org feed is m
    one consumer can be revoked without breaking the others; cap at 10 per org.
 4. **RSS 2.0 too?** Recommended: Atom only, like the status-page feed; every reader handles it.
 
+## Resolved open questions
+
+1. Event scope: chosen per feed, defaulting to `incident.*` plus `check.created|updated|deleted`; membership/integration events are not offered. (autopilot: recommended answer)
+2. Retention window: the last 100 entries or 30 days, whichever is smaller. (autopilot: recommended answer)
+3. Secrets: several named feeds per org (as kiosk tokens), capped at 10 per org, each revocable on its own. (autopilot: recommended answer)
+4. Format: Atom only, like the status-page feed; no RSS 2.0. (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes #1014. The implementing PR body **must** carry a `Closes #1014` line so the

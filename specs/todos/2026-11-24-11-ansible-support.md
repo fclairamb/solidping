@@ -89,6 +89,13 @@ Deliver in this order, each step shippable alone:
 4. **Where does the collection live?** Recommended: its own repo, like the Terraform provider;
    only the docs page lives here.
 
+## Resolved open questions
+
+1. Collection namespace: use `fclairamb.solidping`, matching the Terraform provider. (autopilot: recommended answer)
+2. Modules: hand-written, five resources, mirroring the provider's schemas; no OpenAPI generation. (autopilot: recommended answer)
+3. Molecule driver: docker; the service role uses an image with systemd as PID 1. (autopilot: recommended answer)
+4. Location: the collection lives in its own repo, like the Terraform provider; only the docs page lives here. (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes #1013 and #1015. The implementing PR body **must** carry one `Closes #1013` and
