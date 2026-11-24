@@ -1,7 +1,8 @@
 // Package agentmode runs the standard SolidPing binary as a deported
 // (org-scoped) check agent (SP_NODE_ROLE=agent, spec 2026-07-16-02): no
 // database, no migrations, no HTTP server — the check worker loop over an
-// outbound WebSocket to the master.
+// outbound WebSocket to the master. The one listener is the loopback health
+// endpoint the image's HEALTHCHECK probes.
 //
 // Identity/keys lifecycle: on first run the agent generates its two keypairs
 // (Ed25519 identity + X25519/age encryption), enrolls with the one-shot
@@ -29,6 +30,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,6 +41,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/tasks"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/healthcheck"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/rewraptask"
 )
@@ -151,6 +154,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		logger.InfoContext(ctx, "Peer re-wrap of sealed secrets enabled")
 	}
 
+	startHealthListener(ctx, logger, cfg.Server.Listen, wsBackend.Connected)
+
 	worker := checkworker.NewAgentCheckWorker(cfg, wsBackend)
 	wsBackend.SetEgressGuard(worker.EgressGuard())
 
@@ -159,6 +164,30 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	worker.EnableTasks(wsBackend.TaskClient(), agentTaskSlots)
 
 	return runUntilUpgrade(ctx, logger, worker, wsBackend)
+}
+
+// startHealthListener serves /api/mgmt/health on 127.0.0.1 at the port of
+// SP_SERVER_LISTEN, so `solidping healthcheck` (the image's HEALTHCHECK) gets
+// 200 while the agent is connected to its server and 503 while it is not
+// (issue #995). Loopback only: nothing is exposed. A bind failure (a server on
+// the same host network already holds the port) is logged and the agent runs
+// on without it.
+func startHealthListener(ctx context.Context, logger *slog.Logger, listen string, healthy func() bool) {
+	addr := healthcheck.LoopbackAddr(listen)
+
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
+	if err != nil {
+		logger.WarnContext(ctx, "Agent health listener not started: the container healthcheck will fail",
+			"addr", addr, "error", err)
+
+		return
+	}
+
+	go func() {
+		if serveErr := healthcheck.Serve(ctx, listener, healthy); serveErr != nil {
+			logger.WarnContext(ctx, "Agent health listener stopped", "addr", addr, "error", serveErr)
+		}
+	}()
 }
 
 // workerLoop is the part of the check worker runUntilUpgrade drives.

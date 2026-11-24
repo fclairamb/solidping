@@ -159,6 +159,7 @@ drain.
 | `SP_AGENT_REWRAP_ENABLED` | `true` | Lets this agent [re-seal sealed secrets](./browser-sealed-secrets.md#re-sealing-on-an-agent) for the recipients the server sends. Set `false` on every agent of a location to keep the server out of that loop entirely |
 | `SP_AGENT_IGNORE_VERSION_DRIFT` | `false` | Pins this agent to the image it runs: it tells the server it does not auto-upgrade and ignores upgrade requests. It still reports its version, so it keeps its "Drifted" badge, labelled "Pinned". See [Keeping agents on the server's version](#keeping-agents-on-the-servers-version) |
 | `SP_AGENT_PRINT_KEYS` | `false` | Prints the agent's **private key material** to stdout — opt-in bootstrap only (honoured on every start); unset it again afterwards |
+| `SP_SERVER_LISTEN` | `:4000` | Only its port is used: the agent answers its [container healthcheck](#container-healthcheck) on `127.0.0.1` at that port |
 
 **Version reporting needs no configuration.** Every agent automatically
 reports its own build version on connect and on every claim — there is no
@@ -169,6 +170,19 @@ to the agent, so identifying a stale deployment no longer means shelling
 into every machine one by one. An agent that predates this feature simply
 shows as "unknown" — never as drifted. A drifted agent is also asked to
 upgrade itself, see below.
+
+### Container healthcheck
+
+The image's `HEALTHCHECK` runs `solidping healthcheck` every 30 seconds. An
+agent answers it on `127.0.0.1:4000` only (nothing is published): healthy
+while it is connected to its server, unhealthy after about 90 seconds without
+that connection. Agents up to 0.54.1 had no such endpoint and always showed
+as unhealthy in Docker.
+
+If another process already uses that port on the same network namespace (for
+example a SolidPing server next to the agent with `network_mode: host`), the
+agent logs `Agent health listener not started` and keeps running: set
+`SP_SERVER_LISTEN` to a free port, or disable the healthcheck.
 
 ### Keeping agents on the server's version
 
