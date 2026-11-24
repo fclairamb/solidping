@@ -275,3 +275,29 @@ func TestParseHTTPUnix(t *testing.T) {
 
 	r.Equal(checkerdef.CheckTypeHTTP, InferCheckType("http+unix:///run/app/app.sock:/health"))
 }
+
+// TestParseRedisPostgresUnix: redis+unix and postgres+unix URLs carry the
+// socket and the query (spec 2026-11-24-03).
+func TestParseRedisPostgresUnix(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	parsed, err := Parse("redis+unix:///run/redis/redis.sock?db=2")
+	r.NoError(err)
+	r.Equal(checkerdef.CheckTypeRedis, parsed.CheckType)
+	r.Equal("/run/redis/redis.sock", parsed.Socket)
+	r.Equal("db=2", parsed.Query)
+	r.Empty(parsed.Host)
+
+	parsed, err = Parse("postgres+unix:///var/run/postgresql/.s.PGSQL.5432?dbname=app&user=monitor")
+	r.NoError(err)
+	r.Equal(checkerdef.CheckTypePostgreSQL, parsed.CheckType)
+	r.Equal("/var/run/postgresql/.s.PGSQL.5432", parsed.Socket)
+	r.Equal("dbname=app&user=monitor", parsed.Query)
+
+	_, err = Parse("redis+unix://host/run/redis.sock")
+	r.Error(err, "no host on a socket URL")
+
+	r.Equal(checkerdef.CheckTypeRedis, InferCheckType("redis+unix:///run/redis/redis.sock"))
+}

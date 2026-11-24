@@ -2076,6 +2076,8 @@ host and port.
 |-------|-------|----------|
 | [TCP](#tcp) | `socket` | `unix:///run/app/app.sock` |
 | [HTTP](#http) | `unix_socket` | `http+unix:///run/app/app.sock:/health` |
+| [Redis](#redis) | `socket` | `redis+unix:///run/redis/redis.sock?db=0` |
+| [PostgreSQL](#postgresql) | `socket` (the socket file, e.g. `/var/run/postgresql/.s.PGSQL.5432`, not the directory) | `postgres+unix:///var/run/postgresql/.s.PGSQL.5432?dbname=app&user=monitor` |
 
 The feature is **off by default**. An operator turns it on by listing the
 sockets checks may reach in `checkers.unix_socket_paths`

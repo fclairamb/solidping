@@ -64,6 +64,11 @@ var schemeMapping = map[string]checkerdef.CheckType{
 	"http+unix": checkerdef.CheckTypeHTTP,
 	// https+unix is recognized only to be refused: no TLS over a local socket.
 	"https+unix": checkerdef.CheckTypeHTTP,
+	// redis+unix:///run/redis/redis.sock?db=0 and
+	// postgres+unix:///var/run/postgresql/.s.PGSQL.5432?dbname=app&user=monitor
+	// are redis / postgresql checks through a socket (spec 2026-11-24-03).
+	schemeRedisUnix:    checkerdef.CheckTypeRedis,
+	schemePostgresUnix: checkerdef.CheckTypePostgreSQL,
 }
 
 //nolint:gochecknoglobals // validDNSRecordTypes is a constant lookup map.
@@ -135,17 +140,10 @@ func (p *ParsedURL) parseByType(parsedURL *url.URL) error {
 		p.Query = parsedURL.RawQuery
 
 	case checkerdef.CheckTypeTCP:
-		if p.Scheme == "unix" {
-			return p.parseUnix(parsedURL)
-		}
+		return p.parseTCP(parsedURL)
 
-		if p.Host == "" {
-			return errMissingHost
-		}
-
-		if p.Port == 0 {
-			return errTCPRequiresPort
-		}
+	case checkerdef.CheckTypeRedis, checkerdef.CheckTypePostgreSQL:
+		return p.parseUnix(parsedURL)
 
 	case checkerdef.CheckTypeICMP:
 		if p.Host == "" {
@@ -166,6 +164,23 @@ func (p *ParsedURL) parseByType(parsedURL *url.URL) error {
 	return nil
 }
 
+// parseTCP handles tcp://, tcps:// and unix:// URLs.
+func (p *ParsedURL) parseTCP(parsedURL *url.URL) error {
+	if p.Scheme == "unix" {
+		return p.parseUnix(parsedURL)
+	}
+
+	if p.Host == "" {
+		return errMissingHost
+	}
+
+	if p.Port == 0 {
+		return errTCPRequiresPort
+	}
+
+	return nil
+}
+
 // parseUnix handles `unix:///run/app/app.sock` (and `unix:/run/app/app.sock`):
 // the path is the socket, and there is no host or port.
 func (p *ParsedURL) parseUnix(parsedURL *url.URL) error {
@@ -178,9 +193,16 @@ func (p *ParsedURL) parseUnix(parsedURL *url.URL) error {
 	}
 
 	p.Socket = parsedURL.Path
+	p.Query = parsedURL.RawQuery
 
 	return nil
 }
+
+// Schemes of the redis and postgres checks through a Unix socket.
+const (
+	schemeRedisUnix    = "redis+unix"
+	schemePostgresUnix = "postgres+unix"
+)
 
 // schemeHTTPUnix is the scheme of an http check through a Unix socket.
 const schemeHTTPUnix = "http+unix"

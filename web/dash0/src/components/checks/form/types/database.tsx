@@ -13,6 +13,12 @@ import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
 import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
+import {
+  SocketTargetSwitch,
+  socketRequired,
+  useShowTargetSwitch,
+  type SocketTargetMode,
+} from "./socket-target";
 
 const hostRequired = (host: string): FieldErrors =>
   host ? [] : [{ name: "host", message: validationMessage("hostRequired") }];
@@ -25,12 +31,25 @@ export interface SqlDbState {
   password: string;
   database: string;
   query: string;
+  // Unix socket target (postgresql only): `socket` replaces host and port.
+  targetMode: SocketTargetMode;
+  socket: string;
 }
 
 export const sqlDatabaseModule: CheckTypeModule<SqlDbState> = {
   types: ["postgresql", "mysql", "mssql", "oracle"],
-  ownedKeys: ["host", "port", "username", "password", "database", "query"],
+  ownedKeys: [
+    "host",
+    "port",
+    "socket",
+    "username",
+    "password",
+    "database",
+    "query",
+  ],
   fromConfig: (config) => ({
+    targetMode: getConfigField(config, "socket") ? "socket" : "host",
+    socket: getConfigField(config, "socket"),
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
     username: getConfigField(config, "username"),
@@ -40,46 +59,76 @@ export const sqlDatabaseModule: CheckTypeModule<SqlDbState> = {
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
-    if (state.host) cfg.host = state.host;
-    if (state.port) cfg.port = parseInt(state.port, 10);
+    const socketMode = state.targetMode === "socket";
+    if (socketMode) {
+      if (state.socket) cfg.socket = state.socket;
+    } else {
+      if (state.host) cfg.host = state.host;
+      if (state.port) cfg.port = parseInt(state.port, 10);
+    }
     if (state.username) cfg.username = state.username;
     if (state.password) cfg.password = state.password;
     if (state.database) cfg.database = state.database;
     if (state.query) cfg.query = state.query;
-    return { config: cfg, errors: hostRequired(state.host) };
+    return {
+      config: cfg,
+      errors: socketMode
+        ? socketRequired(state.socket)
+        : hostRequired(state.host),
+    };
   },
   Fields: SqlDbFields,
 };
 
-function SqlDbFields({ state, onChange }: CheckTypeFieldsProps<SqlDbState>) {
+function SqlDbFields({
+  state,
+  onChange,
+  errors,
+}: CheckTypeFieldsProps<SqlDbState>) {
   const { type } = useCheckFormFields();
   const { t } = useTranslation("checks");
   const isMysql = type === "mysql";
+  const switchShown = useShowTargetSwitch(state.targetMode);
+  const showSwitch = type === "postgresql" && switchShown;
+  const socketMode = showSwitch && state.targetMode === "socket";
   return (
     <>
-      <div className="space-y-2">
-        <Label>{t("form.host")}</Label>
-        <div className="flex gap-2">
-          <Input
-            id="host"
-            type="text"
-            placeholder="db.example.com"
-            value={state.host}
-            onChange={(e) => onChange({ ...state, host: e.target.value })}
-            className="flex-1"
-            data-testid="check-host-input"
-          />
-          <Input
-            id="port"
-            type="number"
-            placeholder={isMysql ? "3306" : "5432"}
-            value={state.port}
-            onChange={(e) => onChange({ ...state, port: e.target.value })}
-            className="w-24"
-            data-testid="check-port-input"
-          />
+      {showSwitch && (
+        <SocketTargetSwitch
+          prefix="postgres"
+          mode={state.targetMode}
+          socket={state.socket}
+          placeholder="/var/run/postgresql/.s.PGSQL.5432"
+          errors={errors}
+          onModeChange={(targetMode) => onChange({ ...state, targetMode })}
+          onSocketChange={(socket) => onChange({ ...state, socket })}
+        />
+      )}
+      {!socketMode && (
+        <div className="space-y-2">
+          <Label>{t("form.host")}</Label>
+          <div className="flex gap-2">
+            <Input
+              id="host"
+              type="text"
+              placeholder="db.example.com"
+              value={state.host}
+              onChange={(e) => onChange({ ...state, host: e.target.value })}
+              className="flex-1"
+              data-testid="check-host-input"
+            />
+            <Input
+              id="port"
+              type="number"
+              placeholder={isMysql ? "3306" : "5432"}
+              value={state.port}
+              onChange={(e) => onChange({ ...state, port: e.target.value })}
+              className="w-24"
+              data-testid="check-port-input"
+            />
+          </div>
         </div>
-      </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="username">{t("form.username")}</Label>
         <Input
@@ -133,12 +182,16 @@ export interface RedisState {
   port: string;
   password: string;
   database: string;
+  targetMode: SocketTargetMode;
+  socket: string;
 }
 
 export const redisModule: CheckTypeModule<RedisState> = {
   types: ["redis"],
-  ownedKeys: ["host", "port", "password", "database"],
+  ownedKeys: ["host", "port", "socket", "password", "database"],
   fromConfig: (config) => ({
+    targetMode: getConfigField(config, "socket") ? "socket" : "host",
+    socket: getConfigField(config, "socket"),
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
     password: getConfigField(config, "password"),
@@ -146,42 +199,71 @@ export const redisModule: CheckTypeModule<RedisState> = {
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
-    if (state.host) cfg.host = state.host;
-    if (state.port) cfg.port = parseInt(state.port, 10);
+    const socketMode = state.targetMode === "socket";
+    if (socketMode) {
+      if (state.socket) cfg.socket = state.socket;
+    } else {
+      if (state.host) cfg.host = state.host;
+      if (state.port) cfg.port = parseInt(state.port, 10);
+    }
     if (state.password) cfg.password = state.password;
     if (state.database) cfg.database = parseInt(state.database, 10);
-    return { config: cfg, errors: hostRequired(state.host) };
+    return {
+      config: cfg,
+      errors: socketMode
+        ? socketRequired(state.socket)
+        : hostRequired(state.host),
+    };
   },
   Fields: RedisFields,
 };
 
-function RedisFields({ state, onChange }: CheckTypeFieldsProps<RedisState>) {
+function RedisFields({
+  state,
+  onChange,
+  errors,
+}: CheckTypeFieldsProps<RedisState>) {
   const { t } = useTranslation("checks");
+  const showSwitch = useShowTargetSwitch(state.targetMode);
+  const socketMode = showSwitch && state.targetMode === "socket";
   return (
     <>
-      <div className="space-y-2">
-        <Label>{t("form.host")}</Label>
-        <div className="flex gap-2">
-          <Input
-            id="host"
-            type="text"
-            placeholder="redis.example.com"
-            value={state.host}
-            onChange={(e) => onChange({ ...state, host: e.target.value })}
-            className="flex-1"
-            data-testid="check-host-input"
-          />
-          <Input
-            id="port"
-            type="number"
-            placeholder="6379"
-            value={state.port}
-            onChange={(e) => onChange({ ...state, port: e.target.value })}
-            className="w-24"
-            data-testid="check-port-input"
-          />
+      {showSwitch && (
+        <SocketTargetSwitch
+          prefix="redis"
+          mode={state.targetMode}
+          socket={state.socket}
+          placeholder="/run/redis/redis.sock"
+          errors={errors}
+          onModeChange={(targetMode) => onChange({ ...state, targetMode })}
+          onSocketChange={(socket) => onChange({ ...state, socket })}
+        />
+      )}
+      {!socketMode && (
+        <div className="space-y-2">
+          <Label>{t("form.host")}</Label>
+          <div className="flex gap-2">
+            <Input
+              id="host"
+              type="text"
+              placeholder="redis.example.com"
+              value={state.host}
+              onChange={(e) => onChange({ ...state, host: e.target.value })}
+              className="flex-1"
+              data-testid="check-host-input"
+            />
+            <Input
+              id="port"
+              type="number"
+              placeholder="6379"
+              value={state.port}
+              onChange={(e) => onChange({ ...state, port: e.target.value })}
+              className="w-24"
+              data-testid="check-port-input"
+            />
+          </div>
         </div>
-      </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="password">{t("form.passwordOptional")}</Label>
         <Input
@@ -370,9 +452,12 @@ export const rabbitmqModule: CheckTypeModule<RabbitmqState> = {
     if (state.mode && state.mode !== "amqp") cfg.mode = state.mode;
 
     if (state.mode === "management") {
-      if (state.managementPort) cfg.managementPort = parseInt(state.managementPort, 10);
-      if (state.memoryUsedWarning) cfg.memoryUsedWarning = state.memoryUsedWarning;
-      if (state.memoryUsedCritical) cfg.memoryUsedCritical = state.memoryUsedCritical;
+      if (state.managementPort)
+        cfg.managementPort = parseInt(state.managementPort, 10);
+      if (state.memoryUsedWarning)
+        cfg.memoryUsedWarning = state.memoryUsedWarning;
+      if (state.memoryUsedCritical)
+        cfg.memoryUsedCritical = state.memoryUsedCritical;
       if (state.diskFreeWarning) cfg.diskFreeWarning = state.diskFreeWarning;
       if (state.diskFreeCritical) cfg.diskFreeCritical = state.diskFreeCritical;
     } else {
@@ -388,7 +473,10 @@ export const rabbitmqModule: CheckTypeModule<RabbitmqState> = {
   Fields: RabbitmqFields,
 };
 
-function RabbitmqFields({ state, onChange }: CheckTypeFieldsProps<RabbitmqState>) {
+function RabbitmqFields({
+  state,
+  onChange,
+}: CheckTypeFieldsProps<RabbitmqState>) {
   const { t } = useTranslation("checks");
   const isManagement = state.mode === "management";
 
@@ -412,7 +500,9 @@ function RabbitmqFields({ state, onChange }: CheckTypeFieldsProps<RabbitmqState>
               type="number"
               placeholder="15672"
               value={state.managementPort}
-              onChange={(e) => onChange({ ...state, managementPort: e.target.value })}
+              onChange={(e) =>
+                onChange({ ...state, managementPort: e.target.value })
+              }
               className="w-24"
               data-testid="check-rabbitmq-management-port-input"
             />
@@ -431,13 +521,21 @@ function RabbitmqFields({ state, onChange }: CheckTypeFieldsProps<RabbitmqState>
       </div>
       <div className="space-y-2">
         <Label htmlFor="rabbitmqMode">{t("rabbitmq.mode")}</Label>
-        <Select value={state.mode} onValueChange={(mode) => onChange({ ...state, mode })}>
-          <SelectTrigger id="rabbitmqMode" data-testid="check-rabbitmq-mode-select">
+        <Select
+          value={state.mode}
+          onValueChange={(mode) => onChange({ ...state, mode })}
+        >
+          <SelectTrigger
+            id="rabbitmqMode"
+            data-testid="check-rabbitmq-mode-select"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="amqp">{t("rabbitmq.modeAmqp")}</SelectItem>
-            <SelectItem value="management">{t("rabbitmq.modeManagement")}</SelectItem>
+            <SelectItem value="management">
+              {t("rabbitmq.modeManagement")}
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -492,54 +590,74 @@ function RabbitmqFields({ state, onChange }: CheckTypeFieldsProps<RabbitmqState>
         <>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="rabbitmqMemoryWarning">{t("rabbitmq.memoryWarning")}</Label>
+              <Label htmlFor="rabbitmqMemoryWarning">
+                {t("rabbitmq.memoryWarning")}
+              </Label>
               <Input
                 id="rabbitmqMemoryWarning"
                 type="text"
                 placeholder={t("rabbitmq.memoryWarningPlaceholder")}
                 value={state.memoryUsedWarning}
-                onChange={(e) => onChange({ ...state, memoryUsedWarning: e.target.value })}
+                onChange={(e) =>
+                  onChange({ ...state, memoryUsedWarning: e.target.value })
+                }
                 data-testid="check-rabbitmq-memory-warning-input"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="rabbitmqMemoryCritical">{t("rabbitmq.memoryCritical")}</Label>
+              <Label htmlFor="rabbitmqMemoryCritical">
+                {t("rabbitmq.memoryCritical")}
+              </Label>
               <Input
                 id="rabbitmqMemoryCritical"
                 type="text"
                 placeholder={t("rabbitmq.memoryCriticalPlaceholder")}
                 value={state.memoryUsedCritical}
-                onChange={(e) => onChange({ ...state, memoryUsedCritical: e.target.value })}
+                onChange={(e) =>
+                  onChange({ ...state, memoryUsedCritical: e.target.value })
+                }
                 data-testid="check-rabbitmq-memory-critical-input"
               />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">{t("rabbitmq.memoryThresholdHelp")}</p>
+          <p className="text-xs text-muted-foreground">
+            {t("rabbitmq.memoryThresholdHelp")}
+          </p>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="rabbitmqDiskWarning">{t("rabbitmq.diskWarning")}</Label>
+              <Label htmlFor="rabbitmqDiskWarning">
+                {t("rabbitmq.diskWarning")}
+              </Label>
               <Input
                 id="rabbitmqDiskWarning"
                 type="text"
                 placeholder="20GiB"
                 value={state.diskFreeWarning}
-                onChange={(e) => onChange({ ...state, diskFreeWarning: e.target.value })}
+                onChange={(e) =>
+                  onChange({ ...state, diskFreeWarning: e.target.value })
+                }
                 data-testid="check-rabbitmq-disk-warning-input"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="rabbitmqDiskCritical">{t("rabbitmq.diskCritical")}</Label>
+              <Label htmlFor="rabbitmqDiskCritical">
+                {t("rabbitmq.diskCritical")}
+              </Label>
               <Input
                 id="rabbitmqDiskCritical"
                 type="text"
                 placeholder="5GiB"
                 value={state.diskFreeCritical}
-                onChange={(e) => onChange({ ...state, diskFreeCritical: e.target.value })}
+                onChange={(e) =>
+                  onChange({ ...state, diskFreeCritical: e.target.value })
+                }
                 data-testid="check-rabbitmq-disk-critical-input"
               />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">{t("rabbitmq.diskThresholdHelp")}</p>
+          <p className="text-xs text-muted-foreground">
+            {t("rabbitmq.diskThresholdHelp")}
+          </p>
         </>
       )}
       <div className="space-y-3">

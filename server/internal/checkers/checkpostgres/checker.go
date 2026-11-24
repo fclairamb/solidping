@@ -110,11 +110,13 @@ func (c *PostgreSQLChecker) Execute(
 		checkerdef.OutputKeyPort: params.port,
 	}
 
-	if checkerdef.TunnelDialerFrom(ctx) != nil {
+	if cfg.Socket != "" {
+		output = map[string]any{"socket": cfg.Socket}
+	} else if checkerdef.TunnelDialerFrom(ctx) != nil {
 		output["tunneled"] = true
 	}
 
-	conn, err := openDB(ctx, &params.pqCfg)
+	conn, err := openDB(ctx, &params.pqCfg, cfg.Socket)
 	if err != nil {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
