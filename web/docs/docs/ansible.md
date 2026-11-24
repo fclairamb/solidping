@@ -20,11 +20,13 @@ Already on Terraform or OpenTofu? See the [provider](/terraform) instead.
 ## Authentication
 
 Create an organization-scoped personal access token (**Account → Tokens**, or
-`POST /api/v1/orgs/{org}/tokens`) and keep it in Ansible Vault:
+`POST /api/v1/orgs/{org}/tokens`) and keep it in Ansible Vault. Option A needs a token with write access to checks. Option B needs an
+**admin** token: `sp apply` and `sp checks diff` call the admin-only plan endpoints
+(`/checks/apply` and `/checks/export`), and a lower role is refused.
 
 ```yaml
 # group_vars/all/vault.yml (ansible-vault encrypt)
-solidping_token: "sp_..."
+solidping_token: "pat_..."
 ```
 
 ```yaml
@@ -84,6 +86,7 @@ which is exactly what `changed_when` needs, and `--dry-run` makes it safe in che
     SOLIDPING_URL: "{{ solidping_url }}"
     SOLIDPING_ORG: "{{ solidping_org }}"
   changed_when: false
+  check_mode: false
   no_log: true
 
 - name: Plan the changes
@@ -101,6 +104,14 @@ which is exactly what `changed_when` needs, and `--dry-run` makes it safe in che
     (sp_plan.stdout | from_json).updated > 0 or
     (sp_plan.stdout | from_json).deleted > 0
   changed_when: true
+
+- name: Report drift without changing anything
+  ansible.builtin.command: sp checks diff /etc/solidping/config.yaml
+  environment: *sp_env
+  register: sp_diff
+  check_mode: false
+  failed_when: sp_diff.rc > 1 or sp_diff.stdout.startswith('Error:')
+  changed_when: sp_diff.rc == 1
 ```
 
 ```yaml
@@ -119,8 +130,13 @@ checks:
 
 Two things worth knowing:
 
-- `sp checks diff <file>` exits `0` for no drift, `1` for drift and `2` or more on error, so
-  `failed_when: rc > 1` with `changed_when: rc == 1` turns it into a drift report.
+- `sp checks diff <file>` exits `0` for no drift, `1` for drift and `2` or more on most errors, so
+  `failed_when: rc > 1` with `changed_when: rc == 1` turns it into a drift report. A server that
+  cannot be reached also exits `1`, with an `Error: ...` line on stdout instead of the drift table,
+  which is why the task above also fails on a `1` whose output starts with `Error:`.
+  `check_mode: false` lets it run under `ansible-playbook --check`.
+- Under `--check` the template task does not write the file, so the plan and the diff describe the
+  file of the previous run. Run `--diff` on the template task to see what would change in it.
 - `sp apply --prune` deletes what the manifest no longer lists. Leave it out until the manifest is
   complete.
 
