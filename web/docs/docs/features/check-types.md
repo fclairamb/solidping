@@ -1400,6 +1400,27 @@ docker://hostname:2375
 | TLS | Enable TLS | `true` / `false` |
 | Timeout | Connection timeout | `10s` |
 
+**Local socket in a container.** The default host is
+`unix:///var/run/docker.sock`. The SolidPing image runs as uid `65532`, and the
+host's socket is usually owned by `root:docker` with mode `0660`, so mounting it
+is not enough: the check fails with `permission denied`. Add the socket's group
+to the container (server or [private location agent](./private-locations.md#docker-checks-through-the-local-socket)):
+
+```bash
+stat -c %g /var/run/docker.sock   # e.g. 988
+```
+
+```yaml
+services:
+  solidping:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    group_add:
+      - "988"
+```
+
+With `docker run`, use `--group-add 988`.
+
 ### systemd unit {#systemd}
 
 Report the state of a systemd unit (a service, a timer, a socket, a mount...)
