@@ -462,6 +462,8 @@
     "snmpDescription": "Monitor devices via SNMP",
     "docker": "Docker",
     "dockerDescription": "Monitor Docker container health",
+    "systemd": "systemd unit",
+    "systemdDescription": "Check the state of a systemd unit",
     "browser": "Browser",
     "browserDescription": "Monitor pages with headless Chrome",
     "freebox_line": "Freebox Line",
@@ -1328,7 +1330,12 @@
     "burstTtl": "TTL (hops)",
     "burstMaxLoss": "Max packet loss (%)",
     "burstMaxAvgRtt": "Max average round trip (ms)",
-    "burstLossCountHint": "With 1 packet, loss is either 0% or 100%. Send at least 10 packets for a useful percentage."
+    "burstLossCountHint": "With 1 packet, loss is either 0% or 100%. Send at least 10 packets for a useful percentage.",
+    "targetMode": "Target",
+    "targetHostPort": "Host and port",
+    "targetSocket": "Unix socket",
+    "socketPath": "Socket path",
+    "socketHelp": "An absolute path to a Unix socket on the host that runs the check. The server only connects to the paths its operator allowed."
   },
   "prometheus": {
     "mode": "Mode",
@@ -1533,7 +1540,10 @@
     "vendorStatusHttps": "Status page URL must start with https://",
     "pluginInvalidJson": "The config is not valid JSON: {{detail}}",
     "pluginNotAnObject": "The config must be a JSON object.",
-    "fieldRequired": "This field is required"
+    "fieldRequired": "This field is required",
+    "socketRequired": "Socket path is required",
+    "systemdUnitRequired": "Unit name is required",
+    "systemdUnitInvalid": "Unit name may only contain letters, digits and :_.@- (at most 256 characters, not starting with -)"
   },
   "health": {
     "format": "Health format",
@@ -1899,5 +1909,12 @@
       "partial_one": "{{count}} check could not be deleted",
       "partial_other": "{{count}} checks could not be deleted"
     }
+  },
+  "systemd": {
+    "unit": "Unit",
+    "unitHelp": "Name of the unit on the host SolidPing runs on. A name without a suffix gets .service appended (nginx → nginx.service); timers, sockets and mounts work too.",
+    "expectedState": "Expected state",
+    "state_active": "Active (running)",
+    "state_inactive": "Inactive (must not run)"
   }
 }

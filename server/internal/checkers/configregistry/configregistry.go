@@ -56,6 +56,7 @@ import (
 	snmpconfig "github.com/fclairamb/solidping/server/internal/checkers/checksnmp/config"
 	sshconfig "github.com/fclairamb/solidping/server/internal/checkers/checkssh/config"
 	sslconfig "github.com/fclairamb/solidping/server/internal/checkers/checkssl/config"
+	systemdconfig "github.com/fclairamb/solidping/server/internal/checkers/checksystemd/config"
 	tcpconfig "github.com/fclairamb/solidping/server/internal/checkers/checktcp/config"
 	udpconfig "github.com/fclairamb/solidping/server/internal/checkers/checkudp/config"
 	vendorstatusconfig "github.com/fclairamb/solidping/server/internal/checkers/checkvendorstatus/config"
@@ -136,6 +137,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &snmpconfig.SNMPConfig{}, true
 	case checkerdef.CheckTypeDocker:
 		return &dockerconfig.DockerConfig{}, true
+	case checkerdef.CheckTypeSystemd:
+		return &systemdconfig.SystemdConfig{}, true
 	case checkerdef.CheckTypeBrowser:
 		return &browserconfig.BrowserConfig{}, true
 	case checkerdef.CheckTypeFreeboxLine:
@@ -258,6 +261,8 @@ func ValidateSpec(checkType checkerdef.CheckType, spec *checkerdef.CheckSpec) er
 		return snmpconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeDocker:
 		return dockerconfig.ValidateSpec(spec)
+	case checkerdef.CheckTypeSystemd:
+		return systemdconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeBrowser:
 		return browserconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeFreeboxLine:

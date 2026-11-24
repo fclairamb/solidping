@@ -22,11 +22,17 @@ import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
 import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
+import { useLocalSocketOffered } from "../local-socket";
 import { PortChips, PortInput, PortRangeError } from "../port-input";
 import { applyHostInput } from "./ports";
 
 const hostRequired = (host: string): FieldErrors =>
   host ? [] : [{ name: "host", message: validationMessage("hostRequired") }];
+
+const socketRequired = (socket: string): FieldErrors =>
+  socket
+    ? []
+    : [{ name: "socket", message: validationMessage("socketRequired") }];
 
 // ── TCP / UDP ──
 
@@ -46,9 +52,15 @@ export const PAYLOAD_ENCODINGS: readonly PayloadEncoding[] = [
  */
 export type ExpectMode = "contains" | "regex";
 
+/** What a tcp check connects to (spec 2026-11-24-01). */
+export type TargetMode = "host" | "socket";
+
 export interface HostPortState {
   host: string;
   port: string;
+  // Unix socket target (tcp only): `socket` replaces host and port.
+  targetMode: TargetMode;
+  socket: string;
   sendData: string;
   sendEncoding: PayloadEncoding;
   expectMode: ExpectMode;
@@ -66,6 +78,7 @@ export const tcpModule: CheckTypeModule<HostPortState> = {
   ownedKeys: [
     "host",
     "port",
+    "socket",
     "send_data",
     "send_encoding",
     "expect_data",
@@ -76,9 +89,12 @@ export const tcpModule: CheckTypeModule<HostPortState> = {
     const sendData = getConfigField(config, "send_data");
     const expectPattern = getConfigField(config, "expect_pattern");
     const expectData = getConfigField(config, "expect_data");
+    const socket = getConfigField(config, "socket");
     return {
       host: getConfigField(config, "host"),
       port: getConfigField(config, "port"),
+      targetMode: socket ? "socket" : "host",
+      socket,
       sendData,
       // A STORED payload with no explicit encoding is `text` — that is the
       // backend default and changing it would change what the check sends.
@@ -98,8 +114,13 @@ export const tcpModule: CheckTypeModule<HostPortState> = {
   },
   toConfig: (state) => {
     const cfg: CheckConfig = {};
-    if (state.host) cfg.host = state.host;
-    if (state.port) cfg.port = parseInt(state.port, 10);
+    const socketMode = state.targetMode === "socket";
+    if (socketMode) {
+      if (state.socket) cfg.socket = state.socket;
+    } else {
+      if (state.host) cfg.host = state.host;
+      if (state.port) cfg.port = parseInt(state.port, 10);
+    }
     if (state.sendData) {
       cfg.send_data = state.sendData;
       // `text` is the backend default; writing it out would be noise.
@@ -115,7 +136,10 @@ export const tcpModule: CheckTypeModule<HostPortState> = {
         }
       }
     }
-    return { config: cfg, errors: hostRequired(state.host) };
+    return {
+      config: cfg,
+      errors: socketMode ? socketRequired(state.socket) : hostRequired(state.host),
+    };
   },
   Fields: TcpFields,
 };
@@ -158,47 +182,106 @@ function TcpFields({
 }: CheckTypeFieldsProps<HostPortState>) {
   const { t } = useTranslation("checks");
   const { type } = useCheckFormFields();
+  const socketOffered = useLocalSocketOffered();
+  // A stored socket is always shown, even where the target is no longer
+  // offered: hiding it would hide the check's own config.
+  const showTargetSwitch =
+    type === "tcp" && (socketOffered || state.targetMode === "socket");
+  const socketMode = showTargetSwitch && state.targetMode === "socket";
   return (
     <>
-      <div className="space-y-2">
-        <Label>{t("form.host")}</Label>
-        <div className="flex gap-2">
-          <Input
-            id="host"
-            type="text"
-            placeholder={type === "udp" ? "8.8.8.8" : "example.com"}
-            value={state.host}
-            onChange={(e) => onChange(applyHostInput(state, e.target.value))}
-            className={cn(
-              "flex-1",
-              getFieldError(errors, "host") && "border-destructive",
-            )}
-            data-testid="check-host-input"
-          />
-          <PortInput
-            placeholder={type === "udp" ? "53" : "443"}
-            value={state.port}
-            onChange={(port) => onChange({ ...state, port })}
-            invalid={Boolean(getFieldError(errors, "port"))}
-          />
+      {showTargetSwitch && (
+        <div className="space-y-2">
+          <Label htmlFor="tcpTargetMode">{t("network.targetMode")}</Label>
+          <Select
+            value={state.targetMode}
+            onValueChange={(mode) =>
+              onChange({ ...state, targetMode: mode as TargetMode })
+            }
+          >
+            <SelectTrigger
+              id="tcpTargetMode"
+              className="w-56"
+              data-testid="tcp-target-mode"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="host" data-testid="tcp-target-mode-host">
+                {t("network.targetHostPort")}
+              </SelectItem>
+              <SelectItem value="socket" data-testid="tcp-target-mode-socket">
+                {t("network.targetSocket")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <PortRangeError value={state.port} />
-        <PortChips
-          type={type}
-          value={state.port}
-          onSelect={(port) => onChange({ ...state, port })}
-        />
-        {getFieldError(errors, "host") && (
-          <p className="text-xs text-destructive">
-            {getFieldError(errors, "host")}
+      )}
+      {socketMode ? (
+        <div className="space-y-2">
+          <Label htmlFor="tcpSocketPath">{t("network.socketPath")}</Label>
+          <Input
+            id="tcpSocketPath"
+            type="text"
+            placeholder="/run/app/app.sock"
+            value={state.socket}
+            onChange={(e) => onChange({ ...state, socket: e.target.value })}
+            className={cn(
+              "font-mono",
+              getFieldError(errors, "socket") && "border-destructive",
+            )}
+            data-testid="tcp-socket-path"
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("network.socketHelp")}
           </p>
-        )}
-        {getFieldError(errors, "port") && (
-          <p className="text-xs text-destructive">
-            {getFieldError(errors, "port")}
-          </p>
-        )}
-      </div>
+          {getFieldError(errors, "socket") && (
+            <p className="text-xs text-destructive" data-testid="tcp-socket-error">
+              {getFieldError(errors, "socket")}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Label>{t("form.host")}</Label>
+          <div className="flex gap-2">
+            <Input
+              id="host"
+              type="text"
+              placeholder={type === "udp" ? "8.8.8.8" : "example.com"}
+              value={state.host}
+              onChange={(e) => onChange(applyHostInput(state, e.target.value))}
+              className={cn(
+                "flex-1",
+                getFieldError(errors, "host") && "border-destructive",
+              )}
+              data-testid="check-host-input"
+            />
+            <PortInput
+              placeholder={type === "udp" ? "53" : "443"}
+              value={state.port}
+              onChange={(port) => onChange({ ...state, port })}
+              invalid={Boolean(getFieldError(errors, "port"))}
+            />
+          </div>
+          <PortRangeError value={state.port} />
+          <PortChips
+            type={type}
+            value={state.port}
+            onSelect={(port) => onChange({ ...state, port })}
+          />
+          {getFieldError(errors, "host") && (
+            <p className="text-xs text-destructive">
+              {getFieldError(errors, "host")}
+            </p>
+          )}
+          {getFieldError(errors, "port") && (
+            <p className="text-xs text-destructive">
+              {getFieldError(errors, "port")}
+            </p>
+          )}
+        </div>
+      )}
       <CollapsibleSection
         title={t("network.payloadReply")}
         summary={t("network.payloadReplySummary")}

@@ -159,6 +159,7 @@ func NewHandler(
 	if cfg != nil {
 		checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
 		checksSvc.SetEnvRefAllow(cfg.EnvRefAllowed)
+		checksSvc.SetLocalSocketAllowlist(cfg.Checkers.UnixSocketPaths)
 	}
 
 	handler := &Handler{

@@ -11,10 +11,12 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"strconv"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
 )
 
 const (
@@ -29,6 +31,12 @@ const (
 
 // MongoDBConfig holds the configuration for MongoDB health checks.
 type MongoDBConfig struct {
+	// URL is only read, to expand a `mongodb+unix:///path` quick-create URL into the
+	// socket; it is never written back.
+	URL string `json:"url,omitempty"`
+	// Socket is the Unix socket file the check connects to instead of
+	// host:port (spec 2026-11-24-04).
+	Socket   string        `json:"socket,omitempty"`
 	Host     string        `json:"host"`
 	Port     int           `json:"port,omitempty"`
 	Username string        `json:"username,omitempty"`
@@ -37,8 +45,85 @@ type MongoDBConfig struct {
 	Timeout  time.Duration `json:"timeout,omitempty"`
 }
 
+// configKeySocket is the config key of the Unix socket path.
+const configKeySocket = "socket"
+
+// LocalSocket implements checkerdef.LocalSocketTarget.
+func (c *MongoDBConfig) LocalSocket() (string, string) {
+	return configKeySocket, c.Socket
+}
+
+// SchemaExclusiveGroups implements checkerdef.SchemaExclusiveGrouper: the
+// check targets either a host (with its port) or a Unix socket.
+func (c *MongoDBConfig) SchemaExclusiveGroups() [][]string {
+	return [][]string{{configKeySocket, checkerdef.OutputKeyHost}}
+}
+
+// SchemaBaselines implements checkerdef.SchemaBaseliner: the socket shape.
+func (c *MongoDBConfig) SchemaBaselines() []map[string]any {
+	return []map[string]any{{configKeySocket: "/tmp/mongodb-27017.sock"}}
+}
+
+// SchemaNotes implements checkerdef.SchemaNoter.
+func (c *MongoDBConfig) SchemaNotes() []string {
+	return []string{
+		"`socket` (an absolute Unix socket path, also set by a `mongodb+unix:///path` URL) " +
+			"replaces `host` and `port`; it cannot be combined with them. The server only dials " +
+			"paths listed in its `checkers.unix_socket_paths` setting.",
+	}
+}
+
+// expandUnixURL rewrites a `mongodb+unix://` url into the socket plus the database and username.
+func (c *MongoDBConfig) expandUnixURL(configMap map[string]any) error {
+	if c.URL == "" {
+		return nil
+	}
+
+	parsed, err := urlparse.Parse(c.URL)
+	if err != nil || parsed.Socket == "" || parsed.CheckType != checkerdef.CheckTypeMongoDB {
+		return checkerdef.NewConfigError("url", "must be a mongodb+unix:///path/to/socket URL")
+	}
+
+	if socket, _ := configMap[configKeySocket].(string); socket != "" {
+		return checkerdef.NewConfigError(configKeySocket, "socket and url are mutually exclusive")
+	}
+
+	c.Socket = parsed.Socket
+
+	query, err := url.ParseQuery(parsed.Query)
+	if err != nil {
+		return checkerdef.NewConfigError("url", err.Error())
+	}
+
+	if db := query.Get("db"); db != "" {
+		c.Database = db
+	}
+
+	if user := query.Get("user"); user != "" {
+		c.Username = user
+	}
+
+	c.URL = ""
+
+	return nil
+}
+
 // FromMap populates the configuration from a map.
+//
+//nolint:cyclop // Configuration parsing requires checking multiple field types
 func (c *MongoDBConfig) FromMap(configMap map[string]any) error {
+	if urlStr, ok := configMap["url"].(string); ok {
+		c.URL = urlStr
+	} else if configMap["url"] != nil {
+		return checkerdef.NewConfigError("url", "must be a string")
+	}
+
+	if socket, ok := configMap[configKeySocket].(string); ok {
+		c.Socket = socket
+	} else if configMap[configKeySocket] != nil {
+		return checkerdef.NewConfigError(configKeySocket, "must be a string")
+	}
+
 	if host, ok := configMap["host"].(string); ok {
 		c.Host = host
 	} else if configMap["host"] != nil {
@@ -82,13 +167,17 @@ func (c *MongoDBConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("timeout", "must be a string")
 	}
 
-	return nil
+	return c.expandUnixURL(configMap)
 }
 
 // GetConfig returns the configuration as a map.
 func (c *MongoDBConfig) GetConfig() map[string]any {
-	cfg := map[string]any{
-		"host": c.Host,
+	cfg := map[string]any{}
+
+	if c.Socket != "" {
+		cfg[configKeySocket] = c.Socket
+	} else {
+		cfg["host"] = c.Host
 	}
 
 	if c.Port != 0 && c.Port != DefaultPort {
@@ -116,7 +205,15 @@ func (c *MongoDBConfig) GetConfig() map[string]any {
 
 // Validate checks if the configuration is valid.
 func (c *MongoDBConfig) Validate() error {
-	if c.Host == "" {
+	if c.Socket != "" {
+		if c.Host != "" || c.Port != 0 {
+			return checkerdef.NewConfigError(configKeySocket, "socket and host/port are mutually exclusive")
+		}
+
+		if err := checkerdef.ValidateLocalSocketPath(c.Socket); err != nil {
+			return checkerdef.NewConfigError(configKeySocket, err.Error())
+		}
+	} else if c.Host == "" {
 		return checkerdef.NewRequiredConfigError("host")
 	}
 
@@ -135,6 +232,16 @@ func (c *MongoDBConfig) Validate() error {
 
 // BuildURI builds a MongoDB connection URI from the configuration.
 func (c *MongoDBConfig) BuildURI() string {
+	if c.Socket != "" {
+		// The host is a placeholder: the checker's dialer ignores it and dials
+		// the socket through the shared gates.
+		if c.Username != "" && c.Password != "" {
+			return fmt.Sprintf("mongodb://%s:%s@localhost", c.Username, c.Password)
+		}
+
+		return "mongodb://localhost"
+	}
+
 	port := c.Port
 	if port == 0 {
 		port = DefaultPort

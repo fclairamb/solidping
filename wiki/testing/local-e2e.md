@@ -31,6 +31,7 @@ SP_RUNMODE=test SP_DB_RESET=true SP_DB_TYPE=postgres \
   PORT=4300 SP_DB_MIGRATION_GUARD_MODE=warn \
   SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE=0 SP_SERVER_RATE_LIMITING_MAX_CONCURRENT=0 \
   SP_AUTH_REGISTRATION_EMAIL_PATTERN='.*' SP_AUTH_AUTO_PERSONAL_ORG=true SP_PLUGINS_DIR="$PWD/plugins" \
+  SP_CHECKERS_UNIX_SOCKET_PATHS=/tmp/solidping-e2e-sockets/ \
   ./solidping serve > /tmp/e2e-sidecar/server.log 2>&1 &
 echo $! > /tmp/e2e-sidecar/pid
 curl -s http://localhost:4300/d/ | grep -o '<title>[^<]*</title>'   # must say SolidPing
@@ -58,7 +59,9 @@ gives CI's retries. `playwright.config.ts` and `global-setup.ts` both honour
    `SP_AUTH_REGISTRATION_EMAIL_PATTERN='.*'`, `confirm-registration-no-org.spec.ts`
    cannot register, and setting it at runtime does nothing (read once at boot). Without
    `SP_AUTH_AUTO_PERSONAL_ORG=true`, that spec lands on `/no-org` instead of a personal
-   org, and the `/no-org` specs see a join card they expect hidden. When a
+   org, and the `/no-org` specs see a join card they expect hidden. Without
+   `SP_CHECKERS_UNIX_SOCKET_PATHS`, `check-tcp-socket.spec.ts` finds no socket target
+   on the tcp form. When a
    suite is red locally and green in CI, diff your server env against
    `.github/workflows/ci.yml` before reading any application code.
 4. **Force Postgres.** `SP_RUNMODE=test` with no `SP_DB_TYPE` can end up on SQLite,

@@ -37,3 +37,13 @@ type SchemaExclusiveGrouper interface {
 	// required config keys (json tag names). Return nil when there are none.
 	SchemaExclusiveGroups() [][]string
 }
+
+// SchemaBaseliner is implemented by a config with a valid shape its sample
+// configs do not show — a `socket` target in place of host/port, for
+// instance (spec 2026-11-24-01). The generator probes required keys against
+// every valid config it knows, so without this extra baseline it would mark
+// `port` required even though a socket config has none.
+type SchemaBaseliner interface {
+	// SchemaBaselines returns extra configs Validate() accepts.
+	SchemaBaselines() []map[string]any
+}

@@ -10,6 +10,10 @@ import (
 type ActivationResolver struct {
 	serverEnabled  map[CheckType]bool
 	deploymentMode string
+	// localSocketOnServer: this server's own workers may dial a Unix socket
+	// (a non-empty checkers.unix_socket_paths, and not SaaS). The paths are
+	// never exposed.
+	localSocketOnServer bool
 }
 
 // NewActivationResolver creates a resolver from the server-level checkers
@@ -40,7 +44,11 @@ func NewActivationResolver(cfg *config.CheckersConfig, deploymentMode string) *A
 		}
 	}
 
-	return &ActivationResolver{serverEnabled: enabledMap, deploymentMode: deploymentMode}
+	return &ActivationResolver{
+		serverEnabled:       enabledMap,
+		deploymentMode:      deploymentMode,
+		localSocketOnServer: len(cfg.UnixSocketPaths) > 0 && deploymentMode != config.DeploymentModeSaaS,
+	}
 }
 
 // IsTypeEnabled returns true if the check type is enabled at both server and org level.
@@ -98,6 +106,7 @@ func (r *ActivationResolver) ListAllWithStatus(orgDisabled []string) []CheckType
 		}
 
 		status.Advisory = dockerAdvisoryFor(all[idx].Type, r.deploymentMode)
+		status.LocalSocketOnServer = all[idx].SupportsLocalSocket && r.localSocketOnServer
 
 		result = append(result, status)
 	}
@@ -113,15 +122,15 @@ func (r *ActivationResolver) ListAllWithStatus(orgDisabled []string) []CheckType
 // hide `docker` in SaaS mode: doing that would also be wrong for an org that
 // does have a private location. Instead it stays listed and enabled, with an
 // advisory string spelling out the rule that checks.Service.
-// validateDockerDeploymentConfig actually enforces, so the dashboard/MCP
+// validateHostLocalDeploymentConfig actually enforces, so the dashboard/MCP
 // caller can explain the constraint up front instead of only after a
 // rejected create.
 func dockerAdvisoryFor(checkType CheckType, deploymentMode string) string {
-	if checkType != CheckTypeDocker || deploymentMode != config.DeploymentModeSaaS {
+	if !IsHostLocalType(checkType) || deploymentMode != config.DeploymentModeSaaS {
 		return ""
 	}
 
-	return "On this deployment, docker checks only run when pinned to one of your organization's " +
+	return "On this deployment, " + string(checkType) + " checks only run when pinned to one of your organization's " +
 		"private locations (an agent in your own network) — shared regions reject them."
 }
 
@@ -135,6 +144,12 @@ type CheckTypeStatus struct {
 	// docker in SaaS mode requires a private-location placement). Empty when
 	// there is nothing to say.
 	Advisory string `json:"advisory,omitempty"`
+	// LocalSocketOnServer reports that this server's own workers accept a
+	// Unix socket target for this type (spec 2026-11-24-01): the type
+	// supports one, the server allowlist is not empty and the deployment is
+	// not SaaS. A check pinned to private locations may use a socket either
+	// way (the agent's allowlist decides).
+	LocalSocketOnServer bool `json:"localSocketOnServer"`
 }
 
 // resolveServerEnabled applies the config precedence rules to determine server-enabled types.

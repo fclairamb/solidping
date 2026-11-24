@@ -38,8 +38,20 @@ func buildPQConfig(cfg *PostgreSQLConfig, timeout time.Duration) pq.Config {
 		sslMode = defaultSSLMode
 	}
 
+	host, sslModeOverride := cfg.Host, ""
+	if cfg.Socket != "" {
+		// pq's own socket form (a directory host) is never used to connect:
+		// the dialer below ignores the address and dials cfg.Socket through
+		// the shared gates. Host only has to look like a socket directory.
+		host, sslModeOverride = filepath.Dir(cfg.Socket), "disable"
+	}
+
+	if sslModeOverride != "" {
+		sslMode = sslModeOverride
+	}
+
 	return pq.Config{
-		Host:     cfg.Host,
+		Host:     host,
 		Port:     uint16(port),
 		User:     cfg.Username,
 		Password: cfg.Password,
@@ -62,10 +74,17 @@ func buildPQConfig(cfg *PostgreSQLConfig, timeout time.Duration) pq.Config {
 // through the tunnel dialer, or the egress guard under an enforcing policy (spec
 // 2026-09-25-19); without either it keeps lib/pq's default dialer. The driver
 // negotiates TLS above this dialer either way.
-func openDB(ctx context.Context, pqCfg *pq.Config) (*sql.DB, error) {
+func openDB(ctx context.Context, pqCfg *pq.Config, socket string) (*sql.DB, error) {
 	connector, err := pq.NewConnectorConfig(*pqCfg)
 	if err != nil {
 		return nil, err
+	}
+
+	if socket != "" {
+		// Unix socket (spec 2026-11-24-03): every gate lives in the shared dialer.
+		connector.Dialer(pqTunnelDialer{ctx: ctx, dialer: checkerdef.LocalSocketDialer(ctx, socket, pqCfg.ConnectTimeout)})
+
+		return sql.OpenDB(connector), nil
 	}
 
 	if dialer := checkerdef.OutboundDialer(ctx); dialer != nil {

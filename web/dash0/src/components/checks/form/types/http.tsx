@@ -31,6 +31,7 @@ import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
 import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
+import { useLocalSocketOffered } from "../local-socket";
 
 export type HttpVersion = "1.1" | "2" | "3";
 
@@ -86,6 +87,9 @@ export interface HttpState {
   // material. Only `true` is ever written to config, mirroring the server's
   // omit-at-default GetConfig.
   captureFailureResponse: boolean;
+  // Unix socket the request is sent through ("" = none). The url keeps its
+  // role: path and query are the request, host the Host header.
+  unixSocket: string;
   // Per-section dirty flags. Secrets are never returned by GET, so an untouched
   // section's inputs are empty and MUST NOT be serialized — omitting the keys is
   // what makes the server's preserve-absent-secrets merge keep the stored
@@ -242,6 +246,7 @@ export function httpFromConfig(config: CheckConfig): HttpState {
     expectedFinalUrl,
     httpVersion: seedHttpVersion(config.httpVersion),
     captureFailureResponse,
+    unixSocket: getConfigField(config, "unix_socket"),
     jsonPathAssertions: seedJsonPathAssertions(config),
     bodyAssertions: seedBodyAssertions(config),
     headerAssertions: seedHeaderAssertions(config),
@@ -312,6 +317,7 @@ export function httpToConfig(state: HttpState): {
   if (state.httpVersion !== "1.1") cfg.httpVersion = state.httpVersion;
   // Written only when opted in, under the canonical snake_case key.
   if (state.captureFailureResponse) cfg.capture_failure_response = true;
+  if (state.unixSocket.trim() !== "") cfg.unix_socket = state.unixSocket.trim();
   // Not a secret field (see HttpState.jsonPathAssertions), so — like
   // expectedStatusCodes above — omitting the key is itself what clears a
   // stored value: the server's PATCH-merge drops any public key absent from
@@ -642,9 +648,38 @@ export function HttpOptionsBody({
   assertions,
 }: CheckTypeFieldsProps<HttpState> & { assertions: boolean }) {
   const { t } = useTranslation("checks");
-  const { tunneled } = useCheckFormFields();
+  const { tunneled, type } = useCheckFormFields();
+  const socketOffered = useLocalSocketOffered();
+  // A stored socket is always shown, even where it is no longer offered.
+  const showSocket =
+    type === "http" && (socketOffered || state.unixSocket !== "");
   return (
     <div className="space-y-3">
+      {showSocket && (
+        <div className="space-y-2">
+          <Label htmlFor="http-unix-socket">{t("network.socketPath")}</Label>
+          <Input
+            id="http-unix-socket"
+            type="text"
+            placeholder="/run/app/app.sock"
+            value={state.unixSocket}
+            onChange={(e) => onChange({ ...state, unixSocket: e.target.value })}
+            className={cn(
+              "font-mono",
+              getFieldError(errors, "unix_socket") && "border-destructive",
+            )}
+            data-testid="http-unix-socket"
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("network.socketHelp")}
+          </p>
+          {getFieldError(errors, "unix_socket") && (
+            <p className="text-xs text-destructive">
+              {getFieldError(errors, "unix_socket")}
+            </p>
+          )}
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="http-version">{t("http.httpVersion")}</Label>
         <Select
@@ -915,6 +950,7 @@ export function httpOptionsSummary(state: HttpState): {
   if (state.followRedirects && state.expectedFinalUrl.trim() !== "")
     parts.push("final URL asserted");
   if (state.captureFailureResponse) parts.push("failure response captured");
+  if (state.unixSocket.trim() !== "") parts.push("Unix socket");
   if (state.jsonPathAssertions) parts.push("JSON assertions");
   if (state.headerAssertions) parts.push("header assertions");
   if (state.bodyAssertions) parts.push("body assertions");
@@ -954,6 +990,7 @@ export const httpModule: CheckTypeModule<HttpState> = {
     "httpVersion",
     "capture_failure_response",
     "captureFailureResponse",
+    "unix_socket",
     "jsonPathAssertions",
     "json_path_assertions",
     "bodyAssertions",

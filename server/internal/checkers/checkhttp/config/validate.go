@@ -150,6 +150,10 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 		return err
 	}
 
+	if err := validateUnixSocket(cfg, spec.Config); err != nil {
+		return err
+	}
+
 	// Validate SecretHeaders names
 	for k := range cfg.SecretHeaders {
 		if k == "" {
@@ -209,6 +213,35 @@ func validateExpectedFinalURL(cfg *HTTPConfig) error {
 			return checkerdef.NewConfigError("expectedFinalUrl",
 				"host differs from the check URL, which redirectHostPolicy same-host can never reach")
 		}
+	}
+
+	return nil
+}
+
+// validateUnixSocket rejects what makes no sense on a local socket: an https
+// URL (no TLS over a socket), an IP version pin, HTTP/2 or HTTP/3, and an SSH
+// tunnel. The path rules and the allowlist are the save path's (see
+// checkerdef.LocalSocketAllowed).
+func validateUnixSocket(cfg *HTTPConfig, raw map[string]any) error {
+	if cfg.UnixSocket == "" {
+		return nil
+	}
+
+	if strings.HasPrefix(cfg.URL, "https://") {
+		return checkerdef.NewConfigError("url", "must be http:// with unix_socket: there is no TLS over a local socket")
+	}
+
+	if version, _ := raw[checkerdef.IPVersionConfigKey].(string); version != "" && version != "auto" {
+		return checkerdef.NewConfigError(checkerdef.IPVersionConfigKey, "cannot be combined with unix_socket")
+	}
+
+	if cfg.HTTPVersion != "" && cfg.HTTPVersion != "1.1" {
+		return checkerdef.NewConfigError(checkerdef.HTTPVersionConfigKey, "only 1.1 is available with unix_socket")
+	}
+
+	if _, tunneled := checkerdef.TunnelCheckUIDFrom(raw); tunneled {
+		return checkerdef.NewConfigError(checkerdef.TunnelCheckUIDConfigKey,
+			checkerdef.ErrLocalSocketTunneled.Error())
 	}
 
 	return nil

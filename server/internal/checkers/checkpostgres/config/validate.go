@@ -31,12 +31,18 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 		database = DefaultDatabase
 	}
 
+	name, slugTarget := fmt.Sprintf("%s:%d/%s", cfg.Host, port, database), cfg.Host
+	if cfg.Socket != "" {
+		name = fmt.Sprintf("%s/%s", cfg.Socket, database)
+		slugTarget = strings.Trim(strings.NewReplacer("/", "-", ".", "-").Replace(cfg.Socket), "-")
+	}
+
 	if spec.Name == "" {
-		spec.Name = fmt.Sprintf("%s:%d/%s", cfg.Host, port, database)
+		spec.Name = name
 	}
 
 	if spec.Slug == "" {
-		spec.Slug = "postgresql-" + strings.ReplaceAll(cfg.Host, ".", "-")
+		spec.Slug = "postgresql-" + strings.ReplaceAll(slugTarget, ".", "-")
 	}
 
 	return nil

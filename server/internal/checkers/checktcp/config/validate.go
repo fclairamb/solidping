@@ -17,18 +17,12 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 		return err
 	}
 
-	// Validate Host
-	if cfg.Host == "" {
-		return checkerdef.NewRequiredConfigError("host")
-	}
-
-	// Validate Port
-	if cfg.Port == 0 {
-		return checkerdef.NewRequiredConfigError("port")
-	}
-
-	if cfg.Port < 1 || cfg.Port > 65535 {
-		return checkerdef.NewConfigErrorf("port", "must be between 1 and 65535, got %d", cfg.Port)
+	if cfg.Socket != "" {
+		if err := validateSocket(cfg); err != nil {
+			return err
+		}
+	} else if err := validateHostPort(cfg); err != nil {
+		return err
 	}
 
 	// Validate Timeout (> 0 and <= 30s) - check the original value if set
@@ -43,7 +37,49 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 	}
 
 	if spec.Slug == "" {
-		spec.Slug = "tcp-" + strings.ReplaceAll(cfg.Host, ".", "-")
+		target := cfg.Host
+		if cfg.Socket != "" {
+			target = strings.Trim(strings.NewReplacer("/", "-", ".", "-").Replace(cfg.Socket), "-")
+		}
+
+		spec.Slug = "tcp-" + strings.ReplaceAll(target, ".", "-")
+	}
+
+	return nil
+}
+
+// validateSocket applies the socket-target rules: no host, port or TLS next
+// to it, and the shared path syntax (the allowlist is the server's business,
+// applied at save time and again at dial time).
+func validateSocket(cfg *TCPConfig) error {
+	if cfg.Host != "" || cfg.Port != 0 {
+		return checkerdef.NewConfigError(configKeySocket, "socket and host/port are mutually exclusive")
+	}
+
+	if cfg.TLS {
+		return checkerdef.NewConfigError("tls", "TLS is not supported over a Unix socket")
+	}
+
+	if err := checkerdef.ValidateLocalSocketPath(cfg.Socket); err != nil {
+		return checkerdef.NewConfigError(configKeySocket, err.Error())
+	}
+
+	return nil
+}
+
+// validateHostPort applies the host:port target rules.
+func validateHostPort(cfg *TCPConfig) error {
+	if cfg.Host == "" {
+		return checkerdef.NewRequiredConfigError("host")
+	}
+
+	// Validate Port
+	if cfg.Port == 0 {
+		return checkerdef.NewRequiredConfigError("port")
+	}
+
+	if cfg.Port < 1 || cfg.Port > 65535 {
+		return checkerdef.NewConfigErrorf("port", "must be between 1 and 65535, got %d", cfg.Port)
 	}
 
 	return nil

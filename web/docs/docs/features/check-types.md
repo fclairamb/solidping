@@ -5,7 +5,7 @@ title: Check Types
 
 # Check Types
 
-SolidPing supports **44 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
+SolidPing supports **45 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
 
 <!--
   Keep this number equal to the number of `###` sections above "Common Options"
@@ -62,6 +62,8 @@ connection and closes it afterwards, so each result includes DNS, connect and
 TLS time whatever the check period (see [Timing breakdown](#http-timing)).
 
 **Redirects:** redirects are followed by default (`followRedirects`, up to 10 hops). Set it to `false` to assert on the first response instead. `redirectHostPolicy: same-host` fails the check when a hop leaves the previous hop's host. Every followed hop is listed in the `redirect_chain` output. `secretHeaders` are only sent to the URL's own host: a hop to another host drops them, and their names (never values) appear in `redirect_dropped_secret_headers`. A plain `headers` entry holding a `${param:…}` or `${env:…}` reference (`X-Api-Key: ${param:api-key}`) is treated the same way: on a hop to another origin, a header whose value contains the resolved value is dropped and listed there too. A hop to another origin (another host or port, or an https → http downgrade) never carries `Referer`, which would repeat the previous URL and its query string. A 307 or 308 that would resend the request `body` is followed only within the origin: to another origin the check stops at the redirect response and reports `redirect_body_withheld: true`.
+
+**Unix socket:** set `unix_socket` (or use the URL `http+unix:///run/app/app.sock:/health`) to send the request through a local [Unix socket](#unix-sockets), like `curl --unix-socket /run/app/app.sock http://localhost/health`. The `url` stays required: its path and query are the request and its host is the `Host` header. Every assertion applies unchanged. Only redirects staying on the `url` host are followed. `https` URLs, an IP version, `httpVersion` other than 1.1 and SSH tunnels are refused.
 
 `expectedFinalUrl` asserts where the chain ends, so `http://acme.com` redirecting to a login or parking page no longer reads as up. The match is exact after normalisation: scheme and host are lowercased, `:80` (http) and `:443` (https) are dropped, an empty path becomes `/`, and the fragment is ignored. Path and query are compared as sent (`/x` and `/x/` differ, so do `?a=1&b=2` and `?b=2&a=1`). It is checked before the body assertions. On a mismatch the error reads `expected final URL "...", got "..."` and the raw URL of the last request is in `final_url`. It cannot be combined with `followRedirects: false`, nor with `redirectHostPolicy: same-host` and a different host.
 
@@ -314,6 +316,7 @@ tcps://hostname:port  # With TLS
 | `expect_encoding` | How `expect_data` becomes bytes: `text` (default), `escaped`, `hex` | `hex` |
 | `expect_pattern` | [RE2](https://github.com/google/re2/wiki/Syntax) regex the reply must match | `^220 .* ESMTP` |
 | SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) — the hostname is resolved by the bastion | An `ssh` check with `expected_fingerprint` set |
+| `socket` | Connect to a local [Unix socket](#unix-sockets) instead of a host and port (or `unix:///run/app/app.sock` as the URL). Not with `host`, `port` or TLS | `/run/app/app.sock` |
 
 ### UDP {#udp}
 
@@ -1392,6 +1395,50 @@ docker://hostname:2375
 | TLS | Enable TLS | `true` / `false` |
 | Timeout | Connection timeout | `10s` |
 
+### systemd unit {#systemd}
+
+Report the state of a systemd unit (a service, a timer, a socket, a mount...)
+of the host SolidPing runs on: a service that listens on nothing reachable from
+the network can still be watched. The check runs
+`systemctl show <unit> --property=LoadState,ActiveState,SubState,Result,ActiveEnterTimestamp`,
+which needs no root.
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `unit` | Unit name (required). Letters, digits and `:_.@-` only, at most 256 characters. A name without a unit-type suffix gets `.service` appended | `nginx`, `app@1.service`, `backup.timer` |
+| `expected_state` | `active` (default) or `inactive` (the unit must not run) | `active` |
+| `timeout` | systemctl timeout, up to `30s` (default `5s`) | `5s` |
+
+With `expected_state: active`, the check is up when the unit is `active`,
+`activating` (a unit restarting under `Restart=` is not an outage) or
+`reloading`, and down when it is `failed`, `inactive` or `deactivating`.
+`inactive` inverts this. A unit systemd does not know (`LoadState=not-found`)
+is always down, with the output "unit not found".
+
+The output shows `state` (`ActiveState/SubState`, e.g. `active/running` or
+`failed/failed`) and `result` (systemd's `Result`, e.g. `exit-code`). Metric:
+`active_since_s`, the seconds since the unit became active.
+
+```json
+{ "type": "systemd", "config": { "unit": "nginx" } }
+```
+
+The check reads the systemd of the host that runs it, so SolidPing must run on
+that host itself (the binary, or a systemd service). The container image
+(distroless, also used for private-location agents) ships no `systemctl`: a
+check run from a container, or from a host without systemd, ends in error
+("systemctl not found"), not down. A container only sees the host's units when
+it has a `systemctl` binary and the host's D-Bus socket
+(`/run/dbus/system_bus_socket`) mounted, so install the agent as a binary or a
+systemd service on the host instead.
+
+:::note Private locations only on SolidPing Cloud
+On SolidPing Cloud (SaaS), a systemd check must run from one of your
+organization's [private locations](./private-locations.md) installed on the
+host, and a shared region never reports on its own host. A systemd check
+cannot run through an SSH tunnel either.
+:::
+
 ### A2S Game Server (Source / Steam) {#a2s-game-server-source--steam}
 
 Query Source-engine and Steam game servers using the Valve A2S protocol (`A2S_INFO`).
@@ -2061,6 +2108,49 @@ only ever be a claim the worker cannot honor.
 cannot originate fails with an explicit error saying so — it names the worker's
 missing egress rather than blaming the target. If you see it, change the check's
 region rather than investigating your service.
+
+### Unix sockets {#unix-sockets}
+
+A service that only listens on a Unix socket (a web app on `/run/app/app.sock`,
+Redis on `/run/redis/redis.sock`, Postgres in `/var/run/postgresql/`) can be
+monitored by the usual check of its protocol, with a socket path in place of the
+host and port.
+
+| Check | Field | URL form |
+|-------|-------|----------|
+| [TCP](#tcp) | `socket` | `unix:///run/app/app.sock` |
+| [HTTP](#http) | `unix_socket` | `http+unix:///run/app/app.sock:/health` |
+| [Redis](#redis) | `socket` | `redis+unix:///run/redis/redis.sock?db=0` |
+| [PostgreSQL](#postgresql) | `socket` (the socket file, e.g. `/var/run/postgresql/.s.PGSQL.5432`, not the directory) | `postgres+unix:///var/run/postgresql/.s.PGSQL.5432?dbname=app&user=monitor` |
+| [MySQL](#mysql) | `socket` (e.g. `/run/mysqld/mysqld.sock`) | `mysql+unix:///run/mysqld/mysqld.sock?user=monitor&db=app` |
+| [MongoDB](#mongodb) | `socket` (e.g. `/tmp/mongodb-27017.sock`) | `mongodb+unix:///tmp/mongodb-27017.sock?db=admin` |
+| [SMTP](#smtp) | `socket` (a local MTA's submission socket; no STARTTLS or implicit TLS) | `smtp+unix:///run/postfix/submission.sock` |
+
+The feature is **off by default**. An operator turns it on by listing the
+sockets checks may reach in `checkers.unix_socket_paths`
+(`SP_CHECKERS_UNIX_SOCKET_PATHS`, comma-separated): exact socket paths, or
+directory prefixes ending in `/`. A path outside the list is refused when the
+check is saved and again when it runs. Paths must be absolute and clean (no
+`..`); abstract sockets (`@name`) are not supported.
+
+- **Shared regions on SaaS refuse sockets.** A socket check must be pinned to
+  one of your [private locations](./private-locations.md). The agent then
+  applies its *own* `SP_CHECKERS_UNIX_SOCKET_PATHS`, not the server's.
+- **The egress guard refuses sockets**: a worker that blocks private targets
+  never opens one, and neither does an SSH-tunneled check.
+- **Permissions**: the SolidPing process needs read and write permission on the
+  socket file. A missing file reports `ENOENT`, a dead service `ECONNREFUSED`,
+  a permission problem `EACCES`.
+- **Containers**: a SolidPing running in a container only sees the sockets
+  mounted into it (for instance `-v /run/app:/run/app`).
+- The dashboard only offers the socket target once the allowlist is set, or on a
+  check pinned to private locations only.
+
+:::danger
+Never allowlist `/var/run/docker.sock`, a directory holding it, or `/run/`. One
+request on the Docker socket is root on the host, and the allowlist applies to
+every member who can create a check.
+:::
 
 ### SSH tunnel
 

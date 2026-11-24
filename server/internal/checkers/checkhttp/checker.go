@@ -459,6 +459,12 @@ func (c *HTTPChecker) executeRequest(
 			// request is ever built, which is what keeps the refused hop from
 			// dialing at all: the egress guard on the transport (below) only
 			// ever sees hops this policy already let through.
+			// A socket check follows only redirects that stay on the url's
+			// host: any other Location would be sent down the socket.
+			if cfg.UnixSocket != "" && req.URL.Host != via[0].URL.Host {
+				return &redirectHostMismatchError{from: via[0].URL.Hostname(), to: req.URL.Hostname()}
+			}
+
 			if sameHostOnly {
 				prevHost := via[len(via)-1].URL.Hostname()
 				nextHost := req.URL.Hostname()
@@ -501,6 +507,15 @@ func (c *HTTPChecker) executeRequest(
 	}
 
 	transport, releaseTransport := probeTransport(ctx, skipTLSVerify, httpVersion)
+	if cfg.UnixSocket != "" {
+		// Every connection goes down the socket, whatever the URL host; the
+		// timeout and the body cap are the ctx's and the reader's, as usual.
+		releaseTransport()
+
+		socketTransport := checkerdef.SocketHTTPTransport(ctx, cfg.UnixSocket)
+		transport, releaseTransport = socketTransport, socketTransport.CloseIdleConnections
+	}
+
 	defer releaseTransport()
 
 	client.Transport = transport

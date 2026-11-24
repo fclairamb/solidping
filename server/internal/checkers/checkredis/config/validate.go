@@ -26,12 +26,18 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 		port = DefaultPort
 	}
 
+	target, slugTarget := fmt.Sprintf("%s:%d", cfg.Host, port), cfg.Host
+	if cfg.Socket != "" {
+		target = cfg.Socket
+		slugTarget = strings.Trim(strings.NewReplacer("/", "-", ".", "-").Replace(cfg.Socket), "-")
+	}
+
 	if spec.Name == "" {
-		spec.Name = fmt.Sprintf("%s:%d", cfg.Host, port)
+		spec.Name = target
 	}
 
 	if spec.Slug == "" {
-		spec.Slug = "redis-" + strings.ReplaceAll(cfg.Host, ".", "-")
+		spec.Slug = "redis-" + strings.ReplaceAll(slugTarget, ".", "-")
 	}
 
 	return nil

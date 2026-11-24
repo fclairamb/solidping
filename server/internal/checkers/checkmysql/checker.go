@@ -56,10 +56,17 @@ func buildDriverConfig(cfg *MySQLConfig, dialer checkerdef.ContextDialer) *mysql
 	// Never let a server pull local files over LOAD DATA LOCAL INFILE.
 	driverCfg.AllowAllFiles = false
 
+	if cfg.Socket != "" {
+		// Unix socket (spec 2026-11-24-04): the address is the socket path; the
+		// dialer below is the shared one, never the driver's own unix dial.
+		driverCfg.Net = "unix"
+		driverCfg.Addr = cfg.Socket
+	}
+
 	if dialer != nil {
 		driverCfg.DialFunc = func(ctx context.Context, _, addr string) (net.Conn, error) {
-			// Always TCP: the network is ours, not the driver config's.
-			return dialer.DialContext(ctx, "tcp", addr)
+			// The network is ours, not the driver config's.
+			return dialer.DialContext(ctx, driverCfg.Net, addr)
 		}
 	}
 
@@ -132,14 +139,23 @@ func (c *MySQLChecker) Execute(
 		checkerdef.OutputKeyPort: params.port,
 	}
 
-	if checkerdef.TunnelDialerFrom(ctx) != nil {
-		output["tunneled"] = true
+	var dialer checkerdef.ContextDialer
+
+	if cfg.Socket != "" {
+		output = map[string]any{"socket": cfg.Socket}
+		dialer = checkerdef.LocalSocketDialer(ctx, cfg.Socket, params.timeout)
+	} else {
+		if checkerdef.TunnelDialerFrom(ctx) != nil {
+			output["tunneled"] = true
+		}
+
+		dialer = checkerdef.OutboundDialer(ctx)
 	}
 
 	// Tunneled or under an enforcing egress policy (spec 2026-09-25-19), the
 	// outbound dialer governs every dial through the connector's DialFunc; the
 	// tunnel hands the raw host:port to the bastion, which resolves it.
-	connector, err := mysql.NewConnector(buildDriverConfig(cfg, checkerdef.OutboundDialer(ctx)))
+	connector, err := mysql.NewConnector(buildDriverConfig(cfg, dialer))
 	if err != nil {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,

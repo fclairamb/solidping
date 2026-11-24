@@ -244,6 +244,9 @@ const (
 	CheckTypeSNMP CheckType = "snmp"
 	// CheckTypeDocker performs Docker container health checks.
 	CheckTypeDocker CheckType = "docker"
+	// CheckTypeSystemd reports the state of a systemd unit of the host that
+	// runs the check, through `systemctl show`.
+	CheckTypeSystemd CheckType = "systemd"
 	// CheckTypeBrowser performs headless Chrome browser health checks.
 	CheckTypeBrowser CheckType = "browser"
 	// CheckTypeFreeboxLine monitors xDSL/FTTH line quality via the Freebox OS API.
@@ -374,6 +377,7 @@ const (
 	labelReqMessagingClient = "requires:messaging-client"
 	labelReqScripting       = "requires:scripting-runtime"
 	labelReqDockerSocket    = "requires:docker-socket"
+	labelReqSystemd         = "requires:systemd"
 	labelReqChrome          = "requires:chrome"
 	labelReqK8sCluster      = "requires:kubernetes-cluster"
 
@@ -433,6 +437,11 @@ type CheckTypeMeta struct {
 	// library that exposes no address-family seam.
 	SupportsIPVersion bool `json:"supportsIpVersion"`
 
+	// SupportsLocalSocket reports whether the type's config can target a
+	// local Unix socket instead of a host and port (spec 2026-11-24-01). It
+	// must match "the config implements LocalSocketTarget", which a test pins.
+	SupportsLocalSocket bool `json:"supportsLocalSocket"`
+
 	// MultiStep marks a type that runs as a series of bounded slices with
 	// persisted state on the bulk lane (spec 2026-10-03-03). Its checker must
 	// implement StepChecker (pinned by a registry test).
@@ -468,24 +477,24 @@ func (t CheckType) IsPlugin() bool {
 //
 //nolint:gochecknoglobals,lll // Registry is intentionally global; it's read-only after init.
 var checkTypesRegistry = []CheckTypeMeta{
-	{Type: CheckTypeHTTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor HTTP/HTTPS endpoints", SupportsTunnel: true, SupportsIPVersion: true},
-	{Type: CheckTypeTCP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check TCP port connectivity", SupportsTunnel: true, SupportsIPVersion: true},
+	{Type: CheckTypeHTTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor HTTP/HTTPS endpoints", SupportsTunnel: true, SupportsIPVersion: true, SupportsLocalSocket: true},
+	{Type: CheckTypeTCP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check TCP port connectivity", SupportsTunnel: true, SupportsIPVersion: true, SupportsLocalSocket: true},
 	{Type: CheckTypeICMP, Labels: []string{labelUnsafe, labelReqRawSocket, labelCatNetwork}, Description: "Ping hosts via ICMP", SupportsIPVersion: true},
 	{Type: CheckTypeDNS, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor DNS resolution", DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeSSL, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Check SSL certificate validity", MinPeriod: time.Hour, DefaultPeriod: 6 * time.Hour, SupportsTunnel: true, SupportsIPVersion: true},
 	{Type: CheckTypeDomain, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Monitor domain expiration", MinPeriod: 6 * time.Hour, DefaultPeriod: 24 * time.Hour},
 	{Type: CheckTypeHeartbeat, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Passive HTTP check"},
 	{Type: CheckTypeEmail, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Email reception (passive)"},
-	{Type: CheckTypeSMTP, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check SMTP server connectivity", SupportsTunnel: true, SupportsIPVersion: true},
+	{Type: CheckTypeSMTP, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check SMTP server connectivity", SupportsTunnel: true, SupportsLocalSocket: true, SupportsIPVersion: true},
 	{Type: CheckTypeUDP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check UDP port reachability", SupportsIPVersion: true},
 	{Type: CheckTypeSSH, Labels: []string{labelSafe, labelStandalone, labelCatRemoteAccess}, Description: "Check SSH server availability", SupportsIPVersion: true},
 	{Type: CheckTypePOP3, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check POP3 server availability", SupportsTunnel: true, SupportsIPVersion: true},
 	{Type: CheckTypeIMAP, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check IMAP server availability", SupportsTunnel: true, SupportsIPVersion: true},
 	{Type: CheckTypeWebSocket, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check WebSocket connectivity", SupportsTunnel: true},
-	{Type: CheckTypePostgreSQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check PostgreSQL database health", SupportsTunnel: true},
-	{Type: CheckTypeMySQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check MySQL/MariaDB database health", SupportsTunnel: true},
-	{Type: CheckTypeRedis, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Redis server health", SupportsTunnel: true},
-	{Type: CheckTypeMongoDB, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check MongoDB database health", SupportsTunnel: true},
+	{Type: CheckTypePostgreSQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check PostgreSQL database health", SupportsTunnel: true, SupportsLocalSocket: true},
+	{Type: CheckTypeMySQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check MySQL/MariaDB database health", SupportsTunnel: true, SupportsLocalSocket: true},
+	{Type: CheckTypeRedis, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Redis server health", SupportsTunnel: true, SupportsLocalSocket: true},
+	{Type: CheckTypeMongoDB, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check MongoDB database health", SupportsTunnel: true, SupportsLocalSocket: true},
 	{Type: CheckTypeFTP, Labels: []string{labelSafe, labelReqFileProtocol, labelCatRemoteAccess}, Description: "Check FTP server availability", SupportsTunnel: true},
 	{Type: CheckTypeSFTP, Labels: []string{labelSafe, labelReqFileProtocol, labelCatRemoteAccess}, Description: "Check SFTP server availability"},
 	{Type: CheckTypeJS, Labels: []string{labelUnsafe, labelReqScripting, labelCatOther}, Description: "Run custom JavaScript scripts", MinPeriod: 30 * time.Second, DefaultPeriod: time.Minute, SupportsTunnel: true},
@@ -500,6 +509,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeRabbitMQ, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check RabbitMQ server health", SupportsTunnel: true},
 	{Type: CheckTypeSNMP, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor devices via SNMP"},
 	{Type: CheckTypeDocker, Labels: []string{labelUnsafe, labelReqDockerSocket, labelCatInfrastructure}, Description: "Monitor Docker container health"},
+	{Type: CheckTypeSystemd, Labels: []string{labelUnsafe, labelReqSystemd, labelCatInfrastructure}, Description: "Check the state of a systemd unit"},
 	{Type: CheckTypeBrowser, Labels: []string{labelUnsafe, labelReqChrome, labelCatOther}, Description: "Monitor pages with headless Chrome", MinPeriod: time.Minute, DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeFreeboxLine, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor Freebox xDSL/FTTH line quality", DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeDNSBL, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Check if an IP/domain is on DNS blocklists", MinPeriod: 15 * time.Minute, DefaultPeriod: time.Hour, SupportsIPVersion: true},
@@ -510,7 +520,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeVNC, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor VNC (RFB) servers", SupportsTunnel: true},
 	{Type: CheckTypePrometheus, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert on Prometheus metric thresholds", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
 	{Type: CheckTypePrivateLocation, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert when a private location's agents go offline (system-created)", DefaultPeriod: time.Minute, ExcludedFromTally: true},
-	{Type: CheckTypeHealth, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Read an application's health endpoint and report per component", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
+	{Type: CheckTypeHealth, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Read an application's health endpoint and report per component", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true, SupportsLocalSocket: true},
 	{Type: CheckTypeVendorStatus, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Alert when a vendor's status page (GitHub, Cloudflare, OpenAI...) reports an outage", DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeCrawl, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Crawl a website for broken links, mixed content and sitemap errors", MinPeriod: time.Hour, DefaultPeriod: 24 * time.Hour, MultiStep: true},
 	{Type: CheckTypeSleep, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Sleep for a fixed duration (synthetic/testing)", DefaultPeriod: 1 * time.Minute, ExcludedFromTally: true},
@@ -692,6 +702,7 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeRabbitMQ,
 		CheckTypeSNMP,
 		CheckTypeDocker,
+		CheckTypeSystemd,
 		CheckTypeBrowser,
 		CheckTypeFreeboxLine,
 		CheckTypeDNSBL,

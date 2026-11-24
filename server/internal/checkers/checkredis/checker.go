@@ -60,6 +60,10 @@ func (c *RedisChecker) Execute(
 		"port": port,
 	}
 
+	if cfg.Socket != "" {
+		output = map[string]any{"socket": cfg.Socket}
+	}
+
 	opts := &redis.Options{
 		Addr:        cfg.Addr(),
 		Password:    cfg.Password,
@@ -68,18 +72,7 @@ func (c *RedisChecker) Execute(
 		ReadTimeout: timeout,
 	}
 
-	// Tunneled: dial through the bastion. go-redis hands the raw host:port to
-	// this dialer, so the bastion resolves the hostname — local name resolution
-	// is skipped, exactly as required for private names. Untunneled, opts.Dialer
-	// stays nil and go-redis uses its default net.Dialer byte-for-byte as before.
-	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
-		opts.Dialer = dialer.DialContext
-		output["tunneled"] = true
-	} else if checkerdef.EgressEnforcing(ctx) {
-		// Egress guard (spec 2026-09-25-19). The check sets no TLSConfig, so a
-		// guarded net.Dialer with go-redis's DialTimeout is its default dial.
-		opts.Dialer = checkerdef.GuardedNetDialer(ctx, &net.Dialer{Timeout: timeout}).DialContext
-	}
+	setRedisDialer(ctx, cfg, opts, timeout, output)
 
 	client := redis.NewClient(opts)
 
@@ -118,4 +111,27 @@ func (c *RedisChecker) Execute(
 
 func durationMs(duration time.Duration) float64 {
 	return float64(duration.Microseconds()) / microsecondsPerMilli
+}
+
+// setRedisDialer picks the dial path: the shared Unix socket dialer, the SSH
+// tunnel or the egress guard. Untunneled and unguarded, opts.Dialer stays nil
+// and go-redis uses its default net.Dialer.
+func setRedisDialer(
+	ctx context.Context, cfg *RedisConfig, opts *redis.Options, timeout time.Duration, output map[string]any,
+) {
+	if cfg.Socket != "" {
+		// Unix socket (spec 2026-11-24-03): the shared dialer applies every
+		// gate (tunnel, egress guard, path syntax, allowlist), never go-redis's
+		// own socket support.
+		opts.Network = "unix"
+		opts.Addr = cfg.Socket
+		opts.Dialer = checkerdef.LocalSocketDialer(ctx, cfg.Socket, timeout).DialContext
+	} else if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
+		opts.Dialer = dialer.DialContext
+		output["tunneled"] = true
+	} else if checkerdef.EgressEnforcing(ctx) {
+		// Egress guard (spec 2026-09-25-19). The check sets no TLSConfig, so a
+		// guarded net.Dialer with go-redis's DialTimeout is its default dial.
+		opts.Dialer = checkerdef.GuardedNetDialer(ctx, &net.Dialer{Timeout: timeout}).DialContext
+	}
 }

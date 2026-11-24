@@ -35,6 +35,13 @@ type CheckTypeResponse struct {
 	// SupportsTunnel — the dashboard gates its selector on the flag, not on a
 	// hard-coded list.
 	SupportsIPVersion bool `json:"supportsIpVersion"`
+	// SupportsLocalSocket mirrors CheckTypeMeta.SupportsLocalSocket: the
+	// type's config accepts a Unix socket target (spec 2026-11-24-01).
+	SupportsLocalSocket bool `json:"supportsLocalSocket"`
+	// LocalSocketOnServer mirrors CheckTypeStatus.LocalSocketOnServer: this
+	// server's own workers accept a socket target for the type. The allowed
+	// paths themselves are never served.
+	LocalSocketOnServer bool `json:"localSocketOnServer"`
 	// ExcludedFromTally mirrors CheckTypeMeta.ExcludedFromTally: a synthetic or
 	// system-created type that is not counted in the advertised check-type total.
 	ExcludedFromTally bool `json:"excludedFromTally"`
@@ -207,6 +214,8 @@ func toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
 			DefaultPeriodSeconds: durationToSeconds(statuses[idx].DefaultPeriod),
 			SupportsTunnel:       statuses[idx].SupportsTunnel,
 			SupportsIPVersion:    statuses[idx].SupportsIPVersion,
+			SupportsLocalSocket:  statuses[idx].SupportsLocalSocket,
+			LocalSocketOnServer:  statuses[idx].LocalSocketOnServer,
 			ExcludedFromTally:    statuses[idx].ExcludedFromTally,
 			SecretFields:         secretFieldsFor(statuses[idx].Type),
 			TargetFields:         targetFieldsFor(statuses[idx].Type),

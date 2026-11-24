@@ -4,6 +4,8 @@ import { smtpModule, type SmtpState } from "./mail";
 
 function baseState(overrides: Partial<SmtpState> = {}): SmtpState {
   return {
+    targetMode: "host",
+    socket: "",
     host: "mail.example.com",
     port: "",
     startTLS: false,
@@ -51,7 +53,11 @@ describe("smtpModule — send mode (revised design, 2026-08-19)", () => {
 
   it("serializes send_email/mail_from/delivery_to with NO delivery_check_uid — the reference is optional bonus metadata now", () => {
     const { config, errors } = smtpModule.toConfig(
-      baseState({ sendEmail: true, mailFrom: "prober@example.com", deliveryTo: "deadbeef@inbox.example.com" }),
+      baseState({
+        sendEmail: true,
+        mailFrom: "prober@example.com",
+        deliveryTo: "deadbeef@inbox.example.com",
+      }),
     );
     expect(config).toMatchObject({
       send_email: true,
@@ -98,7 +104,10 @@ describe("smtpModule — send mode (revised design, 2026-08-19)", () => {
   });
 
   it("fromConfig defaults send mode off for a plain (pre-existing) SMTP config", () => {
-    const state = smtpModule.fromConfig({ host: "mail.example.com", starttls: "true" });
+    const state = smtpModule.fromConfig({
+      host: "mail.example.com",
+      starttls: "true",
+    });
     expect(state.sendEmail).toBe(false);
     expect(state.mailFrom).toBe("");
     expect(state.deliveryTo).toBe("");

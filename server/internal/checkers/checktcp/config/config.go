@@ -17,8 +17,11 @@ import (
 
 // TCPConfig holds the configuration for TCP connection checks.
 type TCPConfig struct {
-	URL            string        `json:"url,omitempty"`
-	Host           string        `json:"host,omitempty"`
+	URL  string `json:"url,omitempty"`
+	Host string `json:"host,omitempty"`
+	// Socket is the Unix socket the check connects to instead of host:port
+	// (spec 2026-11-24-01). Set directly, or by a `unix:///path` URL.
+	Socket         string        `json:"socket,omitempty"`
 	Port           int           `json:"port,omitempty"`
 	Timeout        time.Duration `json:"timeout,omitempty"`
 	SendData       string        `json:"send_data,omitempty"`       //nolint:tagliatelle // API uses snake_case
@@ -29,6 +32,35 @@ type TCPConfig struct {
 	TLS            bool          `json:"tls,omitempty"`
 	TLSVerify      bool          `json:"tls_verify,omitempty"`      //nolint:tagliatelle // API uses snake_case
 	TLSServerName  string        `json:"tls_server_name,omitempty"` //nolint:tagliatelle // API uses snake_case
+}
+
+// configKeySocket is the config key of the Unix socket path.
+const configKeySocket = "socket"
+
+// LocalSocket implements checkerdef.LocalSocketTarget.
+func (c *TCPConfig) LocalSocket() (string, string) {
+	return configKeySocket, c.Socket
+}
+
+// SchemaExclusiveGroups implements checkerdef.SchemaExclusiveGrouper: a tcp
+// check targets either a host (with its port) or a Unix socket.
+func (c *TCPConfig) SchemaExclusiveGroups() [][]string {
+	return [][]string{{configKeySocket, checkerdef.OutputKeyHost}}
+}
+
+// SchemaBaselines implements checkerdef.SchemaBaseliner: the socket shape,
+// which no sample shows.
+func (c *TCPConfig) SchemaBaselines() []map[string]any {
+	return []map[string]any{{configKeySocket: "/run/app/app.sock"}}
+}
+
+// SchemaNotes implements checkerdef.SchemaNoter.
+func (c *TCPConfig) SchemaNotes() []string {
+	return []string{
+		"`socket` (an absolute Unix socket path, also set by a `unix:///path` URL) replaces " +
+			"`host` and `port`; it cannot be combined with them or with `tls`. The server only " +
+			"dials paths listed in its `checkers.unix_socket_paths` setting.",
+	}
 }
 
 // exchangeFields projects the send/expect half of the config onto the shared
@@ -55,12 +87,22 @@ func (c *TCPConfig) FromMap(configMap map[string]any) error {
 			return checkerdef.NewConfigError("url", err.Error())
 		}
 		if parsed.CheckType != checkerdef.CheckTypeTCP {
-			return checkerdef.NewConfigError("url", "must be a TCP URL (tcp:// or tcps://)")
+			return checkerdef.NewConfigError("url", "must be a TCP URL (tcp://, tcps:// or unix://)")
+		}
+		if socket, _ := configMap[configKeySocket].(string); socket != "" {
+			return checkerdef.NewConfigError(configKeySocket, "socket and url are mutually exclusive")
 		}
 		c.Host = parsed.Host
 		c.Port = parsed.Port
 		c.TLS = parsed.TLS
+		c.Socket = parsed.Socket
 	} else {
+		if socket, ok := configMap[configKeySocket].(string); ok {
+			c.Socket = socket
+		} else if configMap[configKeySocket] != nil {
+			return checkerdef.NewConfigError(configKeySocket, "must be a string")
+		}
+
 		// Fall back to legacy host+port
 		if host, ok := configMap[checkerdef.OutputKeyHost].(string); ok {
 			c.Host = host
@@ -130,9 +172,17 @@ func (c *TCPConfig) FromMap(configMap map[string]any) error {
 
 // GetConfig implements the GetConfig interface by returning the configuration as a map.
 func (c *TCPConfig) GetConfig() map[string]any {
-	cfg := map[string]any{
-		checkerdef.OutputKeyHost: c.Host,
-		checkerdef.OutputKeyPort: c.Port,
+	cfg := map[string]any{}
+
+	if c.Socket != "" && c.Host == "" && c.Port == 0 {
+		cfg[configKeySocket] = c.Socket
+	} else {
+		cfg[checkerdef.OutputKeyHost] = c.Host
+		cfg[checkerdef.OutputKeyPort] = c.Port
+
+		if c.Socket != "" {
+			cfg[configKeySocket] = c.Socket
+		}
 	}
 
 	if c.URL != "" {
