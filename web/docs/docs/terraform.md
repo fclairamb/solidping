@@ -124,3 +124,5 @@ manifest in the export format, for checks, channels, maintenance windows and sta
 when SolidPing is all the manifest describes and you want the file to round-trip with an export.
 Use the provider when SolidPing is part of a wider Terraform or OpenTofu setup, for example to
 create a check next to the service it watches, from that service's outputs.
+
+On Ansible instead? See [Ansible](/ansible).

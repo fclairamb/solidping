@@ -87,6 +87,36 @@
       "toFix_other": "{{count}} checks à corriger",
       "reasonSharedRegion": "secrets sur une région partagée",
       "reasonServer": "secrets chiffrés par SolidPing"
+    },
+    "eventFeeds": {
+      "title": "Flux d'événements",
+      "description": "Flux Atom privés des incidents et événements de cette organisation, pour un lecteur de flux, un mur de supervision ou une automatisation. Toute personne qui a l'URL d'un flux peut le lire sans se connecter.",
+      "copyOnce": "Copiez maintenant l'URL de « {{name}} » : elle ne sera plus affichée. Traitez-la comme un mot de passe.",
+      "done": "Terminé",
+      "empty": "Aucun flux d'événements pour l'instant.",
+      "lastUsed": "Dernière lecture",
+      "never": "jamais",
+      "rotate": "Changer l'URL",
+      "revoke": "Révoquer",
+      "name": "Nom",
+      "namePlaceholder": "Mur de supervision",
+      "scopeLabel": "Événements inclus",
+      "cap": "Une organisation peut avoir au plus {{count}} flux d'événements. Révoquez-en un pour en créer un autre.",
+      "create": "Créer le flux",
+      "createFailed": "Le flux n'a pas pu être créé.",
+      "rotateConfirm": "Changer l'URL de ce flux ? L'URL actuelle cesse de fonctionner immédiatement.",
+      "rotateFailed": "L'URL du flux n'a pas pu être changée.",
+      "revokeConfirm": "Révoquer ce flux ? Son URL cesse de fonctionner immédiatement.",
+      "revoked": "Flux révoqué",
+      "revokeFailed": "Le flux n'a pas pu être révoqué.",
+      "scope": {
+        "incident_all": "Tous les événements d'incident",
+        "check_created": "Contrôle créé",
+        "check_updated": "Contrôle mis à jour",
+        "check_deleted": "Contrôle supprimé",
+        "status_update_all": "Mises à jour de statut",
+        "maintenance_window_all": "Fenêtres de maintenance"
+      }
     }
   },
   "usage": {

@@ -60,6 +60,7 @@ func Run(t *testing.T, svc db.Service) {
 		{"report_schedules", runReportSchedules},
 		{"escalation_policies", runEscalation},
 		{"on_call", runOnCall},
+		{"org_event_feeds", runOrgEventFeeds},
 		{"check_dependencies", runCheckDependencies},
 		{"providers", runProviders},
 		{"user_tokens", runUserTokens},

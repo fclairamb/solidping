@@ -11,7 +11,7 @@ back. The file is the export document — there is no second schema to learn, an
 no translation layer to drift.
 
 Already on Terraform or OpenTofu? The [`fclairamb/solidping` provider](/terraform)
-manages the same objects from there.
+manages the same objects from there, and [Ansible](/ansible) can template this file and run `sp apply`.
 
 ```bash
 sp checks export --file config.yaml   # bootstrap from live state

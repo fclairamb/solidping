@@ -793,6 +793,19 @@ type Service interface {
 	// incident was handled: the caller must not send.
 	ClaimIncidentReminder(ctx context.Context, incidentUID string, expectedCount int, now time.Time) (bool, error)
 
+	// Org event feeds (spec 2026-11-24-12): private Atom feeds whose URL
+	// secret is stored hashed. List/Get/GetBySecretHash skip revoked feeds.
+	CreateOrgEventFeed(ctx context.Context, feed *models.OrgEventFeed) error
+	ListOrgEventFeeds(ctx context.Context, orgUID string) ([]*models.OrgEventFeed, error)
+	GetOrgEventFeed(ctx context.Context, orgUID, uid string) (*models.OrgEventFeed, error)
+	GetOrgEventFeedBySecretHash(ctx context.Context, secretHash string) (*models.OrgEventFeed, error)
+	// RotateOrgEventFeedSecret replaces the secret hash and stamps rotated_at.
+	RotateOrgEventFeedSecret(ctx context.Context, uid, secretHash string, at time.Time) error
+	// TouchOrgEventFeed records the time the feed was last read.
+	TouchOrgEventFeed(ctx context.Context, uid string, at time.Time) error
+	// RevokeOrgEventFeed soft-deletes the feed: its URL stops resolving.
+	RevokeOrgEventFeed(ctx context.Context, uid string) error
+
 	// On-call schedule operations
 	CreateOnCallSchedule(ctx context.Context, schedule *models.OnCallSchedule) error
 	GetOnCallSchedule(ctx context.Context, orgUID, scheduleUID string) (*models.OnCallSchedule, error)

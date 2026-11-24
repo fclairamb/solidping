@@ -9684,3 +9684,79 @@ export function useNonCompliantChecks(org: string, options: { enabled?: boolean 
     enabled: options.enabled ?? true,
   });
 }
+
+/** A private org event feed (spec 2026-11-24-12). The secret is never part
+ *  of it: it only comes back from create and rotate. */
+export interface EventFeed {
+  uid: string;
+  name: string;
+  eventTypes: string[];
+  createdByUserUid?: string;
+  createdAt: string;
+  rotatedAt?: string;
+  lastUsedAt?: string;
+}
+
+export interface EventFeedList {
+  data: EventFeed[];
+  maxFeeds: number;
+  scopeChoices: string[];
+  defaultScope: string[];
+}
+
+/** Create/rotate response: the feed plus its secret and URL, shown once. */
+export interface EventFeedSecret extends EventFeed {
+  secret: string;
+  path: string;
+  url: string;
+}
+
+export function useEventFeeds(org: string, opts?: ListQueryOptions) {
+  return useQuery({
+    queryKey: ["eventFeeds", org],
+    queryFn: () => apiFetch<EventFeedList>(`/api/v1/orgs/${org}/event-feeds`),
+    enabled: (opts?.enabled ?? true) && !!org,
+    staleTime: opts?.staleTime,
+  });
+}
+
+export function useCreateEventFeed(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: { name: string; eventTypes: string[] }) =>
+      apiFetch<EventFeedSecret>(`/api/v1/orgs/${org}/event-feeds`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["eventFeeds", org] });
+    },
+  });
+}
+
+export function useRotateEventFeed(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<EventFeedSecret>(`/api/v1/orgs/${org}/event-feeds/${uid}/rotate`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["eventFeeds", org] });
+    },
+  });
+}
+
+export function useRevokeEventFeed(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/event-feeds/${uid}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["eventFeeds", org] });
+    },
+  });
+}

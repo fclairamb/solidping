@@ -257,6 +257,37 @@ a cheerful 204: deleting a parameter makes every check referencing it fail with
 `unresolved secret reference` at its next run, so "I deleted nothing" has to be
 said out loud.
 
+## Organization Event Feeds
+
+Private Atom feeds of the org's incidents and events (spec 2026-11-24-12). Every
+management route is org-admin only (route middleware) and audited as
+`org.settings_updated` with `target_type: event_feed`. Up to 10 live feeds per
+org. The `spf_` secret is returned only by create and rotate; the database keeps
+its SHA-256.
+
+### GET /api/v1/orgs/:org/event-feeds
+List the live feeds (no secrets), with `maxFeeds`, `scopeChoices` and
+`defaultScope`. Auth: required (admin)
+
+### POST /api/v1/orgs/:org/event-feeds
+Body `{"name": "...", "eventTypes": ["incident.*", ...]}`. `eventTypes` defaults
+to `incident.*`, `check.created|updated|deleted`; `status_update.*` and
+`maintenance_window.*` may be added; anything else is a 400. 409 past the cap.
+Returns 201 with the feed plus `secret`, `path` and `url`. Auth: required (admin)
+
+### POST /api/v1/orgs/:org/event-feeds/:uid/rotate
+New secret; the old URL answers 410 at once. Auth: required (admin)
+
+### DELETE /api/v1/orgs/:org/event-feeds/:uid
+Revoke (soft delete); the URL answers 410. Auth: required (admin)
+
+### GET /api/v1/org-feeds/:secret/feed.xml
+The Atom feed. No auth: the secret is the credential. Newest 100 events of the
+last 30 days in scope, from the Events page query (auth.* always excluded);
+titles in the `Accept-Language` language. Unknown, malformed, rotated or revoked
+secret: 410 with one body. Rate limited per secret;
+`Cache-Control: private, max-age=60`, `X-Robots-Tag: noindex`.
+
 ## Organization Tokens
 
 ### GET /api/v1/orgs/:org/tokens

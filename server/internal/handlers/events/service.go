@@ -416,3 +416,51 @@ func (s *Service) resolveActors(ctx context.Context, events []*models.Event) map
 
 	return actors
 }
+
+// Bounds of the private org event feed (spec 2026-11-24-12): the newest
+// FeedMaxEntries events of the last FeedWindow, whichever is smaller. Readers
+// poll, so a short window is enough, and it bounds the cost of a request that
+// carries no session.
+const (
+	FeedMaxEntries = 100
+	FeedWindow     = 30 * 24 * time.Hour
+)
+
+// FeedScopeFamilySuffix marks a scope item that names a whole family
+// ("incident.*") rather than one exact event type.
+const FeedScopeFamilySuffix = ".*"
+
+// ListFeedEvents is the read behind the private org event feed: the same
+// ListEvents query as GET /orgs/:org/events, newest first, narrowed to the
+// feed's scope (exact types and "family.*" items) and to the feed bounds. The
+// restricted families are always excluded, whatever the scope says. An empty
+// scope lists nothing: a feed never falls back to the whole stream.
+func (s *Service) ListFeedEvents(ctx context.Context, orgUID string, scope []string) ([]*models.Event, error) {
+	filter := &models.ListEventsFilter{
+		OrganizationUID:          orgUID,
+		ExcludeEventTypePrefixes: RestrictedEventTypePrefixes,
+		Limit:                    FeedMaxEntries,
+	}
+
+	for _, item := range scope {
+		if family, ok := strings.CutSuffix(item, FeedScopeFamilySuffix); ok {
+			filter.EventTypePrefixes = append(filter.EventTypePrefixes, family)
+		} else {
+			filter.EventTypes = append(filter.EventTypes, models.EventType(item))
+		}
+	}
+
+	if len(filter.EventTypes) == 0 && len(filter.EventTypePrefixes) == 0 {
+		return nil, nil
+	}
+
+	since := s.clock.Now().Add(-FeedWindow)
+	filter.Since = &since
+
+	events, err := s.db.ListEvents(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list feed events: %w", err)
+	}
+
+	return events, nil
+}
