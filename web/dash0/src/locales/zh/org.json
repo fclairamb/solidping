@@ -87,6 +87,36 @@
       "toFix_other": "{{count}} 个监控项待修复",
       "reasonSharedRegion": "密钥位于共享区域",
       "reasonServer": "密钥由 SolidPing 加密"
+    },
+    "eventFeeds": {
+      "title": "事件订阅源",
+      "description": "本组织事件和故障的私有 Atom 订阅源，可用于订阅阅读器、值班大屏或自动化。任何拥有订阅源 URL 的人无需登录即可读取。",
+      "copyOnce": "请立即复制“{{name}}”的 URL：之后将不再显示。请像对待密码一样妥善保管。",
+      "done": "完成",
+      "empty": "暂无事件订阅源。",
+      "lastUsed": "最近读取",
+      "never": "从未",
+      "rotate": "轮换 URL",
+      "revoke": "撤销",
+      "name": "名称",
+      "namePlaceholder": "值班大屏",
+      "scopeLabel": "包含的事件",
+      "cap": "一个组织最多可拥有 {{count}} 个事件订阅源。请先撤销一个再创建新的。",
+      "create": "创建订阅源",
+      "createFailed": "无法创建订阅源。",
+      "rotateConfirm": "要轮换此订阅源的 URL 吗？当前 URL 将立即失效。",
+      "rotateFailed": "无法轮换订阅源 URL。",
+      "revokeConfirm": "要撤销此订阅源吗？其 URL 将立即失效。",
+      "revoked": "订阅源已撤销",
+      "revokeFailed": "无法撤销订阅源。",
+      "scope": {
+        "incident_all": "所有故障事件",
+        "check_created": "监控项已创建",
+        "check_updated": "监控项已更新",
+        "check_deleted": "监控项已删除",
+        "status_update_all": "状态更新",
+        "maintenance_window_all": "维护窗口"
+      }
     }
   },
   "usage": {
