@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
@@ -70,7 +72,7 @@ func (c *DockerChecker) Execute(
 
 	inspected, err := cli.ContainerInspect(ctx, cfg.ResolveContainerRef(), client.ContainerInspectOptions{})
 	if err != nil {
-		return handleInspectError(ctx, err, start, metrics), nil
+		return handleInspectError(ctx, err, cfg.ResolveHost(), start, metrics), nil
 	}
 
 	metrics["inspect_time_ms"] = durationMs(time.Since(start))
@@ -127,6 +129,7 @@ func createClient(ctx context.Context, cfg *DockerConfig) (*client.Client, error
 func handleInspectError(
 	ctx context.Context,
 	err error,
+	host string,
 	start time.Time,
 	metrics map[string]any,
 ) *checkerdef.Result {
@@ -139,12 +142,28 @@ func handleInspectError(
 		}
 	}
 
+	msg := "container inspect failed: " + err.Error() + socketPermissionHint(err, host)
+
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusDown,
 		Duration: time.Since(start),
 		Metrics:  metrics,
-		Output:   map[string]any{checkerdef.OutputKeyError: "container inspect failed: " + err.Error()},
+		Output:   map[string]any{checkerdef.OutputKeyError: msg},
 	}
+}
+
+// socketPermissionHint explains the usual cause of a refused local socket:
+// the image runs as uid 65532, which is not in the group owning a mounted
+// /var/run/docker.sock (issue #997). The Docker client drops the underlying
+// os.ErrPermission from this error, so the message is all there is to match.
+func socketPermissionHint(err error, host string) string {
+	if !strings.HasPrefix(host, "unix://") || !strings.Contains(err.Error(), "permission denied") {
+		return ""
+	}
+
+	return fmt.Sprintf(" (this process runs as uid %d and cannot open the socket; "+
+		"in a container, add the socket's group with group_add: the gid from `stat -c %%g %s`)",
+		os.Getuid(), strings.TrimPrefix(host, "unix://"))
 }
 
 func buildResult(
