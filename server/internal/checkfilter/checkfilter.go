@@ -7,6 +7,7 @@ package checkfilter
 import (
 	"errors"
 	"strings"
+	"unicode/utf8"
 )
 
 // MaxIdentifiers caps the raw entries of one `checkUid` list filter. A
@@ -71,4 +72,44 @@ func Normalize(identifiers []string) []string {
 	}
 
 	return out
+}
+
+const (
+	// MaxSearchBytes caps the bytes of a check search `q` that are used.
+	MaxSearchBytes = 256
+	// MaxSearchTerms caps the distinct words of a check search `q`.
+	MaxSearchTerms = 8
+)
+
+// SearchTerms turns a raw check search `q` into the bounded list of distinct
+// words to match. It truncates q to MaxSearchBytes on a rune boundary, splits
+// on whitespace, drops duplicates and keeps the first MaxSearchTerms words.
+func SearchTerms(raw string) []string {
+	if len(raw) > MaxSearchBytes {
+		cut := MaxSearchBytes
+		for cut > 0 && !utf8.RuneStart(raw[cut]) {
+			cut--
+		}
+
+		raw = raw[:cut]
+	}
+
+	words := strings.Fields(raw)
+	terms := make([]string, 0, min(len(words), MaxSearchTerms))
+	seen := make(map[string]struct{}, MaxSearchTerms)
+
+	for _, word := range words {
+		if _, dup := seen[word]; dup {
+			continue
+		}
+
+		seen[word] = struct{}{}
+
+		terms = append(terms, word)
+		if len(terms) == MaxSearchTerms {
+			break
+		}
+	}
+
+	return terms
 }
