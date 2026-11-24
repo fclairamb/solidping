@@ -239,7 +239,7 @@ require (
 	github.com/dop251/goja v0.0.0-20261122185237-35fdc4b88e39
 	github.com/dreamscached/minequery/v2 v2.5.0
 	github.com/dustin/go-humanize v1.1.0
-	github.com/eclipse/paho.mqtt.golang v1.5.1
+	github.com/eclipse/paho.mqtt.golang v1.5.2
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/fclairamb/solidping/server/third_party/grdp v0.42.0
 	github.com/fergusstrange/embedded-postgres/v2 v2.0.1
@@ -287,7 +287,7 @@ require (
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
 	github.com/prometheus/common v0.74.0
-	github.com/quic-go/quic-go v0.65.0
+	github.com/quic-go/quic-go v0.66.0
 	github.com/rabbitmq/amqp091-go v1.17.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/rumblefrog/go-a2s v1.0.3
