@@ -256,9 +256,10 @@ func (r *AggregationJobRun) drain(
 }
 
 // logAggregationRun reports a run. A run that fell behind its raw retention
-// boundary by more than aggregationLagReportThreshold, or that stopped on its
-// budget, is logged at INFO so a lagging org shows up in the logs before its
-// charts notice; any other run stays at DEBUG.
+// boundary by more than aggregationLagReportThreshold is logged at INFO so a
+// lagging org shows up in the logs before its charts notice. A run that only
+// stopped on its budget is not behind (it reschedules at once), and says so,
+// also at INFO; any other run stays at DEBUG.
 func logAggregationRun(ctx context.Context, jctx *jobdef.JobContext, stats *aggregationRunStats, stageErr error) {
 	if !stats.oldestRawStart.IsZero() {
 		rawHours, _, _ := retentionFromConfig(ctx, jctx)
@@ -284,8 +285,10 @@ func logAggregationRun(ctx context.Context, jctx *jobdef.JobContext, stats *aggr
 	switch {
 	case stageErr == nil && stats.total() == 0:
 		jctx.Logger.DebugContext(ctx, "No aggregation work found")
-	case stats.budgetExhausted || lag > aggregationLagReportThreshold:
+	case lag > aggregationLagReportThreshold:
 		jctx.Logger.InfoContext(ctx, "Aggregation is behind its raw retention", args...)
+	case stats.budgetExhausted:
+		jctx.Logger.InfoContext(ctx, "Aggregation stopped on its run budget", args...)
 	default:
 		jctx.Logger.DebugContext(ctx, "Aggregation run complete", args...)
 	}

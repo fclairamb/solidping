@@ -220,6 +220,9 @@ after a rollback.
   that does not come back in time is logged at WARN and the next one is asked;
   after three requests for the same version, the server stops asking that
   agent.
+- **Agents older than v0.54** do not know the upgrade request: the server never
+  sends them one and skips them in the rollout. Upgrade them by hand once (pull
+  the image again and restart them); from then on they follow the server.
 - **Development builds are left alone**: nothing happens when the server or the
   agent is an untagged (`dev`) build.
 - **Turning it off**: set `SP_AGENTS_AUTO_UPGRADE=false` on the **server**. It
