@@ -855,7 +855,16 @@ func (c *HTTPConfig) BasicAuthCredentials() (string, string, bool) {
 }
 
 // TargetFields lists the config keys that decide where the secrets go: a
-// browser-sealed blob is bound to them (spec 2026-11-11-01).
+// browser-sealed blob is bound to them (spec 2026-11-11-01). The Unix socket
+// binds too: a socket config leaves the network target empty or fixed, so
+// without it a sealed blob could be pointed at another socket (spec
+// 2026-11-24-10).
 func (c *HTTPConfig) TargetFields() []string {
+	return []string{"url", configKeyUnixSocket}
+}
+
+// LegacyTargetFields is the list blobs were bound to before the Unix socket
+// was a target field (spec 2026-11-24-10).
+func (c *HTTPConfig) LegacyTargetFields() []string {
 	return []string{"url"}
 }
