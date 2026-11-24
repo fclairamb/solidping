@@ -223,3 +223,32 @@ func TestInferCheckType(t *testing.T) {
 		})
 	}
 }
+
+// TestParseUnixSocket: a unix:// URL is a tcp check on a Unix socket (spec
+// 2026-11-24-01).
+func TestParseUnixSocket(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	for _, raw := range []string{"unix:///run/app/app.sock", "unix:/run/app/app.sock"} {
+		parsed, err := Parse(raw)
+		r.NoError(err, raw)
+		r.Equal(checkerdef.CheckTypeTCP, parsed.CheckType, raw)
+		r.Equal("/run/app/app.sock", parsed.Socket, raw)
+		r.Empty(parsed.Host, raw)
+		r.False(parsed.TLS, raw)
+
+		name, slug := parsed.SuggestNameSlug()
+		r.Equal("/run/app/app.sock (tcp)", name)
+		r.Equal("run-app-app-sock", slug)
+	}
+
+	_, err := Parse("unix://host/run/app.sock")
+	r.Error(err, "a unix URL has no host")
+
+	_, err = Parse("unix://")
+	r.Error(err, "a unix URL needs a path")
+
+	r.Equal(checkerdef.CheckTypeTCP, InferCheckType("unix:///run/app/app.sock"))
+}

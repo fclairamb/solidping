@@ -19,6 +19,8 @@ var (
 	errDNSRequiresDomain = errors.New("DNS URL requires a domain in path (e.g., dns://8.8.8.8/example.com)")
 	errUnsupportedScheme = errors.New("unsupported scheme")
 	errInvalidPort       = errors.New("invalid port")
+	errUnixSocketHost    = errors.New("a unix:// URL has no host or port (e.g., unix:///run/app/app.sock)")
+	errUnixSocketPath    = errors.New("a unix:// URL requires the socket path (e.g., unix:///run/app/app.sock)")
 	errInvalidDNSType    = errors.New("invalid DNS record type")
 )
 
@@ -36,6 +38,10 @@ type ParsedURL struct {
 
 	// DNS-specific parsed fields
 	DNSDomain string // For DNS: the domain to resolve (from path)
+
+	// Socket is the Unix socket path of a `unix:///path` URL (spec
+	// 2026-11-24-01); Host and Port are then empty.
+	Socket string
 }
 
 //nolint:gochecknoglobals // schemeMapping is a constant lookup map.
@@ -51,6 +57,7 @@ var schemeMapping = map[string]checkerdef.CheckType{
 	"whois":  checkerdef.CheckTypeDomain,
 	"ws":     checkerdef.CheckTypeWebSocket,
 	"wss":    checkerdef.CheckTypeWebSocket,
+	"unix":   checkerdef.CheckTypeTCP,
 }
 
 //nolint:gochecknoglobals // validDNSRecordTypes is a constant lookup map.
@@ -118,6 +125,10 @@ func (p *ParsedURL) parseByType(parsedURL *url.URL) error {
 		p.Query = parsedURL.RawQuery
 
 	case checkerdef.CheckTypeTCP:
+		if p.Scheme == "unix" {
+			return p.parseUnix(parsedURL)
+		}
+
 		if p.Host == "" {
 			return errMissingHost
 		}
@@ -141,6 +152,22 @@ func (p *ParsedURL) parseByType(parsedURL *url.URL) error {
 			return errMissingHost
 		}
 	}
+
+	return nil
+}
+
+// parseUnix handles `unix:///run/app/app.sock` (and `unix:/run/app/app.sock`):
+// the path is the socket, and there is no host or port.
+func (p *ParsedURL) parseUnix(parsedURL *url.URL) error {
+	if p.Host != "" || p.Port != 0 {
+		return errUnixSocketHost
+	}
+
+	if parsedURL.Path == "" {
+		return errUnixSocketPath
+	}
+
+	p.Socket = parsedURL.Path
 
 	return nil
 }
@@ -192,8 +219,12 @@ func (p *ParsedURL) SuggestNameSlug() (string, string) {
 		target = p.DNSDomain
 	}
 
+	if p.Socket != "" {
+		target = p.Socket
+	}
+
 	name := fmt.Sprintf("%s (%s)", target, p.CheckType)
-	slug := strings.ReplaceAll(target, ".", "-")
+	slug := strings.Trim(strings.NewReplacer(".", "-", "/", "-").Replace(target), "-")
 
 	// Add port to slug if non-default
 	if p.Port > 0 && !p.isDefaultPort() {

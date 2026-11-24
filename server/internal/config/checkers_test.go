@@ -85,3 +85,23 @@ func TestLeaseMarginEnv(t *testing.T) {
 
 	r.Contains(RecognizedEnvVars(), "SP_CHECKERS_LEASE_MARGIN")
 }
+
+// TestUnixSocketPathsEnv binds SP_CHECKERS_UNIX_SOCKET_PATHS through Load()
+// (spec 2026-11-24-01): the key is snake_case, so only the manual reader can
+// fill it. Unset, the allowlist stays empty: the feature is off by default.
+func TestUnixSocketPathsEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv(EnvCheckersUnixSocketPaths, " /run/app/ , /var/run/postgresql/.s.PGSQL.5432,")
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal([]string{"/run/app/", "/var/run/postgresql/.s.PGSQL.5432"}, cfg.Checkers.UnixSocketPaths)
+	r.Contains(RecognizedEnvVars(), EnvCheckersUnixSocketPaths)
+
+	r.NoError(os.Unsetenv(EnvCheckersUnixSocketPaths))
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.Empty(cfg.Checkers.UnixSocketPaths)
+}

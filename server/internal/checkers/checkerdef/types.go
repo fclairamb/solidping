@@ -433,6 +433,11 @@ type CheckTypeMeta struct {
 	// library that exposes no address-family seam.
 	SupportsIPVersion bool `json:"supportsIpVersion"`
 
+	// SupportsLocalSocket reports whether the type's config can target a
+	// local Unix socket instead of a host and port (spec 2026-11-24-01). It
+	// must match "the config implements LocalSocketTarget", which a test pins.
+	SupportsLocalSocket bool `json:"supportsLocalSocket"`
+
 	// MultiStep marks a type that runs as a series of bounded slices with
 	// persisted state on the bulk lane (spec 2026-10-03-03). Its checker must
 	// implement StepChecker (pinned by a registry test).
@@ -469,7 +474,7 @@ func (t CheckType) IsPlugin() bool {
 //nolint:gochecknoglobals,lll // Registry is intentionally global; it's read-only after init.
 var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeHTTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor HTTP/HTTPS endpoints", SupportsTunnel: true, SupportsIPVersion: true},
-	{Type: CheckTypeTCP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check TCP port connectivity", SupportsTunnel: true, SupportsIPVersion: true},
+	{Type: CheckTypeTCP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check TCP port connectivity", SupportsTunnel: true, SupportsIPVersion: true, SupportsLocalSocket: true},
 	{Type: CheckTypeICMP, Labels: []string{labelUnsafe, labelReqRawSocket, labelCatNetwork}, Description: "Ping hosts via ICMP", SupportsIPVersion: true},
 	{Type: CheckTypeDNS, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor DNS resolution", DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeSSL, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Check SSL certificate validity", MinPeriod: time.Hour, DefaultPeriod: 6 * time.Hour, SupportsTunnel: true, SupportsIPVersion: true},
