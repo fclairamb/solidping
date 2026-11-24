@@ -596,3 +596,55 @@ func TestValidateSpec_HTTPVersion(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateSpec_UnixSocket(t *testing.T) {
+	t.Parallel()
+
+	base := func(extra map[string]any) map[string]any {
+		cfg := map[string]any{"url": "http://localhost/health", "unix_socket": "/run/app/app.sock"}
+		for key, value := range extra {
+			cfg[key] = value
+		}
+
+		return cfg
+	}
+
+	for name, tc := range map[string]struct {
+		config  map[string]any
+		wantErr string
+	}{
+		"valid":          {config: base(nil)},
+		"https url":      {config: base(map[string]any{"url": "https://localhost/health"}), wantErr: "url"},
+		"ip version":     {config: base(map[string]any{"ipVersion": "ipv4"}), wantErr: "ipVersion"},
+		"http version 2": {config: base(map[string]any{"httpVersion": "2"}), wantErr: "httpVersion"},
+		"tunnel":         {config: base(map[string]any{"tunnelCheckUid": "abc"}), wantErr: "tunnelCheckUid"},
+		"not a string":   {config: base(map[string]any{"unix_socket": 3}), wantErr: "unix_socket"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := ValidateSpec(&checkerdef.CheckSpec{Config: tc.config})
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+
+				return
+			}
+
+			var cfgErr *checkerdef.ConfigError
+			require.ErrorAs(t, err, &cfgErr)
+			require.Equal(t, tc.wantErr, cfgErr.Parameter)
+		})
+	}
+}
+
+func TestFromMap_HTTPUnixURL(t *testing.T) {
+	t.Parallel()
+
+	cfg := &HTTPConfig{}
+	require.NoError(t, cfg.FromMap(map[string]any{"url": "http+unix:///run/app/app.sock:/health?x=1"}))
+	require.Equal(t, "/run/app/app.sock", cfg.UnixSocket)
+	require.Equal(t, "http://localhost/health?x=1", cfg.URL)
+	require.Equal(t, "/run/app/app.sock", cfg.GetConfig()["unix_socket"])
+
+	require.Error(t, (&HTTPConfig{}).FromMap(map[string]any{"url": "https+unix:///run/app/app.sock:/health"}))
+}

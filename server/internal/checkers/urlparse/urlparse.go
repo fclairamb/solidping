@@ -20,6 +20,8 @@ var (
 	errUnsupportedScheme = errors.New("unsupported scheme")
 	errInvalidPort       = errors.New("invalid port")
 	errUnixSocketHost    = errors.New("a unix:// URL has no host or port (e.g., unix:///run/app/app.sock)")
+	errHTTPSUnix         = errors.New("https+unix is not supported: there is no TLS over a local socket")
+	errHTTPUnixForm      = errors.New("an http+unix URL looks like http+unix:///run/app/app.sock:/health")
 	errUnixSocketPath    = errors.New("a unix:// URL requires the socket path (e.g., unix:///run/app/app.sock)")
 	errInvalidDNSType    = errors.New("invalid DNS record type")
 )
@@ -58,6 +60,10 @@ var schemeMapping = map[string]checkerdef.CheckType{
 	"ws":     checkerdef.CheckTypeWebSocket,
 	"wss":    checkerdef.CheckTypeWebSocket,
 	"unix":   checkerdef.CheckTypeTCP,
+	// http+unix:///run/app/app.sock:/health is an http check through a socket.
+	"http+unix": checkerdef.CheckTypeHTTP,
+	// https+unix is recognized only to be refused: no TLS over a local socket.
+	"https+unix": checkerdef.CheckTypeHTTP,
 }
 
 //nolint:gochecknoglobals // validDNSRecordTypes is a constant lookup map.
@@ -117,6 +123,10 @@ func (p *ParsedURL) parseByType(parsedURL *url.URL) error {
 	//nolint:exhaustive // SSL is not yet implemented.
 	switch p.CheckType {
 	case checkerdef.CheckTypeHTTP:
+		if p.Scheme == schemeHTTPUnix || p.Scheme == "https+unix" {
+			return p.parseHTTPUnix(parsedURL)
+		}
+
 		if p.Host == "" {
 			return errMissingHost
 		}
@@ -170,6 +180,46 @@ func (p *ParsedURL) parseUnix(parsedURL *url.URL) error {
 	p.Socket = parsedURL.Path
 
 	return nil
+}
+
+// schemeHTTPUnix is the scheme of an http check through a Unix socket.
+const schemeHTTPUnix = "http+unix"
+
+// HTTPUnixHost is the host (so the Host header) of an `http+unix` URL.
+const HTTPUnixHost = "localhost"
+
+// parseHTTPUnix handles `http+unix:///run/app/app.sock:/health?x=1`: the part
+// of the path before the first `:/` is the socket, the rest is the request.
+func (p *ParsedURL) parseHTTPUnix(parsedURL *url.URL) error {
+	if p.Scheme != schemeHTTPUnix {
+		return errHTTPSUnix
+	}
+
+	if p.Host != "" || p.Port != 0 {
+		return errUnixSocketHost
+	}
+
+	socket, request, found := strings.Cut(parsedURL.Path, ":/")
+	if !found || socket == "" {
+		return errHTTPUnixForm
+	}
+
+	p.Host = HTTPUnixHost
+	p.Socket = socket
+	p.Path = "/" + request
+	p.Query = parsedURL.RawQuery
+
+	return nil
+}
+
+// HTTPURL returns the http:// URL an `http+unix` URL stands for.
+func (p *ParsedURL) HTTPURL() string {
+	target := "http://" + p.Host + p.Path
+	if p.Query != "" {
+		target += "?" + p.Query
+	}
+
+	return target
 }
 
 // parseDNS handles DNS-specific URL parsing.

@@ -252,3 +252,26 @@ func TestParseUnixSocket(t *testing.T) {
 
 	r.Equal(checkerdef.CheckTypeTCP, InferCheckType("unix:///run/app/app.sock"))
 }
+
+// TestParseHTTPUnix: an http+unix URL is an http check through a socket (spec
+// 2026-11-24-02); https+unix is refused.
+func TestParseHTTPUnix(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	parsed, err := Parse("http+unix:///run/app/app.sock:/health?x=1")
+	r.NoError(err)
+	r.Equal(checkerdef.CheckTypeHTTP, parsed.CheckType)
+	r.Equal("/run/app/app.sock", parsed.Socket)
+	r.Equal("http://localhost/health?x=1", parsed.HTTPURL())
+	r.False(parsed.TLS)
+
+	_, err = Parse("https+unix:///run/app/app.sock:/health")
+	r.Error(err)
+
+	_, err = Parse("http+unix:///run/app/app.sock")
+	r.Error(err, "the request part is required")
+
+	r.Equal(checkerdef.CheckTypeHTTP, InferCheckType("http+unix:///run/app/app.sock:/health"))
+}

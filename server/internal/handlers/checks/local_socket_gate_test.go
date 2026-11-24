@@ -133,3 +133,36 @@ func TestCreateSocketCheck_EmptyAllowlistRefusesEveryPath(t *testing.T) {
 		r.ErrorContains(err, checkerdef.LocalSocketSetting, path)
 	}
 }
+
+// TestCreateHTTPSocketCheck_SaaS: an http check with unix_socket is host-local
+// like the tcp one; the same check without it is accepted (positive control).
+func TestCreateHTTPSocketCheck_SaaS(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, org := setupDockerGateService(t, config.DeploymentModeSaaS)
+	svc.SetLocalSocketAllowlist([]string{"/run/app/"})
+
+	req := func(extra map[string]any, regions []string) checks.CreateCheckRequest {
+		cfg := map[string]any{"url": "http://localhost/health"}
+		for key, value := range extra {
+			cfg[key] = value
+		}
+
+		return checks.CreateCheckRequest{Type: "http", Config: cfg, Regions: regions}
+	}
+
+	_, err := svc.CreateCheck(ctx, org.Slug, req(map[string]any{"unix_socket": "/run/app/a.sock"}, []string{"eu-west"}))
+	r.ErrorContains(err, checks.ErrHostLocalNotAvailableInSaaS.Error())
+
+	var cfgErr *checkerdef.ConfigError
+	r.ErrorAs(err, &cfgErr)
+	r.Equal("unix_socket", cfgErr.Parameter)
+
+	_, err = svc.CreateCheck(ctx, org.Slug, req(nil, []string{"eu-west"}))
+	r.NoError(err)
+
+	_, err = svc.CreateCheck(ctx, org.Slug, req(map[string]any{"unix_socket": "/run/app/a.sock"}, []string{"@office"}))
+	r.NoError(err)
+}
