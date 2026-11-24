@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -196,7 +197,8 @@ func (c *RedisConfig) GetConfig() map[string]any {
 
 // Validate checks if the configuration is valid.
 func (c *RedisConfig) Validate() error {
-	if c.Socket != "" {
+	switch {
+	case c.Socket != "":
 		if c.Host != "" || c.Port != 0 {
 			return checkerdef.NewConfigError(configKeySocket, "socket and host/port are mutually exclusive")
 		}
@@ -204,8 +206,14 @@ func (c *RedisConfig) Validate() error {
 		if err := checkerdef.ValidateLocalSocketPath(c.Socket); err != nil {
 			return checkerdef.NewConfigError(configKeySocket, err.Error())
 		}
-	} else if c.Host == "" {
+	case c.Host == "":
 		return checkerdef.NewRequiredConfigError("host")
+	case strings.HasPrefix(c.Host, "@") || strings.Contains(c.Host, "/"):
+		// A socket path typed into host would be dialed as `<path>:<port>`
+		// and fail with no hint (issue #999): point at the socket field.
+		return checkerdef.NewConfigErrorf("host",
+			"must be a hostname or an IP address, not a path; for a local socket use the socket field "+
+				"(e.g. /run/valkey/valkey.sock), allowed by %s", checkerdef.LocalSocketSetting)
 	}
 
 	if c.Port < 0 || c.Port > 65535 {
