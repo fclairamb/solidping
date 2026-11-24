@@ -245,8 +245,8 @@ func TestNewDeploymentGate(t *testing.T) {
 			want = ErrDockerNotAvailableInSaaS.Error()
 		}
 
-		require.Equal(t, want, gate(checkerdef.CheckTypeDocker), "mode=%s role=%s", tc.mode, tc.role)
-		require.Empty(t, gate(checkerdef.CheckTypeHTTP), "mode=%s role=%s", tc.mode, tc.role)
+		require.Equal(t, want, gate(checkerdef.CheckTypeDocker, nil), "mode=%s role=%s", tc.mode, tc.role)
+		require.Empty(t, gate(checkerdef.CheckTypeHTTP, nil), "mode=%s role=%s", tc.mode, tc.role)
 		require.Equal(t, tc.blocked, cfg.DockerChecksBlocked(), "mode=%s role=%s", tc.mode, tc.role)
 	}
 }

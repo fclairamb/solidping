@@ -18924,6 +18924,19 @@ components:
         supportsIpVersion:
           type: boolean
           description: The type honours the shared `ipVersion` key (auto/ipv4/ipv6).
+        supportsLocalSocket:
+          type: boolean
+          description: >-
+            The type's config accepts a local Unix socket target in place of a
+            host and port (e.g. `socket` for tcp).
+        localSocketOnServer:
+          type: boolean
+          description: >-
+            This server's own workers accept a Unix socket target for the type:
+            the type supports one, the server's `checkers.unix_socket_paths`
+            allowlist is not empty and the deployment is not SaaS. A check
+            pinned to private locations only may use a socket either way (the
+            agent's allowlist decides). The allowed paths are never served.
         excludedFromTally:
           type: boolean
           description: >-

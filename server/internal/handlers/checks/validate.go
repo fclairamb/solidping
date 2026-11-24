@@ -24,6 +24,13 @@ import (
 // private (agent-hosted) regions.
 var ErrDockerNotAvailableInSaaS = errors.New("docker checks are not available on this deployment")
 
+// ErrHostLocalNotAvailableInSaaS is the generic sibling of
+// ErrDockerNotAvailableInSaaS for every other host-local check (a Unix socket
+// target, spec 2026-11-24-01): on SaaS it must be pinned to private regions.
+var ErrHostLocalNotAvailableInSaaS = errors.New(
+	"checks on a local Unix socket are not available on this deployment's shared regions: " +
+		"pin the check to one of your private locations to run it on your own agent")
+
 // ErrPluginTypeDisabled is returned when a check of a plugin type this
 // deployment disables (spec 2026-10-17-05 §19) is created or updated on a
 // cloud region.
@@ -424,6 +431,18 @@ func (s *Service) configValidationErrors(
 	// would never resolve at run time, and must not be stored either.
 	errs = append(errs, validateEnvRefs(effective, s.envRefAllow)...)
 
+	// Host-local checks (docker, a Unix socket target): the SaaS placement
+	// rule, then the socket path rules (spec 2026-11-24-01). Neither needs
+	// the org, so they run before the org-backed validators.
+	typed := parsedConfigForType(checkType, effective)
+	if err := s.validateHostLocalDeploymentConfig(checkType, typed, checkRegions); err != nil {
+		errs = append(errs, err)
+	}
+
+	if err := s.validateLocalSocketConfig(typed, checkRegions); err != nil {
+		errs = append(errs, err)
+	}
+
 	// A plugin type this deployment's activation gate turns off (an unsafe
 	// exec/nagios type on a SaaS cloud node, spec 2026-10-17-05 §19) has no
 	// cloud worker to run it.
@@ -452,14 +471,6 @@ func (s *Service) configValidationErrors(
 		errs = append(errs, err)
 	}
 
-	// docker checks hand whoever executes them the local Docker socket. On a
-	// SaaS shared worker that is any org member reading the host's own
-	// containers; the type is only safe when every job runs on the
-	// customer's own agent (spec 2026-09-25-22).
-	if err := s.validateDockerDeploymentConfig(checkType, checkRegions); err != nil {
-		errs = append(errs, err)
-	}
-
 	if err := validateMultiStepPlacement(checkType, checkRegions); err != nil {
 		errs = append(errs, err)
 	}
@@ -483,42 +494,92 @@ func validateMultiStepPlacement(checkType string, checkRegions []string) error {
 	return nil
 }
 
-// validateDockerDeploymentConfig rejects a docker check in SaaS mode unless
-// checkRegions resolves to private (agent-hosted) regions only. checkRegions
-// is the CALLER's already-resolved placement (auto placement included), never
-// the raw request, so an auto-placed check — which never resolves onto a
-// private region — is correctly rejected without special-casing placement
-// here. A hard reject, not a warning: the alternative is a local-socket read
-// primitive reachable by any org member. Self-hosted is unaffected — running
-// docker checks against the local daemon is the feature working as intended
-// there.
-func (s *Service) validateDockerDeploymentConfig(checkType string, checkRegions []string) error {
-	if checkerdef.CheckType(checkType) != checkerdef.CheckTypeDocker {
-		return nil
-	}
-
-	if s.deploymentMode != config.DeploymentModeSaaS {
-		return nil
-	}
-
+// onlyPrivateRegions reports whether checkRegions is non-empty and every one
+// of them is a private (agent-hosted) region.
+func onlyPrivateRegions(checkRegions []string) bool {
 	if len(checkRegions) == 0 {
-		return checkerdef.NewConfigError("host", ErrDockerNotAvailableInSaaS.Error())
+		return false
 	}
 
 	for _, region := range checkRegions {
 		if !regions.IsPrivateRegion(region) {
-			return checkerdef.NewConfigError("host", ErrDockerNotAvailableInSaaS.Error())
+			return false
 		}
+	}
+
+	return true
+}
+
+// validateHostLocalDeploymentConfig rejects a host-local check (docker, or a
+// config targeting a Unix socket — checkerdef.IsHostLocal) in SaaS mode
+// unless checkRegions resolves to private (agent-hosted) regions only.
+// checkRegions is the CALLER's already-resolved placement (auto placement
+// included), never the raw request, so an auto-placed check — which never
+// resolves onto a private region — is correctly rejected without
+// special-casing placement here. A hard reject, not a warning: the
+// alternative is a local-socket read primitive reachable by any org member.
+// Self-hosted is unaffected — reaching the local daemon or socket is the
+// feature working as intended there.
+func (s *Service) validateHostLocalDeploymentConfig(
+	checkType string, cfg checkerdef.Config, checkRegions []string,
+) error {
+	ct := checkerdef.CheckType(checkType)
+	if !checkerdef.IsHostLocal(ct, cfg) {
+		return nil
+	}
+
+	if s.deploymentMode != config.DeploymentModeSaaS || onlyPrivateRegions(checkRegions) {
+		return nil
+	}
+
+	if ct == checkerdef.CheckTypeDocker {
+		return checkerdef.NewConfigError("host", ErrDockerNotAvailableInSaaS.Error())
+	}
+
+	field, _, _ := checkerdef.LocalSocketOf(cfg)
+
+	return checkerdef.NewConfigError(field, ErrHostLocalNotAvailableInSaaS.Error())
+}
+
+// validateLocalSocketConfig applies the socket path rules at save time, the
+// same functions checkerdef.DialLocalSocket applies at dial time (spec
+// 2026-11-24-01): the syntax always, the allowlist only when this server's
+// own workers may run the check (a non-private region, or no region). A check
+// pinned to private regions only runs on agents, whose allowlist the server
+// does not know: the agent refuses at dial time.
+func (s *Service) validateLocalSocketConfig(cfg checkerdef.Config, checkRegions []string) error {
+	field, path, ok := checkerdef.LocalSocketOf(cfg)
+	if !ok {
+		return nil
+	}
+
+	if err := checkerdef.ValidateLocalSocketPath(path); err != nil {
+		return checkerdef.NewConfigError(field, err.Error())
+	}
+
+	if onlyPrivateRegions(checkRegions) {
+		return nil
+	}
+
+	if err := checkerdef.LocalSocketAllowed(s.localSocketAllowlist, path); err != nil {
+		return checkerdef.NewConfigError(field, err.Error())
 	}
 
 	return nil
 }
 
 // validateRegionGates runs the type gates that depend only on where a check
-// runs: docker in SaaS and disabled plugin types. A region-only PATCH runs
-// them on its own, since it skips the config validators.
-func (s *Service) validateRegionGates(checkType string, checkRegions []string) error {
-	if err := s.validateDockerDeploymentConfig(checkType, checkRegions); err != nil {
+// runs: host-local checks in SaaS (and their socket allowlist) and disabled
+// plugin types. A region-only PATCH runs them on its own, since it skips the
+// config validators; storedConfig is the check's current config, which says
+// whether the check is host-local.
+func (s *Service) validateRegionGates(checkType string, storedConfig map[string]any, checkRegions []string) error {
+	typed := parsedConfigForType(checkType, storedConfig)
+	if err := s.validateHostLocalDeploymentConfig(checkType, typed, checkRegions); err != nil {
+		return err
+	}
+
+	if err := s.validateLocalSocketConfig(typed, checkRegions); err != nil {
 		return err
 	}
 

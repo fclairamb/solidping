@@ -46,6 +46,11 @@ func (r *CheckWorker) EgressGuard() *egress.Guard { return r.egressGuard }
 // user-chosen host.
 func (r *CheckWorker) withEgress(ctx context.Context) (context.Context, *egress.Recorder) {
 	ctx = egress.WithGuard(ctx, r.egressGuard)
+	// The Unix-socket allowlist of THIS process (spec 2026-11-24-01): an
+	// agent's own, never the control plane's.
+	if r.config != nil {
+		ctx = checkerdef.WithLocalSocketAllowlist(ctx, r.config.Checkers.UnixSocketPaths)
+	}
 
 	return egress.WithRecorder(ctx)
 }

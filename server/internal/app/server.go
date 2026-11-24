@@ -520,6 +520,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
 	checksSvc.SetActivationResolver(checkerdef.NewActivationResolver(&cfg.Checkers, cfg.Deployment.Mode))
 	checksSvc.SetEnvRefAllow(cfg.EnvRefAllowed)
+	checksSvc.SetLocalSocketAllowlist(cfg.Checkers.UnixSocketPaths)
 	checksSvc.SetTaskCanceler(svcList.WorkerTasks)
 	// The demo cleanup and private-location monitor deletes notify like a
 	// user's DELETE does (spec 2026-10-08-02).
@@ -1255,6 +1256,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	checksService.SetDeploymentMode(s.config.Deployment.Mode)
 	checksService.SetActivationResolver(activationResolver)
 	checksService.SetEnvRefAllow(s.config.EnvRefAllowed)
+	checksService.SetLocalSocketAllowlist(s.config.Checkers.UnixSocketPaths)
 	checksService.SetTaskCanceler(s.services.WorkerTasks)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := orgGroup("/orgs/:org/checks")

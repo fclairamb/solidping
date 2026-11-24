@@ -68,12 +68,18 @@ var (
 	ErrNoCheckType        = errors.New("check job has no type set")
 	// ErrDockerNotAvailableInSaaS is returned when a docker job reaches a SaaS
 	// shared worker (spec 2026-09-25-22). The create/update gate
-	// (checks.Service.validateDockerDeploymentConfig) is meant to keep such a
+	// (checks.Service.validateHostLocalDeploymentConfig) is meant to keep such a
 	// job from ever being scheduled, but a check created before that gate
 	// shipped, or one whose placement moved off a private region since, must
 	// still be refused here — without ever dialing the socket. Same message
 	// as the create-time gate, so the two read as one rule from either side.
 	ErrDockerNotAvailableInSaaS = errors.New("docker checks are not available on this deployment")
+	// ErrHostLocalNotAvailableInSaaS is the generic sibling of
+	// ErrDockerNotAvailableInSaaS for every other host-local check (a Unix
+	// socket target, spec 2026-11-24-01). Same message as the create gate.
+	ErrHostLocalNotAvailableInSaaS = errors.New(
+		"checks on a local Unix socket are not available on this deployment's shared regions: " +
+			"pin the check to one of your private locations to run it on your own agent")
 
 	// ErrCheckerPanic wraps a recovered panic from inside a checker's
 	// Execute call (spec 2026-07-05-05 D2). The runner survives; the panic
@@ -1447,8 +1453,11 @@ func (r *CheckWorker) executeJob(
 	// supported way to run docker checks under SaaS and must keep executing
 	// them, while a SaaS shared worker refuses the job outright — no dial, no
 	// socket contacted — before it ever reaches the checker.
-	if checkerdef.CheckType(checkType) == checkerdef.CheckTypeDocker && r.dockerBlockedOnThisWorker() {
-		return r.saveErrorResult(ctx, checkJob, ErrDockerNotAvailableInSaaS)
+	//
+	// The same rule covers every host-local check (spec 2026-11-24-01): a
+	// config targeting a Unix socket reads THIS host's sockets just as well.
+	if refusal := hostLocalRefusal(r.dockerBlockedOnThisWorker(), checkerdef.CheckType(checkType), checkConfig); refusal != nil {
+		return r.saveErrorResult(ctx, checkJob, refusal)
 	}
 
 	if deferred, rateErr := r.applyRateLimitGate(ctx, logger, checkJob); deferred {
@@ -1998,15 +2007,31 @@ func (r *CheckWorker) dockerBlockedOnThisWorker() bool {
 	return r.config.DockerChecksBlocked()
 }
 
-// NewDeploymentGate builds the js sub-check deployment gate for this process's
-// config: it refuses a nested docker sub-check exactly where executeJob
-// refuses a top-level docker job, with the same message (spec 2026-10-16-09).
-func NewDeploymentGate(cfg *config.Config) checkjs.DeploymentGateFunc {
-	dockerBlocked := cfg.DockerChecksBlocked()
+// hostLocalRefusal returns the error a worker that blocks host-local checks
+// (blocked: a SaaS shared worker) refuses checkType/cfg with, nil to run it.
+func hostLocalRefusal(blocked bool, checkType checkerdef.CheckType, cfg checkerdef.Config) error {
+	if !blocked || !checkerdef.IsHostLocal(checkType, cfg) {
+		return nil
+	}
 
-	return func(checkType checkerdef.CheckType) string {
-		if dockerBlocked && checkType == checkerdef.CheckTypeDocker {
-			return ErrDockerNotAvailableInSaaS.Error()
+	if checkType == checkerdef.CheckTypeDocker {
+		return ErrDockerNotAvailableInSaaS
+	}
+
+	return ErrHostLocalNotAvailableInSaaS
+}
+
+// NewDeploymentGate builds the js sub-check deployment gate for this process's
+// config: it refuses a nested host-local sub-check (docker, a Unix socket
+// target) exactly where executeJob refuses a top-level one, with the same
+// message (specs 2026-10-16-09, 2026-11-24-01). cfg may be nil (the type-only
+// pass, before the sub-check config is parsed).
+func NewDeploymentGate(cfg *config.Config) checkjs.DeploymentGateFunc {
+	blocked := cfg.DockerChecksBlocked()
+
+	return func(checkType checkerdef.CheckType, subCfg checkerdef.Config) string {
+		if refusal := hostLocalRefusal(blocked, checkType, subCfg); refusal != nil {
+			return refusal.Error()
 		}
 
 		return ""

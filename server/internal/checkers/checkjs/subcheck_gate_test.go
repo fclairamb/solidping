@@ -332,7 +332,7 @@ func installDeploymentGate(t *testing.T, blocked ...checkerdef.CheckType) {
 		blockedSet[checkType] = true
 	}
 
-	DeploymentGate = func(checkType checkerdef.CheckType) string {
+	DeploymentGate = func(checkType checkerdef.CheckType, _ checkerdef.Config) string {
 		if blockedSet[checkType] {
 			return "docker checks are not available on this deployment"
 		}

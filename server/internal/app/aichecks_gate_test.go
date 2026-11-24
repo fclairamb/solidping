@@ -34,7 +34,7 @@ func TestBuildAIChecksInstallsTheDeploymentGate(t *testing.T) {
 		buildAIChecks(cfg, nil, nil, nil, nil, services.NewRegistry())
 
 		require.NotNil(t, checkjs.DeploymentGate, "mode %s", tc.mode)
-		require.Equal(t, tc.blocked, checkjs.DeploymentGate(checkerdef.CheckTypeDocker) != "", "mode %s", tc.mode)
-		require.Empty(t, checkjs.DeploymentGate(checkerdef.CheckTypeHTTP), "mode %s", tc.mode)
+		require.Equal(t, tc.blocked, checkjs.DeploymentGate(checkerdef.CheckTypeDocker, nil) != "", "mode %s", tc.mode)
+		require.Empty(t, checkjs.DeploymentGate(checkerdef.CheckTypeHTTP, nil), "mode %s", tc.mode)
 	}
 }
