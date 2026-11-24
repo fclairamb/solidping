@@ -79,6 +79,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/emailsuppressions"
 	"github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
+	"github.com/fclairamb/solidping/server/internal/handlers/eventfeeds"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
 	"github.com/fclairamb/solidping/server/internal/handlers/feedback"
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
@@ -1810,6 +1811,24 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	eventsHandler := events.NewHandler(eventsService, s.config)
 	orgEvents := orgGroup("/orgs/:org/events")
 	orgEvents.GET("", eventsHandler.ListEvents)
+
+	// Private org event feeds (spec 2026-11-24-12). Management is org ADMIN
+	// only, structurally: a feed URL exposes every in-scope event of the org
+	// to whoever holds it. The feed itself is outside the auth middleware —
+	// feed readers cannot bear tokens, the secret in the URL is the
+	// credential — and rate limited per secret on top of the per-IP budget.
+	eventFeedsHandler := eventfeeds.NewHandler(eventfeeds.NewService(s.dbService, eventsService), s.config)
+	orgEventFeeds := api.NewGroup("/orgs/:org/event-feeds").
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgEventFeeds.GET("", eventFeedsHandler.List)
+	orgEventFeeds.POST("", eventFeedsHandler.Create)
+	orgEventFeeds.POST("/:uid/rotate", eventFeedsHandler.Rotate)
+	orgEventFeeds.DELETE("/:uid", eventFeedsHandler.Revoke)
+
+	eventFeedLimiter := middleware.NewRateLimiter(eventFeedRateLimitConfig(s.config.Server.RateLimiting), ctx)
+	api.Use(eventFeedLimiter.RateLimitRouteBy(eventFeedRateLimitKey)).
+		GET("/org-feeds/:secret/feed.xml", eventFeedsHandler.ServeFeed)
 
 	// Realtime hint WebSocket. The hub/handler are always constructed and the
 	// route is always registered — even when SP_REALTIME_ENABLED=false — so a

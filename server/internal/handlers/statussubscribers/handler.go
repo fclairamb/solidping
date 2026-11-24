@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"html"
@@ -14,6 +13,7 @@ import (
 
 	"golang.org/x/text/language"
 
+	"github.com/fclairamb/solidping/server/internal/atomfeed"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -421,36 +421,6 @@ func (h *Handler) writeLandingStatus(
 
 // --- Atom feed ---
 
-// atomFeed is the root Atom document.
-type atomFeed struct {
-	XMLName  xml.Name    `xml:"http://www.w3.org/2005/Atom feed"`
-	Title    string      `xml:"title"`
-	ID       string      `xml:"id"`
-	Updated  string      `xml:"updated"`
-	Links    []atomLink  `xml:"link"`
-	Entries  []atomEntry `xml:"entry"`
-	Subtitle string      `xml:"subtitle,omitempty"`
-}
-
-type atomLink struct {
-	Href string `xml:"href,attr"`
-	Rel  string `xml:"rel,attr,omitempty"`
-}
-
-type atomEntry struct {
-	Title     string   `xml:"title"`
-	ID        string   `xml:"id"`
-	Updated   string   `xml:"updated"`
-	Published string   `xml:"published"`
-	Link      atomLink `xml:"link"`
-	Content   atomText `xml:"content"`
-}
-
-type atomText struct {
-	Type string `xml:"type,attr"`
-	Body string `xml:",chardata"`
-}
-
 // Feed handles GET /api/v1/status-pages/:org/:slug/feed.xml — a public Atom feed
 // of the status-update timeline. No auth.
 func (h *Handler) Feed(writer http.ResponseWriter, req *http.Request) error {
@@ -500,7 +470,7 @@ func (h *Handler) Feed(writer http.ResponseWriter, req *http.Request) error {
 
 func (h *Handler) buildFeed(
 	orgSlug, slug, pageName string, updates []*db.PublicStatusUpdate,
-) *atomFeed {
+) *atomfeed.Feed {
 	feedURL := fmt.Sprintf("%s/api/v1/status-pages/%s/%s/feed.xml", h.baseURL(), orgSlug, slug)
 	pageURL := h.statusPageURL(orgSlug, slug)
 
@@ -509,53 +479,46 @@ func (h *Handler) buildFeed(
 		updated = updates[0].PublishedAt.UTC().Format(time.RFC3339)
 	}
 
-	feed := &atomFeed{
+	feed := &atomfeed.Feed{
 		Title:    pageName + " status updates",
 		ID:       feedURL,
 		Updated:  updated,
 		Subtitle: "Status updates from " + pageName,
-		Links: []atomLink{
+		Links: []atomfeed.Link{
 			{Href: feedURL, Rel: "self"},
 			{Href: pageURL, Rel: "alternate"},
 		},
 	}
 
-	feed.Entries = make([]atomEntry, 0, len(updates))
+	feed.Entries = make([]atomfeed.Entry, 0, len(updates))
 	for _, upd := range updates {
 		entryLink := pageURL
 		if upd.LinkURL != nil && *upd.LinkURL != "" {
 			entryLink = *upd.LinkURL
 		}
 
-		feed.Entries = append(feed.Entries, atomEntry{
+		feed.Entries = append(feed.Entries, atomfeed.Entry{
 			Title:     upd.Title,
 			ID:        fmt.Sprintf("%s#%s", feedURL, upd.UID),
 			Updated:   upd.PublishedAt.UTC().Format(time.RFC3339),
 			Published: upd.PublishedAt.UTC().Format(time.RFC3339),
-			Link:      atomLink{Href: entryLink},
-			Content:   atomText{Type: "text", Body: upd.BodyMarkdown},
+			Link:      atomfeed.Link{Href: entryLink},
+			Content:   atomfeed.Text{Type: "text", Body: upd.BodyMarkdown},
 		})
 	}
 
 	return feed
 }
 
-func (h *Handler) writeFeed(writer http.ResponseWriter, feed *atomFeed, visibility string) error {
-	writer.Header().Set("Content-Type", "application/atom+xml; charset=utf-8")
+func (h *Handler) writeFeed(writer http.ResponseWriter, feed *atomfeed.Feed, visibility string) error {
+	writer.Header().Set("Content-Type", atomfeed.ContentType)
 	// The feed body carries the page's update titles and bodies verbatim, so a
 	// password-gated page's feed must never be retained by a shared cache —
 	// same rule, same helper as the page itself (spec 2026-08-22-06).
 	statuspagecache.Apply(writer.Header(), visibility, statuspagecache.FeedMaxAge)
 	writer.WriteHeader(http.StatusOK)
 
-	if _, err := writer.Write([]byte(xml.Header)); err != nil {
-		return err
-	}
-
-	enc := xml.NewEncoder(writer)
-	enc.Indent("", "  ")
-
-	return enc.Encode(feed)
+	return atomfeed.Encode(writer, feed)
 }
 
 func (h *Handler) writeFeedNotFound(writer http.ResponseWriter) error {

@@ -5758,6 +5758,149 @@ paths:
   # wiki/api-specification/results-incidents.md.
 
   # Member APIs
+  /api/v1/orgs/{org}/event-feeds:
+    get:
+      tags: [Events]
+      summary: List private event feeds
+      description: >-
+        Org admin only. Lists the organization's private Atom feeds of
+        incidents and events, without their secrets (a secret is only shown
+        when the feed is created or rotated), plus the scope choices.
+      operationId: listEventFeeds
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: The feeds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventFeedListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Events]
+      summary: Create a private event feed
+      description: >-
+        Org admin only. Mints a named feed and returns its secret and URL,
+        once. `eventTypes` defaults to `incident.*`, `check.created`,
+        `check.updated` and `check.deleted`; it may also carry
+        `status_update.*` and `maintenance_window.*`. At most 10 feeds per
+        organization. Audited as `org.settings_updated`.
+      operationId: createEventFeed
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventFeedCreateRequest"
+      responses:
+        "201":
+          description: Feed created; the secret is not shown again
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventFeedSecretResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/orgs/{org}/event-feeds/{uid}/rotate:
+    post:
+      tags: [Events]
+      summary: Rotate a private event feed's secret
+      description: >-
+        Org admin only. Replaces the secret: the previous URL answers 410 Gone
+        from now on. Returns the new secret and URL, once.
+      operationId: rotateEventFeed
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/EventFeedUidPath"
+      responses:
+        "200":
+          description: Secret rotated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventFeedSecretResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/event-feeds/{uid}:
+    delete:
+      tags: [Events]
+      summary: Revoke a private event feed
+      description: Org admin only. The feed URL answers 410 Gone from now on.
+      operationId: revokeEventFeed
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/EventFeedUidPath"
+      responses:
+        "204":
+          description: Feed revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/org-feeds/{secret}/feed.xml:
+    get:
+      tags: [Events]
+      summary: Private Atom feed of an organization's incidents and events
+      description: >-
+        No authentication: the secret in the URL is the credential. The newest
+        100 events of the last 30 days in the feed's scope, newest first, from
+        the same query as the Events page, so incidents never published to a
+        status page are included. Titles follow Accept-Language. An unknown,
+        rotated or revoked secret answers 410 Gone. Rate limited per secret.
+        Cache-Control: private, max-age=60; X-Robots-Tag: noindex.
+      operationId: orgEventFeed
+      parameters:
+        - name: secret
+          in: path
+          required: true
+          description: Feed secret (`spf_` followed by 43 base64url characters)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Atom feed XML
+          content:
+            application/atom+xml:
+              schema:
+                type: string
+        "410":
+          description: Unknown, rotated or revoked feed
+          content:
+            text/plain:
+              schema:
+                type: string
+        "429":
+          description: Too many reads of this feed
+
   /api/v1/orgs/{org}/members:
     get:
       tags: [Members]
@@ -10529,6 +10672,14 @@ components:
       bearerFormat: JWT
 
   parameters:
+    EventFeedUidPath:
+      name: uid
+      in: path
+      required: true
+      description: Event feed UID
+      schema:
+        type: string
+        format: uuid
     OrgPath:
       name: org
       in: path
@@ -19226,6 +19377,79 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/OncallPreviewSlot"
+
+    EventFeed:
+      type: object
+      required: [uid, name, eventTypes, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        eventTypes:
+          type: array
+          description: Exact event types and `family.*` items
+          items:
+            type: string
+        createdByUserUid:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        rotatedAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+
+    EventFeedListResponse:
+      type: object
+      required: [data, maxFeeds, scopeChoices, defaultScope]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventFeed"
+        maxFeeds:
+          type: integer
+        scopeChoices:
+          type: array
+          items:
+            type: string
+        defaultScope:
+          type: array
+          items:
+            type: string
+
+    EventFeedCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        eventTypes:
+          type: array
+          items:
+            type: string
+            enum: [incident.*, check.created, check.updated, check.deleted, status_update.*, maintenance_window.*]
+
+    EventFeedSecretResponse:
+      allOf:
+        - $ref: "#/components/schemas/EventFeed"
+        - type: object
+          required: [secret, path, url]
+          properties:
+            secret:
+              type: string
+              description: Shown once
+            path:
+              type: string
+            url:
+              type: string
 
     OncallIcalFeedResponse:
       type: object

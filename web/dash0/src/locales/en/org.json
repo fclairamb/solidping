@@ -87,6 +87,36 @@
       "toFix_other": "{{count}} checks to fix",
       "reasonSharedRegion": "secrets on a shared region",
       "reasonServer": "secrets encrypted by SolidPing"
+    },
+    "eventFeeds": {
+      "title": "Event feeds",
+      "description": "Private Atom feeds of this organization's incidents and events, for a feed reader, a NOC wall or an automation. Anyone with a feed URL can read it without signing in.",
+      "copyOnce": "Copy the URL of “{{name}}” now: it is not shown again. Treat it like a password.",
+      "done": "Done",
+      "empty": "No event feed yet.",
+      "lastUsed": "Last read",
+      "never": "never",
+      "rotate": "Rotate URL",
+      "revoke": "Revoke",
+      "name": "Name",
+      "namePlaceholder": "NOC wall",
+      "scopeLabel": "Events included",
+      "cap": "An organization can have at most {{count}} event feeds. Revoke one to create another.",
+      "create": "Create feed",
+      "createFailed": "The feed could not be created.",
+      "rotateConfirm": "Rotate this feed's URL? The current URL stops working at once.",
+      "rotateFailed": "The feed URL could not be rotated.",
+      "revokeConfirm": "Revoke this feed? Its URL stops working at once.",
+      "revoked": "Feed revoked",
+      "revokeFailed": "The feed could not be revoked.",
+      "scope": {
+        "incident_all": "All incident events",
+        "check_created": "Check created",
+        "check_updated": "Check updated",
+        "check_deleted": "Check deleted",
+        "status_update_all": "Status updates",
+        "maintenance_window_all": "Maintenance windows"
+      }
     }
   },
   "usage": {

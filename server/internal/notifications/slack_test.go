@@ -545,6 +545,34 @@ func (m *mockDBService) GetOnCallScheduleByICalSecret(
 	return nil, errMockNotImplemented
 }
 
+func (m *mockDBService) CreateOrgEventFeed(_ context.Context, _ *models.OrgEventFeed) error {
+	return errMockNotImplemented
+}
+
+func (m *mockDBService) ListOrgEventFeeds(_ context.Context, _ string) ([]*models.OrgEventFeed, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) GetOrgEventFeed(_ context.Context, _, _ string) (*models.OrgEventFeed, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) GetOrgEventFeedBySecretHash(_ context.Context, _ string) (*models.OrgEventFeed, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) RotateOrgEventFeedSecret(_ context.Context, _, _ string, _ time.Time) error {
+	return errMockNotImplemented
+}
+
+func (m *mockDBService) TouchOrgEventFeed(_ context.Context, _ string, _ time.Time) error {
+	return errMockNotImplemented
+}
+
+func (m *mockDBService) RevokeOrgEventFeed(_ context.Context, _ string) error {
+	return errMockNotImplemented
+}
+
 func (m *mockDBService) ListOnCallSchedules(
 	_ context.Context, _ string,
 ) ([]*models.OnCallSchedule, error) {

@@ -87,6 +87,36 @@
       "toFix_other": "{{count}} Checks zu korrigieren",
       "reasonSharedRegion": "Geheimnisse in einer geteilten Region",
       "reasonServer": "von SolidPing verschlüsselte Geheimnisse"
+    },
+    "eventFeeds": {
+      "title": "Ereignis-Feeds",
+      "description": "Private Atom-Feeds der Vorfälle und Ereignisse dieser Organisation, für einen Feedreader, eine Leitstand-Anzeige oder eine Automatisierung. Wer die URL eines Feeds hat, kann ihn ohne Anmeldung lesen.",
+      "copyOnce": "Kopieren Sie jetzt die URL von „{{name}}“: Sie wird nicht erneut angezeigt. Behandeln Sie sie wie ein Passwort.",
+      "done": "Fertig",
+      "empty": "Noch kein Ereignis-Feed.",
+      "lastUsed": "Zuletzt gelesen",
+      "never": "nie",
+      "rotate": "URL erneuern",
+      "revoke": "Widerrufen",
+      "name": "Bezeichnung",
+      "namePlaceholder": "Leitstand",
+      "scopeLabel": "Enthaltene Ereignisse",
+      "cap": "Eine Organisation kann höchstens {{count}} Ereignis-Feeds haben. Widerrufen Sie einen, um einen neuen anzulegen.",
+      "create": "Feed erstellen",
+      "createFailed": "Der Feed konnte nicht erstellt werden.",
+      "rotateConfirm": "Die URL dieses Feeds erneuern? Die aktuelle URL funktioniert sofort nicht mehr.",
+      "rotateFailed": "Die Feed-URL konnte nicht erneuert werden.",
+      "revokeConfirm": "Diesen Feed widerrufen? Seine URL funktioniert sofort nicht mehr.",
+      "revoked": "Feed widerrufen",
+      "revokeFailed": "Der Feed konnte nicht widerrufen werden.",
+      "scope": {
+        "incident_all": "Alle Vorfallsereignisse",
+        "check_created": "Prüfung erstellt",
+        "check_updated": "Prüfung aktualisiert",
+        "check_deleted": "Prüfung gelöscht",
+        "status_update_all": "Statusmeldungen",
+        "maintenance_window_all": "Wartungsfenster"
+      }
     }
   },
   "usage": {
