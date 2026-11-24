@@ -21,6 +21,7 @@ var printers = map[string]*message.Printer{
 	LangFrench:  message.NewPrinter(language.French),
 	LangGerman:  message.NewPrinter(language.German),
 	LangSpanish: message.NewPrinter(language.Spanish),
+	LangChinese: message.NewPrinter(language.Chinese),
 }
 
 // monthKeys are the catalog leaf names of the months, January first.
@@ -110,9 +111,9 @@ func (l Locale) Month(value any) string {
 }
 
 // Duration renders a length of time with localized units: "1h 5m",
-// "1 h 5 min", "1 Std. 5 Min.", "1 h 5 min". Seconds are kept below the hour
-// and dropped above it, minutes are dropped above a day; under a second reads
-// "0s".
+// "1 h 5 min", "1 Std. 5 Min.", "1 h 5 min", "1小时5分钟". Seconds are kept
+// below the hour and dropped above it, minutes are dropped above a day; under a
+// second reads "0s".
 //
 // value may be a time.Duration, an integer or float count of NANOSECONDS (a
 // Duration after a JSON round trip), or a string time.ParseDuration accepts.
@@ -152,7 +153,12 @@ func (l Locale) Duration(value any) string {
 		return l.unit(major, majorValue)
 	}
 
-	return l.unit(major, majorValue) + " " + l.unit(minor, minorValue)
+	separator := " "
+	if l.Lang() == LangChinese {
+		separator = ""
+	}
+
+	return l.unit(major, majorValue) + separator + l.unit(minor, minorValue)
 }
 
 // Number renders a number with exactly decimals fraction digits and the
@@ -173,8 +179,8 @@ func (l Locale) Number(value any, decimals int) string {
 
 // Pct renders a percentage, given in percent (99.95, not 0.9995), with
 // exactly decimals fraction digits and the language's percent sign spacing:
-// "99.95%" in English, "99,95 %" (no-break space) in French, German and
-// Spanish. Same inputs as Number.
+// "99.95%" in English and Chinese, "99,95 %" (no-break space) in French,
+// German and Spanish. Same inputs as Number.
 func (l Locale) Pct(value any, decimals int) string {
 	n, ok := toFloat(value)
 	if !ok {
@@ -210,19 +216,22 @@ func (l Locale) Signed(value any, decimals int) string {
 	return "+" + l.Number(math.Abs(rounded), decimals)
 }
 
-// ListAnd joins items as "a, b and c" ("a, b y c", "a e Ibiza" in Spanish).
+// ListAnd joins items as "a, b and c" ("a, b y c", "a e Ibiza" in Spanish,
+// "a、b 和 c" in Chinese).
 func (l Locale) ListAnd(items any) string {
 	return l.list(items, "common.list.and", isSpanishISound)
 }
 
-// ListOr joins items as "a, b or c" ("a, b o c", "a u Okta" in Spanish).
+// ListOr joins items as "a, b or c" ("a, b o c", "a u Okta" in Spanish,
+// "a、b 或 c" in Chinese).
 func (l Locale) ListOr(items any) string {
 	return l.list(items, "common.list.or", isSpanishOSound)
 }
 
-// list joins items with ", " and puts the conjunction of key before the last
-// one. Spanish swaps y/o for e/u before a word starting with that vowel sound;
-// key+"BeforeVowel" holds that form (the plain one in other languages).
+// list joins items with ", " (Chinese uses "、") and puts the conjunction of
+// key before the last one. Spanish swaps y/o for e/u before a word starting
+// with that vowel sound; key+"BeforeVowel" holds that form (the plain one in
+// other languages).
 // items may be a []string or the []any a job's JSON round trip produces.
 func (l Locale) list(items any, key string, vowelSound func(string) bool) string {
 	words := toStrings(items)
@@ -239,7 +248,12 @@ func (l Locale) list(items any, key string, vowelSound func(string) bool) string
 		key += "BeforeVowel"
 	}
 
-	return l.T(key, "head", strings.Join(words[:len(words)-1], ", "), "last", last)
+	separator := ", "
+	if l.Lang() == LangChinese {
+		separator = "、"
+	}
+
+	return l.T(key, "head", strings.Join(words[:len(words)-1], separator), "last", last)
 }
 
 // isSpanishISound: "y" becomes "e" before /i/ ("i", "hi"), but not before a

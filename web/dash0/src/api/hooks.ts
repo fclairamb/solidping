@@ -3473,7 +3473,7 @@ export interface StatusPage {
   showResponseTime: boolean;
   historyDays: number;
   historyPeriod: StatusPagePeriod;
-  /** The page's own language (en, fr, de, es); absent means English. */
+  /** The page's own language (en, fr, de, es, zh); absent means English. */
   language?: string;
   /**
    * Incident auto-publication settings (spec 2026-08-19-08).

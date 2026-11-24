@@ -80,7 +80,7 @@ export function localizeGenerated(
 }
 
 /** The UI languages a translation can be written in (same set as the server). */
-export const TRANSLATION_LANGUAGES = ["en", "fr", "de", "es"] as const;
+export const TRANSLATION_LANGUAGES = ["en", "fr", "de", "es", "zh"] as const;
 
 /**
  * The payload for a translations draft: groups left empty mean "no

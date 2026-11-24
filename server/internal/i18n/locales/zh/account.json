@@ -1,0 +1,210 @@
+{
+  "duration": {
+    "hours_one": "{count} 小时",
+    "hours_other": "{count} 小时",
+    "days_one": "{count} 天",
+    "days_other": "{count} 天"
+  },
+  "registration": {
+    "subject": "确认你的 SolidPing 账户",
+    "preheader": "一键确认你的邮箱地址，完成 SolidPing 的设置。",
+    "title": "确认你的账户",
+    "intro": "就快完成了。点击下方按钮确认你的 SolidPing 账户，完成设置。",
+    "introText": "就快完成了。确认你的 SolidPing 账户以完成设置：",
+    "cta": "确认账户",
+    "expiry": "此确认链接将在 {expiresIn} 后过期。如果你没有注册 SolidPing，可以安全地忽略这封邮件。"
+  },
+  "welcome": {
+    "title": "欢迎使用 SolidPing",
+    "preheader": "你的账户已就绪。花一分钟添加第一个检查。",
+    "lead": "你的账户已就绪。完成下面三件事只需五分钟，却能让它真正有用：",
+    "addCheck": {
+      "label": "1. 添加检查",
+      "detail": "一个网站、一个 API、一条 DNS 记录、一个 cron 任务……"
+    },
+    "getAlerted": {
+      "label": "2. 接收告警",
+      "detail": "邮件通知现在即可使用。如果希望被叫醒，可以添加 Slack、短信或电话。"
+    },
+    "shareStatus": {
+      "label": "3. 分享状态",
+      "detail": "状态页能让你的用户在开口询问之前就了解情况。"
+    },
+    "cta": "打开仪表盘",
+    "help": "有疑问？回复这封邮件即可，会有真人阅读。",
+    "introText": "感谢你使用 SolidPing。我们会帮你保持服务健康，并在出问题时第一时间通知你。",
+    "helpText": "需要入门帮助？直接回复这封邮件即可。"
+  },
+  "passwordReset": {
+    "subject": "重置你的 SolidPing 密码",
+    "preheader": "设置新密码。链接将在 {expiresIn} 后过期。",
+    "title": "重置密码",
+    "intro": "我们收到重置你的 SolidPing 密码的请求。点击下方按钮设置新密码。",
+    "introText": "我们收到重置你的 SolidPing 密码的请求。在此重置：",
+    "cta": "重置密码",
+    "expiry": "此重置链接将在 {expiresIn} 后过期。如果你没有请求重置密码，可以安全地忽略这封邮件。你的密码不会改变。"
+  },
+  "passwordResetSSO": {
+    "preheader": "你使用 {providers} 登录。请在下方设置密码。",
+    "intro": "我们收到重置你的 SolidPing 密码的请求。你通常使用 <strong>{providers}</strong> 登录 SolidPing。你可以继续这样登录，也可以通过下方链接设置密码。",
+    "introText": "我们收到重置你的 SolidPing 密码的请求。你通常使用 {providers} 登录 SolidPing。你可以继续这样登录，或在此设置密码：",
+    "cta": "设置密码",
+    "expiry": "此重置链接将在 {expiresIn} 后过期。如果你没有发起此请求，可以安全地忽略这封邮件。一切都不会改变，你仍可使用 {providers} 登录。"
+  },
+  "securityNotice": {
+    "preheader": "更改时间：{date}。如果这不是你本人操作，请立即处理。",
+    "warning": "如果这不是你本人操作，请立即联系管理员。你的账户可能已被盗用。"
+  },
+  "passwordChanged": {
+    "subject": "你的 SolidPing 密码已更改",
+    "title": "密码已更改",
+    "body": "这是一封确认邮件：你的 SolidPing 密码已于 {date} 更改。"
+  },
+  "emailChanged": {
+    "subject": "你的 SolidPing 邮箱地址已更改",
+    "title": "邮箱地址已更改",
+    "body": "你的 SolidPing 账户邮箱地址已于 {date} 从 {oldEmail} 更改为 {newEmail}。",
+    "newAddress": "你现在使用 {newEmail} 登录。原地址将不再接收账户邮件。"
+  },
+  "deviceTokenCreated": {
+    "subject": "有设备登录了你的 SolidPing 账户",
+    "preheader": "{client} 现已获得 {org} 的 API 令牌。",
+    "title": "新的设备令牌已创建",
+    "body": "你于 {date} 批准了一次设备登录。自称“{client}”的应用获得了组织 {org} 的 API 令牌，有效期为 90 天。",
+    "requester": "请求来自 IP 地址 {ip}。",
+    "revoke": "如果这次登录不是你本人发起的，请立即在账户令牌页面撤销这个令牌：",
+    "cta": "查看我的令牌"
+  },
+  "passkeyAdded": {
+    "subject": "你的 SolidPing 账户新增了一个通行密钥",
+    "preheader": "“{name}”现在可以登录你的账户。",
+    "title": "新增了一个通行密钥",
+    "body": "一个名为“{name}”的通行密钥已于 {date} 添加到你的 SolidPing 账户。它可用于登录这个账户下的所有组织。",
+    "revoke": "如果不是你本人添加的，请立即在账户安全页面删除它并更改密码：",
+    "cta": "查看我的通行密钥"
+  },
+  "totpEnabled": {
+    "subject": "你的 SolidPing 账户已开启双重验证",
+    "preheader": "现在登录需要输入身份验证器应用中的验证码。",
+    "title": "双重验证已开启",
+    "body": "你的 SolidPing 账户已于 {date} 开启双重验证。现在登录需要输入设置时所用身份验证器应用中的验证码。",
+    "revoke": "如果不是你本人开启的，请立即联系管理员并更改密码：",
+    "cta": "查看我的账户安全设置"
+  },
+  "totpDisabled": {
+    "subject": "你的 SolidPing 账户已关闭双重验证",
+    "preheader": "登录时不再需要输入身份验证器应用中的验证码。",
+    "title": "双重验证已关闭",
+    "body": "你的 SolidPing 账户已于 {date} 关闭双重验证。登录时不再需要输入身份验证器应用中的验证码。",
+    "revoke": "如果不是你本人关闭的，请立即联系管理员、更改密码并重新开启：",
+    "cta": "查看我的账户安全设置"
+  },
+  "discordLinked": {
+    "subject": "有 Discord 账户关联到你的 SolidPing 账户",
+    "preheader": "以后你可以直接使用 Discord 登录你的账户。",
+    "title": "已关联 Discord 账户",
+    "body": "一个 Discord 账户已于 {date} 关联到你的 SolidPing 账户。现在使用 Discord 登录即可进入你的账户。",
+    "revoke": "如果不是你本人关联的，请立即联系管理员移除它。你可以在安全页面更改密码：",
+    "cta": "更改我的密码"
+  },
+  "telegramLinked": {
+    "subject": "有 Telegram 账户关联到你的 SolidPing 账户",
+    "preheader": "以后你可以直接使用 Telegram 登录你的账户。",
+    "title": "已关联 Telegram 账户",
+    "body": "一个 Telegram 账户已于 {date} 关联到你的 SolidPing 账户。现在使用 Telegram 登录即可进入你的账户。",
+    "revoke": "如果不是你本人操作的，请从通知设置中移除它并更改密码：",
+    "cta": "打开我的通知设置"
+  },
+  "contactAdded": {
+    "subject": "你的 SolidPing 账户新增了一种通知方式",
+    "preheader": "{org} 的故障告警现在也会发送到这个联系方式。",
+    "title": "新增了一种通知方式",
+    "body": "你于 {date} 在 {org} 中添加了通知方式 {value}。这个组织的故障告警现在也会发送到这个联系方式。",
+    "revoke": "如果不是你本人添加的，请从通知设置中移除它并更改密码：",
+    "cta": "打开我的通知设置"
+  },
+  "contactVerifyCode": {
+    "subject": "你的 SolidPing 验证码：{code}",
+    "preheader": "确认此邮箱地址，以接收来自 {org} 的故障告警。",
+    "title": "确认此邮箱地址",
+    "body": "SolidPing 账户 {account} 请求在此地址接收 {org} 的故障告警。请在 SolidPing 中输入此验证码以确认：",
+    "expiry": "验证码将在 10 分钟后过期。",
+    "ignore": "如果你没有预期会收到这封邮件，请忽略：不会向此地址发送任何告警。"
+  },
+  "invitation": {
+    "subject": "邀请你加入 SolidPing 上的 {org}",
+    "preheader": {
+      "admin": "以管理员身份加入 {org}。邀请将在 {expiresIn} 后过期。",
+      "user": "以用户身份加入 {org}。邀请将在 {expiresIn} 后过期。",
+      "viewer": "以查看者身份加入 {org}。邀请将在 {expiresIn} 后过期。"
+    },
+    "title": "邀请你加入 {org}",
+    "body": {
+      "byInviter": {
+        "admin": "{inviter} 邀请你以<strong>管理员</strong>身份加入 SolidPing 上的 <strong>{org}</strong>。",
+        "user": "{inviter} 邀请你以<strong>用户</strong>身份加入 SolidPing 上的 <strong>{org}</strong>。",
+        "viewer": "{inviter} 邀请你以<strong>查看者</strong>身份加入 SolidPing 上的 <strong>{org}</strong>。"
+      },
+      "anonymous": {
+        "admin": "你受邀以<strong>管理员</strong>身份加入 SolidPing 上的 <strong>{org}</strong>。",
+        "user": "你受邀以<strong>用户</strong>身份加入 SolidPing 上的 <strong>{org}</strong>。",
+        "viewer": "你受邀以<strong>查看者</strong>身份加入 SolidPing 上的 <strong>{org}</strong>。"
+      }
+    },
+    "bodyText": {
+      "byInviter": {
+        "admin": "{inviter} 邀请你以管理员身份加入 SolidPing 上的 {org}。",
+        "user": "{inviter} 邀请你以用户身份加入 SolidPing 上的 {org}。",
+        "viewer": "{inviter} 邀请你以查看者身份加入 SolidPing 上的 {org}。"
+      },
+      "anonymous": {
+        "admin": "你受邀以管理员身份加入 SolidPing 上的 {org}。",
+        "user": "你受邀以用户身份加入 SolidPing 上的 {org}。",
+        "viewer": "你受邀以查看者身份加入 SolidPing 上的 {org}。"
+      }
+    },
+    "cta": "接受邀请",
+    "acceptText": "接受你的邀请：",
+    "expiry": "此邀请将在 {expiresIn} 后过期。如果你没有预期会收到这封邀请，可以安全地忽略这封邮件。"
+  },
+  "membershipRequest": {
+    "subject": "{requester} 申请加入 {org}",
+    "preheader": "{requester} 正在等待管理员批准访问权限。",
+    "title": "新的成员申请",
+    "body": "<strong>{requester}</strong>（{email}）申请加入 SolidPing 上的 <strong>{org}</strong>。",
+    "bodyText": "{requester}（{email}）申请加入 SolidPing 上的 {org}。",
+    "quotedMessage": "“{message}”",
+    "cta": "查看待处理申请",
+    "why": "你收到这封邮件，是因为你是 {org} 的管理员。"
+  },
+  "membershipDecision": {
+    "approved": {
+      "subject": "你加入 {org} 的申请已获批准",
+      "preheader": "你加入 {org} 的申请已获批准。",
+      "title": "成员申请已获批准",
+      "body": {
+        "admin": "你加入 SolidPing 上 <strong>{org}</strong> 的申请已获批准。你现在是这个组织的成员，角色为<strong>管理员</strong>。",
+        "user": "你加入 SolidPing 上 <strong>{org}</strong> 的申请已获批准。你现在是这个组织的成员，角色为<strong>用户</strong>。",
+        "viewer": "你加入 SolidPing 上 <strong>{org}</strong> 的申请已获批准。你现在是这个组织的成员，角色为<strong>查看者</strong>。"
+      },
+      "bodyText": {
+        "admin": "你加入 SolidPing 上 {org} 的申请已获批准。你现在是这个组织的成员，角色为管理员。",
+        "user": "你加入 SolidPing 上 {org} 的申请已获批准。你现在是这个组织的成员，角色为用户。",
+        "viewer": "你加入 SolidPing 上 {org} 的申请已获批准。你现在是这个组织的成员，角色为查看者。"
+      },
+      "cta": "打开 {org}"
+    },
+    "rejected": {
+      "subject": "你加入 {org} 的申请被拒绝",
+      "preheader": "你加入 {org} 的申请被拒绝。",
+      "title": "成员申请被拒绝",
+      "body": "你加入 SolidPing 上 <strong>{org}</strong> 的申请被拒绝。",
+      "bodyText": "你加入 SolidPing 上 {org} 的申请被拒绝。",
+      "reasonIntro": "管理员给出的理由：",
+      "retry": "冷却期结束后，你可以重新提交申请。"
+    }
+  },
+  "personalOrg": {
+    "name": "{firstName} 的组织"
+  }
+}

@@ -1,14 +1,14 @@
-# dash0 translations (en, fr, de, es)
+# dash0 translations (en, fr, de, es, zh)
 
 Read when adding or changing any user-visible dash0 string.
-Every user-visible string goes through `t()` and exists in all four
+Every user-visible string goes through `t()` and exists in all five
 `src/locales/<lang>/<namespace>.json` files. Three unit tests and one lint
 rule guard this (spec 2026-09-26-01 for the last two):
 
 - `locale-parity.test.ts`: every locale has exactly `en`'s keys.
 - `translated-defaults.test.ts`: every `t("key", "default")` resolves to a real
   `en` key.
-- `untranslated-values.test.ts`: a fr/de/es value identical to the `en` value
+- `untranslated-values.test.ts`: a fr/de/es/zh value identical to the `en` value
   fails, unless `src/locales/identical-allowlist.ts` names that key for that
   locale. It also requires each translation to keep `en`'s `{{placeholders}}`
   and Trans `<tags>`, fails on stale allowlist entries, and checks
@@ -34,4 +34,5 @@ anything a user reads as prose into the locale files.
 
 Terminology already chosen per locale, reuse it: fr "clé d'accès" (passkey),
 "contrôle" (check), "astreinte" (on-call), vous; de "Passkey", "Check" (der Check, die Checks; compounds "Check-Typ", "Check-Gruppe"),
-"Bereitschaft", Sie; es "llave de acceso", "comprobación", "guardia", tú.
+"Bereitschaft", Sie; es "llave de acceso", "comprobación", "guardia", tú; zh
+"通行密钥" (passkey), "检查" (check), "值班" (on-call), "故障" (incident), 你.

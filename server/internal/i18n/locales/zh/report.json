@@ -1,0 +1,102 @@
+{
+  "subject": "{org}，{period}：可用率 {pct}",
+  "heading": "{org} 可用性报告，{period}",
+  "preheader": {
+    "withData": "{pct} 可用率 · {incidents} · {period}。",
+    "noData": "无可用性数据 · {incidents} · {period}。"
+  },
+  "incidents_one": "{count} 次故障",
+  "incidents_other": "{count} 次故障",
+  "title": "可用性报告",
+  "noData": "无数据",
+  "metricLabel": "可用率 · {period}",
+  "versus": "对比 {period}（{previous}）",
+  "period": {
+    "range": "{start} – {end}",
+    "versusWeek": "{start} – {end}"
+  },
+  "scope": {
+    "all": "所有检查（{count}）",
+    "named_one": "{name}（{count} 个检查）",
+    "named_other": "{name}（{count} 个检查）"
+  },
+  "downAll": {
+    "check": "{check} 在整个周期内一直处于故障状态。",
+    "every": "所有受监控的检查在整个周期内一直处于故障状态。"
+  },
+  "labels": {
+    "checksMonitored": "受监控的检查",
+    "incidents": "故障",
+    "totalDowntime": "总停机时间"
+  },
+  "incidentStats": {
+    "longest": "最长 {duration}",
+    "average": "平均 {duration}"
+  },
+  "delta": {
+    "points": "{value} 个百分点",
+    "percent": "{value}%",
+    "noChange": "无变化"
+  },
+  "latency": {
+    "title": "响应时间",
+    "average": "平均",
+    "range": "最快 / 最慢",
+    "slowProbes": "慢探测"
+  },
+  "units": {
+    "ms": "{value} ms",
+    "s": "{value} s"
+  },
+  "slow": {
+    "samples_one": "{count} 个样本",
+    "samples_other": "{count} 个样本",
+    "peaks_one": "{count} 个峰值",
+    "peaks_other": "{count} 个峰值",
+    "both": "{samples}和{peaks}超过 {threshold}",
+    "some": "{counted}超过 {threshold}",
+    "none": "均未超过 {threshold}",
+    "peakNote": "峰值是指某个汇总周期内最慢样本超过 {threshold}；较旧的数据以汇总形式存储，无法报告精确的样本数。",
+    "includesFailures": "响应时间包含失败的样本。"
+  },
+  "checks": {
+    "title": "按检查 · 最差优先",
+    "truncated": "显示 {total} 个检查中可用率最低的 {shown} 个。",
+    "downAllPeriod": "整个周期故障"
+  },
+  "strip": {
+    "label": "每日可用率，{start} – {end}（UTC）",
+    "legend": "{label}：绿色 ≥ {good}，琥珀色 ≥ {warn}，橙色 ≥ {poor}，红色表示低于橙色阈值。灰色表示当天没有记录，因此周期中间创建的检查显示为灰色，而不是红色。",
+    "budgetNote_one": "仅为可用率最低的 {count} 个检查显示每日条带；其余检查已省略，以使这封邮件不超过邮件客户端截断的大小。",
+    "budgetNote_other": "仅为可用率最低的 {count} 个检查显示每日条带；其余检查已省略，以使这封邮件不超过邮件客户端截断的大小。"
+  },
+  "slo": {
+    "title": "目标",
+    "vsTarget": "{value} / 目标 {target}",
+    "budgetRemaining": "剩余预算：{budget}",
+    "state": {
+      "healthy": "健康",
+      "atRisk": "有风险",
+      "breached": "未达标"
+    }
+  },
+  "cta": "打开仪表盘",
+  "text": {
+    "overall": "总体可用率",
+    "versus": "对比 {period}：{previous}",
+    "latencyHeading": "响应时间：",
+    "perCheck": "按检查，最差优先：",
+    "perCheckTruncated": "按检查，最差优先（显示 {total} 个检查中可用率最低的 {shown} 个）：",
+    "objectivesHeading": "目标：",
+    "budgetRemaining": "剩余预算 {budget}"
+  },
+  "insights": {
+    "title": "故障最多",
+    "resolve": "解决时间中位数：{duration}",
+    "acknowledge": "确认时间中位数：{duration}",
+    "acknowledged": "{total} 个中已确认 {count} 个",
+    "rowDetail": "{incidents}，{relapses}",
+    "relapses_one": "{count} 次复发",
+    "relapses_other": "{count} 次复发"
+  }
+}

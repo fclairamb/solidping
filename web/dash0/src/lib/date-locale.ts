@@ -1,8 +1,8 @@
 import { useTranslation } from "react-i18next";
 import type { Locale } from "date-fns";
-import { de, enUS, es, fr } from "date-fns/locale";
+import { de, enUS, es, fr, zhCN } from "date-fns/locale";
 
-const LOCALES: Record<string, Locale> = { en: enUS, fr, de, es };
+const LOCALES: Record<string, Locale> = { en: enUS, fr, de, es, zh: zhCN };
 
 /** Maps an i18n language code (e.g. "fr", "fr-CA") to a date-fns locale. */
 export function dateFnsLocale(language?: string): Locale {

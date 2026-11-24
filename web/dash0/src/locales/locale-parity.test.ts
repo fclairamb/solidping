@@ -17,7 +17,7 @@ import path from "node:path";
 // locale file, don't narrow this test.
 
 const LOCALES_DIR = path.resolve(__dirname);
-const LANGS = ["en", "fr", "de", "es"] as const;
+const LANGS = ["en", "fr", "de", "es", "zh"] as const;
 
 /** Recursively lists every leaf key path, dotted, the way i18next resolves a
  * nested key ("form.confirmationPeriod"). Array values are treated as leaves

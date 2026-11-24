@@ -1,0 +1,66 @@
+{
+  "unsubscribe": {
+    "choice": {
+      "title": "退订 SolidPing 告警",
+      "intro": "你正在将 <strong>{email}</strong> 从故障告警邮件中退订。",
+      "checkOnly": "仅退订 {check}",
+      "wholeOrg": "退订此组织的所有告警邮件",
+      "undoHint": "只要此链接尚未过期，你随时可以在退订后出现的确认页面上撤销此操作。"
+    },
+    "success": {
+      "title": "已退订",
+      "org": "<strong>{email}</strong> 将不再接收此组织的所有告警邮件。",
+      "check": "<strong>{email}</strong> 将不再接收 {check} 的告警。",
+      "thisCheck": "<strong>{email}</strong> 将不再接收此检查的告警。",
+      "othersUnaffected": "这些告警的其他收件人不受影响。",
+      "changedMind": "改变主意了？",
+      "undo": "撤销并重新订阅"
+    },
+    "resubscribed": {
+      "title": "已重新订阅",
+      "body": "你将再次收到此范围内的告警邮件。"
+    },
+    "missing": {
+      "title": "缺少令牌",
+      "undoTitle": "缺少参数",
+      "heading": "缺少链接参数",
+      "body": "此 URL 缺少必需的参数。请使用原始邮件中的完整链接。"
+    },
+    "invalid": {
+      "title": "链接无效或已过期",
+      "heading": "此链接无效或已过期",
+      "body": "退订链接无法验证，或已过期。如果你有更新的告警邮件，请尝试使用那封邮件中的链接。"
+    },
+    "orgNotFound": {
+      "title": "未找到组织",
+      "body": "此链接指向的组织已不存在。"
+    }
+  },
+  "ack": {
+    "success": {
+      "title": "故障已确认",
+      "thanks": "谢谢，故障已确认。",
+      "redirecting": "{countdown} 秒后跳转到故障页面…",
+      "goNow": "立即前往故障页面"
+    },
+    "expired": {
+      "title": "链接已过期",
+      "heading": "此链接已过期",
+      "body_one": "确认链接的有效期为 {count} 天。请打开仪表盘手动确认此故障。",
+      "body_other": "确认链接的有效期为 {count} 天。请打开仪表盘手动确认此故障。"
+    },
+    "invalid": {
+      "title": "链接无效",
+      "heading": "此链接无效",
+      "body": "确认链接无法验证。如果你有有效的邮件通知，请尝试使用那封邮件中的链接，或打开仪表盘手动确认。"
+    },
+    "missingToken": {
+      "title": "缺少令牌",
+      "body": "此 URL 缺少 <code>token</code> 查询参数。请使用原始邮件中的完整链接。"
+    },
+    "error": {
+      "title": "出现问题",
+      "body": "我们无法确认此故障。请重试，或打开仪表盘手动确认。"
+    }
+  }
+}

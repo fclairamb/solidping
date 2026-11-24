@@ -880,7 +880,7 @@ export const intervalIsDense = (count: string, interval: string): boolean => {
 // icmpBurstSummary builds the one-line "what this burst does" explainer, live
 // from the entered values. Count ≤ 1 (or blank) is the default single ping;
 // count ≥ 2 names the spacing, falling back to the server's 1s default. It
-// takes `t` because the wording is localized (en/fr/de/es) and plural is
+// takes `t` because the wording is localized (en/fr/de/es/zh) and plural is
 // picked in code — there is no i18next plural-rules config to lean on.
 export const icmpBurstSummary = (
   t: TFunction,

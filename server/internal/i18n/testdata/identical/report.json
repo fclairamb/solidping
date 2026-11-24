@@ -1,5 +1,17 @@
 {
-  "report.incidents_one": {"fr": "same word"},
-  "report.incidents_other": {"fr": "same word"},
-  "report.labels.incidents": {"fr": "same word"}
+  "report.incidents_one": {
+    "fr": "same word"
+  },
+  "report.incidents_other": {
+    "fr": "same word"
+  },
+  "report.labels.incidents": {
+    "fr": "same word"
+  },
+  "report.units.ms": {
+    "zh": "brand or technical term, kept in English"
+  },
+  "report.units.s": {
+    "zh": "brand or technical term, kept in English"
+  }
 }

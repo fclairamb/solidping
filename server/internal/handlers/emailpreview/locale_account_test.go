@@ -350,6 +350,32 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 		},
 	}
 
+	// The Chinese copy: subject and a translated fragment of the plaintext body.
+	zh := map[string]want{
+		"registration.html":           {"确认你的 SolidPing 账户", "此确认链接将在 3 天 后过期。"},
+		"welcome.html":                {"欢迎使用 SolidPing", "打开仪表盘：" + fixtureDashboardURL},
+		"password-reset.html":         {"重置你的 SolidPing 密码", "此重置链接将在 1 小时 后过期。"},
+		"password-reset-sso.html":     {"重置你的 SolidPing 密码", "你通常使用 GitHub 或 Google 登录 SolidPing。"},
+		"password-changed.html":       {"你的 SolidPing 密码已更改", "你的 SolidPing 密码已于 7月5日 10:00 UTC 更改。"},
+		"totp-disabled.html":          {"你的 SolidPing 账户已关闭双重验证", "你的 SolidPing 账户已于 7月5日 10:00 UTC 关闭双重验证。"},
+		"totp-enabled.html":           {"你的 SolidPing 账户已开启双重验证", "你的 SolidPing 账户已于 7月5日 10:00 UTC 开启双重验证。"},
+		"discord-linked.html":         {"有 Discord 账户关联到你的 SolidPing 账户", "一个 Discord 账户已于 7月5日 10:00 UTC 关联到你的 SolidPing 账户。"},
+		"telegram-linked.html":        {"有 Telegram 账户关联到你的 SolidPing 账户", "一个 Telegram 账户已于 7月5日 10:00 UTC 关联到你的 SolidPing 账户。"},
+		"contact-added.html":          {"你的 SolidPing 账户新增了一种通知方式", "你于 7月5日 10:00 UTC 在 Acme Corp 中添加了通知方式 oncall@acme.com。"},
+		"contact-verify-code.html":    {"你的 SolidPing 验证码：482913", "请求在此地址接收 Acme Corp 的故障告警。"},
+		"passkey-added.html":          {"你的 SolidPing 账户新增了一个通行密钥", "一个名为“iCloud Keychain”的通行密钥已于 7月5日 10:00 UTC 添加到你的 SolidPing 账户。"},
+		"device-token-created.html":   {"有设备登录了你的 SolidPing 账户", "请求来自 IP 地址 203.0.113.7。"},
+		"email-changed.html":          {"你的 SolidPing 邮箱地址已更改", "从 alice@acme.com 更改为 alice@acme.org"},
+		"invitation.html":             {"邀请你加入 SolidPing 上的 Acme Corp", "邀请你以管理员身份加入 SolidPing 上的 Acme Corp。"},
+		"membership-request-new.html": {"Bob Builder 申请加入 Acme Corp", "“I'd like to help monitor our new services.”"},
+		"membership-request-decision.html": {
+			"你加入 Acme Corp 的申请已获批准", "角色为查看者。",
+		},
+	}
+	for tmpl, w := range zh {
+		cases[tmpl][i18n.LangChinese] = w
+	}
+
 	require.Len(t, cases, len(accountTemplates), "every account template has expectations")
 
 	for _, tmpl := range accountTemplates {
@@ -402,18 +428,21 @@ func TestAccountMail_EveryRoleAndDecision(t *testing.T) {
 			i18n.LangFrench:  {"qu'administrateur", "avec le rôle administrateur."},
 			i18n.LangGerman:  {"als Admin", "mit der Rolle Admin."},
 			i18n.LangSpanish: {"como administrador", "con el rol administrador."},
+			i18n.LangChinese: {"以管理员身份", "角色为管理员"},
 		},
 		"user": {
 			i18n.LangEnglish: {"as user", "with role user."},
 			i18n.LangFrench:  {"qu'utilisateur", "avec le rôle utilisateur."},
 			i18n.LangGerman:  {"als Benutzer", "mit der Rolle Benutzer."},
 			i18n.LangSpanish: {"como usuario", "con el rol usuario."},
+			i18n.LangChinese: {"以用户身份", "角色为用户"},
 		},
 		"viewer": {
 			i18n.LangEnglish: {"as viewer", "with role viewer."},
 			i18n.LangFrench:  {"que lecteur", "avec le rôle lecteur."},
 			i18n.LangGerman:  {"als Betrachter", "mit der Rolle Betrachter."},
 			i18n.LangSpanish: {"como lector", "con el rol lector."},
+			i18n.LangChinese: {"以查看者身份", "角色为查看者"},
 		},
 	}
 
@@ -422,6 +451,7 @@ func TestAccountMail_EveryRoleAndDecision(t *testing.T) {
 		i18n.LangFrench:  "Votre demande d'adhésion à " + fixtureOrgName + " a été rejetée",
 		i18n.LangGerman:  "Ihre Anfrage zum Beitritt zu " + fixtureOrgName + " wurde abgelehnt",
 		i18n.LangSpanish: "Se ha rechazado tu solicitud para unirte a " + fixtureOrgName,
+		i18n.LangChinese: "你加入 " + fixtureOrgName + " 的申请被拒绝",
 	}
 
 	for role, words := range roles {

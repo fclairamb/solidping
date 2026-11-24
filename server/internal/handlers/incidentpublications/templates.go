@@ -169,6 +169,22 @@ var publicTemplates = map[string]templateSet{
 		keyRemovedGenericTitle: "El servicio afectado ya no se supervisa",
 		keyRemovedBody:         "El recurso supervisado se ha eliminado. La incidencia está resuelta.",
 	},
+	"zh": {
+		keyOpenedTitle:         "%s 出现故障",
+		keyOpenedBody:          "我们正在调查影响 %s 的问题。",
+		keyGroupOpenedTitle:    "部分服务出现故障",
+		keyResolvedTitle:       "%s 已恢复",
+		keyResolvedBody:        "%s 已恢复正常运行。本次故障已解决。",
+		keyMonitoringTitle:     "%s 已恢复",
+		keyMonitoringBody:      "受影响的组件已恢复。我们正在监控情况。",
+		keyRelapseTitle:        "%s 再次出现故障",
+		keyRelapseBody:         "%s 再次受到影响。我们正在调查。",
+		keyAlsoAffectingTitle:  "本次故障也影响了 %s",
+		keyAlsoAffectingBody:   "%s 现在也受到本次故障影响。",
+		keyRemovedTitle:        "%s 已不再被监控",
+		keyRemovedGenericTitle: "受影响的服务已不再被监控",
+		keyRemovedBody:         "被监控的资源已被移除。本次故障已解决。",
+	},
 }
 
 // defaultLanguage is the fallback for any page whose language is unset or not

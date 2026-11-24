@@ -4,7 +4,7 @@ Read before adding or changing any text an email shows. Spec:
 `specs/todos/2026-10-21-01-email-localization.md`. Template anatomy and rendering
 traps: [email-templates.md](email-templates.md).
 
-Every email is rendered for one reader, in their language (`en`, `fr`, `de`, `es`)
+Every email is rendered for one reader, in their language (`en`, `fr`, `de`, `es`, `zh`)
 and their timezone. Phase A built the machinery and localized `base.html` and the
 shared partials. Phase B localizes each template group in parallel; phase C reviews.
 
@@ -23,7 +23,7 @@ shared partials. Phase B localizes each template group in parallel; phase C revi
 `i18n` API (all methods on `Locale`):
 
 ```go
-i18n.Supported() []string                  // en, fr, de, es
+i18n.Supported() []string                  // en, fr, de, es, zh
 i18n.Normalize(tag string) string          // "fr-FR" -> "fr", unsupported -> ""
 i18n.ParseTimezone(name string) (*time.Location, error) // rejects "", "Local", unknown
 i18n.New(locale, timezone string) Locale   // each falls back on its own
@@ -91,7 +91,9 @@ that only exists on someone else's unmerged branch is not. Phase C merges duplic
   + "Y"): word order and agreement differ (fr/es past participles agree, de puts the
   verb last). Put the variable parts in placeholders.
 - Plurals are two leaves, `x_one` and `x_other`, and are read with `tn "x" .Count`.
-  French uses `_one` for 0 and 1; English, German and Spanish for 1 only. Every
+  French uses `_one` for 0 and 1; English, German, Spanish and Chinese for 1
+  only. Chinese has no grammatical plural, so its `_one` and `_other` may hold
+  the same sentence. Every
   `_one` needs its `_other`, and every `_one` prints `{count}` ("1 check", never "One
   check": French would print "Un contrôle" for 0). Both are tested.
 - `{count}` is filled with the localized count without a thousands separator
@@ -137,7 +139,8 @@ that only exists on someone else's unmerged branch is not. Phase C merges duplic
   Spanish); `listAnd` the same with "and". They take a `[]string`, or the `[]any`
   the job's JSON round trip makes of it.
 - fr, de and es put a **no-break space (U+00A0)** between a number and its unit
-  or `%` (`99,95 %`, `5 min`), like CLDR. Catalog JSON and the existing tests
+  or `%` (`99,95 %`, `5 min`), like CLDR. Chinese, like English, uses no space
+  (`99.95%`, `5分钟`). Catalog JSON and the existing tests
   hold the literal character; `" "` in a Go string is the same and easier to
   see.
 - `lang` is the language code; `base.html` uses it for `<html lang>`.

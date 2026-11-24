@@ -53,9 +53,9 @@ const schemeLight = "light"
 const localeParam = "locale"
 
 // errLocaleMessage is the 400 body of an unsupported ?locale.
-const errLocaleMessage = "locale must be 'en', 'fr', 'de' or 'es'"
+const errLocaleMessage = "locale must be 'en', 'fr', 'de', 'es' or 'zh'"
 
-// localeFromQuery reads ?locale=en|fr|de|es. Absent means English, the
+// localeFromQuery reads ?locale=en|fr|de|es|zh. Absent means English, the
 // rendering the mailer produces for a reader it knows nothing about; any other
 // value (including a full tag like fr-FR) is refused, so a typo is a 400
 // rather than a silent English preview.
@@ -91,7 +91,7 @@ func NewHandler(formatter email.Formatter, cfg *config.Config) *Handler {
 
 // Preview renders a template with fixture data.
 // GET /api/mgmt/email-preview/{template}?format=html|text (default html)
-// &colorScheme=light|dark (default light)&locale=en|fr|de|es (default en).
+// &colorScheme=light|dark (default light)&locale=en|fr|de|es|zh (default en).
 //
 // colorScheme only affects the HTML format: `dark` activates the template's
 // own prefers-color-scheme block (see forceDarkScheme) so the dashboard can

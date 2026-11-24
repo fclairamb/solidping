@@ -32,6 +32,7 @@ var statusSubscriberUpdateSample = map[string]struct{ title, body string }{
 	i18n.LangFrench:  {"Taux d'erreur élevé", "Nous analysons un taux d'erreur élevé sur l'API."},
 	i18n.LangGerman:  {"Erhöhte Fehlerraten", "Wir untersuchen erhöhte Fehlerraten bei der API."},
 	i18n.LangSpanish: {"Tasas de error elevadas", "Estamos investigando tasas de error elevadas en la API."},
+	i18n.LangChinese: {"错误率升高", "我们正在排查 API 错误率升高的问题。"},
 }
 
 // statusSubscriberUpdateFixture covers the incident-opened/update/resolved

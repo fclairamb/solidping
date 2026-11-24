@@ -1,0 +1,99 @@
+{
+  "supportMessage": {
+    "subjectNewMessage": "来自 {from} 的 {channel} 新消息",
+    "subjectNewThread": "来自 {from} 的 {channel} 新支持会话",
+    "channel": "渠道：{channel}",
+    "from": "发件人：{from}",
+    "folded_one": "…自上次通知以来，此会话中还有 {count} 条消息。",
+    "folded_other": "…自上次通知以来，此会话中还有 {count} 条消息。",
+    "replyWarning": "回复此通知不会送达发件人，请打开会话进行答复。"
+  },
+  "userRegistered": {
+    "subject": "新注册：{email}（{method}）",
+    "intro": "刚刚有用户注册了此 SolidPing 实例。",
+    "email": "邮箱：{email}",
+    "name": "姓名：{name}",
+    "method": "方式：{method}",
+    "methods": {
+      "password": "密码",
+      "invite": "邀请"
+    },
+    "org": "组织：{orgs}",
+    "orgs": "组织：{orgs}",
+    "noOrg": "组织：无"
+  },
+  "test": {
+    "subject": "运维通知测试",
+    "intro": "这是对此 SolidPing 实例运维通知的测试。",
+    "works": "如果你能读到这封邮件，说明它使用的投递路由工作正常。",
+    "requestedBy": "由 {email} 请求。"
+  },
+  "watchdogRegion": {
+    "subjectDark": "区域 {region} 已失联",
+    "subjectStalled": "区域 {region} 已停滞",
+    "subjectRecovered": "区域 {region} 在 {duration} 后已恢复",
+    "darkHeadline_one": "区域“{region}”自 {since} 起已失联（无活跃工作节点）：已分配 {count} 个任务，{overdue} 个逾期",
+    "darkHeadline_other": "区域“{region}”自 {since} 起已失联（无活跃工作节点）：已分配 {count} 个任务，{overdue} 个逾期",
+    "organizations_one": "{count} 个组织",
+    "organizations_other": "{count} 个组织",
+    "darkChecks_one": "{orgs} 中有 {count} 个检查仅从这个区域运行且当前未运行；这些组织均已收到邮件通知。",
+    "darkChecks_other": "{orgs} 中有 {count} 个检查仅从这个区域运行且当前未运行；这些组织均已收到邮件通知。",
+    "moved_one": "{count} 个自动放置的检查已迁移到其他区域。",
+    "moved_other": "{count} 个自动放置的检查已迁移到其他区域。",
+    "darkRemediation": "补救措施：恢复“{region}”的工作节点，或执行 {command}。",
+    "liveWorkers_one": "{count} 个活跃工作节点",
+    "liveWorkers_other": "{count} 个活跃工作节点",
+    "stalledHeadline_one": "区域“{region}”已停滞：{workers}，但有 {count} 个任务逾期，最早自 {since} 起",
+    "stalledHeadline_other": "区域“{region}”已停滞：{workers}，但有 {count} 个任务逾期，最早自 {since} 起",
+    "stalledCause": "工作节点有心跳，但未领取任务。未通知各组织。",
+    "stalledInspect": "排查：GET /api/v1/system/regions/health，然后查看工作节点日志。",
+    "recovered_one": "区域“{region}”在 {duration} 后恢复健康（自 {since} 起处于{phase}状态）。已通知 {count} 个组织。",
+    "recovered_other": "区域“{region}”在 {duration} 后恢复健康（自 {since} 起处于{phase}状态）。已通知 {count} 个组织。",
+    "phase": {
+      "dark": "失联",
+      "stalled": "停滞"
+    }
+  },
+  "watchdogDigest": {
+    "allClear_one": "全部正常：{count} 个异常已恢复",
+    "allClear_other": "全部正常：{count} 个异常已恢复",
+    "anomalies_one": "{count} 个平台异常",
+    "anomalies_other": "{count} 个平台异常",
+    "critical_one": "，{count} 个严重",
+    "critical_other": "，{count} 个严重",
+    "recovered_one": "（+{count} 个已恢复）",
+    "recovered_other": "（+{count} 个已恢复）",
+    "generatedAt": "生成于 {date}",
+    "anomaliesTitle": "异常",
+    "severity": {
+      "info": "信息",
+      "warning": "警告",
+      "critical": "严重"
+    },
+    "new": "新增",
+    "stillBroken": "自 {date} 起仍未修复",
+    "fix": "修复：{remediation}",
+    "recoveredTitle": "已恢复",
+    "clearAgain": "{fingerprint}：已恢复正常（首次出现于 {date}）",
+    "failuresTitle": "检测器失败（本次运行无法评估这些异常）"
+  },
+  "aiRepair": {
+    "subject": "检查已修复：{check}",
+    "intro": "SolidPing 修复了检查“{check}”的脚本（版本 {version}）。",
+    "reason": {
+      "drifted": "AI 修复：脚本发生漂移",
+      "error": "AI 修复：脚本发生漂移：{error}",
+      "step": "AI 修复：脚本在第 {step} 步发生漂移"
+    },
+    "diff": "差异：",
+    "review": "查看或撤销：{link}"
+  },
+  "smsDestinationProbing": {
+    "subject": "来自 {org} 的短信目的地探测",
+    "intro_one": "同一组织在 {minutes} 分钟内有 {count} 次短信发送被国家允许列表（SP_SMS_ALLOWED_COUNTRIES）拒绝：很可能是短信轰炸探测。",
+    "intro_other": "同一组织在 {minutes} 分钟内有 {count} 次短信发送被国家允许列表（SP_SMS_ALLOWED_COUNTRIES）拒绝：很可能是短信轰炸探测。",
+    "org": "组织：{org}",
+    "prefixes": "前缀：{prefixes}",
+    "blocked": "它的电话和 WhatsApp 验证码将在接下来的 {minutes} 分钟内被拒绝。"
+  }
+}

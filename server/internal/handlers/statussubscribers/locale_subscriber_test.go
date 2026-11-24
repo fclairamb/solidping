@@ -59,9 +59,9 @@ func TestSubscriberUpdateMailFollowsThePageLanguage(t *testing.T) {
 
 	// The banner per kind and language, then the lines every update carries.
 	labels := map[string]map[string]string{
-		"opened":   {"en": "New incident", "fr": "Nouvel incident", "de": "Neue Störung", "es": "Nueva incidencia"},
-		"update":   {"en": "Status update", "fr": "Mise à jour", "de": "Status-Update", "es": "Actualización de estado"},
-		"resolved": {"en": "Resolved", "fr": "Résolu", "de": "Behoben", "es": "Resuelto"},
+		"opened":   {"en": "New incident", "fr": "Nouvel incident", "de": "Neue Störung", "es": "Nueva incidencia", "zh": "新故障"},
+		"update":   {"en": "Status update", "fr": "Mise à jour", "de": "Status-Update", "es": "Actualización de estado", "zh": "状态更新"},
+		"resolved": {"en": "Resolved", "fr": "Résolu", "de": "Behoben", "es": "Resuelto", "zh": "已解决"},
 	}
 	common := map[string]subscriberCopy{
 		"en": {
@@ -86,6 +86,11 @@ func TestSubscriberUpdateMailFollowsThePageLanguage(t *testing.T) {
 			unsubscribeLine: "Cancelar la suscripción: " +
 				"https://status.example.com/api/v1/public/status-subscribers/unsubscribe?token=",
 			moreInfo: "Más información: https://status.example.com/s/acme/acme-status",
+		},
+		"zh": {
+			subject: "Acme Status：API outage", reason: "你收到这封邮件，是因为你订阅了 Acme Status。",
+			unsubscribeLine: "退订：https://status.example.com/api/v1/public/status-subscribers/unsubscribe?token=",
+			moreInfo:        "更多信息：https://status.example.com/s/acme/acme-status",
 		},
 	}
 	incidentUID := "incident-1"
@@ -202,6 +207,7 @@ func TestSubscriberConfirmMailFollowsThePageLanguage(t *testing.T) {
 		"fr": {"Confirmez votre abonnement à Acme Status", "Confirmez votre abonnement", "Confirmer l&#39;abonnement"},
 		"de": {"Bestätigen Sie Ihr Abonnement für Acme Status", "Bestätigen Sie Ihr Abonnement", "Abonnement bestätigen"},
 		"es": {"Confirma tu suscripción a Acme Status", "Confirma tu suscripción", "Confirmar suscripción"},
+		"zh": {"确认订阅 Acme Status", "确认你的订阅", "确认订阅"},
 	}
 
 	for _, lang := range i18n.Supported() {
@@ -262,6 +268,13 @@ func TestSubscriberLandingPagesFollowThePageLanguage(t *testing.T) {
 			"<h1 style=\"font-size:22px;color:#1a1a2e;\">Suscripción cancelada</h1>" +
 				"<p>Ya no recibirás actualizaciones de Acme Status.</p>",
 			"Volver a la página de estado",
+		},
+		"zh": {
+			"<h1 style=\"font-size:22px;color:#1a1a2e;\">订阅已确认</h1>" +
+				"<p>你现在已订阅 Acme Status 的更新。</p>",
+			"<h1 style=\"font-size:22px;color:#1a1a2e;\">已退订</h1>" +
+				"<p>你将不再收到 Acme Status 的更新。</p>",
+			"返回状态页",
 		},
 	}
 

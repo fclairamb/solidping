@@ -1,0 +1,74 @@
+{
+  "list": {
+    "title": "升级策略",
+    "subtitle": "可复用的呼叫步骤编排，带延迟，并在确认/暂停/解决时取消。",
+    "create": "新建策略",
+    "empty": "创建一个，开始对故障进行呼叫。",
+    "repeats": "每 {{duration}} 重复 {{count}} 次",
+    "editToSeeSteps": "打开即可查看步骤。",
+    "searchPlaceholder": "按名称搜索…",
+    "noMatches": "没有匹配搜索的策略。",
+    "silentBadge": "0 步——静默",
+    "deleteUsage": "被 {{checks}} 个检查和 {{groups}} 个分组使用——它们将回退到继承的升级策略。",
+    "col": {
+      "name": "名称",
+      "description": "描述",
+      "repeats": "重复",
+      "steps": "步骤",
+      "usedBy": "使用者"
+    },
+    "usedChecks_one": "{{count}} 个检查",
+    "usedChecks_other": "{{count}} 个检查",
+    "usedGroups_one": "{{count}} 个分组",
+    "usedGroups_other": "{{count}} 个分组",
+    "unused": "未使用",
+    "emptyTitle": "还没有升级策略",
+    "stepsLabel_one": "步",
+    "stepsLabel_other": "步",
+    "silentBadgeTooltip": "零步策略——不会呼叫任何人"
+  },
+  "new": {
+    "title": "新建升级策略"
+  },
+  "editor": {
+    "basics": "基本信息",
+    "name": "名称",
+    "description": "描述",
+    "steps": "步骤",
+    "step": "步骤",
+    "delaySeconds": "延迟（秒）",
+    "addStep": "添加步骤",
+    "repeat": "重复",
+    "repeatMax": "最大重复次数（0 = 不重复）",
+    "repeatAfterSeconds": "重复间隔（秒）",
+    "create": "创建策略",
+    "deleteConfirm": "删除这个升级策略？引用它的未解决故障会先被检查。",
+    "targetUidPlaceholder": "目标 UID",
+    "loadingTargets": "加载中…",
+    "pickSchedule": "选择值班表",
+    "pickUser": "选择用户",
+    "pickConnection": "选择渠道",
+    "noSchedules": "还没有值班表——",
+    "noMembers": "此组织中没有成员。",
+    "noConnections": "还没有渠道——",
+    "createSchedule": "创建一个",
+    "createConnection": "创建一个",
+    "targetMissing": "之前选择的{{kind}}已不存在。请另选一个或移除此目标。",
+    "targetMissingShort": "缺失",
+    "namePlaceholder": "生产环境呼叫"
+  },
+  "targets": {
+    "user": "用户",
+    "schedule": "值班表",
+    "connection": "通知连接",
+    "all_admins": "所有管理员"
+  },
+  "timeline": {
+    "title": "升级时间线",
+    "fired": "已触发",
+    "pending": "等待中",
+    "failed": "升级失败",
+    "stepSuffix": "· 第 {{step}} 步",
+    "cycleSuffix": "· 第 {{cycle}} 轮"
+  }
+}

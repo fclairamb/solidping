@@ -1,0 +1,243 @@
+{
+  "unknownCheck": "未知检查",
+  "someone": "有人",
+  "checkLink": "<a href=\"{url}\">{check}</a>",
+  "channel": {
+    "slack": "Slack",
+    "discord": "Discord",
+    "telegram": "Telegram",
+    "email": "邮件",
+    "phone": "电话"
+  },
+  "via": {
+    "slack": "通过 Slack",
+    "discord": "通过 Discord",
+    "telegram": "通过 Telegram",
+    "email": "通过邮件",
+    "phone": "通过电话"
+  },
+  "pill": {
+    "down": "故障",
+    "recovered": "已恢复",
+    "checkDeleted": "检查已删除",
+    "checkDisabled": "检查已禁用",
+    "escalated": "已升级",
+    "reopened": "已重新打开",
+    "comment": "评论",
+    "acknowledged": "已确认",
+    "unacknowledged": "确认已撤销",
+    "stillDown": "仍在故障",
+    "budgetBurning": "预算燃烧中",
+    "burnCleared": "燃烧已停止",
+    "degraded": "降级",
+    "degradedClosed": "降级已结束",
+    "degradedCleared": "降级已解除"
+  },
+  "labels": {
+    "type": "类型",
+    "startedAt": "开始时间",
+    "resolvedAt": "解决时间",
+    "duration": "持续时间",
+    "incidentId": "故障 ID",
+    "failureCount": "失败次数",
+    "relapseCount": "复发次数",
+    "failedChecks": "失败的检查",
+    "cause": "原因",
+    "downFrom": "故障开始",
+    "backAt": "恢复时间",
+    "closedAt": "恢复时间",
+    "via": "方式",
+    "ackAt": "时间",
+    "acknowledgedBy": "确认人",
+    "acknowledgedAt": "确认时间",
+    "withdrawnBy": "撤销人",
+    "from": "开始",
+    "until": "结束",
+    "objective": "目标",
+    "policy": "策略",
+    "lastWindow": "最近 {window}",
+    "budgetGoneBy": "预算耗尽时间",
+    "burnRate": "燃烧率",
+    "burnRateLast": "最近 {window} 的燃烧率",
+    "budgetLeft": "剩余预算",
+    "threshold": "阈值",
+    "budgetRemaining": "剩余预算",
+    "projectedExhaustion": "预计耗尽时间",
+    "detectedOn": "检测时间",
+    "peakBurnRate": "峰值燃烧率",
+    "burnRateNow": "当前燃烧率",
+    "failures": "失败",
+    "slowProbes": "慢探测",
+    "window": "窗口",
+    "currentStatus": "当前状态",
+    "monitor": "监控项",
+    "chartWindow": "此窗口的图表"
+  },
+  "regions": {
+    "failingFrom": "正在失败的区域",
+    "failedFrom": "失败区域",
+    "count_one": "（{total} 个区域中的 {count} 个）",
+    "count_other": "（{total} 个区域中的 {count} 个）"
+  },
+  "created": {
+    "title": "{check} 故障",
+    "titleCause": "{check} 故障：{cause}",
+    "preheader": "自 {since} 起故障。",
+    "preheaderRegions": "自 {since} 起故障，{regions} 均观察到。"
+  },
+  "resolved": {
+    "title": "{check} 已恢复",
+    "titleAfter": "{check} 在 {duration} 后已恢复",
+    "downFor": "故障持续 {duration}。",
+    "passing": "检查已重新通过。无需进一步操作。",
+    "leadDuration": "故障持续了 <strong>{duration}</strong>。无需进一步操作。",
+    "deletedSubject": "{check} 已删除，故障已关闭",
+    "deletedTitle": "{check} 已删除",
+    "deletedPreheader": "{check} 已删除，因此故障已关闭。",
+    "deletedBody": "这个检查已被删除，因此故障已关闭。它不一定已经恢复。",
+    "disabledSubject": "{check} 已禁用，故障已关闭",
+    "disabledTitle": "{check} 已禁用",
+    "disabledPreheader": "{check} 已禁用，因此故障已关闭。",
+    "disabledBody": "这个检查已被禁用，因此故障已关闭。它不一定已经恢复。",
+    "textTitle": "{check} 已恢复",
+    "textBody": "{check} 的故障已解决。"
+  },
+  "escalated": {
+    "subject": "{check} 仍处于故障状态，已升级",
+    "preheader_one": "在 {count} 次检查失败后仍处于故障状态，因此已升级。",
+    "preheader_other": "在 {count} 次检查失败后仍处于故障状态，因此已升级。",
+    "title": "{check} 仍处于故障状态",
+    "lead": "没有人在规定时间内确认，因此已升级。",
+    "textTitle": "{check} 故障已升级",
+    "textBody": "{check} 的故障已升级。"
+  },
+  "reopened": {
+    "title": "{check} 再次故障",
+    "preheader": "{check} 在短暂恢复后再次故障。",
+    "lead": "它曾短暂恢复，随后再次失败。",
+    "leadRelapses_one": "它曾短暂恢复，随后再次失败（目前复发 {count} 次）。",
+    "leadRelapses_other": "它曾短暂恢复，随后再次失败（目前复发 {count} 次）。",
+    "textTitle": "{check} 故障已重新打开（第 {relapse} 次复发）",
+    "textBody": "{check} 的故障在短暂恢复后已重新打开。"
+  },
+  "comment": {
+    "subject": "{author} 关于 {check} 的评论",
+    "preheader": "{author} 在 {check} 的故障上留下了备注。",
+    "title": "{author} 评论了 {check}",
+    "posted": "发布方式：{via}。",
+    "textTitle": "{check} 有新评论",
+    "textBody": "{author} 评论了 {check} 的故障：",
+    "textBodyVia": "{author} 评论了 {check} 的故障（{via}）："
+  },
+  "acknowledged": {
+    "title": "{actor} 正在处理 {check}",
+    "preheader": "{actor} 已接手。升级已停止，故障仍未关闭。",
+    "lead": "升级已停止。在检查重新通过之前，故障将保持打开。",
+    "textTitle": "{check} 已被确认",
+    "textBody": "{actor} 确认了 {check} 的故障。升级已停止：无需其他人接手。",
+    "textBodyVia": "{actor} 确认了 {check} 的故障（{via}）。升级已停止：无需其他人接手。",
+    "textStillOpen": "故障仍未关闭：确认只表示有人正在处理，并不表示问题已修复。"
+  },
+  "unacknowledged": {
+    "title": "{check} 现在无人处理",
+    "preheader": "{actor} 撤销了确认。故障再次无人负责，升级将继续。",
+    "lead": "<strong>{actor}</strong> 撤销了确认。升级将从停止处继续。已发出的通知不会重复发送。",
+    "leadVia": "<strong>{actor}</strong> 撤销了确认（{via}）。升级将从停止处继续。已发出的通知不会重复发送。",
+    "textTitle": "{check} 再次无人负责",
+    "textBody": "{actor} 撤销了对 {check} 故障的确认。目前无人处理。",
+    "textBodyVia": "{actor} 撤销了对 {check} 故障的确认（{via}）。目前无人处理。",
+    "textResume": "升级将从确认所中断的步骤继续，因此已经发出的通知不会重复发送。"
+  },
+  "reminder": {
+    "subject": "{check} 仍处于故障状态，无人处理",
+    "title": "{check} 仍处于故障状态",
+    "lead": "{reminder}。目前仍无人接手。",
+    "textBody": "{reminder}。目前仍无人接手此故障。",
+    "ackStopsReminders": "“我来处理”也会停止这些提醒。",
+    "sentence": "故障已持续 {duration}，尚未确认",
+    "sentenceSeq": "故障已持续 {duration}，尚未确认（第 {seq} 次提醒）",
+    "duration": {
+      "minutes": "{n} 分钟",
+      "hours": "{n} 小时",
+      "days": "{n} 天",
+      "hoursMinutes": "{hours} 小时 {minutes} 分钟",
+      "daysHours": "{days} 天 {hours} 小时"
+    }
+  },
+  "burn": {
+    "policy": {
+      "fast": "快速燃烧",
+      "slow": "慢速燃烧"
+    },
+    "severity": {
+      "critical": "严重",
+      "warning": "警告"
+    },
+    "exhausted": "已耗尽",
+    "notWithinWindow": "不在此窗口内",
+    "duration": {
+      "minutes": "{n} 分钟",
+      "hours": "{n} 小时",
+      "days": "{n} 天",
+      "hoursMinutes": "{hours} 小时 {minutes} 分钟",
+      "daysHours": "{days} 天 {hours} 小时"
+    }
+  },
+  "burnCreated": {
+    "subject": "{policy}：{slo} 燃烧率为 {rate}",
+    "preheader": "{policy}策略以 {rate} 触发。剩余预算 {budget}。",
+    "preheaderExhausted": "{policy}策略以 {rate} 触发。错误预算已耗尽。",
+    "title": "{slo} 正在消耗错误预算",
+    "lead": "它正以可持续速率的 <strong>{rate}</strong> 消耗预算。当前不一定处于故障状态，但这种消耗无法持续。",
+    "policyValue": "{policy}，{severity}，超过 {threshold}",
+    "textTitle": "{slo} 正在消耗错误预算",
+    "textBody": "{policy}策略已触发：目标在过去 {long} 内以 {rate} 消耗错误预算，并且在过去 {short} 内仍如此。",
+    "policyText": "{policy} - {severity}",
+    "burnRateText": "{long} 内 {rate}，{short} 内 {shortRate}"
+  },
+  "burnResolved": {
+    "subject": "{slo} 已回落至 {threshold} 以下",
+    "preheader": "燃烧率已回落至 {threshold} 以下。剩余预算 {budget}。",
+    "preheaderExhausted": "燃烧率已回落至 {threshold} 以下。错误预算已耗尽。",
+    "title": "{slo} 已停止燃烧",
+    "lead": "燃烧率已在 {short} 内保持在 {threshold} 以下。已消耗的预算不会恢复。",
+    "rateOver": "{long} 内 {rate}",
+    "textBody": "{policy}策略的两个窗口均已在整个 {short} 内低于 {threshold}，因此告警已解决。",
+    "notReturned": "已消耗的预算不会返还，只有燃烧率回落了。"
+  },
+  "degraded": {
+    "failures_one": "最近 {slots} 次探测中有 {count} 次失败（可用性 {availability}%）",
+    "failures_other": "最近 {slots} 次探测中有 {count} 次失败（可用性 {availability}%）",
+    "failuresNoAvailability_one": "最近 {slots} 次探测中有 {count} 次失败",
+    "failuresNoAvailability_other": "最近 {slots} 次探测中有 {count} 次失败",
+    "slow_one": "最近 {slots} 次探测中有 {count} 次慢于 {ms}ms",
+    "slow_other": "最近 {slots} 次探测中有 {count} 次慢于 {ms}ms",
+    "both": "{failures}，并且 {slow}",
+    "pattern": "检测到间歇性模式",
+    "currentlyUp": "当前正常。",
+    "currentlyNotUp": "当前不正常。",
+    "recentProbes": "最近的探测",
+    "failureLine": "{reason}（规则：{window} 次探测中 {threshold} 次）",
+    "slowLine": "{reason}（规则：{window} 次探测中 {threshold} 次超过 {ms}ms）"
+  },
+  "degradedCreated": {
+    "subject": "{check} 已降级：{reason}",
+    "title": "{check} 已降级",
+    "lead": "它持续失败或变慢，但故障时间不足以被视为中断。",
+    "openChart": "打开图表",
+    "notOutage": "这不是中断：每次失败都在确认期结束前出现了成功。"
+  },
+  "degradedResolved": {
+    "title": "{check} 已恢复稳定",
+    "turnedOffSubject": "{check}：降级检测已关闭",
+    "turnedOffPreheader": "{check} 的降级检测已关闭，因此本次降级已结束。",
+    "preheader": "{check} 已持续正常足够长时间，本次降级已结束。",
+    "turnedOffTitle": "{check} 的降级检测已关闭",
+    "turnedOffLead": "本次降级已结束。它不一定已经恢复。",
+    "leadDuration": "它不稳定持续了 <strong>{duration}</strong>。无需进一步操作。",
+    "lead": "无需进一步操作。",
+    "turnedOffText": "此检查的降级检测已关闭，因此本次降级已结束。它不一定已经恢复。",
+    "textBody": "降级条件已连续足够长时间不成立，本次降级已结束。",
+    "historyKept": "已记录的失败和慢响应仍保留在检查历史中，只是这种间歇模式已结束。"
+  }
+}

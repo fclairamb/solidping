@@ -155,10 +155,11 @@ describe("preferencesSyncMode", () => {
 });
 
 describe("supportedLanguage", () => {
-  it("maps tags to the four shipped languages", () => {
+  it("maps tags to the five shipped languages", () => {
     expect(supportedLanguage("fr-FR")).toBe("fr");
     expect(supportedLanguage("DE")).toBe("de");
     expect(supportedLanguage("es")).toBe("es");
+    expect(supportedLanguage("zh-Hans")).toBe("zh");
     expect(supportedLanguage("en-GB")).toBe("en");
     expect(supportedLanguage("pt-BR")).toBeNull();
     expect(supportedLanguage("")).toBeNull();

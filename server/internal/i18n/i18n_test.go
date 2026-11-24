@@ -17,6 +17,9 @@ func TestNormalize(t *testing.T) {
 		"fr":      "fr",
 		"de":      "de",
 		"es":      "es",
+		"zh":      "zh",
+		"zh-Hans": "zh",
+		"zh-CN":   "zh",
 		"fr-FR":   "fr",
 		"FR_ca":   "fr",
 		" de-AT ": "de",
@@ -145,6 +148,7 @@ func pluralFixture(lang string) Locale {
 		LangFrench:  {"test.checks_one": "{count} contrôle", "test.checks_other": "{count} contrôles"},
 		LangGerman:  {"test.checks_one": "{count} Check", "test.checks_other": "{count} Checks"},
 		LangSpanish: {"test.checks_one": "{count} check", "test.checks_other": "{count} checks"},
+		LangChinese: {"test.checks_one": "{count} 个检查", "test.checks_other": "{count} 个检查"},
 	}}
 }
 
@@ -173,6 +177,9 @@ func TestTn_PluralRules(t *testing.T) {
 		{LangSpanish, 0, "0 checks"},
 		{LangSpanish, 1, "1 check"},
 		{LangSpanish, 7, "7 checks"},
+		{LangChinese, 0, "0 个检查"},
+		{LangChinese, 1, "1 个检查"},
+		{LangChinese, 7, "7 个检查"},
 		// The job JSON round trip turns every int into a float64.
 		{LangEnglish, float64(1), "1 check"},
 		{LangEnglish, int64(5), "5 checks"},
@@ -254,15 +261,18 @@ func TestDate(t *testing.T) {
 		{LangFrench, "Europe/Paris", when, "5 juil., 12:00 CEST"},
 		{LangGerman, "Europe/Paris", when, "5. Juli, 12:00 CEST"},
 		{LangSpanish, "Europe/Paris", when, "5 jul, 12:00 CEST"},
+		{LangChinese, "Europe/Paris", when, "7月5日 12:00 CEST"},
 		{LangEnglish, "Europe/Paris", lastYear, "Jul 5, 2025, 12:00 CEST"},
 		{LangFrench, "Europe/Paris", lastYear, "5 juil. 2025, 12:00 CEST"},
 		{LangGerman, "Europe/Paris", lastYear, "5. Juli 2025, 12:00 CEST"},
 		{LangSpanish, "Europe/Paris", lastYear, "5 jul 2025, 12:00 CEST"},
+		{LangChinese, "Europe/Paris", lastYear, "2025年7月5日 12:00 CEST"},
 		// French writes the first of the month as an ordinal, the others not.
 		{LangFrench, "Europe/Paris", time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC), "1er nov., 10:00 CET"},
 		{LangEnglish, "Europe/Paris", time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC), "Nov 1, 10:00 CET"},
 		{LangGerman, "Europe/Paris", time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC), "1. Nov., 10:00 CET"},
 		{LangSpanish, "Europe/Paris", time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC), "1 nov, 10:00 CET"},
+		{LangChinese, "Europe/Paris", time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC), "11月1日 10:00 CET"},
 		// Winter time, and a zone the tz database names by offset only.
 		{LangFrench, "Europe/Paris", time.Date(2026, 1, 15, 9, 30, 0, 0, time.UTC), "15 janv., 10:30 CET"},
 		{LangEnglish, "Europe/Istanbul", when, "Jul 5, 13:00 UTC+03"},
@@ -297,6 +307,7 @@ func TestDay(t *testing.T) {
 		LangFrench:  {"12 juil.", "12 juil. 2027"},
 		LangGerman:  {"12. Juli", "12. Juli 2027"},
 		LangSpanish: {"12 jul", "12 jul 2027"},
+		LangChinese: {"7月12日", "2027年7月12日"},
 	}
 
 	for lang, want := range cases {
@@ -335,6 +346,7 @@ func TestMonth(t *testing.T) {
 		LangFrench:  "juillet 2026",
 		LangGerman:  "Juli 2026",
 		LangSpanish: "julio de 2026",
+		LangChinese: "2026年7月",
 	}
 
 	for lang, want := range cases {
@@ -388,9 +400,10 @@ func TestDuration(t *testing.T) {
 
 	localized := map[string][2]string{
 		LangEnglish: {"1h 5m", "1d 2h"},
-		LangFrench:  {"1 h 5 min", "1 j 2 h"},
-		LangGerman:  {"1 Std. 5 Min.", "1 Tg. 2 Std."},
-		LangSpanish: {"1 h 5 min", "1 d 2 h"},
+		LangFrench:  {"1\u00a0h 5\u00a0min", "1\u00a0j 2\u00a0h"},
+		LangGerman:  {"1\u00a0Std. 5\u00a0Min.", "1\u00a0Tg. 2\u00a0Std."},
+		LangSpanish: {"1\u00a0h 5\u00a0min", "1\u00a0d 2\u00a0h"},
+		LangChinese: {"1小时5分钟", "1天2小时"},
 	}
 
 	for lang, want := range localized {
@@ -427,9 +440,10 @@ func TestNumberAndPct(t *testing.T) {
 
 	cases := map[string][3]string{
 		LangEnglish: {"1,234.5", "99.95%", "99.950"},
-		LangFrench:  {"1 234,5", "99,95 %", "99,950"},
-		LangGerman:  {"1.234,5", "99,95 %", "99,950"},
-		LangSpanish: {"1.234,5", "99,95 %", "99,950"},
+		LangFrench:  {"1\u00a0234,5", "99,95\u00a0%", "99,950"},
+		LangGerman:  {"1.234,5", "99,95\u00a0%", "99,950"},
+		LangSpanish: {"1.234,5", "99,95\u00a0%", "99,950"},
+		LangChinese: {"1,234.5", "99.95%", "99.950"},
 	}
 
 	for lang, want := range cases {
@@ -506,6 +520,7 @@ func TestLists(t *testing.T) {
 		LangFrench:  {"Google, GitHub ou Microsoft", "Google, GitHub et Microsoft"},
 		LangGerman:  {"Google, GitHub oder Microsoft", "Google, GitHub und Microsoft"},
 		LangSpanish: {"Google, GitHub o Microsoft", "Google, GitHub y Microsoft"},
+		LangChinese: {"Google、GitHub 或 Microsoft", "Google、GitHub 和 Microsoft"},
 	}
 
 	for lang, want := range cases {

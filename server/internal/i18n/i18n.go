@@ -1,6 +1,6 @@
 // Package i18n localizes the text SolidPing renders on the server: emails
-// first (spec 2026-10-21-01), in English, French, German and Spanish, the same
-// set as the dashboard.
+// first (spec 2026-10-21-01), in English, French, German, Spanish and Simplified
+// Chinese, the same set as the dashboard.
 //
 // A Locale is a language plus a timezone. Its zero value is English in UTC,
 // which is also what every unknown or unset preference falls back to. Strings
@@ -25,12 +25,13 @@ const (
 	LangFrench  = "fr"
 	LangGerman  = "de"
 	LangSpanish = "es"
+	LangChinese = "zh"
 )
 
 // Supported lists every language a catalog exists for, English first. Same
 // set as dash0 and status0.
 func Supported() []string {
-	return []string{LangEnglish, LangFrench, LangGerman, LangSpanish}
+	return []string{LangEnglish, LangFrench, LangGerman, LangSpanish, LangChinese}
 }
 
 // Normalize maps a BCP 47 tag ("fr-FR", "FR_ca", " de ") to a supported
@@ -43,7 +44,7 @@ func Normalize(tag string) string {
 	}
 
 	switch lang {
-	case LangEnglish, LangFrench, LangGerman, LangSpanish:
+	case LangEnglish, LangFrench, LangGerman, LangSpanish, LangChinese:
 		return lang
 	default:
 		return ""
@@ -126,7 +127,7 @@ func New(locale, timezone string) Locale {
 	return out
 }
 
-// Lang is the language code: "en", "fr", "de" or "es".
+// Lang is the language code: "en", "fr", "de", "es" or "zh".
 func (l Locale) Lang() string {
 	if l.lang == "" {
 		return LangEnglish
