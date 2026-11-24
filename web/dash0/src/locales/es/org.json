@@ -87,6 +87,36 @@
       "toFix_other": "{{count}} checks por corregir",
       "reasonSharedRegion": "secretos en una región compartida",
       "reasonServer": "secretos cifrados por SolidPing"
+    },
+    "eventFeeds": {
+      "title": "Feeds de eventos",
+      "description": "Feeds Atom privados de los incidentes y eventos de esta organización, para un lector de feeds, una pantalla de supervisión o una automatización. Quien tenga la URL de un feed puede leerlo sin iniciar sesión.",
+      "copyOnce": "Copie ahora la URL de «{{name}}»: no se volverá a mostrar. Trátela como una contraseña.",
+      "done": "Hecho",
+      "empty": "Todavía no hay ningún feed de eventos.",
+      "lastUsed": "Última lectura",
+      "never": "nunca",
+      "rotate": "Cambiar la URL",
+      "revoke": "Revocar",
+      "name": "Nombre",
+      "namePlaceholder": "Pantalla de supervisión",
+      "scopeLabel": "Eventos incluidos",
+      "cap": "Una organización puede tener como máximo {{count}} feeds de eventos. Revoque uno para crear otro.",
+      "create": "Crear el feed",
+      "createFailed": "No se pudo crear el feed.",
+      "rotateConfirm": "¿Cambiar la URL de este feed? La URL actual deja de funcionar de inmediato.",
+      "rotateFailed": "No se pudo cambiar la URL del feed.",
+      "revokeConfirm": "¿Revocar este feed? Su URL deja de funcionar de inmediato.",
+      "revoked": "Feed revocado",
+      "revokeFailed": "No se pudo revocar el feed.",
+      "scope": {
+        "incident_all": "Todos los eventos de incidente",
+        "check_created": "Comprobación creada",
+        "check_updated": "Comprobación actualizada",
+        "check_deleted": "Comprobación eliminada",
+        "status_update_all": "Actualizaciones de estado",
+        "maintenance_window_all": "Ventanas de mantenimiento"
+      }
     }
   },
   "usage": {
