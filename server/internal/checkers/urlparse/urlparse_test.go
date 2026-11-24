@@ -301,3 +301,35 @@ func TestParseRedisPostgresUnix(t *testing.T) {
 
 	r.Equal(checkerdef.CheckTypeRedis, InferCheckType("redis+unix:///run/redis/redis.sock"))
 }
+
+// TestParseMySQLMongoSMTPUnix: mysql+unix, mongodb+unix and smtp+unix URLs
+// carry the socket and the query (spec 2026-11-24-04).
+func TestParseMySQLMongoSMTPUnix(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	cases := []struct {
+		url   string
+		check checkerdef.CheckType
+		sock  string
+		query string
+	}{
+		{"mysql+unix:///run/mysqld/mysqld.sock?user=monitor&db=app", checkerdef.CheckTypeMySQL, "/run/mysqld/mysqld.sock", "user=monitor&db=app"},
+		{"mongodb+unix:///tmp/mongodb-27017.sock?db=admin", checkerdef.CheckTypeMongoDB, "/tmp/mongodb-27017.sock", "db=admin"},
+		{"smtp+unix:///run/postfix/submission.sock", checkerdef.CheckTypeSMTP, "/run/postfix/submission.sock", ""},
+	}
+
+	for _, tc := range cases {
+		parsed, err := Parse(tc.url)
+		r.NoError(err, tc.url)
+		r.Equal(tc.check, parsed.CheckType)
+		r.Equal(tc.sock, parsed.Socket)
+		r.Equal(tc.query, parsed.Query)
+		r.Empty(parsed.Host)
+		r.Equal(tc.check, InferCheckType(tc.url))
+	}
+
+	_, err := Parse("mysql+unix://host/run/mysqld/mysqld.sock")
+	r.Error(err, "no host on a socket URL")
+}

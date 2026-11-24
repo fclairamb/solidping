@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
 )
 
 // Defaults, bounds and config keys this check's rules are expressed in. The
@@ -31,6 +32,12 @@ const (
 
 // SMTPConfig holds the configuration for SMTP server checks.
 type SMTPConfig struct {
+	// URL is only read, to expand a `smtp+unix:///path` quick-create URL into the
+	// socket; it is never written back.
+	URL string `json:"url,omitempty"`
+	// Socket is the Unix socket file the check connects to instead of
+	// host:port (spec 2026-11-24-04).
+	Socket         string        `json:"socket,omitempty"`
 	Host           string        `json:"host"`
 	Port           int           `json:"port,omitempty"`
 	Timeout        time.Duration `json:"timeout,omitempty"`
@@ -81,10 +88,72 @@ type SMTPConfig struct {
 	DeliveryCheckUID string `json:"delivery_check_uid,omitempty"` //nolint:tagliatelle // API uses snake_case
 }
 
+// configKeySocket is the config key of the Unix socket path.
+const configKeySocket = "socket"
+
+// LocalSocket implements checkerdef.LocalSocketTarget.
+func (c *SMTPConfig) LocalSocket() (string, string) {
+	return configKeySocket, c.Socket
+}
+
+// SchemaExclusiveGroups implements checkerdef.SchemaExclusiveGrouper: the
+// check targets either a host (with its port) or a Unix socket.
+func (c *SMTPConfig) SchemaExclusiveGroups() [][]string {
+	return [][]string{{configKeySocket, checkerdef.OutputKeyHost}}
+}
+
+// SchemaBaselines implements checkerdef.SchemaBaseliner: the socket shape.
+func (c *SMTPConfig) SchemaBaselines() []map[string]any {
+	return []map[string]any{{configKeySocket: "/run/postfix/submission.sock"}}
+}
+
+// SchemaNotes implements checkerdef.SchemaNoter.
+func (c *SMTPConfig) SchemaNotes() []string {
+	return []string{
+		"`socket` (an absolute Unix socket path, also set by a `smtp+unix:///path` URL) " +
+			"replaces `host` and `port`; it cannot be combined with them, and there is no TLS over it. The server only dials " +
+			"paths listed in its `checkers.unix_socket_paths` setting.",
+	}
+}
+
+// expandUnixURL rewrites a `smtp+unix://` url into the socket.
+func (c *SMTPConfig) expandUnixURL(configMap map[string]any) error {
+	if c.URL == "" {
+		return nil
+	}
+
+	parsed, err := urlparse.Parse(c.URL)
+	if err != nil || parsed.Socket == "" || parsed.CheckType != checkerdef.CheckTypeSMTP {
+		return checkerdef.NewConfigError("url", "must be a smtp+unix:///path/to/socket URL")
+	}
+
+	if socket, _ := configMap[configKeySocket].(string); socket != "" {
+		return checkerdef.NewConfigError(configKeySocket, "socket and url are mutually exclusive")
+	}
+
+	c.Socket = parsed.Socket
+
+	c.URL = ""
+
+	return nil
+}
+
 // FromMap populates the configuration from a map.
 //
 //nolint:cyclop // Configuration parsing requires checking multiple field types
 func (c *SMTPConfig) FromMap(configMap map[string]any) error {
+	if urlStr, ok := configMap["url"].(string); ok {
+		c.URL = urlStr
+	} else if configMap["url"] != nil {
+		return checkerdef.NewConfigError("url", "must be a string")
+	}
+
+	if socket, ok := configMap[configKeySocket].(string); ok {
+		c.Socket = socket
+	} else if configMap[configKeySocket] != nil {
+		return checkerdef.NewConfigError(configKeySocket, "must be a string")
+	}
+
 	if host, ok := configMap[checkerdef.OutputKeyHost].(string); ok {
 		c.Host = host
 	} else if configMap[checkerdef.OutputKeyHost] != nil {
@@ -158,7 +227,11 @@ func (c *SMTPConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("password", "must be a string")
 	}
 
-	return c.fromMapSendMode(configMap)
+	if err := c.fromMapSendMode(configMap); err != nil {
+		return err
+	}
+
+	return c.expandUnixURL(configMap)
 }
 
 // fromMapSendMode parses the send-mode fields (send_email/mail_from/
@@ -194,8 +267,12 @@ func (c *SMTPConfig) fromMapSendMode(configMap map[string]any) error {
 
 // GetConfig returns the configuration as a map.
 func (c *SMTPConfig) GetConfig() map[string]any {
-	cfg := map[string]any{
-		checkerdef.OutputKeyHost: c.Host,
+	cfg := map[string]any{}
+
+	if c.Socket != "" {
+		cfg[configKeySocket] = c.Socket
+	} else {
+		cfg[checkerdef.OutputKeyHost] = c.Host
 	}
 
 	if c.Port != 0 && c.Port != DefaultPort {
@@ -265,7 +342,11 @@ func (c *SMTPConfig) getConfigSendMode(cfg map[string]any) {
 
 // Validate checks if the configuration is valid.
 func (c *SMTPConfig) Validate() error {
-	if c.Host == "" {
+	if c.Socket != "" {
+		if err := c.validateSocket(); err != nil {
+			return err
+		}
+	} else if c.Host == "" {
 		return checkerdef.NewRequiredConfigError(checkerdef.OutputKeyHost)
 	}
 
@@ -325,6 +406,24 @@ func (c *SMTPConfig) Validate() error {
 		if err := ValidateDeliveryTo(c.DeliveryTo); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+// validateSocket checks the Unix socket target: no host/port, a clean absolute
+// path, and no TLS of any kind (STARTTLS, implicit TLS) over it.
+func (c *SMTPConfig) validateSocket() error {
+	if c.Host != "" || c.Port != 0 {
+		return checkerdef.NewConfigError(configKeySocket, "socket and host/port are mutually exclusive")
+	}
+
+	if err := checkerdef.ValidateLocalSocketPath(c.Socket); err != nil {
+		return checkerdef.NewConfigError(configKeySocket, err.Error())
+	}
+
+	if c.StartTLS {
+		return checkerdef.NewConfigError("starttls", "TLS is not supported over a Unix socket")
 	}
 
 	return nil

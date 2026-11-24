@@ -26,6 +26,12 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 		port = DefaultPort
 	}
 
+	if cfg.Socket != "" {
+		fillSocketDefaults(spec, cfg)
+
+		return nil
+	}
+
 	if spec.Name == "" {
 		if cfg.Database != "" {
 			spec.Name = fmt.Sprintf("%s:%d/%s", cfg.Host, port, cfg.Database)
@@ -39,4 +45,15 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 	}
 
 	return nil
+}
+
+// fillSocketDefaults names a socket check after its socket path.
+func fillSocketDefaults(spec *checkerdef.CheckSpec, cfg *MySQLConfig) {
+	if spec.Name == "" {
+		spec.Name = cfg.Socket
+	}
+
+	if spec.Slug == "" {
+		spec.Slug = "mysql-" + strings.Trim(strings.NewReplacer("/", "-", ".", "-").Replace(cfg.Socket), "-")
+	}
 }

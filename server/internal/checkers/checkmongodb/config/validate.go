@@ -21,6 +21,18 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 		return err
 	}
 
+	if cfg.Socket != "" {
+		if spec.Name == "" {
+			spec.Name = cfg.Socket
+		}
+
+		if spec.Slug == "" {
+			spec.Slug = "mongodb-" + strings.Trim(strings.NewReplacer("/", "-", ".", "-").Replace(cfg.Socket), "-")
+		}
+
+		return nil
+	}
+
 	port := cfg.Port
 	if port == 0 {
 		port = DefaultPort

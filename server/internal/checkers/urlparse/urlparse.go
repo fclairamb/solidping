@@ -69,6 +69,9 @@ var schemeMapping = map[string]checkerdef.CheckType{
 	// are redis / postgresql checks through a socket (spec 2026-11-24-03).
 	schemeRedisUnix:    checkerdef.CheckTypeRedis,
 	schemePostgresUnix: checkerdef.CheckTypePostgreSQL,
+	schemeMySQLUnix:    checkerdef.CheckTypeMySQL,
+	schemeMongoDBUnix:  checkerdef.CheckTypeMongoDB,
+	schemeSMTPUnix:     checkerdef.CheckTypeSMTP,
 }
 
 //nolint:gochecknoglobals // validDNSRecordTypes is a constant lookup map.
@@ -142,7 +145,8 @@ func (p *ParsedURL) parseByType(parsedURL *url.URL) error {
 	case checkerdef.CheckTypeTCP:
 		return p.parseTCP(parsedURL)
 
-	case checkerdef.CheckTypeRedis, checkerdef.CheckTypePostgreSQL:
+	case checkerdef.CheckTypeRedis, checkerdef.CheckTypePostgreSQL,
+		checkerdef.CheckTypeMySQL, checkerdef.CheckTypeMongoDB, checkerdef.CheckTypeSMTP:
 		return p.parseUnix(parsedURL)
 
 	case checkerdef.CheckTypeICMP:
@@ -202,6 +206,9 @@ func (p *ParsedURL) parseUnix(parsedURL *url.URL) error {
 const (
 	schemeRedisUnix    = "redis+unix"
 	schemePostgresUnix = "postgres+unix"
+	schemeMySQLUnix    = "mysql+unix"
+	schemeMongoDBUnix  = "mongodb+unix"
+	schemeSMTPUnix     = "smtp+unix"
 )
 
 // schemeHTTPUnix is the scheme of an http check through a Unix socket.
