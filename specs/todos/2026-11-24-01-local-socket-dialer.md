@@ -170,8 +170,10 @@ decided in one place, never by each check.
 - How the `ActivationResolver` gets the allowlist: it is built once at startup with the deployment
   mode (`NewActivationResolver`), the allowlist comes the same way.
 
-## Open questions
+## Resolved open questions
 
 - Allowlist default: empty (feature off until the operator lists paths), or allow every path on a
   self-hosted server? **Recommended: empty**. An "allow all" default makes docker.sock reachable by
   any member who can create a check.
+
+  **Decision:** the allowlist defaults to empty: the feature stays off until the operator lists paths. (autopilot: recommended answer)
