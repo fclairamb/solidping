@@ -25,8 +25,14 @@ async function stubStats(
   opts: { ageDays: number; down?: number },
 ): Promise<void> {
   await page.route("**/api/v1/orgs/test/checks/stats", async (route) => {
-    const response = await route.fetch();
-    const body = await response.json();
+    // A reload or navigation can dispose the in-flight request under us:
+    // that page is gone, so there is nothing left to answer.
+    const response = await route.fetch().catch(() => null);
+    const body = await response?.json().catch(() => null);
+    if (!response || !body) {
+      await route.abort().catch(() => undefined);
+      return;
+    }
     await route.fulfill({
       response,
       json: {
@@ -43,8 +49,14 @@ async function stubStats(
 
 async function stubStarConfig(page: Page, enabled: boolean): Promise<void> {
   await page.route("**/api/v1/config", async (route) => {
-    const response = await route.fetch();
-    const body = await response.json();
+    // A reload or navigation can dispose the in-flight request under us:
+    // that page is gone, so there is nothing left to answer.
+    const response = await route.fetch().catch(() => null);
+    const body = await response?.json().catch(() => null);
+    if (!response || !body) {
+      await route.abort().catch(() => undefined);
+      return;
+    }
     await route.fulfill({
       response,
       json: { ...body, githubStar: { enabled } },
