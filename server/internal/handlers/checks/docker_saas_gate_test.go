@@ -62,3 +62,26 @@ func assertDockerRejected(r *require.Assertions, err error) {
 	r.NotNil(configErr, "docker-in-SaaS rejection must be a *checkerdef.ConfigError")
 	r.Equal(ErrDockerNotAvailableInSaaS.Error(), configErr.Message)
 }
+
+// A systemd check reads a unit of the executing host (issue #1000): the same
+// SaaS rule applies, with its own message, on its `unit` field.
+func TestValidateHostLocalDeploymentConfig_Systemd(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	saas := &Service{deploymentMode: config.DeploymentModeSaaS}
+	selfHosted := &Service{deploymentMode: config.DeploymentModeSelfHosted}
+	systemd := string(checkerdef.CheckTypeSystemd)
+
+	r.NoError(selfHosted.validateHostLocalDeploymentConfig(systemd, nil, nil))
+	r.NoError(selfHosted.validateHostLocalDeploymentConfig(systemd, nil, []string{"eu-west"}))
+	r.NoError(saas.validateHostLocalDeploymentConfig(systemd, nil, []string{"@office"}))
+
+	for _, placement := range [][]string{nil, {"eu-west"}, {"@office", "eu-west"}} {
+		err := saas.validateHostLocalDeploymentConfig(systemd, nil, placement)
+		configErr := checkerdef.IsConfigError(err)
+		r.NotNil(configErr, "placement %v must be rejected", placement)
+		r.Equal("unit", configErr.Parameter)
+		r.Equal(ErrSystemdNotAvailableInSaaS.Error(), configErr.Message)
+	}
+}

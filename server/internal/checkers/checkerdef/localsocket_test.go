@@ -219,6 +219,7 @@ func TestIsHostLocal(t *testing.T) {
 
 	r := require.New(t)
 	r.True(checkerdef.IsHostLocal(checkerdef.CheckTypeDocker, nil))
+	r.True(checkerdef.IsHostLocal(checkerdef.CheckTypeSystemd, nil))
 	r.False(checkerdef.IsHostLocal(checkerdef.CheckTypeTCP, nil))
 
 	cfg, _ := configregistry.ParseConfig(checkerdef.CheckTypeTCP)

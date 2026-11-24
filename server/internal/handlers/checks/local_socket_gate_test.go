@@ -166,3 +166,36 @@ func TestCreateHTTPSocketCheck_SaaS(t *testing.T) {
 	_, err = svc.CreateCheck(ctx, org.Slug, req(map[string]any{"unix_socket": "/run/app/a.sock"}, []string{"@office"}))
 	r.NoError(err)
 }
+
+// TestCreateSystemdCheck_SaaS: a systemd check is host-local by type (issue
+// #1000): on SaaS it is rejected on a shared region and saved on a private one.
+func TestCreateSystemdCheck_SaaS(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, org := setupDockerGateService(t, config.DeploymentModeSaaS)
+
+	req := func(regions []string) checks.CreateCheckRequest {
+		return checks.CreateCheckRequest{
+			Type:    "systemd",
+			Config:  map[string]any{"unit": "nginx"},
+			Regions: regions,
+		}
+	}
+
+	_, err := svc.CreateCheck(ctx, org.Slug, req([]string{"eu-west"}))
+	r.ErrorContains(err, checks.ErrSystemdNotAvailableInSaaS.Error())
+
+	var cfgErr *checkerdef.ConfigError
+	r.ErrorAs(err, &cfgErr)
+	r.Equal("unit", cfgErr.Parameter)
+
+	_, err = svc.CreateCheck(ctx, org.Slug, req(nil))
+	r.ErrorContains(err, checks.ErrSystemdNotAvailableInSaaS.Error(), "auto placement is shared")
+
+	created, err := svc.CreateCheck(ctx, org.Slug, req([]string{"@office"}))
+	r.NoError(err)
+	r.Equal([]string{"@office"}, created.Regions)
+	r.Equal("systemd-nginx-service", *created.Slug)
+}

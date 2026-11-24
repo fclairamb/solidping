@@ -24,6 +24,11 @@ import (
 // private (agent-hosted) regions.
 var ErrDockerNotAvailableInSaaS = errors.New("docker checks are not available on this deployment")
 
+// ErrSystemdNotAvailableInSaaS is the systemd twin of
+// ErrDockerNotAvailableInSaaS (issue #1000): a unit is read on the host that
+// runs the check.
+var ErrSystemdNotAvailableInSaaS = errors.New("systemd checks are not available on this deployment")
+
 // ErrHostLocalNotAvailableInSaaS is the generic sibling of
 // ErrDockerNotAvailableInSaaS for every other host-local check (a Unix socket
 // target, spec 2026-11-24-01): on SaaS it must be pinned to private regions.
@@ -510,7 +515,7 @@ func onlyPrivateRegions(checkRegions []string) bool {
 	return true
 }
 
-// validateHostLocalDeploymentConfig rejects a host-local check (docker, or a
+// validateHostLocalDeploymentConfig rejects a host-local check (docker, systemd, or a
 // config targeting a Unix socket — checkerdef.IsHostLocal) in SaaS mode
 // unless checkRegions resolves to private (agent-hosted) regions only.
 // checkRegions is the CALLER's already-resolved placement (auto placement
@@ -532,8 +537,11 @@ func (s *Service) validateHostLocalDeploymentConfig(
 		return nil
 	}
 
-	if typ == checkerdef.CheckTypeDocker {
+	switch typ { //nolint:exhaustive // only the type-level host-local types have their own message
+	case checkerdef.CheckTypeDocker:
 		return checkerdef.NewConfigError("host", ErrDockerNotAvailableInSaaS.Error())
+	case checkerdef.CheckTypeSystemd:
+		return checkerdef.NewConfigError("unit", ErrSystemdNotAvailableInSaaS.Error())
 	}
 
 	field, _, _ := checkerdef.LocalSocketOf(cfg)

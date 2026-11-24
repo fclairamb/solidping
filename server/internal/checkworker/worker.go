@@ -74,6 +74,10 @@ var (
 	// still be refused here — without ever dialing the socket. Same message
 	// as the create-time gate, so the two read as one rule from either side.
 	ErrDockerNotAvailableInSaaS = errors.New("docker checks are not available on this deployment")
+	// ErrSystemdNotAvailableInSaaS is the systemd twin of
+	// ErrDockerNotAvailableInSaaS (issue #1000): a SaaS shared worker never
+	// reports on its own host's units. Same message as the create gate.
+	ErrSystemdNotAvailableInSaaS = errors.New("systemd checks are not available on this deployment")
 	// ErrHostLocalNotAvailableInSaaS is the generic sibling of
 	// ErrDockerNotAvailableInSaaS for every other host-local check (a Unix
 	// socket target, spec 2026-11-24-01). Same message as the create gate.
@@ -2015,8 +2019,11 @@ func hostLocalRefusal(blocked bool, checkType checkerdef.CheckType, cfg checkerd
 		return nil
 	}
 
-	if checkType == checkerdef.CheckTypeDocker {
+	switch checkType { //nolint:exhaustive // only the type-level host-local types have their own message
+	case checkerdef.CheckTypeDocker:
 		return ErrDockerNotAvailableInSaaS
+	case checkerdef.CheckTypeSystemd:
+		return ErrSystemdNotAvailableInSaaS
 	}
 
 	return ErrHostLocalNotAvailableInSaaS

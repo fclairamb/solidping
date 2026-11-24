@@ -244,6 +244,9 @@ const (
 	CheckTypeSNMP CheckType = "snmp"
 	// CheckTypeDocker performs Docker container health checks.
 	CheckTypeDocker CheckType = "docker"
+	// CheckTypeSystemd reports the state of a systemd unit of the host that
+	// runs the check, through `systemctl show`.
+	CheckTypeSystemd CheckType = "systemd"
 	// CheckTypeBrowser performs headless Chrome browser health checks.
 	CheckTypeBrowser CheckType = "browser"
 	// CheckTypeFreeboxLine monitors xDSL/FTTH line quality via the Freebox OS API.
@@ -374,6 +377,7 @@ const (
 	labelReqMessagingClient = "requires:messaging-client"
 	labelReqScripting       = "requires:scripting-runtime"
 	labelReqDockerSocket    = "requires:docker-socket"
+	labelReqSystemd         = "requires:systemd"
 	labelReqChrome          = "requires:chrome"
 	labelReqK8sCluster      = "requires:kubernetes-cluster"
 
@@ -505,6 +509,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeRabbitMQ, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check RabbitMQ server health", SupportsTunnel: true},
 	{Type: CheckTypeSNMP, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor devices via SNMP"},
 	{Type: CheckTypeDocker, Labels: []string{labelUnsafe, labelReqDockerSocket, labelCatInfrastructure}, Description: "Monitor Docker container health"},
+	{Type: CheckTypeSystemd, Labels: []string{labelUnsafe, labelReqSystemd, labelCatInfrastructure}, Description: "Check the state of a systemd unit"},
 	{Type: CheckTypeBrowser, Labels: []string{labelUnsafe, labelReqChrome, labelCatOther}, Description: "Monitor pages with headless Chrome", MinPeriod: time.Minute, DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeFreeboxLine, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor Freebox xDSL/FTTH line quality", DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeDNSBL, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Check if an IP/domain is on DNS blocklists", MinPeriod: 15 * time.Minute, DefaultPeriod: time.Hour, SupportsIPVersion: true},
@@ -697,6 +702,7 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeRabbitMQ,
 		CheckTypeSNMP,
 		CheckTypeDocker,
+		CheckTypeSystemd,
 		CheckTypeBrowser,
 		CheckTypeFreeboxLine,
 		CheckTypeDNSBL,

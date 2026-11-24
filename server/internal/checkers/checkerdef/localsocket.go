@@ -62,11 +62,11 @@ func LocalSocketOf(cfg Config) (string, string, bool) {
 }
 
 // IsHostLocal reports whether a check of checkType with cfg reads something
-// local to the host that executes it: the Docker daemon, or a Unix socket.
-// Such a check must never run on a SaaS shared worker. cfg may be nil, in
-// which case only the type-level rule (docker) applies.
+// local to the host that executes it: the Docker daemon, a systemd unit, or
+// a Unix socket. Such a check must never run on a SaaS shared worker. cfg may
+// be nil, in which case only the type-level rule (IsHostLocalType) applies.
 func IsHostLocal(checkType CheckType, cfg Config) bool {
-	if checkType == CheckTypeDocker {
+	if IsHostLocalType(checkType) {
 		return true
 	}
 
@@ -77,6 +77,13 @@ func IsHostLocal(checkType CheckType, cfg Config) bool {
 	_, _, ok := LocalSocketOf(cfg)
 
 	return ok
+}
+
+// IsHostLocalType reports whether every check of checkType is host-local,
+// whatever its config: docker (the Docker daemon) and systemd (the units of
+// the executing host, issue #1000).
+func IsHostLocalType(checkType CheckType) bool {
+	return checkType == CheckTypeDocker || checkType == CheckTypeSystemd
 }
 
 // ValidateLocalSocketPath is the syntax rule: an absolute, already-clean path

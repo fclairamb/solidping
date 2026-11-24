@@ -126,11 +126,11 @@ func (r *ActivationResolver) ListAllWithStatus(orgDisabled []string) []CheckType
 // caller can explain the constraint up front instead of only after a
 // rejected create.
 func dockerAdvisoryFor(checkType CheckType, deploymentMode string) string {
-	if checkType != CheckTypeDocker || deploymentMode != config.DeploymentModeSaaS {
+	if !IsHostLocalType(checkType) || deploymentMode != config.DeploymentModeSaaS {
 		return ""
 	}
 
-	return "On this deployment, docker checks only run when pinned to one of your organization's " +
+	return "On this deployment, " + string(checkType) + " checks only run when pinned to one of your organization's " +
 		"private locations (an agent in your own network) — shared regions reject them."
 }
 
