@@ -3,6 +3,7 @@ package checkpostgres
 import (
 	"context"
 	"database/sql"
+	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -72,8 +73,9 @@ func buildPQConfig(cfg *PostgreSQLConfig, timeout time.Duration) pq.Config {
 
 // openDB opens the PostgreSQL handle from an explicit pq.Config. The dial goes
 // through the tunnel dialer, or the egress guard under an enforcing policy (spec
-// 2026-09-25-19); without either it keeps lib/pq's default dialer. The driver
-// negotiates TLS above this dialer either way.
+// 2026-09-25-19), or a plain net.Dialer; every one of them refuses a Unix network,
+// so only the socket field (through LocalSocketDialer) reaches a socket. The
+// driver negotiates TLS above this dialer either way.
 func openDB(ctx context.Context, pqCfg *pq.Config, socket string) (*sql.DB, error) {
 	connector, err := pq.NewConnectorConfig(*pqCfg)
 	if err != nil {
@@ -87,9 +89,15 @@ func openDB(ctx context.Context, pqCfg *pq.Config, socket string) (*sql.DB, erro
 		return sql.OpenDB(connector), nil
 	}
 
-	if dialer := checkerdef.OutboundDialer(ctx); dialer != nil {
-		connector.Dialer(pqTunnelDialer{ctx: ctx, dialer: dialer})
+	// Never lib/pq's default dialer: it dials `unix` for a path host, which
+	// would bypass the socket allowlist (spec 2026-11-24-08). The base dialer
+	// is the tunnel, the enforcing egress guard, or a plain net.Dialer.
+	dialer := checkerdef.OutboundDialer(ctx)
+	if dialer == nil {
+		dialer = &net.Dialer{}
 	}
+
+	connector.Dialer(pqTunnelDialer{ctx: ctx, dialer: checkerdef.NoLocalSocketDialer(dialer)})
 
 	return sql.OpenDB(connector), nil
 }

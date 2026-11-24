@@ -18,6 +18,10 @@ import (
 // old escaper, `\'` canceled the inserted escape and the rest became options.
 const hostile = `a\' b=c sslmode=disable sslcert=/etc/x passfile=/p \\' 'q`
 
+// hostileHost is hostile without `/`: a host holding a path is refused by
+// Validate (spec 2026-11-24-08).
+const hostileHost = `a\' b=c sslmode=disable sslcert=x passfile=p \\' 'q`
+
 func TestBuildPQConfigCarriesFieldsByteForByte(t *testing.T) {
 	t.Parallel()
 
@@ -25,18 +29,27 @@ func TestBuildPQConfigCarriesFieldsByteForByte(t *testing.T) {
 		name  string
 		cfg   PostgreSQLConfig
 		field func(pq.Config) string
+		want  string
 	}{
-		{"host", PostgreSQLConfig{Host: hostile, Username: "u"}, func(c pq.Config) string { return c.Host }},
-		{"username", PostgreSQLConfig{Host: "h", Username: hostile}, func(c pq.Config) string { return c.User }},
+		{
+			"host",
+			PostgreSQLConfig{Host: hostileHost, Username: "u"},
+			func(c pq.Config) string { return c.Host }, hostileHost,
+		},
+		{
+			"username",
+			PostgreSQLConfig{Host: "h", Username: hostile},
+			func(c pq.Config) string { return c.User }, hostile,
+		},
 		{
 			"database",
 			PostgreSQLConfig{Host: "h", Username: "u", Database: hostile},
-			func(c pq.Config) string { return c.Database },
+			func(c pq.Config) string { return c.Database }, hostile,
 		},
 		{
 			"password",
 			PostgreSQLConfig{Host: "h", Username: "u", Password: hostile},
-			func(c pq.Config) string { return c.Password },
+			func(c pq.Config) string { return c.Password }, hostile,
 		},
 	}
 
@@ -50,7 +63,7 @@ func TestBuildPQConfigCarriesFieldsByteForByte(t *testing.T) {
 			r.NoError(cfg.Validate())
 
 			got := buildPQConfig(&cfg, time.Second)
-			r.Equal(hostile, tc.field(got))
+			r.Equal(tc.want, tc.field(got))
 			r.Equal(pq.SSLModeVerifyFull, got.SSLMode)
 			r.Equal(noFile, got.Passfile)
 			r.Equal(noFile, got.SSLCert)

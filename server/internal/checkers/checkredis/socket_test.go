@@ -180,3 +180,40 @@ func TestRedisSocketConfig(t *testing.T) {
 		require.Equal(t, "/run/redis/redis.sock", cfg.GetConfig()["socket"])
 	})
 }
+
+// TestRedisPathHostNeverDialsSocket: go-redis dials `unix` for an address
+// starting with `/`; the host:port path refuses it (spec 2026-11-24-08).
+func TestRedisPathHostNeverDialsSocket(t *testing.T) {
+	t.Parallel()
+
+	dir, err := os.MkdirTemp("", "rdh")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
+	// Addr() is "<host>:<port>": name the socket file so that it matches.
+	sock := filepath.Join(dir, "r")
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "unix", sock+":6379")
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = listener.Close() })
+
+	accepted := make(chan struct{}, 1)
+
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+
+		accepted <- struct{}{}
+		_ = conn.Close()
+	}()
+
+	cfg := &checkredis.RedisConfig{Host: sock, Port: 6379}
+
+	result, err := (&checkredis.RedisChecker{}).Execute(t.Context(), cfg)
+	require.NoError(t, err)
+	require.NotEqual(t, checkerdef.StatusUp, result.Status)
+	require.Contains(t, result.Output[checkerdef.OutputKeyError], checkerdef.LocalSocketSetting)
+	require.Empty(t, accepted, "a path host must never reach the socket")
+}
