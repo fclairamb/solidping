@@ -122,9 +122,10 @@ type ClientFrame struct {
 	// 2026-11-22-04), sent on the enroll frame and every claim. `false` means
 	// the agent is pinned (SP_AGENT_IGNORE_VERSION_DRIFT=true): it ignores any
 	// `upgrade` frame, so the server never sends one and skips it in the
-	// rollout. OPTIONAL AND THREE-STATE ON THE WIRE, but absent reads as
-	// `true`: an older agent omits it and is upgraded as before. Use
-	// VersionPinned rather than reading the pointer.
+	// rollout. OPTIONAL AND THREE-STATE ON THE WIRE: absent means the agent
+	// predates the rolling upgrade and does not know the `upgrade` frame, so
+	// the server never sends it one either (it must be upgraded by hand). Use
+	// VersionPinned and PredatesAutoUpgrade rather than reading the pointer.
 	AutoUpgrade *bool `json:"autoUpgrade,omitempty"`
 	// Plugins are the plugin check types the agent loaded, with their schema
 	// (spec 2026-10-17-05 §18). Sent on the first claim of each connection
@@ -217,6 +218,13 @@ type AgentJobTunnel struct {
 // (AutoUpgrade explicitly false). An absent field is not a pin.
 func (f *ClientFrame) VersionPinned() bool {
 	return f.AutoUpgrade != nil && !*f.AutoUpgrade
+}
+
+// PredatesAutoUpgrade reports whether the agent is older than the rolling
+// upgrade protocol (no AutoUpgrade field): it ignores `upgrade` frames, so it
+// is never asked and must be upgraded by hand.
+func (f *ClientFrame) PredatesAutoUpgrade() bool {
+	return f.AutoUpgrade == nil
 }
 
 // ServerFrame is the envelope for every server->agent frame.

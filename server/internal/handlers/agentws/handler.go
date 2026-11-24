@@ -406,7 +406,7 @@ func (h *Handler) awaitEnroll(
 		return nil, versionReport{}, fmt.Errorf("write enrolled frame: %w", err)
 	}
 
-	return agent, versionReport{version: frame.Version, pinned: frame.VersionPinned()}, nil
+	return agent, versionReportOf(&frame), nil
 }
 
 // ErrDuplicateAgentKey refuses an enrollment whose X25519 key is another live
@@ -715,6 +715,16 @@ func (h *Handler) ensureWorkerRow(ctx context.Context, agent *models.Agent, repo
 type versionReport struct {
 	version string
 	pinned  bool
+	// legacy is set when the agent predates the rolling upgrade (no
+	// autoUpgrade field): it cannot act on an upgrade frame.
+	legacy bool
+}
+
+// versionReportOf reads the version fields of an enroll or claim frame.
+func versionReportOf(frame *agentcrypto.ClientFrame) versionReport {
+	return versionReport{
+		version: frame.Version, pinned: frame.VersionPinned(), legacy: frame.PredatesAutoUpgrade(),
+	}
 }
 
 // connState is the per-connection state threaded through the frame handlers.
@@ -792,7 +802,7 @@ func (h *Handler) recordAgentEgress(
 	// cadence is — a busy agent claiming several times a second must not spam
 	// the log once per claim.
 	h.warnOnVersionDrift(ctx, state, frame.Version)
-	h.noteAgentVersion(ctx, state, frame.Version, frame.VersionPinned())
+	h.noteAgentVersion(ctx, state, versionReportOf(frame))
 
 	now := time.Now()
 	if !state.egressWrittenAt.IsZero() && now.Sub(state.egressWrittenAt) < agentEgressReportInterval {
@@ -922,7 +932,7 @@ func (h *Handler) runAgentConnection(
 
 	// The enroll frame's version feeds the rolling upgrade (spec
 	// 2026-11-22-04); a reconnect reports its version on the first claim.
-	h.noteAgentVersion(ctx, state, enrollReport.version, enrollReport.pinned)
+	h.noteAgentVersion(ctx, state, enrollReport)
 
 	// Publish the connection so the incident pipeline can reach this agent, and
 	// retire it on the way out. The registration is identity-checked on removal

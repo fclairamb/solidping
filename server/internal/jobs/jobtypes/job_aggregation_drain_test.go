@@ -3,6 +3,7 @@ package jobtypes
 import (
 	"bytes"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -103,7 +104,6 @@ func TestRun_BucketCapReschedulesImmediately(t *testing.T) {
 	r.WithinDuration(time.Now(), jobs.scheduledAt[0], 2*time.Minute,
 		"a run that stopped with work left must reschedule immediately")
 
-	r.Contains(logBuf.String(), "Aggregation is behind its raw retention")
 	r.Contains(logBuf.String(), "budget_exhausted=true")
 }
 
@@ -138,4 +138,51 @@ func TestLogAggregationRun_ReportsLagAtInfo(t *testing.T) {
 	}, nil)
 	r.Contains(logBuf.String(), "Aggregation is behind its raw retention")
 	r.Contains(logBuf.String(), "raw_lag_minutes=180")
+}
+
+// TestLogAggregationRun_BudgetWithoutLagIsNotBehind: a run that ran out of
+// budget with no lag past the threshold says it stopped on its budget, not
+// that it is behind its raw retention; with lag, the "behind" message wins.
+func TestLogAggregationRun_BudgetWithoutLagIsNotBehind(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	var logBuf bytes.Buffer
+
+	jctx := &jobdef.JobContext{
+		Logger: slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo})),
+	}
+
+	boundary, err := calculateAggregationBoundary(periodRaw, defaultRetentionRawHours, 1, 1)
+	r.NoError(err)
+
+	// Out of budget, no raw lag at all (only hour buckets rolled up).
+	logAggregationRun(t.Context(), jctx, &aggregationRunStats{
+		buckets:         map[string]int{periodHour: 64},
+		duration:        30 * time.Second,
+		budgetExhausted: true,
+	}, nil)
+
+	// Out of budget, the oldest raw bucket within the threshold.
+	logAggregationRun(t.Context(), jctx, &aggregationRunStats{
+		buckets:         map[string]int{periodRaw: 64},
+		oldestRawStart:  boundary.Add(-90 * time.Minute),
+		budgetExhausted: true,
+	}, nil)
+
+	out := logBuf.String()
+	r.NotContains(out, "Aggregation is behind its raw retention")
+	r.Equal(2, strings.Count(out, "Aggregation stopped on its run budget"))
+	r.Contains(out, "duration_ms=30000")
+
+	// Out of budget AND hours late: behind.
+	logBuf.Reset()
+	logAggregationRun(t.Context(), jctx, &aggregationRunStats{
+		buckets:         map[string]int{periodRaw: 3},
+		oldestRawStart:  boundary.Add(-4 * time.Hour),
+		budgetExhausted: true,
+	}, nil)
+	r.Contains(logBuf.String(), "Aggregation is behind its raw retention")
+	r.NotContains(logBuf.String(), "stopped on its run budget")
 }
