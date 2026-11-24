@@ -98,7 +98,7 @@
       "never": "nie",
       "rotate": "URL erneuern",
       "revoke": "Widerrufen",
-      "name": "Name",
+      "name": "Bezeichnung",
       "namePlaceholder": "Leitstand",
       "scopeLabel": "Enthaltene Ereignisse",
       "cap": "Eine Organisation kann höchstens {{count}} Ereignis-Feeds haben. Widerrufen Sie einen, um einen neuen anzulegen.",
