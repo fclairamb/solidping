@@ -1,8 +1,7 @@
 {
   "common.header.logoAlt": {
     "fr": "same word",
-    "de": "same word",
-    "zh": "brand or technical term, kept in English"
+    "de": "same word"
   },
   "common.footer.dashboard": {
     "de": "German uses the English word, as dash0 does"

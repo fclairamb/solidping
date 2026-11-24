@@ -44,7 +44,7 @@
   },
   "header": {
     "sentBy": "由 SolidPing 发送",
-    "logoAlt": "Logo"
+    "logoAlt": "徽标"
   },
   "footer": {
     "orgSentBy": "{org} · 发送自",
@@ -61,9 +61,9 @@
     "ackExpires": "链接有效期至 {date}。"
   },
   "labels": {
-    "check": "检查",
+    "check": "监控项",
     "target": "目标",
-    "checkURL": "检查 URL",
+    "checkURL": "监控项 URL",
     "since": "开始时间",
     "incident": "故障",
     "docs": "文档"

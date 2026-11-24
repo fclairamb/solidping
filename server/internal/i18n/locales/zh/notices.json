@@ -1,7 +1,7 @@
 {
   "supportMessage": {
     "subjectNewMessage": "来自 {from} 的 {channel} 新消息",
-    "subjectNewThread": "来自 {from} 的 {channel} 新支持会话",
+    "subjectNewThread": "来自 {from} 的 {channel} 新会话",
     "channel": "渠道：{channel}",
     "from": "发件人：{from}",
     "folded_one": "…自上次通知以来，此会话中还有 {count} 条消息。",
@@ -36,10 +36,10 @@
     "darkHeadline_other": "区域“{region}”自 {since} 起已失联（无活跃工作节点）：已分配 {count} 个任务，{overdue} 个逾期",
     "organizations_one": "{count} 个组织",
     "organizations_other": "{count} 个组织",
-    "darkChecks_one": "{orgs} 中有 {count} 个检查仅从这个区域运行且当前未运行；这些组织均已收到邮件通知。",
-    "darkChecks_other": "{orgs} 中有 {count} 个检查仅从这个区域运行且当前未运行；这些组织均已收到邮件通知。",
-    "moved_one": "{count} 个自动放置的检查已迁移到其他区域。",
-    "moved_other": "{count} 个自动放置的检查已迁移到其他区域。",
+    "darkChecks_one": "{orgs} 中有 {count} 个监控项仅从这个区域运行且当前未运行；这些组织均已收到邮件通知。",
+    "darkChecks_other": "{orgs} 中有 {count} 个监控项仅从这个区域运行且当前未运行；这些组织均已收到邮件通知。",
+    "moved_one": "{count} 个自动放置的监控项已迁移到其他区域。",
+    "moved_other": "{count} 个自动放置的监控项已迁移到其他区域。",
     "darkRemediation": "补救措施：恢复“{region}”的工作节点，或执行 {command}。",
     "liveWorkers_one": "{count} 个活跃工作节点",
     "liveWorkers_other": "{count} 个活跃工作节点",
@@ -78,20 +78,20 @@
     "failuresTitle": "检测器失败（本次运行无法评估这些异常）"
   },
   "aiRepair": {
-    "subject": "检查已修复：{check}",
-    "intro": "SolidPing 修复了检查“{check}”的脚本（版本 {version}）。",
+    "subject": "监控项已修复：{check}",
+    "intro": "SolidPing 修复了监控项“{check}”的脚本（版本 {version}）。",
     "reason": {
-      "drifted": "AI 修复：脚本发生漂移",
-      "error": "AI 修复：脚本发生漂移：{error}",
-      "step": "AI 修复：脚本在第 {step} 步发生漂移"
+      "drifted": "AI 修复：脚本失效",
+      "error": "AI 修复：脚本失效：{error}",
+      "step": "AI 修复：脚本在第 {step} 步失效"
     },
     "diff": "差异：",
     "review": "查看或撤销：{link}"
   },
   "smsDestinationProbing": {
-    "subject": "来自 {org} 的短信目的地探测",
-    "intro_one": "同一组织在 {minutes} 分钟内有 {count} 次短信发送被国家允许列表（SP_SMS_ALLOWED_COUNTRIES）拒绝：很可能是短信轰炸探测。",
-    "intro_other": "同一组织在 {minutes} 分钟内有 {count} 次短信发送被国家允许列表（SP_SMS_ALLOWED_COUNTRIES）拒绝：很可能是短信轰炸探测。",
+    "subject": "来自 {org} 的可疑短信发送",
+    "intro_one": "同一组织在 {minutes} 分钟内有 {count} 次短信发送被国家允许列表（SP_SMS_ALLOWED_COUNTRIES）拒绝，很可能是短信轰炸（SMS pumping）攻击。",
+    "intro_other": "同一组织在 {minutes} 分钟内有 {count} 次短信发送被国家允许列表（SP_SMS_ALLOWED_COUNTRIES）拒绝，很可能是短信轰炸（SMS pumping）攻击。",
     "org": "组织：{org}",
     "prefixes": "前缀：{prefixes}",
     "blocked": "它的电话和 WhatsApp 验证码将在接下来的 {minutes} 分钟内被拒绝。"

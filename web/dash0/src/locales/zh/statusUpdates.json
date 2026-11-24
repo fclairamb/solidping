@@ -1,6 +1,6 @@
 {
   "title": "更新与公告",
-  "subtitle": "发布到状态页的叙述性文章——维护通知、一般公告，以及在已发布故障下按时间串联的更新。",
+  "subtitle": "发布状态页更新，包括维护通知、一般公告，以及故障期间按时间发布的进展",
   "newStatusUpdate": "新建更新",
   "editStatusUpdate": "编辑更新",
   "noStatusUpdates": "还没有更新",
@@ -17,7 +17,7 @@
   "filters": {
     "allPages": "所有页面",
     "allSections": "所有分区",
-    "allChecks": "所有检查",
+    "allChecks": "所有监控项",
     "allKinds": "所有类型"
   },
   "kinds": {
@@ -46,10 +46,10 @@
     "selectStatusPage": "选择状态页",
     "section": "分区（可选）",
     "noSection": "无分区",
-    "check": "检查（可选）",
+    "check": "监控项（可选）",
     "kind": "类型",
     "title": "标题",
-    "noCheck": "无检查",
+    "noCheck": "无监控项",
     "titlePlaceholder": "正在调查错误率升高",
     "body": "正文",
     "bodyPlaceholder": "我们正在调查一个问题…",

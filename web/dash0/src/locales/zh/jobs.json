@@ -1,6 +1,6 @@
 {
   "title": "任务",
-  "subtitle": "后台任务和检查调度的实时可观测性。",
+  "subtitle": "实时查看后台任务和监控调度的运行情况",
   "refresh": "刷新",
   "back": "返回",
   "scope": {
@@ -20,7 +20,7 @@
   },
   "tabs": {
     "backgroundJobs": "后台任务",
-    "checkSchedule": "检查调度"
+    "checkSchedule": "监控调度"
   },
   "filters": {
     "status": "状态",
@@ -48,7 +48,7 @@
     "scheduled": "已计划",
     "retries": "重试次数",
     "updated": "更新时间",
-    "check": "检查",
+    "check": "监控项",
     "region": "区域",
     "state": "状态",
     "period": "周期",
@@ -60,7 +60,7 @@
   },
   "detail": {
     "backgroundJobTitle": "后台任务",
-    "checkJobTitle": "检查调度任务",
+    "checkJobTitle": "监控调度任务",
     "meta": "详情",
     "config": "配置",
     "output": "输出",
@@ -70,7 +70,7 @@
     "encryptedKeys": "加密密钥",
     "noEncryptedKeys": "无",
     "secretsHidden": "密钥值永远不会暴露——只显示加密密钥的名称。",
-    "viewCheck": "查看检查",
+    "viewCheck": "查看监控项",
     "thisJob": "此任务"
   },
   "labels": {
@@ -79,7 +79,7 @@
   },
   "empty": {
     "backgroundJobs": "未找到后台任务。",
-    "checkSchedule": "未找到已调度的检查。"
+    "checkSchedule": "未找到已调度的监控项。"
   },
   "notFound": "未找到任务。",
   "loadError": "加载任务失败。"

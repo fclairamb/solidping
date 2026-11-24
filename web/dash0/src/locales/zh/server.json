@@ -1,6 +1,6 @@
 {
   "title": "服务器设置",
-  "subtitle": "管理服务器全局配置参数",
+  "subtitle": "管理服务器全局配置",
   "saved": "设置已保存。",
   "unexpectedError": "发生意外错误",
   "tabs": {
@@ -18,13 +18,13 @@
     "entitlements": "权益",
     "users": "用户",
     "notifications": "通知",
-    "activation": "激活"
+    "activation": "上手进度"
   },
   "aggregation": {
     "title": "聚合",
-    "description": "配置原始检查结果和汇总检查结果在压缩到下一层级之前保留多长时间。这些都是全局的、系统级的保留窗口。更改会在聚合任务下次运行时生效——无需重启。",
+    "description": "配置原始监控结果和汇总监控结果在压缩到下一层级之前保留多长时间。这些都是全局的、系统级的保留窗口。更改会在聚合任务下次运行时生效——无需重启。",
     "rawHours": "原始数据保留时长（小时）",
-    "rawHoursHelp": "每个检查的原始结果保留多少小时后汇总为小时汇总。",
+    "rawHoursHelp": "每个监控项的原始结果保留多少小时后汇总为小时汇总。",
     "hourDays": "小时汇总保留时长（天）",
     "hourDaysHelp": "小时汇总保留多少天后汇总为每日汇总。",
     "dayMonths": "每日汇总保留时长（月）",
@@ -38,7 +38,7 @@
     "description": "配置 Web 服务器的基础 URL 和认证凭据。",
     "baseUrl": "基础 URL",
     "baseUrlPlaceholder": "https://solidping.example.com",
-    "baseUrlHelp": "SolidPing 对外可访问的公共 URL。",
+    "baseUrlHelp": "SolidPing 对外提供服务的访问地址。",
     "jwtSecret": "JWT 密钥",
     "jwtSecretPlaceholder": "输入新的 JWT 密钥",
     "jwtSecretHelp": "用于签发认证令牌。修改后所有现有会话都会失效。",
@@ -97,7 +97,7 @@
     "discordLoginRedirectLabel": "OAuth2 > Redirects：登录",
     "discordInstallRedirectLabel": "OAuth2 > Redirects：机器人安装",
     "discordInteractionsLabel": "General Information > Interactions Endpoint URL（设置公钥后再保存）",
-    "discordLocalhostWarning": "服务器基础 URL 仍是 {{baseUrl}}，但你正在使用 {{host}}。Discord 会重定向到 localhost。请将 SP_BASE_URL 设置为该实例的公共地址。",
+    "discordLocalhostWarning": "服务器基础 URL 仍是 {{baseUrl}}，但你正在使用 {{host}}。Discord 会重定向到 localhost。请将 SP_BASE_URL 设置为该实例的公开地址。",
     "fields": {
       "clientId": "客户端 ID",
       "clientSecret": "客户端密钥",
@@ -129,7 +129,7 @@
     },
     "fieldHelp": {
       "tenantId": "你的 Entra 目录（租户）ID，或已验证的域名。留空表示“common”（多租户）。使用“organizations”或“consumers”可限制账户类型。",
-      "displayName": "显示在登录按钮上，例如“Continue with Company IdP”。留空时默认为“SSO”。",
+      "displayName": "显示在登录按钮上，例如“使用公司 IdP 继续登录”。留空时默认为“SSO”。",
       "issuerUrl": "OIDC 颁发者 URL，例如 https://idp.example.com/realms/acme。发现请求会发往“{issuer URL}/.well-known/openid-configuration”。",
       "scopes": "以空格分隔的 OAuth2 作用域。“openid”始终包含在内。留空时默认为“openid email profile”。",
       "emailClaim": "用于用户邮箱的 ID 令牌声明。默认为“email”。",
@@ -178,7 +178,7 @@
       "time": "迭代次数（time）",
       "timeHelp": "对内存的遍历次数。最小 1。",
       "threads": "并行度（线程数）",
-      "threadsHelp": "哈希时使用的通道数。介于 1 到 255。",
+      "threadsHelp": "哈希时使用的并行通道数。介于 1 到 255。",
       "keyLength": "密钥长度（字节）",
       "keyLengthHelp": "派生密钥长度，单位字节。最小 16。",
       "saltLength": "盐长度（字节）",
@@ -195,20 +195,20 @@
   },
   "performance": {
     "title": "性能",
-    "subtitle": "配置与性能相关的参数。",
-    "description": "配置检查和任务的并发工作节点数量。更改在服务器重启后生效。",
-    "checkRunners": "检查执行器",
-    "checkRunnersHelp": "用于运行健康检查的并发 goroutine 数量。",
+    "subtitle": "调整服务器性能相关的参数",
+    "description": "配置监控和任务的并发工作节点数量。更改在服务器重启后生效。",
+    "checkRunners": "监控执行器",
+    "checkRunnersHelp": "用于运行监控任务的并发 goroutine 数量。",
     "jobRunners": "任务执行器",
     "jobRunnersHelp": "用于处理后台任务的并发 goroutine 数量。",
     "fastLaneReserved": "快车道预留槽位",
-    "fastLaneReservedHelp": "为快速检查预留的检查执行器槽位：慢速检查（成本 ≥ 2s）最多只能占用“检查执行器”减去此数量的槽位。重启后生效。",
-    "checkRunnersGroup": "检查执行器",
-    "checkRunnersGroupHelp": "执行检查的池。快车道预留就从同一个池中划出。",
+    "fastLaneReservedHelp": "为快速监控任务预留的执行器槽位：慢速监控任务（成本 ≥ 2s）最多只能占用“监控执行器”减去此数量的槽位。重启后生效。",
+    "checkRunnersGroup": "监控执行器",
+    "checkRunnersGroupHelp": "执行监控的池。快车道预留就从同一个池中划出。",
     "jobRunnersGroup": "后台任务",
-    "fastLaneReservedTooHigh": "必须小于检查执行器总数。",
+    "fastLaneReservedTooHigh": "必须小于监控执行器总数。",
     "laneLoadTitle": "当前负载",
-    "laneLoadDescription": "服务器计算出的每个工作节点和车道的负载。占空比是各检查占空比之和：100% ≈ 一个永久占用的执行器槽位；占空比超过其槽位容量的车道正在积压。",
+    "laneLoadDescription": "服务器计算出的每个工作节点和车道的负载。占空比是各监控项占空比之和：100% ≈ 一个永久占用的执行器槽位；占空比超过其槽位容量的车道正在积压。",
     "laneLoadEmpty": "尚未注册任何工作节点。",
     "laneFast": "快车道",
     "laneSlow": "慢车道",
@@ -239,7 +239,7 @@
   },
   "emailInbox": {
     "title": "邮件收件箱",
-    "description": "配置被动邮件检查使用的共享 JMAP 收件箱。支持 Fastmail、Stalwart 以及其他兼容 JMAP 的服务商。",
+    "description": "配置被动邮件监控项使用的共享 JMAP 收件箱。支持 Fastmail、Stalwart 以及其他兼容 JMAP 的服务商。",
     "enable": "启用邮件收件箱",
     "sessionUrl": "JMAP 会话 URL",
     "sessionUrlPlaceholder": "https://jmap.example.com/.well-known/jmap",
@@ -289,10 +289,10 @@
   },
   "slack": {
     "title": "Slack",
-    "subtitle": "配置 Slack Socket Mode 连接，用于传出事件投递。",
+    "subtitle": "配置 Slack Socket Mode，用于向 Slack 投递事件",
     "socketMode": {
       "title": "Socket Mode",
-      "description": "通过传出的 WebSocket 连接 Slack，而不是公共 Webhook。需要在 Slack 应用配置中获取 App-Level Token（xapp-…）。",
+      "description": "通过传出的 WebSocket 连接 Slack，而不是公开 Webhook。需要在 Slack 应用配置中获取 App-Level Token（xapp-…）。",
       "enableLabel": "启用 Socket Mode",
       "appTokenLabel": "App-Level Token",
       "appTokenPlaceholder": "xapp-…",
@@ -333,11 +333,11 @@
     "personalApiKeyHelp": "可选的服务端密钥。以密钥形式存储，绝不会发送到浏览器。",
     "envOverride": "由环境变量设置",
     "envOverrideHelp": "此值来自环境变量，优先级高于此处保存的任何值。",
-    "whatIsSent": "发送的内容：五个产品事件（创建组织、用户注册、创建检查、连接集成、发布状态页），以组织和用户 UUID 为键。绝不发送：邮箱地址、检查目标、主机名、URL、故障内容或你输入的任何文本。"
+    "whatIsSent": "发送的内容：五个产品事件（创建组织、用户注册、创建监控项、连接集成、发布状态页），以组织和用户 UUID 为键。绝不发送：邮箱地址、监控目标、主机名、URL、故障内容或你输入的任何文本。"
   },
   "discord": {
     "title": "Discord",
-    "subtitle": "配置 SolidPing Discord 机器人：交互签名验证和入站 Gateway。",
+    "subtitle": "配置 SolidPing Discord 机器人，包括交互签名验证和入站 Gateway",
     "notEnabledHint": "此实例已禁用 Discord。请先在认证设置中启用。",
     "bot": {
       "title": "Discord 机器人",
@@ -376,9 +376,9 @@
       "organization": "组织",
       "plan": "套餐",
       "source": "来源",
-      "maxChecks": "检查数",
+      "maxChecks": "监控项数",
       "maxUsers": "席位",
-      "maxChecksPerMinute": "检查 / 分钟",
+      "maxChecksPerMinute": "执行次数 / 分钟",
       "override": "覆盖起始时间"
     },
     "provenance": {
@@ -392,8 +392,8 @@
       "orgAdmin": "组织管理员写入，自 {{since}} 起"
     },
     "limits": {
-      "maxChecks": "检查数",
-      "maxChecksPerMinute": "每分钟检查数",
+      "maxChecks": "监控项数",
+      "maxChecksPerMinute": "每分钟执行次数",
       "maxUsers": "席位",
       "maxDeportedAgents": "私有代理",
       "maxCustomDomains": "自定义域名",
@@ -415,7 +415,7 @@
       "identityTitle": "套餐标识",
       "identityDescription": "仅供显示。显示在组织的“用量”页面。",
       "displayName": "显示名称",
-      "displayEmoji": "显示 emoji",
+      "displayEmoji": "显示表情符号",
       "reason": "原因",
       "reasonPlaceholder": "会记录在审计日志中",
       "save": "保存覆盖",
@@ -443,14 +443,14 @@
     "notReleased": "{{org}} 没有可解除的管理员覆盖。",
     "saveError": "保存权益失败。",
     "audit": {
-      "suppressed": "计费推送已抑制",
+      "suppressed": "计费推送已忽略",
       "released": "已交还计费服务",
       "admin": "管理员覆盖",
       "billing": "计费同步"
     }
   },
   "users": {
-    "title": "用户目录",
+    "title": "用户",
     "description": "搜索此实例上的所有用户账户，并查看各自属于哪些组织。",
     "search": "按邮箱或姓名搜索…",
     "empty": "没有匹配该搜索的用户。",
@@ -458,7 +458,7 @@
     "noOrgs": "无组织",
     "previous": "上一页",
     "next": "下一页",
-    "showing": "显示 {{total}} 个中的 {{start}}–{{end}}",
+    "showing": "显示第 {{start}}–{{end}} 个，共 {{total}} 个",
     "columns": {
       "email": "邮箱",
       "name": "姓名",
@@ -470,7 +470,7 @@
     },
     "flags": {
       "superAdmin": "超级管理员",
-      "twoFactor": "2FA",
+      "twoFactor": "双重验证",
       "demo": "演示",
       "unverified": "未验证",
       "passwordResetPending": "待重置密码",
@@ -479,7 +479,7 @@
     "impersonate": {
       "button": "以此用户身份查看",
       "title": "以 {{email}} 的身份查看仪表盘？",
-      "description": "你将看到与 {{email}} 完全相同的内容，并拥有其角色。该会话会记录在组织的日志中，持续 30 分钟。无法通过它更改该用户的密码、2FA、通行密钥和令牌。",
+      "description": "你将看到与 {{email}} 完全相同的内容，并拥有其角色。该会话会记录在组织的日志中，持续 30 分钟。无法通过它更改该用户的密码、双重验证、通行密钥和令牌。",
       "organization": "组织",
       "confirm": "以用户身份查看",
       "cancel": "取消",
@@ -504,37 +504,37 @@
   },
   "notifications": {
     "title": "运维通知",
-    "description": "就实例事件（新的支持消息、新注册）通知指定的超级管理员，通过他们已为自己设置好的通知渠道（邮件、Telegram、Slack 私信、Web 推送、SMS）。",
+    "description": "就实例事件通知指定的超级管理员。勾选每位管理员要接收的事件：新的用户支持消息、新用户注册，或检测到可疑的短信发送。通知会通过他们已为自己配置的通知方式（邮件、Telegram、Slack 私信、Web 推送、SMS）发送。",
     "enabled": "启用运维通知",
     "enabledHelp": "总开关。关闭后会停止所有投递；事件本身仍会发生并保留在日志中。",
-    "columnUser": "超级管理员",
-    "columnRoutes": "投递渠道",
+    "columnUser": "接收人",
+    "columnRoutes": "通知方式",
     "events": {
-      "supportMessage": "支持消息",
-      "userRegistered": "新注册",
-      "smsDestinationProbing": "SMS 目的地探测"
+      "supportMessage": "新的用户支持消息",
+      "userRegistered": "新用户注册",
+      "smsDestinationProbing": "可疑短信发送"
     },
-    "noRoutes": "没有通知渠道——此管理员必须先添加一个渠道才能收到投递",
-    "noRoutesSelf": "没有通知渠道——请在你的通知页面设置一个",
+    "noRoutes": "没有通知方式，此管理员必须先添加一种方式才能收到投递",
+    "noRoutesSelf": "没有通知方式，请在你的通知页面设置一个",
     "noRecipients": "运维通知已开启，但没有人订阅任何内容。不会投递任何通知。",
     "noSuperAdmins": "此实例还没有超级管理员。",
     "notSuperAdmin": "已不再是超级管理员——投递时跳过",
     "superAdminOnly": "只有超级管理员可以成为接收人：通知可能引用客户的支持消息，而只有超级管理员才能打开。",
     "sendTest": "给我发送测试",
-    "testDelivered_one": "测试通知已通过 {{count}} 个渠道投递。",
-    "testDelivered_other": "测试通知已通过 {{count}} 个渠道投递。",
-    "testUndeliverable": "未投递任何内容。请确认你至少有一个已启用的通知渠道。"
+    "testDelivered_one": "测试通知已通过 {{count}} 种通知方式投递。",
+    "testDelivered_other": "测试通知已通过 {{count}} 种通知方式投递。",
+    "testUndeliverable": "未投递任何内容。请确认你至少有一个已启用的通知方式。"
   },
   "activation": {
-    "title": "激活漏斗",
-    "description": "每个组织在每个激活里程碑上的时间戳。",
-    "error": "加载激活漏斗失败。",
+    "title": "组织上手进度",
+    "description": "各组织首次完成注册、创建监控项、收到结果、配置通知和触发首次告警的时间。",
+    "error": "加载上手进度失败。",
     "org": "组织",
     "signup": "注册",
-    "firstCheck": "首个检查",
+    "firstCheck": "首个监控项",
     "firstResult": "首个结果",
     "firstNotifier": "首个通知渠道",
-    "firstIncident": "首次呼叫",
+    "firstIncident": "首次告警",
     "openAudit": "打开审计日志"
   },
   "impersonation": {

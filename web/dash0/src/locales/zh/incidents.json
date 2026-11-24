@@ -1,48 +1,48 @@
 {
   "title": "故障",
-  "subtitle": "跟踪和管理监控故障",
+  "subtitle": "查看并处理监控故障",
   "allIncidents": "所有故障",
-  "activeOnly": "仅活动",
+  "activeOnly": "仅未解决",
   "resolvedOnly": "仅已解决",
   "table": {
     "incident": "故障",
-    "check": "检查",
+    "check": "监控项",
     "started": "开始时间",
     "duration": "持续时间",
     "failures": "失败次数",
     "when": "时间"
   },
   "when": {
-    "ongoing": "进行中 · {{duration}}",
+    "ongoing": "已持续 {{duration}}",
     "lasted": "持续 {{duration}}"
   },
   "allOperational": "所有系统运行正常",
   "noResolved": "暂无已解决的故障",
   "noIncidents": "尚未记录任何故障",
-  "noIncidentsForCheck": "未找到这个检查的故障",
+  "noIncidentsForCheck": "未找到这个监控项的故障",
   "noIncidentsFound": "未找到故障",
   "incidentNotFound": "未找到故障",
   "backToIncidents": "返回故障列表",
   "filterByState": "按状态筛选",
-  "filterByCheck": "按检查筛选",
+  "filterByCheck": "按监控项筛选",
   "kindFilter": {
     "placeholder": "按类型筛选",
     "all": "所有类型"
   },
   "kind": {
-    "check": "宕机",
+    "check": "故障",
     "degraded": "降级",
     "slo_burn": "SLO 燃烧"
   },
   "noIncidentsOfKind": {
-    "check": "无宕机故障",
+    "check": "无故障",
     "degraded": "无降级故障",
     "slo_burn": "无 SLO 燃烧故障"
   },
   "relapse": "复发 {{count}} 次",
   "flapping": "抖动 ×{{count}}",
   "flappingHint": "在抖动级别 {{count}} 时开启，自适应恢复在自动解决这个故障前提高了所需的稳定性。",
-  "active": "活动",
+  "active": "未解决",
   "resolved": "已解决",
   "reopened": "已重新开启",
   "reopenedTimes": "已重新开启（{{count}} {{unit}}）",
@@ -52,7 +52,7 @@
   },
   "escalated": "已升级",
   "escalatedTo": "已升级 → #{{number}}",
-  "escalatedHint": "这个故障未解决期间，检查上又发生了真实中断",
+  "escalatedHint": "这个故障未解决期间，监控项上又发生了真实服务中断",
   "fallbackTitle": "故障",
   "actions": {
     "back": "返回故障列表",
@@ -109,15 +109,15 @@
     "failureCount": "失败次数",
     "relapseCount": "复发次数",
     "descriptionLabel": "描述",
-    "checkLabel": "检查",
+    "checkLabel": "监控项",
     "state": "状态",
-    "checkTypeLabel": "检查类型",
+    "checkTypeLabel": "监控类型",
     "totalDuration": "总持续时间",
     "ongoing": "（进行中）",
     "failureDetails": {
       "title": "首次失败",
       "description": "触发这个故障的结果快照，在原始结果超出保留期之前捕获。",
-      "unknown": "检查失败",
+      "unknown": "监控项失败",
       "firstFailure": "首次失败",
       "latestRelapse": "最近一次复发",
       "status": "状态",
@@ -125,14 +125,14 @@
       "duration": "持续时间",
       "time": "时间",
       "copyCurl": "复制为 cURL",
-      "copyCurlTooltip": "根据检查的当前配置生成命令，可能与失败时的配置不同。",
+      "copyCurlTooltip": "根据监控项的当前配置生成命令，可能与失败时的配置不同。",
       "copyCurlCopied": "请求已复制为 cURL",
       "copyCurlCopiedPlaceholders": "请求已复制为 cURL，密钥已替换为占位符。",
       "copyCurlFailed": "无法复制请求"
     },
     "probeResponse": {
       "title": "探测请求看到的内容",
-      "description": "故障开启时这个检查收到的响应：一次探测、一个区域、一个瞬间。这是故障的证据，而不是目标的当前状态。",
+      "description": "故障开启时这个监控项收到的响应：一次探测、一个区域、一个瞬间。这是故障的证据，而不是目标的当前状态。",
       "capturedAt": "捕获时间",
       "region": "探测来源",
       "remoteAddr": "对端地址",
@@ -140,14 +140,14 @@
       "bodyLabel": "响应正文",
       "headerName": "标头",
       "headerValue": "值",
-      "redactionNote": "仅包含响应标头。敏感值（Cookie、授权信息、令牌、密钥、机密）会被遮盖，检查自身的请求标头不会被捕获。",
+      "redactionNote": "仅包含响应标头。敏感值（Cookie、授权信息、令牌、密钥等）会被遮盖，监控项自身的请求标头不会被捕获。",
       "truncated": "正文已截断，仅保留 {{total}} 中的 {{shown}}。",
       "binary": "未存储正文：它是二进制或不是有效的 UTF-8。仅有元数据：{{size}}，SHA-256 {{hash}}。",
       "unknownSize": "未知大小"
     },
     "screenshot": {
       "title": "检测到失败时的截图",
-      "description": "这个检查报告失败时页面的样子。截图是在检测到失败之后片刻从一个区域捕获的，请把它当作证据，而不是失败时的画面本身。",
+      "description": "这个监控项报告失败时页面的样子。截图是在检测到失败之后片刻从一个区域捕获的，请把它当作证据，而不是失败时的画面本身。",
       "alt": "故障开启时捕获的页面截图",
       "caption": "于 {{capturedAt}} 从 {{region}} 捕获，距检测到失败不久。",
       "unknownTime": "在未知时间",
@@ -155,7 +155,7 @@
     },
     "traceroute": {
       "title": "失败时的网络路径",
-      "description": "故障开启后立即执行的 MTR 风格路由跟踪，从探测区域指向失败检查所连接的地址。",
+      "description": "故障开启后立即执行的 MTR 风格路由跟踪，从探测区域指向失败监控项所连接的地址。",
       "loadFailed": "无法加载路径捕获。下载链接有效期很短，请重新加载故障以获取新的链接。",
       "modes": {
         "icmp": "ICMP（特权）",
@@ -192,8 +192,8 @@
     "escalated": "已升级",
     "reopenedRelapse": "已重新开启（第 {{count}} 次复发）",
     "resolved": "已解决",
-    "resolvedCheckDeleted": "因检查被删除而关闭",
-    "resolvedCheckDisabled": "因检查被禁用而关闭",
+    "resolvedCheckDeleted": "因监控项被删除而关闭",
+    "resolvedCheckDisabled": "因监控项被禁用而关闭",
     "monitoringInterrupted": "监控中断",
     "monitoringInterruptedSince": "自 {{time}} 起监控中断",
     "monitoringResumed": "监控已恢复",
@@ -236,22 +236,22 @@
     "justNow": "刚刚"
   },
   "rollup": {
-    "causedByActive": "已归并到 <strong>{{parent}}</strong> 故障下，根因故障未解决期间会暂停通知。",
+    "causedByActive": "已归并到 <strong>{{parent}}</strong> 故障下，根因故障未解决期间会暂停告警通知。",
     "parentLoading": "根因故障",
-    "causedByPast": "这个故障在 {{resolvedAt}} 之前归并在 {{parent}} 下。当时已触发通知。",
+    "causedByPast": "这个故障在 {{resolvedAt}} 之前归并在 {{parent}} 下。当时已触发告警通知。",
     "blastRadiusTitle": "影响范围（{{count}} 个受影响）",
-    "blastRadiusFooter": "这个故障解决时，任何仍处于故障状态的子故障都会触发通知。",
+    "blastRadiusFooter": "这个故障解决时，任何仍处于故障状态的子故障都会触发告警通知。",
     "blastRadiusEmpty": "当前没有归并到这个故障下的子故障。",
     "rolledUpBadge": "已归并",
-    "pagingColumn": "通知",
-    "checkLink": "打开检查",
+    "pagingColumn": "告警",
+    "checkLink": "打开监控项",
     "showRolledUp": "显示已归并的故障",
-    "pagingSuppressed": "通知已暂停",
+    "pagingSuppressed": "已暂停告警",
     "rolledUpInactive": "已归并"
   },
   "group": {
-    "header": "{{name}} — {{down}} 个故障",
-    "headerWithTotal": "{{name}} — {{down}}/{{total}} 个故障"
+    "header": "{{name}}——{{down}} 个故障",
+    "headerWithTotal": "{{name}}——{{down}}/{{total}} 个故障"
   },
   "statusUpdatesCard": {
     "title": "状态更新",
@@ -339,15 +339,15 @@
   },
   "insights": {
     "title": "故障洞察",
-    "subtitle": "哪些检查失败最多，以及你确认和解决的速度。",
+    "subtitle": "查看哪些监控项故障最多，以及确认和解决故障的平均耗时",
     "button": "洞察",
     "back": "返回故障列表",
     "period": "周期",
     "days7": "7 天",
     "days30": "30 天",
     "days90": "90 天",
-    "topChecks": "失败最多的检查",
-    "colCheck": "检查",
+    "topChecks": "失败最多的监控项",
+    "colCheck": "监控项",
     "colIncidents": "故障数",
     "colDowntime": "停机时间",
     "colRelapses": "复发",
@@ -374,7 +374,7 @@
     "incident": {
       "title": {
         "down": "{{name}} 故障",
-        "downUnnamed": "检查故障",
+        "downUnnamed": "监控项故障",
         "degradedFailures": "{{name}} 已降级：最近 {{probes}} 次探测中有 {{failures}} 次失败",
         "degradedFailuresAvailability": "{{name}} 已降级：最近 {{probes}} 次探测中有 {{failures}} 次失败（可用率 {{availability, number(minimumFractionDigits: 1; maximumFractionDigits: 1)}}%）",
         "degradedSlow": "{{name}} 已降级：最近 {{probes}} 次探测中有 {{slow}} 次慢于 {{thresholdMs}}ms",
@@ -396,7 +396,7 @@
       "alsoAffectingBody": "{{name}} 现在也受到本次故障影响。",
       "removedTitle": "{{name}} 已不再被监控",
       "removedGenericTitle": "受影响的服务已不再被监控",
-      "removedBody": "被监控的资源已被移除。本次故障已解决。"
+      "removedBody": "被监控的服务已被移除。本次故障已解决。"
     }
   }
 }

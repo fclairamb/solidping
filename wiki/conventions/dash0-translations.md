@@ -35,4 +35,14 @@ anything a user reads as prose into the locale files.
 Terminology already chosen per locale, reuse it: fr "clé d'accès" (passkey),
 "contrôle" (check), "astreinte" (on-call), vous; de "Passkey", "Check" (der Check, die Checks; compounds "Check-Typ", "Check-Gruppe"),
 "Bereitschaft", Sie; es "llave de acceso", "comprobación", "guardia", tú; zh
-"通行密钥" (passkey), "检查" (check), "值班" (on-call), "故障" (incident), 你.
+"通行密钥" (passkey), "监控项" (check), "监控分组" (check group), "代理" (agent),
+"工作节点" (worker), "私有位置" (private location), "故障" (incident),
+"服务中断" (outage), "告警" (alert), "通知" (notification), "通知渠道"
+(notification channel), "通知方式" (notification method), "告警升级策略"
+(escalation policy), "告警通知" (paging), "值班" (on-call), "状态页" (status
+page), "故障公告" (incident publication), "维护窗口" (maintenance window),
+"可用性" (availability), "可用率" (uptime percentage), "小组件" (widget),
+"双重验证" (two-factor), "密钥" (secret), "凭据" (credential), "额度"
+(quota), "权益" (entitlement), "套餐" (plan), "席位" (seat), "服务商" (vendor),
+"已定位" / "已确认" / "已解决" (identified / acknowledged / resolved),
+"轻微" / "重大" / "严重" (severity), 称呼用"你"（不用"您"）.

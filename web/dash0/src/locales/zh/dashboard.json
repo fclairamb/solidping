@@ -1,22 +1,22 @@
 {
-  "subtitle": "现在哪里出了问题、发生了什么变化，以及该去哪里处理",
+  "subtitle": "查看当前故障、最近变化和待处理事项",
   "updatedAgo": "{{time}}前更新",
   "justUpdated": "刚刚更新",
   "refresh": "刷新",
   "welcome": {
     "title": "欢迎使用 SolidPing",
-    "subtitle": "创建第一个检查，开始监控。",
-    "firstCheckSubtitle": "选择检查类型，告诉我们要监控什么。",
-    "cta": "创建第一个检查",
-    "create": "创建检查",
+    "subtitle": "创建第一个监控项，开始监控",
+    "firstCheckSubtitle": "选择监控类型，告诉我们要监控什么。",
+    "cta": "创建第一个监控项",
+    "create": "创建监控项",
     "creating": "创建中…",
     "advancedHint": "需要更多控制？",
-    "advancedLink": "打开完整检查编辑器",
+    "advancedLink": "打开完整监控项编辑器",
     "unexpectedError": "发生意外错误。",
     "or": "或",
     "mcp": {
       "title": "让 AI 帮你完成设置",
-      "description": "将 Claude、Cursor 或 VS Code 连接到 SolidPing 的 MCP 服务器，让它为你创建并配置所有检查。",
+      "description": "将 Claude、Cursor 或 VS Code 连接到 SolidPing 的 MCP 服务器，让它为你创建并配置所有监控项。",
       "cta": "设置 MCP"
     },
     "quick": {
@@ -37,15 +37,15 @@
       },
       "invalid": {
         "http": "这看起来不像 URL。试试 example.com 或 https://example.com。",
-        "icmp": "只输入主机名或 IP 地址 — 不要 http://、端口或路径。",
-        "ssl": "只输入域名 — 不要 http://、端口或路径。"
+        "icmp": "只输入主机名或 IP 地址——不要 http://、端口或路径。",
+        "ssl": "只输入域名——不要 http://、端口或路径。"
       }
     }
   },
   "onboarding": {
     "title": "开始使用",
     "progress": "{{total}} 项中已完成 {{done}} 项",
-    "dismiss": "隐藏开始使用清单",
+    "dismiss": "隐藏入门清单",
     "doneLabel": "已完成",
     "todoLabel": "尚未完成",
     "nextUp": "下一步",
@@ -56,13 +56,13 @@
     },
     "steps": {
       "check": {
-        "title": "创建第一个检查",
-        "description": "选择要监控的对象 — URL、主机或证书。",
-        "cta": "查看检查"
+        "title": "创建第一个监控项",
+        "description": "选择要监控的对象——URL、主机或证书。",
+        "cta": "查看监控项"
       },
       "alerts": {
         "title": "出问题时收到告警",
-        "description": "添加通知渠道，让中断能主动通知你，而不是等你发现。",
+        "description": "添加通知方式，这样出故障时能主动通知你，而不是等你自己发现。",
         "cta": "设置告警"
       },
       "report": {
@@ -77,7 +77,7 @@
         "ctaDone": "查看状态页"
       },
       "team": {
-        "title": "邀请队友",
+        "title": "邀请成员",
         "description": "与其他人分担监控和值班。",
         "cta": "邀请成员"
       }
@@ -92,34 +92,34 @@
   },
   "banner": {
     "allGreen": "所有系统运行正常",
-    "allGreenSub_one": "监控 {{count}} 个检查，24 小时可用率 {{availability}}%",
-    "allGreenSub_other": "监控 {{count}} 个检查，24 小时可用率 {{availability}}%",
-    "allGreenSub_7d_one": "监控 {{count}} 个检查，7 天可用率 {{availability}}%",
-    "allGreenSub_7d_other": "监控 {{count}} 个检查，7 天可用率 {{availability}}%",
-    "allGreenSub_30d_one": "监控 {{count}} 个检查，30 天可用率 {{availability}}%",
-    "allGreenSub_30d_other": "监控 {{count}} 个检查，30 天可用率 {{availability}}%",
-    "allGreenSubNoData_one": "监控 {{count}} 个检查，暂无可用性数据",
-    "allGreenSubNoData_other": "监控 {{count}} 个检查，暂无可用性数据",
+    "allGreenSub_one": "{{count}} 个监控项，24 小时可用率 {{availability}}%",
+    "allGreenSub_other": "{{count}} 个监控项，24 小时可用率 {{availability}}%",
+    "allGreenSub_7d_one": "{{count}} 个监控项，7 天可用率 {{availability}}%",
+    "allGreenSub_7d_other": "{{count}} 个监控项，7 天可用率 {{availability}}%",
+    "allGreenSub_30d_one": "{{count}} 个监控项，30 天可用率 {{availability}}%",
+    "allGreenSub_30d_other": "{{count}} 个监控项，30 天可用率 {{availability}}%",
+    "allGreenSubNoData_one": "{{count}} 个监控项，暂无可用率数据",
+    "allGreenSubNoData_other": "{{count}} 个监控项，暂无可用率数据",
     "issues": "检测到问题",
-    "issuesSubDown_one": "{{count}} 个检查故障",
-    "issuesSubDown_other": "{{count}} 个检查故障",
-    "issuesSubIncidents_one": "{{count}} 个进行中的故障",
-    "issuesSubIncidents_other": "{{count}} 个进行中的故障",
-    "warning": "部分检查降级",
-    "warningSub": "{{count}} 个检查检测到超时",
+    "issuesSubDown_one": "{{count}} 个监控项处于故障状态",
+    "issuesSubDown_other": "{{count}} 个监控项处于故障状态",
+    "issuesSubIncidents_one": "{{count}} 个未解决的故障",
+    "issuesSubIncidents_other": "{{count}} 个未解决的故障",
+    "warning": "部分监控项降级",
+    "warningSub": "{{count}} 个监控项出现超时",
     "slaOperational": "24 小时 SLA 达标",
     "slaOperational_7d": "7 天 SLA 达标",
     "slaOperational_30d": "30 天 SLA 达标",
-    "activeOutage": "当前中断",
+    "activeOutage": "服务中断",
     "degradedPerformance": "性能降级"
   },
   "kpi": {
-    "monitored": "监控中的检查",
+    "monitored": "监控项",
     "monitoredDisabled": "{{count}} 个已禁用",
-    "down": "当前故障",
+    "down": "故障监控",
     "downSubNone": "全部正常",
-    "incidents": "进行中的故障",
-    "incidentsSubNone": "无进行中的故障",
+    "incidents": "未解决的故障",
+    "incidentsSubNone": "无未解决的故障",
     "availabilityBadge": {
       "noData": "无数据",
       "operational": "正常",
@@ -130,24 +130,24 @@
     "availability": "24 小时可用率",
     "availability_7d": "7 天可用率",
     "availability_30d": "30 天可用率",
-    "availabilitySub": "最近 24 小时，所有检查",
-    "availabilitySub_7d": "最近 7 天，所有检查",
-    "availabilitySub_30d": "最近 30 天，所有检查",
-    "totalEndpoints": "共 {{count}} 个端点",
+    "availabilitySub": "最近 24 小时，所有监控项",
+    "availabilitySub_7d": "最近 7 天，所有监控项",
+    "availabilitySub_30d": "最近 30 天，所有监控项",
+    "totalEndpoints": "共 {{count}} 个监控项",
     "badgeNeedsAction": "需要处理"
   },
   "glance": {
-    "title": "检查概览",
-    "footer_one": "查看 {{count}} 个检查 →",
-    "footer_other": "查看全部 {{count}} 个检查 →",
+    "title": "监控概览",
+    "footer_one": "查看 {{count}} 个监控项 →",
+    "footer_other": "查看全部 {{count}} 个监控项 →",
     "since": "已持续 {{time}}",
     "description": "整体健康状况预览与实时响应遥测",
     "viewAll": "查看全部（{{count}}）"
   },
   "activeIncidents": {
-    "title": "进行中的故障",
+    "title": "未解决的故障",
     "footer": "查看所有故障 →",
-    "empty": "无进行中的故障",
+    "empty": "无未解决的故障",
     "untitled": "未命名故障"
   },
   "recentActivity": {
@@ -161,8 +161,8 @@
   },
   "githubStar": {
     "title": "喜欢 SolidPing 吗？",
-    "body": "感谢使用 SolidPing。如果它对你有帮助，在 GitHub 上加星能帮助更多人发现它。",
-    "star": "在 GitHub 上标星",
+    "body": "感谢使用 SolidPing。如果它对你有帮助，在 GitHub 上Star能帮助更多人发现它。",
+    "star": "在 GitHub 上 Star",
     "later": "以后再说",
     "close": "关闭"
   },

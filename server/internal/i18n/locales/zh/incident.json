@@ -1,5 +1,5 @@
 {
-  "unknownCheck": "未知检查",
+  "unknownCheck": "未知监控项",
   "someone": "有人",
   "checkLink": "<a href=\"{url}\">{check}</a>",
   "channel": {
@@ -19,8 +19,8 @@
   "pill": {
     "down": "故障",
     "recovered": "已恢复",
-    "checkDeleted": "检查已删除",
-    "checkDisabled": "检查已禁用",
+    "checkDeleted": "监控项已删除",
+    "checkDisabled": "监控项已禁用",
     "escalated": "已升级",
     "reopened": "已重新打开",
     "comment": "评论",
@@ -41,7 +41,7 @@
     "incidentId": "故障 ID",
     "failureCount": "失败次数",
     "relapseCount": "复发次数",
-    "failedChecks": "失败的检查",
+    "failedChecks": "失败的监控项",
     "cause": "原因",
     "downFrom": "故障开始",
     "backAt": "恢复时间",
@@ -89,23 +89,23 @@
     "title": "{check} 已恢复",
     "titleAfter": "{check} 在 {duration} 后已恢复",
     "downFor": "故障持续 {duration}。",
-    "passing": "检查已重新通过。无需进一步操作。",
+    "passing": "监控项已重新通过。无需进一步操作。",
     "leadDuration": "故障持续了 <strong>{duration}</strong>。无需进一步操作。",
     "deletedSubject": "{check} 已删除，故障已关闭",
     "deletedTitle": "{check} 已删除",
     "deletedPreheader": "{check} 已删除，因此故障已关闭。",
-    "deletedBody": "这个检查已被删除，因此故障已关闭。它不一定已经恢复。",
+    "deletedBody": "这个监控项已被删除，因此故障已关闭。它不一定已经恢复。",
     "disabledSubject": "{check} 已禁用，故障已关闭",
     "disabledTitle": "{check} 已禁用",
     "disabledPreheader": "{check} 已禁用，因此故障已关闭。",
-    "disabledBody": "这个检查已被禁用，因此故障已关闭。它不一定已经恢复。",
+    "disabledBody": "这个监控项已被禁用，因此故障已关闭。它不一定已经恢复。",
     "textTitle": "{check} 已恢复",
     "textBody": "{check} 的故障已解决。"
   },
   "escalated": {
     "subject": "{check} 仍处于故障状态，已升级",
-    "preheader_one": "在 {count} 次检查失败后仍处于故障状态，因此已升级。",
-    "preheader_other": "在 {count} 次检查失败后仍处于故障状态，因此已升级。",
+    "preheader_one": "失败 {count} 次后仍处于故障状态，因此已升级。",
+    "preheader_other": "失败 {count} 次后仍处于故障状态，因此已升级。",
     "title": "{check} 仍处于故障状态",
     "lead": "没有人在规定时间内确认，因此已升级。",
     "textTitle": "{check} 故障已升级",
@@ -132,7 +132,7 @@
   "acknowledged": {
     "title": "{actor} 正在处理 {check}",
     "preheader": "{actor} 已接手。升级已停止，故障仍未关闭。",
-    "lead": "升级已停止。在检查重新通过之前，故障将保持打开。",
+    "lead": "升级已停止。在监控项重新通过之前，故障将保持打开。",
     "textTitle": "{check} 已被确认",
     "textBody": "{actor} 确认了 {check} 的故障。升级已停止：无需其他人接手。",
     "textBodyVia": "{actor} 确认了 {check} 的故障（{via}）。升级已停止：无需其他人接手。",
@@ -167,7 +167,7 @@
   "burn": {
     "policy": {
       "fast": "快速燃烧",
-      "slow": "慢速燃烧"
+      "slow": "缓慢燃烧"
     },
     "severity": {
       "critical": "严重",
@@ -206,8 +206,8 @@
     "notReturned": "已消耗的预算不会返还，只有燃烧率回落了。"
   },
   "degraded": {
-    "failures_one": "最近 {slots} 次探测中有 {count} 次失败（可用性 {availability}%）",
-    "failures_other": "最近 {slots} 次探测中有 {count} 次失败（可用性 {availability}%）",
+    "failures_one": "最近 {slots} 次探测中有 {count} 次失败（可用率 {availability}%）",
+    "failures_other": "最近 {slots} 次探测中有 {count} 次失败（可用率 {availability}%）",
     "failuresNoAvailability_one": "最近 {slots} 次探测中有 {count} 次失败",
     "failuresNoAvailability_other": "最近 {slots} 次探测中有 {count} 次失败",
     "slow_one": "最近 {slots} 次探测中有 {count} 次慢于 {ms}ms",
@@ -223,9 +223,9 @@
   "degradedCreated": {
     "subject": "{check} 已降级：{reason}",
     "title": "{check} 已降级",
-    "lead": "它持续失败或变慢，但故障时间不足以被视为中断。",
+    "lead": "它持续失败或变慢，但故障时间不足以被视为服务中断。",
     "openChart": "打开图表",
-    "notOutage": "这不是中断：每次失败都在确认期结束前出现了成功。"
+    "notOutage": "这不是服务中断：每次失败都在确认期结束前出现了成功。"
   },
   "degradedResolved": {
     "title": "{check} 已恢复稳定",
@@ -236,8 +236,8 @@
     "turnedOffLead": "本次降级已结束。它不一定已经恢复。",
     "leadDuration": "它不稳定持续了 <strong>{duration}</strong>。无需进一步操作。",
     "lead": "无需进一步操作。",
-    "turnedOffText": "此检查的降级检测已关闭，因此本次降级已结束。它不一定已经恢复。",
+    "turnedOffText": "此监控项的降级检测已关闭，因此本次降级已结束。它不一定已经恢复。",
     "textBody": "降级条件已连续足够长时间不成立，本次降级已结束。",
-    "historyKept": "已记录的失败和慢响应仍保留在检查历史中，只是这种间歇模式已结束。"
+    "historyKept": "已记录的失败和慢响应仍保留在监控历史中，只是这种间歇模式已结束。"
   }
 }

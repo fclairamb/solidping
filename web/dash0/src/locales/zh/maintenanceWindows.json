@@ -1,20 +1,20 @@
 {
   "title": "维护窗口",
-  "subtitle": "安排计划内维护，期间抑制故障告警",
+  "subtitle": "安排计划维护，在维护期间暂停故障告警",
   "new": "新建窗口",
   "empty": "没有已安排的维护窗口",
   "searchPlaceholder": "搜索维护窗口…",
   "noMatch": "没有匹配搜索的维护窗口",
   "backToList": "返回维护窗口列表",
   "edit": "编辑",
-  "checksCount_one": "{{count}} 个检查",
-  "checksCount_other": "{{count}} 个检查",
+  "checksCount_one": "{{count}} 个监控项",
+  "checksCount_other": "{{count}} 个监控项",
   "table": {
     "title": "标题",
     "schedule": "计划",
     "recurrence": "重复",
     "status": "状态",
-    "checks": "检查"
+    "checks": "监控项"
   },
   "recurrence": {
     "none": "一次性",
@@ -30,12 +30,12 @@
   "form": {
     "createTitle": "新建维护窗口",
     "editTitle": "编辑维护窗口",
-    "createDescription": "安排一段维护时间，在此期间所选检查的故障告警会被抑制。",
-    "editDescription": "更新这个维护窗口的计划和受影响的检查。",
+    "createDescription": "安排一段维护时间，在此期间暂停所选监控项的故障告警。",
+    "editDescription": "更新这个维护窗口的计划和受影响的监控项。",
     "detailsTitle": "详情",
     "scheduleTitle": "计划",
-    "affectedTitle": "受影响的检查",
-    "affectedDescription": "窗口生效期间，这些检查和检查分组的故障会被抑制。",
+    "affectedTitle": "受影响的监控项",
+    "affectedDescription": "窗口生效期间，这些监控项和监控分组的故障告警会暂停。",
     "title": "标题",
     "titlePlaceholder": "每周数据库备份",
     "description": "描述",
@@ -56,8 +56,8 @@
     "untilHelp": "可选。超过这个日期后窗口不再重复。",
     "recurrenceEndHelp": "可选。超过这个日期后窗口不再重复。",
     "utcNote": "所有时间均以 UTC 输入和存储。",
-    "checks": "检查",
-    "groups": "检查分组",
+    "checks": "监控项",
+    "groups": "监控分组",
     "submitCreate": "创建窗口",
     "submitSave": "保存更改",
     "cancel": "取消",
@@ -78,7 +78,7 @@
     "monthly": "每月 {{day}} 日，{{start}} – {{end}}（{{duration}}）",
     "until": " · 截止 {{date}}",
     "noEnd": " · 无结束日期",
-    "alertsPaused": "每次维护期间，受影响检查的故障告警都会暂停。",
+    "alertsPaused": "每次维护期间，受影响监控项的故障告警都会暂停。",
     "nextLabel": "下次：",
     "nextNone": "没有即将发生的维护"
   },
@@ -92,12 +92,12 @@
     "summary": "摘要",
     "nextOccurrences": "接下来的维护",
     "noNextOccurrences": "没有即将发生的维护",
-    "affectedChecks": "受影响的检查",
+    "affectedChecks": "受影响的监控项",
     "start": "开始",
     "end": "结束",
     "recurrence": "重复",
     "recurrenceEnd": "重复结束",
-    "noAffected": "没有检查或分组受这个窗口影响。",
+    "noAffected": "没有监控项或分组受这个窗口影响。",
     "createdBy": "创建者",
     "view": "查看"
   },
@@ -113,9 +113,9 @@
     "confirmTitle": "删除维护窗口？",
     "confirmBody": "确定要删除这个维护窗口吗？此操作无法撤销。"
   },
-  "noChecks": "没有检查",
-  "noChecksTitle": "这个窗口没有关联任何检查，因此不会抑制任何告警。",
-  "checksLabel_one": "个检查",
-  "checksLabel_other": "个检查",
-  "emptyHint": "创建一个，在计划内工作期间抑制故障告警。"
+  "noChecks": "没有监控项",
+  "noChecksTitle": "这个窗口没有关联任何监控项，因此不会暂停任何告警。",
+  "checksLabel_one": "个监控项",
+  "checksLabel_other": "个监控项",
+  "emptyHint": "创建一个，在计划维护期间暂停故障告警。"
 }

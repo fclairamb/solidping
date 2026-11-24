@@ -1,7 +1,7 @@
 {
   "layout": {
     "title": "服务级别目标",
-    "subtitle": "跟踪可用性目标和错误预算"
+    "subtitle": "设定可用性目标，并跟踪错误预算"
   },
   "list": {
     "empty": "还没有目标",
@@ -26,14 +26,14 @@
     "unknown": "无数据"
   },
   "scope": {
-    "check": "检查",
+    "check": "监控项",
     "group": "分组",
     "missing": "范围已移除"
   },
   "detail": {
     "currentWindow": "当前窗口",
     "attainment": "达成率",
-    "lowCoverage": "已测量窗口的 {{pct}}%",
+    "lowCoverage": "窗口内已测量 {{pct}}%",
     "target": "目标值",
     "budgetTotal": "预算",
     "budgetConsumed": "已消耗",
@@ -45,7 +45,7 @@
     "incidents": "故障",
     "longestIncident": "最长",
     "totalDowntime": "总停机时间",
-    "history": "每月历史",
+    "history": "月度历史",
     "historyEmpty": "还没有历史数据",
     "noData": "无数据",
     "never": "未预计",
@@ -59,7 +59,7 @@
   },
   "alerting": {
     "title": "告警",
-    "subtitle": "错误预算燃烧过快时呼叫值班人员。两个窗口都必须超过阈值，因此已经结束的峰值不会触发呼叫。",
+    "subtitle": "错误预算消耗过快时通知值班人员；长、短两个窗口都超过阈值才会触发，已经结束的峰值不会误报",
     "empty": "还没有告警策略",
     "enable": "启用",
     "enabled": "告警策略已启用",
@@ -79,7 +79,7 @@
     "editThresholds": "编辑阈值",
     "saved": "告警策略已更新",
     "saveFailed": "更新告警策略失败",
-    "formSubtitle": "调整这个策略何时呼叫。两个窗口都超过阈值才会触发。",
+    "formSubtitle": "调整这个策略在什么时候通知值班人员；长、短两个窗口都超过阈值才会触发。",
     "enableHelp": "告警需要手动启用。已禁用的策略不会被评估。",
     "longWindow": "长窗口（分钟）",
     "longWindowHelp": "证明燃烧确实显著。上限 7 天。",
@@ -89,7 +89,7 @@
     "thresholdHelp": "燃烧率倍数。1x 表示到月底刚好用完当月预算。",
     "minSamplesHelp": "探测数少于此值的窗口数据不足，不会触发。",
     "severityLabel": "严重程度",
-    "severityHelp": "会带入故障标题和每条通知。渠道路由仍由升级策略决定。",
+    "severityHelp": "会带入故障标题和每条通知。通知渠道仍由告警升级策略决定。",
     "kind": {
       "fast": "快速燃烧",
       "slow": "缓慢燃烧"
@@ -107,11 +107,11 @@
     "slug": "Slug",
     "slugHelp": "URL 安全的标识符，留空时根据名称生成",
     "scope": "范围",
-    "scopeHelp": "恰好一个检查或一个检查分组",
-    "scopeCheck": "检查",
-    "scopeGroup": "检查分组",
-    "selectCheck": "选择检查",
-    "selectGroup": "选择检查分组",
+    "scopeHelp": "恰好一个监控项或一个监控分组",
+    "scopeCheck": "监控项",
+    "scopeGroup": "监控分组",
+    "selectCheck": "选择监控项",
+    "selectGroup": "选择监控分组",
     "target": "目标值（%）",
     "targetHelp": "0 到 100 之间，例如 99.9",
     "timezone": "时区",
@@ -141,7 +141,7 @@
   },
   "reports": {
     "title": "可用性报告",
-    "subtitle": "定期用邮件发送可用性摘要",
+    "subtitle": "定期通过邮件发送可用性摘要",
     "new": "新建报告",
     "empty": "没有已安排的报告",
     "emptyHint": "每月摘要能触达那些从不打开仪表盘的人。",
@@ -157,8 +157,8 @@
       "weekly": "每周",
       "monthly": "每月"
     },
-    "scopeOrgWide": "所有检查",
-    "scopeCounts": "{{checks}} 个检查，{{groups}} 个分组",
+    "scopeOrgWide": "所有监控项",
+    "scopeCounts": "{{checks}} 个监控项，{{groups}} 个分组",
     "never": "从未",
     "recipientCount": "{{count}} 个收件人",
     "recipientCount_other": "{{count}} 个收件人",
@@ -176,9 +176,9 @@
       "timezoneHelp": "周期在这个 IANA 时区的午夜结束",
       "recipients": "收件人",
       "recipientsHelp": "接收摘要的邮箱地址。退订的人会自动从列表中移除。",
-      "checks": "检查",
-      "groups": "检查分组",
-      "scopeHelp": "两项都留空则报告组织内的所有检查",
+      "checks": "监控项",
+      "groups": "监控分组",
+      "scopeHelp": "两项都留空则报告组织内的所有监控项",
       "includeSlos": "包含目标",
       "includeSlosHelp": "为范围内每个目标添加错误预算摘要",
       "enabled": "已启用",

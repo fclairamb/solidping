@@ -16,10 +16,10 @@
   },
   "welcome": {
     "title": "欢迎使用 SolidPing",
-    "preheader": "你的账户已就绪。花一分钟添加第一个检查。",
+    "preheader": "你的账户已就绪。花一分钟添加第一个监控项。",
     "lead": "你的账户已就绪。完成下面三件事只需五分钟，却能让它真正有用：",
     "addCheck": {
-      "label": "1. 添加检查",
+      "label": "1. 添加监控项",
       "detail": "一个网站、一个 API、一条 DNS 记录、一个 cron 任务……"
     },
     "getAlerted": {

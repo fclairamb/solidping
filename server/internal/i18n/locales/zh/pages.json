@@ -11,7 +11,7 @@
       "title": "已退订",
       "org": "<strong>{email}</strong> 将不再接收此组织的所有告警邮件。",
       "check": "<strong>{email}</strong> 将不再接收 {check} 的告警。",
-      "thisCheck": "<strong>{email}</strong> 将不再接收此检查的告警。",
+      "thisCheck": "<strong>{email}</strong> 将不再接收此监控项的告警。",
       "othersUnaffected": "这些告警的其他收件人不受影响。",
       "changedMind": "改变主意了？",
       "undo": "撤销并重新订阅"

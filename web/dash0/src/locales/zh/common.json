@@ -92,7 +92,7 @@
       "cta": "通知设置"
     },
     "title": "我的告警",
-    "description": "你因故障收到通知的记录，按时间倒序排列。",
+    "description": "你收到过告警的故障，按时间倒序排列。",
     "cardTitle": "通知",
     "cardDescription": "记录你每次因故障收到的通知。",
     "columns": {
@@ -102,21 +102,21 @@
     }
   },
   "notificationFailureReasons": {
-    "whatsapp_template_unavailable": "WhatsApp 消息模板不可用 — 请让管理员检查模板的审核状态",
+    "whatsapp_template_unavailable": "WhatsApp 消息模板不可用——请让管理员检查模板的审核状态",
     "whatsapp_recipient_not_on_whatsapp": "接收者未使用 WhatsApp",
     "whatsapp_rate_limited": "已被 WhatsApp 限流（消息层级上限）",
-    "whatsapp_unsupported_message": "WhatsApp 拒绝了我们构建的消息 — 请让管理员检查模板的组件",
+    "whatsapp_unsupported_message": "WhatsApp 拒绝了我们构建的消息——请让管理员检查模板的组件",
     "whatsapp_session_window_closed": "已超出 24 小时 WhatsApp 会话窗口",
-    "whatsapp_token_expired": "WhatsApp 凭据已过期 — 请让管理员刷新",
+    "whatsapp_token_expired": "WhatsApp 凭据已过期——请让管理员刷新",
     "whatsapp_not_configured": "此实例未配置 WhatsApp",
     "whatsapp_invalid_recipient": "WhatsApp 号码不是有效的 E.164 号码",
     "whatsapp_send_failed": "WhatsApp 发送失败",
-    "whatsapp_quota_exhausted": "本月 WhatsApp 配额已用完",
-    "sms_quota_exhausted": "本月短信配额已用完",
-    "voice_quota_exhausted": "本月语音通话配额已用完",
-    "telegram_unauthorized": "Telegram 机器人凭据无效 — 请让管理员检查机器人令牌",
-    "telegram_bot_blocked": "用户已屏蔽 Telegram 机器人 — 请从“账户 → 通知”重新连接",
-    "telegram_chat_not_found": "Telegram 会话已不存在 — 请从“账户 → 通知”重新连接",
+    "whatsapp_quota_exhausted": "本月 WhatsApp 额度已用完",
+    "sms_quota_exhausted": "本月短信额度已用完",
+    "voice_quota_exhausted": "本月语音通话额度已用完",
+    "telegram_unauthorized": "Telegram 机器人凭据无效——请让管理员检查机器人令牌",
+    "telegram_bot_blocked": "用户已屏蔽 Telegram 机器人——请从“账户 → 通知”重新连接",
+    "telegram_chat_not_found": "Telegram 会话已不存在——请从“账户 → 通知”重新连接",
     "telegram_reply_target_missing": "原始 Telegram 告警已被删除",
     "telegram_rate_limited": "已被 Telegram 限流",
     "telegram_not_configured": "此实例未配置 Telegram",
@@ -126,7 +126,7 @@
   },
   "serverVersion": {
     "reloadAria": "重新加载以获取最新版本",
-    "stale": "服务器已更新到 {{version}} — 重新加载以获取最新版本。"
+    "stale": "服务器已更新到 {{version}}——重新加载以获取最新版本。"
   },
   "errorBoundary": {
     "description": "发生意外错误。这通常是暂时性问题，重试后页面应该会恢复。",
@@ -145,7 +145,7 @@
   "timeAgo": {
     "copyAria": "复制时间戳 {{utcIso}}",
     "copiedAria": "已复制 {{utcIso}}",
-    "copiedTooltip": "已复制 — {{tooltipText}}",
+    "copiedTooltip": "已复制——{{tooltipText}}",
     "justNow": "刚刚",
     "minutesAgo": "{{count}} 分钟前",
     "hoursAgo": "{{count}} 小时前",
@@ -175,7 +175,7 @@
     "noMatches": "无匹配",
     "keyError": "使用 3-51 个小写字母、数字或连字符，并以字母开头。",
     "valueTooLong": "值最多 {{max}} 个字符。",
-    "duplicateKey": "这个键已存在 — 请编辑现有标签。",
+    "duplicateKey": "这个键已存在——请编辑现有标签。",
     "add": "添加"
   },
   "notFoundPage": {
@@ -184,23 +184,23 @@
     "backHome": "返回首页"
   },
   "notificationSources": {
-    "checkConnection": "检查连接",
-    "escalationStep": "升级步骤",
+    "checkConnection": "监控项通知渠道",
+    "escalationStep": "告警升级步骤",
     "onCallSchedule": "值班表",
     "allAdmins": "所有管理员",
-    "escalationConnection": "升级连接",
+    "escalationConnection": "告警升级通知渠道",
     "cycle": "第 {{cycle}} 轮"
   },
   "customized": "已自定义",
   "removeItem": "移除 {{item}}",
   "githubStar": {
-    "sidebar": "在 GitHub 上标星"
+    "sidebar": "在 GitHub 上 Star"
   },
   "backToList": "返回{{list}}",
   "resources": {
-    "check": "检查",
+    "check": "监控项",
     "statusPage": "状态页",
-    "incidentPublication": "故障发布",
+    "incidentPublication": "故障公告",
     "statusUpdate": "状态更新"
   },
   "apiErrors": {
