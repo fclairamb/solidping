@@ -22,31 +22,32 @@ func writeMySQLPacket(conn net.Conn, seq byte, payload []byte) error {
 	return err
 }
 
-func readMySQLPacket(conn net.Conn) (byte, []byte, error) {
+func readMySQLPacket(conn net.Conn) ([]byte, error) {
 	header := make([]byte, 4)
 	if _, err := io.ReadFull(conn, header); err != nil {
-		return 0, nil, err
+		return nil, err
 	}
 
 	payload := make([]byte, int(binary.LittleEndian.Uint32(append(header[:3:3], 0))))
 	_, err := io.ReadFull(conn, payload)
 
-	return header[3], payload, err
+	return payload, err
 }
 
 // mysqlHandshake is a protocol-10 greeting with the minimum capabilities
 // (PROTOCOL_41, SECURE_CONNECTION, PLUGIN_AUTH).
 func mysqlHandshake() []byte {
-	packet := []byte{10}
+	packet := make([]byte, 0, 96)
+	packet = append(packet, 10)
 	packet = append(packet, "5.7.0-fake\x00"...)
-	packet = append(packet, 1, 0, 0, 0)                     // connection id
-	packet = append(packet, "abcdefgh\x00"...)              // auth data 1 + filler
-	packet = append(packet, 0x08, 0x82)                     // capabilities (lower)
-	packet = append(packet, 33, 2, 0)                       // charset, status
-	packet = append(packet, 0x08, 0x00, 21)                 // capabilities (upper), auth data length
-	packet = append(packet, make([]byte, 10)...)            // reserved
-	packet = append(packet, "ijklmnopqrst\x00"...)          // auth data 2
-	packet = append(packet, "mysql_native_password\x00"...) //nolint:gocritic // appendAssign is intended
+	packet = append(packet, 1, 0, 0, 0)            // connection id
+	packet = append(packet, "abcdefgh\x00"...)     // auth data 1 + filler
+	packet = append(packet, 0x08, 0x82)            // capabilities (lower)
+	packet = append(packet, 33, 2, 0)              // charset, status
+	packet = append(packet, 0x08, 0x00, 21)        // capabilities (upper), auth data length
+	packet = append(packet, make([]byte, 10)...)   // reserved
+	packet = append(packet, "ijklmnopqrst\x00"...) // auth data 2
+	packet = append(packet, "mysql_native_password\x00"...)
 
 	return packet
 }
@@ -62,7 +63,7 @@ func serveMySQL(conn net.Conn) {
 		return
 	}
 
-	if _, _, err := readMySQLPacket(conn); err != nil {
+	if _, err := readMySQLPacket(conn); err != nil {
 		return
 	}
 
@@ -71,7 +72,7 @@ func serveMySQL(conn net.Conn) {
 	}
 
 	for {
-		_, payload, err := readMySQLPacket(conn)
+		payload, err := readMySQLPacket(conn)
 		if err != nil || len(payload) == 0 {
 			return
 		}

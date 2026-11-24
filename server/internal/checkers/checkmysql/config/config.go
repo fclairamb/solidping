@@ -58,6 +58,9 @@ type MySQLConfig struct {
 // configKeySocket is the config key of the Unix socket path.
 const configKeySocket = "socket"
 
+// configKeyUsername is the config key of the database user.
+const configKeyUsername = "username"
+
 // LocalSocket implements checkerdef.LocalSocketTarget.
 func (c *MySQLConfig) LocalSocket() (string, string) {
 	return configKeySocket, c.Socket
@@ -71,7 +74,7 @@ func (c *MySQLConfig) SchemaExclusiveGroups() [][]string {
 
 // SchemaBaselines implements checkerdef.SchemaBaseliner: the socket shape.
 func (c *MySQLConfig) SchemaBaselines() []map[string]any {
-	return []map[string]any{{configKeySocket: "/run/mysqld/mysqld.sock", "username": "monitor"}}
+	return []map[string]any{{configKeySocket: "/run/mysqld/mysqld.sock", configKeyUsername: "monitor"}}
 }
 
 // SchemaNotes implements checkerdef.SchemaNoter.
@@ -148,10 +151,10 @@ func (c *MySQLConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("port", "must be a number")
 	}
 
-	if username, ok := configMap["username"].(string); ok {
+	if username, ok := configMap[configKeyUsername].(string); ok {
 		c.Username = username
-	} else if configMap["username"] != nil {
-		return checkerdef.NewConfigError("username", "must be a string")
+	} else if configMap[configKeyUsername] != nil {
+		return checkerdef.NewConfigError(configKeyUsername, "must be a string")
 	}
 
 	if password, ok := configMap["password"].(string); ok {
@@ -222,6 +225,8 @@ func (c *MySQLConfig) GetConfig() map[string]any {
 }
 
 // Validate checks if the configuration is valid.
+//
+//nolint:cyclop // one rule per field
 func (c *MySQLConfig) Validate() error {
 	if c.Socket != "" {
 		if c.Host != "" || c.Port != 0 {

@@ -31,7 +31,7 @@ export interface SqlDbState {
   password: string;
   database: string;
   query: string;
-  // Unix socket target (postgresql only): `socket` replaces host and port.
+  // Unix socket target (postgresql and mysql): `socket` replaces host and port.
   targetMode: SocketTargetMode;
   socket: string;
 }
@@ -89,16 +89,20 @@ function SqlDbFields({
   const { t } = useTranslation("checks");
   const isMysql = type === "mysql";
   const switchShown = useShowTargetSwitch(state.targetMode);
-  const showSwitch = type === "postgresql" && switchShown;
+  const showSwitch = (type === "postgresql" || isMysql) && switchShown;
   const socketMode = showSwitch && state.targetMode === "socket";
   return (
     <>
       {showSwitch && (
         <SocketTargetSwitch
-          prefix="postgres"
+          prefix={isMysql ? "mysql" : "postgres"}
           mode={state.targetMode}
           socket={state.socket}
-          placeholder="/var/run/postgresql/.s.PGSQL.5432"
+          placeholder={
+            isMysql
+              ? "/run/mysqld/mysqld.sock"
+              : "/var/run/postgresql/.s.PGSQL.5432"
+          }
           errors={errors}
           onModeChange={(targetMode) => onChange({ ...state, targetMode })}
           onSocketChange={(socket) => onChange({ ...state, socket })}
@@ -293,6 +297,8 @@ function RedisFields({
 
 // ── MongoDB ──
 export interface MongoState {
+  targetMode: SocketTargetMode;
+  socket: string;
   host: string;
   port: string;
   username: string;
@@ -302,8 +308,10 @@ export interface MongoState {
 
 export const mongodbModule: CheckTypeModule<MongoState> = {
   types: ["mongodb"],
-  ownedKeys: ["host", "port", "username", "password", "database"],
+  ownedKeys: ["host", "port", "socket", "username", "password", "database"],
   fromConfig: (config) => ({
+    targetMode: getConfigField(config, "socket") ? "socket" : "host",
+    socket: getConfigField(config, "socket"),
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
     username: getConfigField(config, "username"),
@@ -312,43 +320,72 @@ export const mongodbModule: CheckTypeModule<MongoState> = {
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
-    if (state.host) cfg.host = state.host;
-    if (state.port) cfg.port = parseInt(state.port, 10);
+    const socketMode = state.targetMode === "socket";
+    if (socketMode) {
+      if (state.socket) cfg.socket = state.socket;
+    } else {
+      if (state.host) cfg.host = state.host;
+      if (state.port) cfg.port = parseInt(state.port, 10);
+    }
     if (state.username) cfg.username = state.username;
     if (state.password) cfg.password = state.password;
     if (state.database) cfg.database = state.database;
-    return { config: cfg, errors: hostRequired(state.host) };
+    return {
+      config: cfg,
+      errors: socketMode
+        ? socketRequired(state.socket)
+        : hostRequired(state.host),
+    };
   },
   Fields: MongoFields,
 };
 
-function MongoFields({ state, onChange }: CheckTypeFieldsProps<MongoState>) {
+function MongoFields({
+  state,
+  onChange,
+  errors,
+}: CheckTypeFieldsProps<MongoState>) {
   const { t } = useTranslation("checks");
+  const showSwitch = useShowTargetSwitch(state.targetMode);
+  const socketMode = showSwitch && state.targetMode === "socket";
   return (
     <>
-      <div className="space-y-2">
-        <Label>{t("form.host")}</Label>
-        <div className="flex gap-2">
-          <Input
-            id="host"
-            type="text"
-            placeholder="mongo.example.com"
-            value={state.host}
-            onChange={(e) => onChange({ ...state, host: e.target.value })}
-            className="flex-1"
-            data-testid="check-host-input"
-          />
-          <Input
-            id="port"
-            type="number"
-            placeholder="27017"
-            value={state.port}
-            onChange={(e) => onChange({ ...state, port: e.target.value })}
-            className="w-24"
-            data-testid="check-port-input"
-          />
+      {showSwitch && (
+        <SocketTargetSwitch
+          prefix="mongodb"
+          mode={state.targetMode}
+          socket={state.socket}
+          placeholder="/tmp/mongodb-27017.sock"
+          errors={errors}
+          onModeChange={(targetMode) => onChange({ ...state, targetMode })}
+          onSocketChange={(socket) => onChange({ ...state, socket })}
+        />
+      )}
+      {!socketMode && (
+        <div className="space-y-2">
+          <Label>{t("form.host")}</Label>
+          <div className="flex gap-2">
+            <Input
+              id="host"
+              type="text"
+              placeholder="mongo.example.com"
+              value={state.host}
+              onChange={(e) => onChange({ ...state, host: e.target.value })}
+              className="flex-1"
+              data-testid="check-host-input"
+            />
+            <Input
+              id="port"
+              type="number"
+              placeholder="27017"
+              value={state.port}
+              onChange={(e) => onChange({ ...state, port: e.target.value })}
+              className="w-24"
+              data-testid="check-port-input"
+            />
+          </div>
         </div>
-      </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="username">{t("form.usernameOptional")}</Label>
         <Input

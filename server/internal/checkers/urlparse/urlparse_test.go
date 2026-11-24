@@ -315,9 +315,18 @@ func TestParseMySQLMongoSMTPUnix(t *testing.T) {
 		sock  string
 		query string
 	}{
-		{"mysql+unix:///run/mysqld/mysqld.sock?user=monitor&db=app", checkerdef.CheckTypeMySQL, "/run/mysqld/mysqld.sock", "user=monitor&db=app"},
-		{"mongodb+unix:///tmp/mongodb-27017.sock?db=admin", checkerdef.CheckTypeMongoDB, "/tmp/mongodb-27017.sock", "db=admin"},
-		{"smtp+unix:///run/postfix/submission.sock", checkerdef.CheckTypeSMTP, "/run/postfix/submission.sock", ""},
+		{
+			"mysql+unix:///run/mysqld/mysqld.sock?user=monitor&db=app",
+			checkerdef.CheckTypeMySQL, "/run/mysqld/mysqld.sock", "user=monitor&db=app",
+		},
+		{
+			"mongodb+unix:///tmp/mongodb-27017.sock?db=admin",
+			checkerdef.CheckTypeMongoDB, "/tmp/mongodb-27017.sock", "db=admin",
+		},
+		{
+			"smtp+unix:///run/postfix/submission.sock",
+			checkerdef.CheckTypeSMTP, "/run/postfix/submission.sock", "",
+		},
 	}
 
 	for _, tc := range cases {

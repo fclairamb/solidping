@@ -2078,6 +2078,9 @@ host and port.
 | [HTTP](#http) | `unix_socket` | `http+unix:///run/app/app.sock:/health` |
 | [Redis](#redis) | `socket` | `redis+unix:///run/redis/redis.sock?db=0` |
 | [PostgreSQL](#postgresql) | `socket` (the socket file, e.g. `/var/run/postgresql/.s.PGSQL.5432`, not the directory) | `postgres+unix:///var/run/postgresql/.s.PGSQL.5432?dbname=app&user=monitor` |
+| [MySQL](#mysql) | `socket` (e.g. `/run/mysqld/mysqld.sock`) | `mysql+unix:///run/mysqld/mysqld.sock?user=monitor&db=app` |
+| [MongoDB](#mongodb) | `socket` (e.g. `/tmp/mongodb-27017.sock`) | `mongodb+unix:///tmp/mongodb-27017.sock?db=admin` |
+| [SMTP](#smtp) | `socket` (a local MTA's submission socket; no STARTTLS or implicit TLS) | `smtp+unix:///run/postfix/submission.sock` |
 
 The feature is **off by default**. An operator turns it on by listing the
 sockets checks may reach in `checkers.unix_socket_paths`

@@ -24,7 +24,9 @@ const (
 
 // helloReply is the one document the fake server answers to every command
 // (hello, isMaster, ping): a standalone, writable server.
-func helloReply(t testing.TB) []byte {
+func helloReply(tb testing.TB) []byte {
+	tb.Helper()
+
 	doc, err := bson.Marshal(bson.D{
 		{Key: "ok", Value: 1.0},
 		{Key: "ismaster", Value: true},
@@ -36,7 +38,7 @@ func helloReply(t testing.TB) []byte {
 		{Key: "minWireVersion", Value: int32(0)},
 		{Key: "maxWireVersion", Value: int32(17)},
 	})
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	return doc
 }
@@ -62,11 +64,8 @@ func serveMongo(conn net.Conn, doc []byte) {
 
 		var body []byte
 
-		reply := binary.LittleEndian.AppendUint32(nil, 0)
-
 		switch opCode {
 		case opQuery:
-			reply = binary.LittleEndian.AppendUint32(reply, opReply)
 			// responseFlags, cursorID, startingFrom, numberReturned, documents
 			body = binary.LittleEndian.AppendUint32(nil, 8)
 			body = binary.LittleEndian.AppendUint64(body, 0)

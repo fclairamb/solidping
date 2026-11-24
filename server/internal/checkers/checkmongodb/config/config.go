@@ -109,6 +109,8 @@ func (c *MongoDBConfig) expandUnixURL(configMap map[string]any) error {
 }
 
 // FromMap populates the configuration from a map.
+//
+//nolint:cyclop // Configuration parsing requires checking multiple field types
 func (c *MongoDBConfig) FromMap(configMap map[string]any) error {
 	if urlStr, ok := configMap["url"].(string); ok {
 		c.URL = urlStr

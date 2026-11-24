@@ -140,7 +140,7 @@ func (c *SMTPConfig) expandUnixURL(configMap map[string]any) error {
 
 // FromMap populates the configuration from a map.
 //
-//nolint:cyclop // Configuration parsing requires checking multiple field types
+//nolint:cyclop,funlen // Configuration parsing requires checking multiple field types
 func (c *SMTPConfig) FromMap(configMap map[string]any) error {
 	if urlStr, ok := configMap["url"].(string); ok {
 		c.URL = urlStr
@@ -341,6 +341,8 @@ func (c *SMTPConfig) getConfigSendMode(cfg map[string]any) {
 }
 
 // Validate checks if the configuration is valid.
+//
+//nolint:cyclop // one rule per field
 func (c *SMTPConfig) Validate() error {
 	if c.Socket != "" {
 		if err := c.validateSocket(); err != nil {

@@ -106,15 +106,16 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 
 	hostLabel := params.host
 
-	if cfg.Socket != "" {
+	switch {
+	case cfg.Socket != "":
 		// Unix socket (spec 2026-11-24-04): the shared dialer applies every
 		// gate (tunnel, egress guard, path syntax, allowlist); no resolution.
 		dialer = checkerdef.LocalSocketDialer(ctx, cfg.Socket, params.timeout)
 		hostLabel = cfg.Socket
 		params.port = 0
-	} else if tunneled {
+	case tunneled:
 		dialer = tunnelDialer
-	} else {
+	default:
 		targetIP, resErr := resolveHost(ctx, params.host)
 		if resErr != nil {
 			// A genuine resolve failure stays StatusError, as it always has; an
