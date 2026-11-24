@@ -36,8 +36,9 @@ const (
 
 // Date renders an instant in the locale's timezone, 24-hour clock, zone
 // abbreviation included: "Jul 5, 12:00 CEST", "5 juil., 12:00 CEST",
-// "5. Juli, 12:00 CEST", "5 jul, 12:00 CEST". The year is added only when it
-// is not the current one. A numeric zone ("+03") reads "UTC+03".
+// "5. Juli, 12:00 CEST", "5 jul, 12:00 CEST", "7月5日 12:00 CEST". The year is
+// added only when it is not the current one. A numeric zone ("+03") reads
+// "UTC+03".
 //
 // value may be a time.Time, a *time.Time or an RFC 3339 string (what a time
 // becomes after a job's JSON round trip). Any other string is returned as is,
@@ -66,8 +67,8 @@ func (l Locale) Date(value any) string {
 }
 
 // Day renders the calendar date of an instant in the locale's timezone,
-// without the time: "Jul 12", "12 juil.", "12. Juli", "12 jul". The year is
-// added only when it is not the current one. Same inputs as Date. For a day
+// without the time: "Jul 12", "12 juil.", "12. Juli", "12 jul", "7月12日". The
+// year is added only when it is not the current one. Same inputs as Date. For a day
 // anchored to another zone (a UTC day strip), see In.
 func (l Locale) Day(value any) string {
 	when, raw, ok := toTime(value)
@@ -96,9 +97,9 @@ func (l Locale) dayOfMonth(day int) any {
 }
 
 // Month renders the month of an instant, in the locale's timezone, with its
-// year: "July 2026", "juillet 2026", "Juli 2026", "julio de 2026". Same
-// inputs as Date. For a month anchored to another zone (a report period),
-// see In.
+// year: "July 2026", "juillet 2026", "Juli 2026", "julio de 2026",
+// "2026年7月". Same inputs as Date. For a month anchored to another zone (a
+// report period), see In.
 func (l Locale) Month(value any) string {
 	when, raw, ok := toTime(value)
 	if !ok {

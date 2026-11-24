@@ -23,7 +23,7 @@ func TestTitleKeysExistInDashboardLocales(t *testing.T) {
 		TitleKeySLOFastBurn, TitleKeySLOSlowBurn,
 	}
 
-	for _, lang := range []string{"en", "fr", "de", "es"} {
+	for _, lang := range []string{"en", "fr", "de", "es", "zh"} {
 		path := filepath.Join("..", "..", "..", "..", "web", "dash0", "src", "locales", lang, "incidents.json")
 
 		content, err := os.ReadFile(path)

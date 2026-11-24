@@ -213,7 +213,7 @@ func TestTn_PluralRules(t *testing.T) {
 		r.False(isOne(LangFrench, 2))
 		r.False(isOne(LangFrench, -1))
 
-		for _, lang := range []string{LangEnglish, LangGerman, LangSpanish} {
+		for _, lang := range []string{LangEnglish, LangGerman, LangSpanish, LangChinese} {
 			r.False(isOne(lang, 0), lang)
 			r.True(isOne(lang, 1), lang)
 			r.False(isOne(lang, 1.5), lang)
@@ -401,9 +401,9 @@ func TestDuration(t *testing.T) {
 
 	localized := map[string][2]string{
 		LangEnglish: {"1h 5m", "1d 2h"},
-		LangFrench:  {"1\u00a0h 5\u00a0min", "1\u00a0j 2\u00a0h"},
-		LangGerman:  {"1\u00a0Std. 5\u00a0Min.", "1\u00a0Tg. 2\u00a0Std."},
-		LangSpanish: {"1\u00a0h 5\u00a0min", "1\u00a0d 2\u00a0h"},
+		LangFrench:  {"1 h 5 min", "1 j 2 h"},
+		LangGerman:  {"1 Std. 5 Min.", "1 Tg. 2 Std."},
+		LangSpanish: {"1 h 5 min", "1 d 2 h"},
 		LangChinese: {"1小时5分钟", "1天2小时"},
 	}
 
@@ -441,9 +441,9 @@ func TestNumberAndPct(t *testing.T) {
 
 	cases := map[string][3]string{
 		LangEnglish: {"1,234.5", "99.95%", "99.950"},
-		LangFrench:  {"1\u00a0234,5", "99,95\u00a0%", "99,950"},
-		LangGerman:  {"1.234,5", "99,95\u00a0%", "99,950"},
-		LangSpanish: {"1.234,5", "99,95\u00a0%", "99,950"},
+		LangFrench:  {"1 234,5", "99,95 %", "99,950"},
+		LangGerman:  {"1.234,5", "99,95 %", "99,950"},
+		LangSpanish: {"1.234,5", "99,95 %", "99,950"},
 		LangChinese: {"1,234.5", "99.95%", "99.950"},
 	}
 

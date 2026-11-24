@@ -93,9 +93,9 @@ that only exists on someone else's unmerged branch is not. Phase C merges duplic
 - Plurals are two leaves, `x_one` and `x_other`, and are read with `tn "x" .Count`.
   French uses `_one` for 0 and 1; English, German, Spanish and Chinese for 1
   only. Chinese has no grammatical plural, so its `_one` and `_other` may hold
-  the same sentence. Every
-  `_one` needs its `_other`, and every `_one` prints `{count}` ("1 check", never "One
-  check": French would print "Un contrôle" for 0). Both are tested.
+  the same sentence. Every `_one` needs its `_other`, and every `_one` prints
+  `{count}` ("1 check", never "One check": French would print "Un contrôle" for 0).
+  Both are tested.
 - `{count}` is filled with the localized count without a thousands separator
   ("1234", "1,5" in French), so a producer shared with other channels keeps its old
   `%d` output. Pass `"count"` yourself to print something else.
@@ -190,7 +190,7 @@ For each template in your group:
    burn labels, report labels) take a Locale (next section).
 4. Update the preview fixture of the template in your `fixtures_<group>.go` so it
    is produced by the same production helper, called with the fixture's locale.
-5. Translate fr, de, es in the same change (see Tone). Run the tests below.
+5. Translate fr, de, es and zh in the same change (see Tone). Run the tests below.
 
 ## Go producers
 
@@ -285,6 +285,9 @@ The product voice is plain and short. Match dash0's register for each language:
   "E-Mail". Quotes `„…“`.
 - **Spanish**: *tú*, the register dash0 uses ("Revisa tu correo"). "incidente",
   "escalado", "correo". Quotes `«…»`.
+- **Chinese**: 称呼用“你”（不用“您”）. “监控项” for a check, “故障” for an incident,
+  “告警” for alerts, “邮件” for email. Simplified characters and full-width
+  punctuation (`，。：`); quotes `“…”`.
 - Keep brand and protocol names (SolidPing, HTTP, SMS) untranslated. A value equal
   to English must be listed, with the reason, in
   `server/internal/i18n/testdata/identical/<namespace>.json`
@@ -315,5 +318,5 @@ your package's tests):
 - A JSON round-trip render (like `uptimereport` tests' `roundTrip`) for templates
   sent through the email job, so float64 counts and string dates are exercised.
 
-Phase C adds the "no English left in fr/de/es" check (a text diff of the en and
-fr/de/es renders, minus fixture data such as check and org names).
+Phase C adds the "no English left in fr/de/es/zh" check (a text diff of the en
+and fr/de/es/zh renders, minus fixture data such as check and org names).
