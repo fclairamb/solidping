@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
+	"github.com/fclairamb/solidping/server/internal/checkfilter"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
@@ -334,7 +335,7 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) erro
 	}
 
 	// Parse search query
-	opts.Query = query.Get("q")
+	opts.Query = strings.Join(checkfilter.SearchTerms(query.Get("q")), " ")
 
 	opts.Types = parseTypeFilter(query.Get(fieldType))
 
