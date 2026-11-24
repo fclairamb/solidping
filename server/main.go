@@ -452,7 +452,8 @@ func runStartupDataFixupsInner(ctx context.Context, server *app.Server) error {
 }
 
 // runAgentMode runs the deported-agent loop until interrupted (spec
-// 2026-07-16-02). No database, no migrations, no HTTP server.
+// 2026-07-16-02). No database, no migrations, no HTTP server (only the
+// loopback health listener the container healthcheck probes).
 func runAgentMode(ctx context.Context, cfg *config.Config) error {
 	agentCtx, stopAgent := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer stopAgent()

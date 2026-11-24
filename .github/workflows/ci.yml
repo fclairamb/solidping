@@ -1150,6 +1150,10 @@ jobs:
           SP_AUTH_AUTO_PERSONAL_ORG: "true"
           # The reference plugin (x-gopher), for checker-plugins.spec.ts.
           SP_PLUGINS_DIR: ${{ github.workspace }}/plugins
+          # A Unix-socket allowlist, for check-tcp-socket.spec.ts (spec
+          # 2026-11-24-01): the tcp form only offers the socket target once
+          # one is set. Nothing listens there; the check is only saved.
+          SP_CHECKERS_UNIX_SOCKET_PATHS: /tmp/solidping-e2e-sockets/
 
       # A second server on its own database, for the shard's second Playwright
       # worker (E2E_BASE_URLS below, web/dash0/e2e/base-url.ts). Each worker
@@ -1176,6 +1180,7 @@ jobs:
           SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*"
           SP_AUTH_AUTO_PERSONAL_ORG: "true"
           SP_PLUGINS_DIR: ${{ github.workspace }}/plugins
+          SP_CHECKERS_UNIX_SOCKET_PATHS: /tmp/solidping-e2e-sockets/
 
       - name: Wait for servers
         run: |

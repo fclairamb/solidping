@@ -4,6 +4,7 @@ package checktcp
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -18,6 +19,7 @@ const (
 	defaultTimeout       = 5 * time.Second
 	defaultTLSVerify     = true
 	microsecondsPerMilli = 1000.0 // Conversion factor for microseconds to milliseconds
+	configKeySocket      = "socket"
 )
 
 // TCPChecker implements the Checker interface for TCP connection checks.
@@ -56,6 +58,12 @@ func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	}
 
 	start := time.Now()
+
+	// Unix socket target (spec 2026-11-24-01): every gate — tunnel, egress
+	// guard, path syntax, allowlist — lives in checkerdef.DialLocalSocket.
+	if cfg.Socket != "" {
+		return c.executeSocket(ctx, cfg, timeout, start), nil
+	}
 
 	// Tunneled check: the probe is dialed through the SSH bastion on the
 	// context. Local name resolution is deliberately SKIPPED — the direct-tcpip
@@ -199,10 +207,17 @@ func (c *TCPChecker) connect(
 			return out
 		}
 
+		message := fmt.Sprintf("connection refused: %v", err)
+
+		var socketErr *checkerdef.LocalSocketDialError
+		if errors.As(err, &socketErr) {
+			message = socketErr.Error()
+		}
+
 		out := checkerdef.Result{
 			Status: checkerdef.StatusDown,
 			Output: map[string]any{
-				checkerdef.OutputKeyError: fmt.Sprintf("connection refused: %v", err),
+				checkerdef.OutputKeyError: message,
 			},
 		}
 		out.SetNetworkFailure(checkerdef.NewNetworkFailure(
@@ -311,6 +326,40 @@ func (c *TCPChecker) executeTunneled(
 	// A tunneled probe failed on the FAR side of an SSH bastion. Tracing the
 	// path from this worker would describe a route the probe never took, so the
 	// class the connect helper recorded is dropped rather than published.
+	checkerdef.DropNetworkFailure(&result)
+
+	return &result
+}
+
+// executeSocket runs the probe against the configured Unix socket. A policy
+// refusal is an error result (the check cannot run here); a failed dial of an
+// allowed socket is a down result naming the errno.
+func (c *TCPChecker) executeSocket(
+	ctx context.Context, cfg *TCPConfig, timeout time.Duration, start time.Time,
+) *checkerdef.Result {
+	if err := checkerdef.CheckLocalSocket(ctx, cfg.Socket); err != nil {
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusError,
+			Duration: time.Since(start),
+			Output: map[string]any{
+				checkerdef.OutputKeyError: err.Error(),
+				configKeySocket:           cfg.Socket,
+			},
+		}
+	}
+
+	dialer := checkerdef.LocalSocketDialer(ctx, cfg.Socket, timeout)
+
+	result := c.connect(ctx, dialer, cfg.Socket, cfg, timeout, false)
+	result.Duration = time.Since(start)
+
+	if result.Output == nil {
+		result.Output = make(map[string]any)
+	}
+
+	result.Output[configKeySocket] = cfg.Socket
+
+	// No network path to trace to a local socket.
 	checkerdef.DropNetworkFailure(&result)
 
 	return &result

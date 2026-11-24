@@ -462,6 +462,8 @@
     "snmpDescription": "Geräte per SNMP überwachen",
     "docker": "Docker",
     "dockerDescription": "Zustand von Docker-Containern überwachen",
+    "systemd": "systemd-Unit",
+    "systemdDescription": "Den Zustand einer systemd-Unit prüfen",
     "browser": "Browser",
     "browserDescription": "Seiten mit Headless-Chrome überwachen",
     "dnsbl": "DNSBL",
@@ -1328,7 +1330,12 @@
     "burstTtl": "TTL (Hops)",
     "burstMaxLoss": "Max. Paketverlust (%)",
     "burstMaxAvgRtt": "Max. durchschnittliche Laufzeit (ms)",
-    "burstLossCountHint": "Bei 1 Paket beträgt der Verlust entweder 0 % oder 100 %. Senden Sie mindestens 10 Pakete für einen sinnvollen Prozentwert."
+    "burstLossCountHint": "Bei 1 Paket beträgt der Verlust entweder 0 % oder 100 %. Senden Sie mindestens 10 Pakete für einen sinnvollen Prozentwert.",
+    "targetMode": "Ziel",
+    "targetHostPort": "Host und Port",
+    "targetSocket": "Unix-Socket",
+    "socketPath": "Socket-Pfad",
+    "socketHelp": "Absoluter Pfad eines Unix-Sockets auf dem Host, der die Prüfung ausführt. Der Server verbindet sich nur mit Pfaden, die sein Betreiber erlaubt hat."
   },
   "prometheus": {
     "mode": "Modus",
@@ -1533,7 +1540,10 @@
     "vendorStatusHttps": "Die URL der Statusseite muss mit https:// beginnen",
     "pluginInvalidJson": "Die Konfiguration ist kein gültiges JSON: {{detail}}",
     "pluginNotAnObject": "Die Konfiguration muss ein JSON-Objekt sein.",
-    "fieldRequired": "Dieses Feld ist erforderlich"
+    "fieldRequired": "Dieses Feld ist erforderlich",
+    "socketRequired": "Socket-Pfad ist erforderlich",
+    "systemdUnitRequired": "Unit-Name ist erforderlich",
+    "systemdUnitInvalid": "Der Unit-Name darf nur Buchstaben, Ziffern und :_.@- enthalten (höchstens 256 Zeichen, nicht mit - beginnend)"
   },
   "health": {
     "format": "Health-Format",
@@ -1899,5 +1909,12 @@
       "partial_one": "{{count}} Check konnte nicht gelöscht werden",
       "partial_other": "{{count}} Checks konnten nicht gelöscht werden"
     }
+  },
+  "systemd": {
+    "unit": "Unit-Name",
+    "unitHelp": "Name der Unit auf dem Host, auf dem SolidPing läuft. Ein Name ohne Suffix erhält .service (nginx → nginx.service); Timer, Sockets und Mounts funktionieren ebenfalls.",
+    "expectedState": "Erwarteter Zustand",
+    "state_active": "Aktiv (läuft)",
+    "state_inactive": "Inaktiv (darf nicht laufen)"
   }
 }

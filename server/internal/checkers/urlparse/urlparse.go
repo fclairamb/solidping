@@ -19,6 +19,10 @@ var (
 	errDNSRequiresDomain = errors.New("DNS URL requires a domain in path (e.g., dns://8.8.8.8/example.com)")
 	errUnsupportedScheme = errors.New("unsupported scheme")
 	errInvalidPort       = errors.New("invalid port")
+	errUnixSocketHost    = errors.New("a unix:// URL has no host or port (e.g., unix:///run/app/app.sock)")
+	errHTTPSUnix         = errors.New("https+unix is not supported: there is no TLS over a local socket")
+	errHTTPUnixForm      = errors.New("an http+unix URL looks like http+unix:///run/app/app.sock:/health")
+	errUnixSocketPath    = errors.New("a unix:// URL requires the socket path (e.g., unix:///run/app/app.sock)")
 	errInvalidDNSType    = errors.New("invalid DNS record type")
 )
 
@@ -36,6 +40,10 @@ type ParsedURL struct {
 
 	// DNS-specific parsed fields
 	DNSDomain string // For DNS: the domain to resolve (from path)
+
+	// Socket is the Unix socket path of a `unix:///path` URL (spec
+	// 2026-11-24-01); Host and Port are then empty.
+	Socket string
 }
 
 //nolint:gochecknoglobals // schemeMapping is a constant lookup map.
@@ -51,6 +59,19 @@ var schemeMapping = map[string]checkerdef.CheckType{
 	"whois":  checkerdef.CheckTypeDomain,
 	"ws":     checkerdef.CheckTypeWebSocket,
 	"wss":    checkerdef.CheckTypeWebSocket,
+	"unix":   checkerdef.CheckTypeTCP,
+	// http+unix:///run/app/app.sock:/health is an http check through a socket.
+	"http+unix": checkerdef.CheckTypeHTTP,
+	// https+unix is recognized only to be refused: no TLS over a local socket.
+	"https+unix": checkerdef.CheckTypeHTTP,
+	// redis+unix:///run/redis/redis.sock?db=0 and
+	// postgres+unix:///var/run/postgresql/.s.PGSQL.5432?dbname=app&user=monitor
+	// are redis / postgresql checks through a socket (spec 2026-11-24-03).
+	schemeRedisUnix:    checkerdef.CheckTypeRedis,
+	schemePostgresUnix: checkerdef.CheckTypePostgreSQL,
+	schemeMySQLUnix:    checkerdef.CheckTypeMySQL,
+	schemeMongoDBUnix:  checkerdef.CheckTypeMongoDB,
+	schemeSMTPUnix:     checkerdef.CheckTypeSMTP,
 }
 
 //nolint:gochecknoglobals // validDNSRecordTypes is a constant lookup map.
@@ -110,6 +131,10 @@ func (p *ParsedURL) parseByType(parsedURL *url.URL) error {
 	//nolint:exhaustive // SSL is not yet implemented.
 	switch p.CheckType {
 	case checkerdef.CheckTypeHTTP:
+		if p.Scheme == schemeHTTPUnix || p.Scheme == "https+unix" {
+			return p.parseHTTPUnix(parsedURL)
+		}
+
 		if p.Host == "" {
 			return errMissingHost
 		}
@@ -118,13 +143,11 @@ func (p *ParsedURL) parseByType(parsedURL *url.URL) error {
 		p.Query = parsedURL.RawQuery
 
 	case checkerdef.CheckTypeTCP:
-		if p.Host == "" {
-			return errMissingHost
-		}
+		return p.parseTCP(parsedURL)
 
-		if p.Port == 0 {
-			return errTCPRequiresPort
-		}
+	case checkerdef.CheckTypeRedis, checkerdef.CheckTypePostgreSQL,
+		checkerdef.CheckTypeMySQL, checkerdef.CheckTypeMongoDB, checkerdef.CheckTypeSMTP:
+		return p.parseUnix(parsedURL)
 
 	case checkerdef.CheckTypeICMP:
 		if p.Host == "" {
@@ -143,6 +166,89 @@ func (p *ParsedURL) parseByType(parsedURL *url.URL) error {
 	}
 
 	return nil
+}
+
+// parseTCP handles tcp://, tcps:// and unix:// URLs.
+func (p *ParsedURL) parseTCP(parsedURL *url.URL) error {
+	if p.Scheme == "unix" {
+		return p.parseUnix(parsedURL)
+	}
+
+	if p.Host == "" {
+		return errMissingHost
+	}
+
+	if p.Port == 0 {
+		return errTCPRequiresPort
+	}
+
+	return nil
+}
+
+// parseUnix handles `unix:///run/app/app.sock` (and `unix:/run/app/app.sock`):
+// the path is the socket, and there is no host or port.
+func (p *ParsedURL) parseUnix(parsedURL *url.URL) error {
+	if p.Host != "" || p.Port != 0 {
+		return errUnixSocketHost
+	}
+
+	if parsedURL.Path == "" {
+		return errUnixSocketPath
+	}
+
+	p.Socket = parsedURL.Path
+	p.Query = parsedURL.RawQuery
+
+	return nil
+}
+
+// Schemes of the redis and postgres checks through a Unix socket.
+const (
+	schemeRedisUnix    = "redis+unix"
+	schemePostgresUnix = "postgres+unix"
+	schemeMySQLUnix    = "mysql+unix"
+	schemeMongoDBUnix  = "mongodb+unix"
+	schemeSMTPUnix     = "smtp+unix"
+)
+
+// schemeHTTPUnix is the scheme of an http check through a Unix socket.
+const schemeHTTPUnix = "http+unix"
+
+// HTTPUnixHost is the host (so the Host header) of an `http+unix` URL.
+const HTTPUnixHost = "localhost"
+
+// parseHTTPUnix handles `http+unix:///run/app/app.sock:/health?x=1`: the part
+// of the path before the first `:/` is the socket, the rest is the request.
+func (p *ParsedURL) parseHTTPUnix(parsedURL *url.URL) error {
+	if p.Scheme != schemeHTTPUnix {
+		return errHTTPSUnix
+	}
+
+	if p.Host != "" || p.Port != 0 {
+		return errUnixSocketHost
+	}
+
+	socket, request, found := strings.Cut(parsedURL.Path, ":/")
+	if !found || socket == "" {
+		return errHTTPUnixForm
+	}
+
+	p.Host = HTTPUnixHost
+	p.Socket = socket
+	p.Path = "/" + request
+	p.Query = parsedURL.RawQuery
+
+	return nil
+}
+
+// HTTPURL returns the http:// URL an `http+unix` URL stands for.
+func (p *ParsedURL) HTTPURL() string {
+	target := "http://" + p.Host + p.Path
+	if p.Query != "" {
+		target += "?" + p.Query
+	}
+
+	return target
 }
 
 // parseDNS handles DNS-specific URL parsing.
@@ -192,8 +298,12 @@ func (p *ParsedURL) SuggestNameSlug() (string, string) {
 		target = p.DNSDomain
 	}
 
+	if p.Socket != "" {
+		target = p.Socket
+	}
+
 	name := fmt.Sprintf("%s (%s)", target, p.CheckType)
-	slug := strings.ReplaceAll(target, ".", "-")
+	slug := strings.Trim(strings.NewReplacer(".", "-", "/", "-").Replace(target), "-")
 
 	// Add port to slug if non-default
 	if p.Port > 0 && !p.isDefaultPort() {

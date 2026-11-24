@@ -44,6 +44,9 @@
     "url": {
       "type": "string"
     },
+    "unix_socket": {
+      "type": "string"
+    },
     "method": {
       "type": "string"
     },

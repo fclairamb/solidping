@@ -124,6 +124,7 @@ import { isFieldTouched, touchIdentifiers } from "@/hooks/touched-fields";
 import { portForTypeSwitch, withDefaultPort } from "@/components/checks/form/types/ports";
 import { CheckFormFieldsProvider } from "@/components/checks/form/types/context";
 import { TunnelSelect } from "@/components/checks/form/tunnel-select";
+import { pinnedToPrivateOnly } from "@/components/checks/form/local-socket";
 import {
   IPVersionSelect,
   IP_VERSION_AUTO,
@@ -198,6 +199,7 @@ export const checkTypes: {
   { value: "snmp", label: "SNMP", description: "Monitor devices via SNMP" },
   { value: "prometheus", label: "Prometheus", description: "Alert on Prometheus metric thresholds" },
   { value: "docker", label: "Docker", description: "Monitor Docker container health" },
+  { value: "systemd", label: "systemd unit", description: "Check the state of a systemd unit" },
   { value: "browser", label: "Browser", description: "Monitor pages with headless Chrome" },
   { value: "freebox_line", label: "Freebox Line", description: "Monitor xDSL/FTTH line quality via Freebox OS" },
   { value: "dnsbl", label: "DNSBL", description: "Check if an IP/domain is on DNS blocklists" },
@@ -1793,6 +1795,8 @@ const showSlugFromNameOffer =
         setName,
         tunneled: supportsTunnel && tunnelCheckUid !== "",
         lastResultOutput: initialData?.lastResult?.output as Record<string, unknown> | undefined,
+        checkTypeInfo: checkTypeInfoMap.get(type),
+        privateRegionsOnly: pinnedToPrivateOnly(placement, selectedRegions),
       }}
     >
       <div className="space-y-6 max-w-2xl" ref={formRootRef}>

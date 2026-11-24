@@ -61,7 +61,11 @@ func (c *MongoDBChecker) Execute(
 	// local resolution), so the bastion resolves the hostname. Untunneled, no
 	// dialer is set and the driver uses its default net.Dialer byte-for-byte.
 	tunneled := false
-	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
+	if cfg.Socket != "" {
+		// Unix socket (spec 2026-11-24-04): the shared dialer applies every
+		// gate; Direct stops the driver discovering other members by hostname.
+		clientOpts.SetDialer(checkerdef.LocalSocketDialer(ctx, cfg.Socket, timeout)).SetDirect(true)
+	} else if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
 		clientOpts.SetDialer(dialer)
 
 		tunneled = true
@@ -137,6 +141,10 @@ func (c *MongoDBChecker) ping(
 		"host":   cfg.Host,
 		"port":   port,
 		"result": "ok",
+	}
+
+	if cfg.Socket != "" {
+		output = map[string]any{"socket": cfg.Socket, "result": "ok"}
 	}
 
 	if tunneled {

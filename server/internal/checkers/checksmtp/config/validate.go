@@ -1,6 +1,8 @@
 package config
 
 import (
+	"strings"
+
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
@@ -16,6 +18,18 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 
 	if err := cfg.Validate(); err != nil {
 		return err
+	}
+
+	if cfg.Socket != "" {
+		if spec.Name == "" {
+			spec.Name = "SMTP: " + cfg.Socket
+		}
+
+		if spec.Slug == "" {
+			spec.Slug = "smtp-" + strings.Trim(strings.NewReplacer("/", "-", ".", "-").Replace(cfg.Socket), "-")
+		}
+
+		return nil
 	}
 
 	if spec.Name == "" {

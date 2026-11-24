@@ -180,6 +180,7 @@ export interface Check {
     | "rabbitmq"
     | "snmp"
     | "docker"
+    | "systemd"
     | "browser"
     | "freebox_line"
     | "dnsbl"
@@ -422,6 +423,7 @@ export interface CreateCheckRequest {
     | "rabbitmq"
     | "snmp"
     | "docker"
+    | "systemd"
     | "browser"
     | "freebox_line"
     | "dnsbl"
@@ -5458,6 +5460,17 @@ export interface CheckTypeInfo {
    * hard-coded type list.
    */
   supportsIpVersion?: boolean;
+  /**
+   * True when the type's config accepts a local Unix socket target in place of
+   * a host and port (spec 2026-11-24-01). Server-declared, like supportsTunnel.
+   */
+  supportsLocalSocket?: boolean;
+  /**
+   * True when this server's own workers accept a Unix socket target for the
+   * type (an operator allowlist is set, and the deployment is not SaaS). A
+   * check pinned to private locations only may use one either way.
+   */
+  localSocketOnServer?: boolean;
   /**
    * Top-level config keys this type stores encrypted. Their values never come
    * back on a read, so the check form uses this to know which keys it must NOT

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
@@ -334,12 +335,6 @@ func TestIncludeDedupAndOrderMatchTheDefault(t *testing.T) {
 
 	ctx, svc, _, org := setupIncludeTest(t)
 
-	baseline, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, AllViewOptions())
-	require.NoError(t, err)
-
-	baselineJSON, err := json.Marshal(baseline)
-	require.NoError(t, err)
-
 	for _, raw := range []string{
 		"availability,responseTime",
 		"responseTime,availability",
@@ -353,14 +348,39 @@ func TestIncludeDedupAndOrderMatchTheDefault(t *testing.T) {
 			r.NoError(err)
 			r.Equal(ViewOptions{Availability: true, ResponseTime: true}, opts)
 
-			view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, opts)
-			r.NoError(err)
-
-			viewJSON, err := json.Marshal(view)
-			r.NoError(err)
+			baselineJSON, viewJSON := viewPairOnOneUTCDay(ctx, t, svc, org.Slug, opts)
 
 			r.JSONEq(string(baselineJSON), string(viewJSON))
 		})
+	}
+}
+
+// viewPairOnOneUTCDay renders the default view and opts's view on the same UTC
+// day. The 7-day window moves at UTC midnight, so a pair rendered on either
+// side of it differs by one day although both are right (a CI run that
+// crossed 00:00 UTC failed that way): such a pair is rendered again.
+func viewPairOnOneUTCDay(
+	ctx context.Context, t *testing.T, svc *Service, orgSlug string, opts ViewOptions,
+) ([]byte, []byte) {
+	t.Helper()
+
+	render := func(o ViewOptions) []byte {
+		view, err := svc.ViewStatusPage(ctx, orgSlug, testPublicSlug, o)
+		require.NoError(t, err)
+
+		raw, err := json.Marshal(view)
+		require.NoError(t, err)
+
+		return raw
+	}
+
+	for {
+		day := time.Now().UTC().Truncate(24 * time.Hour)
+		baselineJSON, viewJSON := render(AllViewOptions()), render(opts)
+
+		if time.Now().UTC().Truncate(24 * time.Hour).Equal(day) {
+			return baselineJSON, viewJSON
+		}
 	}
 }
 

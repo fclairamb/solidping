@@ -473,7 +473,19 @@ type CheckersConfig struct {
 	// Lease sizes the check-job lease a worker takes at claim time (spec
 	// 2026-11-11-06).
 	Lease LeaseConfig `koanf:"lease"`
+	// UnixSocketPaths is the allowlist of Unix sockets a check may dial on
+	// THIS process (spec 2026-11-24-01): absolute socket paths, or directory
+	// prefixes ending in "/". Empty — the default — turns the feature off:
+	// every socket target is refused. A private-location agent reads its own.
+	// snake_case, so koanf's env loader cannot reach it:
+	// SP_CHECKERS_UNIX_SOCKET_PATHS (comma-separated) is bound by hand in
+	// applyCheckersEnv.
+	UnixSocketPaths []string `koanf:"unix_socket_paths"`
 }
+
+// EnvCheckersUnixSocketPaths is the comma-separated env override of
+// checkers.unix_socket_paths (spec 2026-11-24-01).
+const EnvCheckersUnixSocketPaths = "SP_CHECKERS_UNIX_SOCKET_PATHS"
 
 // LeaseConfig sizes the lease a check worker holds on a claimed check job:
 // max(scheduled_at, now) + max(period, check timeout) + Margin. Single-word
@@ -2854,6 +2866,10 @@ func applyCheckersEnv(cfg *CheckersConfig) {
 
 	if raw, present := os.LookupEnv(EnvCheckEnvAllowlist); present {
 		cfg.EnvRefAllowlist = parseEnvRefAllowlist(raw)
+	}
+
+	if raw, present := os.LookupEnv(EnvCheckersUnixSocketPaths); present {
+		cfg.UnixSocketPaths = parseEnvRefAllowlist(raw)
 	}
 }
 

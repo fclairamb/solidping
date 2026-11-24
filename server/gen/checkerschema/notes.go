@@ -167,6 +167,14 @@ func baselines(checkType checkerdef.CheckType, schema *jsonschema.Schema) ([]map
 
 	out := make([]map[string]any, 0, len(specs))
 
+	if cfg, ok := configregistry.ParseConfig(checkType); ok {
+		if baseliner, isBaseliner := cfg.(checkerdef.SchemaBaseliner); isBaseliner {
+			for _, extra := range baseliner.SchemaBaselines() {
+				specs = append(specs, checkerdef.CheckSpec{Name: "schema baseline", Slug: "schema-baseline", Config: extra})
+			}
+		}
+	}
+
 	for idx := range specs {
 		spec := specs[idx]
 		if configregistry.ValidateSpec(checkType, &spec) == nil {

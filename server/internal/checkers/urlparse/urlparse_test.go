@@ -223,3 +223,122 @@ func TestInferCheckType(t *testing.T) {
 		})
 	}
 }
+
+// TestParseUnixSocket: a unix:// URL is a tcp check on a Unix socket (spec
+// 2026-11-24-01).
+func TestParseUnixSocket(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	for _, raw := range []string{"unix:///run/app/app.sock", "unix:/run/app/app.sock"} {
+		parsed, err := Parse(raw)
+		r.NoError(err, raw)
+		r.Equal(checkerdef.CheckTypeTCP, parsed.CheckType, raw)
+		r.Equal("/run/app/app.sock", parsed.Socket, raw)
+		r.Empty(parsed.Host, raw)
+		r.False(parsed.TLS, raw)
+
+		name, slug := parsed.SuggestNameSlug()
+		r.Equal("/run/app/app.sock (tcp)", name)
+		r.Equal("run-app-app-sock", slug)
+	}
+
+	_, err := Parse("unix://host/run/app.sock")
+	r.Error(err, "a unix URL has no host")
+
+	_, err = Parse("unix://")
+	r.Error(err, "a unix URL needs a path")
+
+	r.Equal(checkerdef.CheckTypeTCP, InferCheckType("unix:///run/app/app.sock"))
+}
+
+// TestParseHTTPUnix: an http+unix URL is an http check through a socket (spec
+// 2026-11-24-02); https+unix is refused.
+func TestParseHTTPUnix(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	parsed, err := Parse("http+unix:///run/app/app.sock:/health?x=1")
+	r.NoError(err)
+	r.Equal(checkerdef.CheckTypeHTTP, parsed.CheckType)
+	r.Equal("/run/app/app.sock", parsed.Socket)
+	r.Equal("http://localhost/health?x=1", parsed.HTTPURL())
+	r.False(parsed.TLS)
+
+	_, err = Parse("https+unix:///run/app/app.sock:/health")
+	r.Error(err)
+
+	_, err = Parse("http+unix:///run/app/app.sock")
+	r.Error(err, "the request part is required")
+
+	r.Equal(checkerdef.CheckTypeHTTP, InferCheckType("http+unix:///run/app/app.sock:/health"))
+}
+
+// TestParseRedisPostgresUnix: redis+unix and postgres+unix URLs carry the
+// socket and the query (spec 2026-11-24-03).
+func TestParseRedisPostgresUnix(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	parsed, err := Parse("redis+unix:///run/redis/redis.sock?db=2")
+	r.NoError(err)
+	r.Equal(checkerdef.CheckTypeRedis, parsed.CheckType)
+	r.Equal("/run/redis/redis.sock", parsed.Socket)
+	r.Equal("db=2", parsed.Query)
+	r.Empty(parsed.Host)
+
+	parsed, err = Parse("postgres+unix:///var/run/postgresql/.s.PGSQL.5432?dbname=app&user=monitor")
+	r.NoError(err)
+	r.Equal(checkerdef.CheckTypePostgreSQL, parsed.CheckType)
+	r.Equal("/var/run/postgresql/.s.PGSQL.5432", parsed.Socket)
+	r.Equal("dbname=app&user=monitor", parsed.Query)
+
+	_, err = Parse("redis+unix://host/run/redis.sock")
+	r.Error(err, "no host on a socket URL")
+
+	r.Equal(checkerdef.CheckTypeRedis, InferCheckType("redis+unix:///run/redis/redis.sock"))
+}
+
+// TestParseMySQLMongoSMTPUnix: mysql+unix, mongodb+unix and smtp+unix URLs
+// carry the socket and the query (spec 2026-11-24-04).
+func TestParseMySQLMongoSMTPUnix(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	cases := []struct {
+		url   string
+		check checkerdef.CheckType
+		sock  string
+		query string
+	}{
+		{
+			"mysql+unix:///run/mysqld/mysqld.sock?user=monitor&db=app",
+			checkerdef.CheckTypeMySQL, "/run/mysqld/mysqld.sock", "user=monitor&db=app",
+		},
+		{
+			"mongodb+unix:///tmp/mongodb-27017.sock?db=admin",
+			checkerdef.CheckTypeMongoDB, "/tmp/mongodb-27017.sock", "db=admin",
+		},
+		{
+			"smtp+unix:///run/postfix/submission.sock",
+			checkerdef.CheckTypeSMTP, "/run/postfix/submission.sock", "",
+		},
+	}
+
+	for _, tc := range cases {
+		parsed, err := Parse(tc.url)
+		r.NoError(err, tc.url)
+		r.Equal(tc.check, parsed.CheckType)
+		r.Equal(tc.sock, parsed.Socket)
+		r.Equal(tc.query, parsed.Query)
+		r.Empty(parsed.Host)
+		r.Equal(tc.check, InferCheckType(tc.url))
+	}
+
+	_, err := Parse("mysql+unix://host/run/mysqld/mysqld.sock")
+	r.Error(err, "no host on a socket URL")
+}

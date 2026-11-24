@@ -652,6 +652,10 @@ type Service struct {
 	// it disables are refused on cloud regions (spec 2026-10-17-05 §19). nil
 	// = not wired: no plugin type is refused. See SetActivationResolver.
 	activation *checkerdef.ActivationResolver
+	// localSocketAllowlist is this server's checkers.unix_socket_paths (spec
+	// 2026-11-24-01). nil = refuse every socket target its own workers would
+	// run. See SetLocalSocketAllowlist.
+	localSocketAllowlist []string
 }
 
 // StatusPageReconciler re-materializes the org's selector-driven status page
@@ -710,6 +714,13 @@ func (s *Service) cancelRuns(ctx context.Context, checkUID string) bool {
 	}
 
 	return canceled > 0
+}
+
+// SetLocalSocketAllowlist wires this server's Unix-socket allowlist
+// (config.CheckersConfig.UnixSocketPaths), so a socket target outside it is
+// refused at save time rather than failing on every run.
+func (s *Service) SetLocalSocketAllowlist(allowlist []string) {
+	s.localSocketAllowlist = allowlist
 }
 
 // SetEnvRefAllow wires the operator allowlist of `${env:NAME}` names
@@ -2334,7 +2345,7 @@ func (s *Service) prepareCheckUpdate(
 		// scheduled run, but a hard reject belongs here, at the PATCH that
 		// causes it.
 		if req.Config == nil {
-			if cfgErr := s.validateRegionGates(check.Type, check.Regions); cfgErr != nil {
+			if cfgErr := s.validateRegionGates(check.Type, check.Config, check.Regions); cfgErr != nil {
 				return nil, cfgErr
 			}
 		}

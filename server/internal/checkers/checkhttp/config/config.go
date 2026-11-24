@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
 )
 
 const (
@@ -81,7 +82,11 @@ func matchSinglePattern(actual int, pattern string) bool {
 
 // HTTPConfig holds the configuration for HTTP checks.
 type HTTPConfig struct {
-	URL                 string            `json:"url"`
+	URL string `json:"url"`
+	// UnixSocket is the Unix socket the request is sent through, like
+	// `curl --unix-socket` (spec 2026-11-24-02). The url keeps its role: its
+	// path and query are the request, its host the Host header.
+	UnixSocket          string            `json:"unix_socket,omitempty"` //nolint:tagliatelle // API uses snake_case
 	Method              string            `json:"method,omitempty"`
 	ExpectedStatus      int               `json:"expected_status,omitempty"`       //nolint:tagliatelle
 	ExpectedStatusCodes []string          `json:"expected_status_codes,omitempty"` //nolint:tagliatelle
@@ -184,6 +189,54 @@ type HTTPConfig struct {
 	HeadersPatternRegex    map[string]*regexp.Regexp `json:"-"`
 }
 
+// configKeyUnixSocket is the config key of the Unix socket path.
+const configKeyUnixSocket = "unix_socket"
+
+// addUnixSocket writes the socket path when set.
+func (c *HTTPConfig) addUnixSocket(cfg map[string]any) {
+	if c.UnixSocket != "" {
+		cfg[configKeyUnixSocket] = c.UnixSocket
+	}
+}
+
+// LocalSocket implements checkerdef.LocalSocketTarget.
+func (c *HTTPConfig) LocalSocket() (string, string) {
+	return configKeyUnixSocket, c.UnixSocket
+}
+
+// SchemaNotes implements checkerdef.SchemaNoter.
+func (c *HTTPConfig) SchemaNotes() []string {
+	return []string{
+		"`unix_socket` (an absolute Unix socket path, also set by an `http+unix:///path.sock:/request` " +
+			"URL) sends the request through that socket, like `curl --unix-socket`; the `url` host " +
+			"becomes the Host header. It requires an `http://` URL and cannot be combined with " +
+			"`ipVersion`, `httpVersion` 2 or 3, or an SSH tunnel. The server only dials paths listed " +
+			"in its `checkers.unix_socket_paths` setting.",
+	}
+}
+
+// expandHTTPUnixURL rewrites an `http+unix://` URL into unix_socket + url.
+func (c *HTTPConfig) expandHTTPUnixURL(configMap map[string]any) error {
+	scheme, _, _ := strings.Cut(c.URL, "://")
+	if scheme != "http+unix" && scheme != "https+unix" {
+		return nil
+	}
+
+	if socket, _ := configMap[configKeyUnixSocket].(string); socket != "" {
+		return checkerdef.NewConfigError(configKeyUnixSocket, "unix_socket and an http+unix url are mutually exclusive")
+	}
+
+	parsed, err := urlparse.Parse(c.URL)
+	if err != nil {
+		return checkerdef.NewConfigError(checkerdef.OutputKeyURL, err.Error())
+	}
+
+	c.URL = parsed.HTTPURL()
+	c.UnixSocket = parsed.Socket
+
+	return nil
+}
+
 // resolveKey returns the value of the first matching key. The frontend writes
 // camelCase by convention; the legacy snake_case keys are kept as a read
 // fallback so previously stored configs keep working until the data fixer runs.
@@ -206,6 +259,19 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 		c.URL = url
 	} else if configMap[checkerdef.OutputKeyURL] != nil {
 		return checkerdef.NewConfigError(checkerdef.OutputKeyURL, "must be a string")
+	}
+
+	// Extract UnixSocket (optional)
+	if socket, ok := configMap[configKeyUnixSocket].(string); ok {
+		c.UnixSocket = socket
+	} else if configMap[configKeyUnixSocket] != nil {
+		return checkerdef.NewConfigError(configKeyUnixSocket, "must be a string")
+	}
+
+	// An `http+unix:///path.sock:/request` URL (quick create) stands for a
+	// socket plus a plain http:// URL.
+	if err := c.expandHTTPUnixURL(configMap); err != nil {
+		return err
 	}
 
 	// Extract Method (optional)
@@ -542,6 +608,8 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
 		checkerdef.OutputKeyURL: c.URL,
 	}
+
+	c.addUnixSocket(cfg)
 
 	if c.Method != "" {
 		cfg["method"] = c.Method

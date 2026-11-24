@@ -21,6 +21,12 @@ import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
 import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
+import {
+  SocketTargetSwitch,
+  socketRequired,
+  useShowTargetSwitch,
+  type SocketTargetMode,
+} from "./socket-target";
 
 const hostRequired = (host: string): FieldErrors =>
   host ? [] : [{ name: "host", message: validationMessage("hostRequired") }];
@@ -31,10 +37,16 @@ const hostRequired = (host: string): FieldErrors =>
 // operative recipient field; delivery_check_uid is optional bonus metadata
 // and never required.
 function smtpSendModeErrors(state: SmtpState): FieldErrors {
-  const errors = hostRequired(state.host);
+  const errors =
+    state.targetMode === "socket"
+      ? socketRequired(state.socket)
+      : hostRequired(state.host);
   if (!state.sendEmail) return errors;
   if (!state.mailFrom) {
-    errors.push({ name: "mail_from", message: validationMessage("mailFromRequired") });
+    errors.push({
+      name: "mail_from",
+      message: validationMessage("mailFromRequired"),
+    });
   }
   if (!state.deliveryTo) {
     errors.push({
@@ -47,6 +59,8 @@ function smtpSendModeErrors(state: SmtpState): FieldErrors {
 
 // ── SMTP ──
 export interface SmtpState {
+  targetMode: SocketTargetMode;
+  socket: string;
   host: string;
   port: string;
   startTLS: boolean;
@@ -72,8 +86,25 @@ export interface SmtpState {
 
 export const smtpModule: CheckTypeModule<SmtpState> = {
   types: ["smtp"],
-  ownedKeys: ["host", "port", "starttls", "tls_verify", "check_auth", "ehlo_domain", "expect_greeting", "username", "password", "send_email", "mail_from", "delivery_to", "delivery_check_uid"],
+  ownedKeys: [
+    "host",
+    "port",
+    "socket",
+    "starttls",
+    "tls_verify",
+    "check_auth",
+    "ehlo_domain",
+    "expect_greeting",
+    "username",
+    "password",
+    "send_email",
+    "mail_from",
+    "delivery_to",
+    "delivery_check_uid",
+  ],
   fromConfig: (config) => ({
+    targetMode: getConfigField(config, "socket") ? "socket" : "host",
+    socket: getConfigField(config, "socket"),
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
     startTLS: getConfigField(config, "starttls") === "true",
@@ -90,10 +121,15 @@ export const smtpModule: CheckTypeModule<SmtpState> = {
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
-    if (state.host) cfg.host = state.host;
-    if (state.port) cfg.port = parseInt(state.port, 10);
-    if (state.startTLS) cfg.starttls = true;
-    if (state.tlsVerify) cfg.tls_verify = true;
+    const socketMode = state.targetMode === "socket";
+    if (socketMode) {
+      if (state.socket) cfg.socket = state.socket;
+    } else {
+      if (state.host) cfg.host = state.host;
+      if (state.port) cfg.port = parseInt(state.port, 10);
+      if (state.startTLS) cfg.starttls = true;
+      if (state.tlsVerify) cfg.tls_verify = true;
+    }
     if (state.ehloDomain) cfg.ehlo_domain = state.ehloDomain;
     if (state.expectGreeting) cfg.expect_greeting = state.expectGreeting;
     if (state.checkAuth) cfg.check_auth = true;
@@ -103,61 +139,91 @@ export const smtpModule: CheckTypeModule<SmtpState> = {
       cfg.send_email = true;
       if (state.mailFrom) cfg.mail_from = state.mailFrom;
       if (state.deliveryTo) cfg.delivery_to = state.deliveryTo;
-      if (state.deliveryCheckUid) cfg.delivery_check_uid = state.deliveryCheckUid;
+      if (state.deliveryCheckUid)
+        cfg.delivery_check_uid = state.deliveryCheckUid;
     }
     return { config: cfg, errors: smtpSendModeErrors(state) };
   },
   Fields: SmtpFields,
 };
 
-function SmtpFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>) {
+function SmtpFields({
+  state,
+  onChange,
+  errors,
+}: CheckTypeFieldsProps<SmtpState>) {
   const { t } = useTranslation("checks");
+  const showSwitch = useShowTargetSwitch(state.targetMode);
+  const socketMode = showSwitch && state.targetMode === "socket";
   return (
     <>
-      <div className="space-y-2">
-        <Label>{t("form.host")}</Label>
-        <div className="flex gap-2">
-          <Input
-            id="host"
-            type="text"
-            placeholder="mail.example.com"
-            value={state.host}
-            onChange={(e) => onChange({ ...state, host: e.target.value })}
-            className="flex-1"
-            data-testid="check-host-input"
-          />
-          <Input
-            id="port"
-            type="number"
-            placeholder="25"
-            value={state.port}
-            onChange={(e) => onChange({ ...state, port: e.target.value })}
-            className="w-24"
-            data-testid="check-port-input"
-          />
+      {showSwitch && (
+        <SocketTargetSwitch
+          prefix="smtp"
+          mode={state.targetMode}
+          socket={state.socket}
+          placeholder="/run/postfix/submission.sock"
+          errors={errors}
+          onModeChange={(targetMode) => onChange({ ...state, targetMode })}
+          onSocketChange={(socket) => onChange({ ...state, socket })}
+        />
+      )}
+      {!socketMode && (
+        <div className="space-y-2">
+          <Label>{t("form.host")}</Label>
+          <div className="flex gap-2">
+            <Input
+              id="host"
+              type="text"
+              placeholder="mail.example.com"
+              value={state.host}
+              onChange={(e) => onChange({ ...state, host: e.target.value })}
+              className="flex-1"
+              data-testid="check-host-input"
+            />
+            <Input
+              id="port"
+              type="number"
+              placeholder="25"
+              value={state.port}
+              onChange={(e) => onChange({ ...state, port: e.target.value })}
+              className="w-24"
+              data-testid="check-port-input"
+            />
+          </div>
         </div>
-      </div>
+      )}
       <div className="space-y-3">
-        <label className="flex items-center gap-2">
-          <Checkbox
-            checked={state.startTLS}
-            onCheckedChange={(v) => onChange({ ...state, startTLS: v === true })}
-            data-testid="check-starttls-checkbox"
-          />
-          <span className="text-sm">{t("mail.useStarttls")}</span>
-        </label>
-        <label className="flex items-center gap-2">
-          <Checkbox
-            checked={state.tlsVerify}
-            onCheckedChange={(v) => onChange({ ...state, tlsVerify: v === true })}
-            data-testid="check-tls-verify-checkbox"
-          />
-          <span className="text-sm">{t("form.verifyTlsCertificate")}</span>
-        </label>
+        {!socketMode && (
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={state.startTLS}
+              onCheckedChange={(v) =>
+                onChange({ ...state, startTLS: v === true })
+              }
+              data-testid="check-starttls-checkbox"
+            />
+            <span className="text-sm">{t("mail.useStarttls")}</span>
+          </label>
+        )}
+        {!socketMode && (
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={state.tlsVerify}
+              onCheckedChange={(v) =>
+                onChange({ ...state, tlsVerify: v === true })
+              }
+              data-testid="check-tls-verify-checkbox"
+            />
+            <span className="text-sm">{t("form.verifyTlsCertificate")}</span>
+          </label>
+        )}
         <label className="flex items-center gap-2">
           <Checkbox
             checked={state.checkAuth}
-            onCheckedChange={(v) => onChange({ ...state, checkAuth: v === true })}
+            onCheckedChange={(v) =>
+              onChange({ ...state, checkAuth: v === true })
+            }
             data-testid="check-auth-checkbox"
           />
           <span className="text-sm">{t("mail.checkAuthSupport")}</span>
@@ -175,19 +241,25 @@ function SmtpFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="expectGreeting">{t("mail.expectedGreetingOptional")}</Label>
+        <Label htmlFor="expectGreeting">
+          {t("mail.expectedGreetingOptional")}
+        </Label>
         <Input
           id="expectGreeting"
           type="text"
           placeholder="220"
           value={state.expectGreeting}
-          onChange={(e) => onChange({ ...state, expectGreeting: e.target.value })}
+          onChange={(e) =>
+            onChange({ ...state, expectGreeting: e.target.value })
+          }
           data-testid="check-expect-greeting-input"
         />
       </div>
       <div className="flex gap-4">
         <div className="space-y-2 flex-1">
-          <Label htmlFor="username">{t("mail.usernameOptionalAuthPlain")}</Label>
+          <Label htmlFor="username">
+            {t("mail.usernameOptionalAuthPlain")}
+          </Label>
           <Input
             id="username"
             type="text"
@@ -221,7 +293,11 @@ function SmtpFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>
 // links). Per the spec's resolved open question: no "create a delivery check
 // for me" affordance anywhere here — the picker only, plain text when the
 // org has none yet.
-function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>) {
+function SmtpSendModeFields({
+  state,
+  onChange,
+  errors,
+}: CheckTypeFieldsProps<SmtpState>) {
   const { t } = useTranslation("checks");
   const { org } = useCheckFormFields();
   const { data: emailChecks } = useChecks(org, { type: "email", limit: 100 });
@@ -230,13 +306,18 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
 
   function selectDeliveryCheck(uid: string) {
     const check = candidates.find((c) => c.uid === uid);
-    const token = typeof check?.config?.["token"] === "string" ? check.config["token"] : "";
-    const deliveryTo = token && emailDomain ? emailCheckAddress(token, emailDomain) : "";
+    const token =
+      typeof check?.config?.["token"] === "string" ? check.config["token"] : "";
+    const deliveryTo =
+      token && emailDomain ? emailCheckAddress(token, emailDomain) : "";
     onChange({ ...state, deliveryCheckUid: uid, deliveryTo });
   }
 
   return (
-    <div className="space-y-3 rounded-md border p-3" data-testid="check-smtp-send-mode-section">
+    <div
+      className="space-y-3 rounded-md border p-3"
+      data-testid="check-smtp-send-mode-section"
+    >
       <label className="flex items-center gap-2">
         <Switch
           checked={state.sendEmail}
@@ -245,7 +326,9 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
         />
         <span className="text-sm font-medium">{t("mail.sendProbeEmail")}</span>
       </label>
-      <p className="text-xs text-muted-foreground">{t("mail.sendProbeEmailHelp")}</p>
+      <p className="text-xs text-muted-foreground">
+        {t("mail.sendProbeEmailHelp")}
+      </p>
       {state.sendEmail && (
         <>
           <div className="space-y-2">
@@ -256,27 +339,45 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
               placeholder="prober@example.com"
               value={state.mailFrom}
               onChange={(e) => onChange({ ...state, mailFrom: e.target.value })}
-              className={cn(getFieldError(errors, "mail_from") && "border-destructive")}
+              className={cn(
+                getFieldError(errors, "mail_from") && "border-destructive",
+              )}
               data-testid="check-smtp-mail-from-input"
             />
             {getFieldError(errors, "mail_from") && (
-              <p className="text-xs text-destructive">{getFieldError(errors, "mail_from")}</p>
+              <p className="text-xs text-destructive">
+                {getFieldError(errors, "mail_from")}
+              </p>
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="smtp-delivery-check">{t("mail.deliveryCheck")}</Label>
+            <Label htmlFor="smtp-delivery-check">
+              {t("mail.deliveryCheck")}
+            </Label>
             {!emailDomain ? (
               <Alert variant="destructive">
-                <AlertDescription>{t("mail.emailInboxNotConfigured")}</AlertDescription>
+                <AlertDescription>
+                  {t("mail.emailInboxNotConfigured")}
+                </AlertDescription>
               </Alert>
             ) : candidates.length === 0 ? (
               <Alert data-testid="check-smtp-no-email-checks">
-                <AlertDescription>{t("mail.noEmailChecksYet")}</AlertDescription>
+                <AlertDescription>
+                  {t("mail.noEmailChecksYet")}
+                </AlertDescription>
               </Alert>
             ) : (
-              <Select value={state.deliveryCheckUid} onValueChange={selectDeliveryCheck}>
-                <SelectTrigger id="smtp-delivery-check" data-testid="check-smtp-delivery-select">
-                  <SelectValue placeholder={t("mail.selectEmailCheckPlaceholder")} />
+              <Select
+                value={state.deliveryCheckUid}
+                onValueChange={selectDeliveryCheck}
+              >
+                <SelectTrigger
+                  id="smtp-delivery-check"
+                  data-testid="check-smtp-delivery-select"
+                >
+                  <SelectValue
+                    placeholder={t("mail.selectEmailCheckPlaceholder")}
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {candidates.map((check) => (
@@ -288,12 +389,17 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
               </Select>
             )}
             {state.deliveryTo && (
-              <p className={`text-xs text-muted-foreground ${NO_CAPTURE_CLASS}`} data-testid="check-smtp-delivery-to">
+              <p
+                className={`text-xs text-muted-foreground ${NO_CAPTURE_CLASS}`}
+                data-testid="check-smtp-delivery-to"
+              >
                 {t("mail.probeEmailAddressedTo", { address: state.deliveryTo })}
               </p>
             )}
             {getFieldError(errors, "delivery_to") && (
-              <p className="text-xs text-destructive">{getFieldError(errors, "delivery_to")}</p>
+              <p className="text-xs text-destructive">
+                {getFieldError(errors, "delivery_to")}
+              </p>
             )}
           </div>
         </>
@@ -377,7 +483,9 @@ function MailboxFields({
                 ...state,
                 port: value,
                 tls:
-                  value === implicitTLSPort && !state.startTLS ? true : state.tls,
+                  value === implicitTLSPort && !state.startTLS
+                    ? true
+                    : state.tls,
               });
             }}
             className={cn(
@@ -408,14 +516,19 @@ function MailboxFields({
           <span className="text-sm">{t("mail.useImplicitTls")}</span>
         </label>
         {(state.tls || state.port === implicitTLSPort) && (
-          <p className="text-xs text-muted-foreground" data-testid="check-implicit-tls-hint">
+          <p
+            className="text-xs text-muted-foreground"
+            data-testid="check-implicit-tls-hint"
+          >
             {t("mail.implicitTlsPortHint", { port: implicitTLSPort })}
           </p>
         )}
         <label className="flex items-center gap-2">
           <Checkbox
             checked={state.startTLS}
-            onCheckedChange={(v) => onChange({ ...state, startTLS: v === true })}
+            onCheckedChange={(v) =>
+              onChange({ ...state, startTLS: v === true })
+            }
             data-testid="check-starttls-checkbox"
           />
           <span className="text-sm">{t("mail.useStarttls")}</span>

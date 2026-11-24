@@ -72,8 +72,10 @@ var TypeEnabled TypeEnabledFunc //nolint:gochecknoglobals // Mirrors ResolveChec
 
 // DeploymentGateFunc returns a non-empty refusal when THIS process must not run
 // checkType as a sub-check for a deployment reason (not because the operator
-// disabled the type), or "" to let it through.
-type DeploymentGateFunc func(checkType checkerdef.CheckType) string
+// disabled the type), or "" to let it through. cfg is the sub-check's parsed
+// config, nil on the first, type-only pass: a config can make a check
+// host-local (a Unix socket target, spec 2026-11-24-01).
+type DeploymentGateFunc func(checkType checkerdef.CheckType, cfg checkerdef.Config) string
 
 // DeploymentGate is the deployment-level gate consulted before a sub-check
 // runs, after TypeEnabled. It is separate from TypeEnabled so its refusal reads
@@ -826,7 +828,7 @@ func subCheckGateRefusal(execCtx context.Context, typeStr string, checkType chec
 	// worker (checkworker.executeJob) never sees a type buried in a script, so
 	// without this a JS check would read the worker's local Docker socket.
 	if DeploymentGate != nil {
-		if refusal := DeploymentGate(checkType); refusal != "" {
+		if refusal := DeploymentGate(checkType, nil); refusal != "" {
 			return refusal
 		}
 	}
@@ -921,6 +923,14 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 
 	if refusal := subCheckFloorRefusal(cfg); refusal != "" {
 		return jsCheckError(refusal)
+	}
+
+	// Second deployment pass, on the parsed config: a socket target makes
+	// any socket-capable type host-local.
+	if DeploymentGate != nil {
+		if refusal := DeploymentGate(checkType, cfg); refusal != "" {
+			return jsCheckError(refusal)
+		}
 	}
 
 	result, err := checker.Execute(r.execCtx, cfg)

@@ -115,10 +115,10 @@ func TestActivationResolver_DockerNoteOnlyInSaaS(t *testing.T) {
 
 	statuses := saas.ListAllWithStatus(nil)
 	for idx := range statuses {
-		if statuses[idx].Type == checkerdef.CheckTypeDocker {
+		if statuses[idx].Type == checkerdef.CheckTypeDocker || statuses[idx].Type == checkerdef.CheckTypeSystemd {
 			r.True(statuses[idx].Enabled,
-				"docker stays listed and enabled in SaaS — the create gate, not the catalog, enforces the rule")
-			r.NotEmpty(statuses[idx].Advisory)
+				"host-local types stay listed and enabled in SaaS — the create gate, not the catalog, enforces the rule")
+			r.Contains(statuses[idx].Advisory, string(statuses[idx].Type)+" checks only run")
 
 			continue
 		}

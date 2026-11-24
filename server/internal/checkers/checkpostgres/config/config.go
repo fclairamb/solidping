@@ -9,10 +9,12 @@
 package config
 
 import (
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
 )
 
 const (
@@ -43,6 +45,12 @@ func isValidSSLMode(mode string) bool {
 
 // PostgreSQLConfig holds the configuration for PostgreSQL database checks.
 type PostgreSQLConfig struct {
+	// URL is only read, to expand a `postgres+unix:///path/.s.PGSQL.5432?dbname=app&user=monitor`
+	// quick-create URL into socket + database + username; it is never written back.
+	URL string `json:"url,omitempty"`
+	// Socket is the Unix socket file (not libpq's directory form) the check
+	// connects to instead of host:port (spec 2026-11-24-03).
+	Socket   string        `json:"socket,omitempty"`
 	Host     string        `json:"host"`
 	Port     int           `json:"port,omitempty"`
 	Username string        `json:"username"`
@@ -53,10 +61,86 @@ type PostgreSQLConfig struct {
 	Query    string        `json:"query,omitempty"`
 }
 
+// configKeySocket is the config key of the Unix socket path.
+const configKeySocket = "socket"
+
+// LocalSocket implements checkerdef.LocalSocketTarget.
+func (c *PostgreSQLConfig) LocalSocket() (string, string) {
+	return configKeySocket, c.Socket
+}
+
+// SchemaExclusiveGroups implements checkerdef.SchemaExclusiveGrouper: a
+// postgres check targets either a host (with its port) or a Unix socket.
+func (c *PostgreSQLConfig) SchemaExclusiveGroups() [][]string {
+	return [][]string{{configKeySocket, checkerdef.OutputKeyHost}}
+}
+
+// SchemaBaselines implements checkerdef.SchemaBaseliner: the socket shape.
+func (c *PostgreSQLConfig) SchemaBaselines() []map[string]any {
+	return []map[string]any{{configKeySocket: "/var/run/postgresql/.s.PGSQL.5432", "username": "monitor"}}
+}
+
+// SchemaNotes implements checkerdef.SchemaNoter.
+func (c *PostgreSQLConfig) SchemaNotes() []string {
+	return []string{
+		"`socket` (the socket file, e.g. `/var/run/postgresql/.s.PGSQL.5432`, also set by a " +
+			"`postgres+unix:///path?dbname=app&user=monitor` URL) replaces `host` and `port`; " +
+			"it cannot be combined with them, and there is no TLS over it. The server only dials " +
+			"paths listed in its `checkers.unix_socket_paths` setting.",
+	}
+}
+
+// expandUnixURL rewrites a `postgres+unix://` url into socket + database + username.
+func (c *PostgreSQLConfig) expandUnixURL(configMap map[string]any) error {
+	if c.URL == "" {
+		return nil
+	}
+
+	parsed, err := urlparse.Parse(c.URL)
+	if err != nil || parsed.Socket == "" || parsed.CheckType != checkerdef.CheckTypePostgreSQL {
+		return checkerdef.NewConfigError("url", "must be a postgres+unix:///path/to/.s.PGSQL.5432 URL")
+	}
+
+	if socket, _ := configMap[configKeySocket].(string); socket != "" {
+		return checkerdef.NewConfigError(configKeySocket, "socket and url are mutually exclusive")
+	}
+
+	c.Socket = parsed.Socket
+
+	query, err := url.ParseQuery(parsed.Query)
+	if err != nil {
+		return checkerdef.NewConfigError("url", err.Error())
+	}
+
+	if database := query.Get("dbname"); database != "" {
+		c.Database = database
+	}
+
+	if user := query.Get("user"); user != "" {
+		c.Username = user
+	}
+
+	c.URL = ""
+
+	return nil
+}
+
 // FromMap populates the configuration from a map.
 //
-//nolint:cyclop // Configuration parsing requires checking multiple field types
+//nolint:cyclop,gocyclo // Configuration parsing requires checking multiple field types
 func (c *PostgreSQLConfig) FromMap(configMap map[string]any) error {
+	if urlStr, ok := configMap["url"].(string); ok {
+		c.URL = urlStr
+	} else if configMap["url"] != nil {
+		return checkerdef.NewConfigError("url", "must be a string")
+	}
+
+	if socket, ok := configMap[configKeySocket].(string); ok {
+		c.Socket = socket
+	} else if configMap[configKeySocket] != nil {
+		return checkerdef.NewConfigError(configKeySocket, "must be a string")
+	}
+
 	if host, ok := configMap["host"].(string); ok {
 		c.Host = host
 	} else if configMap["host"] != nil {
@@ -112,14 +196,19 @@ func (c *PostgreSQLConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("query", "must be a string")
 	}
 
-	return nil
+	return c.expandUnixURL(configMap)
 }
 
 // GetConfig returns the configuration as a map.
 func (c *PostgreSQLConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
-		"host":     c.Host,
 		"username": c.Username,
+	}
+
+	if c.Socket != "" {
+		cfg[configKeySocket] = c.Socket
+	} else {
+		cfg["host"] = c.Host
 	}
 
 	if c.Port != 0 && c.Port != DefaultPort {
@@ -151,8 +240,8 @@ func (c *PostgreSQLConfig) GetConfig() map[string]any {
 
 // Validate checks if the configuration is valid.
 func (c *PostgreSQLConfig) Validate() error {
-	if c.Host == "" {
-		return checkerdef.NewRequiredConfigError("host")
+	if err := c.validateTarget(); err != nil {
+		return err
 	}
 
 	if c.Username == "" {
@@ -179,6 +268,31 @@ func (c *PostgreSQLConfig) Validate() error {
 
 	if c.Query != "" && !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(c.Query)), "SELECT") {
 		return checkerdef.NewConfigError("query", "must start with SELECT")
+	}
+
+	return nil
+}
+
+// validateTarget checks the host:port or socket target.
+func (c *PostgreSQLConfig) validateTarget() error {
+	if c.Socket == "" {
+		if c.Host == "" {
+			return checkerdef.NewRequiredConfigError("host")
+		}
+
+		return nil
+	}
+
+	if c.Host != "" || c.Port != 0 {
+		return checkerdef.NewConfigError(configKeySocket, "socket and host/port are mutually exclusive")
+	}
+
+	if c.SSLMode != "" && c.SSLMode != "disable" {
+		return checkerdef.NewConfigError("ssl_mode", "TLS is not supported over a Unix socket (use disable)")
+	}
+
+	if err := checkerdef.ValidateLocalSocketPath(c.Socket); err != nil {
+		return checkerdef.NewConfigError(configKeySocket, err.Error())
 	}
 
 	return nil
