@@ -87,6 +87,26 @@ Every later connection authenticates with an Ed25519 signature over
 replay-protected) — there is no bearer token to steal, and the database only
 ever holds public keys.
 
+### Docker checks through the local socket
+
+To run [Docker checks](./check-types.md#docker) against the agent host's
+daemon, mount its socket and add the socket's group: the image runs as uid
+`65532`, which cannot open a `root:docker` `0660` socket on its own.
+
+```bash
+docker run -d --name solidping-agent \
+  -v agent-data:/data \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  --group-add "$(stat -c %g /var/run/docker.sock)" \
+  -e SP_NODE_ROLE=agent \
+  -e SP_AGENT_SERVER_URL=https://solidping.example.com \
+  -e SP_AGENT_ENROLLMENT_TOKEN=spe_… \
+  solidping.example.com/solidping:current
+```
+
+In Docker Compose, the same is `group_add: ["<gid>"]`, with the gid from
+`stat -c %g /var/run/docker.sock`.
+
 ### Getting the `SP_AGENT_KEYS` value
 
 The identity is generated **in the container on first start**. Read it out
