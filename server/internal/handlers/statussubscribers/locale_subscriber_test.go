@@ -1,3 +1,4 @@
+//nolint:gosmopolitan // the zh rows are the subscriber-mail copy under test
 package statussubscribers_test
 
 import (
@@ -59,9 +60,18 @@ func TestSubscriberUpdateMailFollowsThePageLanguage(t *testing.T) {
 
 	// The banner per kind and language, then the lines every update carries.
 	labels := map[string]map[string]string{
-		"opened":   {"en": "New incident", "fr": "Nouvel incident", "de": "Neue Störung", "es": "Nueva incidencia", "zh": "新故障"},
-		"update":   {"en": "Status update", "fr": "Mise à jour", "de": "Status-Update", "es": "Actualización de estado", "zh": "状态更新"},
-		"resolved": {"en": "Resolved", "fr": "Résolu", "de": "Behoben", "es": "Resuelto", "zh": "已解决"},
+		"opened": {
+			"en": "New incident", "fr": "Nouvel incident", "de": "Neue Störung",
+			"es": "Nueva incidencia", "zh": "新故障",
+		},
+		"update": {
+			"en": "Status update", "fr": "Mise à jour", "de": "Status-Update",
+			"es": "Actualización de estado", "zh": "状态更新",
+		},
+		"resolved": {
+			"en": "Resolved", "fr": "Résolu", "de": "Behoben",
+			"es": "Resuelto", "zh": "已解决",
+		},
 	}
 	common := map[string]subscriberCopy{
 		"en": {

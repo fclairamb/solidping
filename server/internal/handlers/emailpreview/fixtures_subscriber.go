@@ -1,3 +1,4 @@
+//nolint:gosmopolitan // the zh fixture copy is intentional
 package emailpreview
 
 // Preview fixtures of the status-subscriber-* templates.

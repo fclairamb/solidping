@@ -1,3 +1,4 @@
+//nolint:gosmopolitan // zh expectations: the Han text is intentional
 package i18n
 
 import (

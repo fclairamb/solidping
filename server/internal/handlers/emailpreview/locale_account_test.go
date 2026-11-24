@@ -1,3 +1,4 @@
+//nolint:gosmopolitan // the zh rows are the account-email copy under test
 package emailpreview
 
 import (
@@ -352,18 +353,30 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 
 	// The Chinese copy: subject and a translated fragment of the plaintext body.
 	zh := map[string]want{
-		"registration.html":           {"确认你的 SolidPing 账户", "此确认链接将在 3 天 后过期。"},
-		"welcome.html":                {"欢迎使用 SolidPing", "打开仪表盘：" + fixtureDashboardURL},
-		"password-reset.html":         {"重置你的 SolidPing 密码", "此重置链接将在 1 小时 后过期。"},
-		"password-reset-sso.html":     {"重置你的 SolidPing 密码", "你通常使用 GitHub 或 Google 登录 SolidPing。"},
-		"password-changed.html":       {"你的 SolidPing 密码已更改", "你的 SolidPing 密码已于 7月5日 10:00 UTC 更改。"},
-		"totp-disabled.html":          {"你的 SolidPing 账户已关闭双重验证", "你的 SolidPing 账户已于 7月5日 10:00 UTC 关闭双重验证。"},
-		"totp-enabled.html":           {"你的 SolidPing 账户已开启双重验证", "你的 SolidPing 账户已于 7月5日 10:00 UTC 开启双重验证。"},
-		"discord-linked.html":         {"有 Discord 账户关联到你的 SolidPing 账户", "一个 Discord 账户已于 7月5日 10:00 UTC 关联到你的 SolidPing 账户。"},
-		"telegram-linked.html":        {"有 Telegram 账户关联到你的 SolidPing 账户", "一个 Telegram 账户已于 7月5日 10:00 UTC 关联到你的 SolidPing 账户。"},
-		"contact-added.html":          {"你的 SolidPing 账户新增了一种通知方式", "你于 7月5日 10:00 UTC 在 Acme Corp 中添加了通知方式 oncall@acme.com。"},
-		"contact-verify-code.html":    {"你的 SolidPing 验证码：482913", "请求在此地址接收 Acme Corp 的故障告警。"},
-		"passkey-added.html":          {"你的 SolidPing 账户新增了一个通行密钥", "一个名为“iCloud Keychain”的通行密钥已于 7月5日 10:00 UTC 添加到你的 SolidPing 账户。"},
+		"registration.html":       {"确认你的 SolidPing 账户", "此确认链接将在 3 天 后过期。"},
+		"welcome.html":            {"欢迎使用 SolidPing", "打开仪表盘：" + fixtureDashboardURL},
+		"password-reset.html":     {"重置你的 SolidPing 密码", "此重置链接将在 1 小时 后过期。"},
+		"password-reset-sso.html": {"重置你的 SolidPing 密码", "你通常使用 GitHub 或 Google 登录 SolidPing。"},
+		"password-changed.html":   {"你的 SolidPing 密码已更改", "你的 SolidPing 密码已于 7月5日 10:00 UTC 更改。"},
+		"totp-disabled.html":      {"你的 SolidPing 账户已关闭双重验证", "你的 SolidPing 账户已于 7月5日 10:00 UTC 关闭双重验证。"},
+		"totp-enabled.html":       {"你的 SolidPing 账户已开启双重验证", "你的 SolidPing 账户已于 7月5日 10:00 UTC 开启双重验证。"},
+		"discord-linked.html": {
+			"有 Discord 账户关联到你的 SolidPing 账户",
+			"一个 Discord 账户已于 7月5日 10:00 UTC 关联到你的 SolidPing 账户。",
+		},
+		"telegram-linked.html": {
+			"有 Telegram 账户关联到你的 SolidPing 账户",
+			"一个 Telegram 账户已于 7月5日 10:00 UTC 关联到你的 SolidPing 账户。",
+		},
+		"contact-added.html": {
+			"你的 SolidPing 账户新增了一种通知方式",
+			"你于 7月5日 10:00 UTC 在 Acme Corp 中添加了通知方式 oncall@acme.com。",
+		},
+		"contact-verify-code.html": {"你的 SolidPing 验证码：482913", "请求在此地址接收 Acme Corp 的故障告警。"},
+		"passkey-added.html": {
+			"你的 SolidPing 账户新增了一个通行密钥",
+			"一个名为“iCloud Keychain”的通行密钥已于 7月5日 10:00 UTC 添加到你的 SolidPing 账户。",
+		},
 		"device-token-created.html":   {"有设备登录了你的 SolidPing 账户", "请求来自 IP 地址 203.0.113.7。"},
 		"email-changed.html":          {"你的 SolidPing 邮箱地址已更改", "从 alice@acme.com 更改为 alice@acme.org"},
 		"invitation.html":             {"邀请你加入 SolidPing 上的 Acme Corp", "邀请你以管理员身份加入 SolidPing 上的 Acme Corp。"},

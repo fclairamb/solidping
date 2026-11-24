@@ -9,6 +9,8 @@
 // IPs and stack fragments. The templates below are the only source of public
 // narrative text, and they interpolate exactly one value: the resource's
 // PUBLIC display name, which the page already renders.
+//
+//nolint:gosmopolitan // a per-language table: the zh row is intentionally Chinese
 package incidentpublications
 
 import (
@@ -183,7 +185,7 @@ var publicTemplates = map[string]templateSet{
 		keyAlsoAffectingBody:   "%s 现在也受到本次故障影响。",
 		keyRemovedTitle:        "%s 已不再被监控",
 		keyRemovedGenericTitle: "受影响的服务已不再被监控",
-		keyRemovedBody:         "被监控的资源已被移除。本次故障已解决。",
+		keyRemovedBody:         "被监控的服务已被移除。本次故障已解决。",
 	},
 }
 
