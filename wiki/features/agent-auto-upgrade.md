@@ -31,7 +31,10 @@ that predates it drops it in its read pump's default case.
 - **Release**: an agent reporting the server's version (enroll frame or first
   claim) releases its slot and drops its candidate row, logged at INFO. Timeout
   10 min: the next contender logs a WARN naming the agent that did not come
-  back, then takes the slot. A region whose only agent is upgraded is logged at
+  back (with the slot's `deadline`, since the expiry is only seen when an agent
+  next contends, and `next_agent`), then takes the slot; when that contender is
+  the same agent (single-agent region) the WARN says "asking it again" with the
+  `attempt` number. A region whose only agent is upgraded is logged at
   INFO. After 3 requests for one version the server stops asking that agent
   (WARN once per connection): a supervisor that restarts on the same image (a
   Docker restart policy, a fly machine) would otherwise restart it every
@@ -40,8 +43,7 @@ that predates it drops it in its read pump's default case.
   setting; system agents follow the same path).
 - **Agent-side pin**: `SP_AGENT_IGNORE_VERSION_DRIFT=true` on the agent
   (`config.AgentConfig.IgnoreVersionDrift`). The agent sends `autoUpgrade: false`
-  on its enroll and claim frames (`ClientFrame.AutoUpgrade`, a `*bool`: absent
-  reads as `true`, so older agents are upgraded as before;
+  on its enroll and claim frames (`ClientFrame.AutoUpgrade`, a `*bool`;
   `ClientFrame.VersionPinned()`), and ignores any `upgrade` frame
   (`backend/ws_upgrade.go`, one INFO). The server (`noteAgentVersion`) never
   registers a pinned agent as a candidate and its tick never sends it a frame;
@@ -51,6 +53,12 @@ that predates it drops it in its read pump's default case.
   `workers.version_pinned` (refreshed on each connection's first report) and
   exposed as `versionPinned` on the agent lists; dash0 shows a "Pinned" label
   next to "Drifted" (`AgentVersionCell`, test id `<cell>-pinned`).
+- **Agents older than the rolling upgrade** (v0.53 and before) send no
+  `autoUpgrade` field (`ClientFrame.PredatesAutoUpgrade()`) and do not know the
+  `upgrade` frame. The server treats them like pinned agents in the rollout (no
+  frame, no slot, `withdrawFromUpgrade`) and logs once per connection at INFO
+  `agent predates auto-upgrade: upgrade it by hand`. They are not recorded as
+  pinned (`version_pinned` stays false): they keep the plain "Drifted" badge.
 - **The image**: `<server-host>/solidping:current` from the read-only registry
   below, pulled again by kubelet with `imagePullPolicy: Always`. Docker restart
   policies reuse the local image: the docs ship a systemd timer running

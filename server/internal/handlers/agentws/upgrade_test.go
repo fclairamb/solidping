@@ -126,6 +126,16 @@ func (w *frameWatcher) gotUpgrade(within time.Duration) (agentcrypto.ServerFrame
 	}
 }
 
+// followingClaim is a claim reporting ver with autoUpgrade: true, as every
+// agent that knows the rolling upgrade sends it.
+func followingClaim(id, ver string) agentcrypto.ClientFrame {
+	follow := true
+
+	return agentcrypto.ClientFrame{
+		Type: agentcrypto.MsgTypeClaim, ID: id, MaxJobs: 1, Version: ver, AutoUpgrade: &follow,
+	}
+}
+
 // connectReporting enrolls an agent on e and reports ver on a first claim.
 func connectReporting(
 	t *testing.T, e *env, name, ver string,
@@ -133,9 +143,7 @@ func connectReporting(
 	t.Helper()
 
 	conn, keys, enrolled := e.enroll(e.mintToken(), name)
-	resp := roundTrip(t, conn, agentcrypto.ClientFrame{
-		Type: agentcrypto.MsgTypeClaim, ID: "claim-" + name, MaxJobs: 1, Version: ver,
-	})
+	resp := roundTrip(t, conn, followingClaim("claim-"+name, ver))
 	require.Equal(t, agentcrypto.MsgTypeJobs, resp.Type)
 
 	return conn, keys, enrolled
@@ -148,9 +156,7 @@ func reconnectReporting(
 	t.Helper()
 
 	conn := reconnect(t, e, keys, agentUID, nonce)
-	resp := roundTrip(t, conn, agentcrypto.ClientFrame{
-		Type: agentcrypto.MsgTypeClaim, ID: "claim-" + nonce, MaxJobs: 1, Version: ver,
-	})
+	resp := roundTrip(t, conn, followingClaim("claim-"+nonce, ver))
 	require.Equal(t, agentcrypto.MsgTypeJobs, resp.Type)
 
 	return conn
@@ -292,6 +298,47 @@ func TestUpgradeTimeoutMovesOn(t *testing.T) {
 
 	r.Contains(timeoutLine, enrolledA.AgentUID, "the WARN names the agent that did not come back")
 	r.Contains(timeoutLine, "level=WARN")
+	r.Contains(timeoutLine, "moving on to the next agent")
+	r.Contains(timeoutLine, "next_agent=")
+}
+
+// TestUpgradeTimeoutAsksTheOnlyAgentAgain: in a single-agent region, the
+// agent that timed out is the next candidate too: the WARN says it is asked
+// again, with the attempt number, rather than "moving on to the next agent".
+//
+//nolint:paralleltest // mutates version.Version and slog.Default()
+func TestUpgradeTimeoutAsksTheOnlyAgentAgain(t *testing.T) {
+	withServerVersion(t, upgradeServer)
+	logs := captureLogs(t)
+
+	r := require.New(t)
+	timeout := 300 * time.Millisecond
+	e := newEnvConfigured(t, nil, fastUpgrades(timeout))
+	drainOnCleanup(t, e)
+
+	connA, keysA, enrolledA := connectReporting(t, e, "dc1-a", upgradeDrifted)
+
+	_, ok := watchFrames(t, connA).gotUpgrade(frameWait)
+	r.True(ok, "A is asked first")
+
+	_ = connA.Close(websocket.StatusNormalClosure, "restarting")
+	connA2 := reconnectReporting(t, e, keysA, enrolledA.AgentUID, "nonce-a-again", upgradeDrifted)
+
+	_, ok = watchFrames(t, connA2).gotUpgrade(frameWait)
+	r.True(ok, "after its timeout, the only agent of the region is asked again")
+
+	timeoutLine := ""
+
+	for line := range strings.SplitSeq(logs.String(), "\n") {
+		if strings.Contains(line, "within the upgrade timeout") {
+			timeoutLine = line
+		}
+	}
+
+	r.Contains(timeoutLine, "asking it again")
+	r.NotContains(timeoutLine, "moving on to the next agent")
+	r.Contains(timeoutLine, enrolledA.AgentUID)
+	r.Contains(timeoutLine, "attempt=2")
 }
 
 // TestHelloAnnouncesServerVersion: both hellos of an enrollment carry the
