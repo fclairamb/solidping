@@ -124,6 +124,7 @@ import { isFieldTouched, touchIdentifiers } from "@/hooks/touched-fields";
 import { portForTypeSwitch, withDefaultPort } from "@/components/checks/form/types/ports";
 import { CheckFormFieldsProvider } from "@/components/checks/form/types/context";
 import { TunnelSelect } from "@/components/checks/form/tunnel-select";
+import { pinnedToPrivateOnly } from "@/components/checks/form/local-socket";
 import {
   IPVersionSelect,
   IP_VERSION_AUTO,
@@ -1793,6 +1794,8 @@ const showSlugFromNameOffer =
         setName,
         tunneled: supportsTunnel && tunnelCheckUid !== "",
         lastResultOutput: initialData?.lastResult?.output as Record<string, unknown> | undefined,
+        checkTypeInfo: checkTypeInfoMap.get(type),
+        privateRegionsOnly: pinnedToPrivateOnly(placement, selectedRegions),
       }}
     >
       <div className="space-y-6 max-w-2xl" ref={formRootRef}>

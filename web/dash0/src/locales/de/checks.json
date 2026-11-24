@@ -1328,7 +1328,12 @@
     "burstTtl": "TTL (Hops)",
     "burstMaxLoss": "Max. Paketverlust (%)",
     "burstMaxAvgRtt": "Max. durchschnittliche Laufzeit (ms)",
-    "burstLossCountHint": "Bei 1 Paket beträgt der Verlust entweder 0 % oder 100 %. Senden Sie mindestens 10 Pakete für einen sinnvollen Prozentwert."
+    "burstLossCountHint": "Bei 1 Paket beträgt der Verlust entweder 0 % oder 100 %. Senden Sie mindestens 10 Pakete für einen sinnvollen Prozentwert.",
+    "targetMode": "Ziel",
+    "targetHostPort": "Host und Port",
+    "targetSocket": "Unix-Socket",
+    "socketPath": "Socket-Pfad",
+    "socketHelp": "Absoluter Pfad eines Unix-Sockets auf dem Host, der die Prüfung ausführt. Der Server verbindet sich nur mit Pfaden, die sein Betreiber erlaubt hat."
   },
   "prometheus": {
     "mode": "Modus",
@@ -1533,7 +1538,8 @@
     "vendorStatusHttps": "Die URL der Statusseite muss mit https:// beginnen",
     "pluginInvalidJson": "Die Konfiguration ist kein gültiges JSON: {{detail}}",
     "pluginNotAnObject": "Die Konfiguration muss ein JSON-Objekt sein.",
-    "fieldRequired": "Dieses Feld ist erforderlich"
+    "fieldRequired": "Dieses Feld ist erforderlich",
+    "socketRequired": "Socket-Pfad ist erforderlich"
   },
   "health": {
     "format": "Health-Format",

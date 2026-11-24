@@ -9,7 +9,7 @@
 // (the ICMP discovery picker back-fills an empty name). Exposing these through a
 // context keeps the `Fields` prop contract exactly as the spec defines it.
 import * as React from "react";
-import type { Integration } from "@/api/hooks";
+import type { CheckTypeInfo, Integration } from "@/api/hooks";
 import type { CheckType } from "./common";
 
 export interface CheckFormFieldsContextValue {
@@ -27,6 +27,11 @@ export interface CheckFormFieldsContextValue {
   // Output of the edited check's last result, when there is one. The health
   // form suggests the component names found in it.
   lastResultOutput?: Record<string, unknown>;
+  // The active type's check-types metadata, and whether the check is pinned to
+  // private locations only: what decides if a Unix socket target is offered
+  // (spec 2026-11-24-01, see local-socket.ts).
+  checkTypeInfo?: CheckTypeInfo;
+  privateRegionsOnly?: boolean;
 }
 
 const CheckFormFieldsContext =
