@@ -29,12 +29,14 @@ func socketDir(t *testing.T) string {
 	return dir
 }
 
+var errUnusedDialer = errors.New("unused")
+
 // listen opens a Unix listener at dir/name that accepts and counts connections.
 func listen(t *testing.T, dir, name string) (string, *atomic.Int32) {
 	t.Helper()
 
 	path := filepath.Join(dir, name)
-	listener, err := net.Listen("unix", path)
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "unix", path)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = listener.Close() })
 
@@ -90,8 +92,12 @@ func TestDialLocalSocket_RefusedPathsNeverDial(t *testing.T) {
 	}{
 		{"empty allowlist", nil, path, checkerdef.ErrLocalSocketNotAllowed},
 		{"outside the allowlist", []string{other + "/"}, path, checkerdef.ErrLocalSocketNotAllowed},
-		{"dot-dot escape", []string{other + "/"}, other + "/../" + filepath.Base(dir) + "/s.sock",
-			checkerdef.ErrLocalSocketPath},
+		{
+			"dot-dot escape",
+			[]string{other + "/"},
+			other + "/../" + filepath.Base(dir) + "/s.sock",
+			checkerdef.ErrLocalSocketPath,
+		},
 		{"relative path", []string{dir + "/"}, "s.sock", checkerdef.ErrLocalSocketPath},
 		{"NUL byte", []string{dir + "/"}, path + "\x00x", checkerdef.ErrLocalSocketPath},
 		{"abstract socket", []string{"/"}, "@abstract", checkerdef.ErrLocalSocketPath},
@@ -123,7 +129,7 @@ func TestDialLocalSocket_EgressGuardAndTunnelRefuse(t *testing.T) {
 	r.NotNil(recorder.Denied(), "the refusal must be recorded")
 
 	tunneled := checkerdef.WithTunnelDialer(socketCtx(path), checkerdef.DialerFunc(
-		func(context.Context, string, string) (net.Conn, error) { return nil, errors.New("unused") }))
+		func(context.Context, string, string) (net.Conn, error) { return nil, errUnusedDialer }))
 	_, err = checkerdef.DialLocalSocket(tunneled, path, 0)
 	r.ErrorIs(err, checkerdef.ErrLocalSocketTunneled)
 

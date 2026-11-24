@@ -49,7 +49,7 @@ func socketGateListener(t *testing.T) (string, *atomic.Int32) {
 // allowlist set to allow, running jobs that target path.
 func newSocketGateRunner(
 	t *testing.T, mode, role, path, allow string,
-) (*CheckWorker, func() *models.Result, func() *models.Result) {
+) (func() *models.Result, func() *models.Result) {
 	t.Helper()
 
 	_, dbSvc, ctx := setupTestRunner(t)
@@ -68,7 +68,7 @@ func newSocketGateRunner(
 		})
 	}
 
-	return runner, runTCP, runJS
+	return runTCP, runJS
 }
 
 // TestExecuteJob_SocketTCPBlockedOnSaaSSharedWorker: a socket tcp job, and
@@ -80,7 +80,7 @@ func TestExecuteJob_SocketTCPBlockedOnSaaSSharedWorker(t *testing.T) {
 	r := require.New(t)
 	path, accepted := socketGateListener(t)
 
-	_, runTCP, runJS := newSocketGateRunner(t, config.DeploymentModeSaaS, "", path, path)
+	runTCP, runJS := newSocketGateRunner(t, config.DeploymentModeSaaS, "", path, path)
 
 	result := runTCP()
 	r.NotNil(result.Status)
@@ -103,7 +103,7 @@ func TestExecuteJob_SocketTCPRunsOnAgentWorker(t *testing.T) {
 	r := require.New(t)
 	path, accepted := socketGateListener(t)
 
-	_, runTCP, runJS := newSocketGateRunner(t, config.DeploymentModeSaaS, config.NodeRoleAgent, path, path)
+	runTCP, runJS := newSocketGateRunner(t, config.DeploymentModeSaaS, config.NodeRoleAgent, path, path)
 
 	result := runTCP()
 	r.NotNil(result.Status)
@@ -124,7 +124,7 @@ func TestExecuteJob_SocketTCPOutsideAllowlist(t *testing.T) {
 	r := require.New(t)
 	path, accepted := socketGateListener(t)
 
-	_, runTCP, _ := newSocketGateRunner(t, config.DeploymentModeSelfHosted, "", path, "/nowhere/")
+	runTCP, _ := newSocketGateRunner(t, config.DeploymentModeSelfHosted, "", path, "/nowhere/")
 
 	result := runTCP()
 	r.NotNil(result.Status)

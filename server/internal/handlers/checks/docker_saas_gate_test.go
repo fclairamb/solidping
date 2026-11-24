@@ -48,7 +48,8 @@ func TestValidateDockerDeploymentConfig(t *testing.T) {
 	// SaaS + private-only regions: allowed. This is the "an agent in the
 	// customer's own network" path the spec carves out.
 	r.NoError(saas.validateHostLocalDeploymentConfig(string(checkerdef.CheckTypeDocker), nil, []string{"@office"}))
-	r.NoError(saas.validateHostLocalDeploymentConfig(string(checkerdef.CheckTypeDocker), nil, []string{"@office", "@warehouse"}))
+	r.NoError(saas.validateHostLocalDeploymentConfig(
+		string(checkerdef.CheckTypeDocker), nil, []string{"@office", "@warehouse"}))
 }
 
 // assertDockerRejected asserts the gate's error shape: a *checkerdef.ConfigError

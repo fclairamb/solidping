@@ -49,13 +49,14 @@ type LocalSocketTarget interface {
 
 // LocalSocketOf returns the socket target of cfg, ok=false when cfg does not
 // implement LocalSocketTarget or holds no path.
-func LocalSocketOf(cfg Config) (field, path string, ok bool) {
+// The results are the config field, the path and ok.
+func LocalSocketOf(cfg Config) (string, string, bool) {
 	target, isTarget := cfg.(LocalSocketTarget)
 	if !isTarget || target == nil {
 		return "", "", false
 	}
 
-	field, path = target.LocalSocket()
+	field, path := target.LocalSocket()
 
 	return field, path, path != ""
 }
@@ -128,7 +129,8 @@ func LocalSocketAllowed(allowlist []string, path string) error {
 	}
 
 	if len(allowlist) == 0 {
-		return fmt.Errorf("%w: unix sockets are off; an operator can list allowed paths in %s (SP_CHECKERS_UNIX_SOCKET_PATHS)",
+		return fmt.Errorf(
+			"%w: unix sockets are off; an operator can list allowed paths in %s (SP_CHECKERS_UNIX_SOCKET_PATHS)",
 			ErrLocalSocketNotAllowed, LocalSocketSetting)
 	}
 

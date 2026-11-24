@@ -1456,7 +1456,8 @@ func (r *CheckWorker) executeJob(
 	//
 	// The same rule covers every host-local check (spec 2026-11-24-01): a
 	// config targeting a Unix socket reads THIS host's sockets just as well.
-	if refusal := hostLocalRefusal(r.dockerBlockedOnThisWorker(), checkerdef.CheckType(checkType), checkConfig); refusal != nil {
+	refusal := hostLocalRefusal(r.dockerBlockedOnThisWorker(), checkerdef.CheckType(checkType), checkConfig)
+	if refusal != nil {
 		return r.saveErrorResult(ctx, checkJob, refusal)
 	}
 

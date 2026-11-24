@@ -523,8 +523,8 @@ func onlyPrivateRegions(checkRegions []string) bool {
 func (s *Service) validateHostLocalDeploymentConfig(
 	checkType string, cfg checkerdef.Config, checkRegions []string,
 ) error {
-	ct := checkerdef.CheckType(checkType)
-	if !checkerdef.IsHostLocal(ct, cfg) {
+	typ := checkerdef.CheckType(checkType)
+	if !checkerdef.IsHostLocal(typ, cfg) {
 		return nil
 	}
 
@@ -532,7 +532,7 @@ func (s *Service) validateHostLocalDeploymentConfig(
 		return nil
 	}
 
-	if ct == checkerdef.CheckTypeDocker {
+	if typ == checkerdef.CheckTypeDocker {
 		return checkerdef.NewConfigError("host", ErrDockerNotAvailableInSaaS.Error())
 	}
 
