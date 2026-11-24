@@ -9,11 +9,10 @@
 package config
 
 import (
-	"fmt"
-	"net"
 	"net/url"
-	"strconv"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
@@ -44,6 +43,10 @@ type MongoDBConfig struct {
 	Database string        `json:"database,omitempty"`
 	Timeout  time.Duration `json:"timeout,omitempty"`
 }
+
+// forbiddenHostChars are the characters a MongoDB host may not hold: URI
+// delimiters, percent-escapes and the host-list separator.
+const forbiddenHostChars = "/?@%,#"
 
 // configKeySocket is the config key of the Unix socket path.
 const configKeySocket = "socket"
@@ -205,7 +208,8 @@ func (c *MongoDBConfig) GetConfig() map[string]any {
 
 // Validate checks if the configuration is valid.
 func (c *MongoDBConfig) Validate() error {
-	if c.Socket != "" {
+	switch {
+	case c.Socket != "":
 		if c.Host != "" || c.Port != 0 {
 			return checkerdef.NewConfigError(configKeySocket, "socket and host/port are mutually exclusive")
 		}
@@ -213,8 +217,13 @@ func (c *MongoDBConfig) Validate() error {
 		if err := checkerdef.ValidateLocalSocketPath(c.Socket); err != nil {
 			return checkerdef.NewConfigError(configKeySocket, err.Error())
 		}
-	} else if c.Host == "" {
+	case c.Host == "":
 		return checkerdef.NewRequiredConfigError("host")
+	case strings.ContainsAny(c.Host, forbiddenHostChars) || strings.IndexFunc(c.Host, unicode.IsSpace) >= 0:
+		// The client is built from structured options (GHSA-38m7-jhhr-79xx),
+		// so these never reach a URI parser; refusing them still keeps a host
+		// one plain hostname or IP literal.
+		return checkerdef.NewConfigError("host", "must be a hostname or an IP address, without / ? @ % , # or spaces")
 	}
 
 	if c.Port < 0 || c.Port > 65535 {
@@ -228,30 +237,4 @@ func (c *MongoDBConfig) Validate() error {
 	}
 
 	return nil
-}
-
-// BuildURI builds a MongoDB connection URI from the configuration.
-func (c *MongoDBConfig) BuildURI() string {
-	if c.Socket != "" {
-		// The host is a placeholder: the checker's dialer ignores it and dials
-		// the socket through the shared gates.
-		if c.Username != "" && c.Password != "" {
-			return fmt.Sprintf("mongodb://%s:%s@localhost", c.Username, c.Password)
-		}
-
-		return "mongodb://localhost"
-	}
-
-	port := c.Port
-	if port == 0 {
-		port = DefaultPort
-	}
-
-	hostPort := net.JoinHostPort(c.Host, strconv.Itoa(port))
-
-	if c.Username != "" && c.Password != "" {
-		return fmt.Sprintf("mongodb://%s:%s@%s", c.Username, c.Password, hostPort)
-	}
-
-	return "mongodb://" + hostPort
 }
