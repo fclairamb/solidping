@@ -32,6 +32,7 @@ function baseState(overrides: Partial<HttpState> = {}): HttpState {
     expectedFinalUrl: "",
     httpVersion: "1.1",
     captureFailureResponse: false,
+    unixSocket: "",
     authDirty: false,
     headersDirty: false,
     jsonPathAssertions: null,
@@ -1169,5 +1170,18 @@ describe("httpModule — expectedFinalUrl round-trip", () => {
       }),
     );
     expect(config).not.toHaveProperty("expectedFinalUrl");
+  });
+});
+
+describe("http unix socket", () => {
+  it("round-trips unix_socket and omits it when empty", () => {
+    const state = httpModule.fromConfig({
+      url: "http://localhost/health",
+      unix_socket: "/run/app/app.sock",
+    });
+    expect(state.unixSocket).toBe("/run/app/app.sock");
+    expect(httpModule.toConfig(state).config.unix_socket).toBe("/run/app/app.sock");
+    const cleared = httpModule.toConfig({ ...state, unixSocket: "" });
+    expect(cleared.config.unix_socket).toBeUndefined();
   });
 });

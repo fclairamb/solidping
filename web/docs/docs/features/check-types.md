@@ -63,6 +63,8 @@ TLS time whatever the check period (see [Timing breakdown](#http-timing)).
 
 **Redirects:** redirects are followed by default (`followRedirects`, up to 10 hops). Set it to `false` to assert on the first response instead. `redirectHostPolicy: same-host` fails the check when a hop leaves the previous hop's host. Every followed hop is listed in the `redirect_chain` output. `secretHeaders` are only sent to the URL's own host: a hop to another host drops them, and their names (never values) appear in `redirect_dropped_secret_headers`. A plain `headers` entry holding a `${param:…}` or `${env:…}` reference (`X-Api-Key: ${param:api-key}`) is treated the same way: on a hop to another origin, a header whose value contains the resolved value is dropped and listed there too. A hop to another origin (another host or port, or an https → http downgrade) never carries `Referer`, which would repeat the previous URL and its query string. A 307 or 308 that would resend the request `body` is followed only within the origin: to another origin the check stops at the redirect response and reports `redirect_body_withheld: true`.
 
+**Unix socket:** set `unix_socket` (or use the URL `http+unix:///run/app/app.sock:/health`) to send the request through a local [Unix socket](#unix-sockets), like `curl --unix-socket /run/app/app.sock http://localhost/health`. The `url` stays required: its path and query are the request and its host is the `Host` header. Every assertion applies unchanged. Only redirects staying on the `url` host are followed. `https` URLs, an IP version, `httpVersion` other than 1.1 and SSH tunnels are refused.
+
 `expectedFinalUrl` asserts where the chain ends, so `http://acme.com` redirecting to a login or parking page no longer reads as up. The match is exact after normalisation: scheme and host are lowercased, `:80` (http) and `:443` (https) are dropped, an empty path becomes `/`, and the fragment is ignored. Path and query are compared as sent (`/x` and `/x/` differ, so do `?a=1&b=2` and `?b=2&a=1`). It is checked before the body assertions. On a mismatch the error reads `expected final URL "...", got "..."` and the raw URL of the last request is in `final_url`. It cannot be combined with `followRedirects: false`, nor with `redirectHostPolicy: same-host` and a different host.
 
 Set `httpVersion` to verify that the target still speaks a newer protocol, for
@@ -2073,6 +2075,7 @@ host and port.
 | Check | Field | URL form |
 |-------|-------|----------|
 | [TCP](#tcp) | `socket` | `unix:///run/app/app.sock` |
+| [HTTP](#http) | `unix_socket` | `http+unix:///run/app/app.sock:/health` |
 
 The feature is **off by default**. An operator turns it on by listing the
 sockets checks may reach in `checkers.unix_socket_paths`

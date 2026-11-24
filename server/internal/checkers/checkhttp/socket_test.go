@@ -26,7 +26,7 @@ func socketServer(t *testing.T, handler http.Handler) string {
 	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "unix", path)
 	require.NoError(t, err)
 
-	server := &http.Server{Handler: handler} //nolint:gosec // test server
+	server := &http.Server{Handler: handler}
 	go func() { _ = server.Serve(listener) }()
 
 	t.Cleanup(func() { _ = server.Close() })
@@ -53,6 +53,7 @@ func runSocketCheck(t *testing.T, path string, extra map[string]any) *checkerdef
 	return result
 }
 
+//nolint:paralleltest,tparallel // subtests share the handler's captured request
 func TestSocketStatusBodyAndHostHeader(t *testing.T) {
 	t.Parallel()
 

@@ -192,6 +192,13 @@ type HTTPConfig struct {
 // configKeyUnixSocket is the config key of the Unix socket path.
 const configKeyUnixSocket = "unix_socket"
 
+// addUnixSocket writes the socket path when set.
+func (c *HTTPConfig) addUnixSocket(cfg map[string]any) {
+	if c.UnixSocket != "" {
+		cfg[configKeyUnixSocket] = c.UnixSocket
+	}
+}
+
 // LocalSocket implements checkerdef.LocalSocketTarget.
 func (c *HTTPConfig) LocalSocket() (string, string) {
 	return configKeyUnixSocket, c.UnixSocket
@@ -602,9 +609,7 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 		checkerdef.OutputKeyURL: c.URL,
 	}
 
-	if c.UnixSocket != "" {
-		cfg[configKeyUnixSocket] = c.UnixSocket
-	}
+	c.addUnixSocket(cfg)
 
 	if c.Method != "" {
 		cfg["method"] = c.Method
