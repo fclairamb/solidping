@@ -95,6 +95,10 @@ type upgradeState struct {
 	// region's slot. pinReported records that the workers row holds it.
 	pinned      bool
 	pinReported bool
+	// legacy is set when the agent predates the rolling upgrade (its frames
+	// carry no autoUpgrade field): it does not know the upgrade frame, so it
+	// is never asked and never takes the region's slot either.
+	legacy bool
 }
 
 // SetAutoUpgradeTimings overrides the upgrade check cadence and timeout for
@@ -139,21 +143,24 @@ func (h *Handler) upgradeTarget(reported string) (string, bool) {
 // and whether it is pinned (autoUpgrade: false). On the server's version, it
 // releases the agent's upgrade slot and drops its candidate row: the upgrade
 // worked. Drifted, it registers the agent as a candidate; the connection's
-// upgrade ticker does the rest. Pinned, it withdraws the agent from the
-// rollout instead, so it never holds up the other agents of its region.
-func (h *Handler) noteAgentVersion(ctx context.Context, state *connState, reported string, pinned bool) {
+// upgrade ticker does the rest. Pinned, or older than the rolling upgrade, it
+// withdraws the agent from the rollout instead, so it never holds up the
+// other agents of its region.
+func (h *Handler) noteAgentVersion(ctx context.Context, state *connState, report versionReport) {
+	reported, pinned, legacy := report.version, report.pinned, report.legacy
 	if reported == "" {
 		return
 	}
 
 	h.recordVersionPin(ctx, state, pinned)
 
-	if reported == state.upgrade.agentVersion && pinned == state.upgrade.pinned {
+	if reported == state.upgrade.agentVersion && pinned == state.upgrade.pinned && legacy == state.upgrade.legacy {
 		return
 	}
 
 	state.upgrade.agentVersion = reported
 	state.upgrade.pinned = pinned
+	state.upgrade.legacy = legacy
 
 	if !h.autoUpgrade {
 		return
@@ -167,6 +174,14 @@ func (h *Handler) noteAgentVersion(ctx context.Context, state *connState, report
 
 	if pinned {
 		h.withdrawFromUpgrade(ctx, state)
+
+		return
+	}
+
+	if legacy {
+		if _, drifted := h.upgradeTarget(reported); drifted {
+			h.withdrawFromUpgrade(ctx, state)
+		}
 
 		return
 	}
@@ -207,7 +222,12 @@ func (h *Handler) withdrawFromUpgrade(ctx context.Context, state *connState) {
 	agent := state.agent
 	db := h.dbService.DB()
 
-	h.logger.InfoContext(ctx, "agent is pinned to its version (SP_AGENT_IGNORE_VERSION_DRIFT): not asking it to upgrade",
+	msg := "agent is pinned to its version (SP_AGENT_IGNORE_VERSION_DRIFT): not asking it to upgrade"
+	if state.upgrade.legacy {
+		msg = "agent predates auto-upgrade: upgrade it by hand"
+	}
+
+	h.logger.InfoContext(ctx, msg,
 		logKeyAgent, agent.UID, "region", agent.Region,
 		"agent_version", state.upgrade.agentVersion, "server_version", version.Get().Version)
 
@@ -294,7 +314,7 @@ func (h *Handler) touchCandidate(
 // handleUpgradeTick is the connection's periodic rollout step. It returns
 // false when writing to the socket failed (the connection is over).
 func (h *Handler) handleUpgradeTick(ctx context.Context, conn *websocket.Conn, state *connState) bool {
-	if state.upgrade.sent || state.upgrade.pinned {
+	if state.upgrade.sent || state.upgrade.pinned || state.upgrade.legacy {
 		return true
 	}
 
@@ -357,12 +377,15 @@ func (h *Handler) tryAcquireUpgradeSlot(ctx context.Context, state *connState, t
 
 	timedOut := ""
 
+	var timedOutAt time.Time
+
 	if slot != nil && !slot.Released {
 		if now.Before(slot.Deadline) {
 			return false, nil
 		}
 
 		timedOut = slot.AgentUID
+		timedOutAt = slot.Deadline
 	}
 
 	next, live, err := h.nextUpgradeCandidate(ctx, regionKey, target, now)
@@ -387,14 +410,35 @@ func (h *Handler) tryAcquireUpgradeSlot(ctx context.Context, state *connState, t
 	}
 
 	if timedOut != "" {
-		h.logger.WarnContext(ctx, "agent did not come back on the server version within the upgrade timeout; "+
-			"moving on to the next agent",
-			"agent", timedOut, "region", agent.Region, "timeout", h.upgradeTimeout)
+		h.logUpgradeTimeout(ctx, agent, timedOut, timedOutAt, mine.Attempts+1)
 	}
 
 	h.logUpgradeStart(ctx, state, target, live)
 
 	return true, nil
+}
+
+// logUpgradeTimeout logs, at WARN, the agent that held the region's slot past
+// its deadline. The slot is only seen expired when an agent of the region
+// next contends for it, possibly long after: deadline says when it expired.
+// When the agent taking the slot is the one that timed out (a single-agent
+// region), it is asked again rather than "moving on".
+func (h *Handler) logUpgradeTimeout(
+	ctx context.Context, agent *models.Agent, timedOut string, deadline time.Time, attempt int,
+) {
+	attrs := []any{
+		logKeyAgent, timedOut, "region", agent.Region, "timeout", h.upgradeTimeout, "deadline", deadline,
+	}
+
+	if timedOut == agent.UID {
+		h.logger.WarnContext(ctx, "agent did not come back on the server version within the upgrade timeout; "+
+			"asking it again", append(attrs, "attempt", attempt)...)
+
+		return
+	}
+
+	h.logger.WarnContext(ctx, "agent did not come back on the server version within the upgrade timeout; "+
+		"moving on to the next agent", append(attrs, "next_agent", agent.UID)...)
 }
 
 // logUpgradeStart logs the upgrade request; a region with a single agent is
