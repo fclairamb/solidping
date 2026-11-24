@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/checkfilter"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/regionquorum"
@@ -62,7 +63,7 @@ func listChecksDef() ToolDefinition {
 
 func (h *Handler) toolListChecks(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult {
 	opts := checks.ListChecksOptions{
-		Query:  getStringArg(args, "q"),
+		Query:  strings.Join(checkfilter.SearchTerms(getStringArg(args, "q")), " "),
 		Cursor: getStringArg(args, propCursor),
 		Limit:  getIntArg(args, "limit", 20),
 	}
