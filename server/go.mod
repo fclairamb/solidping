@@ -60,7 +60,6 @@ require (
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
-	github.com/fclairamb/vortex-go v0.1.3 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.4 // indirect
 	github.com/getkin/kin-openapi v0.153.0 // indirect
@@ -243,6 +242,7 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.5.2
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/fclairamb/solidping/server/third_party/grdp v0.42.0
+	github.com/fclairamb/vortex-go v0.1.3
 	github.com/fergusstrange/embedded-postgres/v2 v2.0.1
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getsentry/sentry-go v0.50.0
