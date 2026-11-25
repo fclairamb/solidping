@@ -99,3 +99,8 @@ Steps:
 2. When the storage is down, stall compaction (fail closed, DB grows) or skip archiving and delete anyway?
    Recommended: fail closed with a metric, losing history silently is worse than a temporary DB growth.
 3. Per-org opt-in later (entitlement in SaaS mode) or global only? Recommended: global only for v1 (YAGNI).
+
+## Resolved open questions
+1. Hour file = the raw rows of the hour, day file = the hour rollups of the day, as proposed: it matches what the DB deletes and keeps files small. (autopilot: recommended answer)
+2. Storage down: fail closed. Compaction of that tier stalls (the source rows are kept), an error is logged and a metric is exposed; never delete rows that were not archived. (autopilot: recommended answer)
+3. Global setting only for v1, no per-org opt-in. (autopilot: recommended answer)
