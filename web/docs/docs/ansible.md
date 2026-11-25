@@ -5,22 +5,87 @@ title: Ansible
 
 # Ansible
 
-SolidPing has no Ansible collection yet, but everything it manages is reachable from Ansible
-today, idempotently, through the REST API or the [config-as-code CLI](/features/config-as-code).
-This page shows three ways, from the simplest to the most powerful:
+The [`fclairamb.solidping` collection](https://github.com/fclairamb/ansible-collection-solidping)
+installs the server and manages checks, notification channels, status pages and maintenance windows
+with idempotent modules. Everything is also reachable without it, through the REST API or the
+[config-as-code CLI](/features/config-as-code):
 
-| | Use it for | Needs on the target |
+| | Use it for | Needs |
 |---|---|---|
+| [The collection](#the-fclairambsolidping-collection) | Installing the server, managing resources one task each | the collection |
 | [A. `ansible.builtin.uri`](#a-one-task-per-check-with-uri) | A few checks, no extra tool | nothing |
 | [B. `sp apply`](#b-a-templated-manifest-with-sp-apply) | A whole organization, with drift detection | the `sp` binary |
 | [C. Event-Driven Ansible](#c-event-driven-ansible-remediation-from-an-alert) | Running a playbook when a check fails | `ansible-rulebook` |
 
 Already on Terraform or OpenTofu? See the [provider](/terraform) instead.
 
+## The `fclairamb.solidping` collection
+
+Install it from its repository (ansible-core 2.17 or later):
+
+```bash
+ansible-galaxy collection install git+https://github.com/fclairamb/ansible-collection-solidping.git
+```
+
+The `server` role installs the release binary for the host's architecture (checksum verified),
+registers it with `solidping service install` and writes `config.env` from your `SP_*` variables.
+`solidping_install_method: container` runs the image instead (needs `community.docker`).
+
+```yaml
+- hosts: monitoring
+  become: true
+  roles:
+    - role: fclairamb.solidping.server
+      vars:
+        solidping_version: latest
+        solidping_env:
+          SP_ADMIN_EMAIL: admin@acme.com
+          SP_DB_TYPE: postgres
+          SP_DB_URL: "{{ vault_solidping_db_url }}"
+```
+
+The modules mirror the [Terraform provider](/terraform): `check`, `notification_channel`,
+`status_page`, `status_page_section` and `maintenance_window`, each with an `*_info` module.
+They support check mode and `--diff`, and report `changed` only when the server differs from the
+task: only the options a task sets are compared, and in `config` only the keys it writes.
+
+```yaml
+- hosts: localhost
+  gather_facts: false
+  module_defaults:
+    group/fclairamb.solidping.solidping:
+      url: "{{ solidping_url }}"
+      org: "{{ solidping_org }}"
+      token: "{{ solidping_token }}"
+  tasks:
+    - name: Website check
+      fclairamb.solidping.check:
+        slug: website
+        name: Website
+        type: http
+        config:
+          url: https://www.acme.com
+        labels:
+          env: prod
+
+    - name: Status page section listing the production checks
+      fclairamb.solidping.status_page_section:
+        status_page: acme
+        name: Production
+        selector:
+          labels:
+            env: prod
+```
+
+Secrets (`config_sensitive`, `settings_sensitive`, a page `password`) are never returned by the
+API, so they are sent when the resource is created; set `secrets_update: always` to send them on
+every run. The [README](https://github.com/fclairamb/ansible-collection-solidping#readme) and
+`ansible-doc fclairamb.solidping.check` list every option.
+
 ## Authentication
 
 Create an organization-scoped personal access token (**Account → Tokens**, or
-`POST /api/v1/orgs/{org}/tokens`) and keep it in Ansible Vault. Option A needs a token with write access to checks. Option B needs an
+`POST /api/v1/orgs/{org}/tokens`) and keep it in Ansible Vault. The collection and option A need a token with write access to what they manage. Option B needs an
 **admin** token: `sp apply` and `sp checks diff` call the admin-only plan endpoints
 (`/checks/apply` and `/checks/export`), and a lower role is refused.
 
@@ -184,11 +249,3 @@ Notes:
 - A delivery counts as failed on a status of 300 or more, or after 30 seconds without an answer,
   so the playbook runs asynchronously: the source answers right away.
 - Match on `incident.resolved` to run a follow-up (close a ticket, undo a failover).
-
-## A collection
-
-An `fclairamb.solidping` collection is planned, in its own repository like the
-[Terraform provider](/terraform): a `server` role (install the binary or the container,
-`solidping service install`, a `config.env` templated from `SP_*` variables) and modules mirroring the
-provider (`check`, `notification_channel`, `status_page`, `status_page_section`,
-`maintenance_window`, with `*_info` lookups). Until it ships, the three options above cover the same ground.
