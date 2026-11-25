@@ -310,6 +310,30 @@ func EnvOverriddenKeys() []string {
 	return out
 }
 
+// KeyEmailInbox is the JMAP inbox configuration (jmap.SystemParameterKey). Its
+// JSON object carries the mailbox password, so it is sealed at rest whatever
+// secret flag it was saved with.
+const KeyEmailInbox ParameterKey = "email.inbox"
+
+// ShouldSealParameter reports whether a system parameter is encrypted at rest
+// when a master key is configured: any row saved with secret=true, any key the
+// parameter table defines as secret (whatever flag a caller passed), and
+// email.inbox. Pure data accessor, no database dependency.
+func ShouldSealParameter(key string, secret bool) bool {
+	if secret || key == string(KeyEmailInbox) {
+		return true
+	}
+
+	params := getKnownParameters()
+	for i := range params {
+		if string(params[i].Key) == key {
+			return params[i].Secret
+		}
+	}
+
+	return false
+}
+
 // ParameterDefinition defines a system parameter with its env var mapping.
 type ParameterDefinition struct {
 	Key       ParameterKey

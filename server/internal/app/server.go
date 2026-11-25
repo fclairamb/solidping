@@ -48,6 +48,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/db/sysparamseal"
 	"github.com/fclairamb/solidping/server/internal/discoverytask"
 	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/email"
@@ -206,6 +207,9 @@ var docsFiles embed.FS
 // Server is the HTTP server for the SolidPing application.
 type Server struct {
 	dbService db.Service
+	// sysParams is dbService's sealing decorator for the secret system
+	// parameters (spec 2026-11-25-04); kept for the startup sweep and warning.
+	sysParams *sysparamseal.Service
 	jobSvc    jobsvc.Service
 	services  *services.Registry
 	// aiChecks authors and repairs AI-written js checks (spec 2026-10-03-07).
@@ -361,6 +365,17 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedDatabaseType, cfg.Database.Type)
 	}
+
+	// Seal the secret system parameters at rest (spec 2026-11-25-04). The
+	// decorator is installed before anything else holds the service, so every
+	// reader sees plaintext and every secret write is sealed. Installed even
+	// without a master key: a sealed row must then fail loudly, never read as
+	// missing.
+	sysParams, err := BuildSystemParamSealer(cfg, dbService)
+	if err != nil {
+		return nil, fmt.Errorf("init system parameter encryption: %w", err)
+	}
+	dbService = sysParams
 
 	// Initialize services
 	svcList := services.NewRegistry()
@@ -579,6 +594,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	server := &Server{
 		dbService:         dbService,
+		sysParams:         sysParams,
 		jobSvc:            jobService,
 		services:          svcList,
 		aiChecks:          aiChecksSvc,
@@ -4495,6 +4511,10 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 	// system-parameter overlay has mutated cfg.Auth.Password.* (see spec Q2).
 	reResolvePasswordPolicy(ctx, cfg)
 
+	// Without a master key, name the secret system parameters (the generated
+	// JWT signing key included) a database read would expose.
+	s.warnPlaintextSystemSecrets(ctx)
+
 	// Local login configured off with no SSO provider fails open: say so
 	// loudly at boot (spec 2026-11-21-02).
 	systemconfig.WarnLocalLoginFailOpen(ctx, s.dbService, cfg)
@@ -4634,6 +4654,10 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 		return nil
 	}
 
+	if err := s.sealPlaintextSystemParameters(ctx); err != nil {
+		return err
+	}
+
 	stats, err := credmigrate.Run(ctx, s.dbService, s.services.Credentials, credmigrate.Options{
 		Logger: slog.Default(),
 	})
@@ -4663,6 +4687,46 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 	}
 
 	return s.maybeNormalizePushoverSettings(ctx, s.services.Credentials)
+}
+
+// sealPlaintextSystemParameters seals the secret system parameters still stored
+// in plaintext, the generated auth.jwt_secret included (spec 2026-11-25-04).
+// The value does not change, so tokens signed before the restart keep
+// validating.
+func (s *Server) sealPlaintextSystemParameters(ctx context.Context) error {
+	if s.sysParams == nil {
+		return nil
+	}
+
+	sealed, err := s.sysParams.SealPlaintextRows(ctx)
+	if err != nil {
+		return fmt.Errorf("auto-migrate system parameters: %w", err)
+	}
+
+	if sealed > 0 {
+		slog.InfoContext(ctx, "encrypted plaintext secret system parameters at startup", "parametersSealed", sealed)
+	}
+
+	return nil
+}
+
+// warnPlaintextSystemSecrets names the secret system parameters stored in
+// plaintext because no master key is configured, the JWT signing key first:
+// a read of the database alone lets anyone sign tokens with it.
+func (s *Server) warnPlaintextSystemSecrets(ctx context.Context) {
+	if s.sysParams == nil || s.sysParams.Enabled() {
+		return
+	}
+
+	keys, err := s.sysParams.PlaintextSecretKeys(ctx)
+	if err != nil || len(keys) == 0 {
+		return
+	}
+
+	slog.WarnContext(ctx, "secret system parameters stored in plaintext",
+		"keys", keys,
+		"how_to_fix", "set SP_ENCRYPTION_MASTER_KEY (or SP_ENCRYPTION_MASTER_KEY_FILE) to encrypt them, "+
+			"and set SP_AUTH_JWT_SECRET to keep the JWT signing key out of the database")
 }
 
 // maybeNormalizePushoverSettings runs the one-shot Pushover key backfill
@@ -4944,6 +5008,24 @@ func BuildCredentialsService(cfg *config.Config, dbService db.Service) (credenti
 	}
 
 	return credentials.NewService(kek, credentials.NewParamStore(dbService))
+}
+
+// BuildSystemParamSealer wraps dbService with the decorator that seals the
+// secret system parameters under the system DEK, wrapped by the same master
+// key as the per-org DEKs. With no master key the decorator writes plaintext
+// (the documented fallback) and refuses to read sealed rows.
+func BuildSystemParamSealer(cfg *config.Config, dbService db.Service) (*sysparamseal.Service, error) {
+	kek, err := loadEncryptionMasterKey(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	sealer, err := credentials.NewSystemSealer(kek, dbService)
+	if err != nil {
+		return nil, err
+	}
+
+	return sysparamseal.Wrap(dbService, sealer, systemconfig.ShouldSealParameter), nil
 }
 
 // loadEncryptionMasterKey returns the raw KEK bytes from the env-derived
