@@ -33,6 +33,30 @@ jobs:
         with:
           token: ${{ secrets.CI_PAT }}
 
+      # GitHub marks the new release "Latest" as soon as release-please creates
+      # it, but its server and sp binaries are only attached by the tag-triggered
+      # jobs in ci.yml 15 to 25 minutes later. In between,
+      # releases/latest/download/solidping-linux-amd64.gz (install docs, Glama
+      # build) answered 404, and for 11.5 hours when v0.53.0's upload was
+      # cancelled (solidping-business#111). Hand "Latest" back to the previous
+      # stable release; ci.yml's `mark-latest` moves it to the new one once
+      # every binary is attached.
+      - name: Keep "Latest" on the previous release until the binaries are attached
+        if: ${{ steps.release.outputs.release_created == 'true' && !contains(steps.release.outputs.tag_name, '-') }}
+        env:
+          GH_TOKEN: ${{ secrets.CI_PAT }}
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          prev=$(gh release list --repo "${{ github.repository }}" --exclude-drafts --exclude-pre-releases \
+            --limit 20 --json tagName --jq "[.[] | select(.tagName != \"$TAG\")][0].tagName // empty")
+          if [[ -z "$prev" ]]; then
+            echo "::notice::no previous release: $TAG stays Latest"
+            exit 0
+          fi
+          gh release edit "$prev" --repo "${{ github.repository }}" --latest
+          echo "Latest held on $prev until $TAG has its binaries"
+
       # Drift detector: if HEAD is a merged `chore(release): vX.Y.Z` commit
       # but no matching GitHub release exists, release-please lost track of
       # its own PR. Fail the workflow loudly — silent drift means a version

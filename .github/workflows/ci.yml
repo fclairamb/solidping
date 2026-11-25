@@ -1998,6 +1998,32 @@ jobs:
             sleep $((attempt * 15))
           done
 
+  # Moves "Latest" to this release once both binary jobs attached their
+  # assets. release-please.yml left it on the previous release so that
+  # releases/latest/download/<asset> never points at a release without them
+  # (solidping-business#111). If either upload fails, Latest stays where it
+  # was: re-run the failed job, this one follows.
+  mark-latest:
+    name: Mark the release as latest
+    runs-on: ubuntu-26.04
+    needs: [server-release, cli-release]
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+    permissions:
+      contents: write
+    steps:
+      - name: Mark the release as latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          gh release edit "$TAG_NAME" --repo "${{ github.repository }}" --latest
+          for asset in solidping-linux-amd64.gz sp-linux-amd64.gz; do
+            curl -fsSIL -o /dev/null "https://github.com/${{ github.repository }}/releases/latest/download/$asset" \
+              || { echo "::error::releases/latest/download/$asset does not resolve after marking $TAG_NAME latest" >&2; exit 1; }
+          done
+          echo "$TAG_NAME is Latest, its binaries resolve"
+
   deploy:
     name: Deploy to k8xp
     runs-on: ubuntu-26.04
