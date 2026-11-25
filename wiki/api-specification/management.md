@@ -80,7 +80,7 @@ the HTML format and rewrites the template's own
 dark-mode client applies. Without the param the response is the untouched
 template. Any other value is a 400. See
 [features/email-dark-mode.md](../features/email-dark-mode.md).
-`?locale=en|fr|de|es` (default `en`, which is the same bytes as no param)
+`?locale=en|fr|de|es|zh` (default `en`, which is the same bytes as no param)
 renders the mail in that language (spec 2026-10-21-01). It is validated before
 rendering: a full tag (`fr-FR`) or an unsupported language is a 400.
 Registered only when `SP_RUNMODE=test`. Auth: public (test mode only)

@@ -16,6 +16,7 @@ const EXPECTED: Record<string, string> = {
   fr: "Se connecter avec une clé d'accès",
   de: "Mit Passkey anmelden",
   es: "Iniciar sesión con llave de acceso",
+  zh: "使用通行密钥登录",
 };
 
 test.describe("Login: passkey button is translated", () => {

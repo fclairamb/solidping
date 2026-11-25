@@ -33,7 +33,7 @@ import (
 //	{"<namespace>.<key>": {"<lang>": "<why>"}}
 var (
 	errAllowlistForeignKey = errors.New("allowlist key outside its file's namespace")
-	errAllowlistLang       = errors.New("allowlist language must be fr, de or es")
+	errAllowlistLang       = errors.New("allowlist language must be fr, de, es or zh")
 	errAllowlistNoReason   = errors.New("allowlist entry without a reason")
 )
 
@@ -95,7 +95,7 @@ func identicalAllowlist(t *testing.T) map[string][]string {
 }
 
 func otherLangs() []string {
-	return []string{LangFrench, LangGerman, LangSpanish}
+	return []string{LangFrench, LangGerman, LangSpanish, LangChinese}
 }
 
 // missingAndExtra compares the key set of other against en.

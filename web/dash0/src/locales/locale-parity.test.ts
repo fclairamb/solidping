@@ -9,7 +9,7 @@ import path from "node:path";
 // keys only exist in `en` — it renders fine in English and silently falls
 // back to raw English strings (or the raw dotted key, with no fallback) in
 // every other locale. Comparing KEY SETS across locales — not values — is
-// what catches "this namespace file was never updated for fr/de/es" without
+// what catches "this namespace file was never updated for fr/de/es/zh" without
 // having to know what any individual page renders.
 //
 // This test is expected to fail the day a new namespace or key is added to
@@ -17,7 +17,7 @@ import path from "node:path";
 // locale file, don't narrow this test.
 
 const LOCALES_DIR = path.resolve(__dirname);
-const LANGS = ["en", "fr", "de", "es"] as const;
+const LANGS = ["en", "fr", "de", "es", "zh"] as const;
 
 /** Recursively lists every leaf key path, dotted, the way i18next resolves a
  * nested key ("form.confirmationPeriod"). Array values are treated as leaves

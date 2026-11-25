@@ -1,0 +1,41 @@
+{
+  "confirm": {
+    "subject": "确认订阅 {page}",
+    "preheader": "确认你的邮箱地址，以开始接收 {page} 的更新。",
+    "heading": "确认你的订阅",
+    "intro": "你请求接收 <strong>{page}</strong> 的状态更新。请确认你的邮箱地址，以开始接收通知。",
+    "button": "确认订阅",
+    "ignore": "如果你没有发起此请求，可以安全地忽略这封邮件。",
+    "textIntro": "你请求接收状态更新。请确认你的邮箱地址："
+  },
+  "update": {
+    "subject": "{page}：{title}",
+    "kind": {
+      "incidentOpened": "新故障",
+      "update": "状态更新",
+      "resolved": "已解决"
+    },
+    "viewStatusPage": "查看状态页",
+    "moreInfo": "更多信息",
+    "reason": "你收到这封邮件，是因为你订阅了 {page}。"
+  },
+  "landing": {
+    "confirmed": {
+      "title": "订阅已确认",
+      "body": "你现在已订阅 {page} 的更新。"
+    },
+    "unsubscribed": {
+      "title": "已退订",
+      "body": "你将不再收到 {page} 的更新。"
+    },
+    "expired": {
+      "title": "链接已过期",
+      "body": "此链接已失效，可能已被使用。"
+    },
+    "failed": {
+      "title": "出现问题",
+      "body": "请稍后重试。"
+    },
+    "back": "返回状态页"
+  }
+}

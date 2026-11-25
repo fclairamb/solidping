@@ -15,7 +15,7 @@ const keyPreferences = "preferences"
 
 // Preference validation errors (PATCH /auth/me answers 400 VALIDATION_ERROR).
 var (
-	ErrUnsupportedLocale = errors.New("locale must be one of en, fr, de, es")
+	ErrUnsupportedLocale = errors.New("locale must be one of en, fr, de, es, zh")
 	ErrInvalidTimezone   = errors.New("timezone must be an IANA zone name, e.g. Europe/Paris")
 	ErrInvalidWindow     = errors.New("dashboardWindow must be one of 24h, 7d, 30d")
 )

@@ -9512,7 +9512,7 @@ type UpdatePreferencesRequest struct {
 	// Example: 7d
 	DashboardWindow *string `json:"dashboardWindow,omitempty"`
 
-	// Locale en, fr, de or es. A full BCP 47 tag (fr-FR) is stored as its language.
+	// Locale en, fr, de, es or zh. A full BCP 47 tag (fr-FR) is stored as its language.
 	//
 	// Example: fr
 	Locale *string `json:"locale,omitempty"`
@@ -11771,7 +11771,7 @@ type ClientInterface interface {
 	// `preferences` sets the language and timezone the server writes this
 	// user's emails in, and the dashboard's availability window. Every field
 	// is optional (a preferences-only body is valid); an empty string clears
-	// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+	// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es, zh (a full
 	// tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
 	// IANA database does not know, or a dashboard window other than 24h, 7d,
 	// 30d.
@@ -11802,7 +11802,7 @@ type ClientInterface interface {
 	// `preferences` sets the language and timezone the server writes this
 	// user's emails in, and the dashboard's availability window. Every field
 	// is optional (a preferences-only body is valid); an empty string clears
-	// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+	// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es, zh (a full
 	// tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
 	// IANA database does not know, or a dashboard window other than 24h, 7d,
 	// 30d.
@@ -15446,7 +15446,7 @@ func (c *Client) GetCurrentUser(ctx context.Context, reqEditors ...RequestEditor
 // `preferences` sets the language and timezone the server writes this
 // user's emails in, and the dashboard's availability window. Every field
 // is optional (a preferences-only body is valid); an empty string clears
-// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es, zh (a full
 // tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
 // IANA database does not know, or a dashboard window other than 24h, 7d,
 // 30d.
@@ -15487,7 +15487,7 @@ func (c *Client) UpdateMeWithBody(ctx context.Context, contentType string, body 
 // `preferences` sets the language and timezone the server writes this
 // user's emails in, and the dashboard's availability window. Every field
 // is optional (a preferences-only body is valid); an empty string clears
-// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es, zh (a full
 // tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
 // IANA database does not know, or a dashboard window other than 24h, 7d,
 // 30d.
@@ -38650,7 +38650,7 @@ type ClientWithResponsesInterface interface {
 	// `preferences` sets the language and timezone the server writes this
 	// user's emails in, and the dashboard's availability window. Every field
 	// is optional (a preferences-only body is valid); an empty string clears
-	// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+	// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es, zh (a full
 	// tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
 	// IANA database does not know, or a dashboard window other than 24h, 7d,
 	// 30d.
@@ -38681,7 +38681,7 @@ type ClientWithResponsesInterface interface {
 	// `preferences` sets the language and timezone the server writes this
 	// user's emails in, and the dashboard's availability window. Every field
 	// is optional (a preferences-only body is valid); an empty string clears
-	// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+	// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es, zh (a full
 	// tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
 	// IANA database does not know, or a dashboard window other than 24h, 7d,
 	// 30d.
@@ -60717,7 +60717,7 @@ func (c *ClientWithResponses) GetCurrentUserWithResponse(ctx context.Context, re
 // `preferences` sets the language and timezone the server writes this
 // user's emails in, and the dashboard's availability window. Every field
 // is optional (a preferences-only body is valid); an empty string clears
-// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es, zh (a full
 // tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
 // IANA database does not know, or a dashboard window other than 24h, 7d,
 // 30d.
@@ -60754,7 +60754,7 @@ func (c *ClientWithResponses) UpdateMeWithBodyWithResponse(ctx context.Context, 
 // `preferences` sets the language and timezone the server writes this
 // user's emails in, and the dashboard's availability window. Every field
 // is optional (a preferences-only body is valid); an empty string clears
-// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es (a full
+// one. `400 VALIDATION_ERROR` for a locale outside en, fr, de, es, zh (a full
 // tag such as `fr-FR` is accepted and stored as `fr`), a timezone the
 // IANA database does not know, or a dashboard window other than 24h, 7d,
 // 30d.

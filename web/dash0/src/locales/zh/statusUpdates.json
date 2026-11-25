@@ -1,0 +1,77 @@
+{
+  "title": "更新与公告",
+  "subtitle": "发布状态页更新，包括维护通知、一般公告，以及故障期间按时间发布的进展",
+  "newStatusUpdate": "新建更新",
+  "editStatusUpdate": "编辑更新",
+  "noStatusUpdates": "还没有更新",
+  "noStatusUpdatesHint": "发布第一条更新，让用户在故障期间了解进展。",
+  "noMatch": "没有匹配筛选条件的更新",
+  "searchPlaceholder": "按标题搜索…",
+  "viewPublic": "查看公开更新",
+  "partOfPublication": "属于已发布的故障",
+  "table": {
+    "title": "标题",
+    "kind": "类型",
+    "date": "日期"
+  },
+  "filters": {
+    "allPages": "所有页面",
+    "allSections": "所有分区",
+    "allChecks": "所有监控项",
+    "allKinds": "所有类型"
+  },
+  "kinds": {
+    "investigating": "调查中",
+    "identified": "已定位",
+    "monitoring": "监控中",
+    "resolved": "已解决",
+    "maintenance": "维护",
+    "info": "信息"
+  },
+  "deleteDialog": {
+    "title": "删除状态更新？",
+    "description": "这会从状态页移除该更新。此操作无法撤销。"
+  },
+  "toast": {
+    "created": "状态更新已创建",
+    "updated": "状态更新已保存",
+    "deleted": "状态更新已删除",
+    "deleteFailed": "删除状态更新失败"
+  },
+  "form": {
+    "details": "详情",
+    "createDescription": "在状态页上发布一条新更新。",
+    "editDescription": "编辑这条状态更新。",
+    "statusPage": "状态页",
+    "selectStatusPage": "选择状态页",
+    "section": "分区（可选）",
+    "noSection": "无分区",
+    "check": "监控项（可选）",
+    "kind": "类型",
+    "title": "标题",
+    "noCheck": "无监控项",
+    "titlePlaceholder": "正在调查错误率升高",
+    "body": "正文",
+    "bodyPlaceholder": "我们正在调查一个问题…",
+    "linkUrl": "链接 URL（可选）",
+    "linkUrlPlaceholder": "https://status.example.com/incident/123",
+    "publishedAt": "发布时间",
+    "cancel": "取消",
+    "saving": "保存中…",
+    "create": "创建",
+    "saveChanges": "保存更改"
+  },
+  "translations": {
+    "heading": "其他语言",
+    "description": "用另一种语言写完整的标题和正文。以该语言浏览页面的访客会看到这段内容，其他人看到上面的文本。留空的分组表示不提供翻译。",
+    "titleLabel": "标题",
+    "bodyLabel": "正文（Markdown）",
+    "languages": {
+      "en": "英语",
+      "fr": "法语",
+      "de": "德语",
+      "es": "西班牙语",
+      "zh": "简体中文"
+    }
+  }
+}

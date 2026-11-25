@@ -26,8 +26,8 @@ import en_statusPages from "./locales/en/statusPages.json";
 import en_statusUpdates from "./locales/en/statusUpdates.json";
 import en_support from "./locales/en/support.json";
 
-// English is the fallback language and stays in the main chunk. fr, de and es
-// each live in one lazily loaded chunk (all namespaces together), so a visitor
+// English is the fallback language and stays in the main chunk. fr, de, es and
+// zh each live in one lazily loaded chunk (all namespaces together), so a visitor
 // only downloads and parses the language they use.
 type Bundle = Record<string, Record<string, unknown>>;
 
@@ -35,6 +35,7 @@ export const localeLoaders: Record<string, () => Promise<{ default: Bundle }>> =
   fr: () => import("./locales/bundles/fr"),
   de: () => import("./locales/bundles/de"),
   es: () => import("./locales/bundles/es"),
+  zh: () => import("./locales/bundles/zh"),
 };
 
 const loaded = new Map<string, Promise<void>>();

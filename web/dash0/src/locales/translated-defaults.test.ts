@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
  *
  * That reads as internationalized and survives review, but if the key exists in
  * NO locale file, i18next renders the fallback — English, in every language.
- * And because the key is missing from `en`, `fr`, `de` and `es` *equally*, key
+ * And because the key is missing from `en`, `fr`, `de`, `es` and `zh` *equally*, key
  * parity holds: the parity test is structurally incapable of noticing.
  *
  * That is not hypothetical. The whole "private locations" feature (83 strings)
@@ -112,7 +112,7 @@ describe("t() calls with an inline English default", () => {
 
     expect(
       orphans,
-      `These strings render their English fallback in EVERY language. Add the key to all four locales.\n\n${orphans.join("\n")}\n`,
+      `These strings render their English fallback in EVERY language. Add the key to all locales.\n\n${orphans.join("\n")}\n`,
     ).toEqual([]);
   });
 });

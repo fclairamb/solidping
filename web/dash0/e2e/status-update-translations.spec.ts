@@ -2,14 +2,15 @@ import { test, expect, API_BASE, disableHttpCache, type Page, STATUS_BASE } from
 
 // Hand-written status page text in several languages (spec 2026-11-18-04).
 //
-// An operator writes a status update in dash0 with a French translation. The
-// public page shows the French title and body to a reader in French, and the
-// literal (English) text to a reader in German, who has no entry: the read
-// order is translation, then recipe, then literal.
+// An operator writes a status update in dash0 with French and Chinese
+// translations. The public page shows the French title and body to a reader in
+// French, the Chinese text to a reader in Chinese, and the literal (English)
+// text to a reader in German, who has no entry: the read order is translation,
+// then recipe, then literal.
 //
-// The French reading is the positive control of the German one: the same page
-// and the same update, so "no French text with ?lang=de" cannot pass because
-// the update never reached the page.
+// The French and Chinese readings are the positive control of the German one:
+// the same page and the same update, so "no French text with ?lang=de" cannot
+// pass because the update never reached the page.
 
 async function createStatusPage(page: Page, suffix: string): Promise<{ slug: string; name: string }> {
   await page.goto("orgs/test/status-pages/new");
@@ -49,6 +50,8 @@ test.describe("Status update translations", () => {
     const body = `We are investigating the payments outage ${suffix}.`;
     const frTitle = `Panne des paiements ${suffix}`;
     const frBody = `Nous enquêtons sur la panne des paiements ${suffix}.`;
+    const zhTitle = `付款故障 ${suffix}`;
+    const zhBody = `我们正在调查付款故障 ${suffix}。`;
 
     await page.goto("orgs/test/status-updates/new");
     await expect(page.getByTestId("status-update-form-title")).toBeVisible({ timeout: 30000 });
@@ -67,6 +70,9 @@ test.describe("Status update translations", () => {
     await page.getByTestId("translation-fr-toggle").click();
     await page.getByTestId("translation-fr-title").fill(frTitle);
     await page.getByTestId("translation-fr-body").fill(frBody);
+    await page.getByTestId("translation-zh-toggle").click();
+    await page.getByTestId("translation-zh-title").fill(zhTitle);
+    await page.getByTestId("translation-zh-body").fill(zhBody);
 
     await page.getByTestId("status-update-form-submit").click();
     await page.waitForURL(/\/status-updates\/?$/, { timeout: 15000 });
@@ -82,12 +88,17 @@ test.describe("Status update translations", () => {
     await expect(card(publicPage)).toHaveText(frTitle, { timeout: 30000 });
     await expect(publicPage.getByTestId("status-update-body")).toHaveText(frBody);
 
+    // Chinese reader sees the Chinese text.
+    await publicPage.goto(`${API_BASE}${STATUS_BASE}/test/${slug}?lang=zh`);
+    await expect(card(publicPage)).toHaveText(zhTitle, { timeout: 30000 });
+    await expect(publicPage.getByTestId("status-update-body")).toHaveText(zhBody);
+
     // German reader: no entry, so the literal text.
     await publicPage.goto(`${API_BASE}${STATUS_BASE}/test/${slug}?lang=de`);
     await expect(card(publicPage)).toHaveText(title, { timeout: 30000 });
     await expect(publicPage.getByTestId("status-update-body")).toHaveText(body);
 
-    // The edit route round-trips the translation. Pick this test's row by its
+    // The edit route round-trips the translations. Pick this test's row by its
     // title: other specs add updates to the same org in parallel, so the first
     // row is not always ours.
     await page
@@ -96,5 +107,6 @@ test.describe("Status update translations", () => {
       .click();
     await page.waitForURL(/\/status-updates\/[0-9a-f-]{36}\/edit/, { timeout: 15000 });
     await expect(page.getByTestId("translation-fr-title")).toHaveValue(frTitle);
+    await expect(page.getByTestId("translation-zh-title")).toHaveValue(zhTitle);
   });
 });

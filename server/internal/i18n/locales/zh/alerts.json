@@ -1,0 +1,118 @@
+{
+  "emphasis": "<strong>{text}</strong>",
+  "link": "<a href=\"{url}\">{text}</a>",
+  "openChecks": "打开你的监控项",
+  "escalation": {
+    "subject": "{check} 仍处于故障状态，已升级给你",
+    "pill": "已升级",
+    "heading": "{check} 仍处于故障状态",
+    "lead": "没有人在规定时间内确认，因此已升级给你。",
+    "failedChecks": "失败的监控项",
+    "unknownCheck": "未知监控项"
+  },
+  "pagingNudge": {
+    "subject": "为 {org} 设置告警通知",
+    "preheader": "添加一个联系方式，让 SolidPing 在出问题时能第一时间联系到你。",
+    "heading": "选择 SolidPing 联系你的方式",
+    "asked": "{org} 的管理员要求你设置 SolidPing 在出问题时联系你的方式。",
+    "cta": "添加并验证联系方式",
+    "ctaText": "在此添加并验证电话或消息联系方式：",
+    "emailOnly": "在你验证联系方式之前，告警只能通过邮件送达。",
+    "greeting": "你好，"
+  },
+  "testEmail": {
+    "smtp": {
+      "title": "SolidPing 测试邮件",
+      "body": "这是来自 SolidPing 的测试邮件。如果你收到了它，说明邮件配置工作正常。"
+    },
+    "route": {
+      "title": "来自 SolidPing 的测试通知",
+      "body": "这是来自 SolidPing 的测试通知。你的邮件投递工作正常。"
+    }
+  },
+  "testSend": {
+    "welcomeSubject": "[SolidPing] 欢迎！",
+    "alertSubject": "[SolidPing] 告警：{check}",
+    "alertSubjectNoCheck": "[SolidPing] 告警"
+  },
+  "regionOffline": {
+    "subject_one": "区域 {region} 离线：你的 {count} 个监控项未在运行",
+    "subject_other": "区域 {region} 离线：你的 {count} 个监控项未在运行",
+    "preheader": "自 {since} 起，仅从 {region} 运行的监控项已暂停执行。",
+    "pill": "区域离线",
+    "heading": "区域 {region} 离线",
+    "since": "SolidPing 区域 {region} 自 {since} 起处于离线状态。",
+    "blind_one": "{org} 中有 {count} 个监控项仅从这个区域运行，因此当前未运行监控：",
+    "blind_other": "{org} 中有 {count} 个监控项仅从这个区域运行，因此当前未运行监控：",
+    "more_one": "…另有 {count} 个。",
+    "more_other": "…另有 {count} 个。",
+    "reduced_one": "另有 {count} 个监控项仍在其他区域运行。",
+    "reduced_other": "另有 {count} 个监控项仍在其他区域运行。",
+    "nothingToDo": "你这边无需采取任何操作。SolidPing 团队已收到告警，区域恢复后你会收到第二封邮件。在此之前，这些监控项将显示无数据，而不是状态。",
+    "nothingToDoOneCheck": "你这边无需采取任何操作。SolidPing 团队已收到告警，区域恢复后你会收到第二封邮件。在此之前，这个监控项将显示无数据，而不是状态。"
+  },
+  "regionRecovered": {
+    "subject": "区域 {region} 已恢复，你的监控项已恢复运行",
+    "preheader": "这个区域离线了 {duration}。你的监控项已重新运行。",
+    "pill": "区域已恢复",
+    "heading": "区域 {region} 已恢复",
+    "moved": "{org} 中原本仅从 {region} 运行的监控项已不再依赖这个区域，现已重新开始监控。",
+    "back": "SolidPing 区域 {region} 已恢复在线，{org} 中原本仅从这个区域运行的监控项已恢复。",
+    "offline": "离线",
+    "offlineFor": "离线时长",
+    "offlineSince": "离线开始于",
+    "backAt": "恢复时间"
+  },
+  "usageCap": {
+    "pill": "月度额度已用完",
+    "otherChannels": "其他渠道（邮件、Slack、推送……）仍可正常使用。",
+    "onlyOnce": "这是本月关于此事的唯一一封邮件。",
+    "seePlans": "查看套餐",
+    "openUsage": "查看用量",
+    "usage": "用量",
+    "sms": {
+      "subject": "{org} 本月已用完所有短信告警额度",
+      "preheader_one": "短信告警将暂停至下个月：套餐每月包含 {count} 条。",
+      "preheader_other": "短信告警将暂停至下个月：套餐每月包含 {count} 条。",
+      "heading": "短信告警将暂停至下个月",
+      "used_one": "{org} 本月已用完套餐包含的 {count} 条短信告警。",
+      "used_other": "{org} 本月已用完套餐包含的 {count} 条短信告警。",
+      "dropped": "因此，SolidPing 刚刚丢弃了一条短信告警，并将持续丢弃后续告警，直到 {date}。",
+      "droppedNextMonth": "因此，SolidPing 刚刚丢弃了一条短信告警，并将持续丢弃后续告警，直到下个月 1 日（UTC）。",
+      "keep": "要继续接收短信告警，请升级到额度更高的套餐，或在集成中连接你自己的 Twilio 账户：通过这个账户发送的消息由 Twilio 计费，不计入套餐额度。"
+    },
+    "voice": {
+      "subject": "{org} 本月已用完所有语音通话告警额度",
+      "preheader_one": "语音通话告警将暂停至下个月：套餐每月包含 {count} 次。",
+      "preheader_other": "语音通话告警将暂停至下个月：套餐每月包含 {count} 次。",
+      "heading": "语音通话告警将暂停至下个月",
+      "used_one": "{org} 本月已用完套餐包含的 {count} 次语音通话告警。",
+      "used_other": "{org} 本月已用完套餐包含的 {count} 次语音通话告警。",
+      "dropped": "因此，SolidPing 刚刚丢弃了一条语音通话告警，并将持续丢弃后续告警，直到 {date}。",
+      "droppedNextMonth": "因此，SolidPing 刚刚丢弃了一条语音通话告警，并将持续丢弃后续告警，直到下个月 1 日（UTC）。",
+      "keep": "要继续接收语音通话告警，请升级到额度更高的套餐，或在集成中连接你自己的 Twilio 账户：通过这个账户拨打的通话由 Twilio 计费，不计入套餐额度。"
+    },
+    "whatsapp": {
+      "subject": "{org} 本月已用完所有 WhatsApp 告警额度",
+      "preheader_one": "WhatsApp 告警将暂停至下个月：套餐每月包含 {count} 条。",
+      "preheader_other": "WhatsApp 告警将暂停至下个月：套餐每月包含 {count} 条。",
+      "heading": "WhatsApp 告警将暂停至下个月",
+      "used_one": "{org} 本月已用完套餐包含的 {count} 条 WhatsApp 告警。",
+      "used_other": "{org} 本月已用完套餐包含的 {count} 条 WhatsApp 告警。",
+      "dropped": "因此，SolidPing 刚刚丢弃了一条 WhatsApp 告警，并将持续丢弃后续告警，直到 {date}。",
+      "droppedNextMonth": "因此，SolidPing 刚刚丢弃了一条 WhatsApp 告警，并将持续丢弃后续告警，直到下个月 1 日（UTC）。",
+      "keep": "要继续接收 WhatsApp 告警，请升级到额度更高的套餐。"
+    }
+  },
+  "customDomain": {
+    "subject": "你的状态页已停止在 {domain} 上提供服务",
+    "preheader": "DNS 重新验证持续失败，因此 {domain} 不再提供你的状态页。",
+    "pill": "自定义域名已禁用",
+    "heading": "{domain} 不再提供你的状态页",
+    "stopped": "状态页 {page}（{org}）的自定义域名 {domain} 连续多天未通过 DNS 重新验证，因此 SolidPing 已停止在这个域名上提供页面。访客现在看到的是错误页面，而不是你的状态页。",
+    "lastCheck": "最后一次检查报告：",
+    "fix": "修复方法：确认这个域名的 CNAME 记录仍指向状态页设置中显示的目标，然后点击{verify}。如果 DNS 自行恢复正确解析，SolidPing 也会在连续多次验证成功后自动恢复这个域名。",
+    "verify": "验证",
+    "openSettings": "打开状态页设置"
+  }
+}

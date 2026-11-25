@@ -213,9 +213,9 @@ correct. Reserve destructive red for destructive actions — never use it for a
 neutral or primary action, and never delete with a different icon or a muted
 color.
 
-## Translations (en, fr, de, es)
+## Translations (en, fr, de, es, zh)
 
-Every user-visible string goes through `t()` and exists in all four `src/locales/<lang>/<namespace>.json` files. `bun run test:unit` checks parity, defaults and untranslated values; the `i18n-local/no-untranslated-jsx-text` lint rule checks JSX text. Rules, allowlist and per-locale terminology: [wiki/conventions/dash0-translations.md](../../wiki/conventions/dash0-translations.md).
+Every user-visible string goes through `t()` and exists in all five `src/locales/<lang>/<namespace>.json` files. `bun run test:unit` checks parity, defaults and untranslated values; the `i18n-local/no-untranslated-jsx-text` lint rule checks JSX text. Rules, allowlist and per-locale terminology: [wiki/conventions/dash0-translations.md](../../wiki/conventions/dash0-translations.md).
 
 ## Adding New Features
 

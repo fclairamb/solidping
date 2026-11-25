@@ -13,6 +13,12 @@ describe("lazy locales", () => {
     expect(i18n.getResourceBundle("fr", "common")).toEqual(frCommon);
   });
 
+  it("changeLanguage('zh') loads the Simplified Chinese chunk", async () => {
+    await i18n.changeLanguage("zh");
+    expect(i18n.language).toBe("zh");
+    expect(i18n.getResourceBundle("zh", "common")).toBeDefined();
+  });
+
   it("falls back to English for an unknown language", async () => {
     await i18n.changeLanguage("xx");
     expect(i18n.t("actions.save", { ns: "common", defaultValue: "" })).toBe(

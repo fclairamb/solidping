@@ -24,7 +24,7 @@ import {
 // It covers dash0 and status0. status0 has no unit-test runner of its own, so
 // its locale tree is checked from here.
 
-const LANGS: readonly AllowlistLang[] = ["fr", "de", "es"];
+const LANGS: readonly AllowlistLang[] = ["fr", "de", "es", "zh"];
 
 type Json = { [k: string]: string | Json };
 
@@ -138,6 +138,7 @@ function loadTree(dir: string) {
         fr: readJson(path.join(dir, "fr", file)),
         de: readJson(path.join(dir, "de", file)),
         es: readJson(path.join(dir, "es", file)),
+        zh: readJson(path.join(dir, "zh", file)),
       },
     });
   }

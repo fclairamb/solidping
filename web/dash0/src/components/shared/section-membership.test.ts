@@ -4,6 +4,7 @@ import statusPagesEn from "@/locales/en/statusPages.json";
 import statusPagesFr from "@/locales/fr/statusPages.json";
 import statusPagesDe from "@/locales/de/statusPages.json";
 import statusPagesEs from "@/locales/es/statusPages.json";
+import statusPagesZh from "@/locales/zh/statusPages.json";
 
 import {
   membershipFromSelector,
@@ -34,6 +35,7 @@ const LOCALES: Record<string, Membership> = {
   fr: membershipOf(statusPagesFr),
   de: membershipOf(statusPagesDe),
   es: membershipOf(statusPagesEs),
+  zh: membershipOf(statusPagesZh),
 };
 
 // Exactly the keys section-membership.tsx and the section card ask i18next for.
@@ -82,7 +84,7 @@ const RENDERED_CLAIMED_ELSEWHERE_KEYS = [
  * worse, to invent a longer synonym that then overflows the control it sits in.
  */
 const SAME_IN = new Map<string, string[]>([
-  // "auto" is the same word in all four, and the badge is deliberately tiny.
+  // "auto" is the same word in en/fr/de/es, and the badge is deliberately tiny.
   ["autoBadge", ["fr", "de", "es"]],
   // "Manual" is the Spanish word for manual.
   ["manual", ["es"]],
