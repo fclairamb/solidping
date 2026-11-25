@@ -96,3 +96,60 @@ func TestLocalFS_ReadMissing(t *testing.T) {
 	)
 	r.ErrorIs(err, filestorage.ErrFileNotFound)
 }
+
+// TestLocalFS_DeletePrefix covers the reap of key-only blobs (spec
+// 2026-11-25-01): a fileID with "/" lands in sub-directories, a prefix
+// removes exactly what is under it, and another org is left alone.
+func TestLocalFS_DeletePrefix(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	backend := localfs.New(t.TempDir())
+
+	orgA, orgB := uuid.New(), uuid.New()
+	write := func(org uuid.UUID, fileID string) {
+		_, err := backend.WriteFile(ctx, org, filestorage.GroupTypeArchives, fileID,
+			bytes.NewReader([]byte("x")), filestorage.FileMetadata{})
+		r.NoError(err)
+	}
+
+	write(orgA, "check-1/2026-11-25/10.vortex")
+	write(orgA, "check-1/2026-11-25.vortex")
+	write(orgA, "check-2/2026-11-25/10.vortex")
+	write(orgB, "check-1/2026-11-25/10.vortex")
+
+	exists := func(org uuid.UUID, fileID string) bool {
+		rc, _, err := backend.ReadFile(ctx, org, filestorage.GroupTypeArchives, fileID)
+		if err != nil {
+			r.ErrorIs(err, filestorage.ErrFileNotFound)
+
+			return false
+		}
+
+		_ = rc.Close()
+
+		return true
+	}
+
+	count, err := backend.DeletePrefix(ctx, orgA, filestorage.GroupTypeArchives, "check-1/")
+	r.NoError(err)
+	r.Equal(2, count)
+	r.False(exists(orgA, "check-1/2026-11-25/10.vortex"))
+	r.True(exists(orgA, "check-2/2026-11-25/10.vortex"))
+
+	count, err = backend.DeletePrefix(ctx, orgA, filestorage.GroupTypeArchives, "")
+	r.NoError(err)
+	r.Equal(1, count)
+	r.False(exists(orgA, "check-2/2026-11-25/10.vortex"))
+	r.True(exists(orgB, "check-1/2026-11-25/10.vortex"), "another org must be untouched")
+
+	count, err = backend.DeletePrefix(ctx, orgA, filestorage.GroupTypeArchives, "")
+	r.NoError(err, "a group already gone is no error")
+	r.Zero(count)
+
+	for _, bad := range []string{"check-1", "../", "/abs/", "a//", "./"} {
+		_, err = backend.DeletePrefix(ctx, orgA, filestorage.GroupTypeArchives, bad)
+		r.ErrorIs(err, filestorage.ErrInvalidPrefix, bad)
+	}
+}

@@ -41,6 +41,12 @@ const (
 	// (spec 2026-10-03-03): server-written, never served to anyone but the
 	// worker that resumes the run.
 	GroupTypeCheckState GroupType = "check-state"
+	// GroupTypeArchives holds the Vortex archives of compacted results (spec
+	// 2026-11-25-01): server-written, never served over HTTP, and with no
+	// `files` row. The fileID is deterministic
+	// (<checkUID>/<YYYY-MM-DD>/<HH>.vortex, <checkUID>/<YYYY-MM-DD>.vortex), so
+	// the blobs are addressed by key only and reaped by DeletePrefix.
+	GroupTypeArchives GroupType = "archives"
 )
 
 // FileMetadata is the small bag of attributes a backend may need to write
@@ -65,6 +71,13 @@ type FileStorage interface {
 	// error: the only caller is a retention prune (spec 2026-09-25-34), which
 	// may race another prune of the same row.
 	DeleteFile(ctx context.Context, orgUID uuid.UUID, group GroupType, fileID string) error
+	// DeletePrefix removes every blob of (orgUID, group) whose fileID starts
+	// with prefix, and returns how many were removed. An empty prefix removes
+	// the whole group of the org. The prefix must be empty or end with "/" (a
+	// directory of fileIDs) and never climb out of the group (ErrInvalidPrefix).
+	// It exists for the blobs that have no `files` row, the archives, which an
+	// org deletion must still reap.
+	DeletePrefix(ctx context.Context, orgUID uuid.UUID, group GroupType, prefix string) (int, error)
 }
 
 // Errors returned by storage backends and the factory.
@@ -73,7 +86,28 @@ var (
 	ErrUnknownBackend     = errors.New("no storage backend registered for URI prefix")
 	ErrFileNotFound       = errors.New("file not found in storage")
 	ErrUnsupportedBackend = errors.New("unsupported file storage backend")
+	ErrInvalidPrefix      = errors.New("invalid file storage prefix")
 )
+
+// ValidatePrefix checks a DeletePrefix prefix: empty, or a "/"-terminated
+// relative path with no empty, "." or ".." segment.
+func ValidatePrefix(prefix string) error {
+	if prefix == "" {
+		return nil
+	}
+
+	if !strings.HasSuffix(prefix, "/") || strings.HasPrefix(prefix, "/") || strings.Contains(prefix, "\\") {
+		return ErrInvalidPrefix
+	}
+
+	for _, segment := range strings.Split(strings.TrimSuffix(prefix, "/"), "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return ErrInvalidPrefix
+		}
+	}
+
+	return nil
+}
 
 // BuildPath returns the conventional "<orgUID>/<group>/<fileID>" key used by
 // the local FS and S3 backends. Centralized so the two backends agree.

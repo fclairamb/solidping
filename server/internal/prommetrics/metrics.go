@@ -20,6 +20,7 @@ const (
 	labelRoute        = "route"
 	labelOutcome      = "outcome"
 	labelJobType      = "job_type"
+	labelTier         = "tier"
 	labelLane         = "lane"
 	labelMessageType  = "type"
 	labelListener     = "listener"
@@ -420,6 +421,34 @@ var (
 		},
 	)
 
+	// ArchivedRows counts the result rows written to the Vortex archive of
+	// compacted results (spec 2026-11-25-01), by target tier (hour, day).
+	ArchivedRows = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_archive_rows_total",
+			Help: "Result rows archived as Vortex files before compaction deleted them, by target tier",
+		},
+		[]string{labelTier},
+	)
+	// ArchivedBytes counts the bytes of archive files written, by target tier.
+	ArchivedBytes = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_archive_bytes_total",
+			Help: "Bytes of Vortex archive files written, by target tier",
+		},
+		[]string{labelTier},
+	)
+	// ArchiveFailures counts failed archive writes, by target tier. A failure
+	// keeps the source rows: compaction of that bucket stalls until the storage
+	// answers again, so a non-zero rate means the results table is growing.
+	ArchiveFailures = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_archive_failures_total",
+			Help: "Archive writes that failed (the compaction was rolled back), by target tier",
+		},
+		[]string{labelTier},
+	)
+
 	// RealtimeConnections tracks currently open realtime hint WebSocket
 	// connections. Global gauge — no per-org label so cardinality stays bounded.
 	RealtimeConnections = prometheus.NewGauge(
@@ -779,6 +808,7 @@ var (
 		JobsProcessed, JobDuration, JobSchedulingDelay, JobsQueueDepth,
 		EmailDeliveryLatency,
 		JobsReaped, JobsLeaseLost, ResultsReaped,
+		ArchivedRows, ArchivedBytes, ArchiveFailures,
 		RealtimeConnections, RealtimeHintsPublished,
 		RealtimeHintsCoalesced, RealtimeHintsDelivered,
 		RealtimeSubscriptions, RealtimeMessagesReceived,

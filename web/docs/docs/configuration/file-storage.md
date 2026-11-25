@@ -8,9 +8,13 @@ title: File Storage
 SolidPing stores a handful of binary blobs outside the database: organization
 logos, status-page brand assets (logo and favicon), and incident screenshots
 captured by browser checks. This is what "file storage" configures — it never
-holds check data, incidents, or any other row data. Metadata for each blob
+holds check data (except the optional result archive below), incidents, or any
+other row data. Metadata for each blob
 (name, size, MIME type, checksum) always lives in the database `files` table;
 only the bytes move between backends.
+
+The optional [result archive](/configuration/result-archive) also writes here,
+under `<orgUid>/archives/`: those Vortex files have no row in the `files` table.
 
 ## Backends
 

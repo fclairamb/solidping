@@ -28,6 +28,8 @@ import (
 
 const scheme = "s3://"
 
+var errDeleteObjects = errors.New("delete objects")
+
 // Backend writes blobs to an S3 bucket under an optional Prefix.
 type Backend struct {
 	Bucket string
@@ -203,6 +205,63 @@ func (b *Backend) DeleteFile(
 	}
 
 	return nil
+}
+
+// deleteBatchSize is the most keys one DeleteObjects call takes.
+const deleteBatchSize = 1000
+
+// DeletePrefix lists the objects under prefix+orgUID/group/prefix and deletes
+// them in batches of deleteBatchSize. A key the store fails to delete is an
+// error, after the rest of the batch went.
+func (b *Backend) DeletePrefix(
+	ctx context.Context, orgUID uuid.UUID, group filestorage.GroupType, prefix string,
+) (int, error) {
+	if err := filestorage.ValidatePrefix(prefix); err != nil {
+		return 0, err
+	}
+
+	// BuildPath with an empty fileID already ends with "/", so an empty prefix
+	// never matches a neighboring group whose name starts the same.
+	keyPrefix := b.objectKey(filestorage.BuildPath(orgUID, group, prefix))
+
+	paginator := s3.NewListObjectsV2Paginator(b.Client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(b.Bucket),
+		Prefix: aws.String(keyPrefix),
+	})
+
+	deleted := 0
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return deleted, fmt.Errorf("list objects: %w", err)
+		}
+
+		for start := 0; start < len(page.Contents); start += deleteBatchSize {
+			batch := page.Contents[start:min(start+deleteBatchSize, len(page.Contents))]
+
+			ids := make([]types.ObjectIdentifier, 0, len(batch))
+			for i := range batch {
+				ids = append(ids, types.ObjectIdentifier{Key: batch[i].Key})
+			}
+
+			out, err := b.Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+				Bucket: aws.String(b.Bucket),
+				Delete: &types.Delete{Objects: ids, Quiet: aws.Bool(true)},
+			})
+			if err != nil {
+				return deleted, fmt.Errorf("delete objects: %w", err)
+			}
+
+			deleted += len(ids) - len(out.Errors)
+
+			if len(out.Errors) > 0 {
+				return deleted, fmt.Errorf("%w: %d objects not deleted", errDeleteObjects, len(out.Errors))
+			}
+		}
+	}
+
+	return deleted, nil
 }
 
 // ParseURI splits "s3://orgUID/group/fileID" back into its parts.

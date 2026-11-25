@@ -308,6 +308,9 @@ See [Security & Encryption](/configuration/security) for the full guide — cred
 See [File Storage](/configuration/file-storage) for the full backend guide,
 S3 credential resolution, and worked examples.
 
+`SP_ARCHIVE_ENABLED=true` also archives the results that aggregation deletes
+into this storage, as Vortex files: see [Result Archive](/configuration/result-archive).
+
 ### Product Analytics
 
 Analytics is **off by default** — with no project API key set, the server sends
@@ -464,6 +467,7 @@ The SolidPing CLI client (`sp`) uses its own configuration:
 - [Security & Encryption](/configuration/security) - Credential encryption at rest, and tokens stored hashed so a database dump replays nothing
 - [Security Headers](/configuration/security-headers) - Content-Security-Policy, framing and embedding status pages
 - [File Storage](/configuration/file-storage) - Where uploaded blobs (org logos, status-page assets, screenshots) are stored, and the container volume trap
+- [Result Archive](/configuration/result-archive) - Optionally keep the results that aggregation deletes, as Vortex files in the file storage
 - [Product Analytics](/configuration/analytics) - Optional PostHog integration, off unless configured
 - [Data Retention](/configuration/data-retention) - How long raw results and summaries are kept, and how to tune it
 
