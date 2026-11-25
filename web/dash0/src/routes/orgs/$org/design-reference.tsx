@@ -2,9 +2,11 @@
 // hardcoded English — do not add i18n keys for the showcase content.
 // Only the sidebar entry (nav:designReference) is translated.
 
+import { ShortcutsList } from "@/components/shortcuts-help";
 import { asTranslateFn } from "@/lib/i18n-types";
 import { useMemo, useState } from "react";
 import { Chip } from "@/components/ui/chip";
+import { Kbd } from "@/components/ui/kbd";
 import { HttpTimingCard } from "@/components/checks/http-timing-card";
 import { SecretEncryptionPanel } from "@/components/checks/secret-encryption";
 import { PortInput, PortChips } from "@/components/checks/form/port-input";
@@ -381,6 +383,7 @@ function DesignReferencePage() {
       <OAuthProviderButtonsSection />
       <TwoFactorChallengeSection />
       <DataDisplaySection />
+<KeyboardShortcutsSection />
       <ResponsiveTableSection />
       <ListSurfaceSection />
       <DependencyRowSection />
@@ -4141,6 +4144,41 @@ function TwoFactorChallengeSection() {
           code={`import { TwoFactorChallenge } from "@/components/shared/two-factor-challenge";\n\n<TwoFactorChallenge\n  tempToken={challenge.tempToken}\n  onAttempt={() => setError(null)}\n  onVerified={(result) => land(result)}\n  onError={(err, message) => setError(message ?? describe(err))}\n  onBack={() => navigate({ to: "/login" })}\n/>`}
         />
       </div>
+    </Section>
+  );
+}
+
+function KeyboardShortcutsSection() {
+  return (
+    <Section
+      id="keyboard-shortcuts"
+      title="Keyboard shortcuts"
+      description="Page-level shortcuts use useHotkey (src/hooks/use-hotkey.ts): it skips events already handled (Radix layers consume Esc first), typing in inputs, and Ctrl/Cmd/Alt unless declared with mod. Cmd/Ctrl+Enter clicks the button marked data-submit-shortcut via useSubmitShortcut. The ? dialog (ShortcutsHelp) lists them. Hint keys use the Kbd primitive, hidden on narrow widths."
+    >
+      <div className="flex flex-wrap items-center gap-2" data-testid="design-kbd-examples">
+        <Kbd>Esc</Kbd>
+        <Kbd>/</Kbd>
+        <Kbd>n</Kbd>
+        <Kbd>?</Kbd>
+        <Kbd>Ctrl/Cmd</Kbd>
+        <Kbd>Enter</Kbd>
+      </div>
+      <div className="mt-3 max-w-md space-y-2 rounded-md border p-3" data-testid="design-shortcuts-help-content">
+        <ShortcutsList />
+        <Button
+          size="sm"
+          variant="outline"
+          data-testid="design-open-shortcuts-help"
+          onClick={() =>
+            document.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true }))
+          }
+        >
+          Open the ? dialog
+        </Button>
+      </div>
+      <pre className="mt-3 overflow-x-auto rounded-md border bg-muted p-3 text-xs">{`useHotkey("n", () => navigate(...));
+useHotkey("Escape", onEsc, { allowInEditable: true });
+useHotkey("Enter", submit, { mod: true, allowInEditable: true });`}</pre>
     </Section>
   );
 }

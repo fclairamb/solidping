@@ -209,5 +209,15 @@
     "sessionExpired": "会话已过期",
     "sessionChanged": "会话已变更",
     "network": "网络连接失败"
+  },
+  "shortcuts": {
+    "title": "键盘快捷键",
+    "commandMenu": "打开命令菜单",
+    "focusSearch": "聚焦搜索框",
+    "resetFilters": "清除搜索，然后重置筛选",
+    "newCheck": "新建检查",
+    "submitForm": "提交表单",
+    "help": "显示此帮助",
+    "esc": "Esc"
   }
 }
