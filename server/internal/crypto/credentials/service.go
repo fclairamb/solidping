@@ -100,6 +100,11 @@ type service struct {
 // callers decode it from base64 / file content and pass the bytes here.
 // If masterKey is nil or empty the service operates in disabled mode.
 func NewService(masterKey []byte, store DEKStore) (Service, error) {
+	return newService(masterKey, store)
+}
+
+// newService is NewService with the concrete type, for callers inside the package.
+func newService(masterKey []byte, store DEKStore) (*service, error) {
 	if len(masterKey) == 0 {
 		return &service{kek: nil, store: store}, nil
 	}

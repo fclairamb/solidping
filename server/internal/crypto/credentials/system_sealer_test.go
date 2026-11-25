@@ -3,6 +3,7 @@ package credentials
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"sync"
 	"testing"
 
@@ -11,6 +12,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
+var errDBDown = errors.New("db down")
+
 // memSystemParams is an in-memory SystemParameterDB with the raw service's
 // `{"value": …}` wrapping and GetOrCreate semantics.
 type memSystemParams struct {
@@ -18,11 +21,17 @@ type memSystemParams struct {
 	rows map[string]models.JSONMap
 	// beforeCreate runs once inside GetOrCreate, to simulate a racing replica.
 	beforeCreate func(rows map[string]models.JSONMap)
+	// getErr and createErr make the matching call fail.
+	getErr, createErr error
 }
 
 func (m *memSystemParams) GetSystemParameter(_ context.Context, key string) (*models.Parameter, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
 
 	value, ok := m.rows[key]
 	if !ok {
@@ -37,6 +46,10 @@ func (m *memSystemParams) GetOrCreateSystemParameter(
 ) (*models.Parameter, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if m.createErr != nil {
+		return nil, false, m.createErr
+	}
 
 	if m.beforeCreate != nil {
 		m.beforeCreate(m.rows)
@@ -155,4 +168,141 @@ func TestSystemSealerDisabled(t *testing.T) {
 
 	_, err = sealer.Open(t.Context(), "{}")
 	require.ErrorIs(t, err, ErrDisabled)
+}
+
+func TestNewSystemSealerRejectsBadKey(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewSystemSealer([]byte("too-short"), &memSystemParams{rows: map[string]models.JSONMap{}})
+	require.ErrorIs(t, err, ErrInvalidKey)
+}
+
+func TestSystemDEKStoreLoadErrors(t *testing.T) {
+	t.Parallel()
+
+	boom := errDBDown
+	ctx := t.Context()
+
+	t.Run("get fails", func(t *testing.T) {
+		t.Parallel()
+
+		store := NewSystemDEKStore(&memSystemParams{getErr: boom})
+		_, _, err := store.LoadDEK(ctx, "")
+		require.ErrorIs(t, err, boom)
+	})
+
+	t.Run("value cannot be marshaled", func(t *testing.T) {
+		t.Parallel()
+
+		store := NewSystemDEKStore(&memSystemParams{rows: map[string]models.JSONMap{
+			SystemDEKParameterKey: {"value": func() {}},
+		}})
+		_, _, err := store.LoadDEK(ctx, "")
+		require.ErrorContains(t, err, "marshal system dek param value")
+	})
+
+	t.Run("value has the wrong shape", func(t *testing.T) {
+		t.Parallel()
+
+		store := NewSystemDEKStore(&memSystemParams{rows: map[string]models.JSONMap{
+			SystemDEKParameterKey: {"value": 42},
+		}})
+		_, _, err := store.LoadDEK(ctx, "")
+		require.ErrorIs(t, err, ErrDEKParamShape)
+	})
+
+	t.Run("save fails", func(t *testing.T) {
+		t.Parallel()
+
+		store := NewSystemDEKStore(&memSystemParams{createErr: boom})
+		require.ErrorIs(t, store.SaveDEK(ctx, "", []byte("wrapped")), boom)
+	})
+}
+
+func TestSystemSealerSealPropagatesStoreErrors(t *testing.T) {
+	t.Parallel()
+
+	boom := errDBDown
+
+	t.Run("load fails", func(t *testing.T) {
+		t.Parallel()
+
+		sealer, err := NewSystemSealer(testKEK(t), &memSystemParams{getErr: boom})
+		require.NoError(t, err)
+
+		_, err = sealer.Seal(t.Context(), map[string]any{"value": "x"})
+		require.ErrorIs(t, err, boom)
+	})
+
+	t.Run("save fails", func(t *testing.T) {
+		t.Parallel()
+
+		sealer, err := NewSystemSealer(testKEK(t), &memSystemParams{
+			rows: map[string]models.JSONMap{}, createErr: boom,
+		})
+		require.NoError(t, err)
+
+		_, err = sealer.Seal(t.Context(), map[string]any{"value": "x"})
+		require.ErrorIs(t, err, boom)
+	})
+}
+
+func TestSystemSealerOpenPropagatesLoadError(t *testing.T) {
+	t.Parallel()
+
+	boom := errDBDown
+
+	sealer, err := NewSystemSealer(testKEK(t), &memSystemParams{getErr: boom})
+	require.NoError(t, err)
+
+	_, err = sealer.Open(t.Context(), "{}")
+	require.ErrorIs(t, err, boom)
+	require.NotErrorIs(t, err, ErrSystemDEKMissing)
+}
+
+// foreignDEKRow returns a system DEK row wrapped by a KEK nobody here holds.
+func foreignDEKRow(t *testing.T) models.JSONMap {
+	t.Helper()
+
+	foreignStore := &memSystemParams{rows: map[string]models.JSONMap{}}
+
+	foreign, err := NewSystemSealer(testKEK(t), foreignStore)
+	require.NoError(t, err)
+
+	_, err = foreign.Seal(t.Context(), map[string]any{"value": "x"})
+	require.NoError(t, err)
+
+	return foreignStore.rows[SystemDEKParameterKey]
+}
+
+func TestSystemSealerSealRaceLostTwice(t *testing.T) {
+	t.Parallel()
+
+	foreign := foreignDEKRow(t)
+	store := &memSystemParams{rows: map[string]models.JSONMap{}}
+	// The racing replica's key lands after our load but cannot be opened with
+	// our KEK, so the retry fails as well.
+	store.beforeCreate = func(rows map[string]models.JSONMap) {
+		rows[SystemDEKParameterKey] = foreign
+	}
+
+	sealer, err := NewSystemSealer(testKEK(t), store)
+	require.NoError(t, err)
+
+	_, err = sealer.Seal(t.Context(), map[string]any{"value": "x"})
+	require.ErrorIs(t, err, ErrOrgKeyUnavailable)
+	require.NotErrorIs(t, err, ErrDEKRoundTrip)
+}
+
+func TestSystemSealerOpenWithWrongKEK(t *testing.T) {
+	t.Parallel()
+
+	store := &memSystemParams{rows: map[string]models.JSONMap{SystemDEKParameterKey: foreignDEKRow(t)}}
+
+	sealer, err := NewSystemSealer(testKEK(t), store)
+	require.NoError(t, err)
+
+	_, err = sealer.Open(t.Context(), "{}")
+	require.ErrorIs(t, err, ErrOrgKeyUnavailable)
+	require.NotErrorIs(t, err, ErrSystemDEKMissing)
 }

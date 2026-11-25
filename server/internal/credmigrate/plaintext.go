@@ -259,11 +259,7 @@ func migrateConnectionsPlaintext(
 
 		secrets := credentials.ConnectionSecretFields(conn.Type)
 
-		existing, skip, oErr := existingPlaintextPrivate(conn, secrets)
-		if oErr != nil {
-			return stats, oErr
-		}
-
+		existing, skip := existingPlaintextPrivate(conn, secrets)
 		if skip {
 			continue
 		}
@@ -313,21 +309,19 @@ func migrateConnectionsPlaintext(
 // written, e.g. ntfy's legacy accessToken): the envelope's secrets are then
 // returned so the re-sealed envelope keeps them. Rows with a real encrypted
 // envelope are left to the encrypted reconcile.
-func existingPlaintextPrivate(conn *models.Integration, secrets []string) (map[string]any, bool, error) {
+func existingPlaintextPrivate(conn *models.Integration, secrets []string) (map[string]any, bool) {
 	if conn.SettingsPrivate == nil || *conn.SettingsPrivate == "" {
-		return nil, false, nil
+		return nil, false
 	}
 
 	if !credentials.IsPlaintextEnvelope(*conn.SettingsPrivate) || !publicHoldsSecret(conn.Settings, secrets) {
-		return nil, true, nil
+		return nil, true
 	}
 
-	existing, err := credentials.OpenPlaintext(*conn.SettingsPrivate)
-	if err != nil {
-		return nil, false, fmt.Errorf("open plaintext envelope of connection %s: %w", conn.UID, err)
-	}
+	// IsPlaintextEnvelope already parsed the envelope: opening it cannot fail.
+	existing, _ := credentials.OpenPlaintext(*conn.SettingsPrivate)
 
-	return existing, false, nil
+	return existing, false
 }
 
 // sealAndKeys builds the plaintext envelope and the sorted JSON key list for a

@@ -95,17 +95,12 @@ type SystemSealer struct {
 // NewSystemSealer builds the sealer. With an empty masterKey it is disabled:
 // Seal and Open return ErrDisabled.
 func NewSystemSealer(masterKey []byte, database SystemParameterDB) (*SystemSealer, error) {
-	svc, err := NewService(masterKey, NewSystemDEKStore(database))
+	svc, err := newService(masterKey, NewSystemDEKStore(database))
 	if err != nil {
 		return nil, err
 	}
 
-	impl, ok := svc.(*service)
-	if !ok {
-		return nil, ErrDEKBadType
-	}
-
-	return &SystemSealer{svc: impl}, nil
+	return &SystemSealer{svc: svc}, nil
 }
 
 // Enabled reports whether a master key is configured.

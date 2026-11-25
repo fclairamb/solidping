@@ -144,3 +144,57 @@ func TestRunPlaintextMovesNtfyLegacyAccessToken(t *testing.T) {
 	r.NoError(err)
 	r.Zero(stats2.Migrated())
 }
+
+// TestReconcileConnectionRegistry_UndecryptablePrivateFails: a row whose
+// envelope was sealed under another master key cannot be re-split, and the
+// error names the connection instead of dropping the legacy token silently.
+func TestReconcileConnectionRegistry_UndecryptablePrivateFails(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	dbSvc, org := newNtfyReconcileDB(t, "rec-ntfy-foreign")
+
+	foreign, err := credentials.NewService(newKEK(t), newMemDEKStore())
+	r.NoError(err)
+
+	conn := seedEncryptedConnection(ctx, t, dbSvc, foreign, org, models.ConnectionTypeNtfy,
+		map[string]any{"server_url": "https://ntfy.sh", "topic": "alerts", "accessToken": "tk_legacy"},
+		map[string]any{"auth_token": "tk_canonical"})
+
+	ours, err := credentials.NewService(newKEK(t), newMemDEKStore())
+	r.NoError(err)
+
+	_, err = credmigrate.ReconcileConnectionRegistry(ctx, dbSvc, ours, credmigrate.Options{})
+	r.ErrorContains(err, "decrypt connection "+conn.UID)
+
+	got, err := dbSvc.GetChannel(ctx, conn.UID)
+	r.NoError(err)
+	r.Equal("tk_legacy", got.Settings["accessToken"], "a failed reconcile leaves the row untouched")
+}
+
+// TestRunPlaintextLeavesEncryptedEnvelopeWithLegacyToken: a row with a real
+// encrypted envelope is the encrypted reconcile's, never re-sealed as plaintext.
+func TestRunPlaintextLeavesEncryptedEnvelopeWithLegacyToken(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	dbSvc, org := newNtfyReconcileDB(t, "pt-ntfy-encrypted")
+
+	creds, err := credentials.NewService(newKEK(t), newMemDEKStore())
+	r.NoError(err)
+
+	conn := seedEncryptedConnection(ctx, t, dbSvc, creds, org, models.ConnectionTypeNtfy,
+		map[string]any{"server_url": "https://ntfy.sh", "topic": "alerts", "accessToken": "tk_legacy"},
+		map[string]any{"auth_token": "tk_canonical"})
+
+	stats, err := credmigrate.RunPlaintext(ctx, dbSvc, credmigrate.Options{})
+	r.NoError(err)
+	r.Zero(stats.Migrated())
+
+	got, err := dbSvc.GetChannel(ctx, conn.UID)
+	r.NoError(err)
+	r.False(credentials.IsPlaintextEnvelope(*got.SettingsPrivate))
+	r.Equal("tk_legacy", got.Settings["accessToken"])
+}
