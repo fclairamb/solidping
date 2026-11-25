@@ -209,9 +209,10 @@ JSON matching the `Config` struct
 }
 ```
 
-The `password` field is stored encrypted at rest when
-`SP_ENCRYPTION_MASTER_KEY` is set — same envelope encryption that
-covers check-config secrets and channel settings. The dashboard's
+The whole `email.inbox` value, `password` included, is stored encrypted
+at rest when `SP_ENCRYPTION_MASTER_KEY` is set: the system data key
+(`encryption.system_dek`) seals it, through the decorator in
+`server/internal/db/sysparamseal/`, whatever secret flag it was saved with. The dashboard's
 server-config page edits this JSON; the manager reconnects when it
 changes.
 

@@ -29,9 +29,13 @@ type ReconcileStats struct {
 }
 
 // ReconcileConnectionRegistry performs the one-shot, idempotent backfill that
-// demotes URL fields (webhook `url`, discord/googlechat/mattermost
-// `webhook_url`) from the encrypted `settings_private` blob to the public
-// `settings` JSONB, matching the current (post-fix) secret registry.
+// re-aligns stored connection settings with the current secret registry:
+//   - it demotes URL fields (webhook `url`, discord/googlechat/mattermost
+//     `webhook_url`) from the encrypted `settings_private` blob to the public
+//     `settings` JSONB;
+//   - it moves a key the registry declares secret but that still sits in the
+//     public `settings` (ntfy's legacy `accessToken`, declared after rows were
+//     written with it) into the encrypted blob.
 //
 // For each affected connection it:
 //  1. reconstitutes the full plaintext = MergeConfig(public, DecryptForOrg(private));
@@ -41,7 +45,8 @@ type ReconcileStats struct {
 //     settings_private_keys when none remain) and writes the row.
 //
 // Idempotency: rows whose settings_private_keys no longer contains a URL key
-// are skipped, so re-running is a no-op. No-op as a whole when encryption is
+// and whose public settings hold no declared secret are skipped, so re-running
+// is a no-op. No-op as a whole when encryption is
 // disabled — those rows already store the URL in plaintext public settings and
 // are fixed by the registry change alone.
 //
@@ -99,30 +104,40 @@ func reconcileConnection(
 	ctx context.Context, dbSvc db.Service, creds credentials.Service,
 	org *models.Organization, conn *models.Integration, opts Options, logger *slog.Logger,
 ) (bool, error) {
-	// Nothing encrypted on this row — already plaintext, skip.
-	if conn.SettingsPrivate == nil || *conn.SettingsPrivate == "" {
+	secrets := credentials.ConnectionSecretFields(conn.Type)
+	hasPrivate := conn.SettingsPrivate != nil && *conn.SettingsPrivate != ""
+
+	// Idempotency gate: act only when a URL key is still recorded as private,
+	// or when a key the registry now declares secret (e.g. ntfy's legacy
+	// accessToken) still sits in the public settings.
+	demoteURL := hasPrivate && privateKeysContainURL(conn.SettingsPrivateKeys)
+	promoteSecret := publicHoldsSecret(conn.Settings, secrets)
+
+	if !demoteURL && !promoteSecret {
 		return false, nil
 	}
 
-	// Idempotency gate: only act when a URL key is still recorded as private.
-	if !privateKeysContainURL(conn.SettingsPrivateKeys) {
-		return false, nil
-	}
+	private := map[string]any{}
 
-	private, decErr := creds.DecryptForOrg(ctx, conn.OrganizationUID, *conn.SettingsPrivate)
-	if decErr != nil {
-		return false, fmt.Errorf("decrypt connection %s: %w", conn.UID, decErr)
+	if hasPrivate {
+		dec, decErr := creds.DecryptForOrg(ctx, conn.OrganizationUID, *conn.SettingsPrivate)
+		if decErr != nil {
+			return false, fmt.Errorf("decrypt connection %s: %w", conn.UID, decErr)
+		}
+
+		private = dec
 	}
 
 	full := credentials.MergeConfig(conn.Settings, private)
 
 	// Re-split against the *current* registry: URL keys are no longer secret,
-	// so they land in public; remaining declared secrets stay private.
-	secrets := credentials.ConnectionSecretFields(conn.Type)
+	// so they land in public; declared secrets (old and newly declared) go
+	// private.
 	public, newPrivate := credentials.SplitConfig(full, secrets)
 
-	logger.InfoContext(ctx, "reconcile-url: demoting URL field to public settings",
+	logger.InfoContext(ctx, "reconcile-registry: re-splitting connection settings against the secret registry",
 		"orgUid", org.UID, "connectionUid", conn.UID, "type", conn.Type,
+		"demoteURL", demoteURL, "promoteSecret", promoteSecret,
 		"remainingPrivateKeys", credentials.SortedKeys(newPrivate), "dryRun", opts.DryRun)
 
 	if opts.DryRun {
@@ -134,6 +149,18 @@ func reconcileConnection(
 	}
 
 	return true, nil
+}
+
+// publicHoldsSecret reports whether the public settings still carry one of the
+// declared secret keys.
+func publicHoldsSecret(settings models.JSONMap, secrets []string) bool {
+	for _, k := range secrets {
+		if _, ok := settings[k]; ok {
+			return true
+		}
+	}
+
+	return false
 }
 
 // writeReconciledConnection persists the re-split connection: encrypts the
