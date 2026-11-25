@@ -50,9 +50,9 @@
       "rotate": "轮换 URL",
       "url": "订阅源 URL",
       "rotateConfirmTitle": "轮换订阅源 URL？",
-      "rotateConfirmBody": "现有订阅者会立即开始收到 410 Gone，需要新的 URL 才能继续接收更新。"
+      "rotateConfirmBody": "现有订阅者会立即开始收到 410 Gone 响应，需要换用新的 URL 才能继续接收更新。"
     },
-    "v1Notes": "v1 只支持单一层级，按天或按周轮换。需要主备双人值班？请使用告警升级策略——值班表只代表一个轮换。"
+    "v1Notes": "值班表功能目前为 v1，每个值班表只是一个按天或按周轮换的名单。需要主值班和备值班吗？请使用告警升级策略：把两个值班表分别设为先后触发的步骤，先通知主值班，无人确认时再通知备值班。"
   },
   "form": {
     "create": "新建值班表",
@@ -60,7 +60,7 @@
     "name": "名称",
     "namePlaceholder": "Platform EU",
     "description": "描述",
-    "descriptionPlaceholder": "可选——说明这个轮换会通知谁、在什么时候",
+    "descriptionPlaceholder": "可选：说明这个轮换会通知谁、在什么时候",
     "timezone": "时区（IANA）",
     "timezonePlaceholder": "Europe/Paris",
     "timezoneSearch": "搜索时区…",

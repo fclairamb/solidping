@@ -5,7 +5,7 @@
   },
   "list": {
     "empty": "还没有目标",
-    "emptyHint": "目标把“它正常吗？”变成“它够正常吗？”——设定目标值，盯住错误预算。",
+    "emptyHint": "目标把“它正常吗？”变成“它够正常吗？”。设定目标值，盯住错误预算。",
     "new": "新建目标",
     "searchPlaceholder": "搜索目标…",
     "columns": {
@@ -54,7 +54,7 @@
     "budgetLabel": "剩余 {{remaining}}，共 {{total}}",
     "burndown": "错误预算燃尽图",
     "burndownHelp": "当前窗口内剩余预算的变化，对照刚好用完预算的节奏。",
-    "burndownEmpty": "窗口刚刚开始——还没有数据点。",
+    "burndownEmpty": "窗口刚刚开始，还没有数据点。",
     "burndownIdeal": "理想节奏"
   },
   "alerting": {
@@ -73,7 +73,7 @@
     "threshold": "阈值",
     "minSamples": "最小样本数",
     "inconclusive": "数据不足以判断：两个窗口分别有 {{long}} 和 {{short}} 个探测，需要 {{min}} 个。数据不足的窗口不会触发。",
-    "resolving": "两个窗口都低于阈值——持续满一个短窗口后告警将自动恢复。",
+    "resolving": "两个窗口都低于阈值，持续满一个短窗口后告警将自动恢复。",
     "viewIncident": "查看故障",
     "viewIncidentNumbered": "查看故障 #{{number}}",
     "editThresholds": "编辑阈值",
@@ -116,8 +116,8 @@
     "targetHelp": "0 到 100 之间，例如 99.9",
     "timezone": "时区",
     "timezoneHelp": "自然月按这个 IANA 时区计算",
-    "excludeMaintenance": "排除计划内维护",
-    "excludeMaintenanceHelp": "维护窗口生效期间记录的探测不计入错误预算。仅从开始打标签的那天起生效，之前的月份不受影响。",
+    "excludeMaintenance": "计算时排除维护窗口",
+    "excludeMaintenanceHelp": "维护窗口生效期间记录的探测不计入错误预算。排除仅适用于带有维护标记的探测，未标记的历史月份不受影响。",
     "enabled": "已启用",
     "save": "保存",
     "create": "创建目标",
@@ -129,7 +129,7 @@
   "delete": {
     "action": "删除",
     "title": "删除这个目标？",
-    "description": "目标 <strong>{{name}}</strong> 将被移除。历史结果不受影响——只会删除目标本身。",
+    "description": "目标 <strong>{{name}}</strong> 将被移除。历史结果不受影响，只会删除目标本身。",
     "confirm": "删除",
     "cancel": "取消",
     "deleted": "目标已删除",
