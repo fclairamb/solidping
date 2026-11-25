@@ -136,7 +136,7 @@
     "fieldHelp": {
       "tenantId": "你的 Entra 目录（租户）ID，或已验证的域名。留空表示“common”（多租户）。使用“organizations”或“consumers”可限制账户类型。",
       "displayName": "显示在登录按钮上，例如“使用公司 IdP 继续登录”。留空时默认为“SSO”。",
-      "issuerUrl": "OIDC 颁发者 URL，例如 https://idp.example.com/realms/acme。发现请求会发往“{issuer URL}/.well-known/openid-configuration”。",
+      "issuerUrl": "OIDC 颁发者 URL，例如 https://idp.example.com/realms/acme。发现请求会发往“{issuer URL}/.well-known/openid-configuration”。末尾的斜杠可有可无：SolidPing 会使用身份提供商公布的颁发者。",
       "scopes": "以空格分隔的 OAuth2 作用域。“openid”始终包含在内。留空时默认为“openid email profile”。",
       "emailClaim": "用于用户邮箱的 ID 令牌声明。默认为“email”。",
       "nameClaim": "用于用户显示名称的 ID 令牌声明。默认为“name”。",
