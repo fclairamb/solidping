@@ -1,7 +1,13 @@
 /**
  * The target a check probes, as shown in the checks list and the check
- * header: its `url` when it has one, else its `host` followed by its `port`
- * (`localhost:5432`). Types with neither (heartbeat, email, …) have none.
+ * header: its Unix socket path when it dials one, else its `url` when it has
+ * one, else its `host` followed by its `port` (`localhost:5432`). Types with
+ * none of them (heartbeat, email, …) have none.
+ *
+ * A socket check has no host (tcp, postgres, redis… keep the path in `socket`),
+ * so it showed no target at all; an http check keeps its `url` for the request
+ * path and Host header while `unix_socket` is what it actually dials, so its
+ * url would hide the socket (issue #1042).
  *
  * Host/port checkers (tcp, postgres, mysql, redis, ssh, …) keep the port in a
  * separate `port` config field, so showing the host alone hid which service
@@ -9,6 +15,9 @@
  * `localhost` (issue #998).
  */
 export function checkTargetOf(config: Record<string, unknown> | undefined): string | undefined {
+  const socket = config?.socket || config?.unix_socket;
+  if (typeof socket === "string" && socket) return socket;
+
   const url = config?.url;
   if (typeof url === "string" && url) return url;
 
