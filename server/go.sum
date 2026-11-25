@@ -177,8 +177,8 @@ github.com/docker/go-connections v0.8.2 h1:9d9DEokx5W7qlr0shkFXIxEA7+TTD+llwzcyk
 github.com/docker/go-connections v0.8.2/go.mod h1:no1qkHdjq7kLMGUXYAduOhYPSJxxvgWBh7ogVvptn3Q=
 github.com/docker/go-units v0.5.0 h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4=
 github.com/docker/go-units v0.5.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
-github.com/dop251/goja v0.0.0-20261124180248-00ef7861e082 h1:TeTaX4/PnNLpsk+16aweSAN5ROezx2mqcUUqDCsFbz4=
-github.com/dop251/goja v0.0.0-20261124180248-00ef7861e082/go.mod h1:L1yoLBco9M3b2Gdh1UZHg+BIePeAdV1bwknaLLxAgoc=
+github.com/dop251/goja v0.0.0-20261125174615-70dc34d6aa89 h1:3dbX+TkeGiDqS/xr67ugyUElP3Izk0It4t5+UZfD464=
+github.com/dop251/goja v0.0.0-20261125174615-70dc34d6aa89/go.mod h1:L1yoLBco9M3b2Gdh1UZHg+BIePeAdV1bwknaLLxAgoc=
 github.com/dreamscached/minequery/v2 v2.5.0 h1:hUkN//4x96xUJ7pz1Cr1Gs7IISXkE3LoNCcXui1AfvY=
 github.com/dreamscached/minequery/v2 v2.5.0/go.mod h1:zRAFqhE8tFyRUmwkxu3hoNy6H/shys59bickqJRc/yg=
 github.com/dustin/go-humanize v1.1.0 h1:dbKTrvD0klcbBV/h4AWJdMuZogJACoMlvWIWZ5b2xWg=
@@ -530,8 +530,8 @@ github.com/pkg/sftp v1.13.13/go.mod h1:uNkH9roSXglNJqM+glJJi+TQXQUm0fXFWqCFmT8hs
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/posthog/posthog-go/v2 v2.2.1 h1:Lyh7dBvZ94TvVkx75UtfENK8OSQaUFE6+de7OiDW8Bo=
-github.com/posthog/posthog-go/v2 v2.2.1/go.mod h1:uDmMhWSfIQB1M5xC9cU/smQjdt9HD0s6MbxdWC2beYI=
+github.com/posthog/posthog-go/v2 v2.3.0 h1:QnlNr6yzigKIeQId9+D///gG4JwHi8Ad5rqCscCVKJo=
+github.com/posthog/posthog-go/v2 v2.3.0/go.mod h1:uDmMhWSfIQB1M5xC9cU/smQjdt9HD0s6MbxdWC2beYI=
 github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 h1:o4JXh1EVt9k/+g42oCprj/FisM4qX9L3sZB3upGN2ZU=
 github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55/go.mod h1:OmDBASR4679mdNQnz2pUhc2G8CO2JrUAVFDRBDP/hJE=
 github.com/pquerna/otp v1.5.0 h1:NMMR+WrmaqXU4EzdGJEE1aUUI0AMRzsp96fFFWNPwxs=
