@@ -163,13 +163,28 @@ func watchChildMemory(limit int64) {
 		metrics.Read(samples)
 
 		heap := samples[0].Value
-		if heap.Kind() == metrics.KindUint64 && heap.Uint64() > uint64(limit) {
+		if heap.Kind() == metrics.KindUint64 && heap.Uint64() > uint64(limit) && stillOverAfterGC(samples, limit) {
 			fmt.Fprintf(os.Stderr, "solidping js child: out of memory: heap over the %d MiB limit\n", limit/bytesPerMiB)
 			os.Exit(childExitMemory)
 		}
 
 		time.Sleep(childWatchInterval)
 	}
+}
+
+// stillOverAfterGC reports whether the heap is over limit once the garbage is
+// collected. The heap-objects metric counts the garbage the GC has not freed
+// yet, which a native call producing many short-lived strings (a replace with a
+// $' template, a few MiB per match) piles up faster than a GC on two threads
+// frees it: killing on that figure refused a script the memory budget was
+// about to refuse itself, with the budget's clear error.
+func stillOverAfterGC(samples []metrics.Sample, limit int64) bool {
+	runtime.GC()
+	metrics.Read(samples)
+
+	heap := samples[0].Value
+
+	return heap.Kind() != metrics.KindUint64 || heap.Uint64() > uint64(limit)
 }
 
 // roundTrip sends msg and reads the parent's answer.

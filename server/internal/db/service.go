@@ -692,9 +692,10 @@ type Service interface {
 	GetLastSignalForChecks(
 		ctx context.Context, orgUID string, checkUIDs []string,
 	) (map[string]*models.Result, error)
-	// ReapAbandonedResults finalizes raw results still sitting in
-	// ResultStatusCreated well past any plausible execution window for their
-	// check — models.AbandonedResultThreshold, "the check's period plus the
+	// ReapAbandonedResults finalizes worker-written raw results (worker_uid
+	// set) still sitting in ResultStatusCreated well past any plausible
+	// execution window for their check (CreateCheck's "Check created" marker
+	// has no worker_uid and is never reaped) — models.AbandonedResultThreshold, "the check's period plus the
 	// worker lease timeout, with a generous multiplier" (spec 2026-08-18-03).
 	// Each eligible row is atomically flipped to ResultStatusAbandoned — the
 	// dedicated terminal status that is excluded from availability everywhere

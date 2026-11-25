@@ -1,6 +1,7 @@
 package jobtypes_test
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"testing"
@@ -77,6 +78,7 @@ func seedStaleMarker(t *testing.T, dbSvc db.Service) *models.Result {
 	}
 
 	stale := models.NewResult(org.UID, check.UID, models.ResultStatusCreated, 0)
+	stale.WorkerUID = newReaperWorker(t, dbSvc, "reaper-worker")
 	stale.PeriodStart = time.Now().Add(-2 * time.Hour)
 	r.NoError(dbSvc.CreateResult(ctx, stale))
 
@@ -156,6 +158,7 @@ func TestAbandonedResultReaperRunWithinThresholdNoop(t *testing.T) {
 	}
 
 	fresh := models.NewResult(org.UID, check.UID, models.ResultStatusCreated, 0)
+	fresh.WorkerUID = newReaperWorker(t, dbSvc, "fresh-worker")
 	fresh.PeriodStart = time.Now().Add(-time.Minute)
 	r.NoError(dbSvc.CreateResult(ctx, fresh))
 
@@ -166,6 +169,56 @@ func TestAbandonedResultReaperRunWithinThresholdNoop(t *testing.T) {
 	r.NoError(dbSvc.DB().NewSelect().Model(&row).Where("uid = ?", fresh.UID).Scan(t.Context()))
 	r.NotNil(row.Status)
 	r.Equal(int(models.ResultStatusCreated), *row.Status, "a fresh created row must survive the sweep")
+}
+
+// newReaperWorker inserts a real worker row (results.worker_uid is a foreign
+// key): only worker-written rows are attempts the reaper may finalize.
+func newReaperWorker(t *testing.T, dbSvc db.Service, identifier string) *string {
+	t.Helper()
+
+	worker := models.NewWorker(identifier, identifier)
+	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(t.Context())
+	require.NoError(t, err)
+
+	return &worker.UID
+}
+
+// TestAbandonedResultReaperRunIgnoresCreationMarker pins
+// solidping-business#112: a new check's "Check created" marker, even long past
+// AbandonedResultThreshold, is not reaped, does not move the reaped metric
+// and does not log the "Reaped abandoned results" WARN.
+func TestAbandonedResultReaperRunIgnoresCreationMarker(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	jctx, dbSvc := newAbandonedReaperTestContext(t)
+
+	var logs bytes.Buffer
+	jctx.Logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	ctx := t.Context()
+	org := models.NewOrganization("abandoned-marker-org", "Acme")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+	check := models.NewCheck(org.UID, "abandoned-marker-check", "http")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	_, err := dbSvc.DB().NewUpdate().Model((*models.Result)(nil)).
+		Set("period_start = ?", time.Now().Add(-2*time.Hour)).
+		Where("check_uid = ?", check.UID).
+		Exec(ctx)
+	r.NoError(err)
+
+	run := &jobtypes.AbandonedResultReaperJobRun{}
+	r.NoError(run.Run(ctx, jctx))
+
+	abandoned, err := dbSvc.DB().NewSelect().Model((*models.Result)(nil)).
+		Where("check_uid = ?", check.UID).
+		Where("status = ?", int(models.ResultStatusAbandoned)).
+		Count(ctx)
+	r.NoError(err)
+	r.Zero(abandoned, "the creation marker must not become an abandoned row")
+	r.NotContains(logs.String(), "Reaped abandoned results", "check creation must not raise the reaper WARN")
 }
 
 func countPendingAbandonedReaperJobs(ctx context.Context, dbSvc db.Service) (int, error) {

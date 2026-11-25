@@ -469,16 +469,16 @@ type CompactResultsOutcome struct {
 // ReapAbandonedResultsOutcome reports what one abandoned-result reaper sweep
 // did (see db.Service.ReapAbandonedResults).
 type ReapAbandonedResultsOutcome struct {
-	// Candidates is the number of raw rows found sitting in ResultStatusCreated
-	// (see abandonedResultLifecycleStatuses), before threshold filtering.
+	// Candidates is the number of worker-written raw rows found sitting in
+	// ResultStatusCreated (see abandonedResultLifecycleStatuses), before
+	// threshold filtering.
 	Candidates int
 	// Reaped is the number of those candidates that were past
 	// AbandonedResultThreshold for their check and got finalized this sweep.
 	Reaped int
 	// ReapedByRegion splits Reaped by the region of each reaped row, so a burst
 	// can be traced to the checker that stopped reporting.
-	// ReapedRegionNone counts the rows that carry no region (CreateCheck's
-	// "Check created" marker is one).
+	// ReapedRegionNone counts the rows that carry no region.
 	ReapedByRegion map[string]int
 }
 
