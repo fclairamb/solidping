@@ -219,8 +219,8 @@ func (s *GitLabOAuthService) HandleCallback(
 
 // getGitLabBaseURL returns the GitLab instance base URL.
 func (s *GitLabOAuthService) getGitLabBaseURL() string {
-	if s.cfg.GitLab.BaseURL != "" {
-		return strings.TrimRight(s.cfg.GitLab.BaseURL, "/")
+	if s.cfg.SSO().GitLab.BaseURL != "" {
+		return strings.TrimRight(s.cfg.SSO().GitLab.BaseURL, "/")
 	}
 
 	return gitLabDefaultBaseURL
@@ -229,8 +229,8 @@ func (s *GitLabOAuthService) getGitLabBaseURL() string {
 // exchangeCode exchanges an authorization code for tokens with GitLab.
 func (s *GitLabOAuthService) exchangeCode(ctx context.Context, code string) (*GitLabTokenResponse, error) {
 	data := url.Values{}
-	data.Set("client_id", s.cfg.GitLab.ClientID)
-	data.Set("client_secret", s.cfg.GitLab.ClientSecret)
+	data.Set("client_id", s.cfg.SSO().GitLab.ClientID)
+	data.Set("client_secret", s.cfg.SSO().GitLab.ClientSecret)
 	data.Set("code", code)
 	data.Set("grant_type", "authorization_code")
 	data.Set("redirect_uri", s.getCallbackURL())

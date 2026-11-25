@@ -199,8 +199,8 @@ func (s *GitHubOAuthService) HandleCallback(ctx context.Context, code, orgSlug s
 // exchangeCode exchanges an authorization code for tokens with GitHub.
 func (s *GitHubOAuthService) exchangeCode(ctx context.Context, code string) (*GitHubTokenResponse, error) {
 	data := url.Values{}
-	data.Set("client_id", s.cfg.GitHub.ClientID)
-	data.Set("client_secret", s.cfg.GitHub.ClientSecret)
+	data.Set("client_id", s.cfg.SSO().GitHub.ClientID)
+	data.Set("client_secret", s.cfg.SSO().GitHub.ClientSecret)
 	data.Set("code", code)
 	data.Set("redirect_uri", s.getCallbackURL())
 

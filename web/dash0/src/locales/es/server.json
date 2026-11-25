@@ -88,7 +88,13 @@
     "providerDescription": "Configura las credenciales OAuth de {{provider}}.",
     "enabled": "Activado",
     "unsavedChanges": "Cambios sin guardar",
-    "helpText": "Los cambios de credenciales surten efecto tras reiniciar el servidor. El interruptor Activado se aplica inmediatamente a la página de inicio de sesión una vez guardado.",
+    "providerStatus": {
+      "enabled": "Activado",
+      "configured": "Configurado",
+      "notConfigured": "Sin configurar"
+    },
+    "toggleProvider": "Mostrar u ocultar los ajustes de {{provider}}",
+    "helpText": "Los cambios en los proveedores de inicio de sesión surten efecto en cuanto se guardan, sin reiniciar. Los cambios de LDAP surten efecto tras reiniciar el servidor.",
     "samlSpInfo": "Facilita estas URL al administrador de tu IdP para configurar la conexión SAML.",
     "samlMetadataUrlLabel": "URL de metadatos del SP / ID de entidad",
     "samlAcsUrlLabel": "URL ACS (Assertion Consumer Service)",
@@ -152,7 +158,8 @@
     },
     "localLogin": {
       "title": "Inicio de sesión local",
-      "description": "Inicio de sesión con contraseña y LDAP, registro y restablecimiento de contraseña. Solo se puede desactivar mientras haya un proveedor SSO activado."
+      "description": "Inicio de sesión con contraseña y LDAP, registro y restablecimiento de contraseña. Solo se puede desactivar mientras haya un proveedor SSO activado.",
+      "noProviderHint": "Configura, activa y guarda un proveedor SSO más abajo antes de desactivar el inicio de sesión local."
     }
   },
   "hashing": {

@@ -121,7 +121,7 @@ func (s *OIDCOAuthService) applyGroupMapping(
 	ctx, exchangeCtx context.Context, token *oauth2.Token, userInfo *oidcUserInfo,
 	user *models.User, org *models.Organization,
 ) ([]string, error) {
-	if !groupMappingConfigured(&s.cfg.OIDC) {
+	if !groupMappingConfigured(&s.cfg.SSO().OIDC) {
 		return nil, nil
 	}
 
@@ -134,7 +134,7 @@ func (s *OIDCOAuthService) applyGroupMapping(
 // super-admin groups are set, an empty org is reserved for their members.
 func (s *OIDCOAuthService) loginOptions() []LoginOption {
 	opts := []LoginOption{WithLoginMethod(signupMethodOIDC)}
-	if len(s.cfg.OIDC.SuperAdminGroupList()) > 0 {
+	if len(s.cfg.SSO().OIDC.SuperAdminGroupList()) > 0 {
 		opts = append(opts, WithoutOrgBootstrap())
 	}
 
@@ -160,8 +160,8 @@ func (s *OIDCOAuthService) loginOptions() []LoginOption {
 func (s *OIDCOAuthService) syncGroupRoles(
 	ctx context.Context, user *models.User, org *models.Organization, groups []string,
 ) ([]string, error) {
-	superGroups := s.cfg.OIDC.SuperAdminGroupList()
-	orgGroups := s.cfg.OIDC.OrgAdminGroupList()
+	superGroups := s.cfg.SSO().OIDC.SuperAdminGroupList()
+	orgGroups := s.cfg.SSO().OIDC.OrgAdminGroupList()
 
 	if len(superGroups) == 0 && len(orgGroups) == 0 {
 		return nil, nil

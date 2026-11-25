@@ -14,9 +14,17 @@ type SSOProvider struct {
 // enabled, in the order the login page shows them. It is the single source of
 // truth for both GET /auth/providers and the local-login lock-out guard (spec
 // 2026-11-21-02): local login may only be switched off while this is non-empty.
+func (c *Config) SSOProviders() []SSOProvider {
+	// The OAuth/OIDC/SAML providers come from the live snapshot (spec
+	// 2026-11-25-02). Telegram is not an auth.* system parameter: it is read
+	// from the boot config.
+	return c.SSO().providers(c.Telegram.LoginActive())
+}
+
+// providers lists the providers of one snapshot, in login page order.
 //
 //nolint:cyclop // Linear sequence of provider checks with the same shape.
-func (c *Config) SSOProviders() []SSOProvider {
+func (c *SSOConfig) providers(telegramLogin bool) []SSOProvider {
 	providers := make([]SSOProvider, 0)
 
 	if c.Slack.Enabled && c.Slack.ClientID != "" && c.Slack.ClientSecret != "" {
@@ -47,7 +55,7 @@ func (c *Config) SSOProviders() []SSOProvider {
 
 	// Telegram is not OAuth: it needs the instance bot plus the explicit
 	// SP_TELEGRAM_LOGIN_ENABLED opt-in (the bot's domain is set by hand).
-	if c.Telegram.LoginActive() {
+	if telegramLogin {
 		providers = append(providers, SSOProvider{Name: "Telegram", Type: "telegram"})
 	}
 

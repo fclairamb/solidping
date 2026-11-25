@@ -100,7 +100,7 @@ func (h *DiscordOAuthHandler) Callback(writer http.ResponseWriter, req *http.Req
 // buildDiscordAuthURL constructs the Discord authorization URL.
 func (h *DiscordOAuthHandler) buildDiscordAuthURL(state string) string {
 	params := url.Values{}
-	params.Set("client_id", h.cfg.Discord.ClientID)
+	params.Set("client_id", h.cfg.SSO().Discord.ClientID)
 	params.Set("redirect_uri", h.svc.getCallbackURL())
 	params.Set("response_type", "code")
 	params.Set("scope", "identify email guilds")

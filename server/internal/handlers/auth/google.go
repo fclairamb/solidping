@@ -96,7 +96,7 @@ func (h *GoogleOAuthHandler) Callback(writer http.ResponseWriter, req *http.Requ
 // buildGoogleAuthURL constructs the Google authorization URL.
 func (h *GoogleOAuthHandler) buildGoogleAuthURL(state string) string {
 	params := url.Values{}
-	params.Set("client_id", h.cfg.Google.ClientID)
+	params.Set("client_id", h.cfg.SSO().Google.ClientID)
 	params.Set("redirect_uri", h.svc.getCallbackURL())
 	params.Set("response_type", "code")
 	params.Set("scope", "openid email profile")

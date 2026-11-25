@@ -73,6 +73,7 @@
     "removeRecipient": "Remove {{email}}",
     "ntfyServer": "Server URL",
     "ntfyTopic": "Topic",
+    "ntfyAccessToken": "Access token (optional)",
     "ntfyPriority": "Priority (1-5, default 3)",
     "gotifyServer": "Server URL",
     "gotifyAppToken": "Application token",

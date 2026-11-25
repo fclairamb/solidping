@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,10 +15,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AlertCircle, Check, Eye, EyeOff, Loader2 } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, Eye, EyeOff, Loader2 } from "lucide-react";
 import { ApiError } from "@/api/client";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DiscordSetupPanel } from "@/components/server/discord-setup-panel";
 import {
+  useProviders,
   useSystemParameters,
   useSetSystemParameter,
   type SystemParameter,
@@ -290,6 +293,9 @@ function AuthSettingsPage() {
   const { t } = useTranslation(["server", "common"]);
   const { data: params, isLoading } = useSystemParameters();
   const setParam = useSetSystemParameter();
+  // The live SSO providers, as the login page sees them: a provider saved
+  // below is listed at once (spec 2026-11-25-02).
+  const { data: liveProviders } = useProviders();
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
@@ -298,6 +304,8 @@ function AuthSettingsPage() {
   const [visibleSecrets, setVisibleSecrets] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // Cards the user opened or closed by hand; the others follow the default.
+  const [openOverride, setOpenOverride] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (params) {
@@ -325,6 +333,10 @@ function AuthSettingsPage() {
 
   const localLoginParam = params?.find((p: SystemParameter) => p.key === LOCAL_LOGIN_KEY);
   const localLoginOn = localLoginParam?.value === undefined ? true : Boolean(localLoginParam.value);
+  // The server refuses local login off while no SSO provider is live: say so
+  // instead of letting the save fail. Turning it back on is always allowed.
+  const noSSOProvider = liveProviders !== undefined && liveProviders.providers.length === 0;
+  const localLoginLocked = localLoginOn && noSSOProvider;
 
   // Saved at once: the server refuses "off" while no SSO provider is
   // enabled, and that refusal is shown as the page error.
@@ -378,6 +390,18 @@ function AuthSettingsPage() {
 
   const isDirty = (provider: ProviderConfig): boolean =>
     isEnabledDirty(provider) || isCredentialDirty(provider) || isSwitchesDirty(provider);
+
+  // Collapsed unless the provider is enabled or configured; unsaved edits
+  // keep a card open so they are never hidden.
+  const isOpen = (provider: ProviderConfig): boolean =>
+    isDirty(provider) ||
+    (openOverride[provider.name] ??
+      (persistedEnabled(provider) || isConfigured(provider)));
+
+  const providerStatus = (provider: ProviderConfig): "enabled" | "configured" | "notConfigured" => {
+    if (persistedEnabled(provider)) return "enabled";
+    return isConfigured(provider) ? "configured" : "notConfigured";
+  };
 
   const handleToggleEnabled = (provider: ProviderConfig, next: boolean) => {
     setEnabled((prev) => ({ ...prev, [provider.enabledKey]: next }));
@@ -503,6 +527,14 @@ function AuthSettingsPage() {
           <div className="space-y-1.5">
             <CardTitle className="text-lg">{t("server:auth.localLogin.title")}</CardTitle>
             <CardDescription>{t("server:auth.localLogin.description")}</CardDescription>
+            {localLoginLocked && (
+              <p
+                className="text-sm text-muted-foreground"
+                data-testid="local-login-no-provider-hint"
+              >
+                {t("server:auth.localLogin.noProviderHint")}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Label htmlFor="local-login-switch" className="text-sm font-normal">
@@ -511,7 +543,7 @@ function AuthSettingsPage() {
             <Switch
               id="local-login-switch"
               checked={localLoginOn}
-              disabled={setParam.isPending}
+              disabled={setParam.isPending || localLoginLocked}
               onCheckedChange={(next) => void handleToggleLocalLogin(next)}
               data-testid="local-login-enabled"
             />
@@ -520,13 +552,46 @@ function AuthSettingsPage() {
       </Card>
 
       {providers.map((provider) => (
-        <Card key={provider.name} data-testid={`provider-card-${provider.name.toLowerCase()}`}>
+        <Collapsible
+          key={provider.name}
+          asChild
+          open={isOpen(provider)}
+          onOpenChange={(next) =>
+            setOpenOverride((prev) => ({ ...prev, [provider.name]: next }))
+          }
+        >
+        <Card data-testid={`provider-card-${provider.name.toLowerCase()}`}>
           <CardHeader className="flex flex-row items-center justify-between">
-            <div className="space-y-1.5">
-              <CardTitle className="text-lg">{provider.name}</CardTitle>
-              <CardDescription>
-                {t("server:auth.providerDescription", { provider: provider.name })}
-              </CardDescription>
+            <div className="flex items-start gap-2">
+              <CollapsibleTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 mt-0.5"
+                  aria-label={t("server:auth.toggleProvider", { provider: provider.name })}
+                  data-testid={`provider-card-toggle-${provider.name.toLowerCase()}`}
+                >
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform ${isOpen(provider) ? "" : "-rotate-90"}`}
+                  />
+                </Button>
+              </CollapsibleTrigger>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-lg">{provider.name}</CardTitle>
+                  <Badge
+                    variant={providerStatus(provider) === "enabled" ? "default" : "secondary"}
+                    data-testid={`provider-card-status-${provider.name.toLowerCase()}`}
+                    data-status={providerStatus(provider)}
+                  >
+                    {t(`server:auth.providerStatus.${providerStatus(provider)}`)}
+                  </Badge>
+                </div>
+                <CardDescription>
+                  {t("server:auth.providerDescription", { provider: provider.name })}
+                </CardDescription>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Label htmlFor={`${provider.enabledKey}-switch`} className="text-sm font-normal">
@@ -541,6 +606,7 @@ function AuthSettingsPage() {
               />
             </div>
           </CardHeader>
+          <CollapsibleContent>
           <CardContent>
             <div className="space-y-4">
               {provider.name === "SAML 2.0" && (
@@ -718,7 +784,9 @@ function AuthSettingsPage() {
               </div>
             </div>
           </CardContent>
+          </CollapsibleContent>
         </Card>
+        </Collapsible>
       ))}
     </div>
   );

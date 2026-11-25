@@ -96,7 +96,7 @@ func (h *GitLabOAuthHandler) Callback(writer http.ResponseWriter, req *http.Requ
 // buildGitLabAuthURL constructs the GitLab authorization URL.
 func (h *GitLabOAuthHandler) buildGitLabAuthURL(state string) string {
 	params := url.Values{}
-	params.Set("client_id", h.cfg.GitLab.ClientID)
+	params.Set("client_id", h.cfg.SSO().GitLab.ClientID)
 	params.Set("redirect_uri", h.svc.getCallbackURL())
 	params.Set("response_type", "code")
 	params.Set("scope", "read_user openid email")
