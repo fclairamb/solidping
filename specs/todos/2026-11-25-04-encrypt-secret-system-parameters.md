@@ -69,3 +69,7 @@ Impact. The worst case is the JWT signing key:
 ## Open questions
 
 - Should the JWT secret move out of the DB entirely (always env or file, generated once into a mounted file) instead of being sealed? Recommended: seal it as above. It keeps zero-config installs working, and the env variable still wins.
+
+## Resolved open questions
+
+- **Move the JWT secret out of the DB, or seal it?** Seal it in the DB as described in the Proposal; keep the env variable winning over the stored value. Zero-config installs keep working. (autopilot: recommended answer)
