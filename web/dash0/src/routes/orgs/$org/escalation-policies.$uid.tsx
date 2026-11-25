@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useSubmitShortcut } from "@/hooks/use-hotkey";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
@@ -29,6 +30,7 @@ export const Route = createFileRoute("/orgs/$org/escalation-policies/$uid")({
 });
 
 function EscalationPolicyDetailPage() {
+  useSubmitShortcut();
   const { t } = useTranslation(["escalation", "common"]);
   const { org, uid } = Route.useParams();
   const navigate = useNavigate();
@@ -245,7 +247,7 @@ function EscalationPolicyDetailPage() {
       </Card>
 
       <div className="flex justify-end gap-2">
-        <Button onClick={submit} disabled={update.isPending}>
+        <Button onClick={submit} disabled={update.isPending} data-submit-shortcut>
           {update.isPending ? t("common:saving") : t("common:save")}
         </Button>
       </div>
