@@ -40,7 +40,7 @@
     "duration": "持续时间",
     "incidentId": "故障 ID",
     "failureCount": "失败次数",
-    "relapseCount": "复发次数",
+    "relapseCount": "反复次数",
     "failedChecks": "失败的监控项",
     "cause": "原因",
     "downFrom": "故障开始",
@@ -115,9 +115,9 @@
     "title": "{check} 再次故障",
     "preheader": "{check} 在短暂恢复后再次故障。",
     "lead": "它曾短暂恢复，随后再次失败。",
-    "leadRelapses_one": "它曾短暂恢复，随后再次失败（目前复发 {count} 次）。",
-    "leadRelapses_other": "它曾短暂恢复，随后再次失败（目前复发 {count} 次）。",
-    "textTitle": "{check} 故障已重新开启（第 {relapse} 次复发）",
+    "leadRelapses_one": "它曾短暂恢复，随后再次失败（已反复 {count} 次）。",
+    "leadRelapses_other": "它曾短暂恢复，随后再次失败（已反复 {count} 次）。",
+    "textTitle": "{check} 故障已重新开启（第 {relapse} 次反复）",
     "textBody": "{check} 的故障在短暂恢复后已重新打开。"
   },
   "comment": {
@@ -225,7 +225,7 @@
     "title": "{check} 已降级",
     "lead": "它持续失败或变慢，但没有一次故障持续到足以算作服务中断。",
     "openChart": "打开图表",
-    "notOutage": "这不是服务中断：每次失败都在确认期结束前出现了成功。"
+    "notOutage": "这不是服务中断：每次失败都在确认时长结束前出现了成功。"
   },
   "degradedResolved": {
     "title": "{check} 已恢复稳定",

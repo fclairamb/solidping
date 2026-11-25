@@ -96,7 +96,7 @@
     "acknowledge": "确认时间中位数：{duration}",
     "acknowledged": "{total} 个中已确认 {count} 个",
     "rowDetail": "{incidents}，{relapses}",
-    "relapses_one": "{count} 次复发",
-    "relapses_other": "{count} 次复发"
+    "relapses_one": "{count} 次反复",
+    "relapses_other": "{count} 次反复"
   }
 }

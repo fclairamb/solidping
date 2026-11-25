@@ -92,9 +92,9 @@
       "cta": "通知设置"
     },
     "title": "我的告警",
-    "description": "你收到过告警的故障，按时间倒序排列。",
+    "description": "你收到过告警的故障，按时间倒序排列",
     "cardTitle": "通知",
-    "cardDescription": "记录你每次因故障收到的通知。",
+    "cardDescription": "记录你每次因故障收到的通知",
     "columns": {
       "time": "时间",
       "incident": "故障",
