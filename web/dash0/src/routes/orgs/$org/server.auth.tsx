@@ -18,6 +18,7 @@ import { AlertCircle, Check, Eye, EyeOff, Loader2 } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { DiscordSetupPanel } from "@/components/server/discord-setup-panel";
 import {
+  useProviders,
   useSystemParameters,
   useSetSystemParameter,
   type SystemParameter,
@@ -290,6 +291,9 @@ function AuthSettingsPage() {
   const { t } = useTranslation(["server", "common"]);
   const { data: params, isLoading } = useSystemParameters();
   const setParam = useSetSystemParameter();
+  // The live SSO providers, as the login page sees them: a provider saved
+  // below is listed at once (spec 2026-11-25-02).
+  const { data: liveProviders } = useProviders();
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
@@ -325,6 +329,10 @@ function AuthSettingsPage() {
 
   const localLoginParam = params?.find((p: SystemParameter) => p.key === LOCAL_LOGIN_KEY);
   const localLoginOn = localLoginParam?.value === undefined ? true : Boolean(localLoginParam.value);
+  // The server refuses local login off while no SSO provider is live: say so
+  // instead of letting the save fail. Turning it back on is always allowed.
+  const noSSOProvider = liveProviders !== undefined && liveProviders.providers.length === 0;
+  const localLoginLocked = localLoginOn && noSSOProvider;
 
   // Saved at once: the server refuses "off" while no SSO provider is
   // enabled, and that refusal is shown as the page error.
@@ -503,6 +511,14 @@ function AuthSettingsPage() {
           <div className="space-y-1.5">
             <CardTitle className="text-lg">{t("server:auth.localLogin.title")}</CardTitle>
             <CardDescription>{t("server:auth.localLogin.description")}</CardDescription>
+            {localLoginLocked && (
+              <p
+                className="text-sm text-muted-foreground"
+                data-testid="local-login-no-provider-hint"
+              >
+                {t("server:auth.localLogin.noProviderHint")}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Label htmlFor="local-login-switch" className="text-sm font-normal">
@@ -511,7 +527,7 @@ function AuthSettingsPage() {
             <Switch
               id="local-login-switch"
               checked={localLoginOn}
-              disabled={setParam.isPending}
+              disabled={setParam.isPending || localLoginLocked}
               onCheckedChange={(next) => void handleToggleLocalLogin(next)}
               data-testid="local-login-enabled"
             />

@@ -88,7 +88,7 @@
     "providerDescription": "配置 {{provider}} OAuth 凭据。",
     "enabled": "已启用",
     "unsavedChanges": "有未保存的更改",
-    "helpText": "凭据更改会在服务器重启后生效。保存后，“已启用”开关会立即对登录页生效。",
+    "helpText": "登录提供方的更改保存后立即生效，无需重启。LDAP 更改会在服务器重启后生效。",
     "samlSpInfo": "将这些 URL 交给你的 IdP 管理员，用于配置 SAML 连接。",
     "samlMetadataUrlLabel": "SP 元数据 / 实体 ID URL",
     "samlAcsUrlLabel": "ACS（断言消费服务）URL",
@@ -152,7 +152,8 @@
     },
     "localLogin": {
       "title": "本地登录",
-      "description": "密码和 LDAP 登录、注册及密码重置。只有在启用某个 SSO 提供方时才能关闭。"
+      "description": "密码和 LDAP 登录、注册及密码重置。只有在启用某个 SSO 提供方时才能关闭。",
+      "noProviderHint": "请先在下方配置、启用并保存一个 SSO 提供方，再关闭本地登录。"
     }
   },
   "hashing": {
