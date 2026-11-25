@@ -2,6 +2,8 @@ import type { TranslateFn } from "@/lib/i18n-types";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useDebounce } from "@/lib/use-debounce";
 import { useTranslation } from "react-i18next";
+import { Kbd } from "@/components/ui/kbd";
+import { isEditableTarget, useHotkey } from "@/hooks/use-hotkey";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   Plus,
@@ -282,7 +284,7 @@ const MEMBER_SUMMARY_ORDER = [
 // group (every other new-check search key explicit-`undefined`, matching the
 // route's validateSearch). Shared by the group empty-state link and the
 // group-header "add a check" button so the ~20-key literal isn't duplicated.
-function newCheckSearchForGroup(slug: string) {
+function newCheckSearchForGroup(slug: string | undefined) {
   return {
     checkType: undefined,
     checkPeriod: undefined,
@@ -1268,6 +1270,33 @@ function ChecksIndexPage() {
     });
   };
 
+  // Page shortcuts (spec 2026-11-25-06). Esc is layered: Radix layers and the
+  // Cmd+K menu consume it first (defaultPrevented), then the search box
+  // (clear, then blur), then the facet reset. Search text is kept by the reset.
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useHotkey(
+    "Escape",
+    (e) => {
+      const input = searchInputRef.current;
+      if (input && e.target === input) {
+        if (search) setSearch("");
+        else input.blur();
+        return;
+      }
+      if (isEditableTarget(e.target)) return;
+      if (hasActiveFacets) resetFilters();
+    },
+    { allowInEditable: true },
+  );
+  useHotkey(
+    "/",
+    () => searchInputRef.current?.focus(),
+    { preventDefault: true },
+  );
+  useHotkey("n", () => {
+    void navigate({ to: "/orgs/$org/checks/new", params: { org }, search: newCheckSearchForGroup(undefined) });
+  });
+
   // Live updates: a `checks` hint (status transition, membership/config
   // change) invalidates both the flat ["checks", org] root and the infinite
   // ["checks", "infinite", org] root (see infiniteOrgRoot in
@@ -1927,6 +1956,7 @@ function ChecksIndexPage() {
           <Input
             placeholder={t("searchChecks")}
             value={search}
+            ref={searchInputRef}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
             data-testid="checks-search-input"
@@ -1989,6 +2019,7 @@ function ChecksIndexPage() {
               >
                 {t("resetFilters")}
                 <X className="h-4 w-4" />
+                <Kbd className="ml-1 hidden md:inline-flex">{t("common:shortcuts.esc")}</Kbd>
               </Button>
             )}
           </div>

@@ -28,6 +28,8 @@ export type AllowlistLang = "fr" | "de" | "es" | "zh";
 export type IdenticalAllowlist = Readonly<Record<string, readonly AllowlistLang[]>>;
 
 export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
+  // Key caps are spelled "Esc" on most keyboards.
+  "common:shortcuts.esc": ["de", "es", "zh"], // "Esc"
   // Brand, product, protocol and format names: never translated.
   "checks:regionCapability.ipv6.label.yes": ["fr", "de", "es", "zh"], // "IPv6"
   "account:sessions.methodOauth": ["fr", "de", "es", "zh"], // "OAuth"
