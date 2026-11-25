@@ -1105,6 +1105,7 @@
     "serviceNameHelp": "留空以检查服务器整体健康状态"
   },
   "docker": {
+    "daemonModeHelp": "留空则仅检查 Docker 守护进程。",
     "containerName": "容器名称",
     "containerIdOptional": "容器 ID（可选，替代名称）",
     "dockerHostOptional": "Docker 主机（可选）",
@@ -1502,7 +1503,6 @@
     "urlRequired": "URL 为必填项",
     "domainRequired": "域名为必填项",
     "targetRequired": "目标 IP 或主机名为必填项",
-    "containerRequired": "容器名称或 ID 为必填项",
     "freeboxConnectionRequired": "Freebox 连接为必填项",
     "linkTypeInvalid": "线路类型必须为 xdsl 或 ftth",
     "promqlRequired": "PromQL 查询为必填项",

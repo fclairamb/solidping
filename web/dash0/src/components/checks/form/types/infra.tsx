@@ -205,15 +205,8 @@ export const dockerModule: CheckTypeModule<DockerState> = {
       cfg.restartLoopMinRestarts = parseInt(state.restartLoopMinRestarts, 10);
     if (state.restartLoopWindowSeconds)
       cfg.restartLoopWindow = `${parseInt(state.restartLoopWindowSeconds, 10)}s`;
-    const errors: FieldErrors =
-      state.containerName || state.containerId
-        ? []
-        : [
-            {
-              name: "containerName",
-              message: validationMessage("containerRequired"),
-            },
-          ];
+    // No container means daemon mode: nothing is required.
+    const errors: FieldErrors = [];
     return { config: cfg, errors };
   },
   Fields: DockerFields,
@@ -261,6 +254,12 @@ function DockerFields({
           onChange={(e) => onChange({ ...state, containerId: e.target.value })}
           data-testid="check-container-id-input"
         />
+        <p
+          className="text-xs text-muted-foreground"
+          data-testid="docker-daemon-mode-help"
+        >
+          {t("docker.daemonModeHelp")}
+        </p>
       </div>
       <div className="space-y-2">
         <Label htmlFor="host">{t("docker.dockerHostOptional")}</Label>

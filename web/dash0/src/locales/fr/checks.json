@@ -1105,6 +1105,7 @@
     "serviceNameHelp": "Laissez vide pour vérifier l'état général du serveur"
   },
   "docker": {
+    "daemonModeHelp": "Laissez vide pour ne vérifier que le démon Docker.",
     "containerName": "Nom du conteneur",
     "containerIdOptional": "ID du conteneur (optionnel, alternative au nom)",
     "dockerHostOptional": "Hôte Docker (optionnel)",
@@ -1502,7 +1503,6 @@
     "urlRequired": "L'URL est requise",
     "domainRequired": "Le domaine est requis",
     "targetRequired": "L'IP ou le nom d'hôte cible est requis",
-    "containerRequired": "Le nom ou l'ID du conteneur est requis",
     "freeboxConnectionRequired": "La connexion Freebox est requise",
     "linkTypeInvalid": "Le type de ligne doit être xdsl ou ftth",
     "promqlRequired": "La requête PromQL est requise",
