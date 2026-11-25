@@ -30,6 +30,21 @@ describe("checkTargetOf", () => {
     expect(checkTargetOf({ host: "[::1]", port: 5432 })).toBe("[::1]:5432");
   });
 
+  it("shows the Unix socket path of a socket check (#1042)", () => {
+    expect(checkTargetOf({ socket: "/var/run/postgresql/.s.PGSQL.5432" })).toBe(
+      "/var/run/postgresql/.s.PGSQL.5432",
+    );
+    expect(checkTargetOf({ socket: "/run/redis.sock", host: "", port: 6379 })).toBe(
+      "/run/redis.sock",
+    );
+  });
+
+  it("prefers the socket over the url of an http check (#1042)", () => {
+    expect(
+      checkTargetOf({ url: "http://localhost/health", unix_socket: "/run/app.sock" }),
+    ).toBe("/run/app.sock");
+  });
+
   it("has no target without url or host", () => {
     expect(checkTargetOf(undefined)).toBeUndefined();
     expect(checkTargetOf({ token: "abc" })).toBeUndefined();

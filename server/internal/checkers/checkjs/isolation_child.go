@@ -120,6 +120,10 @@ func runChildProcess(stdin io.Reader, stdout io.Writer) int {
 
 	result := jsr.runScript(start, cfg.Timeout)
 
+	if peakedOverLimit(setup.MemoryLimit) {
+		return childExitMemory
+	}
+
 	done := &wireResult{
 		Status:     result.Status.String(),
 		DurationNs: int64(result.Duration),
@@ -170,6 +174,31 @@ func watchChildMemory(limit int64) {
 
 		time.Sleep(childWatchInterval)
 	}
+}
+
+// peakedOverLimit reports, once the script is done, whether it went over the
+// limit in a way the watchdog can miss: a single native call (flattening a
+// 256 MiB rope) allocates past the limit and frees it again within a few
+// milliseconds, so a sample taken every childWatchInterval may never see it.
+// The collector has not run yet, so the heap still shows the peak. The soft
+// limit keeps the heap well under the hard one otherwise, so only an
+// allocation that jumped over it shows here.
+func peakedOverLimit(limit int64) bool {
+	if limit <= 0 {
+		limit = defaultChildMemoryLimit
+	}
+
+	samples := []metrics.Sample{{Name: "/memory/classes/heap/objects:bytes"}}
+	metrics.Read(samples)
+
+	heap := samples[0].Value
+	if heap.Kind() != metrics.KindUint64 || heap.Uint64() <= uint64(limit) {
+		return false
+	}
+
+	fmt.Fprintf(os.Stderr, "solidping js child: out of memory: heap over the %d MiB limit\n", limit/bytesPerMiB)
+
+	return true
 }
 
 // stillOverAfterGC reports whether the heap is over limit once the garbage is
