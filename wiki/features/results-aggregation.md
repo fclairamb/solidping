@@ -134,10 +134,15 @@ exists purely to prove the rollback in tests.
 
 **Lifecycle markers** (`created`, `running`) are never deleted and never
 counted: they exist so result permalinks stay stable (spec `2026-07-08-04`).
-`measurableSourceUIDs` filters them out of the delete set; a bucket containing
+`measurableSources` filters them out of the delete set; a bucket containing
 *only* markers is logged and skipped without writing anything — this progress
 guard plus the discovery-time exclusion is what killed the poison-pill loop
 (spec `2026-07-11-16`).
+
+**Archive before delete.** With `archive.enabled`, the aggregate closure writes
+the measurable source rows to a Vortex file before returning, and a failed
+write aborts the transaction (fail closed). See
+[result-archive.md](result-archive.md).
 
 ## The aggregate math (pure Go)
 

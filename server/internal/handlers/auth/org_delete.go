@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/fclairamb/solidping/server/internal/archive"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/support"
@@ -123,6 +124,8 @@ func (s *Service) DeleteOrg(
 			"error", reapErr, "orgUID", org.UID)
 	}
 
+	s.reapOrgArchives(ctx, org.UID)
+
 	// Strip support-thread attribution pointing at the deleted org. The THREADS
 	// SURVIVE: a support conversation belongs to the instance, and attribution
 	// only records who we thought the sender was — deleting an org must not
@@ -143,6 +146,24 @@ func (s *Service) DeleteOrg(
 		"orgUID", org.UID, "orgSlug", org.Slug, "revokedTokens", revoked)
 
 	return s.mintPostDeletionSession(ctx, callerUserUID, authContext)
+}
+
+// reapOrgArchives removes the org's result archives (spec 2026-11-25-01).
+// They have no `files` row, so the attachment reap cannot see them; they go by
+// prefix. Best-effort for the same reason as the attachments: the org is
+// already gone.
+func (s *Service) reapOrgArchives(ctx context.Context, orgUID string) {
+	reaped, err := archive.DeleteOrganizationArchives(ctx, s.fullCfg, orgUID)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to reap organization result archives",
+			"error", err, "orgUID", orgUID)
+
+		return
+	}
+
+	if reaped > 0 {
+		slog.InfoContext(ctx, "reaped organization result archives", "orgUID", orgUID, "files", reaped)
+	}
 }
 
 // mintPostDeletionSession issues the session the caller carries on with after

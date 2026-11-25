@@ -242,6 +242,7 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.5.2
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/fclairamb/solidping/server/third_party/grdp v0.42.0
+	github.com/fclairamb/vortex-go v0.1.3
 	github.com/fergusstrange/embedded-postgres/v2 v2.0.1
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getsentry/sentry-go v0.50.0
@@ -278,7 +279,7 @@ require (
 	github.com/moby/moby/client v0.6.3
 	github.com/oapi-codegen/oapi-codegen/v2 v2.9.0
 	github.com/oapi-codegen/runtime v1.9.1
-	github.com/ohler55/ojg v1.28.9
+	github.com/ohler55/ojg v1.28.10
 	github.com/pires/go-proxyproto v0.16.0
 	github.com/pkg/sftp v1.13.13
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2

@@ -266,3 +266,15 @@ const (
 func RecordAgentLegacySignature(channel string) {
 	AgentLegacySignatureRequests.WithLabelValues(channel).Inc()
 }
+
+// RecordArchived counts one archive file write, its row count and its size in
+// bytes, for the target tier (spec 2026-11-25-01).
+func RecordArchived(tier string, rows, size int) {
+	ArchivedRows.WithLabelValues(tier).Add(float64(rows))
+	ArchivedBytes.WithLabelValues(tier).Add(float64(size))
+}
+
+// RecordArchiveFailure counts one failed archive write for the target tier.
+func RecordArchiveFailure(tier string) {
+	ArchiveFailures.WithLabelValues(tier).Inc()
+}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/archive"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -68,6 +69,30 @@ type AggregationJobRun struct {
 	// Drain limits; zero means the defaults (tests shrink them).
 	budget     time.Duration
 	maxBuckets int
+
+	// archiver writes the rows a compaction deletes as Vortex files (spec
+	// 2026-11-25-01). Resolved once per run from archive.enabled; nil means
+	// archiving is off. Tests set it directly (archiverSet) to inject one.
+	archiver    archive.Archiver
+	archiverSet bool
+}
+
+// resolveArchiver returns the run's archiver, building it from the
+// configuration on first use. A configuration error is returned on every
+// call: with archiving on, compaction must not go ahead without it.
+func (r *AggregationJobRun) resolveArchiver(jctx *jobdef.JobContext) (archive.Archiver, error) {
+	if r.archiverSet {
+		return r.archiver, nil
+	}
+
+	archiver, err := archive.FromConfig(jctx.AppConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	r.archiver, r.archiverSet = archiver, true
+
+	return archiver, nil
 }
 
 // Run executes the aggregation job.
@@ -347,28 +372,26 @@ func (r *AggregationJobRun) aggregatePeriod(
 		filter.Regions = []string{*region}
 	}
 
+	archiver, err := r.resolveArchiver(jctx)
+	if err != nil {
+		return false, time.Time{}, fmt.Errorf("failed to set up the result archive: %w", err)
+	}
+
 	// 4. Compact the bucket transactionally: fetch → aggregate (in Go) → upsert
 	// rollup → delete the measurable source rows, committing or rolling back as
 	// one unit so a mid-flight failure can never leave a rollup+raw hybrid (spec
 	// 2026-07-22-03). The aggregate closure runs inside the transaction and skips
-	// lifecycle-marker rows (created, running) via measurableSourceUIDs: those
+	// lifecycle-marker rows (created, running) via measurableSources: those
 	// contribute nothing to the aggregate (see processRawResult) and are
 	// intentionally preserved (permalink preservation), so they are never among
 	// the deleted UIDs. A bucket whose only rows are markers yields no source
 	// UIDs; CompactResults then writes nothing and reports Compacted=false.
-	outcome, err := jctx.DBService.CompactResults(ctx, &filter,
-		func(sources []*models.Result) (*models.Result, []string, error) {
-			sourceUIDs := measurableSourceUIDs(sources)
-			if len(sourceUIDs) == 0 {
-				return nil, nil, nil
-			}
+	bucket := compactionBucket{
+		orgUID: orgUID, checkUID: checkUID, region: region,
+		targetPeriod: targetPeriod, start: periodStart, end: periodEnd,
+	}
 
-			// Idempotent upsert on the bucket key replaces any existing row for
-			// (org, check, coalesce(region,''), period_type, period_start), so a
-			// re-aggregation yields exactly one row, never a NULL-region duplicate
-			// (spec 2026-07-11-16 §3).
-			return aggregateResults(sources, targetPeriod, periodStart, periodEnd), sourceUIDs, nil
-		})
+	outcome, err := jctx.DBService.CompactResults(ctx, &filter, bucket.aggregateFunc(ctx, log, archiver))
 	if err != nil {
 		return false, time.Time{}, fmt.Errorf("failed to compact results: %w", err)
 	}
@@ -400,6 +423,53 @@ func (r *AggregationJobRun) aggregatePeriod(
 		"source_count", outcome.Fetched, "deleted_count", outcome.DeletedCount)
 
 	return true, periodStart, nil
+}
+
+// compactionBucket is the target bucket one aggregatePeriod call compacts.
+type compactionBucket struct {
+	orgUID, checkUID string
+	region           *string
+	targetPeriod     string
+	start, end       time.Time
+}
+
+// aggregateFunc is the CompactResults closure of the bucket: it rolls the
+// measurable source rows up, archives them first when archiving is on, and
+// selects them for deletion.
+func (b *compactionBucket) aggregateFunc(
+	ctx context.Context, log *slog.Logger, archiver archive.Archiver,
+) models.AggregateResultsFunc {
+	return func(sources []*models.Result) (*models.Result, []string, error) {
+		measurable := measurableSources(sources)
+		if len(measurable) == 0 {
+			return nil, nil, nil
+		}
+
+		// Archive before delete (spec 2026-11-25-01): exactly the rows this
+		// transaction deletes go to the archive first, and a failed write
+		// aborts the transaction, so the bucket stays raw and the next run
+		// retries. Nothing is ever deleted unarchived while archiving is on.
+		if archiver != nil {
+			if err := archiver.Archive(ctx, b.orgUID, b.checkUID, b.targetPeriod, b.start, measurable); err != nil {
+				log.WarnContext(ctx, "Failed to archive compacted results, the bucket is kept",
+					"check_uid", b.checkUID, "region", b.region, "period_start", b.start,
+					"target_period", b.targetPeriod, "error", err)
+
+				return nil, nil, fmt.Errorf("failed to archive results: %w", err)
+			}
+		}
+
+		sourceUIDs := make([]string, 0, len(measurable))
+		for _, source := range measurable {
+			sourceUIDs = append(sourceUIDs, source.UID)
+		}
+
+		// Idempotent upsert on the bucket key replaces any existing row for
+		// (org, check, coalesce(region,''), period_type, period_start), so a
+		// re-aggregation yields exactly one row, never a NULL-region duplicate
+		// (spec 2026-07-11-16 §3).
+		return aggregateResults(sources, b.targetPeriod, b.start, b.end), sourceUIDs, nil
+	}
 }
 
 // findAggregatableResults finds one check-region pair with data ready to aggregate.
@@ -474,21 +544,21 @@ func lifecycleMarkerStatuses() []int {
 	return []int{int(models.ResultStatusCreated), int(models.ResultStatusRunning)}
 }
 
-// measurableSourceUIDs returns the UIDs of the rows that carry real
-// measurements, skipping lifecycle-marker rows (created, running) — those are
-// intentionally preserved (permalink preservation) and never deleted by a
-// rollup.
-func measurableSourceUIDs(results []*models.Result) []string {
-	uids := make([]string, 0, len(results))
+// measurableSources returns the rows that carry real measurements, the ones a
+// compaction rolls up, archives and deletes, skipping lifecycle-marker rows
+// (created, running): those are intentionally preserved (permalink
+// preservation) and never deleted by a rollup.
+func measurableSources(results []*models.Result) []*models.Result {
+	measurable := make([]*models.Result, 0, len(results))
 	for _, result := range results {
 		if result.Status != nil && models.ResultStatus(*result.Status).IsLifecycleMarker() {
 			continue
 		}
 
-		uids = append(uids, result.UID)
+		measurable = append(measurable, result)
 	}
 
-	return uids
+	return measurable
 }
 
 // retentionFromConfig resolves the per-tier aggregation retention (raw→hour,
@@ -1092,7 +1162,7 @@ func processRawResult(result *models.Result, state *aggregationState) {
 	// this is the hour rollup's half of the shared
 	// models.Result.ExcludedFromAvailability contract.
 	//
-	// This is deliberately narrower than measurableSourceUIDs below,
+	// This is deliberately narrower than measurableSources,
 	// which does NOT skip an abandoned row: contributing nothing to the stats
 	// and being deletable once rolled up are different questions, and an
 	// abandoned row is still an ordinary retention candidate.
