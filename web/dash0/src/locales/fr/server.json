@@ -88,6 +88,12 @@
     "providerDescription": "Configurez les identifiants OAuth de {{provider}}.",
     "enabled": "Activé",
     "unsavedChanges": "Modifications non enregistrées",
+    "providerStatus": {
+      "enabled": "Activé",
+      "configured": "Configuré",
+      "notConfigured": "Non configuré"
+    },
+    "toggleProvider": "Afficher ou masquer les réglages {{provider}}",
     "helpText": "Les modifications des fournisseurs de connexion prennent effet dès leur enregistrement, sans redémarrage. Les modifications LDAP prennent effet après le redémarrage du serveur.",
     "samlSpInfo": "Communiquez ces URL à l'administrateur de votre IdP pour configurer la connexion SAML.",
     "samlMetadataUrlLabel": "URL des métadonnées SP / ID d'entité",

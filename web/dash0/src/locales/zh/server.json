@@ -88,6 +88,12 @@
     "providerDescription": "配置 {{provider}} OAuth 凭据。",
     "enabled": "已启用",
     "unsavedChanges": "有未保存的更改",
+    "providerStatus": {
+      "enabled": "已启用",
+      "configured": "已配置",
+      "notConfigured": "未配置"
+    },
+    "toggleProvider": "显示或隐藏 {{provider}} 设置",
     "helpText": "登录提供方的更改保存后立即生效，无需重启。LDAP 更改会在服务器重启后生效。",
     "samlSpInfo": "将这些 URL 交给你的 IdP 管理员，用于配置 SAML 连接。",
     "samlMetadataUrlLabel": "SP 元数据 / 实体 ID URL",

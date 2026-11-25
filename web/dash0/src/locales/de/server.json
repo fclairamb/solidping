@@ -88,6 +88,12 @@
     "providerDescription": "OAuth-Anmeldedaten für {{provider}} konfigurieren.",
     "enabled": "Aktiviert",
     "unsavedChanges": "Nicht gespeicherte Änderungen",
+    "providerStatus": {
+      "enabled": "Aktiviert",
+      "configured": "Konfiguriert",
+      "notConfigured": "Nicht konfiguriert"
+    },
+    "toggleProvider": "Einstellungen für {{provider}} ein- oder ausblenden",
     "helpText": "Änderungen an den Anmeldeanbietern werden mit dem Speichern wirksam, ohne Neustart. LDAP-Änderungen werden nach einem Server-Neustart wirksam.",
     "samlSpInfo": "Geben Sie diese URLs an Ihren IdP-Administrator weiter, um die SAML-Verbindung zu konfigurieren.",
     "samlMetadataUrlLabel": "SP-Metadaten-/Entitäts-ID-URL",

@@ -88,6 +88,12 @@
     "providerDescription": "Configura las credenciales OAuth de {{provider}}.",
     "enabled": "Activado",
     "unsavedChanges": "Cambios sin guardar",
+    "providerStatus": {
+      "enabled": "Activado",
+      "configured": "Configurado",
+      "notConfigured": "Sin configurar"
+    },
+    "toggleProvider": "Mostrar u ocultar los ajustes de {{provider}}",
     "helpText": "Los cambios en los proveedores de inicio de sesión surten efecto en cuanto se guardan, sin reiniciar. Los cambios de LDAP surten efecto tras reiniciar el servidor.",
     "samlSpInfo": "Facilita estas URL al administrador de tu IdP para configurar la conexión SAML.",
     "samlMetadataUrlLabel": "URL de metadatos del SP / ID de entidad",

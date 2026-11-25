@@ -31,6 +31,8 @@ test.describe("Server auth: SSO provider settings are live", () => {
       await expect(localLogin).toBeDisabled();
       await expect(page.getByTestId("local-login-no-provider-hint")).toBeVisible();
 
+      // Unconfigured cards load collapsed (spec 2026-11-25-03).
+      await page.getByTestId("provider-card-toggle-gitlab").click();
       await page.getByTestId("provider-field-auth.gitlab.client_id").fill("acme-gitlab-id");
       await page.getByTestId("provider-field-auth.gitlab.client_secret").fill("acme-gitlab-secret");
       await page.getByTestId("provider-enabled-gitlab").click();
