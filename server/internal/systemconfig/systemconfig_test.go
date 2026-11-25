@@ -1145,3 +1145,25 @@ func TestRegistrationMaxPendingPerIPApplyFunc(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldSealParameterUnit(t *testing.T) {
+	t.Parallel()
+
+	var secretKey string
+
+	for _, def := range getKnownParameters() {
+		if def.Secret {
+			secretKey = string(def.Key)
+
+			break
+		}
+	}
+
+	require.NotEmpty(t, secretKey, "the parameter table defines at least one secret key")
+
+	require.True(t, ShouldSealParameter("custom.anything", true), "the caller's secret flag wins")
+	require.True(t, ShouldSealParameter(string(KeyEmailInbox), false), "the inbox is sealed whatever its flag")
+	require.True(t, ShouldSealParameter(secretKey, false), "a key the table defines as secret is sealed")
+	require.False(t, ShouldSealParameter(string(KeyLocalLoginEnabled), false))
+	require.False(t, ShouldSealParameter("custom.unknown", false))
+}

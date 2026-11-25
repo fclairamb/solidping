@@ -26,7 +26,27 @@ flowchart LR
 2. SolidPing generates a random **data encryption key** per organization and stores it encrypted with the master key.
 3. Individual secrets are encrypted with their organization's data key using **AES-256-GCM**.
 
-Because the master key lives outside the database, a database dump alone never reveals plaintext secrets.
+A separate **system data key**, wrapped by the same master key, encrypts the secret server settings stored in the database.
+
+### What the envelope covers
+
+With a master key set, these values are stored encrypted:
+
+- check configuration secrets (passwords, tokens, private keys);
+- integration and notification channel credentials;
+- the secret server settings: the JWT signing key (`auth.jwt_secret`), the SMTP password, the SSO client secrets (Google, GitHub, GitLab, Microsoft, Slack, Discord, OIDC), the Slack signing secret and app token, the Discord bot token, the MS Teams app secret, the LDAP bind password, the PostHog personal API key, the metrics scrape token, and the email inbox configuration (`email.inbox`, which holds its password).
+
+Because the master key lives outside the database, a dump of a database encrypted this way does not reveal these secrets.
+
+On startup, `SP_ENCRYPTION_AUTO_MIGRATE` also encrypts the server settings that are still stored in plaintext. The values stay the same, so signed-in users stay signed in.
+
+A server that finds an encrypted setting it cannot open, because the master key is missing or different, refuses to start and names the variable to fix. It never replaces the JWT signing key with a new one.
+
+### The JWT signing key
+
+When `SP_AUTH_JWT_SECRET` is unset, SolidPing generates the signing key on first start and stores it in the database: encrypted with a master key, in plaintext without one. Anyone who can read that key can sign a valid session token for any user. To keep it out of the database entirely, set `SP_AUTH_JWT_SECRET` from your secret store: the environment value always wins over the stored one.
+
+Without a master key, the server logs a warning at startup that lists the secret settings stored in plaintext.
 
 ## Configuration
 
