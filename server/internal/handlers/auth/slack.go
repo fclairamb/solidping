@@ -123,7 +123,7 @@ func (h *SlackOAuthHandler) Exchange(writer http.ResponseWriter, req *http.Reque
 // buildSlackAuthURL constructs the Slack authorization URL.
 func (h *SlackOAuthHandler) buildSlackAuthURL(state string) string {
 	params := url.Values{}
-	params.Set("client_id", h.cfg.Slack.ClientID)
+	params.Set("client_id", h.cfg.SSO().Slack.ClientID)
 	params.Set("user_scope", "openid,email,profile")
 	params.Set("redirect_uri", h.getCallbackURL())
 	params.Set("state", state)

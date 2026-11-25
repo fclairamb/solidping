@@ -1613,6 +1613,10 @@ func (s *Service) Initialize(ctx context.Context) error {
 		}
 	}
 
+	// Capture the startup SSO config before the overlay: it is the base the
+	// live re-resolution falls back to once a provider's DB rows are deleted.
+	s.config.EnableLiveSSO()
+
 	knownParameters := getKnownParameters()
 
 	// Apply parameters with precedence: env > db > defaults.
@@ -1640,6 +1644,12 @@ func (s *Service) Initialize(ctx context.Context) error {
 			def.ApplyFunc(s.config, dbVal)
 		}
 	}
+
+	// Publish the overlaid sign-in provider configs as the first live SSO
+	// snapshot; later saves re-resolve it (RefreshSSOConfig).
+	initial := s.config.SSOFields()
+	s.config.PublishSSO(&initial)
+	InstallSSOReloader(s.config, s.db)
 
 	// Auto-generate JWT secret if needed
 	if err := s.ensureJWTSecret(ctx); err != nil {

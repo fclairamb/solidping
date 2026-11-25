@@ -356,6 +356,10 @@ func (s *Service) SetParameter(ctx context.Context, key string, value any, secre
 	// Switching local login off with no SSO provider would lock everyone out
 	// (spec 2026-11-21-02): refuse it while the operator can still fix it.
 	if key == string(systemconfig.KeyLocalLoginEnabled) {
+		// Re-resolve first: another instance may have saved a provider
+		// within the last SSOConfigRefreshTTL.
+		s.refreshSSO(ctx)
+
 		if err := systemconfig.ValidateLocalLoginParameter(s.appConfig, value); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidParameter, err)
 		}
@@ -363,6 +367,10 @@ func (s *Service) SetParameter(ctx context.Context, key string, value any, secre
 
 	if err := s.db.SetSystemParameter(ctx, key, value, secret); err != nil {
 		return nil, err
+	}
+
+	if systemconfig.IsSSOParameterKey(key) {
+		s.refreshSSO(ctx)
 	}
 
 	// Fetch the updated parameter to return
@@ -389,7 +397,24 @@ func (s *Service) DeleteParameter(ctx context.Context, key string) error {
 		return err
 	}
 
+	if systemconfig.IsSSOParameterKey(key) {
+		s.refreshSSO(ctx)
+	}
+
 	return nil
+}
+
+// refreshSSO makes a saved sign-in provider live without a restart (spec
+// 2026-11-25-02). The parameter is already stored: a failed re-resolution is
+// logged and retried by the background TTL refresh, not returned.
+func (s *Service) refreshSSO(ctx context.Context) {
+	if s.appConfig == nil {
+		return
+	}
+
+	if err := systemconfig.RefreshSSOConfig(ctx, s.db, s.appConfig); err != nil {
+		slog.WarnContext(ctx, "Failed to apply the saved SSO provider config", "error", err)
+	}
 }
 
 // toResponse converts a Parameter model to a response, masking secrets.

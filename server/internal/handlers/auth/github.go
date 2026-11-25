@@ -96,7 +96,7 @@ func (h *GitHubOAuthHandler) Callback(writer http.ResponseWriter, req *http.Requ
 // buildGitHubAuthURL constructs the GitHub authorization URL.
 func (h *GitHubOAuthHandler) buildGitHubAuthURL(state string) string {
 	params := url.Values{}
-	params.Set("client_id", h.cfg.GitHub.ClientID)
+	params.Set("client_id", h.cfg.SSO().GitHub.ClientID)
 	params.Set("redirect_uri", h.svc.getCallbackURL())
 	params.Set("scope", "user:email")
 	params.Set("state", state)

@@ -3257,14 +3257,14 @@ var providerTypeLabels = map[models.ProviderType]string{
 func (s *Service) providerLabel(providerType models.ProviderType) string {
 	switch providerType {
 	case models.ProviderTypeSAML:
-		if s.fullCfg.SAML.DisplayName != "" {
-			return s.fullCfg.SAML.DisplayName
+		if s.fullCfg.SSO().SAML.DisplayName != "" {
+			return s.fullCfg.SSO().SAML.DisplayName
 		}
 
 		return ssoFallbackLabel
 	case models.ProviderTypeOIDC:
-		if s.fullCfg.OIDC.DisplayName != "" {
-			return s.fullCfg.OIDC.DisplayName
+		if s.fullCfg.SSO().OIDC.DisplayName != "" {
+			return s.fullCfg.SSO().OIDC.DisplayName
 		}
 
 		return ssoFallbackLabel

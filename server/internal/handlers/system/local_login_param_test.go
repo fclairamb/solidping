@@ -40,7 +40,18 @@ func TestSetParameterRefusesLocalLoginOffWithoutSSO(t *testing.T) {
 	_, err = svc.SetParameter(ctx, key, true, false)
 	r.NoError(err, "turning it on is always allowed")
 
-	cfg.OIDC = config.OIDCOAuthConfig{Enabled: true, IssuerURL: "https://idp.acme.com", ClientID: "id", ClientSecret: "s"}
+	// Saved through the same service, the provider is live at once (spec
+	// 2026-11-25-02): no restart between the two saves.
+	for k, v := range map[systemconfig.ParameterKey]any{
+		systemconfig.KeyOIDCIssuerURL:    "https://idp.acme.com",
+		systemconfig.KeyOIDCClientID:     "id",
+		systemconfig.KeyOIDCClientSecret: "s",
+		systemconfig.KeyOIDCEnabled:      true,
+	} {
+		_, err = svc.SetParameter(ctx, string(k), v, k == systemconfig.KeyOIDCClientSecret)
+		r.NoError(err)
+	}
+
 	_, err = svc.SetParameter(ctx, key, false, false)
 	r.NoError(err, "allowed once an SSO provider is enabled")
 }

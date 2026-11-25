@@ -164,8 +164,11 @@ func (s *OIDCOAuthService) ValidateOAuthState(ctx context.Context, stateParam st
 // issuer URL (and fetches its JWKS lazily, on first token verification) and
 // caches the result until the issuer URL changes.
 func (s *OIDCOAuthService) providerAndVerifier(ctx context.Context) (*oidc.Provider, *oidc.IDTokenVerifier, error) {
-	issuer := strings.TrimSpace(s.cfg.OIDC.IssuerURL)
-	if !s.cfg.OIDC.Enabled || issuer == "" || s.cfg.OIDC.ClientID == "" || s.cfg.OIDC.ClientSecret == "" {
+	// One snapshot for the whole lookup (spec 2026-11-25-02).
+	oidcCfg := s.cfg.SSO().OIDC
+
+	issuer := strings.TrimSpace(oidcCfg.IssuerURL)
+	if !oidcCfg.Enabled || issuer == "" || oidcCfg.ClientID == "" || oidcCfg.ClientSecret == "" {
 		return nil, nil, ErrOIDCNotConfigured
 	}
 
@@ -190,7 +193,7 @@ func (s *OIDCOAuthService) providerAndVerifier(ctx context.Context) (*oidc.Provi
 	// ClientID check is mandatory (SkipClientIDCheck stays false): this is
 	// what ties the validated token to *our* client registration with the
 	// IdP, not just any client of the same issuer.
-	verifier := s.provider.Verifier(&oidc.Config{ClientID: s.cfg.OIDC.ClientID})
+	verifier := s.provider.Verifier(&oidc.Config{ClientID: oidcCfg.ClientID})
 
 	return s.provider, verifier, nil
 }
@@ -204,10 +207,11 @@ func (s *OIDCOAuthService) oauth2Config(ctx context.Context) (*oauth2.Config, er
 	}
 
 	scopes := s.scopes()
+	oidcCfg := s.cfg.SSO().OIDC
 
 	return &oauth2.Config{
-		ClientID:     s.cfg.OIDC.ClientID,
-		ClientSecret: s.cfg.OIDC.ClientSecret,
+		ClientID:     oidcCfg.ClientID,
+		ClientSecret: oidcCfg.ClientSecret,
 		Endpoint:     provider.Endpoint(),
 		RedirectURL:  s.getCallbackURL(),
 		Scopes:       scopes,
@@ -216,7 +220,7 @@ func (s *OIDCOAuthService) oauth2Config(ctx context.Context) (*oauth2.Config, er
 
 // scopes returns the configured scope list, always including "openid".
 func (s *OIDCOAuthService) scopes() []string {
-	fields := strings.Fields(s.cfg.OIDC.Scopes)
+	fields := strings.Fields(s.cfg.SSO().OIDC.Scopes)
 	if len(fields) == 0 {
 		return []string{oidc.ScopeOpenID, keyEmail, "profile"}
 	}
@@ -347,23 +351,23 @@ func (s *OIDCOAuthService) userInfoGroups(ctx context.Context, token *oauth2.Tok
 		return nil
 	}
 
-	return parseGroupsClaim(claims[groupsClaimName(&s.cfg.OIDC)])
+	return parseGroupsClaim(claims[groupsClaimName(&s.cfg.SSO().OIDC)])
 }
 
 // mapClaims extracts email/name/avatar from the validated ID token's claims,
 // using the configured claim names with standard-claim fallbacks.
 func (s *OIDCOAuthService) mapClaims(subject string, claims map[string]any) *oidcUserInfo {
-	emailClaim := s.cfg.OIDC.EmailClaim
+	emailClaim := s.cfg.SSO().OIDC.EmailClaim
 	if emailClaim == "" {
 		emailClaim = keyEmail
 	}
 
-	nameClaim := s.cfg.OIDC.NameClaim
+	nameClaim := s.cfg.SSO().OIDC.NameClaim
 	if nameClaim == "" {
 		nameClaim = keyName
 	}
 
-	avatarClaim := s.cfg.OIDC.AvatarClaim
+	avatarClaim := s.cfg.SSO().OIDC.AvatarClaim
 	if avatarClaim == "" {
 		avatarClaim = oidcDefaultAvatarClaim
 	}
@@ -373,7 +377,7 @@ func (s *OIDCOAuthService) mapClaims(subject string, claims map[string]any) *oid
 		Email:     claimString(claims, emailClaim),
 		Name:      claimString(claims, nameClaim),
 		AvatarURL: claimString(claims, avatarClaim),
-		Groups:    parseGroupsClaim(claims[groupsClaimName(&s.cfg.OIDC)]),
+		Groups:    parseGroupsClaim(claims[groupsClaimName(&s.cfg.SSO().OIDC)]),
 	}
 
 	// Only an actual boolean `true` counts as verified. A missing claim, a

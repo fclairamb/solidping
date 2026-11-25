@@ -95,13 +95,14 @@ func (h *MicrosoftOAuthHandler) Callback(writer http.ResponseWriter, req *http.R
 
 // buildMicrosoftAuthURL constructs the Microsoft authorization URL.
 func (h *MicrosoftOAuthHandler) buildMicrosoftAuthURL(state string) string {
-	tenant := h.cfg.Microsoft.TenantID
+	msCfg := h.cfg.SSO().Microsoft
+	tenant := msCfg.TenantID
 	if tenant == "" {
 		tenant = microsoftTenantCommon
 	}
 
 	params := url.Values{}
-	params.Set("client_id", h.cfg.Microsoft.ClientID)
+	params.Set("client_id", msCfg.ClientID)
 	params.Set("redirect_uri", h.svc.getCallbackURL())
 	params.Set("scope", "openid email profile User.Read")
 	params.Set("state", state)
