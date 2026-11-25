@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useSubmitShortcut } from "@/hooks/use-hotkey";
 import { useState } from "react";
 import { useIsDemoSession } from "@/hooks/use-is-demo-session";
 import { useTranslation } from "react-i18next";
@@ -106,6 +107,7 @@ export const Route = createFileRoute("/orgs/$org/checks/new")({
 });
 
 function CheckNewPage() {
+  useSubmitShortcut();
   const { t } = useTranslation(["checks", "dependencies"]);
   const { t: tOrg } = useTranslation(["org"]);
   const isDemoSession = useIsDemoSession();

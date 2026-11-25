@@ -209,5 +209,15 @@
     "sessionExpired": "Sitzung abgelaufen",
     "sessionChanged": "Sitzung gewechselt",
     "network": "Netzwerkverbindung fehlgeschlagen"
+  },
+  "shortcuts": {
+    "title": "Tastenkürzel",
+    "commandMenu": "Befehlsmenü öffnen",
+    "focusSearch": "Suchfeld fokussieren",
+    "resetFilters": "Suche leeren, dann Filter zurücksetzen",
+    "newCheck": "Neue Prüfung",
+    "submitForm": "Formular absenden",
+    "help": "Diese Hilfe anzeigen",
+    "esc": "Esc"
   }
 }

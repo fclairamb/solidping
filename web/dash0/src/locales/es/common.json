@@ -209,5 +209,15 @@
     "sessionExpired": "Sesión caducada",
     "sessionChanged": "La sesión ha cambiado",
     "network": "Falló la conexión de red"
+  },
+  "shortcuts": {
+    "title": "Atajos de teclado",
+    "commandMenu": "Abrir el menú de comandos",
+    "focusSearch": "Enfocar el cuadro de búsqueda",
+    "resetFilters": "Borrar la búsqueda y luego restablecer los filtros",
+    "newCheck": "Nueva comprobación",
+    "submitForm": "Enviar el formulario",
+    "help": "Mostrar esta ayuda",
+    "esc": "Esc"
   }
 }
