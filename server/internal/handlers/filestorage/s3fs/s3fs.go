@@ -221,7 +221,7 @@ func (b *Backend) DeletePrefix(
 	}
 
 	// BuildPath with an empty fileID already ends with "/", so an empty prefix
-	// never matches a neighbouring group whose name starts the same.
+	// never matches a neighboring group whose name starts the same.
 	keyPrefix := b.objectKey(filestorage.BuildPath(orgUID, group, prefix))
 
 	paginator := s3.NewListObjectsV2Paginator(b.Client, &s3.ListObjectsV2Input{
@@ -241,8 +241,8 @@ func (b *Backend) DeletePrefix(
 			batch := page.Contents[start:min(start+deleteBatchSize, len(page.Contents))]
 
 			ids := make([]types.ObjectIdentifier, 0, len(batch))
-			for _, obj := range batch {
-				ids = append(ids, types.ObjectIdentifier{Key: obj.Key})
+			for i := range batch {
+				ids = append(ids, types.ObjectIdentifier{Key: batch[i].Key})
 			}
 
 			out, err := b.Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{

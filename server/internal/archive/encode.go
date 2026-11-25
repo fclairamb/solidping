@@ -133,15 +133,15 @@ func Merge(existing, incoming []Row) []Row {
 	merged := make([]Row, 0, len(existing)+len(incoming))
 
 	for _, batch := range [][]Row{existing, incoming} {
-		for _, row := range batch {
-			if idx, ok := byUID[row.UID]; ok {
-				merged[idx] = row
+		for i := range batch {
+			if idx, ok := byUID[batch[i].UID]; ok {
+				merged[idx] = batch[i]
 
 				continue
 			}
 
-			byUID[row.UID] = len(merged)
-			merged = append(merged, row)
+			byUID[batch[i].UID] = len(merged)
+			merged = append(merged, batch[i])
 		}
 	}
 

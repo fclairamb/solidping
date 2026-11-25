@@ -386,40 +386,12 @@ func (r *AggregationJobRun) aggregatePeriod(
 	// intentionally preserved (permalink preservation), so they are never among
 	// the deleted UIDs. A bucket whose only rows are markers yields no source
 	// UIDs; CompactResults then writes nothing and reports Compacted=false.
-	outcome, err := jctx.DBService.CompactResults(ctx, &filter,
-		func(sources []*models.Result) (*models.Result, []string, error) {
-			measurable := measurableSources(sources)
-			if len(measurable) == 0 {
-				return nil, nil, nil
-			}
+	bucket := compactionBucket{
+		orgUID: orgUID, checkUID: checkUID, region: region,
+		targetPeriod: targetPeriod, start: periodStart, end: periodEnd,
+	}
 
-			// Archive before delete (spec 2026-11-25-01): exactly the rows this
-			// transaction deletes go to the archive first, and a failed write
-			// aborts the transaction, so the bucket stays raw and the next run
-			// retries. Nothing is ever deleted unarchived while archiving is on.
-			if archiver != nil {
-				if archErr := archiver.Archive(
-					ctx, orgUID, checkUID, targetPeriod, periodStart, measurable,
-				); archErr != nil {
-					log.WarnContext(ctx, "Failed to archive compacted results, the bucket is kept",
-						"check_uid", checkUID, "region", region, "period_start", periodStart,
-						"target_period", targetPeriod, "error", archErr)
-
-					return nil, nil, fmt.Errorf("failed to archive results: %w", archErr)
-				}
-			}
-
-			sourceUIDs := make([]string, 0, len(measurable))
-			for _, source := range measurable {
-				sourceUIDs = append(sourceUIDs, source.UID)
-			}
-
-			// Idempotent upsert on the bucket key replaces any existing row for
-			// (org, check, coalesce(region,''), period_type, period_start), so a
-			// re-aggregation yields exactly one row, never a NULL-region duplicate
-			// (spec 2026-07-11-16 §3).
-			return aggregateResults(sources, targetPeriod, periodStart, periodEnd), sourceUIDs, nil
-		})
+	outcome, err := jctx.DBService.CompactResults(ctx, &filter, bucket.aggregateFunc(ctx, log, archiver))
 	if err != nil {
 		return false, time.Time{}, fmt.Errorf("failed to compact results: %w", err)
 	}
@@ -451,6 +423,53 @@ func (r *AggregationJobRun) aggregatePeriod(
 		"source_count", outcome.Fetched, "deleted_count", outcome.DeletedCount)
 
 	return true, periodStart, nil
+}
+
+// compactionBucket is the target bucket one aggregatePeriod call compacts.
+type compactionBucket struct {
+	orgUID, checkUID string
+	region           *string
+	targetPeriod     string
+	start, end       time.Time
+}
+
+// aggregateFunc is the CompactResults closure of the bucket: it rolls the
+// measurable source rows up, archives them first when archiving is on, and
+// selects them for deletion.
+func (b *compactionBucket) aggregateFunc(
+	ctx context.Context, log *slog.Logger, archiver archive.Archiver,
+) models.AggregateResultsFunc {
+	return func(sources []*models.Result) (*models.Result, []string, error) {
+		measurable := measurableSources(sources)
+		if len(measurable) == 0 {
+			return nil, nil, nil
+		}
+
+		// Archive before delete (spec 2026-11-25-01): exactly the rows this
+		// transaction deletes go to the archive first, and a failed write
+		// aborts the transaction, so the bucket stays raw and the next run
+		// retries. Nothing is ever deleted unarchived while archiving is on.
+		if archiver != nil {
+			if err := archiver.Archive(ctx, b.orgUID, b.checkUID, b.targetPeriod, b.start, measurable); err != nil {
+				log.WarnContext(ctx, "Failed to archive compacted results, the bucket is kept",
+					"check_uid", b.checkUID, "region", b.region, "period_start", b.start,
+					"target_period", b.targetPeriod, "error", err)
+
+				return nil, nil, fmt.Errorf("failed to archive results: %w", err)
+			}
+		}
+
+		sourceUIDs := make([]string, 0, len(measurable))
+		for _, source := range measurable {
+			sourceUIDs = append(sourceUIDs, source.UID)
+		}
+
+		// Idempotent upsert on the bucket key replaces any existing row for
+		// (org, check, coalesce(region,''), period_type, period_start), so a
+		// re-aggregation yields exactly one row, never a NULL-region duplicate
+		// (spec 2026-07-11-16 §3).
+		return aggregateResults(sources, b.targetPeriod, b.start, b.end), sourceUIDs, nil
+	}
 }
 
 // findAggregatableResults finds one check-region pair with data ready to aggregate.
