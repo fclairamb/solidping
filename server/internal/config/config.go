@@ -753,6 +753,7 @@ type Config struct {
 	Aggregation  AggregationConfig  `koanf:"aggregation"`
 	Jobs         JobsConfig         `koanf:"jobs"`
 	FileStorage  FileStorageConfig  `koanf:"filestorage"`
+	Archive      ArchiveConfig      `koanf:"archive"`
 	App          AppConfig          `koanf:"app"`
 	Deployment   DeploymentConfig   `koanf:"deployment"`
 	Egress       EgressConfig       `koanf:"egress"`
@@ -1356,6 +1357,18 @@ type FileStorageConfig struct {
 	S3UsePathStyle bool   `koanf:"s3_use_path_style"` // true for MinIO/Garage/Ceph
 	S3AccessKey    string `koanf:"s3_access_key"`     // optional static cred (else AWS chain)
 	S3SecretKey    string `koanf:"s3_secret_key"`     // optional static cred — never logged
+}
+
+// ArchiveConfig turns on the Vortex archive of compacted results (spec
+// 2026-11-25-01): before the aggregation job deletes the rows it rolls up, it
+// writes them as a Vortex file through the configured file storage
+// (filestorage.*), under <orgUID>/archives/<checkUID>/<date>[/<hour>].vortex.
+// Off by default: with archive.enabled false nothing is written and compaction
+// behaves exactly as before. There is no storage setting of its own: the file
+// storage backend is reused as it is. Enabled is a single-word leaf, so koanf's
+// env loader reaches it as SP_ARCHIVE_ENABLED.
+type ArchiveConfig struct {
+	Enabled bool `koanf:"enabled"`
 }
 
 // AppConfig contains application-level integration settings: in-app bug

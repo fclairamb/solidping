@@ -2,6 +2,7 @@ package s3fs_test
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -184,4 +185,60 @@ func TestS3FS_WriteFile_InvalidRequest(t *testing.T) {
 		r.ErrorContains(write(t, backend), "AccessDenied")
 		r.Equal(int32(1), calls.Load())
 	})
+}
+
+// TestS3FS_DeletePrefix checks the prefix delete lists under
+// <prefix>/<orgUID>/<group>/ and sends the keys it found to DeleteObjects
+// (spec 2026-11-25-01).
+func TestS3FS_DeletePrefix(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	orgUID := uuid.New()
+	base := "blobs/" + orgUID.String() + "/archives/"
+
+	var (
+		listPrefix atomic.Value
+		deleteBody atomic.Value
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+
+		if req.Method == http.MethodGet {
+			listPrefix.Store(req.URL.Query().Get("prefix"))
+			_, _ = fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>`+
+				`<ListBucketResult><Name>bucket</Name><IsTruncated>false</IsTruncated>`+
+				`<Contents><Key>%sc1/2026-11-25/10.vortex</Key></Contents>`+
+				`<Contents><Key>%sc1/2026-11-25.vortex</Key></Contents>`+
+				`</ListBucketResult>`, base, base)
+
+			return
+		}
+
+		body, _ := io.ReadAll(req.Body)
+		deleteBody.Store(string(body))
+		_, _ = fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?><DeleteResult></DeleteResult>`)
+	}))
+	t.Cleanup(srv.Close)
+
+	loadOpts, s3Opts := s3fs.BuildClientOptions(&filestorage.Config{
+		S3Region: "us-east-1", S3AccessKey: "key", S3SecretKey: "secret",
+		S3Endpoint: srv.URL, S3UsePathStyle: true,
+	})
+
+	awsCfg, err := awsconfig.LoadDefaultConfig(t.Context(), loadOpts...)
+	r.NoError(err)
+
+	backend := s3fs.New("bucket", "blobs", s3.NewFromConfig(awsCfg, s3Opts...))
+
+	count, err := backend.DeletePrefix(t.Context(), orgUID, filestorage.GroupTypeArchives, "")
+	r.NoError(err)
+	r.Equal(2, count)
+	r.Equal(base, listPrefix.Load())
+	r.Contains(deleteBody.Load(), base+"c1/2026-11-25/10.vortex")
+	r.Contains(deleteBody.Load(), base+"c1/2026-11-25.vortex")
+
+	_, err = backend.DeletePrefix(t.Context(), orgUID, filestorage.GroupTypeArchives, "../")
+	r.ErrorIs(err, filestorage.ErrInvalidPrefix)
 }

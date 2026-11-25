@@ -469,6 +469,23 @@ func TestLoad_DockerImageEnvVars(t *testing.T) {
 	r.Equal("/data/files", cfg.FileStorage.LocalRoot)
 }
 
+// TestLoad_ArchiveEnabled covers the Vortex archive switch (spec 2026-11-25-01):
+// off by default, and SP_ARCHIVE_ENABLED reaches archive.enabled through the
+// generic env loader (single-word leaf). Uses t.Setenv, so no t.Parallel.
+func TestLoad_ArchiveEnabled(t *testing.T) {
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.False(cfg.Archive.Enabled, "the archive must be off by default")
+
+	t.Setenv("SP_ARCHIVE_ENABLED", "true")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.True(cfg.Archive.Enabled)
+}
+
 // TestApplyProfilerEnv confirms SP_PROFILER_BLOCK_RATE / _MUTEX_FRACTION land on
 // the snake_case-tagged ProfilerConfig fields despite koanf's env
 // underscore→dot collapse. Uses t.Setenv, which is incompatible with t.Parallel.

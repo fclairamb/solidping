@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -113,6 +114,45 @@ func (b *Backend) DeleteFile(
 	}
 
 	return nil
+}
+
+// DeletePrefix removes the directory Root/orgUID/group/prefix and everything
+// under it. A directory that does not exist removes nothing and is no error.
+func (b *Backend) DeletePrefix(
+	_ context.Context, orgUID uuid.UUID, group filestorage.GroupType, prefix string,
+) (int, error) {
+	if err := filestorage.ValidatePrefix(prefix); err != nil {
+		return 0, err
+	}
+
+	dir := filepath.Join(b.Root, filestorage.BuildPath(orgUID, group, prefix))
+
+	count := 0
+
+	walkErr := filepath.WalkDir(dir, func(_ string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !entry.IsDir() {
+			count++
+		}
+
+		return nil
+	})
+	if walkErr != nil {
+		if errors.Is(walkErr, os.ErrNotExist) {
+			return 0, nil
+		}
+
+		return 0, fmt.Errorf("walk dir: %w", walkErr)
+	}
+
+	if err := os.RemoveAll(dir); err != nil {
+		return 0, fmt.Errorf("remove dir: %w", err)
+	}
+
+	return count, nil
 }
 
 // ParseURI splits "file://orgUID/group/fileID" back into its parts.
