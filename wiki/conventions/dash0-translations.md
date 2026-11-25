@@ -47,7 +47,9 @@ page), "故障公告" (incident publication), "维护窗口" (maintenance window
 "暂停通知" (snooze), "抖动" (flapping), "反复" (relapse), "确认时长" /
 "恢复时长" (confirmation / recovery period), "兜底" / "回退" (fallback /
 fall back to), "以其他用户身份查看" (impersonation), "请求头" / "响应头"
-(request / response header), "短信流量欺诈" (SMS pumping), "已定位" /
+(request / response header), "校验" (check assertion: JSON, header, body,
+AI contract), "断言" (SAML assertion: ACS, assertion attributes, keep the
+protocol term), "短信流量欺诈" (SMS pumping), "已定位" /
 "已确认" / "已解决" (identified / acknowledged / resolved), "轻微" /
 "重大" / "严重" (severity), 称呼用"你"（不用"您"）；事件类型名用名词式
 （"监控项创建"，不用"监控项已创建"）；不用破折号"——"，标签分隔用"·"。
