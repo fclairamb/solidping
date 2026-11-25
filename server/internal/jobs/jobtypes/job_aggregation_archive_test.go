@@ -217,7 +217,8 @@ func TestAggregatePeriod_ArchiveDisabledWritesNothing(t *testing.T) {
 
 // TestAggregatePeriod_ArchiveEnabledFromConfig runs both archived tiers
 // through archive.enabled and the local file storage: the raw rows of an hour
-// land in <date>/<hour>.vortex, the hour rollups of a day in <date>.vortex.
+// land in <date>/<hour>.vortex; the hours of the day compacted before
+// archiving have no hour file, so their hour rollups land in <date>.vortex.
 func TestAggregatePeriod_ArchiveEnabledFromConfig(t *testing.T) {
 	t.Parallel()
 
@@ -284,4 +285,129 @@ func TestAggregatePeriod_ArchiveSkipsMarkerOnlyBucket(t *testing.T) {
 	r.False(aggregated)
 	r.Zero(failing.calls, "a marker-only bucket must not reach the archiver")
 	r.Equal(2, fx.countRows(t, periodRaw))
+}
+
+// faultyStorage is a file storage that fails one kind of operation.
+type faultyStorage struct {
+	filestorage.FileStorage
+
+	failWrite, failRead, failDelete bool
+}
+
+func (f *faultyStorage) WriteFile(ctx context.Context, orgUID uuid.UUID, group filestorage.GroupType,
+	fileID string, r io.Reader, meta filestorage.FileMetadata,
+) (string, error) {
+	if f.failWrite {
+		return "", errArchiveDown
+	}
+
+	return f.FileStorage.WriteFile(ctx, orgUID, group, fileID, r, meta)
+}
+
+func (f *faultyStorage) ReadFile(ctx context.Context, orgUID uuid.UUID, group filestorage.GroupType,
+	fileID string,
+) (io.ReadCloser, *filestorage.FileMetadata, error) {
+	if f.failRead {
+		return nil, nil, errArchiveDown
+	}
+
+	return f.FileStorage.ReadFile(ctx, orgUID, group, fileID)
+}
+
+func (f *faultyStorage) DeletePrefix(ctx context.Context, orgUID uuid.UUID, group filestorage.GroupType,
+	prefix string,
+) (int, error) {
+	if f.failDelete {
+		return 0, errArchiveDown
+	}
+
+	return f.FileStorage.DeletePrefix(ctx, orgUID, group, prefix)
+}
+
+func archiveFileExists(t *testing.T, storage filestorage.FileStorage, orgUID, fileID string) bool {
+	t.Helper()
+
+	reader, _, err := storage.ReadFile(t.Context(), uuid.MustParse(orgUID), filestorage.GroupTypeArchives, fileID)
+	if err == nil {
+		_ = reader.Close()
+
+		return true
+	}
+
+	require.ErrorIs(t, err, filestorage.ErrFileNotFound)
+
+	return false
+}
+
+// TestAggregatePeriod_DayArchiveAllOrNothing: with a storage failing on
+// write, on read and on delete in turn, the hour to day compaction leaves the
+// bucket as it was (hour rollups present, no day rollup, hour files still
+// there), and the next run with a working storage compacts and archives it.
+func TestAggregatePeriod_DayArchiveAllOrNothing(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		storage func(filestorage.FileStorage) *faultyStorage
+	}{
+		{"write", func(s filestorage.FileStorage) *faultyStorage {
+			return &faultyStorage{FileStorage: s, failWrite: true}
+		}},
+		{"read", func(s filestorage.FileStorage) *faultyStorage {
+			return &faultyStorage{FileStorage: s, failRead: true}
+		}},
+		{"delete", func(s filestorage.FileStorage) *faultyStorage {
+			return &faultyStorage{FileStorage: s, failDelete: true}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			ctx := t.Context()
+			fx := newArchiveFixture(t)
+			storage := localfs.New(t.TempDir())
+
+			// Hour rollups old enough for the hour to day compaction (7 days
+			// kept). Hour 3 has its hour file (raw rows archived when the hour
+			// was compacted), hour 4 has none (compacted before archiving).
+			baseDay := time.Now().UTC().AddDate(0, 0, -10).Truncate(24 * time.Hour)
+			hour3, hour4 := baseDay.Add(3*time.Hour), baseDay.Add(4*time.Hour)
+			fx.addResult(t, models.PeriodTypeHour, models.ResultStatusUp, hour3)
+			rollup4 := fx.addResult(t, models.PeriodTypeHour, models.ResultStatusUp, hour4)
+
+			raw := models.NewResult(fx.org.UID, fx.check.UID, models.ResultStatusUp, 0.1)
+			raw.PeriodStart = hour3.Add(time.Minute)
+			r.NoError(archive.New(storage).Archive(ctx, fx.org.UID, fx.check.UID, models.PeriodTypeHour, hour3,
+				[]*models.Result{raw}))
+
+			hourFile := archive.HourFileID(fx.check.UID, hour3)
+			dayFile := archive.DayFileID(fx.check.UID, baseDay)
+
+			run := &AggregationJobRun{archiver: archive.New(tc.storage(storage)), archiverSet: true}
+
+			aggregated, _, err := run.aggregatePeriod(ctx, fx.jctx, fx.org.UID, periodHour, periodDay)
+			r.ErrorIs(err, errArchiveDown)
+			r.False(aggregated)
+			r.Equal(2, fx.countRows(t, periodHour), "the hour rollups must be kept when the archive fails")
+			r.Zero(fx.countRows(t, periodDay), "no day rollup may be committed when the archive fails")
+			r.True(archiveFileExists(t, storage, fx.org.UID, hourFile), "the hour file must still be there")
+
+			run = &AggregationJobRun{archiver: archive.New(storage), archiverSet: true}
+
+			aggregated, _, err = run.aggregatePeriod(ctx, fx.jctx, fx.org.UID, periodHour, periodDay)
+			r.NoError(err)
+			r.True(aggregated)
+			r.Zero(fx.countRows(t, periodHour))
+			r.Equal(1, fx.countRows(t, periodDay))
+			r.False(archiveFileExists(t, storage, fx.org.UID, hourFile), "the hour file must be gone")
+
+			rows := readArchiveRows(t, storage, fx.org.UID, dayFile)
+			r.Len(rows, 2)
+			r.Equal(raw.UID, rows[0].UID)
+			r.Equal(models.PeriodTypeRaw, rows[0].PeriodType)
+			r.Equal(rollup4.UID, rows[1].UID, "the hour with no hour file contributes its rollup row")
+			r.Equal(models.PeriodTypeHour, rows[1].PeriodType)
+		})
+	}
 }
