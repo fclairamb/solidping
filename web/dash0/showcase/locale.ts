@@ -16,7 +16,7 @@
  * Pure on purpose, so `locale.test.ts` covers it under `bun run test:unit`.
  */
 
-export const SHOWCASE_LOCALES = ["en", "fr", "de", "es"] as const;
+export const SHOWCASE_LOCALES = ["en", "fr", "de", "es", "zh"] as const;
 export type ShowcaseLocale = (typeof SHOWCASE_LOCALES)[number];
 
 /** Parses `SHOWCASE_LOCALE`. Unset or empty is English; anything unknown throws. */
@@ -34,7 +34,7 @@ export function parseShowcaseLocale(raw: string | undefined): ShowcaseLocale {
 
 /** The BCP 47 tag the browser context reports (`navigator.language`, `Intl`). */
 export function browserLocaleTag(locale: ShowcaseLocale): string {
-  return { en: "en-US", fr: "fr-FR", de: "de-DE", es: "es-ES" }[locale];
+  return { en: "en-US", fr: "fr-FR", de: "de-DE", es: "es-ES", zh: "zh-CN" }[locale];
 }
 
 /**
@@ -99,6 +99,13 @@ const NAMES: Record<
     featured: "API de producción",
     user: "Lucía García",
   },
+  zh: {
+    marketing: "官网",
+    docs: "文档站",
+    checkout: "支付 API",
+    featured: "生产环境 API",
+    user: "王晓明",
+  },
 };
 
 /** The demo content for a locale. */
@@ -157,6 +164,13 @@ const CAPTIONS: Record<ShowcaseLocale, ShowcaseCaptions> = {
     check: "Primera comprobación",
     results: "Primeros resultados",
     speed: (n) => `Velocidad ×${n}`,
+  },
+  zh: {
+    run: "运行",
+    login: "首次登录",
+    check: "第一个监控项",
+    results: "第一批结果",
+    speed: (n) => `${n} 倍速`,
   },
 };
 

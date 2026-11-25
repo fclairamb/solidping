@@ -480,7 +480,7 @@ showcase-cut: ## Re-cut the showcase media from the takes already in showcase/ou
 showcase-take: ## Record only the dashboard take of the cut, in SHOWCASE_LOCALE (then make showcase-cut)
 	@cd $(DASH0_DIR) && bunx playwright test --config=showcase/playwright.config.ts setup-to-first-result
 
-showcase-stills: ## Record only the three dashboard stills, in SHOWCASE_LOCALE (en, fr, de, es)
+showcase-stills: ## Record only the three dashboard stills, in SHOWCASE_LOCALE (en, fr, de, es, zh)
 	@echo "Recording showcase stills (needs a FRESH SolidPing server)..."
 	@cd $(DASH0_DIR) && bunx playwright test --config=showcase/playwright.config.ts setup-to-first-result
 	@cd $(DASH0_DIR) && bun run showcase/postprocess.ts --stills-only
