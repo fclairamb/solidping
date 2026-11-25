@@ -209,5 +209,15 @@
     "sessionExpired": "Session expirée",
     "sessionChanged": "La session a changé",
     "network": "La connexion réseau a échoué"
+  },
+  "shortcuts": {
+    "title": "Raccourcis clavier",
+    "commandMenu": "Ouvrir le menu de commandes",
+    "focusSearch": "Placer le curseur dans la recherche",
+    "resetFilters": "Vider la recherche, puis réinitialiser les filtres",
+    "newCheck": "Nouvelle vérification",
+    "submitForm": "Valider le formulaire",
+    "help": "Afficher cette aide",
+    "esc": "Échap"
   }
 }

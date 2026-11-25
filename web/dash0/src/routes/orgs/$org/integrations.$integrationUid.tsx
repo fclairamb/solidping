@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSubmitShortcut } from "@/hooks/use-hotkey";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -280,6 +281,7 @@ function SuppressionsSection({ org }: { org: string }) {
 }
 
 function IntegrationDetailPage() {
+  useSubmitShortcut();
   const { t } = useTranslation("integrations");
   const { org, integrationUid } = Route.useParams();
   const navigate = useNavigate();
@@ -391,6 +393,7 @@ function IntegrationDetailPage() {
           <div className="flex justify-end">
             <Button
               type="submit"
+              data-submit-shortcut
               disabled={
                 update.isPending ||
                 !form?.name ||

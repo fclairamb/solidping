@@ -3105,7 +3105,7 @@ const showSlugFromNameOffer =
           {/* Sticky footer — save without scrolling past the tuning knobs */}
           <div className="sticky bottom-0 z-10 flex justify-end gap-2 rounded-lg border bg-background/95 px-4 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80">
             <Button type="button" variant="outline" onClick={onCancel}>{t("form.cancel")}</Button>
-            <Button type="submit" disabled={isPending} data-testid="check-submit-button">
+            <Button type="submit" disabled={isPending} data-testid="check-submit-button" data-submit-shortcut>
               {isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{pendingLabel}</>) : submitLabel}
             </Button>
           </div>
