@@ -26,6 +26,7 @@ import {
 } from "@/components/shared/browser-capability";
 import { isRegionOffline, offlineRegionNames } from "@/lib/region-outage";
 import { isPassiveCheckType } from "@/lib/check-scheduling";
+import { lastPlacementSeed, pruneLastPlacement, type LastPlacement } from "@/lib/last-placement";
 import {
   FAIL_QUORUM_MAX,
   FAIL_QUORUM_MIN,
@@ -509,6 +510,12 @@ interface CheckFormProps {
   slowThresholdSuggestionMs?: number;
   /** `?replace=1` (the Re-seal page): open the sealed secret inputs on load. */
   replaceSecrets?: boolean;
+  /**
+   * Create mode: the placement of the last check created in this org (from
+   * localStorage, solidping-business#113). The form starts from it unless the
+   * regions were prefilled.
+   */
+  lastPlacement?: LastPlacement | null;
 }
 
 export function CheckForm({
@@ -525,6 +532,7 @@ export function CheckForm({
   initialSection,
   slowThresholdSuggestionMs,
   replaceSecrets,
+  lastPlacement,
 }: CheckFormProps) {
   const { t } = useTranslation("checks");
   // Fetch enabled check types from API; fall back to hardcoded list if unavailable
@@ -848,7 +856,14 @@ const showSlugFromNameOffer =
     () => ({ type: initialType, config: initialData?.config ?? {} }),
   );
 
-  const [selectedRegions, setSelectedRegions] = useState<string[]>(initialData?.regions ?? defaultRegions ?? []);
+  // A new check whose regions were not prefilled starts from the placement of
+  // the last check created here, when the browser remembers one.
+  const [placementSeed] = useState(() => lastPlacementSeed(mode, initialData?.regions, lastPlacement));
+  const [selectedRegions, setSelectedRegions] = useState<string[]>(
+    placementSeed?.placement === "pinned"
+      ? placementSeed.regions
+      : (initialData?.regions ?? defaultRegions ?? []),
+  );
   // Placement (spec 2026-09-25-06). A new check is placed automatically unless
   // the caller pre-selected regions (a `?region=` prefill) or the org's own
   // default regions name a private location — the server applies the very same
@@ -858,10 +873,25 @@ const showSlugFromNameOffer =
   const [placement, setPlacement] = useState<CheckPlacement>(() => {
     if (initialData?.placement) return initialData.placement;
     if (mode === "edit") return "pinned";
+    if (placementSeed) return placementSeed.placement;
 
     return (initialData?.regions?.length ?? 0) > 0 || orgDefaultIsPrivate ? "pinned" : "auto";
   });
-  const [regionCount, setRegionCount] = useState<number | undefined>(initialData?.regionCount);
+  const [regionCount, setRegionCount] = useState<number | undefined>(
+    initialData?.regionCount ?? placementSeed?.regionCount,
+  );
+  // A remembered pinned set may name a region the org no longer offers: once
+  // the regions load, drop those (falling back to automatic when none is
+  // left), before the user touches the picker. Adjusted during render, once.
+  const [placementSeedPruned, setPlacementSeedPruned] = useState(false);
+  if (!placementSeedPruned && placementSeed?.placement === "pinned" && availableRegions) {
+    setPlacementSeedPruned(true);
+    const pruned = pruneLastPlacement(placementSeed, availableRegions.map((region) => region.slug));
+    if (pruned.placement !== "pinned" || pruned.regions.length !== placementSeed.regions.length) {
+      setPlacement(pruned.placement);
+      setSelectedRegions(pruned.placement === "pinned" ? pruned.regions : (defaultRegions ?? []));
+    }
+  }
   // Region Spread: "" = unset (keep automatic default). Seeded from the
   // stored override, if any — absent means the check uses the automatic
   // period/region-count default.

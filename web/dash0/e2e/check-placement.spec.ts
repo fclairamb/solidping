@@ -241,6 +241,35 @@ test.describe("Region placement", () => {
     });
   });
 
+  test("the next new check starts from the placement of the last one created", async ({ authenticatedPage }) => {
+    // solidping-business#113: creating a run of checks pinned to the same
+    // regions must not mean re-picking them every time.
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    await mockTwoRegions(page);
+
+    await page.goto("orgs/test/checks/new?checkType=http");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+    await expect(page.getByTestId("check-regions-picker")).toHaveAttribute("data-placement", "auto");
+    await choosePinnedRegions(page);
+
+    await page.getByTestId("check-name-input").fill(`E2E Last Placement ${Date.now()}`);
+    await page.getByTestId("check-url-input").fill("https://example.com/last-placement");
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    const uid = page.url().split("/checks/")[1].split(/[/?#]/)[0];
+
+    await page.goto("orgs/test/checks/new?checkType=http");
+    const picker = page.getByTestId("check-regions-picker");
+    await expect(picker).toHaveAttribute("data-placement", "pinned");
+    await expect(page.getByTestId("region-checkbox-default")).toHaveAttribute("data-state", "checked");
+    await expect(page.getByTestId("region-checkbox-e2e-second")).toHaveAttribute("data-state", "unchecked");
+
+    await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  });
+
   test("the checks list switches pinned checks to automatic placement in bulk", async ({
     authenticatedPage,
   }) => {

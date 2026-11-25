@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { useIsDemoSession } from "@/hooks/use-is-demo-session";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -10,6 +11,7 @@ import {
 } from "@/api/hooks";
 import { apiFetch } from "@/api/client";
 import { mapDependencySaveError } from "@/lib/dependency-save-error";
+import { loadLastPlacement, saveLastPlacement } from "@/lib/last-placement";
 import { toCreateCheckRequest } from "@/lib/check-request";
 import { isDemoReadOnlyError } from "@/lib/demo";
 import { CheckForm } from "@/components/shared/check-form";
@@ -114,6 +116,10 @@ function CheckNewPage() {
   const { data: checkGroups } = useCheckGroups(org);
   const { data: regionsData } = useRegions(org);
   const { data: dependencyGraph } = useDependencyGraph(org);
+  // The placement of the last check created here (solidping-business#113):
+  // read once per form, so a run of checks pinned to the same regions keeps
+  // them without re-picking.
+  const [lastPlacement] = useState(() => loadLastPlacement(org));
 
   const hasSearchParams = Object.values(search).some((v) => v !== undefined);
 
@@ -164,6 +170,7 @@ function CheckNewPage() {
       checkGroups={checkGroups}
       availableRegions={regionsData?.regions}
       defaultRegions={regionsData?.defaultRegions}
+      lastPlacement={lastPlacement}
       isPending={createCheck.isPending}
       onCancel={() => navigate({ to: "/orgs/$org/checks", params: { org } })}
       onTypeChange={(newType) => {
@@ -183,6 +190,7 @@ function CheckNewPage() {
         // hand-picked list whose own comment warned about the bug it then
         // shipped twice — see lib/check-request.ts.
         const check = await createCheck.mutateAsync(toCreateCheckRequest(data));
+        saveLastPlacement(org, data);
         if (data.connectionUids && data.connectionUids.length > 0) {
           try {
             await apiFetch(`/api/v1/orgs/${org}/checks/${check.uid}/channels`, {
