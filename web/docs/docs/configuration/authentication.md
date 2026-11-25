@@ -272,7 +272,7 @@ Accepted values: your directory (tenant) **GUID**, a **verified domain**
 `consumers`. Leave it unset (or empty) to default to `common` (multi-tenant).
 Set it to your tenant for a single-tenant app registration, which rejects
 `common` sign-ins. This is also settable from **Server Settings → Authentication**
-and takes effect after a server restart.
+and takes effect as soon as it is saved.
 
 **Setup:**
 1. Go to [Azure App Registrations](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps)
@@ -425,7 +425,9 @@ cannot be replayed. If you reverse-proxy SolidPing, nothing needs to change:
 
 ### Provider switches
 
-Each provider also has an `_ENABLED` switch. The login routes of a provider are mounted only when it is on and its client ID is set.
+Each provider also has an `_ENABLED` switch. The login routes of a provider answer only when it is on and its client ID is set (for OIDC: issuer URL, client ID and client secret); otherwise they answer `404`.
+
+A provider saved from **Server Settings → Authentication** takes effect as soon as it is saved, with no restart: the login page shows its button, its login routes answer, and local login can be switched off. On a deployment with several instances, the instance that saved the change applies it at once and the others within 30 seconds. Environment variables still take precedence over what is saved in the dashboard.
 
 | Variable | Default | Description |
 |----------|---------|-------------|

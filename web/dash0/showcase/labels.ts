@@ -31,11 +31,13 @@ const FONT_SIZE = 30;
 /**
  * Slug for the PNG filename. Not shown anywhere — it only has to be stable and
  * filesystem-safe, so two runs of the same cut overwrite rather than accumulate.
+ * Letters of any script are kept: an ASCII-only slug turned every Chinese
+ * caption into "label", so each one overwrote the previous one.
  */
 function slug(text: string): string {
   const cleaned = text
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-|-$/g, "");
 
   return cleaned === "" ? "label" : cleaned;

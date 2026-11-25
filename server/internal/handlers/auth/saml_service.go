@@ -166,7 +166,7 @@ func (s *SAMLService) acsURL() string      { return s.baseURL() + samlACSPath }
 func (s *SAMLService) metadataURL() string { return s.baseURL() + samlMetadataPath }
 
 func (s *SAMLService) entityID() string {
-	if v := strings.TrimSpace(s.cfg.SAML.SPEntityID); v != "" {
+	if v := strings.TrimSpace(s.cfg.SSO().SAML.SPEntityID); v != "" {
 		return v
 	}
 
@@ -298,7 +298,7 @@ func parseSAMLKeyPairPEM(keyPEM, certPEM string) (*rsa.PrivateKey, *x509.Certifi
 // first, to configure their IdP, before they have IdP metadata to paste
 // back.
 func (s *SAMLService) spBase(ctx context.Context) (*saml.ServiceProvider, error) {
-	if !s.cfg.SAML.Enabled {
+	if !s.cfg.SSO().SAML.Enabled {
 		return nil, ErrSAMLNotConfigured
 	}
 
@@ -333,10 +333,11 @@ func (s *SAMLService) spBase(ctx context.Context) (*saml.ServiceProvider, error)
 // login and ACS paths, which need to know the IdP's SSO endpoint and
 // signing certificate(s).
 func (s *SAMLService) serviceProvider(ctx context.Context) (*saml.ServiceProvider, error) {
-	idpMetadataURL := strings.TrimSpace(s.cfg.SAML.IDPMetadataURL)
-	idpMetadataXML := strings.TrimSpace(s.cfg.SAML.IDPMetadataXML)
+	samlCfg := s.cfg.SSO().SAML
+	idpMetadataURL := strings.TrimSpace(samlCfg.IDPMetadataURL)
+	idpMetadataXML := strings.TrimSpace(samlCfg.IDPMetadataXML)
 
-	if !s.cfg.SAML.Enabled || (idpMetadataURL == "" && idpMetadataXML == "") {
+	if !samlCfg.Enabled || (idpMetadataURL == "" && idpMetadataXML == "") {
 		return nil, ErrSAMLNotConfigured
 	}
 
@@ -676,7 +677,7 @@ func (s *SAMLService) mapAssertion(assertion *saml.Assertion) *samlUserInfo {
 	}
 
 	info.Email = firstAttr(attrs,
-		strings.ToLower(s.cfg.SAML.EmailAttribute),
+		strings.ToLower(s.cfg.SSO().SAML.EmailAttribute),
 		samlAttrEmail, samlAttrMail, samlAttrEmailAddress,
 		samlAttrMailURI, samlAttrEmailClaimURI,
 	)
@@ -688,7 +689,7 @@ func (s *SAMLService) mapAssertion(assertion *saml.Assertion) *samlUserInfo {
 	}
 
 	info.Name = firstAttr(attrs,
-		strings.ToLower(s.cfg.SAML.NameAttribute),
+		strings.ToLower(s.cfg.SSO().SAML.NameAttribute),
 		samlAttrDisplayName, samlAttrCommonName, samlAttrName, samlAttrCommonNameURI,
 	)
 	if info.Name == "" {

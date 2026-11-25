@@ -254,7 +254,7 @@ func (s *MicrosoftOAuthService) HandleCallback(
 func (s *MicrosoftOAuthService) isPinnedTenant() bool {
 	// common / organizations / consumers admit users of any Entra tenant
 	// (and/or personal accounts) rather than a single directory.
-	switch strings.ToLower(strings.TrimSpace(s.cfg.Microsoft.TenantID)) {
+	switch strings.ToLower(strings.TrimSpace(s.cfg.SSO().Microsoft.TenantID)) {
 	case "", microsoftTenantCommon, "organizations", "consumers":
 		return false
 	default:
@@ -308,7 +308,7 @@ func (s *MicrosoftOAuthService) parseIDToken(
 	}
 
 	aud, err := claims.GetAudience()
-	if err != nil || !slices.Contains([]string(aud), s.cfg.Microsoft.ClientID) {
+	if err != nil || !slices.Contains([]string(aud), s.cfg.SSO().Microsoft.ClientID) {
 		return out, fmt.Errorf("%w: id_token audience mismatch", ErrMicrosoftAPI)
 	}
 
@@ -339,7 +339,7 @@ func (s *MicrosoftOAuthService) getTokenURL() string {
 		return s.tokenURL
 	}
 
-	tenant := s.cfg.Microsoft.TenantID
+	tenant := s.cfg.SSO().Microsoft.TenantID
 	if tenant == "" {
 		tenant = microsoftTenantCommon
 	}
@@ -350,8 +350,8 @@ func (s *MicrosoftOAuthService) getTokenURL() string {
 // exchangeCode exchanges an authorization code for tokens with Microsoft.
 func (s *MicrosoftOAuthService) exchangeCode(ctx context.Context, code string) (*MicrosoftTokenResponse, error) {
 	data := url.Values{}
-	data.Set("client_id", s.cfg.Microsoft.ClientID)
-	data.Set("client_secret", s.cfg.Microsoft.ClientSecret)
+	data.Set("client_id", s.cfg.SSO().Microsoft.ClientID)
+	data.Set("client_secret", s.cfg.SSO().Microsoft.ClientSecret)
 	data.Set("code", code)
 	data.Set("redirect_uri", s.getCallbackURL())
 	data.Set("grant_type", "authorization_code")

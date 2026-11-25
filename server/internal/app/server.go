@@ -1029,89 +1029,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgMembershipRequests.POST("/:uid/approve", authHandler.ApproveMembershipRequestHandler)
 	orgMembershipRequests.POST("/:uid/reject", authHandler.RejectMembershipRequestHandler)
 
-	// Slack OAuth routes (org-independent, public)
-	if s.config.Slack.Enabled && s.config.Slack.ClientID != "" {
-		slackOAuthService := auth.NewSlackOAuthService(s.dbService, s.config, s.authService)
-		slackOAuthHandler := auth.NewSlackOAuthHandler(slackOAuthService, s.config)
-		slackAuth := api.NewGroup("/auth/slack")
-		slackAuth.GET("/login", slackOAuthHandler.Login)
-		slackAuth.GET("/callback", slackOAuthHandler.Callback)
-		// TODO(remove after next release): spec 2026-09-25-12
-		// oauth-callback-one-time-code-exchange. Slack installs now hand off
-		// through /auth/handoff/exchange; this only redeems codes an older
-		// pod minted during the rolling deploy.
-		slackAuth.POST("/exchange", slackOAuthHandler.Exchange)
-	}
-
-	// Google OAuth routes (org-scoped, public)
-	if s.config.Google.Enabled && s.config.Google.ClientID != "" {
-		googleOAuthService := auth.NewGoogleOAuthService(s.dbService, s.config, s.authService)
-		googleOAuthHandler := auth.NewGoogleOAuthHandler(googleOAuthService, s.config)
-		googleAuth := api.NewGroup("/auth/google")
-		googleAuth.GET("/login", googleOAuthHandler.Login)
-		googleAuth.GET("/callback", googleOAuthHandler.Callback)
-	}
-
-	// GitHub OAuth routes (org-scoped, public)
-	if s.config.GitHub.Enabled && s.config.GitHub.ClientID != "" {
-		gitHubOAuthService := auth.NewGitHubOAuthService(s.dbService, s.config, s.authService)
-		gitHubOAuthHandler := auth.NewGitHubOAuthHandler(gitHubOAuthService, s.config)
-		gitHubAuth := api.NewGroup("/auth/github")
-		gitHubAuth.GET("/login", gitHubOAuthHandler.Login)
-		gitHubAuth.GET("/callback", gitHubOAuthHandler.Callback)
-	}
-
-	// Microsoft OAuth routes (org-scoped, public)
-	if s.config.Microsoft.Enabled && s.config.Microsoft.ClientID != "" {
-		microsoftOAuthService := auth.NewMicrosoftOAuthService(s.dbService, s.config, s.authService)
-		microsoftOAuthHandler := auth.NewMicrosoftOAuthHandler(microsoftOAuthService, s.config)
-		microsoftAuth := api.NewGroup("/auth/microsoft")
-		microsoftAuth.GET("/login", microsoftOAuthHandler.Login)
-		microsoftAuth.GET("/callback", microsoftOAuthHandler.Callback)
-	}
-
-	// GitLab OAuth routes (org-scoped, public)
-	if s.config.GitLab.Enabled && s.config.GitLab.ClientID != "" {
-		gitLabOAuthService := auth.NewGitLabOAuthService(s.dbService, s.config, s.authService)
-		gitLabOAuthHandler := auth.NewGitLabOAuthHandler(gitLabOAuthService, s.config)
-		gitLabAuth := api.NewGroup("/auth/gitlab")
-		gitLabAuth.GET("/login", gitLabOAuthHandler.Login)
-		gitLabAuth.GET("/callback", gitLabOAuthHandler.Callback)
-	}
-
-	// Discord OAuth routes (org-independent, public)
-	if s.config.Discord.Enabled && s.config.Discord.ClientID != "" {
-		discordOAuthService := auth.NewDiscordOAuthService(s.dbService, s.config, s.authService)
-		discordOAuthHandler := auth.NewDiscordOAuthHandler(discordOAuthService, s.config)
-		discordAuth := api.NewGroup("/auth/discord")
-		discordAuth.GET("/login", discordOAuthHandler.Login)
-		discordAuth.GET("/callback", discordOAuthHandler.Callback)
-	}
+	// Sign-in provider routes (public): always mounted, gated per request on
+	// the live SSO snapshot (spec 2026-11-25-02).
+	s.mountSSORoutes(api)
 
 	s.mountTelegramLoginRoutes(api)
-
-	// Generic OIDC routes (org-scoped, public)
-	if s.config.OIDC.Enabled && s.config.OIDC.IssuerURL != "" && s.config.OIDC.ClientID != "" {
-		oidcOAuthService := auth.NewOIDCOAuthService(s.dbService, s.config, s.authService)
-		oidcOAuthHandler := auth.NewOIDCOAuthHandler(oidcOAuthService, s.config)
-		oidcAuth := api.NewGroup("/auth/oidc")
-		oidcAuth.GET("/login", oidcOAuthHandler.Login)
-		oidcAuth.GET("/callback", oidcOAuthHandler.Callback)
-	}
-
-	// SAML 2.0 SP routes (org-scoped, public). Metadata is served whenever
-	// SAML is enabled at all — even before an IdP is configured — since an
-	// admin typically needs this SP's own metadata first, to configure their
-	// IdP, before they have IdP metadata to paste back; login/ACS need the
-	// IdP side configured too (checked again inside the service).
-	if s.config.SAML.Enabled {
-		samlService := auth.NewSAMLService(s.dbService, s.config, s.authService)
-		samlHandler := auth.NewSAMLHandler(samlService, s.config)
-		samlAuth := api.NewGroup("/auth/saml")
-		samlAuth.GET("/login", samlHandler.Login)
-		samlAuth.POST("/acs", samlHandler.ACS)
-		samlAuth.GET("/metadata", samlHandler.Metadata)
-	}
 
 	// Auth providers endpoint (public)
 	providersHandler := auth.NewProvidersHandler(s.config, passkeyService.Enabled)

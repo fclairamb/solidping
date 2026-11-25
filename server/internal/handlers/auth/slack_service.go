@@ -306,8 +306,8 @@ func (s *SlackOAuthService) HandleCallback(ctx context.Context, code string) (*S
 	oauthResp, err := exchangeCode(
 		ctx,
 		s.oauthURL,
-		s.cfg.Slack.ClientID,
-		s.cfg.Slack.ClientSecret,
+		s.cfg.SSO().Slack.ClientID,
+		s.cfg.SSO().Slack.ClientSecret,
 		code,
 		s.getCallbackURL(),
 	)

@@ -160,7 +160,7 @@ over takes already in `showcase/output/` without recording anything.
 
 The marketing site shows the three stills in French and German too.
 `make showcase-stills` records the same take but publishes only its stills,
-in the language `SHOWCASE_LOCALE` names (`en`, `fr`, `de`, `es`):
+in the language `SHOWCASE_LOCALE` names (`en`, `fr`, `de`, `es`, `zh`):
 
 ```bash
 rm -rf /tmp/showcase-db-fr && mkdir -p /tmp/showcase-db-fr
@@ -227,7 +227,7 @@ Useful knobs:
 | `SHOWCASE_BOOTSTRAP_ORG` / `SHOWCASE_EMAIL` / `SHOWCASE_PASSWORD` | `default` / `admin@solidping.io` / `solidpass` | Account used to bootstrap; also the identity that appears on camera |
 | `SHOWCASE_ROTATED_PASSWORD` | `showcase-rotated-pass` | Password the account is rotated onto when the server forces a rotation, and **stays on**. Must differ from `SHOWCASE_PASSWORD` and be ≥ 8 characters |
 | `SHOWCASE_ORG` / `SHOWCASE_ORG_NAME` | `northwind` / `Northwind Systems` | The org that gets provisioned and filmed |
-| `SHOWCASE_LOCALE` | `en` | Language of the take: `en`, `fr`, `de` or `es`. Sets the browser locale, localizes the demo data and the burned-in captions (`locale.ts`), and publishes a non-English cut to `output/published/<locale>/` |
+| `SHOWCASE_LOCALE` | `en` | Language of the take: `en`, `fr`, `de`, `es` or `zh`. Sets the browser locale, localizes the demo data and the burned-in captions (`locale.ts`), and publishes a non-English cut to `output/published/<locale>/` |
 | `SHOWCASE_USER_NAME` | `Alex Rivera` (localized) | Display name shown in the sidebar footer |
 | `SHOWCASE_CURSOR` | on | Set to `0` to record without the synthetic pointer |
 | `SHOWCASE_TRAVEL_MS` | `420` | How long the cursor takes to travel to a control before clicking it |
