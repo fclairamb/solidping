@@ -5,6 +5,7 @@ import { PanelLeft } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
+import { sidebarOverflow, type SidebarOverflow } from "@/lib/sidebar-overflow";
 import { Button } from "./button";
 import { Sheet, SheetContent } from "./sheet";
 import {
@@ -346,13 +347,64 @@ function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
+// Tracks which edges of `el` hide content: on scroll, when the box resizes,
+// and when its children change size or are added (menu groups appear once
+// the org's data has loaded).
+function useSidebarOverflow(ref: React.RefObject<HTMLDivElement | null>) {
+  const [overflow, setOverflow] = React.useState<SidebarOverflow>("none");
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const update = () =>
+      setOverflow(sidebarOverflow(el.scrollTop, el.scrollHeight, el.clientHeight));
+
+    const resize = new ResizeObserver(update);
+    const observeChildren = () => {
+      resize.disconnect();
+      resize.observe(el);
+      for (const child of Array.from(el.children)) resize.observe(child);
+      update();
+    };
+    const mutations = new MutationObserver(observeChildren);
+
+    observeChildren();
+    mutations.observe(el, { childList: true });
+    el.addEventListener("scroll", update, { passive: true });
+
+    return () => {
+      el.removeEventListener("scroll", update);
+      mutations.disconnect();
+      resize.disconnect();
+    };
+  }, [ref]);
+
+  return overflow;
+}
+
+// The menu scrolls once it outgrows the window (always on a phone). The
+// edges that hide items fade out, so a group cut at the fold reads as "more
+// below" rather than as the end of the menu. The fade is a mask on the box
+// itself, so it follows the navy gradient behind it. The scrollbar is thin
+// and drawn in the sidebar's own border color: browsers that paint it over
+// the content (Ladybird) otherwise cover the right edge of the menu items.
 function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const overflow = useSidebarOverflow(ref);
+
   return (
     <div
+      ref={ref}
       data-slot="sidebar-content"
       data-sidebar="content"
+      data-overflow={overflow}
       className={cn(
-        "flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden",
+        "flex min-h-0 flex-1 flex-col gap-2 overflow-auto pb-2 group-data-[collapsible=icon]:overflow-hidden",
+        "[scrollbar-color:var(--sidebar-border)_transparent] [scrollbar-width:thin]",
+        "data-[overflow=bottom]:[mask-image:linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]",
+        "data-[overflow=top]:[mask-image:linear-gradient(to_top,black_calc(100%-1.5rem),transparent)]",
+        "data-[overflow=both]:[mask-image:linear-gradient(to_bottom,transparent,black_1.5rem,black_calc(100%-2.5rem),transparent)]",
         className
       )}
       {...props}
