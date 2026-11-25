@@ -217,16 +217,17 @@ func probeDef() ToolDefinition {
 
 	return ToolDefinition{
 		Name: toolProbe,
-		Description: "Explore a target and test a `js` check before create_check, without saving " +
-			"anything. kind=script runs a js check script exactly as a SolidPing worker would and " +
-			"returns status, output (with console) and metrics; `env` carries plaintext parameters " +
-			"and `secrets` only NAMES the secret parameters, which run empty. kind=fetch GETs a URL " +
-			"from the server. kind=browser snapshots a page to pick selectors for browser steps. " +
-			"kind selects the mode; the other params apply only to their kind (script: " +
-			"script/env/secrets/timeout; fetch and browser: url). Reaches the URL or script " +
-			"target you name. kind=fetch works with mcp:read tokens; kind=script and kind=browser " +
-			"execute code or hold a browser on the server, so they need a write-capable token (mcp " +
-			"scope) and the user role. One run per organization at a time, 20 per minute.",
+		Description: "Explore a target and test a `js` check before create_check. kind=script " +
+			"runs a js check script exactly as a SolidPing worker would and returns status, output " +
+			"(with console) and metrics; `env` carries plaintext parameters and `secrets` only NAMES " +
+			"the secret parameters, which run empty. kind=fetch GETs a URL from the server. " +
+			"kind=browser snapshots a page to pick selectors for browser steps. kind selects the " +
+			"mode; the other params apply only to their kind (script: script/env/secrets/timeout; " +
+			"fetch and browser: url). It stores nothing (no check, result or incident) but sends " +
+			"real traffic to the URL or script target you name. kind=fetch works with mcp:read " +
+			"tokens; kind=script and kind=browser execute code or hold a browser on the server, so " +
+			"they need a write-capable token (mcp scope) and the user role. One run per " +
+			"organization at a time, 20 per minute.",
 		InputSchema:  objectSchema(props, []string{propKind}),
 		OutputSchema: runResultOutputSchema(),
 		Annotations:  execProbeAnnotations("Probe a target"),
