@@ -136,7 +136,7 @@
     "fieldHelp": {
       "tenantId": "El ID de tu directorio (inquilino) de Entra, o un dominio verificado. Déjalo en blanco para \"common\" (multiinquilino). Usa \"organizations\" o \"consumers\" para restringir los tipos de cuenta.",
       "displayName": "Se muestra en el botón de inicio de sesión, p. ej. \"Continuar con Company IdP\". Por defecto \"SSO\" si está vacío.",
-      "issuerUrl": "La URL del emisor OIDC, p. ej. https://idp.example.com/realms/acme. El descubrimiento se realiza mediante \"{URL emisor}/.well-known/openid-configuration\".",
+      "issuerUrl": "La URL del emisor OIDC, p. ej. https://idp.example.com/realms/acme. El descubrimiento se realiza mediante \"{URL emisor}/.well-known/openid-configuration\". La barra final es opcional: SolidPing usa el emisor que anuncia su proveedor.",
       "scopes": "Lista de ámbitos OAuth2 separados por espacios. \"openid\" siempre se incluye. Por defecto \"openid email profile\" si está vacío.",
       "emailClaim": "Claim del token de identidad usado para el email. Por defecto \"email\".",
       "nameClaim": "Claim del token de identidad usado para el nombre. Por defecto \"name\".",

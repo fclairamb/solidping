@@ -47,6 +47,19 @@ type fakeOIDCIdP struct {
 
 	// userInfo, when set, is served by /userinfo; nil answers 404.
 	userInfo map[string]any
+
+	// issuer, when set, is the issuer advertised by discovery and put in
+	// the ID tokens; empty means the server URL.
+	issuer string
+}
+
+// issuerURL returns the issuer the fake IdP advertises.
+func (idp *fakeOIDCIdP) issuerURL() string {
+	if idp.issuer != "" {
+		return idp.issuer
+	}
+
+	return idp.server.URL
 }
 
 func newFakeOIDCIdP(t *testing.T) *fakeOIDCIdP {
@@ -61,7 +74,7 @@ func newFakeOIDCIdP(t *testing.T) *fakeOIDCIdP {
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"issuer":                                idp.server.URL,
+			"issuer":                                idp.issuerURL(),
 			"authorization_endpoint":                idp.server.URL + "/authorize",
 			"token_endpoint":                        idp.server.URL + "/token",
 			"jwks_uri":                              idp.server.URL + "/jwks",
@@ -114,7 +127,7 @@ func (idp *fakeOIDCIdP) baseClaims() jwt.MapClaims {
 	now := time.Now()
 
 	return jwt.MapClaims{
-		"iss":                  idp.server.URL,
+		"iss":                  idp.issuerURL(),
 		"aud":                  fakeIDPClientID,
 		"sub":                  "oidc-user-123",
 		keyEmail:               "test@example.com",
