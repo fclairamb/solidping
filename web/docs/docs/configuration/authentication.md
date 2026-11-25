@@ -449,6 +449,10 @@ AD, ...) can sign users in. SolidPing finds the endpoints through
 A user is created on their first sign-in, and only if the provider says their
 email is verified (`email_verified: true`).
 
+Set `SP_OIDC_ISSUER_URL` to the `issuer` value of that discovery document.
+A trailing slash is optional: providers disagree on it (Authentik adds one,
+Keycloak does not), and SolidPing uses the form the provider advertises.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SP_OIDC_ENABLED` | `false` | Turns on OIDC sign-in |

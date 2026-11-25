@@ -253,3 +253,65 @@ func TestOIDCLoginRoute(t *testing.T) {
 		require.ErrorIs(t, w.callback(), ErrOIDCNotConfigured)
 	}
 }
+
+// TestOIDCIssuerTrailingSlash covers providers that advertise their issuer
+// with a trailing slash (Authentik) when the admin typed it without one, and
+// the reverse: discovery succeeds, and ID tokens are still checked exactly
+// against the advertised issuer (issue #1046).
+func TestOIDCIssuerTrailingSlash(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		advertised func(url string) string
+		configured func(url string) string
+		wantErr    bool
+	}{
+		{
+			name:       "provider adds the slash",
+			advertised: func(url string) string { return url + "/" },
+			configured: func(url string) string { return url },
+		},
+		{
+			name:       "admin adds the slash",
+			advertised: func(url string) string { return url },
+			configured: func(url string) string { return url + "/" },
+		},
+		{
+			name:       "a different issuer is still refused",
+			advertised: func(url string) string { return url + "/other" },
+			configured: func(url string) string { return url },
+			wantErr:    true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			idp := newFakeOIDCIdP(t)
+			idp.issuer = tc.advertised(idp.server.URL)
+			svc, ctx := setupOIDCTestService(t, idp, nil)
+			svc.cfg.OIDC.IssuerURL = tc.configured(idp.server.URL)
+
+			_, verifier, err := svc.providerAndVerifier(ctx)
+			if tc.wantErr {
+				require.ErrorIs(t, err, ErrOIDCDiscovery)
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			_, err = verifier.Verify(ctx, idp.issueIDToken(t, nil))
+			require.NoError(t, err)
+
+			// The configured spelling is not accepted in tokens: only the
+			// issuer the provider advertises is.
+			_, err = verifier.Verify(ctx, idp.issueIDToken(t, func(c jwt.MapClaims) {
+				c["iss"] = tc.configured(idp.server.URL)
+			}))
+			require.Error(t, err)
+		})
+	}
+}

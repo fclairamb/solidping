@@ -136,7 +136,7 @@
     "fieldHelp": {
       "tenantId": "Your Entra directory (tenant) ID, or a verified domain. Leave blank for \"common\" (multi-tenant). Use \"organizations\" or \"consumers\" to restrict account types.",
       "displayName": "Shown on the login button, e.g. \"Continue with Company IdP\". Defaults to \"SSO\" when blank.",
-      "issuerUrl": "The OIDC issuer URL, e.g. https://idp.example.com/realms/acme. Discovery is performed against \"{issuer URL}/.well-known/openid-configuration\".",
+      "issuerUrl": "The OIDC issuer URL, e.g. https://idp.example.com/realms/acme. Discovery is performed against \"{issuer URL}/.well-known/openid-configuration\". A trailing slash is optional: SolidPing uses the issuer your provider advertises.",
       "scopes": "Space-separated OAuth2 scopes. \"openid\" is always included. Defaults to \"openid email profile\" when blank.",
       "emailClaim": "ID token claim used for the user's email. Defaults to \"email\".",
       "nameClaim": "ID token claim used for the user's display name. Defaults to \"name\".",
