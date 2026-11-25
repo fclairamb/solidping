@@ -1560,7 +1560,7 @@ function CheckDetailPage() {
                 <div className="text-sm font-medium text-muted-foreground">
                   {t("checks:detail.descriptionLabel")}
                 </div>
-                <div>{check.description}</div>
+                <div data-testid="check-detail-description">{check.description}</div>
               </div>
             )}
             <div>

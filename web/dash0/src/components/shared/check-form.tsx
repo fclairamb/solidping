@@ -41,6 +41,7 @@ import {
 } from "@/lib/reopen-cooldown";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -436,6 +437,8 @@ export interface CheckFormData {
   enabled?: boolean;
   name?: string;
   slug?: string;
+  /** Free-text description; "" clears it on edit. */
+  description?: string;
   checkGroupUid?: string;
   period?: string;
   config?: Record<string, unknown>;
@@ -659,6 +662,7 @@ export function CheckForm({
   const [enabled, setEnabled] = useState(initialData?.enabled ?? true);
   const [name, setName] = useState(initialData?.name || "");
   const [slug, setSlug] = useState(initialData?.slug || "");
+  const [description, setDescription] = useState(initialData?.description || "");
   const slugError = validateSlug(slug);
 // A clone's slug is generated (`<source>-copy`, `-copy-<n>`). While it still is,
 // renaming the check offers — never forces — the slug derived from the new name.
@@ -1495,6 +1499,7 @@ const showSlugFromNameOffer =
         enabled,
         name: mode === "edit" ? name : (name || undefined),
         slug: mode === "edit" ? slug : (slug || undefined),
+        description: mode === "edit" ? description : (description || undefined),
         checkGroupUid: checkGroupUid || (mode === "edit" ? "" : undefined),
         // Inherit ("" state) sends "" on edit (clears any prior assignment) and
         // nothing on create (the check inherits by default).
@@ -2022,6 +2027,18 @@ const showSlugFromNameOffer =
                     {t("form.updateSlugToDerived", { slug: derivedSlug })}
                   </Button>
                 )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">{t("form.descriptionOptional")}</Label>
+                <Textarea
+                  id="description"
+                  rows={3}
+                  placeholder={t("form.checkDescriptionPlaceholder")}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  data-testid="check-description-input"
+                />
               </div>
             </CardContent>
           </Card>
