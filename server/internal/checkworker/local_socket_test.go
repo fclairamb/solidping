@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -113,7 +114,10 @@ func TestExecuteJob_SocketTCPRunsOnAgentWorker(t *testing.T) {
 	r.NotNil(result.Status)
 	r.Equal(int(checkerdef.StatusUp), *result.Status, "output: %v", result.Output)
 
-	r.EqualValues(2, accepted.Load())
+	// The check is done once the dial succeeds, which can be before the
+	// listener goroutine returns from Accept and counts the connection.
+	r.Eventually(func() bool { return accepted.Load() == 2 }, 2*time.Second, 10*time.Millisecond,
+		"accepted %d connections, want 2", accepted.Load())
 }
 
 // TestExecuteJob_SocketTCPOutsideAllowlist: a self-hosted worker runs the job,
