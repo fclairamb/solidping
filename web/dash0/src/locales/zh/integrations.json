@@ -73,6 +73,7 @@
     "removeRecipient": "移除 {{email}}",
     "ntfyServer": "服务器 URL",
     "ntfyTopic": "主题",
+    "ntfyAccessToken": "访问令牌（可选）",
     "ntfyPriority": "优先级（1-5，默认 3）",
     "gotifyServer": "服务器 URL",
     "gotifyAppToken": "应用令牌",
