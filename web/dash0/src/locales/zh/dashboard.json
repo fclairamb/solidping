@@ -116,7 +116,7 @@
   "kpi": {
     "monitored": "监控项",
     "monitoredDisabled": "{{count}} 个已禁用",
-    "down": "故障监控",
+    "down": "故障监控项",
     "downSubNone": "全部正常",
     "incidents": "未解决的故障",
     "incidentsSubNone": "无未解决的故障",
@@ -161,7 +161,7 @@
   },
   "githubStar": {
     "title": "喜欢 SolidPing 吗？",
-    "body": "感谢使用 SolidPing。如果它对你有帮助，在 GitHub 上Star能帮助更多人发现它。",
+    "body": "感谢使用 SolidPing。如果它对你有帮助，在 GitHub 上点个 Star，能帮助更多人发现它。",
     "star": "在 GitHub 上 Star",
     "later": "以后再说",
     "close": "关闭"

@@ -14,7 +14,7 @@
   "kindSoftTooltip": "仅供参考——仍会触发告警通知",
   "description": "描述",
   "descriptionPlaceholder": "可选——它们是什么关系？",
-  "noDependencies": "还没有配置依赖项。使用“编辑”添加父监控项，开始故障级联归并。",
+  "noDependencies": "还没有配置依赖项。使用“编辑”添加父监控项，启用故障级联归并。",
   "noParents": "还没有父监控项——在下面选择一个。",
   "noDependents": "还没有任何监控项依赖此监控项。",
   "unknownCheck": "未知监控项",

@@ -418,7 +418,7 @@
     "detail": {
       "back": "返回组织列表",
       "limitsTitle": "限制",
-      "limitsDescription": "无限制的上限在传输时为 null——请切换开关，而不是清空输入框。",
+      "limitsDescription": "通过 API 传输时，无限制表示为 null——请使用开关切换，而不是清空输入框。",
       "identityTitle": "套餐标识",
       "identityDescription": "仅供显示。显示在组织的“用量”页面。",
       "displayName": "显示名称",
@@ -436,7 +436,7 @@
     },
     "confirmSave": {
       "title": "为 {{org}} 保存管理员覆盖？",
-      "body": "这会写入一条管理员来源的记录。在覆盖被解除之前，{{org}} 的计费推送会被接受但忽略。",
+      "body": "这会写入一条管理员来源的记录。在覆盖被解除之前，{{org}} 的计费推送仍会被接受，但不会生效。",
       "noChanges": "没有限制变更——只会写入套餐标识。",
       "confirm": "保存覆盖"
     },

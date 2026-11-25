@@ -61,7 +61,7 @@
     "namePlaceholder": "值班告警",
     "enabled": "已启用",
     "enabledHelp": "已禁用的渠道永远不会发送通知。",
-    "default": "新监控项的默认项",
+    "default": "新监控项的默认渠道",
     "defaultHelp": "创建新监控项时默认勾选。现有监控项不受影响。",
     "webhookUrl": "Webhook URL",
     "msteamsWebhookHint": "在 Teams 中打开“工作流”→“当收到 Webhook 请求时发布到频道”，完成向导，然后把生成的工作流 URL 粘贴到这里。旧版“传入 Webhook”连接器已停用，不再可用。",

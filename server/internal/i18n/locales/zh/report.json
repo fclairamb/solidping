@@ -56,7 +56,7 @@
     "both": "{samples}和{peaks}超过 {threshold}",
     "some": "{counted}超过 {threshold}",
     "none": "均未超过 {threshold}",
-    "peakNote": "峰值是指某个汇总周期内最慢样本超过 {threshold}；较旧的数据以汇总形式存储，无法报告精确的样本数。",
+    "peakNote": "峰值指的是最慢样本超过 {threshold} 的某个汇总周期；较旧的数据以汇总形式存储，无法给出精确的样本数。",
     "includesFailures": "响应时间包含失败的样本。"
   },
   "checks": {
@@ -67,8 +67,8 @@
   "strip": {
     "label": "每日可用率，{start} – {end}（UTC）",
     "legend": "{label}：绿色 ≥ {good}，琥珀色 ≥ {warn}，橙色 ≥ {poor}，红色表示低于橙色阈值。灰色表示当天没有记录，因此周期中间创建的监控项显示为灰色，而不是红色。",
-    "budgetNote_one": "仅为可用率最低的 {count} 个监控项显示每日可用率条；其余监控项已省略，以使这封邮件不超过邮件客户端截断的大小。",
-    "budgetNote_other": "仅为可用率最低的 {count} 个监控项显示每日可用率条；其余监控项已省略，以使这封邮件不超过邮件客户端截断的大小。"
+    "budgetNote_one": "仅为可用率最低的 {count} 个监控项显示每日可用率条；其余监控项已省略，以免邮件过大而被邮件客户端截断。",
+    "budgetNote_other": "仅为可用率最低的 {count} 个监控项显示每日可用率条；其余监控项已省略，以免邮件过大而被邮件客户端截断。"
   },
   "slo": {
     "title": "目标",

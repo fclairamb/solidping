@@ -138,9 +138,9 @@
       "remoteAddr": "对端地址",
       "contentType": "内容类型",
       "bodyLabel": "响应正文",
-      "headerName": "标头",
+      "headerName": "响应头",
       "headerValue": "值",
-      "redactionNote": "仅包含响应标头。敏感值（Cookie、授权信息、令牌、密钥等）会被遮盖，监控项自身的请求标头不会被捕获。",
+      "redactionNote": "仅包含响应头。敏感值（Cookie、授权信息、令牌、密钥等）会被遮盖，监控项自身的请求头不会被捕获。",
       "truncated": "正文已截断，仅保留 {{total}} 中的 {{shown}}。",
       "binary": "未存储正文：它是二进制或不是有效的 UTF-8。仅有元数据：{{size}}，SHA-256 {{hash}}。",
       "unknownSize": "未知大小"
@@ -150,7 +150,7 @@
       "description": "这个监控项报告失败时页面的样子。截图是在检测到失败之后片刻从一个区域捕获的，请把它当作证据，而不是失败时的画面本身。",
       "alt": "故障开启时捕获的页面截图",
       "caption": "于 {{capturedAt}} 从 {{region}} 捕获，距检测到失败不久。",
-      "unknownTime": "在未知时间",
+      "unknownTime": "未知时间",
       "unknownRegion": "未知区域"
     },
     "traceroute": {

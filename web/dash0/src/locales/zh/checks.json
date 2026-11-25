@@ -37,7 +37,7 @@
     "byHost": "按主机"
   },
   "noHostBucket": "无主机",
-  "hostBucketDescription": "由每个监控项的配置推导而来——重命名主机会把它移到另一个分区。",
+  "hostBucketDescription": "由每个监控项的配置推导而来——重命名主机会把它移到另一个分组。",
   "status": {
     "validating": "校验中",
     "up": "正常",
@@ -140,7 +140,7 @@
     "importUpload": "上传文件",
     "importToken": "Better Stack API 令牌",
     "importTokenNoticeTitle": "令牌不会被存储",
-    "importTokenNotice": "它只会发送一次用于读取你的监控项和心跳，SolidPing 绝不会保存它。",
+    "importTokenNotice": "该令牌只会发送一次、用于读取你的监控项和心跳，SolidPing 绝不会保存它。",
     "importWarnings": "{{count}} 项未能精确映射",
     "importTokenPingdom": "Pingdom API 令牌（只读权限）"
   },
@@ -362,7 +362,7 @@
     "summarySoftDeps_one": "{{count}} 个软依赖",
     "summarySoftDeps_other": "{{count}} 个软依赖",
     "regionsIpv6Hint": "此监控项已固定为 IPv6。来自在线工作节点、报告具有 IPv6 出口的区域会排在最前——其他区域仍可选择，标记为“IPv6 未知”的区域只是尚未上报。",
-    "groupEmptyHint": "你还没有分组。分组是相关监控项的专属容器——它决定告警升级、故障关联和状态页汇总。创建一个即可开始。",
+    "groupEmptyHint": "你还没有分组。分组是相关监控项的专属集合——它决定告警升级、故障关联和状态页汇总。创建一个即可开始。",
     "degraded": {
       "title": "降级检测",
       "help": "确认周期之外的第二个检测器：当某个监控项间歇性失败，或响应远慢于平时，即使没有任何单次失败持续到足以确认服务中断，它也会报告。两条规则都按探测次数统计，而不是秒数。",
@@ -378,7 +378,7 @@
       "slowWindowHelp": "慢速规则回看的最近探测数。一小时内出现三次慢探测不算什么；连续三次则是问题的前兆。",
       "slowThreshold": "慢速阈值（毫秒）",
       "slowThresholdHelp": "成功探测慢于此值计为慢。0 表示关闭慢速规则。",
-      "slowThresholdOff": "在设置阈值之前，慢速规则处于关闭状态——延迟不会在其他地方报告。",
+      "slowThresholdOff": "慢速规则在设置阈值前处于关闭状态——其他任何地方都不会报告延迟数据。",
       "slowThresholdSuggestion": "建议值：{{value}} 毫秒，约为该监控项观测到的 p95 的两倍。",
       "slowThresholdSuggestionApply": "使用建议值",
       "summaryOff": "关闭，不评估",
@@ -413,7 +413,7 @@
     "dnsServerPlaceholder": "8.8.8.8:53——默认使用系统解析器",
     "dnsServerHelp": "要查询的解析器，格式为 host:port。留空则使用系统解析器。",
     "lookupMethod": "查询方式",
-    "lookupMethodAuto": "自动（RDAP，WHOIS 作为后备）",
+    "lookupMethodAuto": "自动（RDAP，失败时回退到 WHOIS）",
     "lookupMethodRdap": "仅 RDAP",
     "lookupMethodWhois": "仅 WHOIS",
     "lookupMethodHelp": "自动会先尝试 RDAP，任何失败都回退到 WHOIS。仅 RDAP 和仅 WHOIS 不会回退。",
@@ -643,9 +643,9 @@
     "viewAll": "查看此监控项的所有结果",
     "fallback": {
       "title": "你请求的确切结果已不再存储。",
-      "rolledUpToHour": "它已被汇总到这个按小时聚合（{{start}}–{{end}}）中，覆盖其时间戳（{{ts}}）。",
-      "rolledUpToDay": "它已被汇总到这个按天聚合（{{start}}–{{end}}）中，覆盖其时间戳（{{ts}}）。",
-      "rolledUpToMonth": "它已被汇总到这个按月聚合（{{start}}–{{end}}）中，覆盖其时间戳（{{ts}}）。",
+      "rolledUpToHour": "它已被汇总到按小时聚合（{{start}}–{{end}}）中，该区间覆盖了它的时间戳（{{ts}}）。",
+      "rolledUpToDay": "它已被汇总到按天聚合（{{start}}–{{end}}）中，该区间覆盖了它的时间戳（{{ts}}）。",
+      "rolledUpToMonth": "它已被汇总到按月聚合（{{start}}–{{end}}）中，该区间覆盖了它的时间戳（{{ts}}）。",
       "originalUid": "原始 UID {{uid}} 已在自动聚合中删除。"
     },
     "notFound": "未找到结果——它可能已在自动聚合中删除，而且我们找不到覆盖其时间戳的聚合。",
@@ -817,7 +817,7 @@
     "regionCount_one": "{{count}} 个区域",
     "regionCount_other": "{{count}} 个区域",
     "allRegions": "所有区域",
-    "checkedAgo": "检查于 <time/>",
+    "checkedAgo": "上次检查 <time/>",
     "moreActions": "更多操作",
     "cloned": "监控项已克隆——可以编辑了",
     "cloneFailed": "克隆监控项失败",
@@ -916,7 +916,7 @@
     },
     "screenshots": {
       "title": "截图",
-      "description": "探测时看到的内容。失败运行的截图是在监控项判定页面不健康后片刻，从某个区域抓取的。",
+      "description": "探测时看到的内容。失败运行的截图是在监控项判定页面不健康后片刻、从单个区域抓取的。",
       "alt": "此监控项捕获的页面截图",
       "captureNow": "立即捕获",
       "capturing": "捕获中…",
@@ -1042,15 +1042,15 @@
     "pending_other": "{{count}} 项待应用的更改",
     "proposed": "建议值",
     "customPeriod": "{{period}}（自定义）",
-    "proposalSummary_one": "建议将 {{count}} 个新周期设为：{{before}} → {{after}} 次执行/分钟，上限为 {{limit}}。",
-    "proposalSummary_other": "建议将 {{count}} 个新周期设为：{{before}} → {{after}} 次执行/分钟，上限为 {{limit}}。",
+    "proposalSummary_one": "建议为 {{count}} 个监控项调整周期：{{before}} → {{after}} 次执行/分钟，上限为 {{limit}}。",
+    "proposalSummary_other": "建议为 {{count}} 个监控项调整周期：{{before}} → {{after}} 次执行/分钟，上限为 {{limit}}。",
     "rebalanceExhausted": "所有监控项都已达到允许的最长周期，需求仍超过上限。请禁用一些监控项，或升级套餐。",
     "passiveNote_one": "未列出 {{count}} 个被动监控项（心跳或邮件）：它们由传入信号触发，因此从不消耗执行预算。",
     "passiveNote_other": "未列出 {{count}} 个被动监控项（心跳或邮件）：它们由传入信号触发，因此从不消耗执行预算。",
     "meter": {
       "label": "每分钟执行次数",
       "hint": "每个选中的区域都会按完整周期运行监控项，因此一个监控项在三个区域运行的成本是三倍。",
-      "overHint": "你的组织已超出上限——部分监控执行正在被跳过。",
+      "overHint": "你的组织已超出上限——部分监控执行已被跳过。",
       "unlimited": "不限制",
       "unlimitedHint": "你的套餐没有设置每分钟执行上限。"
     },
@@ -1234,7 +1234,7 @@
     "rdpCertWarningHelp": "琥珀色警告（不通知）。必须 ≥ 临界值。",
     "rdpPreAuthHelp": "仅预认证握手——不发送任何凭据。工作节点需要能访问 RDP 主机（通常是内网）。",
     "script": "脚本",
-    "scriptHelp": "一个 JavaScript 脚本，返回包含 status（“up”“down”或“error”）的对象——绝不应返回“timeout”，运行时在终止脚本时会报告该值——还可包含可选的指标和输出。可以用 `browser` API 驱动真实的 无头 Chrome 页面——打开页面的脚本会按浏览器监控项的 1 分钟最小周期运行。",
+    "scriptHelp": "一个 JavaScript 脚本，返回包含 status（“up”“down”或“error”）的对象——绝不应返回“timeout”，运行时在终止脚本时会报告该值——还可包含可选的指标和输出。可以用 `browser` API 驱动真实的无头 Chrome 页面——打开页面的脚本会按浏览器监控项的 1 分钟最小周期运行。",
     "jsEnv": "环境变量（公开）",
     "jsEnvHelp": "脚本以 env.NAME 读取的明文参数——例如基础 URL、用户名。不加密存储，并会包含在导出中。",
     "jsAddEnv": "添加变量",
@@ -1407,12 +1407,12 @@
     "noneDirectConnection": "无（直连）",
     "needsHostKeyFingerprint": "需要主机密钥指纹",
     "notInRegion": "不在区域 {{region}} 中",
-    "help": "通过某个 SSH 监控项的连接拨号到这个监控项的目标，以访问堡垒机后面的服务。主机名由堡垒机解析，因此私有名称也能用。隧道建立时间单独以 tunnel_setup_ms 报告，不计入该监控项的响应时间。",
+    "help": "通过某个 SSH 监控项的连接接入这个监控项的目标，以访问堡垒机后面的服务。主机名由堡垒机解析，因此私有名称也能用。隧道建立时间单独以 tunnel_setup_ms 报告，不计入该监控项的响应时间。",
     "viaTitle": "SSH 隧道",
-    "viaHelp": "探测通过这个 SSH 监控项的连接拨号。",
+    "viaHelp": "探测通过这个 SSH 监控项的连接接入。",
     "dependentsTitle_one": "被 {{count}} 个监控项用作隧道",
     "dependentsTitle_other": "被 {{count}} 个监控项用作隧道",
-    "dependentsHelp": "这些监控项通过这个堡垒机拨号。删除这个监控项前先解除它们。",
+    "dependentsHelp": "这些监控项通过这个堡垒机建立连接。删除这个监控项前先解除它们。",
     "viaTooltip": "经由 {{name}}"
   },
   "web": {
@@ -1459,7 +1459,7 @@
   },
   "noGroupsYet": {
     "title": "还没有监控分组",
-    "description": "分组将相关监控项汇集到一个互斥的集合中——它驱动告警升级、故障关联和状态页汇总。使用上方的“新建分组”按钮创建一个。"
+    "description": "分组将相关监控项归入一个专属集合——它驱动告警升级、故障关联和状态页汇总。使用上方的“新建分组”按钮创建一个。"
   },
   "regionOutage": {
     "blindTitle": "区域 {{regions}} 自 {{time}} 起离线：这个监控项未运行",
@@ -1504,7 +1504,7 @@
     "targetRequired": "目标 IP 或主机名为必填项",
     "containerRequired": "容器名称或 ID 为必填项",
     "freeboxConnectionRequired": "Freebox 连接为必填项",
-    "linkTypeInvalid": "链路类型必须为 xdsl 或 ftth",
+    "linkTypeInvalid": "线路类型必须为 xdsl 或 ftth",
     "promqlRequired": "PromQL 查询为必填项",
     "metricRequired": "指标名称为必填项",
     "thresholdRequired": "设置警告和/或临界阈值",
@@ -1695,7 +1695,7 @@
     "proposeContract": "提议校验约定",
     "cancel": "取消",
     "contractTitle": "2. 确认校验约定",
-    "contractHelp": "脚本将要检查的校验，每行一条，按顺序排列。编辑它们，然后生成。",
+    "contractHelp": "脚本将要执行的校验项，每行一条，按顺序排列。编辑后点击生成。",
     "generate": "生成脚本",
     "generating": "正在编写并测试脚本…",
     "scriptTitle": "3. 脚本",
@@ -1870,7 +1870,7 @@
     "period": {
       "title_one": "设置 {{count}} 个监控项的周期",
       "title_other": "设置 {{count}} 个监控项的周期",
-      "pick": "这些监控项将每",
+      "pick": "这些监控项将按以下周期运行：",
       "willUpdate_one": "{{count}} 个监控项将被更新。",
       "willUpdate_other": "{{count}} 个监控项将被更新。",
       "willSkip_one": "{{count}} 个监控项将保持不变。",

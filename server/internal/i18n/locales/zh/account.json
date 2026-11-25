@@ -12,19 +12,19 @@
     "intro": "就快完成了。点击下方按钮确认你的 SolidPing 账户，完成设置。",
     "introText": "就快完成了。确认你的 SolidPing 账户以完成设置：",
     "cta": "确认账户",
-    "expiry": "此确认链接将在 {expiresIn} 后过期。如果你没有注册 SolidPing，可以安全地忽略这封邮件。"
+    "expiry": "此确认链接将在 {expiresIn} 后过期。如果你没有注册 SolidPing，可以放心忽略这封邮件。"
   },
   "welcome": {
     "title": "欢迎使用 SolidPing",
     "preheader": "你的账户已就绪。花一分钟添加第一个监控项。",
-    "lead": "你的账户已就绪。完成下面三件事只需五分钟，却能让它真正有用：",
+    "lead": "你的账户已就绪。花五分钟完成下面三件事，就能让它真正发挥作用：",
     "addCheck": {
       "label": "1. 添加监控项",
       "detail": "一个网站、一个 API、一条 DNS 记录、一个 cron 任务……"
     },
     "getAlerted": {
       "label": "2. 接收告警",
-      "detail": "邮件通知现在即可使用。如果希望被叫醒，可以添加 Slack、短信或电话。"
+      "detail": "邮件通知现在就能使用。如果希望在出问题时被第一时间叫醒，可以添加 Slack、短信或电话。"
     },
     "shareStatus": {
       "label": "3. 分享状态",
@@ -42,14 +42,14 @@
     "intro": "我们收到重置你的 SolidPing 密码的请求。点击下方按钮设置新密码。",
     "introText": "我们收到重置你的 SolidPing 密码的请求。在此重置：",
     "cta": "重置密码",
-    "expiry": "此重置链接将在 {expiresIn} 后过期。如果你没有请求重置密码，可以安全地忽略这封邮件。你的密码不会改变。"
+    "expiry": "此重置链接将在 {expiresIn} 后过期。如果你没有请求重置密码，可以放心忽略这封邮件。你的密码不会改变。"
   },
   "passwordResetSSO": {
     "preheader": "你使用 {providers} 登录。请在下方设置密码。",
     "intro": "我们收到重置你的 SolidPing 密码的请求。你通常使用 <strong>{providers}</strong> 登录 SolidPing。你可以继续这样登录，也可以通过下方链接设置密码。",
     "introText": "我们收到重置你的 SolidPing 密码的请求。你通常使用 {providers} 登录 SolidPing。你可以继续这样登录，或在此设置密码：",
     "cta": "设置密码",
-    "expiry": "此重置链接将在 {expiresIn} 后过期。如果你没有发起此请求，可以安全地忽略这封邮件。一切都不会改变，你仍可使用 {providers} 登录。"
+    "expiry": "此重置链接将在 {expiresIn} 后过期。如果你没有发起此请求，可以放心忽略这封邮件。一切都不会改变，你仍可使用 {providers} 登录。"
   },
   "securityNotice": {
     "preheader": "更改时间：{date}。如果这不是你本人操作，请立即处理。",
@@ -129,7 +129,7 @@
     "title": "确认此邮箱地址",
     "body": "SolidPing 账户 {account} 请求在此地址接收 {org} 的故障告警。请在 SolidPing 中输入此验证码以确认：",
     "expiry": "验证码将在 10 分钟后过期。",
-    "ignore": "如果你没有预期会收到这封邮件，请忽略：不会向此地址发送任何告警。"
+    "ignore": "如果你并不清楚为什么会收到这封邮件，请直接忽略：不会向此地址发送任何告警。"
   },
   "invitation": {
     "subject": "邀请你加入 SolidPing 上的 {org}",
@@ -165,7 +165,7 @@
     },
     "cta": "接受邀请",
     "acceptText": "接受你的邀请：",
-    "expiry": "此邀请将在 {expiresIn} 后过期。如果你没有预期会收到这封邀请，可以安全地忽略这封邮件。"
+    "expiry": "此邀请将在 {expiresIn} 后过期。如果你并不清楚为什么会收到这封邀请，可以放心忽略这封邮件。"
   },
   "membershipRequest": {
     "subject": "{requester} 申请加入 {org}",

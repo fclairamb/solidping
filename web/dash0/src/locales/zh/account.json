@@ -163,7 +163,7 @@
     "unknownDevice": "未知设备",
     "unknownAgent": "未知",
     "revokeTitle": "撤销会话",
-    "revokeDescription": "这将立即退出这台设备的登录，之后需要重新登录才能继续。",
+    "revokeDescription": "这台设备将立即退出登录，之后需要重新登录才能继续。",
     "revokeCurrentDescription": "这是你的当前会话，撤销后将立即退出登录。",
     "revoke": "撤销",
     "revoked": "会话已撤销",
@@ -350,7 +350,7 @@
     "requesterClient": "客户端软件",
     "approverIp": "你的 IP 地址",
     "unknownValue": "未知",
-    "differentNetwork": "这个请求来自与你当前使用的网络不同的网络。",
+    "differentNetwork": "发起此请求的网络与你当前使用的网络不同。",
     "confirmStarted": "这个登录是我自己发起的"
   },
   "email": {
@@ -359,7 +359,7 @@
     "current": "当前邮箱",
     "newEmail": "新邮箱",
     "currentPassword": "当前密码",
-    "notice": "你的其他会话将被退出登录，当前邮箱地址会收到更改通知。",
+    "notice": "你的其他会话将全部退出登录，当前邮箱地址会收到更改通知。",
     "submit": "修改邮箱",
     "saved": "邮箱已更改。下次登录时请使用新地址。",
     "ssoOnly": "这个账户通过身份提供商登录。请在身份提供商处更改邮箱地址。",

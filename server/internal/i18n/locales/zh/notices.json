@@ -6,7 +6,7 @@
     "from": "发件人：{from}",
     "folded_one": "…自上次通知以来，此会话中还有 {count} 条消息。",
     "folded_other": "…自上次通知以来，此会话中还有 {count} 条消息。",
-    "replyWarning": "回复此通知不会送达发件人，请打开会话进行答复。"
+    "replyWarning": "直接回复这封通知不会送达发件人——请打开会话进行答复。"
   },
   "userRegistered": {
     "subject": "新注册：{email}（{method}）",
@@ -90,8 +90,8 @@
   },
   "smsDestinationProbing": {
     "subject": "来自 {org} 的可疑短信发送",
-    "intro_one": "同一组织在 {minutes} 分钟内有 {count} 次短信发送被国家允许列表（SP_SMS_ALLOWED_COUNTRIES）拒绝，很可能是短信轰炸（SMS pumping）攻击。",
-    "intro_other": "同一组织在 {minutes} 分钟内有 {count} 次短信发送被国家允许列表（SP_SMS_ALLOWED_COUNTRIES）拒绝，很可能是短信轰炸（SMS pumping）攻击。",
+    "intro_one": "同一组织在 {minutes} 分钟内有 {count} 次短信发送被国家允许列表（SP_SMS_ALLOWED_COUNTRIES）拒绝，很可能是短信流量欺诈（SMS pumping）探测。",
+    "intro_other": "同一组织在 {minutes} 分钟内有 {count} 次短信发送被国家允许列表（SP_SMS_ALLOWED_COUNTRIES）拒绝，很可能是短信流量欺诈（SMS pumping）探测。",
     "org": "组织：{org}",
     "prefixes": "前缀：{prefixes}",
     "blocked": "它的电话和 WhatsApp 验证码将在接下来的 {minutes} 分钟内被拒绝。"

@@ -196,7 +196,7 @@
     "removeError": "移除订阅者失败",
     "removeConfirmTitle": "移除订阅者？",
     "removeConfirmDescription": "此订阅者将停止接收通知。他们可以从公开状态页重新订阅。",
-    "destination": "目的地",
+    "destination": "投递目标",
     "channel": "渠道",
     "disabled": "已禁用",
     "channels": {

@@ -1,7 +1,7 @@
 {
   "emphasis": "<strong>{text}</strong>",
   "link": "<a href=\"{url}\">{text}</a>",
-  "openChecks": "打开你的监控项",
+  "openChecks": "查看你的监控项",
   "escalation": {
     "subject": "{check} 仍处于故障状态，已升级给你",
     "pill": "已升级",
@@ -42,21 +42,21 @@
     "pill": "区域离线",
     "heading": "区域 {region} 离线",
     "since": "SolidPing 区域 {region} 自 {since} 起处于离线状态。",
-    "blind_one": "{org} 中有 {count} 个监控项仅从这个区域运行，因此当前未运行监控：",
-    "blind_other": "{org} 中有 {count} 个监控项仅从这个区域运行，因此当前未运行监控：",
+    "blind_one": "{org} 中有 {count} 个监控项仅从这个区域运行，因此当前没有运行监控：",
+    "blind_other": "{org} 中有 {count} 个监控项仅从这个区域运行，因此当前没有运行监控：",
     "more_one": "…另有 {count} 个。",
     "more_other": "…另有 {count} 个。",
     "reduced_one": "另有 {count} 个监控项仍在其他区域运行。",
     "reduced_other": "另有 {count} 个监控项仍在其他区域运行。",
-    "nothingToDo": "你这边无需采取任何操作。SolidPing 团队已收到告警，区域恢复后你会收到第二封邮件。在此之前，这些监控项将显示无数据，而不是状态。",
-    "nothingToDoOneCheck": "你这边无需采取任何操作。SolidPing 团队已收到告警，区域恢复后你会收到第二封邮件。在此之前，这个监控项将显示无数据，而不是状态。"
+    "nothingToDo": "你这边无需采取任何操作。SolidPing 团队已收到告警，区域恢复后你会收到第二封邮件。在此之前，这些监控项会显示“无数据”，而不是具体状态。",
+    "nothingToDoOneCheck": "你这边无需采取任何操作。SolidPing 团队已收到告警，区域恢复后你会收到第二封邮件。在此之前，这个监控项会显示“无数据”，而不是具体状态。"
   },
   "regionRecovered": {
     "subject": "区域 {region} 已恢复，你的监控项已恢复运行",
-    "preheader": "这个区域离线了 {duration}。你的监控项已重新运行。",
+    "preheader": "这个区域离线了 {duration}。你的监控项已恢复运行。",
     "pill": "区域已恢复",
     "heading": "区域 {region} 已恢复",
-    "moved": "{org} 中原本仅从 {region} 运行的监控项已不再依赖这个区域，现已重新开始监控。",
+    "moved": "{org} 中原本仅从 {region} 运行的监控项已不再依赖这个区域，现已恢复监控。",
     "back": "SolidPing 区域 {region} 已恢复在线，{org} 中原本仅从这个区域运行的监控项已恢复。",
     "offline": "离线",
     "offlineFor": "离线时长",

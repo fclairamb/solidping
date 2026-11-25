@@ -50,7 +50,7 @@
       "rotate": "轮换 URL",
       "url": "订阅源 URL",
       "rotateConfirmTitle": "轮换订阅源 URL？",
-      "rotateConfirmBody": "现有订阅者会立即开始收到 410 Gone，需要新的 URL 才能继续接收更新。"
+      "rotateConfirmBody": "现有订阅者会立即开始收到 410 Gone 响应，需要换用新的 URL 才能继续接收更新。"
     },
     "v1Notes": "v1 只支持单一层级，按天或按周轮换。需要主备双人值班？请使用告警升级策略——值班表只代表一个轮换。"
   },

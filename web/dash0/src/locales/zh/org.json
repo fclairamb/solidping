@@ -38,8 +38,8 @@
     "sessionDurationPlaceholder": "无限制",
     "sessionDurationHelp": "设置后，会话在登录后这么多小时强制过期，即使用户保持活跃——与 7 天不活动超时相互独立。",
     "defaultEscalation": "默认告警升级策略",
-    "defaultEscalationDescription": "适用于自身没有匹配到任何告警升级策略的监控项（监控项 → 分组 → 组织默认 → 无）。留空则组织范围内没有后备策略。",
-    "defaultEscalationNone": "无（没有后备）",
+    "defaultEscalationDescription": "适用于自身没有匹配到任何告警升级策略的监控项（监控项 → 分组 → 组织默认 → 无）。留空则组织范围内没有兜底策略。",
+    "defaultEscalationNone": "无（没有兜底策略）",
     "dangerZone": {
       "title": "危险区域",
       "description": "不可逆的操作。只有所有者能看到这个区域。",
@@ -66,7 +66,7 @@
     },
     "embed": {
       "title": "状态页嵌入",
-      "description": "默认情况下，只有 SolidPing 自身可以把状态页放进框架（外观预览）。列出允许用 iframe 嵌入这个组织状态页的站点，例如内网或墙面显示屏。",
+      "description": "默认情况下，状态页只能由 SolidPing 自身以 iframe 嵌入（用于外观预览）。在此列出允许用 iframe 嵌入这个组织状态页的站点，例如内网或墙面显示屏。",
       "label": "允许的嵌入来源",
       "placeholder": "https://intranet.acme.com\nhttps://*.acme.com",
       "help": "每行一个来源：一个协议和主机，可选带端口或开头的 * 通配符标签。不要带路径。会作为页面的 Content-Security-Policy frame-ancestors 发送；一分钟内生效。留空则阻止其他所有站点。"
@@ -125,7 +125,7 @@
     "plan": "当前套餐",
     "checks": "监控项",
     "checksPerMinute": "每分钟执行次数",
-    "multiRegionNote": "多区域监控项会在每个所选区域运行，因此每分钟消耗的执行次数为 区域数 × 60 秒 / 周期。",
+    "multiRegionNote": "多区域监控项会在每个所选区域运行，因此每分钟消耗的执行次数为：区域数 × 60 秒 / 周期。",
     "users": "用户",
     "privateLocationAgents": "私有位置代理",
     "customDomains": "自定义域名",
@@ -137,7 +137,7 @@
     "callsThisMonth": "本月语音通话数",
     "smsGuard": {
       "title": "部分 SMS 告警未发送",
-      "runaway": "由于此实例的 SMS 上限 {{limit}} 条/小时已达，{{count}} 条消息被拒绝。告警正在整个实例范围内被丢弃——请通知你的运维人员。",
+      "runaway": "由于已达此实例 {{limit}} 条/小时的 SMS 上限，{{count}} 条消息被拒绝。整个实例范围内的告警目前都会被丢弃——请通知你的运维人员。",
       "country": "由于目标国家不在此实例的允许列表（{{countries}}）中，{{count}} 条消息被拒绝。"
     },
     "slos": "服务级别目标",
@@ -563,7 +563,7 @@
     },
     "delete": {
       "title": "删除这个变量？",
-      "description": "任何引用 ${param:{{key}}} 的监控项都将在下次运行时失败，并报密钥引用未解析。",
+      "description": "任何引用 ${param:{{key}}} 的监控项都会在下次运行时因密钥引用无法解析而失败。",
       "deleted": "变量已删除",
       "failed": "无法删除变量"
     }
