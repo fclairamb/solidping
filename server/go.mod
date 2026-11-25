@@ -236,7 +236,7 @@ require (
 	github.com/crewjam/saml v0.6.3
 	github.com/dlclark/regexp2/v2 v2.13.2
 	github.com/docker/go-units v0.5.0
-	github.com/dop251/goja v0.0.0-20261124180248-00ef7861e082
+	github.com/dop251/goja v0.0.0-20261125174615-70dc34d6aa89
 	github.com/dreamscached/minequery/v2 v2.5.0
 	github.com/dustin/go-humanize v1.1.0
 	github.com/eclipse/paho.mqtt.golang v1.5.2
@@ -283,7 +283,7 @@ require (
 	github.com/pires/go-proxyproto v0.16.0
 	github.com/pkg/sftp v1.13.13
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
-	github.com/posthog/posthog-go/v2 v2.2.1
+	github.com/posthog/posthog-go/v2 v2.3.0
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
