@@ -23,6 +23,8 @@ type OIDCOAuthConfig struct {
 
 	// IssuerURL is the OIDC issuer, e.g. "https://idp.example.com/realms/acme".
 	// Discovery is performed against "{IssuerURL}/.well-known/openid-configuration".
+	// A trailing slash is optional: the issuer advertised by discovery wins
+	// when it differs from this value only by that slash.
 	IssuerURL    string `koanf:"issuer_url"`
 	ClientID     string `koanf:"client_id"`
 	ClientSecret string `koanf:"client_secret"`
