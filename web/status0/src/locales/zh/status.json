@@ -54,7 +54,7 @@
     "checkInbox": "快好了！请查收邮箱以确认订阅。",
     "error": "出错了。请重试。",
     "feedLink": "通过 RSS 订阅",
-    "emailOnlyNote": "Webhook 和 Slack 通知由此状态页的运营方设置——如需使用，请联系他们。"
+    "emailOnlyNote": "Webhook 和 Slack 通知由此状态页的运营方设置；如需使用，请联系他们。"
   },
   "servicesOperational": "{{total}} 个服务中 {{ok}} 个正常",
   "activeIncidents": "未解决的故障",
@@ -98,8 +98,8 @@
     "daysSinceLastIncident_one": "距上次故障已 {{count}} 天",
     "daysSinceLastIncident_other": "距上次故障已 {{count}} 天",
     "noIncidentsRecorded": "未记录任何故障",
-    "incidentDriven_one": "受 {{count}} 个未解决的故障影响——所有受监控服务均正常",
-    "incidentDriven_other": "受 {{count}} 个未解决的故障影响——所有受监控服务均正常",
+    "incidentDriven_one": "受 {{count}} 个未解决的故障影响，所有受监控服务均正常",
+    "incidentDriven_other": "受 {{count}} 个未解决的故障影响，所有受监控服务均正常",
     "incidentDrivenImpaired_one": "由 {{count}} 个未解决的故障导致",
     "incidentDrivenImpaired_other": "由 {{count}} 个未解决的故障导致",
     "cycling": "正在轮流显示 {{count}} 个未解决的故障",

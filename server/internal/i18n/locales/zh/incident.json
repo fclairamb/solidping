@@ -40,7 +40,7 @@
     "duration": "持续时间",
     "incidentId": "故障 ID",
     "failureCount": "失败次数",
-    "relapseCount": "复发次数",
+    "relapseCount": "反复次数",
     "failedChecks": "失败的监控项",
     "cause": "原因",
     "downFrom": "故障开始",
@@ -115,9 +115,9 @@
     "title": "{check} 再次故障",
     "preheader": "{check} 在短暂恢复后再次故障。",
     "lead": "它曾短暂恢复，随后再次失败。",
-    "leadRelapses_one": "它曾短暂恢复，随后再次失败（目前复发 {count} 次）。",
-    "leadRelapses_other": "它曾短暂恢复，随后再次失败（目前复发 {count} 次）。",
-    "textTitle": "{check} 故障已重新打开（第 {relapse} 次复发）",
+    "leadRelapses_one": "它曾短暂恢复，随后再次失败（已反复 {count} 次）。",
+    "leadRelapses_other": "它曾短暂恢复，随后再次失败（已反复 {count} 次）。",
+    "textTitle": "{check} 故障已重新开启（第 {relapse} 次反复）",
     "textBody": "{check} 的故障在短暂恢复后已重新打开。"
   },
   "comment": {
@@ -131,7 +131,7 @@
   },
   "acknowledged": {
     "title": "{actor} 正在处理 {check}",
-    "preheader": "{actor} 已接手。升级已停止，故障仍未关闭。",
+    "preheader": "{actor} 已接手。升级已停止，故障仍未解决。",
     "lead": "升级已停止。在监控项重新通过之前，故障将保持打开。",
     "textTitle": "{check} 已被确认",
     "textBody": "{actor} 确认了 {check} 的故障。升级已停止：无需其他人接手。",
@@ -185,8 +185,8 @@
   },
   "burnCreated": {
     "subject": "{policy}：{slo} 燃烧率为 {rate}",
-    "preheader": "{policy}策略以 {rate} 触发。剩余预算 {budget}。",
-    "preheaderExhausted": "{policy}策略以 {rate} 触发。错误预算已耗尽。",
+    "preheader": "{policy}策略已触发，燃烧率为 {rate}。剩余预算 {budget}。",
+    "preheaderExhausted": "{policy}策略已触发，燃烧率为 {rate}。错误预算已耗尽。",
     "title": "{slo} 正在消耗错误预算",
     "lead": "它正以可持续速率的 <strong>{rate}</strong> 消耗预算。当前不一定处于故障状态，但这种消耗无法持续。",
     "policyValue": "{policy}，{severity}，超过 {threshold}",
@@ -223,9 +223,9 @@
   "degradedCreated": {
     "subject": "{check} 已降级：{reason}",
     "title": "{check} 已降级",
-    "lead": "它持续失败或变慢，但故障时间不足以被视为服务中断。",
+    "lead": "它持续失败或变慢，但没有一次故障持续到足以算作服务中断。",
     "openChart": "打开图表",
-    "notOutage": "这不是服务中断：每次失败都在确认期结束前出现了成功。"
+    "notOutage": "这不是服务中断：每次失败都在确认时长结束前出现了成功。"
   },
   "degradedResolved": {
     "title": "{check} 已恢复稳定",
@@ -234,7 +234,7 @@
     "preheader": "{check} 已持续正常足够长时间，本次降级已结束。",
     "turnedOffTitle": "{check} 的降级检测已关闭",
     "turnedOffLead": "本次降级已结束。它不一定已经恢复。",
-    "leadDuration": "它不稳定持续了 <strong>{duration}</strong>。无需进一步操作。",
+    "leadDuration": "不稳定状态持续了 <strong>{duration}</strong>。无需进一步操作。",
     "lead": "无需进一步操作。",
     "turnedOffText": "此监控项的降级检测已关闭，因此本次降级已结束。它不一定已经恢复。",
     "textBody": "降级条件已连续足够长时间不成立，本次降级已结束。",

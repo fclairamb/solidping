@@ -10,7 +10,7 @@
       "description": "组织名称、URL slug，以及仪表盘和状态页上显示的徽标。",
       "name": "名称",
       "slug": "URL slug",
-      "renameWarning": "这个组织的所有 URL 都会改变——仪表盘链接、状态页、SVG 徽章和嵌入式组件。现有链接仍然可用：旧地址会重定向到新地址，但仅持续到另一个组织占用它为止。",
+      "renameWarning": "这个组织的所有 URL 都会改变：仪表盘链接、状态页、SVG 徽章和嵌入式组件。现有链接仍然可用：旧地址会重定向到新地址，但仅持续到另一个组织占用它为止。",
       "logo": "徽标",
       "logoHelp": "粘贴图片 URL，或上传 PNG、JPEG、WebP、GIF 或 SVG 文件，最大 1 MB。",
       "logoHelpUploaded": "这个徽标是通过上传添加的。上传新文件来替换它，或改用外部 URL。",
@@ -36,10 +36,10 @@
     "sessionDurationFullDescription": "设置登录会话的硬性时长上限，与活动无关。留空则使用平台默认值（除非全局设置了限制，否则无限制）。",
     "sessionDurationHoursLabel": "最长会话时长（小时）",
     "sessionDurationPlaceholder": "无限制",
-    "sessionDurationHelp": "设置后，会话在登录后这么多小时强制过期，即使用户保持活跃——与 7 天不活动超时相互独立。",
+    "sessionDurationHelp": "设置后，会话在登录后这么多小时强制过期，即使用户保持活跃，与 7 天不活动超时相互独立。",
     "defaultEscalation": "默认告警升级策略",
-    "defaultEscalationDescription": "适用于自身没有匹配到任何告警升级策略的监控项（监控项 → 分组 → 组织默认 → 无）。留空则组织范围内没有后备策略。",
-    "defaultEscalationNone": "无（没有后备）",
+    "defaultEscalationDescription": "适用于自身没有匹配到任何告警升级策略的监控项（监控项 → 分组 → 组织默认 → 无）。留空则组织范围内没有兜底策略。",
+    "defaultEscalationNone": "无（没有兜底策略）",
     "dangerZone": {
       "title": "危险区域",
       "description": "不可逆的操作。只有所有者能看到这个区域。",
@@ -54,8 +54,8 @@
     "traceroute": {
       "title": "网络路径诊断",
       "description": "当监控项因为无法访问目标而故障时，捕获一次 MTR 风格的 traceroute 并附加到故障上。",
-      "label": "网络故障时记录 traceroute",
-      "help": "适用于每个设置为“继承”的监控项。只有可达性失败才会触发捕获——连接超时、拒绝连接、ICMP 丢包、TLS 握手卡住。HTTP 5xx、关键词不匹配或证书即将过期永远不会触发，因为服务器已经响应。跟踪在失败结果上报之后才运行，并且按组织限流，因此不会延误故障处理，也不会在大规模服务中断时产生大量记录。"
+      "label": "网络故障时捕获 traceroute",
+      "help": "适用于每个设置为“继承”的监控项。只有可达性失败才会触发捕获：连接超时、拒绝连接、ICMP 丢包、TLS 握手卡住。HTTP 5xx、关键词不匹配或证书即将过期永远不会触发，因为服务器已经响应。跟踪在失败结果上报之后才运行，并且按组织限流，因此不会延误故障处理，也不会在大规模服务中断时产生大量记录。"
     },
     "reminders": {
       "title": "故障提醒",
@@ -66,7 +66,7 @@
     },
     "embed": {
       "title": "状态页嵌入",
-      "description": "默认情况下，只有 SolidPing 自身可以把状态页放进框架（外观预览）。列出允许用 iframe 嵌入这个组织状态页的站点，例如内网或墙面显示屏。",
+      "description": "默认情况下，状态页只能由 SolidPing 自身以 iframe 嵌入（用于外观预览）。在此列出允许用 iframe 嵌入这个组织状态页的站点，例如内网或墙面显示屏。",
       "label": "允许的嵌入来源",
       "placeholder": "https://intranet.acme.com\nhttps://*.acme.com",
       "help": "每行一个来源：一个协议和主机，可选带端口或开头的 * 通配符标签。不要带路径。会作为页面的 Content-Security-Policy frame-ancestors 发送；一分钟内生效。留空则阻止其他所有站点。"
@@ -111,9 +111,9 @@
       "revokeFailed": "无法撤销订阅源。",
       "scope": {
         "incident_all": "所有故障事件",
-        "check_created": "监控项已创建",
-        "check_updated": "监控项已更新",
-        "check_deleted": "监控项已删除",
+        "check_created": "监控项创建",
+        "check_updated": "监控项更新",
+        "check_deleted": "监控项删除",
         "status_update_all": "状态更新",
         "maintenance_window_all": "维护窗口"
       }
@@ -125,7 +125,7 @@
     "plan": "当前套餐",
     "checks": "监控项",
     "checksPerMinute": "每分钟执行次数",
-    "multiRegionNote": "多区域监控项会在每个所选区域运行，因此每分钟消耗的执行次数为 区域数 × 60 秒 / 周期。",
+    "multiRegionNote": "多区域监控项会在每个所选区域运行，因此每分钟消耗的执行次数为：区域数 × 60 秒 / 周期。",
     "users": "用户",
     "privateLocationAgents": "私有位置代理",
     "customDomains": "自定义域名",
@@ -137,7 +137,7 @@
     "callsThisMonth": "本月语音通话数",
     "smsGuard": {
       "title": "部分 SMS 告警未发送",
-      "runaway": "由于此实例的 SMS 上限 {{limit}} 条/小时已达，{{count}} 条消息被拒绝。告警正在整个实例范围内被丢弃——请通知你的运维人员。",
+      "runaway": "由于已达此实例 {{limit}} 条/小时的 SMS 上限，{{count}} 条消息被拒绝。整个实例范围内的告警目前都会被丢弃，请通知你的运维人员。",
       "country": "由于目标国家不在此实例的允许列表（{{countries}}）中，{{count}} 条消息被拒绝。"
     },
     "slos": "服务级别目标",
@@ -157,7 +157,7 @@
     "mcpUrl": "MCP 服务器 URL",
     "claude": {
       "title": "Claude（网页 / 桌面端）",
-      "description": "将 URL 作为自定义连接器粘贴——无需手动填写令牌。",
+      "description": "将 URL 作为自定义连接器粘贴，无需手动填写令牌。",
       "step1": "设置 → 连接器 → 添加自定义连接器",
       "step2": "粘贴上面的 URL",
       "step3": "登录并批准请求的权限范围"
@@ -168,12 +168,12 @@
     },
     "cursor": {
       "title": "Cursor",
-      "description": "一键安装——会打开 Cursor 并预填服务器信息。",
+      "description": "一键安装，会打开 Cursor 并预填服务器信息。",
       "button": "添加到 Cursor"
     },
     "vscode": {
       "title": "VS Code",
-      "description": "一键安装——会打开 VS Code 并预填服务器信息。",
+      "description": "一键安装，会打开 VS Code 并预填服务器信息。",
       "button": "添加到 VS Code",
       "insiders": "Insiders 版本"
     },
@@ -191,7 +191,7 @@
     },
     "selfHosted": {
       "title": "自托管或仅本地部署？",
-      "description": "托管客户端（claude.ai）只能访问通过 HTTPS 公开可访问的实例。如果此实例仅本地或仅 VPN 可用，请改用 Claude Code、Cursor 或 VS Code——它们从你自己的机器连接。"
+      "description": "托管客户端（claude.ai）只能访问通过 HTTPS 公开可访问的实例。如果此实例仅本地或仅 VPN 可用，请改用 Claude Code、Cursor 或 VS Code：它们从你自己的机器连接。"
     }
   },
   "requests": {
@@ -236,7 +236,7 @@
     "invitationCreated": "邀请已创建。分享此链接：",
     "emailSentTo": "邀请邮件已发送至 {{email}}。",
     "shareLinkFallback": "或直接分享此链接：",
-    "emailNotConfigured": "此实例未配置邮件发送——请与收件人分享此链接。",
+    "emailNotConfigured": "此实例未配置邮件发送，请与收件人分享此链接。",
     "sendInvitation": "发送邀请",
     "sending": "发送中…",
     "pendingTitle": "待处理的邀请",
@@ -263,7 +263,7 @@
       "user": "用户",
       "viewer": "查看者"
     },
-    "empty": "还没有成员——邀请你的第一位成员。",
+    "empty": "还没有成员，邀请你的第一位成员。",
     "cannotEditSelf": "请在个人资料设置中更改你自己的成员身份。",
     "remove": "移除",
     "removeConfirm": {
@@ -286,8 +286,8 @@
     "coverage": {
       "emailOnly": "仅邮箱",
       "emailOnlyHelp": "没有已验证的电话或消息联系方式。告警会回退到邮箱，而凌晨 3 点的邮件并不能把人叫醒。",
-      "channelReady": "{{type}}——就绪",
-      "channelNotReady": "{{type}}——未验证或已禁用"
+      "channelReady": "{{type}} · 就绪",
+      "channelNotReady": "{{type}} · 未验证或已禁用"
     },
     "paging": {
       "title": "设置告警通知",
@@ -300,7 +300,7 @@
       "typeWhatsApp": "WhatsApp",
       "number": "号码（E.164）",
       "add": "添加未验证的联系方式",
-      "added": "联系方式已添加——成员仍需自行验证",
+      "added": "联系方式已添加，成员仍需自行验证",
       "addFailed": "无法添加该联系方式",
       "nudgeTitle": "提醒他们",
       "nudgeBody": "发送一封邮件，请他们添加并验证一个告警通知联系方式。不含任何联系数据，也不含验证码。",
@@ -317,7 +317,7 @@
   },
   "checkRateLimit": {
     "title": "部分监控执行被跳过",
-    "overLimit": "你的组织每分钟安排约 {{demand}} 次监控执行，但套餐允许 {{limit}} 次/分钟——部分执行被跳过。",
+    "overLimit": "你的组织每分钟安排约 {{demand}} 次监控执行，但套餐允许 {{limit}} 次/分钟，部分执行被跳过。",
     "skippedToday_one": "今天有 {{count}} 次监控执行被跳过，因为你的组织超出了执行速率限制。",
     "skippedToday_other": "今天有 {{count}} 次监控执行被跳过，因为你的组织超出了执行速率限制。",
     "reviewScheduling": "查看调度",
@@ -331,7 +331,7 @@
     "readOnlyHint": "注册免费账户即可更改。",
     "checkExpires": "这个监控项现已生效，将在大约一小时后删除。免费注册即可保留。",
     "seededCheck": "这个监控项属于演示目录，无法更改。克隆它即可获得可编辑的副本。",
-    "writeRefused": "这是共享在线演示。只有你在此创建的监控项可以更改——免费注册后即可更改其他内容。"
+    "writeRefused": "这是共享在线演示。只有你在此创建的监控项可以更改；免费注册后即可更改其他内容。"
   },
   "privateLocations": {
     "wizard": {
@@ -345,9 +345,9 @@
         "expiryFormat": "约 {{hours}} 小时后（{{date}}）",
         "title": "2. 签发注册令牌",
         "description": "一个一次性的 spe_ 令牌，只允许一个代理注册到此位置。",
-        "explain": "令牌只显示一次——服务器只存储其哈希——默认 24 小时后过期。",
+        "explain": "令牌只显示一次（服务器只存储其哈希），默认 24 小时后过期。",
         "mint": "签发注册令牌",
-        "onceTitle": "立即复制——你不会再看到它",
+        "onceTitle": "立即复制：你不会再看到它",
         "onceDescription": "此令牌的过期时间为 {{expiry}}，且只能注册一个代理。如果丢失，请重新签发。",
         "continue": "继续"
       },
@@ -359,21 +359,21 @@
         "title": "1. 选择或创建位置",
         "description": "代理会注册到一个组织私有位置。选择一个现有位置，或在下方创建一个新的。",
         "agentCount": "{{count}} 个代理",
-        "empty": "还没有私有位置——在下方创建一个开始使用。",
+        "empty": "还没有私有位置，在下方创建一个开始使用。",
         "createTitle": "或创建新位置",
         "create": "创建并继续"
       },
       "step3": {
         "title": "3. 运行代理",
-        "description": "代理就是标准 SolidPing 容器的代理模式——没有单独的可执行文件，也没有数据库。",
+        "description": "代理就是标准 SolidPing 容器的代理模式：没有单独的可执行文件，也没有数据库。",
         "gotchasTitle": "需要了解的两件事",
         "gotcha1": "令牌是一次性的：它只能注册一个代理，然后就会被消耗。",
-        "gotcha2": "代理会把身份持久化到 /data/agent-keys.json（SP_AGENT_KEYS_FILE）——该卷必须在重启后保留，否则代理会以新身份重新注册。",
-        "k8sNote": "首次运行会把身份持久化到 PVC 上，与 docker run 卷完全一样。如果不想使用持久卷，请从代理写入的文件中读出该值（kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json），并以 SP_AGENT_KEYS 存入 Secret。代理绝不会把私钥打印到日志——参见此卡片顶部的文档链接。",
+        "gotcha2": "代理会把身份持久化到 /data/agent-keys.json（SP_AGENT_KEYS_FILE），该卷必须在重启后保留，否则代理会以新身份重新注册。",
+        "k8sNote": "首次运行会把身份持久化到 PVC 上，与 docker run 卷完全一样。如果不想使用持久卷，请从代理写入的文件中读出该值（kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json），并以 SP_AGENT_KEYS 存入 Secret。代理绝不会把私钥打印到日志；参见此卡片顶部的文档链接。",
         "imageFollows": "{{image}} 由此服务器提供，并始终解析到它的版本：服务器升级时会要求代理在新版本上重启。Kubernetes 在重启时会重新拉取（imagePullPolicy: Always）；使用 Docker 时，重启会复用本地镜像，因此请添加文档中的更新定时器。若要改为固定到这个确切版本，请使用 {{pinned}}。",
         "imagePinned": "{{image}} 是此服务器的版本。升级服务器时请更改标签。",
         "imageDev": "此服务器是开发构建，没有自己的已发布镜像：代码片段使用 {{image}}。",
-        "continue": "继续——我已启动代理"
+        "continue": "继续（我已启动代理）"
       },
       "step4": {
         "successTitle": "代理已连接！",
@@ -386,12 +386,12 @@
         "consumedDescription": "此令牌已被使用，或在其他地方被取消。",
         "retry": "签发新令牌",
         "waitingTitle": "4. 等待代理连接",
-        "waitingDescription": "代理注册后会自动更新——无需刷新。"
+        "waitingDescription": "代理注册后会自动更新，无需刷新。"
       }
     },
     "regions": {
       "title": "私有位置",
-      "description": "由你在自己的网络内运行的自托管代理提供的组织私有区域。代理只发起出站连接——没有入站端口。",
+      "description": "由你在自己的网络内运行的自托管代理提供的组织私有区域。代理只发起出站连接，没有入站端口。",
       "registerAgent": "注册代理",
       "emptyPrefix": "还没有私有位置。请按",
       "emptyLinkText": "引导设置",
@@ -408,7 +408,7 @@
       "displayName": "显示名称",
       "create": "添加位置",
       "deleteTitle": "删除私有位置？",
-      "deleteDescription": "目标为此位置的监控项将不再在此处调度。仍有已注册代理的位置无法删除——请先撤销代理。",
+      "deleteDescription": "目标为此位置的监控项将不再在此处调度。仍有已注册代理的位置无法删除，请先撤销代理。",
       "deleteConfirm": "删除",
       "stateOnline": "在线",
       "stateDegraded": "降级",
@@ -422,7 +422,7 @@
     "cancel": "取消",
     "token": {
       "title": "注册令牌",
-      "description": "立即复制——此令牌只显示一次，并在 24 小时后过期。它只能注册一个代理。",
+      "description": "立即复制：此令牌只显示一次，并在 24 小时后过期。它只能注册一个代理。",
       "run": "使用以下命令运行代理："
     },
     "agents": {
@@ -442,7 +442,7 @@
       "removeTitle": "移除这个代理？",
       "revokeTitle": "撤销这个代理？",
       "removeDescription": "这个代理已被撤销。移除它会立即从列表中清除，而不必等待两天后的自动清理。",
-      "revokeDescription": "代理会立即失去访问权限并停止接收监控任务。它已经拿到过为它加密的凭据——请轮换这些凭据。此操作无法撤销；请注册新的代理来替代。",
+      "revokeDescription": "代理会立即失去访问权限并停止接收监控任务。它已经拿到过为它加密的凭据，请轮换这些凭据。此操作无法撤销；请注册新的代理来替代。",
       "removeConfirm": "移除",
       "revokeConfirm": "撤销",
       "online": "在线",
@@ -533,7 +533,7 @@
     }
   },
   "accessRedirect": {
-    "toast": "你无权访问 {{requested}}——改为显示 {{shown}}。"
+    "toast": "你无权访问 {{requested}}，改为显示 {{shown}}。"
   },
   "parameters": {
     "title": "变量",
@@ -563,7 +563,7 @@
     },
     "delete": {
       "title": "删除这个变量？",
-      "description": "任何引用 ${param:{{key}}} 的监控项都将在下次运行时失败，并报密钥引用未解析。",
+      "description": "任何引用 ${param:{{key}}} 的监控项都会在下次运行时因密钥引用无法解析而失败。",
       "deleted": "变量已删除",
       "failed": "无法删除变量"
     }

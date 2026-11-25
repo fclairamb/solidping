@@ -37,8 +37,8 @@
       },
       "invalid": {
         "http": "这看起来不像 URL。试试 example.com 或 https://example.com。",
-        "icmp": "只输入主机名或 IP 地址——不要 http://、端口或路径。",
-        "ssl": "只输入域名——不要 http://、端口或路径。"
+        "icmp": "只输入主机名或 IP 地址，不要 http://、端口或路径。",
+        "ssl": "只输入域名，不要 http://、端口或路径。"
       }
     }
   },
@@ -57,7 +57,7 @@
     "steps": {
       "check": {
         "title": "创建第一个监控项",
-        "description": "选择要监控的对象——URL、主机或证书。",
+        "description": "选择要监控的对象：URL、主机或证书。",
         "cta": "查看监控项"
       },
       "alerts": {
@@ -116,7 +116,7 @@
   "kpi": {
     "monitored": "监控项",
     "monitoredDisabled": "{{count}} 个已禁用",
-    "down": "故障监控",
+    "down": "故障监控项",
     "downSubNone": "全部正常",
     "incidents": "未解决的故障",
     "incidentsSubNone": "无未解决的故障",
@@ -161,7 +161,7 @@
   },
   "githubStar": {
     "title": "喜欢 SolidPing 吗？",
-    "body": "感谢使用 SolidPing。如果它对你有帮助，在 GitHub 上Star能帮助更多人发现它。",
+    "body": "感谢使用 SolidPing。如果它对你有帮助，在 GitHub 上点个 Star，能帮助更多人发现它。",
     "star": "在 GitHub 上 Star",
     "later": "以后再说",
     "close": "关闭"

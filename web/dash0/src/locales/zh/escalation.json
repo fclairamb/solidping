@@ -8,8 +8,8 @@
     "editToSeeSteps": "打开即可查看步骤。",
     "searchPlaceholder": "按名称搜索…",
     "noMatches": "没有匹配搜索的策略。",
-    "silentBadge": "0 步——静默",
-    "deleteUsage": "被 {{checks}} 个监控项和 {{groups}} 个分组使用——它们将回退到继承的告警升级策略。",
+    "silentBadge": "0 步（静默）",
+    "deleteUsage": "被 {{checks}} 个监控项和 {{groups}} 个分组使用，它们将回退到继承的告警升级策略。",
     "col": {
       "name": "名称",
       "description": "描述",
@@ -25,7 +25,7 @@
     "emptyTitle": "还没有告警升级策略",
     "stepsLabel_one": "步",
     "stepsLabel_other": "步",
-    "silentBadgeTooltip": "零步策略——不会通知任何人"
+    "silentBadgeTooltip": "零步策略：不会通知任何人"
   },
   "new": {
     "title": "新建告警升级策略"
@@ -48,9 +48,9 @@
     "pickSchedule": "选择值班表",
     "pickUser": "选择用户",
     "pickConnection": "选择通知渠道",
-    "noSchedules": "还没有值班表——",
+    "noSchedules": "还没有值班表，",
     "noMembers": "此组织中没有成员。",
-    "noConnections": "还没有通知渠道——",
+    "noConnections": "还没有通知渠道，",
     "createSchedule": "创建一个",
     "createConnection": "创建一个",
     "targetMissing": "之前选择的{{kind}}已不存在。请另选一个或移除此目标。",

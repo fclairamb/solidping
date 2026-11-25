@@ -80,7 +80,7 @@
     "noEnd": " · 无结束日期",
     "alertsPaused": "每次维护期间，受影响监控项的故障告警都会暂停。",
     "nextLabel": "下次：",
-    "nextNone": "没有即将发生的维护"
+    "nextNone": "没有即将开始的维护"
   },
   "duration": {
     "hoursShort": "小时",
@@ -91,7 +91,7 @@
     "schedule": "计划",
     "summary": "摘要",
     "nextOccurrences": "接下来的维护",
-    "noNextOccurrences": "没有即将发生的维护",
+    "noNextOccurrences": "没有即将开始的维护",
     "affectedChecks": "受影响的监控项",
     "start": "开始",
     "end": "结束",

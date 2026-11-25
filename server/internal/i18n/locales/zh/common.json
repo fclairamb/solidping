@@ -50,7 +50,7 @@
     "orgSentBy": "{org} · 发送自",
     "sentBy": "发送自",
     "dashboard": "仪表盘",
-    "stopAlerts": "停止 {check} 的告警",
+    "stopAlerts": "不再接收 {check} 的告警",
     "unsubscribe": "退订",
     "automated": "这是来自 SolidPing 的自动通知。"
   },

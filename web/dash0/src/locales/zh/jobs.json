@@ -69,7 +69,7 @@
     "noOutput": "无输出",
     "encryptedKeys": "加密密钥",
     "noEncryptedKeys": "无",
-    "secretsHidden": "密钥值永远不会暴露——只显示加密密钥的名称。",
+    "secretsHidden": "密钥值永远不会暴露，只显示加密密钥的名称。",
     "viewCheck": "查看监控项",
     "thisJob": "此任务"
   },
