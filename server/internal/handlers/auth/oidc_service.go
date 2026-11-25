@@ -182,6 +182,18 @@ func (s *OIDCOAuthService) providerAndVerifier(ctx context.Context) (*oidc.Provi
 		discoveryCtx = oidc.ClientContext(discoveryCtx, s.httpClient)
 
 		provider, err := oidc.NewProvider(discoveryCtx, issuer)
+
+		// go-oidc fetches the same discovery document with or without a
+		// trailing slash, then demands the advertised issuer match byte for
+		// byte. Providers disagree on the slash (Authentik adds it, Keycloak
+		// does not), so accept the advertised form when that is the only
+		// difference. ID tokens are still checked exactly against it.
+		var mismatch *oidc.IssuerMismatchError
+		if errors.As(err, &mismatch) &&
+			strings.TrimSuffix(mismatch.Discovered, "/") == strings.TrimSuffix(issuer, "/") {
+			provider, err = oidc.NewProvider(discoveryCtx, mismatch.Discovered)
+		}
+
 		if err != nil {
 			return nil, nil, fmt.Errorf("%w: %w", ErrOIDCDiscovery, err)
 		}
