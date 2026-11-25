@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useSubmitShortcut } from "@/hooks/use-hotkey";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
@@ -26,6 +27,7 @@ export const Route = createFileRoute("/orgs/$org/escalation-policies/new")({
 });
 
 function NewEscalationPolicyPage() {
+  useSubmitShortcut();
   const { t } = useTranslation(["escalation", "common"]);
   const { org } = Route.useParams();
   const navigate = useNavigate();
@@ -248,6 +250,7 @@ function NewEscalationPolicyPage() {
         </Button>
         <Button
           onClick={submit}
+          data-submit-shortcut
           disabled={!name || create.isPending}
         >
           {create.isPending

@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useSubmitShortcut } from "@/hooks/use-hotkey";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { FlaskConical, Copy } from "lucide-react";
@@ -44,6 +45,7 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/edit")({
 });
 
 function CheckEditPage() {
+  useSubmitShortcut();
   const { t } = useTranslation(["checks", "dependencies", "org"]);
   const navigate = useNavigate();
   const { org, checkUid } = Route.useParams();

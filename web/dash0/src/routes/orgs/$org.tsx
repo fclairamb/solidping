@@ -40,6 +40,7 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import { DemoBanner } from "@/components/shared/demo-banner";
 import { ImpersonationBanner } from "@/components/shared/impersonation-banner";
 import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
+import { ShortcutsHelp } from "@/components/shortcuts-help";
 import { Separator } from "@/components/ui/separator";
 import { useAuth, isSwitchOrgInFlight } from "@/contexts/AuthContext";
 import {
@@ -1232,6 +1233,7 @@ function OrgLayout() {
     <SidebarProvider defaultOpen={true}>
       <AppSidebar />
       <CommandMenu open={commandMenuOpen} onOpenChange={setCommandMenuOpen} />
+      <ShortcutsHelp />
       <SidebarInset className="md:ml-0">
         {/* h-12 (48px), not h-16: this bar holds a sidebar toggle, a breadcrumb
             and two icon buttons, and every page repeats the breadcrumb leaf as
