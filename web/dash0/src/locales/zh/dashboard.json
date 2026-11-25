@@ -37,8 +37,8 @@
       },
       "invalid": {
         "http": "这看起来不像 URL。试试 example.com 或 https://example.com。",
-        "icmp": "只输入主机名或 IP 地址——不要 http://、端口或路径。",
-        "ssl": "只输入域名——不要 http://、端口或路径。"
+        "icmp": "只输入主机名或 IP 地址，不要 http://、端口或路径。",
+        "ssl": "只输入域名，不要 http://、端口或路径。"
       }
     }
   },
@@ -57,7 +57,7 @@
     "steps": {
       "check": {
         "title": "创建第一个监控项",
-        "description": "选择要监控的对象——URL、主机或证书。",
+        "description": "选择要监控的对象：URL、主机或证书。",
         "cta": "查看监控项"
       },
       "alerts": {

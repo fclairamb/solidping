@@ -250,8 +250,8 @@
     "rolledUpInactive": "已归并"
   },
   "group": {
-    "header": "{{name}}——{{down}} 个故障",
-    "headerWithTotal": "{{name}}——{{down}}/{{total}} 个故障"
+    "header": "{{name}} · {{down}} 个故障",
+    "headerWithTotal": "{{name}} · {{down}}/{{total}} 个故障"
   },
   "statusUpdatesCard": {
     "title": "状态更新",

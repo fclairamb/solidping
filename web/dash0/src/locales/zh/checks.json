@@ -37,7 +37,7 @@
     "byHost": "按主机"
   },
   "noHostBucket": "无主机",
-  "hostBucketDescription": "由每个监控项的配置推导而来——重命名主机会把它移到另一个分组。",
+  "hostBucketDescription": "由每个监控项的配置推导而来，重命名主机会把它移到另一个分组。",
   "status": {
     "validating": "校验中",
     "up": "正常",
@@ -121,10 +121,10 @@
     },
     "importSourceHelp": {
       "solidping": "由导出按钮生成的文件，支持 JSON 或 YAML。",
-      "gatus": "粘贴或上传你的 Gatus config.yaml——其中的 endpoints: 列表会转换为监控项。",
+      "gatus": "粘贴或上传你的 Gatus config.yaml，其中的 endpoints: 列表会转换为监控项。",
       "betterstack": "我们会从 Better Stack API 获取你的监控项和心跳，并转换它们。",
       "uptime-kuma": "Uptime Kuma 1.x：设置 → 备份 → 导出 JSON。2.x 版本已不再提供此导出功能。",
-      "uptimerobot": "粘贴 UptimeRobot API v2 getMonitors 调用返回的 JSON——具体 curl 命令见文档。",
+      "uptimerobot": "粘贴 UptimeRobot API v2 getMonitors 调用返回的 JSON，具体 curl 命令见文档。",
       "pingdom": "在 My Pingdom > Settings > Pingdom API > Add API token（read access）中创建只读令牌，或粘贴 GET /api/3.1/checks 返回的 JSON。",
       "chrome-recorder": "在 Chrome DevTools > Recorder 中录制你的流程，然后选择 Export > JSON。粘贴或上传该文件：它会变成一个浏览器监控项，每个操作对应一个步骤。密码会存入该监控项的加密密钥中。"
     },
@@ -234,7 +234,7 @@
     "periodImmediateResolve": "首次成功时立即解决故障。",
     "reopenCooldown": "重开冷却倍数",
     "reopenCooldownHelp": "时间窗内的复发会重新挂到上一次故障上，而不是再次发送告警。",
-    "reopenCooldownOff": "关闭——总是开启新故障",
+    "reopenCooldownOff": "关闭（总是开启新故障）",
     "reopenCooldownCapped": "= {{duration}}（已封顶，原始值 {{raw}}）",
     "reopenCooldownFloored": "= {{duration}}（取下限，原始值 {{raw}}）",
     "flappingWindow": "抖动窗口（秒）",
@@ -255,7 +255,7 @@
     "tracerouteInherit": "继承组织默认值",
     "tracerouteOn": "始终捕获",
     "tracerouteOff": "从不捕获",
-    "tracerouteOnFailureHelp": "当此监控项因为无法到达目标（连接超时、连接被拒、ICMP 丢包、TLS 握手停滞）而故障时，捕获一条 MTR 风格的路径追踪并附加到故障上。应用层故障（例如 HTTP 5xx、关键词不匹配或证书即将过期）绝不会触发——服务器已经应答，说明路径没问题。",
+    "tracerouteOnFailureHelp": "当此监控项因为无法到达目标（连接超时、连接被拒、ICMP 丢包、TLS 握手停滞）而故障时，捕获一条 MTR 风格的路径追踪并附加到故障上。应用层故障（例如 HTTP 5xx、关键词不匹配或证书即将过期）绝不会触发：服务器已经应答，说明路径没问题。",
     "reminderInterval": "未确认时提醒",
     "reminderIntervalInherit": "组织默认",
     "reminderIntervalInheritValue": "组织默认（{{value}}）",
@@ -361,8 +361,8 @@
     "summaryHardDeps_other": "{{count}} 个硬依赖",
     "summarySoftDeps_one": "{{count}} 个软依赖",
     "summarySoftDeps_other": "{{count}} 个软依赖",
-    "regionsIpv6Hint": "此监控项已固定为 IPv6。来自在线工作节点、报告具有 IPv6 出口的区域会排在最前——其他区域仍可选择，标记为“IPv6 未知”的区域只是尚未上报。",
-    "groupEmptyHint": "你还没有分组。分组是相关监控项的专属集合——它决定告警升级、故障关联和状态页汇总。创建一个即可开始。",
+    "regionsIpv6Hint": "此监控项已固定为 IPv6。来自在线工作节点、报告具有 IPv6 出口的区域会排在最前；其他区域仍可选择，标记为“IPv6 未知”的区域只是尚未上报。",
+    "groupEmptyHint": "你还没有分组。分组是相关监控项的专属集合：它决定告警升级、故障关联和状态页汇总。创建一个即可开始。",
     "degraded": {
       "title": "降级检测",
       "help": "确认周期之外的第二个检测器：当某个监控项间歇性失败，或响应远慢于平时，即使没有任何单次失败持续到足以确认服务中断，它也会报告。两条规则都按探测次数统计，而不是秒数。",
@@ -378,7 +378,7 @@
       "slowWindowHelp": "慢速规则回看的最近探测数。一小时内出现三次慢探测不算什么；连续三次则是问题的前兆。",
       "slowThreshold": "慢速阈值（毫秒）",
       "slowThresholdHelp": "成功探测慢于此值计为慢。0 表示关闭慢速规则。",
-      "slowThresholdOff": "慢速规则在设置阈值前处于关闭状态——其他任何地方都不会报告延迟数据。",
+      "slowThresholdOff": "慢速规则在设置阈值前处于关闭状态，其他任何地方都不会报告延迟数据。",
       "slowThresholdSuggestion": "建议值：{{value}} 毫秒，约为该监控项观测到的 p95 的两倍。",
       "slowThresholdSuggestionApply": "使用建议值",
       "summaryOff": "关闭，不评估",
@@ -410,7 +410,7 @@
     "failQuorumCountError": "输入 1 到 100 之间的整数。",
     "recordType": "记录类型",
     "dnsServerOptional": "DNS 服务器（可选）",
-    "dnsServerPlaceholder": "8.8.8.8:53——默认使用系统解析器",
+    "dnsServerPlaceholder": "8.8.8.8:53（默认使用系统解析器）",
     "dnsServerHelp": "要查询的解析器，格式为 host:port。留空则使用系统解析器。",
     "lookupMethod": "查询方式",
     "lookupMethodAuto": "自动（RDAP，失败时回退到 WHOIS）",
@@ -589,7 +589,7 @@
     "inconclusive": "无法确定",
     "errorCodes": "诊断响应",
     "errTypo": "拼写错误 / DNSBL 区域名格式错误",
-    "errPublicResolver": "通过公共/开放解析器查询——被拒绝",
+    "errPublicResolver": "通过公共/开放解析器查询，被拒绝",
     "errRateLimit": "查询量 / 频率超限",
     "errGeneric": "DNSBL 错误响应（{{code}}）"
   },
@@ -602,7 +602,7 @@
     "domainHelp": "可选。记录地址所用的 SIP 域名/领域。默认使用主机。",
     "username": "用户名",
     "password": "密码",
-    "passwordEncrypted": "（已加密——输入新值以替换）",
+    "passwordEncrypted": "（已加密，输入新值以替换）",
     "expectStatus": "预期状态（可选）",
     "expectStatusHelp": "可选。逗号分隔的 SIP 状态码，视为正常（例如 200 或 200,405）。留空则接受任何有效的 SIP 响应。"
   },
@@ -648,7 +648,7 @@
       "rolledUpToMonth": "它已被汇总到按月聚合（{{start}}–{{end}}）中，该区间覆盖了它的时间戳（{{ts}}）。",
       "originalUid": "原始 UID {{uid}} 已在自动聚合中删除。"
     },
-    "notFound": "未找到结果——它可能已在自动聚合中删除，而且我们找不到覆盖其时间戳的聚合。",
+    "notFound": "未找到结果：它可能已在自动聚合中删除，而且我们找不到覆盖其时间戳的聚合。",
     "evaluation": {
       "badge": "评估",
       "title": "调度器评估",
@@ -709,8 +709,8 @@
       "dotClickToClose": "点击关闭",
       "resetZoom": "重置缩放",
       "zoomHint": "在图表上拖动以缩放时间范围",
-      "zoomHintReset": "已缩放——拖动可细化，双击可重置",
-      "rawUnavailable": "最新数据点不可用——仅显示聚合数据"
+      "zoomHintReset": "已缩放：拖动可细化，双击可重置",
+      "rawUnavailable": "最新数据点不可用，仅显示聚合数据"
     },
     "resultBox": {
       "close": "关闭",
@@ -746,14 +746,14 @@
     "checkDetails": "监控项详情",
     "pendingFirstRun": "等待首次运行…",
     "liveUnavailable": "实时更新不可用",
-    "liveUnavailableTooltip": "此监控项不支持实时更新（{{title}}）——改用轮询。",
+    "liveUnavailableTooltip": "此监控项不支持实时更新（{{title}}），改用轮询。",
     "dutyCycle": {
       "title": "此监控项在 {{duty}}% 的时间里占用一个执行槽位",
       "description": "每次运行约耗时 {{cost}}，周期为 {{period}}，因此此监控项会让一个执行器忙碌 {{duty}}% 的时间。增大周期可释放监控容量。"
     },
     "needsReseal": {
       "title": "此私有位置的凭据需要重新加密",
-      "description": "此监控项在私有位置运行，其存储的凭据是为另一组代理加密的，而不是当前活跃的代理——自保存以来有代理被注册或撤销，因此代理无法解密，监控项会失败。SolidPing 无法读取它们，但一个仍持有匹配密钥的在线代理可以为当前代理重新加密。否则，请重新输入并保存凭据来修复。",
+      "description": "此监控项在私有位置运行，其存储的凭据是为另一组代理加密的，而不是当前活跃的代理：自保存以来有代理被注册或撤销，因此代理无法解密，监控项会失败。SolidPing 无法读取它们，但一个仍持有匹配密钥的在线代理可以为当前代理重新加密。否则，请重新输入并保存凭据来修复。",
       "action": "重新保存凭据"
     },
     "regionWarnings": {
@@ -819,7 +819,7 @@
     "allRegions": "所有区域",
     "checkedAgo": "上次检查 <time/>",
     "moreActions": "更多操作",
-    "cloned": "监控项已克隆——可以编辑了",
+    "cloned": "监控项已克隆，可以编辑了",
     "cloneFailed": "克隆监控项失败",
     "enable": "启用",
     "disable": "禁用",
@@ -961,7 +961,7 @@
       "callerNote": "每次 ping 的 User-Agent、来源 IP 和 HTTP 方法都会被记录，并显示在该 ping 的结果详情页上。",
       "regenerate": "重新生成",
       "regenerateTitle": "重新生成 ping 令牌？",
-      "regenerateDescription": "这会立即使当前 ping URL 失效——仍在向它发送信号的所有内容会立刻开始失败。确认后请尽快用新 URL 更新你的心跳发送端。",
+      "regenerateDescription": "这会立即使当前 ping URL 失效，仍在向它发送信号的所有内容会立刻开始失败。确认后请尽快用新 URL 更新你的心跳发送端。",
       "regenerateConfirm": "重新生成令牌",
       "regenerating": "重新生成中…",
       "regenerated": "ping 令牌已重新生成",
@@ -972,12 +972,12 @@
         "summaryTcp": "TCP {{port}}",
         "summaryUdp": "UDP {{port}}",
         "summarySignedOnly": "仅签名",
-        "tcpLabel": "TCP（端口 {{port}}）——明文令牌：",
-        "udpLabel": "UDP（端口 {{port}}）——明文令牌，即发即忘：",
+        "tcpLabel": "TCP（端口 {{port}}）的明文令牌：",
+        "udpLabel": "UDP（端口 {{port}}）的明文令牌（即发即忘）：",
         "annotationHint": "可以附加一条可选注释：一个状态词和若干 key=value 字段，例如“started volts=3.71 rssi=-67”。数值会作为指标绘制成图表。",
         "requireHmac": "要求签名心跳（HMAC）",
         "requireHmacHint": "在 TCP 和 UDP 上拒绝明文 SP1 形式。只接受签名 SP2 形式和上方的 HTTPS 端点。不影响 HTTPS 端点。",
-        "rotateNudge": "此监控项接受过明文心跳，因此其令牌可能已在网络上出现过——而该令牌同时也是签名密钥。请立即重新生成。",
+        "rotateNudge": "此监控项接受过明文心跳，因此其令牌可能已在网络上出现过，而该令牌同时也是签名密钥。请立即重新生成。",
         "hmacEnabled": "现在要求签名心跳",
         "hmacDisabled": "已恢复接受明文心跳",
         "hmacFailed": "更新签名要求失败",
@@ -1029,7 +1029,7 @@
   "passed": "通过",
   "failed": "失败",
   "secretHeaders": "密钥响应头",
-  "secretHeadersDescription": "加密存储的响应头值——用于 API 密钥和 Bearer 令牌。",
+  "secretHeadersDescription": "加密存储的响应头值，用于 API 密钥和 Bearer 令牌。",
   "addSecretHeader": "添加密钥响应头",
   "scheduling": {
     "title": "监控调度",
@@ -1050,7 +1050,7 @@
     "meter": {
       "label": "每分钟执行次数",
       "hint": "每个选中的区域都会按完整周期运行监控项，因此一个监控项在三个区域运行的成本是三倍。",
-      "overHint": "你的组织已超出上限——部分监控执行已被跳过。",
+      "overHint": "你的组织已超出上限，部分监控执行已被跳过。",
       "unlimited": "不限制",
       "unlimitedHint": "你的套餐没有设置每分钟执行上限。"
     },
@@ -1080,7 +1080,7 @@
     },
     "empty": {
       "title": "没有活跃监控项",
-      "hint": "只有活跃监控项会消耗执行预算——创建一个后就能在这里看到。"
+      "hint": "只有活跃监控项会消耗执行预算，创建一个后就能在这里看到。"
     },
     "toast": {
       "applied_one": "已更新 {{count}} 个监控项。",
@@ -1091,13 +1091,13 @@
   },
   "grpc": {
     "tlsSkipVerify": "跳过 TLS 证书验证",
-    "tlsSkipVerifyWarning": "证书错误将被忽略——即使证书无效、已过期或为自签名，监控项仍会上报为正常。",
+    "tlsSkipVerifyWarning": "证书错误将被忽略：即使证书无效、已过期或为自签名，监控项仍会上报为正常。",
     "metadata": "请求元数据",
-    "metadataDescription": "随每个健康检查 RPC 发送。以明文存储且可搜索——可用于路由或租户请求头。",
+    "metadataDescription": "随每个健康检查 RPC 发送。以明文存储且可搜索，可用于路由或租户请求头。",
     "addMetadata": "添加元数据",
     "secretMetadata": "密钥请求元数据",
-    "secretMetadataDescription": "元数据值加密存储——用于授权 Bearer 令牌和 API 密钥。",
-    "secretMetadataEncrypted": "（已加密——输入新值以替换）",
+    "secretMetadataDescription": "元数据值加密存储，用于授权 Bearer 令牌和 API 密钥。",
+    "secretMetadataEncrypted": "（已加密，输入新值以替换）",
     "addSecretMetadata": "添加密钥元数据",
     "metadataKeyPlaceholder": "x-tenant",
     "metadataValuePlaceholder": "值",
@@ -1110,7 +1110,7 @@
     "dockerHostOptional": "Docker 主机（可选）",
     "dockerHostHelp": "默认：unix:///var/run/docker.sock。远程 Docker 守护进程请使用 tcp://host:port。",
     "restartLoopAdvanced": "重启循环检测（高级）",
-    "restartLoopHelp": "当运行中的容器重启次数至少为 N 次，且在近期窗口内（重新）启动过，就将其标记为疑似崩溃循环。将“最小重启次数”留空（或设为 0）可禁用检测。检测到循环时会报告警告（琥珀色）——它计为正常，不会通知任何人。",
+    "restartLoopHelp": "当运行中的容器重启次数至少为 N 次，且在近期窗口内（重新）启动过，就将其标记为疑似崩溃循环。将“最小重启次数”留空（或设为 0）可禁用检测。检测到循环时会报告警告（琥珀色）；它计为正常，不会通知任何人。",
     "minRestarts": "最小重启次数（0 = 禁用）",
     "restartLoopWindow": "窗口（秒，默认 120）",
     "restartLoopTitle": "重启情况",
@@ -1123,12 +1123,12 @@
   "escalation": {
     "nothing": "无",
     "silentSuffixParen": "（静默）",
-    "silentSuffixDash": "——静默",
-    "inheritCurrently": "继承——当前：{{name}}",
+    "silentSuffixDash": "· 静默",
+    "inheritCurrently": "继承（当前：{{name}}）",
     "policy": "告警升级策略",
     "policies": "策略",
     "noEscalationSilent": "无告警升级（静默）",
-    "silentNote": "此策略没有任何步骤——这个监控项永远不会通知任何人。",
+    "silentNote": "此策略没有任何步骤，这个监控项永远不会通知任何人。",
     "help": "当这个监控项失败时，按顺序通知谁。",
     "managePolicies": "管理告警升级策略"
   },
@@ -1146,7 +1146,7 @@
     "request": "请求",
     "expectedStatus": "预期状态码",
     "usernameOptionalBasicAuth": "用户名（可选，Basic Auth）",
-    "encryptedEnterNewValues": "（已加密——输入新值以替换）",
+    "encryptedEnterNewValues": "（已加密，输入新值以替换）",
     "followRedirects": "跟随重定向",
     "followRedirectsOffHelp": "监控项会评估第一个响应（例如 3XX），而不是跟随到最终地址。",
     "redirectHostPolicy": "重定向主机策略",
@@ -1162,7 +1162,7 @@
     "httpVersionHelp": "如果服务器通过其他版本响应，监控项会失败。HTTP/2 在 https:// 上使用 h2，在 http:// 上使用 h2c。HTTP/3 基于 UDP，不会回退到 TCP。",
     "httpVersion3Tunneled": "隧道监控项不支持 HTTP/3：SSH 隧道只承载 TCP。",
     "captureFailingResponse": "捕获失败的响应",
-    "captureFailingResponseHelp": "当这个监控项失败时，它收到的响应（状态行、敏感值已脱敏的响应头，以及最多 16 KB 的响应体）会保存在它开启的故障上。响应体可能包含个人数据——捕获内容仅你的团队可见，绝不会出现在状态页上。",
+    "captureFailingResponseHelp": "当这个监控项失败时，它收到的响应（状态行、敏感值已脱敏的响应头，以及最多 16 KB 的响应体）会保存在它开启的故障上。响应体可能包含个人数据，捕获内容仅你的团队可见，绝不会出现在状态页上。",
     "requestBody": "请求体",
     "requestBodyDescription": "按原样发送。设置匹配的 Content-Type 请求头（例如 application/json）。",
     "requestHeaders": "请求头",
@@ -1177,7 +1177,7 @@
     "ipv4Only": "仅 IPv4",
     "ipv6Only": "仅 IPv6",
     "tunneledHelp": "隧道监控项不支持此选项：SSH 堡垒机会解析主机名并建立连接，因此地址族由隧道决定，而不是这个监控项。",
-    "autoHelp": "自动保持当前行为——使用一个地址，即目标最先解析出的那个。固定地址族才能真正验证它：IPv4 监控项永远无法证明目标可通过 IPv6 访问，因此双栈主机即使 AAAA 路径故障仍会上报为正常。要同时监控两者，请创建两个监控项。"
+    "autoHelp": "自动保持当前行为：使用一个地址，即目标最先解析出的那个。固定地址族才能真正验证它：IPv4 监控项永远无法证明目标可通过 IPv6 访问，因此双栈主机即使 AAAA 路径故障仍会上报为正常。要同时监控两者，请创建两个监控项。"
   },
   "jsonAssertionAnd": "且",
   "jsonAssertionOr": "或",
@@ -1188,7 +1188,7 @@
     "expectedGreetingOptional": "预期问候语（可选）",
     "usernameOptionalAuthPlain": "用户名（可选，AUTH PLAIN）",
     "sendProbeEmail": "发送探测邮件",
-    "sendProbeEmailHelp": "每次监控时通过此服务器提交一封系统生成的邮件，收件人为配对的邮件监控项地址，以验证完整的投递路径（而不只是握手）。邮件监控项的周期就是投递截止时间——把它设为这个监控项的间隔加上可接受的最长投递时间（灰名单可能增加数分钟）。",
+    "sendProbeEmailHelp": "每次监控时通过此服务器提交一封系统生成的邮件，收件人为配对的邮件监控项地址，以验证完整的投递路径（而不只是握手）。邮件监控项的周期就是投递截止时间：把它设为这个监控项的间隔加上可接受的最长投递时间（灰名单可能增加数分钟）。",
     "mailFrom": "发件人",
     "deliveryCheck": "投递（邮件）监控项",
     "emailInboxNotConfigured": "未配置邮箱。联系管理员在服务器 → 邮箱收件箱中设置。",
@@ -1227,23 +1227,23 @@
     "maxStratumOptional": "最大层级（可选）",
     "maxStratumHelp": "当服务器的层级超过此值时判定为故障（1–15）。",
     "requireNla": "要求 NLA（网络级别身份验证）",
-    "requireNlaHelp": "当服务器未选择 CredSSP 时判定为故障——可发现被策略悄悄禁用的 NLA。",
+    "requireNlaHelp": "当服务器未选择 CredSSP 时判定为故障，可发现被策略悄悄禁用的 NLA。",
     "certCriticalDays": "证书临界值（天）",
     "rdpCertCriticalHelp": "当证书在不超过这么多天后过期时判定为故障（会通知）。",
     "certWarningDays": "证书警告值（天）",
     "rdpCertWarningHelp": "琥珀色警告（不通知）。必须 ≥ 临界值。",
-    "rdpPreAuthHelp": "仅预认证握手——不发送任何凭据。工作节点需要能访问 RDP 主机（通常是内网）。",
+    "rdpPreAuthHelp": "仅预认证握手，不发送任何凭据。工作节点需要能访问 RDP 主机（通常是内网）。",
     "script": "脚本",
-    "scriptHelp": "一个 JavaScript 脚本，返回包含 status（“up”“down”或“error”）的对象——绝不应返回“timeout”，运行时在终止脚本时会报告该值——还可包含可选的指标和输出。可以用 `browser` API 驱动真实的无头 Chrome 页面——打开页面的脚本会按浏览器监控项的 1 分钟最小周期运行。",
+    "scriptHelp": "一个 JavaScript 脚本，返回包含 status（“up”“down”或“error”）的对象，绝不应返回“timeout”（运行时在终止脚本时会报告该值），还可包含可选的指标和输出。可以用 `browser` API 驱动真实的无头 Chrome 页面：打开页面的脚本会按浏览器监控项的 1 分钟最小周期运行。",
     "jsEnv": "环境变量（公开）",
-    "jsEnvHelp": "脚本以 env.NAME 读取的明文参数——例如基础 URL、用户名。不加密存储，并会包含在导出中。",
+    "jsEnvHelp": "脚本以 env.NAME 读取的明文参数，例如基础 URL、用户名。不加密存储，并会包含在导出中。",
     "jsAddEnv": "添加变量",
     "jsRemoveEnv": "移除变量 {{key}}",
     "jsSecrets": "密钥（加密）",
     "jsSecretsHelp": "脚本以 secrets.NAME 读取的凭据。加密存储，之后不再显示，并从导出中移除。支持 ${param:key} 和 ${env:NAME} 引用。",
     "jsAddSecret": "添加密钥",
     "jsRemoveSecret": "移除密钥 {{key}}",
-    "sleepSyntheticHelp": "合成监控项——按配置的时长休眠，不产生任何网络 I/O。适合测试调度器/负载行为，不是真实的可用性探测。",
+    "sleepSyntheticHelp": "合成监控项：按配置的时长休眠，不产生任何网络 I/O。适合测试调度器/负载行为，不是真实的可用性探测。",
     "sleepDurationMs": "休眠时长（毫秒）",
     "jitterMsOptional": "抖动（毫秒，可选）",
     "jitterHelp": "应用到休眠时长上的 ± 随机变化。必须小于休眠时长本身。",
@@ -1260,7 +1260,7 @@
     "rdpEndSessionLogoff": "注销（默认）",
     "rdpEndSessionDisconnect": "断开连接（会话保留在服务器上）",
     "rdpEndSessionHelp": "注销会从服务器上移除会话。断开连接则让会话继续运行，直到服务器的空闲策略将其结束，因此下次运行会重新连接它（后续监控更快）。",
-    "rdpCaveatsHelp": "每次经过身份验证的运行都是一次真实的交互式 Windows 登录：它会加载用户配置文件、运行登录脚本和 GPO，可能消耗一个 RDS 客户端访问许可证，在单会话服务器上可能断开真实登录的用户，并且每次运行都会出现在安全事件日志中（4624/4634）。使用专用的监控账户，绝不要使用个人账户——其余限制由 15 分钟的最小间隔强制执行。",
+    "rdpCaveatsHelp": "每次经过身份验证的运行都是一次真实的交互式 Windows 登录：它会加载用户配置文件、运行登录脚本和 GPO，可能消耗一个 RDS 客户端访问许可证，在单会话服务器上可能断开真实登录的用户，并且每次运行都会出现在安全事件日志中（4624/4634）。使用专用的监控账户，绝不要使用个人账户；其余限制由 15 分钟的最小间隔强制执行。",
     "vncRequireAuth": "要求身份验证",
     "vncRequireAuthHelp": "当服务器提供安全类型 None 时判定为故障：任何人都能在没有密码的情况下连接到桌面。",
     "vncPasswordHelp": "提供密码时，监控项还会用服务器支持的最强方式登录：VeNCrypt（TLS）、Apple Remote Desktop（需要用户名）或 VNC 身份验证（只计前 8 个字符）。留空则只检查握手和服务器提供的身份验证方式。",
@@ -1301,12 +1301,12 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "主机密钥指纹（可选）",
-    "sftpFingerprintHelp": "固定服务器的主机密钥。留空则接受任意密钥——监控结果输出中始终会报告服务器提供的指纹，之后可以复制到这里。",
+    "sftpFingerprintHelp": "固定服务器的主机密钥。留空则接受任意密钥；监控结果输出中始终会报告服务器提供的指纹，之后可以复制到这里。",
     "fingerprintHelpPrefix": "每次监控时验证服务器身份，并且要将这个监控项用作其他监控项的",
     "tunnelBastionLabel": "通过 SSH 隧道运行",
     "fingerprintHelpSuffix": "堡垒机时必须填写。获取方式：",
     "privateKeyOptionalPem": "私钥（可选，PEM）",
-    "privateKeyEncrypted": "（已加密——输入新密钥以替换）",
+    "privateKeyEncrypted": "（已加密，输入新密钥以替换）",
     "passwordOverridesPrivateKey": "如果同时设置了密码和私钥，则使用密码。",
     "password": "密码",
     "usernameOptionalAnonymous": "用户名（可选，默认：anonymous）",
@@ -1327,7 +1327,7 @@
     "burstCount": "每次运行的数据包数",
     "burstInterval": "数据包间隔（毫秒）",
     "burstIntervalNeedsCount": "仅在发送多个数据包时适用",
-    "burstIntervalDenseWarning": "低于 50ms 时，某些目标会限制 ICMP echo 速率——显示的丢包可能是真实的，而不是测量误差",
+    "burstIntervalDenseWarning": "低于 50ms 时，某些目标会限制 ICMP echo 速率；显示的丢包可能是真实的，而不是测量误差",
     "burstPacketSize": "数据包大小（字节）",
     "burstTtl": "TTL（跳数）",
     "burstMaxLoss": "最大丢包率（%）",
@@ -1346,7 +1346,7 @@
     "serverUrl": "Prometheus 服务器 URL",
     "metricsUrl": "指标 URL",
     "promqlQuery": "PromQL 查询",
-    "promqlQueryHelp": "即时查询。支持标量和即时向量结果；区间（矩阵）结果会被拒绝。速率计算也放在这里——监控项本身不做客户端速率计算。",
+    "promqlQueryHelp": "即时查询。支持标量和即时向量结果；区间（矩阵）结果会被拒绝。速率计算也放在这里，监控项本身不做客户端速率计算。",
     "metric": "指标",
     "metricHelp": "直方图和摘要通过其展平后的序列访问：_sum、_count、_bucket（带 le 标签）或 quantile 标签。",
     "labelsOptional": "标签（可选）",
@@ -1361,9 +1361,9 @@
     "operatorNotEqualTo": "不等于",
     "warningThreshold": "警告阈值",
     "criticalThreshold": "临界阈值",
-    "thresholdHelp": "临界会判定为故障并发送通知；警告为琥珀色，计为正常且绝不发送通知。至少设置一个——只有警告的监控项也是有效的。0 是真实阈值。= 和 ≠ 只能使用临界阈值。",
+    "thresholdHelp": "临界会判定为故障并发送通知；警告为琥珀色，计为正常且绝不发送通知。至少设置一个，只有警告的监控项也是有效的。0 是真实阈值。= 和 ≠ 只能使用临界阈值。",
     "multipleMatchingSeries": "多个匹配的序列",
-    "matchSingle": "单个——匹配多个则报错",
+    "matchSingle": "单个（匹配多个则报错）",
     "matchMin": "最小值",
     "matchMax": "最大值",
     "matchSum": "总和",
@@ -1384,7 +1384,7 @@
     "memoryThresholdHelp": "RabbitMQ 高水位的百分比（例如 80%）或绝对大小（例如 1.5GiB）。",
     "diskWarning": "磁盘可用空间警告",
     "diskCritical": "磁盘可用空间临界",
-    "diskThresholdHelp": "只能使用绝对大小（例如 10GiB）——管理 API 不暴露磁盘总大小，因此无法计算百分比。",
+    "diskThresholdHelp": "只能使用绝对大小（例如 10GiB）：管理 API 不暴露磁盘总大小，因此无法计算百分比。",
     "memoryWarningPlaceholder": "80% 或 1.5GiB",
     "memoryCriticalPlaceholder": "90% 或 1.8GiB"
   },
@@ -1403,7 +1403,7 @@
     "label": "通过 SSH 隧道运行（可选）",
     "noSshChecksYet": "还没有 SSH 监控项。",
     "createSshCheck": "为你的堡垒机创建 SSH 监控项",
-    "createSshCheckWarning": "——这会打开一个新表单，此处未保存的更改会丢失。",
+    "createSshCheckWarning": "（这会打开一个新表单，此处未保存的更改会丢失。）",
     "noneDirectConnection": "无（直连）",
     "needsHostKeyFingerprint": "需要主机密钥指纹",
     "notInRegion": "不在区域 {{region}} 中",
@@ -1423,7 +1423,7 @@
     "keywordOptional": "关键字（可选）",
     "keywordHelp": "在渲染后的页面内容中搜索的文本。",
     "captureScreenshotOnFailure": "失败时截取屏幕截图",
-    "captureScreenshotHelp": "在这个监控项开启或重新开启的故障中保存一张页面 WebP 图片。在检测到失败后立即从探测区域截取——它是证据，不是失败时的画面本身。默认关闭。"
+    "captureScreenshotHelp": "在这个监控项开启或重新开启的故障中保存一张页面 WebP 图片。在检测到失败后立即从探测区域截取：它是证据，不是失败时的画面本身。默认关闭。"
   },
   "ssl": {
     "chainTitle": "证书链",
@@ -1449,9 +1449,9 @@
     "noStatusPages": "你还没有状态页。创建一个来发布这个监控项。",
     "createNew": "创建新的状态页",
     "via": {
-      "direct": "{{page}}——位于“{{section}}”分区。",
-      "group": "{{page}}——位于“{{section}}”分区，通过其监控分组。该分组作为单个组件发布，因此这个监控项已被它涵盖。",
-      "selector": "{{page}}——位于“{{section}}”分区，通过该分区的成员规则。匹配规则的监控项会自动添加。"
+      "direct": "{{page}}：位于“{{section}}”分区。",
+      "group": "{{page}}：位于“{{section}}”分区，通过其监控分组。该分组作为单个组件发布，因此这个监控项已被它涵盖。",
+      "selector": "{{page}}：位于“{{section}}”分区，通过该分区的成员规则。匹配规则的监控项会自动添加。"
     },
     "postCreateOn": "已发布到 {{page}}，位于“{{section}}”分区。",
     "postCreateNone": "尚未在任何状态页上。",
@@ -1459,7 +1459,7 @@
   },
   "noGroupsYet": {
     "title": "还没有监控分组",
-    "description": "分组将相关监控项归入一个专属集合——它驱动告警升级、故障关联和状态页汇总。使用上方的“新建分组”按钮创建一个。"
+    "description": "分组将相关监控项归入一个专属集合：它驱动告警升级、故障关联和状态页汇总。使用上方的“新建分组”按钮创建一个。"
   },
   "regionOutage": {
     "blindTitle": "区域 {{regions}} 自 {{time}} 起离线：这个监控项未运行",
@@ -1841,15 +1841,15 @@
       },
       "hint": {
         "yes": "这个区域至少有一个在线工作节点报告了 IPv6 出口。",
-        "no": "这个区域当前没有在线工作节点报告 IPv6 出口。你仍然可以选择它——只有当工作节点运行时确实没有 IPv6 路由，监控项才会被拒绝。",
-        "unknown": "尚未报告——这个区域没有报告出口地址族的在线工作节点，或运行的是旧版代理。它很可能支持 IPv6。"
+        "no": "这个区域当前没有在线工作节点报告 IPv6 出口。你仍然可以选择它，只有当工作节点运行时确实没有 IPv6 路由，监控项才会被拒绝。",
+        "unknown": "尚未报告：这个区域没有报告出口地址族的在线工作节点，或运行的是旧版代理。它很可能支持 IPv6。"
       }
     },
     "browser": {
       "hint": {
         "yes": "这个区域至少有一个在线工作节点报告有可供浏览器监控项使用的无头浏览器。",
-        "no": "这个区域当前没有在线工作节点报告无头浏览器。你仍然可以选择它——只有当工作节点运行时确实没有浏览器，监控项才会被拒绝。",
-        "unknown": "尚未报告——这个区域没有报告自身能力的在线工作节点，或运行的是旧版代理。它很可能支持浏览器监控项。"
+        "no": "这个区域当前没有在线工作节点报告无头浏览器。你仍然可以选择它，只有当工作节点运行时确实没有浏览器，监控项才会被拒绝。",
+        "unknown": "尚未报告：这个区域没有报告自身能力的在线工作节点，或运行的是旧版代理。它很可能支持浏览器监控项。"
       }
     }
   },

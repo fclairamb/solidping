@@ -22,7 +22,7 @@
   },
   "aggregation": {
     "title": "聚合",
-    "description": "配置原始监控结果和汇总监控结果在压缩到下一层级之前保留多长时间。这些都是全局的、系统级的保留窗口。更改会在聚合任务下次运行时生效——无需重启。",
+    "description": "配置原始监控结果和汇总监控结果在压缩到下一层级之前保留多长时间。这些都是全局的、系统级的保留窗口。更改会在聚合任务下次运行时生效，无需重启。",
     "rawHours": "原始数据保留时长（小时）",
     "rawHoursHelp": "每个监控项的原始结果保留多少小时后汇总为小时汇总。",
     "hourDays": "小时汇总保留时长（天）",
@@ -148,7 +148,7 @@
       "nameAttribute": "用于用户显示名称的校验属性。会回退到常见属性名（cn、displayName……）。",
       "serverUrl": "LDAP 服务器 URL，例如 ldap://ldap.example.com:389；LDAPS 则用 ldaps://ldap.example.com:636。",
       "startTls": "连接后将普通 ldap:// 连接升级为 TLS。对已加密的 ldaps:// URL 忽略此设置。",
-      "insecureSkipVerify": "跳过 TLS 证书验证。仅用于测试自签名证书——这会允许中间人攻击。",
+      "insecureSkipVerify": "跳过 TLS 证书验证。仅用于测试自签名证书，这会允许中间人攻击。",
       "bindDn": "用于搜索目录的服务账户的可分辨名称（DN），例如 cn=admin,dc=example,dc=com。留空表示匿名（未认证）搜索绑定。",
       "baseDn": "搜索用户的基础 DN，例如 ou=people,dc=example,dc=com。",
       "userFilter": "LDAP 过滤器模板，用一个“%s”占位符表示提交的用户名（替换前会转义），例如 (sAMAccountName=%s)。留空时默认为 (mail=%s)。",
@@ -165,7 +165,7 @@
   "hashing": {
     "title": "密码哈希",
     "description": "选择用于哈希本地密码的算法和成本。更强的设置会拖慢离线破解，但每次登录消耗更多 CPU。",
-    "restartNotice": "更改在服务器重启后生效。之后的新密码使用新的配置；启用重新哈希后，现有用户会在下次登录时迁移。通过 YAML 或环境变量配置的值不会显示在这里——留空字段表示沿用服务器默认值。",
+    "restartNotice": "更改在服务器重启后生效。之后的新密码使用新的配置；启用重新哈希后，现有用户会在下次登录时迁移。通过 YAML 或环境变量配置的值不会显示在这里，留空字段表示沿用服务器默认值。",
     "algorithm": "算法",
     "algorithmHelp": "argon2id 是推荐的现代默认值；bcrypt 用于兼容。",
     "algorithms": {
@@ -228,7 +228,7 @@
   },
   "agents": {
     "title": "代理",
-    "description": "实例中部署的所有代理——包括组织注册的代理和平台运行的系统代理。此页只读：组织代理请在该组织的“私有位置”页面撤销；系统代理通过移除其注册令牌来停用。",
+    "description": "实例中部署的所有代理，包括组织注册的代理和平台运行的系统代理。此页只读：组织代理请在该组织的“私有位置”页面撤销；系统代理通过移除其注册令牌来停用。",
     "empty": "尚未在任何位置注册代理。",
     "kind": "类型",
     "kindOrg": "组织",
@@ -323,12 +323,12 @@
   },
   "analytics": {
     "title": "产品分析",
-    "description": "可选的 PostHog 集成。在输入项目 API 密钥之前，分析功能完全关闭——未配置密钥时，服务器不发送任何数据，仪表盘也不会加载任何分析代码。",
+    "description": "可选的 PostHog 集成。在输入项目 API 密钥之前，分析功能完全关闭：未配置密钥时，服务器不发送任何数据，仪表盘也不会加载任何分析代码。",
     "statusOn": "分析已启用",
     "statusOff": "分析已关闭",
     "statusOffHelp": "未配置项目 API 密钥，因此不会采集任何数据，浏览器也不会加载分析代码。",
     "enabled": "启用分析",
-    "enabledHelp": "总开关。仅开启此项不会启用任何功能——还需要项目 API 密钥。",
+    "enabledHelp": "总开关。仅开启此项不会启用任何功能，还需要项目 API 密钥。",
     "projectApiKey": "项目 API 密钥",
     "projectApiKeyPlaceholder": "phc_...",
     "projectApiKeyHelp": "公开的 PostHog 浏览器密钥。它会被有意发送到仪表盘。留空则保持分析完全禁用。",
@@ -418,7 +418,7 @@
     "detail": {
       "back": "返回组织列表",
       "limitsTitle": "限制",
-      "limitsDescription": "通过 API 传输时，无限制表示为 null——请使用开关切换，而不是清空输入框。",
+      "limitsDescription": "通过 API 传输时，无限制表示为 null，请使用开关切换，而不是清空输入框。",
       "identityTitle": "套餐标识",
       "identityDescription": "仅供显示。显示在组织的“用量”页面。",
       "displayName": "显示名称",
@@ -437,7 +437,7 @@
     "confirmSave": {
       "title": "为 {{org}} 保存管理员覆盖？",
       "body": "这会写入一条管理员来源的记录。在覆盖被解除之前，{{org}} 的计费推送仍会被接受，但不会生效。",
-      "noChanges": "没有限制变更——只会写入套餐标识。",
+      "noChanges": "没有限制变更，只会写入套餐标识。",
       "confirm": "保存覆盖"
     },
     "confirmRelease": {
@@ -525,7 +525,7 @@
     "noRoutesSelf": "没有通知方式，请在你的通知页面设置一个",
     "noRecipients": "运维通知已开启，但没有人订阅任何内容。不会投递任何通知。",
     "noSuperAdmins": "此实例还没有超级管理员。",
-    "notSuperAdmin": "已不再是超级管理员——投递时跳过",
+    "notSuperAdmin": "已不再是超级管理员，投递时跳过",
     "superAdminOnly": "只有超级管理员可以成为接收人：通知可能引用客户的支持消息，而只有超级管理员才能打开。",
     "sendTest": "给我发送测试",
     "testDelivered_one": "测试通知已通过 {{count}} 种通知方式投递。",
