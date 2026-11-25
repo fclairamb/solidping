@@ -257,13 +257,22 @@ func migrateConnectionsPlaintext(
 	for _, conn := range conns {
 		stats.scanned++
 
-		if conn.SettingsPrivate != nil && *conn.SettingsPrivate != "" {
+		secrets := credentials.ConnectionSecretFields(conn.Type)
+
+		existing, skip := existingPlaintextPrivate(conn, secrets)
+		if skip {
 			continue
 		}
 
-		public, private := splitPublicSecrets(conn.Settings, credentials.ConnectionSecretFields(conn.Type))
+		public, private := splitPublicSecrets(conn.Settings, secrets)
 		if private == nil {
 			continue
+		}
+
+		for k, v := range existing {
+			if _, ok := private[k]; !ok {
+				private[k] = v
+			}
 		}
 
 		stats.migrated++
@@ -291,6 +300,28 @@ func migrateConnectionsPlaintext(
 	}
 
 	return stats, nil
+}
+
+// existingPlaintextPrivate decides whether a connection row still needs a
+// plaintext split. A row with no private column is a candidate. A row whose
+// plaintext envelope is already set is a candidate only when its public
+// settings still hold a declared secret (a key declared after the row was
+// written, e.g. ntfy's legacy accessToken): the envelope's secrets are then
+// returned so the re-sealed envelope keeps them. Rows with a real encrypted
+// envelope are left to the encrypted reconcile.
+func existingPlaintextPrivate(conn *models.Integration, secrets []string) (map[string]any, bool) {
+	if conn.SettingsPrivate == nil || *conn.SettingsPrivate == "" {
+		return nil, false
+	}
+
+	if !credentials.IsPlaintextEnvelope(*conn.SettingsPrivate) || !publicHoldsSecret(conn.Settings, secrets) {
+		return nil, true
+	}
+
+	// IsPlaintextEnvelope already parsed the envelope: opening it cannot fail.
+	existing, _ := credentials.OpenPlaintext(*conn.SettingsPrivate)
+
+	return existing, false
 }
 
 // sealAndKeys builds the plaintext envelope and the sorted JSON key list for a

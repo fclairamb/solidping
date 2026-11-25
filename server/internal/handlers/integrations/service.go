@@ -531,6 +531,9 @@ func (s *Service) CreateIntegration(
 		req.Settings = settings
 	}
 
+	// A legacy ntfy accessToken is stored under the canonical auth_token key.
+	req.Settings = canonicalizeNtfyToken(connType, req.Settings)
+
 	if err := s.applySettingsEncryption(ctx, conn, req.Settings); err != nil {
 		return nil, err
 	}
@@ -1298,6 +1301,10 @@ func (s *Service) applyUpdateSettings(
 			return vErr
 		}
 	}
+
+	// A legacy ntfy accessToken carried by the PATCH is stored under the
+	// canonical auth_token key, like on creation.
+	reqSettings = canonicalizeNtfyToken(conn.Type, reqSettings)
 
 	secrets := credentials.ConnectionSecretFields(conn.Type)
 	merged := credentials.MergePatch(existing, reqSettings, secrets)
