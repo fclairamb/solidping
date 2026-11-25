@@ -106,6 +106,13 @@ retention must already be raised in Q2.
 Conversely, **lowering** a value makes more data eligible for rollup, so
 granular history shrinks to the new horizon within a few aggregation passes.
 
+## Keeping the deleted rows
+
+Rolled-up rows are gone from the database for good. To keep them for analysis
+outside SolidPing, set `SP_ARCHIVE_ENABLED=true`: before deleting them, the
+aggregation job writes them as Vortex files in the file storage. See
+[Result Archive](/configuration/result-archive).
+
 ## Choosing values
 
 Retention is the main lever on database size: raw rows dominate storage (a

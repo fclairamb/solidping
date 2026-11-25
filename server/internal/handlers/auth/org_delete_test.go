@@ -12,9 +12,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/localfs"
-	"github.com/fclairamb/solidping/server/internal/handlers/files"
 )
 
 // seededOrg bundles everything seedDeletableOrg creates, so callers can pick

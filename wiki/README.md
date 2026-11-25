@@ -70,6 +70,7 @@ the relevant code.
 - [features/email-dark-mode.md](features/email-dark-mode.md) — How transactional email renders in a dark inbox: the per-client support matrix, the `light only` pin (why it stays), the designed `prefers-color-scheme` palette in `base.html`, the `?colorScheme=dark` preview, and the still-open, human-gated Gmail un-pin decision plus its device-matrix template.
 - [features/live-demo.md](features/live-demo.md) — The public live demo: the positive-allowlist write guard and the `created_by = NULL` immutability trick, why `PUT …/channels` stays excluded, the "never offer what the guard refuses" frontend rule (and the no-op secondary write that masked a successful edit), the `?demo=true` deep link across all four entry points, and the ownership-bounded dependency-edge extension left on the table.
 - [features/results-aggregation.md](features/results-aggregation.md) — The raw → hour → day → month results rollup: per-org job, tier boundaries, transactional compaction, pure-Go aggregate math (warning-counts-as-up, degraded promotion, metric suffixes), retention config, consumers (uptimebar, badges, results-API fallback), failure-mode history.
+- [features/result-archive.md](features/result-archive.md) — Optional Vortex archive of the rows a compaction deletes: file layout in the file storage, schema, archive-before-delete invariant, merge of late rows, org-deletion reap.
 
 ## Conventions
 
