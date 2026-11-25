@@ -62,13 +62,18 @@ func TestReapAbandonedResults_Postgres(t *testing.T) {
 		r.NoError(delErr)
 	}
 
+	// Only worker-written rows are execution attempts the reaper may finalize.
+	workerUID := newSignalWorkerPG(t, s, ctx, "reap-worker")
+
 	stale := models.NewResult(org.UID, check.UID, models.ResultStatusCreated, 0)
+	stale.WorkerUID = &workerUID
 	stale.PeriodStart = time.Now().Add(-2 * time.Hour)
 	staleRegion := "acme-region-1"
 	stale.Region = &staleRegion
 	r.NoError(s.CreateResult(ctx, stale))
 
 	fresh := models.NewResult(org.UID, check.UID, models.ResultStatusCreated, 0)
+	fresh.WorkerUID = &workerUID
 	fresh.PeriodStart = time.Now().Add(-time.Minute)
 	r.NoError(s.CreateResult(ctx, fresh))
 
@@ -107,4 +112,60 @@ func TestReapAbandonedResults_Postgres(t *testing.T) {
 	r.NoError(err)
 	r.Equal(1, outcome2.Candidates)
 	r.Equal(0, outcome2.Reaped)
+}
+
+// TestReapAbandonedResults_IgnoresCreationMarker_Postgres is the Postgres twin
+// of the SQLite test (solidping-business#112): CreateCheck's "Check created"
+// marker has no worker_uid and must never be reaped, however old.
+func TestReapAbandonedResults_IgnoresCreationMarker_Postgres(t *testing.T) {
+	t.Parallel()
+
+	if testing.Short() {
+		t.Skip("skipping embedded-postgres test in -short mode")
+	}
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	s, err := New(ctx, &Config{
+		Embedded: true,
+		Port:     testsupport.FreePort(t),
+		RunMode:  runModeTest,
+	})
+	if err != nil {
+		testsupport.PostgresUnavailable(t, err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	if initErr := s.Initialize(ctx); initErr != nil {
+		testsupport.PostgresInitFailed(t, initErr)
+	}
+
+	org := models.NewOrganization("reap-pg-marker-org", "Acme")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "reap-marker-check", "http") // default period: 1 minute
+	r.NoError(s.CreateCheck(ctx, check))
+
+	res, err := s.db.NewUpdate().Model((*models.Result)(nil)).
+		Set("period_start = ?", time.Now().Add(-2*time.Hour)).
+		Where("check_uid = ?", check.UID).
+		Where("status = ?", int(models.ResultStatusCreated)).
+		Exec(ctx)
+	r.NoError(err)
+	aged, err := res.RowsAffected()
+	r.NoError(err)
+	r.Equal(int64(1), aged, "CreateCheck writes exactly one creation marker")
+
+	outcome, err := s.ReapAbandonedResults(ctx)
+	r.NoError(err)
+	r.Equal(0, outcome.Candidates, "the creation marker is not an execution attempt")
+	r.Equal(0, outcome.Reaped)
+
+	abandoned, err := s.db.NewSelect().Model((*models.Result)(nil)).
+		Where("check_uid = ?", check.UID).
+		Where("status = ?", int(models.ResultStatusAbandoned)).
+		Count(ctx)
+	r.NoError(err)
+	r.Zero(abandoned, "no abandoned row may be minted for a freshly created check")
 }

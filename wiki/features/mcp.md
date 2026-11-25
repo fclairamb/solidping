@@ -411,7 +411,25 @@ password, bridge with supergateway).
   killing it mid-flight.
 
 A directory that builds its own image around the binary (Glama) uses the
-command above as is. With the published image, override its entrypoint (it
+command above as is. Glama's config lives only in its admin page
+(`/mcp/servers/fclairamb/solidping/admin/dockerfile`), not in any repo. Since
+2026-11-25 (solidping-business#111) it is:
+
+```json
+[
+  "for t in $(curl -fsSL https://github.com/fclairamb/solidping/releases.atom | grep -o 'releases/tag/v[0-9.]*' | cut -d/ -f3 | head -5); do curl -fsSL \"https://github.com/fclairamb/solidping/releases/download/$t/solidping-linux-$(dpkg --print-architecture).gz\" | gunzip > /usr/local/bin/solidping && break; done",
+  "chmod +x /usr/local/bin/solidping",
+  "solidping --version"
+]
+```
+
+with CMD `["solidping", "mcp", "--stdio"]`. The build takes the newest of the
+last 5 releases that carries the server binary, and `solidping --version`
+fails it when none did. Never go back to the old login script: since v0.52.0
+the seeded admin password is random, so its `solidpass` login loops until
+Glama's 60 s `initialize` timeout. After a config change, a successful test
+build still has to be published as a Glama release from that page, or the
+public listing keeps serving the previous one. With the published image, override its entrypoint (it
 is `solidping serve`) and its HTTP healthcheck, which has nothing to probe
 here. The image already defaults to SQLite under `/data`:
 

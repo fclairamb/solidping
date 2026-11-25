@@ -52,13 +52,18 @@ func TestReapAbandonedResults_FinalizesStaleMarkerOnly(t *testing.T) {
 		r.NoError(delErr)
 	}
 
+	// Only worker-written rows are execution attempts the reaper may finalize.
+	workerUID := newSignalWorker(t, s, ctx, "reap-worker")
+
 	stale := models.NewResult(org.UID, check.UID, models.ResultStatusCreated, 0)
+	stale.WorkerUID = &workerUID
 	stale.PeriodStart = time.Now().Add(-2 * time.Hour) // far past the ~7.5 min threshold
 	staleRegion := "acme-region-1"
 	stale.Region = &staleRegion
 	r.NoError(s.CreateResult(ctx, stale))
 
 	fresh := models.NewResult(org.UID, check.UID, models.ResultStatusCreated, 0)
+	fresh.WorkerUID = &workerUID
 	fresh.PeriodStart = time.Now().Add(-time.Minute) // inside the ~7.5 min threshold
 	r.NoError(s.CreateResult(ctx, fresh))
 
@@ -142,7 +147,9 @@ func TestReapAbandonedResults_SkipsOrphanedCheck(t *testing.T) {
 		r.NoError(delErr)
 	}
 
+	orphanWorker := newSignalWorker(t, s, ctx, "reap-orphan-worker")
 	orphan := models.NewResult(org.UID, check.UID, models.ResultStatusCreated, 0)
+	orphan.WorkerUID = &orphanWorker
 	orphan.PeriodStart = time.Now().Add(-24 * time.Hour)
 	r.NoError(s.CreateResult(ctx, orphan))
 
@@ -162,4 +169,49 @@ func TestReapAbandonedResults_SkipsOrphanedCheck(t *testing.T) {
 	r.NoError(s.DB().NewSelect().Model(&row).Where("uid = ?", orphan.UID).Scan(ctx))
 	r.NotNil(row.Status)
 	r.Equal(int(models.ResultStatusCreated), *row.Status, "orphaned row must be untouched")
+}
+
+// TestReapAbandonedResults_IgnoresCreationMarker pins solidping-business#112:
+// CreateCheck's one-time "Check created" marker sits in ResultStatusCreated
+// with no worker_uid. It is not an execution attempt, so even long past
+// AbandonedResultThreshold it must not be a candidate, nor be turned into a
+// fake abandoned row.
+func TestReapAbandonedResults_IgnoresCreationMarker(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	s, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(s.Initialize(ctx))
+	t.Cleanup(func() { _ = s.Close() })
+
+	org := models.NewOrganization("reap-marker-org", "Acme")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "reap-marker-check", "http") // default period: 1 minute
+	r.NoError(s.CreateCheck(ctx, check))
+
+	// Age CreateCheck's own marker far past the ~7.5 min threshold.
+	res, err := s.DB().NewUpdate().Model((*models.Result)(nil)).
+		Set("period_start = ?", time.Now().Add(-2*time.Hour)).
+		Where("check_uid = ?", check.UID).
+		Where("status = ?", int(models.ResultStatusCreated)).
+		Exec(ctx)
+	r.NoError(err)
+	aged, err := res.RowsAffected()
+	r.NoError(err)
+	r.Equal(int64(1), aged, "CreateCheck writes exactly one creation marker")
+
+	outcome, err := s.ReapAbandonedResults(ctx)
+	r.NoError(err)
+	r.Equal(0, outcome.Candidates, "the creation marker is not an execution attempt")
+	r.Equal(0, outcome.Reaped)
+
+	abandoned, err := s.DB().NewSelect().Model((*models.Result)(nil)).
+		Where("check_uid = ?", check.UID).
+		Where("status = ?", int(models.ResultStatusAbandoned)).
+		Count(ctx)
+	r.NoError(err)
+	r.Zero(abandoned, "no abandoned row may be minted for a freshly created check")
 }

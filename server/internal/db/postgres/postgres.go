@@ -3531,8 +3531,9 @@ func (s *Service) GetLastSignalForChecks(
 }
 
 // abandonedResultLifecycleStatuses is the raw statuses ReapAbandonedResults
-// scans for: ResultStatusCreated only — the sole status any code path writes
-// and then may leave open (CreateCheck's one-time "Check created" marker).
+// scans for: ResultStatusCreated only, and only on rows a worker wrote
+// (worker_uid set). CreateCheck's one-time "Check created" marker also sits
+// in that status but carries no worker_uid, and is never a candidate.
 // ResultStatusRunning is deliberately EXCLUDED even though
 // models.ResultStatus.IsLifecycleMarker() also treats it as a lifecycle
 // marker: heartbeat checks (handlers/heartbeat) write "running" as a
@@ -3577,6 +3578,13 @@ func (s *Service) ReapAbandonedResults(ctx context.Context) (models.ReapAbandone
 		Column("uid", "check_uid", "status", "period_start", "region").
 		Where("period_type = 'raw'").
 		Where("status IN (?)", bun.List(abandonedResultLifecycleStatuses())).
+		// CreateCheck's one-time "Check created" marker is not an execution
+		// attempt: no worker opened it, so none can have abandoned it. It
+		// stays `created` for good (lifecycle markers are preserved, see
+		// job_aggregation's lifecycleMarkerStatuses). Without this predicate
+		// every new check's marker was reaped into a fake abandoned row and
+		// a WARN (solidping-business#112).
+		Where("worker_uid IS NOT NULL").
 		Scan(ctx)
 	if err != nil {
 		return models.ReapAbandonedResultsOutcome{}, fmt.Errorf("failed to list abandoned-result candidates: %w", err)
