@@ -26,6 +26,21 @@ expansion for the person running SolidPing, not for a future reader of the diff:
   summarize. Being specific about the failure mode a fix addresses is more useful to a
   reader deciding whether an update matters to them than a one-line summary.
 
+## Credit the people outside the project
+
+An entry names the outside people behind it: the author of the PR, the authors of the issues it
+closes, and the author of a PR it was carried over from. The maintainer and bots (renovate,
+dependabot) are not credited. The credit goes just before the entry's links, so the docs
+transform keeps the links at the end:
+
+```markdown
+* **dash:** the overview shows `host:port` as the check target, reported by [@alice](https://github.com/alice) ([#1001](...)) ([5b64f04](...))
+```
+
+Use `contributed by` for a PR author, `reported by` for a bug issue, `requested by` for a feature
+issue. release-please regenerates the release branch on every merge to `main`, which drops the
+polish commit and its credits: the next polish pass adds them again from the PRs and issues.
+
 ## Scopes come from the transform's lookup table
 
 The `**scope:**` prefix on a bullet (e.g. `**dash0:**`, `**sftp:**`) is rewritten to a
