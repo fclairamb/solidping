@@ -1273,58 +1273,7 @@ func resultOutput(checkJob *models.CheckJob, output map[string]any) map[string]a
 		}
 	}
 
-	if len(checkJob.ResolvedRefValues) == 0 {
-		return out
-	}
-
-	return maskResolvedValues(out, checkJob.ResolvedRefValues)
-}
-
-// resolvedValueMask stands for a resolved secret reference value in a stored
-// result, the same token the plan diff uses.
-const resolvedValueMask = "***"
-
-// maskResolvedValues returns output with every occurrence of the given secret
-// values replaced by resolvedValueMask, in values and map keys alike, whatever
-// the Go types the checker used (`[]string`, `map[string][]string`, …).
-//
-// The output is stored as JSON, so the masking is done on its JSON form: the
-// secret is searched in its JSON-escaped spelling, and the result is decoded
-// back. Output carrying no secret is returned as is, untouched and uncopied.
-func maskResolvedValues(output map[string]any, secrets []string) map[string]any {
-	blob, err := json.Marshal(output)
-	if err != nil {
-		return output
-	}
-
-	text := string(blob)
-	masked := text
-
-	for _, secret := range secrets {
-		if secret == "" {
-			continue
-		}
-
-		escaped, escErr := json.Marshal(secret)
-		if escErr != nil || len(escaped) < 3 {
-			continue
-		}
-
-		masked = strings.ReplaceAll(masked, string(escaped[1:len(escaped)-1]), resolvedValueMask)
-	}
-
-	if masked == text {
-		return output
-	}
-
-	out := make(map[string]any, len(output))
-	if unmarshalErr := json.Unmarshal([]byte(masked), &out); unmarshalErr != nil {
-		// Never store the clear value because the masked form would not
-		// decode: withhold the output rather than leak it.
-		return map[string]any{"error": "output withheld: it carried a secret reference value"}
-	}
-
-	return out
+	return maskResolvedValues(checkJob, out)
 }
 
 // executeJob executes a single check job.
@@ -2017,9 +1966,9 @@ func (r *CheckWorker) buildSubmitRequest(
 	return &backend.SubmitResultRequest{
 		Status:          int(result.Status),
 		Duration:        float32(result.Duration.Seconds() * 1000),
-		Metrics:         result.Metrics,
+		Metrics:         maskMetricKeys(result.Metrics, maskableValues(checkJob.ResolvedRefValues)),
 		Output:          resultOutput(checkJob, result.Output),
-		Diagnostics:     result.Diagnostics,
+		Diagnostics:     maskDiagnostics(result.Diagnostics, maskableValues(checkJob.ResolvedRefValues)),
 		Region:          r.resolveResultRegion(checkJob),
 		NextScheduledAt: nextScheduledAt,
 		ExecStart:       execStart,
