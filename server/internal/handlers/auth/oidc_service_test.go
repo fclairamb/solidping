@@ -47,6 +47,19 @@ type fakeOIDCIdP struct {
 
 	// userInfo, when set, is served by /userinfo; nil answers 404.
 	userInfo map[string]any
+
+	// issuer, when set, is the issuer advertised by discovery and put in
+	// the ID tokens; empty means the server URL.
+	issuer string
+}
+
+// issuerURL returns the issuer the fake IdP advertises.
+func (idp *fakeOIDCIdP) issuerURL() string {
+	if idp.issuer != "" {
+		return idp.issuer
+	}
+
+	return idp.server.URL
 }
 
 func newFakeOIDCIdP(t *testing.T) *fakeOIDCIdP {
@@ -61,7 +74,7 @@ func newFakeOIDCIdP(t *testing.T) *fakeOIDCIdP {
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"issuer":                                idp.server.URL,
+			"issuer":                                idp.issuerURL(),
 			"authorization_endpoint":                idp.server.URL + "/authorize",
 			"token_endpoint":                        idp.server.URL + "/token",
 			"jwks_uri":                              idp.server.URL + "/jwks",
@@ -114,7 +127,7 @@ func (idp *fakeOIDCIdP) baseClaims() jwt.MapClaims {
 	now := time.Now()
 
 	return jwt.MapClaims{
-		"iss":                  idp.server.URL,
+		"iss":                  idp.issuerURL(),
 		"aud":                  fakeIDPClientID,
 		"sub":                  "oidc-user-123",
 		keyEmail:               "test@example.com",
@@ -599,4 +612,101 @@ func TestOIDCHandleCallback_AsksForTOTP(t *testing.T) {
 	r.NotEmpty(login.AccessToken)
 	r.Equal(2, refreshRows())
 	r.ElementsMatch([]any{"oidc+totp", "oidc+recovery_code"}, loginMethods())
+}
+
+// TestOIDCHandleCallback_EmailClaimsFromUserInfo is the regression test of
+// issue #1047: IdPs that keep the ID token minimal (Authelia, Authentik…)
+// only expose email/email_verified on the userinfo endpoint, and every login
+// failed with "Email address not verified with the OIDC provider".
+func TestOIDCHandleCallback_EmailClaimsFromUserInfo(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		mutate   func(c jwt.MapClaims)
+		userInfo map[string]any
+		wantErr  bool
+	}{
+		{
+			name: "email and email_verified only in userinfo",
+			mutate: func(c jwt.MapClaims) {
+				delete(c, keyEmail)
+				delete(c, oidcClaimEmailVerified)
+				delete(c, keyName)
+			},
+			userInfo: map[string]any{
+				"sub": "oidc-user-123", keyEmail: "test@example.com",
+				oidcClaimEmailVerified: true, keyName: "Test User",
+			},
+		},
+		{
+			name:   "email_verified only in userinfo",
+			mutate: func(c jwt.MapClaims) { delete(c, oidcClaimEmailVerified) },
+			userInfo: map[string]any{
+				"sub": "oidc-user-123", keyEmail: "test@example.com", oidcClaimEmailVerified: true,
+			},
+		},
+		{
+			name:   "email_verified as the string true",
+			mutate: func(c jwt.MapClaims) { c[oidcClaimEmailVerified] = "true" },
+		},
+		{
+			name:   "userinfo verifies another address than the ID token's",
+			mutate: func(c jwt.MapClaims) { delete(c, oidcClaimEmailVerified) },
+			userInfo: map[string]any{
+				"sub": "oidc-user-123", keyEmail: "other@example.com", oidcClaimEmailVerified: true,
+			},
+			wantErr: true,
+		},
+		{
+			name: "userinfo of another subject",
+			mutate: func(c jwt.MapClaims) {
+				delete(c, keyEmail)
+				delete(c, oidcClaimEmailVerified)
+			},
+			userInfo: map[string]any{
+				"sub": "someone-else", keyEmail: "test@example.com", oidcClaimEmailVerified: true,
+			},
+			wantErr: true,
+		},
+		{
+			name: "userinfo email unverified",
+			mutate: func(c jwt.MapClaims) {
+				delete(c, keyEmail)
+				delete(c, oidcClaimEmailVerified)
+			},
+			userInfo: map[string]any{
+				"sub": "oidc-user-123", keyEmail: "test@example.com", oidcClaimEmailVerified: false,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			idp := newFakeOIDCIdP(t)
+			svc, ctx := setupOIDCTestService(t, idp, nil)
+			org := setupOIDCTestOrg(ctx, t, svc)
+
+			idp.userInfo = tc.userInfo
+			idp.nextIDToken = idp.issueIDToken(t, tc.mutate)
+
+			result, err := svc.HandleCallback(ctx, "fake-code", org.Slug)
+			if tc.wantErr {
+				require.ErrorIs(t, err, ErrEmailNotVerified)
+				assert.Nil(t, result)
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			user, err := svc.db.GetUserByEmail(ctx, "test@example.com")
+			require.NoError(t, err)
+			assert.Equal(t, user.UID, result.UserUID)
+			assert.Equal(t, "Test User", user.Name)
+		})
+	}
 }

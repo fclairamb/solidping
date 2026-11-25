@@ -57,8 +57,9 @@ type OIDCOAuthResult = ProviderOutcome
 type oidcUserInfo struct {
 	Subject string
 	Email   string
-	// EmailVerified is true only when the token's "email_verified" claim is
-	// present AND is literally the JSON boolean `true`. Unlike the other
+	// EmailVerified is true only when the "email_verified" claim (of the ID
+	// token, or of the userinfo response for the same address) is present
+	// AND is an explicit `true` (boolean, or the string "true"). Unlike the other
 	// (fixed-catalog) providers, generic OIDC connects to an arbitrary,
 	// admin-chosen IdP, so a malicious or misconfigured issuer could assert
 	// any existing user's email. We therefore never default to "verified":
@@ -182,6 +183,18 @@ func (s *OIDCOAuthService) providerAndVerifier(ctx context.Context) (*oidc.Provi
 		discoveryCtx = oidc.ClientContext(discoveryCtx, s.httpClient)
 
 		provider, err := oidc.NewProvider(discoveryCtx, issuer)
+
+		// go-oidc fetches the same discovery document with or without a
+		// trailing slash, then demands the advertised issuer match byte for
+		// byte. Providers disagree on the slash (Authentik adds it, Keycloak
+		// does not), so accept the advertised form when that is the only
+		// difference. ID tokens are still checked exactly against it.
+		var mismatch *oidc.IssuerMismatchError
+		if errors.As(err, &mismatch) &&
+			strings.TrimSuffix(mismatch.Discovered, "/") == strings.TrimSuffix(issuer, "/") {
+			provider, err = oidc.NewProvider(discoveryCtx, mismatch.Discovered)
+		}
+
 		if err != nil {
 			return nil, nil, fmt.Errorf("%w: %w", ErrOIDCDiscovery, err)
 		}
@@ -275,17 +288,8 @@ func (s *OIDCOAuthService) HandleCallback(ctx context.Context, code, orgSlug str
 
 	userInfo := s.mapClaims(idToken.Subject, claims)
 
-	if userInfo.Email == "" {
-		return nil, ErrEmailNotVerified
-	}
-
-	// Reject outright (never silently create/link a user) unless the IdP
-	// explicitly asserts a verified email, consistent with Google/Discord's
-	// handling of their own !EmailVerified case. See oidcUserInfo.EmailVerified
-	// for why this doesn't default to "verified" when the claim is missing or
-	// of the wrong type.
-	if !userInfo.EmailVerified {
-		return nil, ErrEmailNotVerified
+	if emailErr := s.requireVerifiedEmail(ctx, exchangeCtx, token, userInfo); emailErr != nil {
+		return nil, emailErr
 	}
 
 	// Look up organization by slug
@@ -323,11 +327,59 @@ func (s *OIDCOAuthService) HandleCallback(ctx context.Context, code, orgSlug str
 	return outcome, nil
 }
 
+// requireVerifiedEmail completes the email claims from the userinfo endpoint
+// when the ID token lacks them, then rejects the login unless the IdP
+// asserts a verified email.
+func (s *OIDCOAuthService) requireVerifiedEmail(
+	ctx, exchangeCtx context.Context, token *oauth2.Token, userInfo *oidcUserInfo,
+) error {
+	// Many IdPs (Authelia, Authentik, Keycloak with some client scopes…)
+	// keep the ID token minimal and only expose email/email_verified on the
+	// userinfo endpoint. Complete the missing claims from there.
+	if userInfo.Email == "" || !userInfo.EmailVerified {
+		s.completeFromUserInfo(userInfo, s.userInfoClaims(exchangeCtx, token, userInfo.Subject))
+	}
+
+	if userInfo.Email == "" {
+		slog.WarnContext(ctx, "OIDC login rejected: no email claim in the ID token nor the userinfo response",
+			"email_claim", s.emailClaimName())
+
+		return ErrEmailNotVerified
+	}
+
+	// Reject outright (never silently create/link a user) unless the IdP
+	// explicitly asserts a verified email, consistent with Google/Discord's
+	// handling of their own !EmailVerified case. See oidcUserInfo.EmailVerified
+	// for why this doesn't default to "verified" when the claim is missing or
+	// of the wrong type.
+	if !userInfo.EmailVerified {
+		slog.WarnContext(ctx, "OIDC login rejected: the IdP does not assert email_verified=true",
+			"email", userInfo.Email)
+
+		return ErrEmailNotVerified
+	}
+
+	return nil
+}
+
 // userInfoGroups reads the groups claim from the IdP's userinfo endpoint,
 // called with the access token of the verified exchange. Some IdPs only put
 // groups there. Best-effort: no endpoint, an error, or a response whose
 // subject differs from the ID token's yields no group.
 func (s *OIDCOAuthService) userInfoGroups(ctx context.Context, token *oauth2.Token, subject string) []string {
+	claims := s.userInfoClaims(ctx, token, subject)
+	if claims == nil {
+		return nil
+	}
+
+	return parseGroupsClaim(claims[groupsClaimName(&s.cfg.SSO().OIDC)])
+}
+
+// userInfoClaims returns the claims of the IdP's userinfo endpoint, called
+// with the access token of the verified exchange. Best-effort: no endpoint,
+// an error, or a response whose subject differs from the ID token's (OIDC
+// Core 5.3.2: such a response must not be used) yields nil.
+func (s *OIDCOAuthService) userInfoClaims(ctx context.Context, token *oauth2.Token, subject string) map[string]any {
 	provider, _, err := s.providerAndVerifier(ctx)
 	if err != nil || provider.UserInfoEndpoint() == "" {
 		return nil
@@ -335,13 +387,13 @@ func (s *OIDCOAuthService) userInfoGroups(ctx context.Context, token *oauth2.Tok
 
 	info, err := provider.UserInfo(ctx, oauth2.StaticTokenSource(token))
 	if err != nil {
-		slog.WarnContext(ctx, "OIDC userinfo request failed, using the ID token groups only", "error", err)
+		slog.WarnContext(ctx, "OIDC userinfo request failed, using the ID token claims only", "error", err)
 
 		return nil
 	}
 
 	if info.Subject != subject {
-		slog.WarnContext(ctx, "OIDC userinfo subject differs from the ID token's, ignoring its groups")
+		slog.WarnContext(ctx, "OIDC userinfo subject differs from the ID token's, ignoring its claims")
 
 		return nil
 	}
@@ -351,21 +403,73 @@ func (s *OIDCOAuthService) userInfoGroups(ctx context.Context, token *oauth2.Tok
 		return nil
 	}
 
-	return parseGroupsClaim(claims[groupsClaimName(&s.cfg.SSO().OIDC)])
+	return claims
+}
+
+// completeFromUserInfo fills the email and its verification from the
+// userinfo claims when the ID token lacks them. The ID token's email wins;
+// the userinfo email_verified only counts for that same address, so a
+// userinfo answer can never verify an email it did not assert.
+func (s *OIDCOAuthService) completeFromUserInfo(info *oidcUserInfo, claims map[string]any) {
+	if claims == nil {
+		return
+	}
+
+	email := claimString(claims, s.emailClaimName())
+
+	if info.Email == "" && email != "" {
+		info.Email = email
+		info.EmailVerified = false
+
+		if info.Name == "" {
+			info.Name = claimString(claims, s.nameClaimName())
+		}
+	}
+
+	if !info.EmailVerified && email != "" && strings.EqualFold(email, info.Email) {
+		info.EmailVerified = claimVerified(claims[oidcClaimEmailVerified])
+	}
+
+	if info.Name == "" {
+		info.Name = info.Email
+	}
+}
+
+func (s *OIDCOAuthService) emailClaimName() string {
+	if c := s.cfg.SSO().OIDC.EmailClaim; c != "" {
+		return c
+	}
+
+	return keyEmail
+}
+
+func (s *OIDCOAuthService) nameClaimName() string {
+	if c := s.cfg.SSO().OIDC.NameClaim; c != "" {
+		return c
+	}
+
+	return keyName
+}
+
+// claimVerified reports whether an email_verified claim value asserts a
+// verified address: the JSON boolean true, or the string "true" that some
+// IdPs (AWS Cognito, some ADFS setups) emit. Anything else is unverified.
+func claimVerified(v any) bool {
+	switch val := v.(type) {
+	case bool:
+		return val
+	case string:
+		return strings.EqualFold(val, "true")
+	default:
+		return false
+	}
 }
 
 // mapClaims extracts email/name/avatar from the validated ID token's claims,
 // using the configured claim names with standard-claim fallbacks.
 func (s *OIDCOAuthService) mapClaims(subject string, claims map[string]any) *oidcUserInfo {
-	emailClaim := s.cfg.SSO().OIDC.EmailClaim
-	if emailClaim == "" {
-		emailClaim = keyEmail
-	}
-
-	nameClaim := s.cfg.SSO().OIDC.NameClaim
-	if nameClaim == "" {
-		nameClaim = keyName
-	}
+	emailClaim := s.emailClaimName()
+	nameClaim := s.nameClaimName()
 
 	avatarClaim := s.cfg.SSO().OIDC.AvatarClaim
 	if avatarClaim == "" {
@@ -380,13 +484,11 @@ func (s *OIDCOAuthService) mapClaims(subject string, claims map[string]any) *oid
 		Groups:    parseGroupsClaim(claims[groupsClaimName(&s.cfg.SSO().OIDC)]),
 	}
 
-	// Only an actual boolean `true` counts as verified. A missing claim, a
-	// `false` claim, or a claim of any other type (e.g. a stringly-typed
-	// "false" some real IdPs emit) all leave EmailVerified at its zero value
-	// (false) — see the field doc on oidcUserInfo for the rationale.
-	if b, ok := claims[oidcClaimEmailVerified].(bool); ok {
-		info.EmailVerified = b
-	}
+	// Only an explicit `true` (boolean, or the string "true") counts as
+	// verified. A missing claim, a `false` claim, or any other value leave
+	// EmailVerified at its zero value (false) — see the field doc on
+	// oidcUserInfo for the rationale.
+	info.EmailVerified = claimVerified(claims[oidcClaimEmailVerified])
 
 	if info.Name == "" {
 		info.Name = info.Email
