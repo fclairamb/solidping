@@ -1,14 +1,14 @@
-# dash0 translations (en, fr, de, es)
+# dash0 translations (en, fr, de, es, zh)
 
 Read when adding or changing any user-visible dash0 string.
-Every user-visible string goes through `t()` and exists in all four
+Every user-visible string goes through `t()` and exists in all five
 `src/locales/<lang>/<namespace>.json` files. Three unit tests and one lint
 rule guard this (spec 2026-09-26-01 for the last two):
 
 - `locale-parity.test.ts`: every locale has exactly `en`'s keys.
 - `translated-defaults.test.ts`: every `t("key", "default")` resolves to a real
   `en` key.
-- `untranslated-values.test.ts`: a fr/de/es value identical to the `en` value
+- `untranslated-values.test.ts`: a fr/de/es/zh value identical to the `en` value
   fails, unless `src/locales/identical-allowlist.ts` names that key for that
   locale. It also requires each translation to keep `en`'s `{{placeholders}}`
   and Trans `<tags>`, fails on stale allowlist entries, and checks
@@ -34,4 +34,15 @@ anything a user reads as prose into the locale files.
 
 Terminology already chosen per locale, reuse it: fr "clé d'accès" (passkey),
 "contrôle" (check), "astreinte" (on-call), vous; de "Passkey", "Check" (der Check, die Checks; compounds "Check-Typ", "Check-Gruppe"),
-"Bereitschaft", Sie; es "llave de acceso", "comprobación", "guardia", tú.
+"Bereitschaft", Sie; es "llave de acceso", "comprobación", "guardia", tú; zh
+"通行密钥" (passkey), "监控项" (check), "监控分组" (check group), "代理" (agent),
+"工作节点" (worker), "私有位置" (private location), "故障" (incident),
+"服务中断" (outage), "告警" (alert), "通知" (notification), "通知渠道"
+(notification channel), "通知方式" (notification method), "告警升级策略"
+(escalation policy), "告警通知" (paging), "值班" (on-call), "状态页" (status
+page), "故障公告" (incident publication), "维护窗口" (maintenance window),
+"可用性" (availability), "可用率" (uptime percentage), "小组件" (widget),
+"双重验证" (two-factor), "密钥" (secret), "凭据" (credential), "额度"
+(quota), "权益" (entitlement), "套餐" (plan), "席位" (seat), "服务商" (vendor),
+"已定位" / "已确认" / "已解决" (identified / acknowledged / resolved),
+"轻微" / "重大" / "严重" (severity), 称呼用"你"（不用"您"）.

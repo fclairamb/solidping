@@ -564,7 +564,7 @@ in French would get your English.
 
 To fix that, a status update and a publication title take **Other languages**:
 the full title and, for an update, the full markdown body, once per language
-(`en`, `fr`, `de`, `es`). In the dashboard, open the update or the publication
+(`en`, `fr`, `de`, `es`, `zh`). In the dashboard, open the update or the publication
 and use the **Other languages** block, with one collapsible group per
 language; a group left empty means no translation. There is no group for the
 page's own language: that is the title and body above.

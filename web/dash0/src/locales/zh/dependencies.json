@@ -1,0 +1,42 @@
+{
+  "title": "依赖项",
+  "dependsOn": "依赖",
+  "dependsOnHelp": "这些依赖出问题时，此监控项也会出问题",
+  "dependedOnBy": "被依赖",
+  "dependedOnByHelp": "此监控项出问题时，这些也会出问题",
+  "addDependency": "添加依赖",
+  "saveDependency": "保存",
+  "cancel": "取消",
+  "kind": "类型",
+  "kindHard": "硬依赖",
+  "kindSoft": "软依赖",
+  "kindHardTooltip": "父依赖故障时，暂停此监控项的告警通知",
+  "kindSoftTooltip": "仅供参考——仍会触发告警通知",
+  "description": "描述",
+  "descriptionPlaceholder": "可选——它们是什么关系？",
+  "noDependencies": "还没有配置依赖项。使用“编辑”添加父监控项，开始故障级联归并。",
+  "noParents": "还没有父监控项——在下面选择一个。",
+  "noDependents": "还没有任何监控项依赖此监控项。",
+  "unknownCheck": "未知监控项",
+  "editDependencies": "编辑依赖项",
+  "remove": "移除依赖",
+  "removeConfirmTitle": "移除对 {{parent}} 的依赖？",
+  "removeConfirmBody": "这会停止此依赖边的故障级联归并。",
+  "removeConfirmAction": "移除",
+  "errors": {
+    "cycle": "这会形成循环：{{path}}",
+    "duplicate": "已经是父监控项。",
+    "notFound": "未找到监控项。",
+    "self": "监控项不能依赖自身。",
+    "generic": "添加依赖失败。"
+  },
+  "pickCheck": "选择监控项…",
+  "searchChecks": "搜索监控项…",
+  "noMatches": "无匹配项。",
+  "warnings": {
+    "confirmationMargin": {
+      "title": "确认速度快于 {{parent}} 的检测速度",
+      "body": "此监控项的确认时间为 {{current}} 秒，短于硬依赖的父监控项 {{parent}} 察觉同一次服务中断可能需要的 {{recommended}} 秒。这不是故障：父监控项还在验证时，此监控项的故障会被暂缓，只会发出一次报告——但这也意味着这里的告警通知可能晚于 {{current}} 秒。"
+    }
+  }
+}

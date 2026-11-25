@@ -1,0 +1,82 @@
+{
+  "months": {
+    "short": {
+      "jan": "1月",
+      "feb": "2月",
+      "mar": "3月",
+      "apr": "4月",
+      "may": "5月",
+      "jun": "6月",
+      "jul": "7月",
+      "aug": "8月",
+      "sep": "9月",
+      "oct": "10月",
+      "nov": "11月",
+      "dec": "12月"
+    },
+    "long": {
+      "jan": "1月",
+      "feb": "2月",
+      "mar": "3月",
+      "apr": "4月",
+      "may": "5月",
+      "jun": "6月",
+      "jul": "7月",
+      "aug": "8月",
+      "sep": "9月",
+      "oct": "10月",
+      "nov": "11月",
+      "dec": "12月"
+    }
+  },
+  "date": {
+    "dateTime": "{month}{day}日 {time} {zone}",
+    "dateTimeYear": "{year}年{month}{day}日 {time} {zone}",
+    "day": "{month}{day}日",
+    "dayYear": "{year}年{month}{day}日",
+    "month": "{year}年{month}"
+  },
+  "duration": {
+    "days": "{n}天",
+    "hours": "{n}小时",
+    "minutes": "{n}分钟",
+    "seconds": "{n}秒"
+  },
+  "header": {
+    "sentBy": "由 SolidPing 发送",
+    "logoAlt": "徽标"
+  },
+  "footer": {
+    "orgSentBy": "{org} · 发送自",
+    "sentBy": "发送自",
+    "dashboard": "仪表盘",
+    "stopAlerts": "停止 {check} 的告警",
+    "unsubscribe": "退订",
+    "automated": "这是来自 SolidPing 的自动通知。"
+  },
+  "incidentActions": {
+    "ack": "我来处理",
+    "viewIncident": "查看故障",
+    "ackExplain": "“我来处理”会告知你的团队你正在处理此故障，并停止升级。",
+    "ackExpires": "链接有效期至 {date}。"
+  },
+  "labels": {
+    "check": "监控项",
+    "target": "目标",
+    "checkURL": "监控项 URL",
+    "since": "开始时间",
+    "incident": "故障",
+    "docs": "文档"
+  },
+  "textField": "{label}：{value}",
+  "fallbackLink": "按钮无法使用？请将此链接粘贴到浏览器中：",
+  "supportReply": {
+    "notice": "你可以直接回复这封邮件联系真人，我们会阅读每一封回复。"
+  },
+  "list": {
+    "and": "{head} 和 {last}",
+    "andBeforeVowel": "{head} 和 {last}",
+    "or": "{head} 或 {last}",
+    "orBeforeVowel": "{head} 或 {last}"
+  }
+}

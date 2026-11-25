@@ -7,7 +7,7 @@
  * longer a child of the parent it remembers, and the DOM throws
  * `NotFoundError`: every page then falls into the route error boundary.
  * `<html lang>` (i18n.ts) stops the offer for the languages the app ships,
- * not for the others (zh, ja, pt…).
+ * not for the others (ja, pt…).
  *
  * The guard makes those two calls a no-op, with a warning, when the node is
  * not where React expects it (the patch discussed in facebook/react#11538).

@@ -1,10 +1,11 @@
 import { test, expect } from "@playwright/test";
 
-// Spec 2026-10-31-03: fr, de and es are lazily loaded, one chunk per language.
-// English stays in the main chunk. The org login page shows the passkey button
-// (see login-passkey-i18n.spec.ts), a cheap translated string to assert on.
+// Spec 2026-10-31-03: fr, de, es and zh are lazily loaded, one chunk per
+// language. English stays in the main chunk. The org login page shows the
+// passkey button (see login-passkey-i18n.spec.ts), a cheap translated string to
+// assert on.
 
-const LOCALE_CHUNK = /\/assets\/(fr|de|es)-[\w-]+\.js/;
+const LOCALE_CHUNK = /\/assets\/(fr|de|es|zh)-[\w-]+\.js/;
 
 function recordLocaleChunks(page: import("@playwright/test").Page): string[] {
   const chunks: string[] = [];
@@ -39,6 +40,25 @@ test.describe("Lazy locales", () => {
     expect(chunks).toContain("fr");
     expect(chunks).not.toContain("de");
     expect(chunks).not.toContain("es");
+    expect(chunks).not.toContain("zh");
+  });
+
+  test("a Chinese visitor sees Simplified Chinese on first paint and loads only the zh chunk", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => localStorage.setItem("solidping_language", "zh"));
+    await enablePasskeys(page);
+    const chunks = recordLocaleChunks(page);
+
+    await page.goto("orgs/test/login");
+
+    const button = page.getByTestId("passkey-login-button");
+    await expect(button).toHaveText("使用通行密钥登录");
+    await expect(button).not.toHaveText("Sign in with passkey");
+    expect(chunks).toContain("zh");
+    expect(chunks).not.toContain("fr");
+    expect(chunks).not.toContain("de");
+    expect(chunks).not.toContain("es");
   });
 
   test("switching to de updates the UI without a reload and requests the de chunk", async ({
@@ -70,7 +90,7 @@ test.describe("Lazy locales", () => {
     ).toBe(true);
   });
 
-  test("an English visitor requests no fr, de or es chunk", async ({ page }) => {
+  test("an English visitor requests no fr, de, es or zh chunk", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("solidping_language", "en"));
     await enablePasskeys(page);
     const chunks = recordLocaleChunks(page);

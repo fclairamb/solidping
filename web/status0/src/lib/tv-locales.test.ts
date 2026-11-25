@@ -3,6 +3,7 @@ import en from "../locales/en/status.json";
 import fr from "../locales/fr/status.json";
 import de from "../locales/de/status.json";
 import es from "../locales/es/status.json";
+import zh from "../locales/zh/status.json";
 import { statusStyle } from "./status-style";
 
 /**
@@ -15,7 +16,7 @@ import { statusStyle } from "./status-style";
  * reads for the rest of the day.
  */
 
-const LOCALES = { fr, de, es } as const;
+const LOCALES = { fr, de, es, zh } as const;
 
 function flatten(value: unknown, prefix = ""): Map<string, string> {
   const out = new Map<string, string>();
@@ -124,7 +125,7 @@ describe("TV mode locale parity", () => {
  * Locale parity for the WHOLE public bundle, not just `tv.*` (spec
  * 2026-09-25-02). The per-resource status words ("No data", "Outage", …) and
  * the "No data, last checked 13:41" line live at the top level of status.json,
- * and a key missing from fr/de/es renders as the raw key on a customer-facing
+ * and a key missing from fr/de/es/zh renders as the raw key on a customer-facing
  * page. Every status the server can put on a component is resolved through
  * statusStyle(), so its label key is checked in every locale explicitly.
  */

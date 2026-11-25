@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { describe, expect, it } from "vitest";
-import { de, enUS, es, fr } from "date-fns/locale";
+import { de, enUS, es, fr, zhCN } from "date-fns/locale";
 import { dateFnsLocale } from "./date-locale";
 
 describe("dateFnsLocale", () => {
@@ -8,6 +8,7 @@ describe("dateFnsLocale", () => {
     expect(dateFnsLocale("fr")).toBe(fr);
     expect(dateFnsLocale("de")).toBe(de);
     expect(dateFnsLocale("es")).toBe(es);
+    expect(dateFnsLocale("zh")).toBe(zhCN);
     expect(dateFnsLocale("en")).toBe(enUS);
     expect(dateFnsLocale("fr-CA")).toBe(fr);
   });

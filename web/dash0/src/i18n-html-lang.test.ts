@@ -27,6 +27,14 @@ describe("<html lang> follows the rendered language", () => {
     expect(document.documentElement.lang).toBe("fr");
   });
 
+  it("maps Simplified Chinese variants to zh", async () => {
+    await i18n.changeLanguage("zh-Hans");
+    expect(document.documentElement.lang).toBe("zh");
+
+    await i18n.changeLanguage("zh-CN");
+    expect(document.documentElement.lang).toBe("zh");
+  });
+
   it("stays English for a language the app does not ship", async () => {
     await i18n.changeLanguage("pt-BR");
     expect(document.documentElement.lang).toBe("en");

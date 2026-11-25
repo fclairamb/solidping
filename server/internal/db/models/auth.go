@@ -157,7 +157,7 @@ type SignupAttribution struct {
 // an empty one means "not set", and the reader falls back (see
 // internal/i18n/recipient).
 type UserPreferences struct {
-	// Locale is a supported language code: en, fr, de or es.
+	// Locale is a supported language code: en, fr, de, es or zh.
 	Locale string `json:"locale,omitempty"`
 	// Timezone is an IANA zone name, e.g. Europe/Paris.
 	Timezone string `json:"timezone,omitempty"`

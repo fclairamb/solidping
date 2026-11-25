@@ -1,0 +1,121 @@
+{
+  "title": "维护窗口",
+  "subtitle": "安排计划维护，在维护期间暂停故障告警",
+  "new": "新建窗口",
+  "empty": "没有已安排的维护窗口",
+  "searchPlaceholder": "搜索维护窗口…",
+  "noMatch": "没有匹配搜索的维护窗口",
+  "backToList": "返回维护窗口列表",
+  "edit": "编辑",
+  "checksCount_one": "{{count}} 个监控项",
+  "checksCount_other": "{{count}} 个监控项",
+  "table": {
+    "title": "标题",
+    "schedule": "计划",
+    "recurrence": "重复",
+    "status": "状态",
+    "checks": "监控项"
+  },
+  "recurrence": {
+    "none": "一次性",
+    "daily": "每天",
+    "weekly": "每周",
+    "monthly": "每月"
+  },
+  "status": {
+    "active": "生效中",
+    "upcoming": "即将开始",
+    "past": "已结束"
+  },
+  "form": {
+    "createTitle": "新建维护窗口",
+    "editTitle": "编辑维护窗口",
+    "createDescription": "安排一段维护时间，在此期间暂停所选监控项的故障告警。",
+    "editDescription": "更新这个维护窗口的计划和受影响的监控项。",
+    "detailsTitle": "详情",
+    "scheduleTitle": "计划",
+    "affectedTitle": "受影响的监控项",
+    "affectedDescription": "窗口生效期间，这些监控项和监控分组的故障告警会暂停。",
+    "title": "标题",
+    "titlePlaceholder": "每周数据库备份",
+    "description": "描述",
+    "descriptionPlaceholder": "可选，随窗口一起显示的说明",
+    "start": "开始",
+    "end": "结束",
+    "startTime": "开始时间",
+    "duration": "持续时间",
+    "durationUnitMinutes": "分钟",
+    "durationUnitHours": "小时",
+    "firstDay": "首次日期",
+    "repeatOn": "重复于",
+    "dayOfMonth": "每月日期",
+    "dayOfMonthHelp": "当月天数不足时，按该月最后一天执行。",
+    "recurrence": "重复",
+    "recurrenceEnd": "重复结束",
+    "until": "截止",
+    "untilHelp": "可选。超过这个日期后窗口不再重复。",
+    "recurrenceEndHelp": "可选。超过这个日期后窗口不再重复。",
+    "utcNote": "所有时间均以 UTC 输入和存储。",
+    "checks": "监控项",
+    "groups": "监控分组",
+    "submitCreate": "创建窗口",
+    "submitSave": "保存更改",
+    "cancel": "取消",
+    "errors": {
+      "titleRequired": "标题为必填项",
+      "endAfterStart": "结束时间必须晚于开始时间",
+      "recurrenceEndAfterStart": "重复结束时间必须晚于开始时间",
+      "durationRequired": "持续时间必须大于零",
+      "durationOverlapsWarning": "持续时间长于重复间隔，各次维护会重叠。",
+      "firstDayRequired": "首次日期为必填项",
+      "untilAfterFirstDay": "截止日期必须晚于首次日期"
+    }
+  },
+  "summary": {
+    "once": "一次性：{{start}} – {{end}}",
+    "daily": "每天，{{start}} – {{end}}（{{duration}}）",
+    "weekly": "每{{weekday}}，{{start}} – {{end}}（{{duration}}）",
+    "monthly": "每月 {{day}} 日，{{start}} – {{end}}（{{duration}}）",
+    "until": " · 截止 {{date}}",
+    "noEnd": " · 无结束日期",
+    "alertsPaused": "每次维护期间，受影响监控项的故障告警都会暂停。",
+    "nextLabel": "下次：",
+    "nextNone": "没有即将发生的维护"
+  },
+  "duration": {
+    "hoursShort": "小时",
+    "minutesShort": "分钟",
+    "daysShort": "天"
+  },
+  "detail": {
+    "schedule": "计划",
+    "summary": "摘要",
+    "nextOccurrences": "接下来的维护",
+    "noNextOccurrences": "没有即将发生的维护",
+    "affectedChecks": "受影响的监控项",
+    "start": "开始",
+    "end": "结束",
+    "recurrence": "重复",
+    "recurrenceEnd": "重复结束",
+    "noAffected": "没有监控项或分组受这个窗口影响。",
+    "createdBy": "创建者",
+    "view": "查看"
+  },
+  "toast": {
+    "created": "维护窗口已创建",
+    "updated": "维护窗口已更新",
+    "deleted": "维护窗口已删除",
+    "createFailed": "创建维护窗口失败",
+    "updateFailed": "更新维护窗口失败",
+    "deleteFailed": "删除维护窗口失败"
+  },
+  "delete": {
+    "confirmTitle": "删除维护窗口？",
+    "confirmBody": "确定要删除这个维护窗口吗？此操作无法撤销。"
+  },
+  "noChecks": "没有监控项",
+  "noChecksTitle": "这个窗口没有关联任何监控项，因此不会暂停任何告警。",
+  "checksLabel_one": "个监控项",
+  "checksLabel_other": "个监控项",
+  "emptyHint": "创建一个，在计划维护期间暂停故障告警。"
+}

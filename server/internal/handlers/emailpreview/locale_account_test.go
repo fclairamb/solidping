@@ -1,3 +1,4 @@
+//nolint:gosmopolitan // the zh rows are the account-email copy under test
 package emailpreview
 
 import (
@@ -86,12 +87,14 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"Confirma tu cuenta de SolidPing",
 				"Este enlace de confirmación caduca en 3" + nbsp + "días.",
 			},
+			i18n.LangChinese: {"确认你的 SolidPing 账户", "此确认链接将在 3 天 后过期。"},
 		},
 		"welcome.html": {
 			i18n.LangEnglish: {"Welcome to SolidPing", "Open your dashboard: " + fixtureDashboardURL},
 			i18n.LangFrench:  {"Bienvenue sur SolidPing", "Ouvrir mon tableau de bord : " + fixtureDashboardURL},
 			i18n.LangGerman:  {"Willkommen bei SolidPing", "Dashboard öffnen: " + fixtureDashboardURL},
 			i18n.LangSpanish: {"Bienvenido a SolidPing", "Abrir tu panel: " + fixtureDashboardURL},
+			i18n.LangChinese: {"欢迎使用 SolidPing", "打开仪表盘：" + fixtureDashboardURL},
 		},
 		"password-reset.html": {
 			i18n.LangEnglish: {"Reset your SolidPing password", "This reset link expires in 1 hour."},
@@ -107,6 +110,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"Restablece tu contraseña de SolidPing",
 				"Este enlace de restablecimiento caduca en 1" + nbsp + "hora.",
 			},
+			i18n.LangChinese: {"重置你的 SolidPing 密码", "此重置链接将在 1 小时 后过期。"},
 		},
 		"password-reset-sso.html": {
 			i18n.LangEnglish: {
@@ -125,6 +129,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"Restablece tu contraseña de SolidPing",
 				"Normalmente inicias sesión en SolidPing con GitHub o Google.",
 			},
+			i18n.LangChinese: {"重置你的 SolidPing 密码", "你通常使用 GitHub 或 Google 登录 SolidPing。"},
 		},
 		"password-changed.html": {
 			i18n.LangEnglish: {
@@ -134,6 +139,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 			i18n.LangFrench:  {"Votre mot de passe SolidPing a été modifié", "a été modifié le 5 juil., 10:00 UTC."},
 			i18n.LangGerman:  {"Ihr SolidPing-Passwort wurde geändert", "am 5. Juli, 10:00 UTC geändert wurde."},
 			i18n.LangSpanish: {"Se ha cambiado tu contraseña de SolidPing", "se cambió el 5 jul, 10:00 UTC."},
+			i18n.LangChinese: {"你的 SolidPing 密码已更改", "你的 SolidPing 密码已于 7月5日 10:00 UTC 更改。"},
 		},
 		"totp-disabled.html": {
 			i18n.LangEnglish: {
@@ -152,6 +158,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"Se ha desactivado la verificación en dos pasos en tu cuenta de SolidPing",
 				"El 5 jul, 10:00 UTC se desactivó la verificación en dos pasos",
 			},
+			i18n.LangChinese: {"你的 SolidPing 账户已关闭双重验证", "你的 SolidPing 账户已于 7月5日 10:00 UTC 关闭双重验证。"},
 		},
 		"totp-enabled.html": {
 			i18n.LangEnglish: {
@@ -170,6 +177,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"Se ha activado la verificación en dos pasos en tu cuenta de SolidPing",
 				"El 5 jul, 10:00 UTC se activó la verificación en dos pasos",
 			},
+			i18n.LangChinese: {"你的 SolidPing 账户已开启双重验证", "你的 SolidPing 账户已于 7月5日 10:00 UTC 开启双重验证。"},
 		},
 		"discord-linked.html": {
 			i18n.LangEnglish: {
@@ -187,6 +195,10 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 			i18n.LangSpanish: {
 				"Se ha vinculado una cuenta de Discord a tu cuenta de SolidPing",
 				"El 5 jul, 10:00 UTC se vinculó una cuenta de Discord",
+			},
+			i18n.LangChinese: {
+				"有 Discord 账户关联到你的 SolidPing 账户",
+				"一个 Discord 账户已于 7月5日 10:00 UTC 关联到你的 SolidPing 账户。",
 			},
 		},
 		"telegram-linked.html": {
@@ -206,6 +218,10 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"Se ha vinculado una cuenta de Telegram a tu cuenta de SolidPing",
 				"El 5 jul, 10:00 UTC se vinculó una cuenta de Telegram",
 			},
+			i18n.LangChinese: {
+				"有 Telegram 账户关联到你的 SolidPing 账户",
+				"一个 Telegram 账户已于 7月5日 10:00 UTC 关联到你的 SolidPing 账户。",
+			},
 		},
 		"contact-added.html": {
 			i18n.LangEnglish: {
@@ -223,6 +239,10 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 			i18n.LangSpanish: {
 				"Se ha añadido un método de notificación a tu cuenta de SolidPing",
 				"El 5 jul, 10:00 UTC se añadió oncall@acme.com a tus métodos de notificación en Acme Corp.",
+			},
+			i18n.LangChinese: {
+				"你的 SolidPing 账户新增了一种通知方式",
+				"你于 7月5日 10:00 UTC 在 Acme Corp 中添加了通知方式 oncall@acme.com。",
 			},
 		},
 		"contact-verify-code.html": {
@@ -242,6 +262,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"Tu código de verificación de SolidPing: 482913",
 				"La cuenta de SolidPing alice@acme.com ha pedido recibir las alertas",
 			},
+			i18n.LangChinese: {"你的 SolidPing 验证码：482913", "请求在此地址接收 Acme Corp 的故障告警。"},
 		},
 		"passkey-added.html": {
 			i18n.LangEnglish: {
@@ -259,6 +280,10 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 			i18n.LangSpanish: {
 				"Se ha añadido una llave de acceso a tu cuenta de SolidPing",
 				"una llave de acceso llamada «iCloud Keychain»",
+			},
+			i18n.LangChinese: {
+				"你的 SolidPing 账户新增了一个通行密钥",
+				"一个名为“iCloud Keychain”的通行密钥已于 7月5日 10:00 UTC 添加到你的 SolidPing 账户。",
 			},
 		},
 		"device-token-created.html": {
@@ -278,6 +303,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"Se ha conectado un dispositivo a tu cuenta de SolidPing",
 				"La solicitud se abrió desde la dirección IP 203.0.113.7.",
 			},
+			i18n.LangChinese: {"有设备登录了你的 SolidPing 账户", "请求来自 IP 地址 203.0.113.7。"},
 		},
 		"email-changed.html": {
 			i18n.LangEnglish: {
@@ -296,6 +322,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"Se ha cambiado tu correo de SolidPing",
 				"se cambió de alice@acme.com a alice@acme.org el 5 jul, 10:00 UTC.",
 			},
+			i18n.LangChinese: {"你的 SolidPing 邮箱地址已更改", "从 alice@acme.com 更改为 alice@acme.org"},
 		},
 		"invitation.html": {
 			i18n.LangEnglish: {
@@ -314,6 +341,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"Te han invitado a unirte a Acme Corp en SolidPing",
 				"Alice Admin te ha invitado a unirte a Acme Corp en SolidPing como administrador.",
 			},
+			i18n.LangChinese: {"邀请你加入 SolidPing 上的 Acme Corp", "邀请你以管理员身份加入 SolidPing 上的 Acme Corp。"},
 		},
 		"membership-request-new.html": {
 			i18n.LangEnglish: {
@@ -332,6 +360,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"Nueva solicitud de adhesión de Bob Builder a Acme Corp",
 				"«I'd like to help monitor our new services.»",
 			},
+			i18n.LangChinese: {"Bob Builder 申请加入 Acme Corp", "“I'd like to help monitor our new services.”"},
 		},
 		"membership-request-decision.html": {
 			i18n.LangEnglish: {"Your request to join Acme Corp was approved", "You're now a member with role viewer."},
@@ -346,6 +375,10 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 			i18n.LangSpanish: {
 				"Se ha aprobado tu solicitud para unirte a Acme Corp",
 				"Ahora eres miembro con el rol lector.",
+			},
+			i18n.LangChinese: {
+				"你加入 Acme Corp 的申请已获批准",
+				"角色为查看者。",
 			},
 		},
 	}
@@ -402,18 +435,21 @@ func TestAccountMail_EveryRoleAndDecision(t *testing.T) {
 			i18n.LangFrench:  {"qu'administrateur", "avec le rôle administrateur."},
 			i18n.LangGerman:  {"als Admin", "mit der Rolle Admin."},
 			i18n.LangSpanish: {"como administrador", "con el rol administrador."},
+			i18n.LangChinese: {"以管理员身份", "角色为管理员"},
 		},
 		"user": {
 			i18n.LangEnglish: {"as user", "with role user."},
 			i18n.LangFrench:  {"qu'utilisateur", "avec le rôle utilisateur."},
 			i18n.LangGerman:  {"als Benutzer", "mit der Rolle Benutzer."},
 			i18n.LangSpanish: {"como usuario", "con el rol usuario."},
+			i18n.LangChinese: {"以用户身份", "角色为用户"},
 		},
 		"viewer": {
 			i18n.LangEnglish: {"as viewer", "with role viewer."},
 			i18n.LangFrench:  {"que lecteur", "avec le rôle lecteur."},
 			i18n.LangGerman:  {"als Betrachter", "mit der Rolle Betrachter."},
 			i18n.LangSpanish: {"como lector", "con el rol lector."},
+			i18n.LangChinese: {"以查看者身份", "角色为查看者"},
 		},
 	}
 
@@ -422,6 +458,7 @@ func TestAccountMail_EveryRoleAndDecision(t *testing.T) {
 		i18n.LangFrench:  "Votre demande d'adhésion à " + fixtureOrgName + " a été rejetée",
 		i18n.LangGerman:  "Ihre Anfrage zum Beitritt zu " + fixtureOrgName + " wurde abgelehnt",
 		i18n.LangSpanish: "Se ha rechazado tu solicitud para unirte a " + fixtureOrgName,
+		i18n.LangChinese: "你加入 " + fixtureOrgName + " 的申请被拒绝",
 	}
 
 	for role, words := range roles {

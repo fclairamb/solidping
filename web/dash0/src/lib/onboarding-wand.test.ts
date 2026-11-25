@@ -228,7 +228,7 @@ describe("buildStatusPageWandAutoCreatePayload", () => {
 // The wand renders entirely from locale keys — a missing one does not fall
 // back gracefully, it prints the raw dotted key path (or, worse, gets sent
 // to the backend as a resource name). Every key the wand code paths touch
-// must exist, as real text, in all four languages.
+// must exist, as real text, in every supported language.
 describe("wand locale parity", () => {
   const INTEGRATIONS_KEYS = [
     "wand.createEmailAlerts",

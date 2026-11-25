@@ -1,0 +1,62 @@
+{
+  "title": "支持收件箱",
+  "subtitle": "收集各组织通过机器人渠道发来的用户消息，仅超级管理员可查看",
+  "empty": "还没有支持消息。",
+  "emptyFiltered": "没有匹配这些筛选条件的会话。",
+  "search": "搜索发件人或主题",
+  "allChannels": "所有渠道",
+  "allStatuses": "所有状态",
+  "backToInbox": "返回收件箱",
+  "sections": {
+    "active": "进行中",
+    "activeHelp": "仍可回复的未关闭和等待中会话。",
+    "expired": "无法回复",
+    "expiredHelp": "仍未回复，且我们无法回复——自由回复窗口已过期，或没有回到发件人的路径。",
+    "closed": "已关闭",
+    "closedHelp": "已处理。保留期结束后会被清除。"
+  },
+  "status": {
+    "open": "待处理",
+    "pending": "等待中",
+    "closed": "已关闭",
+    "label": "状态"
+  },
+  "thread": {
+    "unread_one": "{{count}} 条未读",
+    "unread_other": "{{count}} 条未读",
+    "lastMessage": "最后一条消息",
+    "attribution": "归属于",
+    "attributionHelp": "关于来信者身份的提示。它不会让该组织获得这个会话的访问权限。",
+    "noAttribution": "未归属的发件人",
+    "truncated": "这条消息在存储时被截断了。",
+    "inbound": "对方",
+    "outbound": "我们",
+    "deliveryFailed": "投递失败",
+    "noMessages": "这个会话没有消息。"
+  },
+  "window": {
+    "open": "回复窗口已开启",
+    "expired": "回复窗口已关闭",
+    "expiresAt": "自由格式回复可在 {{time}} 前发送",
+    "costsMoney": "每条回复都会产生费用",
+    "cannotReply": "无法回复这个会话"
+  },
+  "reply": {
+    "placeholder": "写回复…",
+    "send": "发送回复",
+    "sending": "发送中…",
+    "sent": "回复已发送",
+    "failed": "无法发送回复",
+    "disabledNoRoute": "无法从这里回复这个会话。",
+    "costWarning": "这个渠道按消息段计费。回复会经过与告警相同的支出限制。",
+    "resend": "重新发送",
+    "resending": "重新发送中…",
+    "resent": "回复已重新发送",
+    "resendFailed": "无法重新发送回复"
+  },
+  "actions": {
+    "markPending": "标记为等待中",
+    "reopen": "重新打开",
+    "close": "关闭会话"
+  }
+}

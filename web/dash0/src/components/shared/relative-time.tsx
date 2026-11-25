@@ -36,7 +36,7 @@ export function LiveDuration({ since }: { since: string }) {
 // LiveDurationAgo wraps the live elapsed time in the locale-appropriate
 // "ago" template ("5m ago" in EN, "il y a 5m" in FR, "vor 5m" in DE/ES) so
 // the suffix isn't hard-coded as a trailing word. Reuses the "checks"
-// namespace's detail.summary.ago key (translated in all four locales)
+// namespace's detail.summary.ago key (translated in every locale)
 // rather than duplicating a near-identical key per feature namespace.
 export function LiveDurationAgo({ since }: { since: string }) {
   const { t } = useTranslation("checks");
