@@ -21,10 +21,10 @@ Already on Terraform or OpenTofu? See the [provider](/terraform) instead.
 
 ## The `fclairamb.solidping` collection
 
-Install it from its repository (ansible-core 2.17 or later):
+Install it from [Ansible Galaxy](https://galaxy.ansible.com/ui/repo/published/fclairamb/solidping/) (ansible-core 2.17 or later):
 
 ```bash
-ansible-galaxy collection install git+https://github.com/fclairamb/ansible-collection-solidping.git
+ansible-galaxy collection install fclairamb.solidping
 ```
 
 The `server` role installs the release binary for the host's architecture (checksum verified),
