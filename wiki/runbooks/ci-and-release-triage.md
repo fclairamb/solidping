@@ -81,6 +81,12 @@ local lint is only a predictor when both match.
    Docker and deploy jobs show "skipped". The real build is the `vX.Y.Z` tag run.
    That deploy only updates the main dev API Deployment; every other deployment is
    bumped by hand.
+6. **"Latest" moves last.** release-please creates the release, then hands
+   "Latest" back to the previous stable release. The tag run's `mark-latest` job
+   moves it to the new release once `server-release` and `cli-release` attached
+   their binaries. `releases/latest/download/<asset>` (install docs, Glama build)
+   never points at a release without assets. If an upload job fails, Latest stays
+   on the previous release: re-run the failed job and `mark-latest` follows.
 
 ## release-please fails silently
 
