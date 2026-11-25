@@ -15,7 +15,9 @@ in DuckDB/Spark) have no way to keep it cheaply. Request: an optional archive th
 compacted as Vortex files (`github.com/fclairamb/vortex-go`, pure Go, no cgo), one per check and hour and one
 per check and day.
 
-Everything is optional: off by default, no behaviour change when unset.
+Scope of this stage (Florent, 2026-11-25): optional, disabled by default, global (one switch for the whole
+instance, no per-org setting), and write only. SolidPing never serves or queries the archives. No behaviour
+change when the switch is off.
 
 ## Proposal
 **Storage: the generic file storage, not a dedicated S3 client** (Florent, 2026-11-25). Archives go through
@@ -36,16 +38,30 @@ screenshots, reports and logos, with its `local` and `s3` backends configured by
 
 Other decisions:
 
-- **What goes in which file.** Archive exactly the rows a compaction deletes, so nothing is ever deleted unarchived:
-  the raw to hour compaction writes `$date/$hour.vortex` (the raw rows of that hour); the hour to day compaction
-  writes `$date.vortex` (the 24 hour rollups). No file for day to month (month rows stay in the DB, they are tiny).
+- **What goes in which file** (Florent, 2026-11-25). The hour file is temporary, the day file is the long-term one
+  and holds everything:
+  - raw to hour compaction writes `$date/$hour.vortex` with the raw rows of that hour;
+  - hour to day compaction writes `$date.vortex` with all the raw rows of the day (the union of the day's hour
+    files), then deletes those hour files. After it, `$date/` is empty and only `$date.vortex` remains;
+  - an hour that has no raw row in the archive (compacted before archiving was switched on) contributes its hour
+    rollup row instead, so the day is not silently missing. The `period_type` column tells the two apart;
+  - no file for day to month (month rows stay in the DB, they are tiny).
   Regions are rows inside the file (a `region` column), not part of the path.
-- **Durability order.** Write the file first, delete after. A failed write rolls the compaction transaction back,
-  the bucket stays raw and the next run retries. No archive-less deletion when archiving is enabled.
+- **All or nothing** (Florent, 2026-11-25). When archiving is on, a bucket is compacted only if its archive was
+  written. Any storage error (write, read of the file to merge, delete of the hour files) aborts the compaction
+  transaction: nothing is archived, nothing is compacted, the rows stay in the DB and the next run retries. There
+  is no "skip the archive and delete anyway" path, and no partial state to repair. The DB grows while the storage
+  is unavailable: expose it with a metric and a WARN log.
+- **Order inside one compaction.** Write the archive, (day step) delete the hour files, then let the transaction
+  delete the DB rows. The day file already holds everything when the hour files go, so a failure after that point
+  loses nothing and the retry is a plain merge.
 - **Idempotent keys.** A bucket can be compacted again when a late row arrives (the rollup upsert already handles
-  this): `ReadFile` the existing blob (`ErrFileNotFound` means none), merge by result `uid`, `WriteFile` the union.
-  Never overwrite blindly (that would lose the first batch).
-- **Write-only in v1.** No read path in SolidPing (no UI, no API). The files are for external tools.
+  this): `ReadFile` the existing blob (`ErrFileNotFound` means none), merge, `WriteFile` the union. Raw rows are
+  deduplicated by result `uid`, rollup rows by (region, period_type, period_start), last one wins. Never overwrite
+  blindly (that would lose the first batch).
+- **Write only.** No read path in SolidPing (no UI, no API, no query falls back to the archive). The files are for
+  external tools. The only reads are the archiver reading back its own files to merge them.
+- **Global only.** One instance-wide switch. No per-org opt-in, no entitlement.
 - **Org deletion.** Deleting an organization must also delete its `archives` blobs (GDPR). With no `files` rows,
   whatever reaps blobs from those rows will not see them (see To verify).
 
@@ -65,6 +81,10 @@ Steps:
 4. Hook in `job_aggregation.go` inside the `CompactResults` aggregate closure (line ~359), after
    `measurableSourceUIDs` and before returning: call `Archiver.Archive` for the measurable sources only
    (lifecycle markers are not deleted, so not archived). An error aborts the transaction.
+   - target `hour`: write the hour file from the raw sources.
+   - target `day`: read the existing day file and the day's hour files, merge, add the rollup row of each hour
+     that has no raw row, write the day file, delete the hour files.
+   - target `month`: nothing.
 5. Metrics: archived rows, bytes, failures (use `internal/prommetrics`). One WARN log per failure with
    check and bucket, never the row contents.
 6. Wiki note in `wiki/features/` on the layout, schema and the "archive before delete" invariant.
@@ -73,10 +93,15 @@ Steps:
 - `archive/key_test.go`: fileID layout for hour and day, UTC boundaries (23:59:59.999 vs 00:00), month rollover,
   and the full key through `filestorage.BuildPath` / `ParsePath` round trip.
 - `archive/encode_test.go`: round trip rows through vortex-go and back, with nullable fields and a JSON output.
-- `archive/archiver_test.go` on the `localfs` backend in a temp dir: write, then a second write with a late row
-  gives the union without duplicates.
-- `job_aggregation_test.go`: archiving enabled + failing archiver, the bucket stays raw, no rollup row, next run
-  succeeds (negative case). Archiving disabled: identical behaviour to today, no blob written.
+- `archive/archiver_test.go` on the `localfs` backend in a temp dir:
+  - hour write, then a second write with a late row gives the union without duplicates;
+  - day step: 24 hour files become one day file with every raw row, and the hour files are gone;
+  - day step with an hour that has no hour file: its rollup row is in the day file;
+  - day step run twice (late row): same day file plus the late row, no duplicate.
+- `job_aggregation_test.go`, all or nothing, with a storage that fails on write, on read and on delete in turn:
+  the bucket stays as it was (source rows present, no rollup row, hour files still there), and the next run with a
+  working storage compacts and archives it (negative cases).
+- `job_aggregation_test.go`: archiving disabled gives identical behaviour to today and writes no blob.
 - Marker-only bucket: nothing written.
 - Org deletion removes the org's `archives` blobs, and leaves another org's untouched.
 
@@ -92,10 +117,6 @@ Steps:
 - Doing a storage write inside the DB transaction of `CompactResults` (SQLite holds the write lock). If it
   blocks other writers too long on S3, fetch and write before the transaction and re-check the source UIDs inside it.
 - Exact set of `models.Result` columns and which are worth archiving.
-
-## Open questions
-1. Hour file = raw rows, day file = hour rollups (as proposed), or day file = everything of the day? Recommended:
-   as proposed, because it matches what the DB deletes and keeps files small.
-2. When the storage is down, stall compaction (fail closed, DB grows) or skip archiving and delete anyway?
-   Recommended: fail closed with a metric, losing history silently is worse than a temporary DB growth.
-3. Per-org opt-in later (entitlement in SaaS mode) or global only? Recommended: global only for v1 (YAGNI).
+- Size of a day file held in memory during the merge (a 10 s check on 3 regions is about 26,000 raw rows a day).
+  If a busy check makes it too large, stream hour file by hour file into the writer instead of loading all rows.
+- vortex-go reads back what it wrote (needed for the merge), including with the compact mode.
