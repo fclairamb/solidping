@@ -203,7 +203,7 @@ func TestStorageArchiverDayStepMergesHourFiles(t *testing.T) {
 	day := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
 	eu, us := "eu", "us"
 
-	var wantUIDs []string
+	wantUIDs := make([]string, 0, 72)
 
 	rollups := make([]*models.Result, 0, 48)
 
