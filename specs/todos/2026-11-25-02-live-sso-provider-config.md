@@ -95,6 +95,10 @@ set (to confirm in the test below).
    a restart banner is a one-file change, but leaves the lock-out guard and the login page
    inconsistent with what was just saved until the restart.
 
+## Resolved open questions
+
+1. Apply SSO settings live, without a restart: saving re-applies them to the running server, the OIDC routes are always mounted, and the lock-out guard and the login page reflect what was just saved. (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes #1027. The implementing PR body **must** carry a `Closes #1027` line so the

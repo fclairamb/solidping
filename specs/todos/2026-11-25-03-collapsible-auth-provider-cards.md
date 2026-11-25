@@ -54,6 +54,10 @@ The local-login switch behaviour (disabled while no SSO provider is live) belong
    discoverable). Trade-off: the picker is more compact still, but hides what is available
    and needs a notion of "added but not configured" that has no backing state today.
 
+## Resolved open questions
+
+1. Use collapsible cards (no "Add authentication method" picker), collapsed on load unless the provider is enabled or configured. (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes #1026. The implementing PR body **must** carry a `Closes #1026` line so the
