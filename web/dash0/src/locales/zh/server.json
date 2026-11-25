@@ -15,7 +15,7 @@
     "slack": "Slack",
     "analytics": "分析",
     "discord": "Discord",
-    "entitlements": "权益",
+    "entitlements": "组织限额",
     "users": "用户",
     "notifications": "通知",
     "activation": "上手进度"
@@ -370,8 +370,8 @@
     }
   },
   "entitlements": {
-    "title": "组织权益",
-    "description": "无需等待计费服务部署，即可提高或降低组织的限制。管理员覆盖会一直生效，直到被显式解除。",
+    "title": "组织限额",
+    "description": "无需等待计费服务部署，即可提高或降低组织的限额。管理员覆盖会一直生效，直到被显式解除。",
     "search": "搜索组织…",
     "empty": "没有匹配该搜索的组织。",
     "loadError": "加载组织失败。",
@@ -417,7 +417,7 @@
     },
     "detail": {
       "back": "返回组织列表",
-      "limitsTitle": "限制",
+      "limitsTitle": "限额",
       "limitsDescription": "通过 API 传输时，无限制表示为 null，请使用开关切换，而不是清空输入框。",
       "identityTitle": "套餐标识",
       "identityDescription": "仅供显示。显示在组织的“用量”页面。",
@@ -428,16 +428,16 @@
       "save": "保存覆盖",
       "release": "交还计费服务",
       "auditTitle": "审计日志",
-      "auditEmpty": "尚未记录任何权益变更。",
+      "auditEmpty": "尚未记录任何限额变更。",
       "invalid": "请输入整数，或将上限切换为无限制。",
-      "loadError": "加载该组织的权益失败。",
+      "loadError": "加载该组织的限额失败。",
       "unlimitedToggle": "无限制",
       "defaultsNote": "没有存储记录时，该组织将沿用部署默认值。"
     },
     "confirmSave": {
       "title": "为 {{org}} 保存管理员覆盖？",
       "body": "这会写入一条管理员来源的记录。在覆盖被解除之前，{{org}} 的计费推送仍会被接受，但不会生效。",
-      "noChanges": "没有限制变更，只会写入套餐标识。",
+      "noChanges": "没有限额变更，只会写入套餐标识。",
       "confirm": "保存覆盖"
     },
     "confirmRelease": {
@@ -445,10 +445,10 @@
       "body": "已存储的记录会被删除。{{org}} 会立即回落到部署默认值，下一次计费同步会写入它自己的限制。",
       "confirm": "交还"
     },
-    "saved": "已保存 {{org}} 的权益。",
+    "saved": "已保存 {{org}} 的限额。",
     "released": "{{org}} 已交还计费服务。",
     "notReleased": "{{org}} 没有可解除的管理员覆盖。",
-    "saveError": "保存权益失败。",
+    "saveError": "保存限额失败。",
     "audit": {
       "suppressed": "计费推送已忽略",
       "released": "已交还计费服务",

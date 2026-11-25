@@ -111,9 +111,9 @@
       "revokeFailed": "无法撤销订阅源。",
       "scope": {
         "incident_all": "所有故障事件",
-        "check_created": "监控项已创建",
-        "check_updated": "监控项已更新",
-        "check_deleted": "监控项已删除",
+        "check_created": "监控项创建",
+        "check_updated": "监控项更新",
+        "check_deleted": "监控项删除",
         "status_update_all": "状态更新",
         "maintenance_window_all": "维护窗口"
       }

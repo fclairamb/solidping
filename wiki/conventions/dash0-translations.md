@@ -43,6 +43,11 @@ Terminology already chosen per locale, reuse it: fr "clé d'accès" (passkey),
 page), "故障公告" (incident publication), "维护窗口" (maintenance window),
 "可用性" (availability), "可用率" (uptime percentage), "小组件" (widget),
 "双重验证" (two-factor), "密钥" (secret), "凭据" (credential), "额度"
-(quota), "权益" (entitlement), "套餐" (plan), "席位" (seat), "服务商" (vendor),
-"已定位" / "已确认" / "已解决" (identified / acknowledged / resolved),
-"轻微" / "重大" / "严重" (severity), 称呼用"你"（不用"您"）.
+(quota), "限额" (entitlement), "套餐" (plan), "席位" (seat), "服务商" (vendor),
+"暂停通知" (snooze), "抖动" (flapping), "反复" (relapse), "确认时长" /
+"恢复时长" (confirmation / recovery period), "兜底" / "回退" (fallback /
+fall back to), "以其他用户身份查看" (impersonation), "请求头" / "响应头"
+(request / response header), "短信流量欺诈" (SMS pumping), "已定位" /
+"已确认" / "已解决" (identified / acknowledged / resolved), "轻微" /
+"重大" / "严重" (severity), 称呼用"你"（不用"您"）；事件类型名用名词式
+（"监控项创建"，不用"监控项已创建"）；不用破折号"——"，标签分隔用"·"。
