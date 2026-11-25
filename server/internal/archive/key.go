@@ -17,10 +17,17 @@ func HourFileID(checkUID string, start time.Time) string {
 	return checkUID + "/" + utc.Format(time.DateOnly) + "/" + utc.Format("15") + Extension
 }
 
-// DayFileID is the fileID of the archive of the hour rollups of one day:
-// <checkUID>/<YYYY-MM-DD>.vortex, in UTC.
+// DayFileID is the fileID of the long-term archive of one day, every raw row
+// of the day (plus the hour rollups of the hours that had no raw row in the
+// archive): <checkUID>/<YYYY-MM-DD>.vortex, in UTC.
 func DayFileID(checkUID string, start time.Time) string {
 	return checkUID + "/" + start.UTC().Format(time.DateOnly) + Extension
+}
+
+// HourDirPrefix is the DeletePrefix prefix of the hour files of one day:
+// <checkUID>/<YYYY-MM-DD>/, in UTC.
+func HourDirPrefix(checkUID string, day time.Time) string {
+	return checkUID + "/" + day.UTC().Format(time.DateOnly) + "/"
 }
 
 // FileID returns the fileID of the archive written when a bucket is compacted

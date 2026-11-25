@@ -1,7 +1,10 @@
 // Package archive writes the results a compaction is about to delete as
 // Vortex files in the file storage (spec 2026-11-25-01). The raw rows of an
-// hour go to <orgUID>/archives/<checkUID>/<YYYY-MM-DD>/<HH>.vortex, the hour
-// rollups of a day to <orgUID>/archives/<checkUID>/<YYYY-MM-DD>.vortex (UTC).
+// hour go to <orgUID>/archives/<checkUID>/<YYYY-MM-DD>/<HH>.vortex. When the
+// day is compacted, all the raw rows of the day (the union of its hour files)
+// go to <orgUID>/archives/<checkUID>/<YYYY-MM-DD>.vortex (UTC) and the hour
+// files are deleted; an hour with no raw row in the archive contributes its
+// hour rollup row instead.
 // The files are write-only from SolidPing's side: they are for external tools
 // (DuckDB, Spark), nothing in the server reads them back except to merge a
 // late row into an existing file.
@@ -76,54 +79,128 @@ func StorageConfig(cfg *config.FileStorageConfig) *filestorage.Config {
 	}
 }
 
-// Archive reads the existing file of the bucket, if any, merges rows into it
-// by uid and writes the union back. A bucket compacted again after a late row
-// thus keeps its first batch.
+// Archive stores the rows a compaction is about to delete. For an hour
+// compaction it merges the raw rows into the hour file. For a day compaction
+// it builds the day file from every raw row of the day (the existing day file
+// plus the day's hour files), adds the rollup row of each hour that has no
+// raw row in the archive, writes the day file and only then deletes the
+// day's hour files. Any storage error is returned: the caller then keeps the
+// rows in the database and retries later.
 func (a *StorageArchiver) Archive(
-	ctx context.Context, orgUID, checkUID, targetPeriod string, start time.Time, rows []*models.Result,
+	ctx context.Context, orgUIDText, checkUID, targetPeriod string, start time.Time, rows []*models.Result,
 ) error {
-	fileID, archived := FileID(checkUID, targetPeriod, start)
-	if !archived || len(rows) == 0 {
+	if len(rows) == 0 || (targetPeriod != models.PeriodTypeHour && targetPeriod != models.PeriodTypeDay) {
 		return nil
 	}
 
-	written, err := a.archive(ctx, orgUID, fileID, rows)
+	orgUID, err := uuid.Parse(orgUIDText)
+	if err != nil {
+		return fmt.Errorf("organization uid: %w", err)
+	}
+
+	incoming, err := rowsFromResults(rows)
+	if err != nil {
+		return err
+	}
+
+	var archivedRows, written int
+
+	if targetPeriod == models.PeriodTypeHour {
+		archivedRows, written, err = a.archiveHour(ctx, orgUID, HourFileID(checkUID, start), incoming)
+	} else {
+		archivedRows, written, err = a.archiveDay(ctx, orgUID, checkUID, start, incoming)
+	}
+
 	if err != nil {
 		prommetrics.RecordArchiveFailure(targetPeriod)
 
 		return err
 	}
 
-	prommetrics.RecordArchived(targetPeriod, len(rows), written)
+	prommetrics.RecordArchived(targetPeriod, archivedRows, written)
 
 	return nil
 }
 
-func (a *StorageArchiver) archive(
-	ctx context.Context, orgUIDText, fileID string, results []*models.Result,
-) (int, error) {
-	orgUID, err := uuid.Parse(orgUIDText)
-	if err != nil {
-		return 0, fmt.Errorf("organization uid: %w", err)
-	}
-
-	incoming := make([]Row, 0, len(results))
+func rowsFromResults(results []*models.Result) ([]Row, error) {
+	rows := make([]Row, 0, len(results))
 
 	for _, res := range results {
-		row, rowErr := RowFromResult(res)
-		if rowErr != nil {
-			return 0, rowErr
+		row, err := RowFromResult(res)
+		if err != nil {
+			return nil, err
 		}
 
-		incoming = append(incoming, row)
+		rows = append(rows, row)
 	}
 
+	return rows, nil
+}
+
+// archiveHour merges the raw rows of an hour into its hour file. A bucket
+// compacted again after a late row thus keeps its first batch.
+func (a *StorageArchiver) archiveHour(
+	ctx context.Context, orgUID uuid.UUID, fileID string, incoming []Row,
+) (int, int, error) {
 	existing, err := a.read(ctx, orgUID, fileID)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	data, err := Encode(Merge(existing, incoming))
+	written, err := a.write(ctx, orgUID, fileID, Merge(existing, incoming))
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return len(incoming), written, nil
+}
+
+// archiveDay writes the day file of the day starting at start from the
+// existing day file, the day's hour files and, for each (region, hour) that
+// has no raw row among them, its hour rollup from rollups. It then deletes the
+// day's hour files: the day file already holds all they held, so a failure
+// after the write loses nothing and the retry is a plain merge.
+func (a *StorageArchiver) archiveDay(
+	ctx context.Context, orgUID uuid.UUID, checkUID string, start time.Time, rollups []Row,
+) (int, int, error) {
+	utc := start.UTC()
+	day := time.Date(utc.Year(), utc.Month(), utc.Day(), 0, 0, 0, 0, time.UTC)
+	dayFileID := DayFileID(checkUID, day)
+
+	existing, err := a.read(ctx, orgUID, dayFileID)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	var hourRows []Row
+
+	for hour := range 24 {
+		rows, readErr := a.read(ctx, orgUID, HourFileID(checkUID, day.Add(time.Duration(hour)*time.Hour)))
+		if readErr != nil {
+			return 0, 0, readErr
+		}
+
+		hourRows = append(hourRows, rows...)
+	}
+
+	merged := WithRollupFallback(Merge(existing, hourRows), rollups)
+
+	written, err := a.write(ctx, orgUID, dayFileID, merged)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if _, err := a.storage.DeletePrefix(ctx, orgUID, filestorage.GroupTypeArchives,
+		HourDirPrefix(checkUID, day)); err != nil {
+		return 0, 0, fmt.Errorf("delete hour archives: %w", err)
+	}
+
+	return len(merged) - len(existing), written, nil
+}
+
+// write encodes rows and stores them under fileID, returning the size written.
+func (a *StorageArchiver) write(ctx context.Context, orgUID uuid.UUID, fileID string, rows []Row) (int, error) {
+	data, err := Encode(rows)
 	if err != nil {
 		return 0, err
 	}

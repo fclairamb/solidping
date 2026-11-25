@@ -125,22 +125,23 @@ func Decode(ctx context.Context, data []byte) ([]Row, error) {
 	return rows, nil
 }
 
-// Merge returns the union of existing and incoming keyed by uid: a row of
-// incoming replaces the row of existing with the same uid. The result is
+// Merge returns the union of existing and incoming: a row of incoming
+// replaces the row of existing with the same key (see rowKey). The result is
 // sorted like Encode sorts.
 func Merge(existing, incoming []Row) []Row {
-	byUID := make(map[string]int, len(existing)+len(incoming))
+	byKey := make(map[string]int, len(existing)+len(incoming))
 	merged := make([]Row, 0, len(existing)+len(incoming))
 
 	for _, batch := range [][]Row{existing, incoming} {
 		for i := range batch {
-			if idx, ok := byUID[batch[i].UID]; ok {
+			key := rowKey(&batch[i])
+			if idx, ok := byKey[key]; ok {
 				merged[idx] = batch[i]
 
 				continue
 			}
 
-			byUID[batch[i].UID] = len(merged)
+			byKey[key] = len(merged)
 			merged = append(merged, batch[i])
 		}
 	}
@@ -148,6 +149,67 @@ func Merge(existing, incoming []Row) []Row {
 	SortRows(merged)
 
 	return merged
+}
+
+// rowKey is the dedupe key of a row: its uid for a raw row, (region,
+// period_type, period_start) for a rollup row, whose uid may change when the
+// rollup is upserted again.
+func rowKey(row *Row) string {
+	if row.PeriodType == models.PeriodTypeRaw {
+		return "uid:" + row.UID
+	}
+
+	region := "-"
+	if row.Region.Valid {
+		region = "=" + row.Region.V
+	}
+
+	return "rollup:" + region + "|" + row.PeriodType + "|" + row.PeriodStart.UTC().Format(time.RFC3339Nano)
+}
+
+// regionHour is the (region, hour) a row belongs to.
+type regionHour struct {
+	region sql.Null[string]
+	hour   time.Time
+}
+
+func regionHourOf(row *Row) regionHour {
+	return regionHour{region: row.Region, hour: row.PeriodStart.UTC().Truncate(time.Hour)}
+}
+
+// WithRollupFallback adds to rows (the raw rows of a day) the hour rollup of
+// each (region, hour) that has no raw row, so an hour compacted before
+// archiving was switched on is not silently missing from the day file. A
+// rollup row of rows whose hour now has raw rows is dropped: the raw rows
+// supersede it. The result is merged and sorted like Merge.
+func WithRollupFallback(rows, rollups []Row) []Row {
+	covered := make(map[regionHour]bool, len(rows))
+
+	for i := range rows {
+		if rows[i].PeriodType == models.PeriodTypeRaw {
+			covered[regionHourOf(&rows[i])] = true
+		}
+	}
+
+	kept := make([]Row, 0, len(rows))
+
+	for i := range rows {
+		if rows[i].PeriodType == models.PeriodTypeHour && covered[regionHourOf(&rows[i])] {
+			continue
+		}
+
+		kept = append(kept, rows[i])
+	}
+
+	fallback := make([]Row, 0, len(rollups))
+
+	for i := range rollups {
+		if !covered[regionHourOf(&rollups[i])] {
+			fallback = append(fallback, rollups[i])
+		}
+	}
+
+	return Merge(kept, fallback)
 }
 
 // SortRows orders rows by period_start, then uid for a stable file.
