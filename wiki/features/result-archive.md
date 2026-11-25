@@ -23,8 +23,14 @@ nothing is written and compaction is unchanged. Spec
 The key follows the storage convention `<orgUID>/<group>/<fileID>`, so on S3
 it sits under `filestorage.s3_prefix`:
 
-- raw to hour: `<orgUID>/archives/<checkUID>/<YYYY-MM-DD>/<HH>.vortex`, the raw rows of the hour;
-- hour to day: `<orgUID>/archives/<checkUID>/<YYYY-MM-DD>.vortex`, the hour rollups of the day;
+- raw to hour: `<orgUID>/archives/<checkUID>/<YYYY-MM-DD>/<HH>.vortex`, the raw rows of the hour.
+  Temporary.
+- hour to day: `<orgUID>/archives/<checkUID>/<YYYY-MM-DD>.vortex`, every raw row of the day: the
+  existing day file merged with the day's 24 hour files, then the hour files are deleted
+  (`DeletePrefix(org, archives, "<checkUID>/<YYYY-MM-DD>/")`). After it only the day file remains.
+  A (region, hour) with no raw row in the archive (compacted before archiving was on) contributes
+  its hour rollup row instead (`WithRollupFallback`); a rollup row whose hour later gets raw rows
+  is dropped. `period_type` tells raw rows from rollups.
 - day to month: nothing (month rows stay in the database).
 
 UTC. Regions are a column, not part of the path: the per-region buckets of a
@@ -45,16 +51,21 @@ microseconds UTC. Rows are sorted by `period_start`, then `uid`. Written with
 
 ## Invariants
 
+- **Order.** Write the archive, (day step) delete the hour files, then the
+  transaction deletes the DB rows. The day file already holds everything when
+  the hour files go, so a failure after that point loses nothing and the
+  retry is a plain merge.
 - **Archive before delete.** The closure archives exactly the measurable source
   rows (`measurableSources`: lifecycle markers are not deleted, so not
-  archived) and an archive error aborts the `CompactResults` transaction: the
+  archived) and any storage error (write, read for the merge, delete of the
+  hour files) aborts the `CompactResults` transaction: the
   bucket stays raw, no rollup is committed, the next run retries. Fail closed:
   a storage outage stalls compaction (the DB grows, `archive_failures_total`
   climbs) rather than losing history.
 - **Merge, never overwrite.** A bucket can be compacted again after a late row,
   and two regions share a file: `Archive` reads the existing file
-  (`ErrFileNotFound` means none), merges by `uid` (the new row wins) and writes
-  the union. An existing file that cannot be decoded is an error, not an
+  (`ErrFileNotFound` means none), merges (raw rows by `uid`, rollup rows by
+  region, `period_type`, `period_start`; the new row wins) and writes the union. An existing file that cannot be decoded is an error, not an
   overwrite.
 - **Write-only.** Nothing in SolidPing reads the files except that merge.
 
@@ -64,6 +75,13 @@ microseconds UTC. Rows are sorted by `period_start`, then `uid`. Written with
   SQLite that holds the write lock for the round trip; fine on local disk, a
   latency cost on a slow S3. If it hurts, move the archive write before the
   transaction and re-check the source UIDs inside it.
+- The day merge holds the whole day in memory. Measured on 25,920 raw rows
+  (a 10 s check on 3 regions, small metrics and output): a 42 KB compact
+  file, about 10 MB live and 120 MB allocated in total for decode, merge and
+  encode. Acceptable; stream hour file by hour file into the writer if busier
+  checks make it too large.
+- `vortex.Compact` reads back with `vortex.Open` / `vortex.Rows` (the merge
+  relies on it; covered by the encode and archiver tests).
 - Global switch only, no per-org opt-in (v1).
 
 ## Tests
@@ -71,9 +89,12 @@ microseconds UTC. Rows are sorted by `period_start`, then `uid`. Written with
 - `server/internal/archive/*_test.go`: keys (UTC boundaries, month rollover,
   `BuildPath`/`ParsePath` round trip), encode/decode round trip with nulls and
   JSON, merge, archiver on `localfs` (late row union, corrupt file fails,
-  no-ops), org reap.
+  no-ops, day step from 24 hour files with the hour files gone, rollup fallback
+  for an hour with no hour file, day step twice with a late row), org reap.
 - `server/internal/jobs/jobtypes/job_aggregation_archive_test.go`: failing
-  archiver keeps the bucket raw then the next run succeeds; disabled writes
+  archiver keeps the bucket raw then the next run succeeds; day step with a
+  storage failing on write, read and delete in turn keeps the bucket (hour
+  rollups, no day rollup, hour files) then succeeds; disabled writes
   nothing; enabled through config for both tiers; marker-only bucket.
 - `server/internal/handlers/auth/org_delete_test.go`
   (`TestDeleteOrgReapsItsResultArchives`).
