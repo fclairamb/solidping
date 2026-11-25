@@ -5,10 +5,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/archive"
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/filestorage"
+	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/localfs"
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 )
 
@@ -448,4 +453,44 @@ func TestDeleteOrgReapsItsPublicLogo(t *testing.T) {
 
 	_, err = dbService.GetFileAny(ctx, logo.UID)
 	r.Error(err, "a deleted org's logo must stop being publicly readable")
+}
+
+// TestDeleteOrgReapsItsResultArchives: the Vortex archives of compacted
+// results have no `files` row, so DeleteOrg removes them by prefix, and
+// leaves another org's archives alone (spec 2026-11-25-01).
+func TestDeleteOrgReapsItsResultArchives(t *testing.T) {
+	t.Parallel()
+
+	localfs.Register()
+
+	r := require.New(t)
+	svc, dbService, ctx := setupAuthTestService(t)
+	root := t.TempDir()
+	svc.fullCfg.FileStorage = config.FileStorageConfig{Type: "local", LocalRoot: root}
+
+	seeded := seedDeletableOrg(ctx, t, dbService, "archived")
+	other := seedDeletableOrg(ctx, t, dbService, "bystander")
+
+	storage := localfs.New(root)
+	archiver := archive.New(storage)
+	hour := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)
+
+	for _, org := range []seededOrg{seeded, other} {
+		res := models.NewResult(org.org.UID, org.check.UID, models.ResultStatusUp, 1)
+		r.NoError(archiver.Archive(ctx, org.org.UID, org.check.UID, models.PeriodTypeHour, hour,
+			[]*models.Result{res}))
+	}
+
+	_, err := deleteOrgAsOwner(ctx, t, svc, seeded, seeded.org.Slug)
+	r.NoError(err)
+
+	fileID := archive.HourFileID(seeded.check.UID, hour)
+
+	_, _, err = storage.ReadFile(ctx, uuid.MustParse(seeded.org.UID), filestorage.GroupTypeArchives, fileID)
+	r.ErrorIs(err, filestorage.ErrFileNotFound, "a deleted org's archives must be removed")
+
+	reader, _, err := storage.ReadFile(ctx, uuid.MustParse(other.org.UID), filestorage.GroupTypeArchives,
+		archive.HourFileID(other.check.UID, hour))
+	r.NoError(err, "another org's archives must be untouched")
+	_ = reader.Close()
 }

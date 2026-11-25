@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/fclairamb/solidping/server/internal/archive"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/support"
@@ -121,6 +122,17 @@ func (s *Service) DeleteOrg(
 	); reapErr != nil {
 		slog.WarnContext(ctx, "failed to reap organization attachments",
 			"error", reapErr, "orgUID", org.UID)
+	}
+
+	// Reap the org's result archives (spec 2026-11-25-01). They have no
+	// `files` row, so the reap above cannot see them; they go by prefix.
+	// Best-effort for the same reason as the attachments.
+	if reaped, archErr := archive.DeleteOrganizationArchives(ctx, s.fullCfg, org.UID); archErr != nil {
+		slog.WarnContext(ctx, "failed to reap organization result archives",
+			"error", archErr, "orgUID", org.UID)
+	} else if reaped > 0 {
+		slog.InfoContext(ctx, "reaped organization result archives",
+			"orgUID", org.UID, "files", reaped)
 	}
 
 	// Strip support-thread attribution pointing at the deleted org. The THREADS

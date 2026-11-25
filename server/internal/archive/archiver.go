@@ -167,7 +167,21 @@ func (a *StorageArchiver) read(ctx context.Context, orgUID uuid.UUID, fileID str
 	return rows, nil
 }
 
-// DeleteOrganization removes every archive of an organization.
+// DeleteOrganizationArchives removes every archive of an organization from the
+// configured file storage. It runs whatever archive.enabled says: archives
+// written while it was on must still go when the org is deleted (GDPR).
+func DeleteOrganizationArchives(ctx context.Context, cfg *config.Config, orgUID string) (int, error) {
+	storage, err := filestorage.NewFileStorage(StorageConfig(&cfg.FileStorage))
+	if err != nil {
+		return 0, fmt.Errorf("archive storage: %w", err)
+	}
+
+	return DeleteOrganization(ctx, storage, orgUID)
+}
+
+// DeleteOrganization removes every archive of an organization from storage.
+// The archives have no `files` row, so the reap of the org's files does not
+// see them: they go by prefix.
 func DeleteOrganization(ctx context.Context, storage filestorage.FileStorage, orgUIDText string) (int, error) {
 	orgUID, err := uuid.Parse(orgUIDText)
 	if err != nil {
