@@ -530,8 +530,8 @@ github.com/pkg/sftp v1.13.13/go.mod h1:uNkH9roSXglNJqM+glJJi+TQXQUm0fXFWqCFmT8hs
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/posthog/posthog-go/v2 v2.2.0 h1:shQPCndI0lW0fWC1yMQpOz3v7ui658nC8Ibw6XPvJf8=
-github.com/posthog/posthog-go/v2 v2.2.0/go.mod h1:uDmMhWSfIQB1M5xC9cU/smQjdt9HD0s6MbxdWC2beYI=
+github.com/posthog/posthog-go/v2 v2.2.1 h1:Lyh7dBvZ94TvVkx75UtfENK8OSQaUFE6+de7OiDW8Bo=
+github.com/posthog/posthog-go/v2 v2.2.1/go.mod h1:uDmMhWSfIQB1M5xC9cU/smQjdt9HD0s6MbxdWC2beYI=
 github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 h1:o4JXh1EVt9k/+g42oCprj/FisM4qX9L3sZB3upGN2ZU=
 github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55/go.mod h1:OmDBASR4679mdNQnz2pUhc2G8CO2JrUAVFDRBDP/hJE=
 github.com/pquerna/otp v1.5.0 h1:NMMR+WrmaqXU4EzdGJEE1aUUI0AMRzsp96fFFWNPwxs=
