@@ -613,3 +613,100 @@ func TestOIDCHandleCallback_AsksForTOTP(t *testing.T) {
 	r.Equal(2, refreshRows())
 	r.ElementsMatch([]any{"oidc+totp", "oidc+recovery_code"}, loginMethods())
 }
+
+// TestOIDCHandleCallback_EmailClaimsFromUserInfo is the regression test of
+// issue #1047: IdPs that keep the ID token minimal (Authelia, Authentik…)
+// only expose email/email_verified on the userinfo endpoint, and every login
+// failed with "Email address not verified with the OIDC provider".
+func TestOIDCHandleCallback_EmailClaimsFromUserInfo(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		mutate   func(c jwt.MapClaims)
+		userInfo map[string]any
+		wantErr  bool
+	}{
+		{
+			name: "email and email_verified only in userinfo",
+			mutate: func(c jwt.MapClaims) {
+				delete(c, keyEmail)
+				delete(c, oidcClaimEmailVerified)
+				delete(c, keyName)
+			},
+			userInfo: map[string]any{
+				"sub": "oidc-user-123", keyEmail: "test@example.com",
+				oidcClaimEmailVerified: true, keyName: "Test User",
+			},
+		},
+		{
+			name:   "email_verified only in userinfo",
+			mutate: func(c jwt.MapClaims) { delete(c, oidcClaimEmailVerified) },
+			userInfo: map[string]any{
+				"sub": "oidc-user-123", keyEmail: "test@example.com", oidcClaimEmailVerified: true,
+			},
+		},
+		{
+			name:   "email_verified as the string true",
+			mutate: func(c jwt.MapClaims) { c[oidcClaimEmailVerified] = "true" },
+		},
+		{
+			name:   "userinfo verifies another address than the ID token's",
+			mutate: func(c jwt.MapClaims) { delete(c, oidcClaimEmailVerified) },
+			userInfo: map[string]any{
+				"sub": "oidc-user-123", keyEmail: "other@example.com", oidcClaimEmailVerified: true,
+			},
+			wantErr: true,
+		},
+		{
+			name: "userinfo of another subject",
+			mutate: func(c jwt.MapClaims) {
+				delete(c, keyEmail)
+				delete(c, oidcClaimEmailVerified)
+			},
+			userInfo: map[string]any{
+				"sub": "someone-else", keyEmail: "test@example.com", oidcClaimEmailVerified: true,
+			},
+			wantErr: true,
+		},
+		{
+			name: "userinfo email unverified",
+			mutate: func(c jwt.MapClaims) {
+				delete(c, keyEmail)
+				delete(c, oidcClaimEmailVerified)
+			},
+			userInfo: map[string]any{
+				"sub": "oidc-user-123", keyEmail: "test@example.com", oidcClaimEmailVerified: false,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			idp := newFakeOIDCIdP(t)
+			svc, ctx := setupOIDCTestService(t, idp, nil)
+			org := setupOIDCTestOrg(ctx, t, svc)
+
+			idp.userInfo = tc.userInfo
+			idp.nextIDToken = idp.issueIDToken(t, tc.mutate)
+
+			result, err := svc.HandleCallback(ctx, "fake-code", org.Slug)
+			if tc.wantErr {
+				require.ErrorIs(t, err, ErrEmailNotVerified)
+				assert.Nil(t, result)
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			user, err := svc.db.GetUserByEmail(ctx, "test@example.com")
+			require.NoError(t, err)
+			assert.Equal(t, user.UID, result.UserUID)
+			assert.Equal(t, "Test User", user.Name)
+		})
+	}
+}
