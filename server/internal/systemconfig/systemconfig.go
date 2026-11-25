@@ -1649,7 +1649,7 @@ func (s *Service) Initialize(ctx context.Context) error {
 	// snapshot; later saves re-resolve it (RefreshSSOConfig).
 	initial := s.config.SSOFields()
 	s.config.PublishSSO(&initial)
-	InstallSSOReloader(s.config, s.db)
+	InstallSSOReloader(ctx, s.config, s.db)
 
 	// Auto-generate JWT secret if needed
 	if err := s.ensureJWTSecret(ctx); err != nil {

@@ -42,8 +42,14 @@ type ssoState struct {
 	base      SSOConfig
 	current   atomic.Pointer[SSOConfig]
 	loadedAt  atomic.Int64
-	reloader  atomic.Pointer[SSOReloader]
+	reloader  atomic.Pointer[ssoReload]
 	reloading atomic.Bool
+}
+
+// ssoReload is an installed SSOReloader and the context it runs under.
+type ssoReload struct {
+	ctx context.Context //nolint:containedctx // detached base context of the background refresh
+	fn  SSOReloader
 }
 
 // ssoFields copies the SSO part of the boot struct.
@@ -116,8 +122,9 @@ func (c *Config) PublishSSO(snapshot *SSOConfig) {
 	c.sso.loadedAt.Store(time.Now().UnixNano())
 }
 
-// SetSSOReloader installs the function the TTL refresh calls. Nil disables it.
-func (c *Config) SetSSOReloader(reload SSOReloader) {
+// SetSSOReloader installs the function the TTL refresh calls, run under a
+// context detached from ctx's cancellation (values kept). Nil disables it.
+func (c *Config) SetSSOReloader(ctx context.Context, reload SSOReloader) {
 	if c.sso == nil {
 		return
 	}
@@ -128,7 +135,7 @@ func (c *Config) SetSSOReloader(reload SSOReloader) {
 		return
 	}
 
-	c.sso.reloader.Store(&reload)
+	c.sso.reloader.Store(&ssoReload{ctx: context.WithoutCancel(ctx), fn: reload})
 }
 
 // SSO returns the SSO provider configs every login path must read. With live
@@ -167,24 +174,28 @@ func (c *Config) refreshSSOInBackground() {
 		return
 	}
 
-	go func() {
-		defer state.reloading.Store(false)
+	go c.reloadSSO(reload.ctx, reload.fn)
+}
 
-		ctx, cancel := context.WithTimeout(context.Background(), ssoReloadTimeout)
-		defer cancel()
+// reloadSSO runs one background re-resolution and publishes its result.
+func (c *Config) reloadSSO(ctx context.Context, reload SSOReloader) {
+	state := c.sso
+	defer state.reloading.Store(false)
 
-		snapshot, err := (*reload)(ctx)
-		if err != nil {
-			// Keep serving the last snapshot; retry after the next TTL.
-			state.loadedAt.Store(time.Now().UnixNano())
-			slog.WarnContext(ctx, "Failed to refresh the SSO provider config, keeping the previous one",
-				"error", err)
+	ctx, cancel := context.WithTimeout(ctx, ssoReloadTimeout)
+	defer cancel()
 
-			return
-		}
+	snapshot, err := reload(ctx)
+	if err != nil {
+		// Keep serving the last snapshot; retry after the next TTL.
+		state.loadedAt.Store(time.Now().UnixNano())
+		slog.WarnContext(ctx, "Failed to refresh the SSO provider config, keeping the previous one",
+			"error", err)
 
-		c.PublishSSO(snapshot)
-	}()
+		return
+	}
+
+	c.PublishSSO(snapshot)
 }
 
 // Sign-in provider identifiers, as used in the /auth/<provider> routes.
@@ -205,6 +216,8 @@ const (
 // enabled: its SP metadata is served before an IdP is configured (login and
 // ACS check the IdP side again). OIDC requires the full Configured() set,
 // client secret included.
+//
+//nolint:cyclop // One case per provider, same shape.
 func (c *SSOConfig) RoutesActive(provider string) bool {
 	switch provider {
 	case SSOProviderSlack:

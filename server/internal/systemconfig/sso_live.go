@@ -95,13 +95,13 @@ func RefreshSSOConfig(ctx context.Context, store SystemParameterLister, cfg *con
 // InstallSSOReloader makes cfg re-resolve its SSO snapshot from store once it
 // is older than config.SSOConfigRefreshTTL. This is how the other instances
 // of a multi-instance deployment pick up a provider saved on one of them.
-func InstallSSOReloader(cfg *config.Config, store SystemParameterLister) {
+func InstallSSOReloader(ctx context.Context, cfg *config.Config, store SystemParameterLister) {
 	if cfg == nil || store == nil {
 		return
 	}
 
 	cfg.EnableLiveSSO()
-	cfg.SetSSOReloader(func(ctx context.Context) (*config.SSOConfig, error) {
+	cfg.SetSSOReloader(ctx, func(ctx context.Context) (*config.SSOConfig, error) {
 		base := cfg.SSOBase()
 
 		return ResolveSSOConfig(ctx, store, &base)

@@ -73,7 +73,7 @@ func TestStaleSSOSnapshotIsReloaded(t *testing.T) {
 
 	var calls atomic.Int32
 
-	cfg.SetSSOReloader(func(context.Context) (*SSOConfig, error) {
+	cfg.SetSSOReloader(context.Background(), func(context.Context) (*SSOConfig, error) {
 		calls.Add(1)
 
 		return &SSOConfig{Google: GoogleOAuthConfig{Enabled: true, ClientID: "id", ClientSecret: "s"}}, nil
@@ -89,6 +89,8 @@ func TestStaleSSOSnapshotIsReloaded(t *testing.T) {
 	r.Equal(int32(1), calls.Load())
 }
 
+var errTestDBDown = errors.New("db down")
+
 func TestFailedSSOReloadKeepsTheSnapshot(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -99,10 +101,10 @@ func TestFailedSSOReloadKeepsTheSnapshot(t *testing.T) {
 
 	done := make(chan struct{})
 
-	cfg.SetSSOReloader(func(context.Context) (*SSOConfig, error) {
+	cfg.SetSSOReloader(context.Background(), func(context.Context) (*SSOConfig, error) {
 		defer close(done)
 
-		return nil, errors.New("db down")
+		return nil, errTestDBDown
 	})
 
 	cfg.sso.loadedAt.Store(time.Now().Add(-2 * SSOConfigRefreshTTL).UnixNano())

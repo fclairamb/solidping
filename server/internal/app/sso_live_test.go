@@ -108,7 +108,8 @@ func (e *ssoLiveEnv) providerTypes(t *testing.T) []string {
 	return types
 }
 
-func (e *ssoLiveEnv) oidcLogin(t *testing.T) *http.Response {
+// oidcLogin returns the status and Location of GET /auth/oidc/login.
+func (e *ssoLiveEnv) oidcLogin(t *testing.T) (int, string) {
 	t.Helper()
 
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -117,9 +118,18 @@ func (e *ssoLiveEnv) oidcLogin(t *testing.T) *http.Response {
 
 	resp, err := client.Get(e.ts.URL + "/api/v1/auth/oidc/login?org=acme") //nolint:noctx // test
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = resp.Body.Close() })
 
-	return resp
+	defer func() { _ = resp.Body.Close() }()
+
+	return resp.StatusCode, resp.Header.Get("Location")
+}
+
+func (e *ssoLiveEnv) oidcLoginStatus(t *testing.T) int {
+	t.Helper()
+
+	status, _ := e.oidcLogin(t)
+
+	return status
 }
 
 func (e *ssoLiveEnv) set(t *testing.T, key string, value any, secret bool) {
@@ -143,6 +153,8 @@ func (e *ssoLiveEnv) saveOIDC(t *testing.T) {
 // A provider saved on Server Settings > Authentication is live without a
 // restart: listed on the login page, its routes answer, and local login may be
 // switched off (spec 2026-11-25-02). Switching it off reverts all three.
+//
+//nolint:paralleltest // NewServer writes package-level hooks, see above.
 func TestSSOProviderSavedIsLiveWithoutRestart(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
@@ -151,7 +163,7 @@ func TestSSOProviderSavedIsLiveWithoutRestart(t *testing.T) {
 
 	// Boot: nothing configured.
 	r.NotContains(env.providerTypes(t), "oidc")
-	r.Equal(http.StatusNotFound, env.oidcLogin(t).StatusCode, "the route is mounted but gated")
+	r.Equal(http.StatusNotFound, env.oidcLoginStatus(t), "the route is mounted but gated")
 
 	_, err := env.sys.SetParameter(ctx, localLogin, false, false)
 	r.ErrorIs(err, systemconfig.ErrNoSSOProvider)
@@ -160,11 +172,10 @@ func TestSSOProviderSavedIsLiveWithoutRestart(t *testing.T) {
 
 	r.Contains(env.providerTypes(t), "oidc")
 
-	resp := env.oidcLogin(t)
-	r.Equal(http.StatusFound, resp.StatusCode)
-	r.True(strings.HasPrefix(resp.Header.Get("Location"), env.issuer+"/authorize?"),
-		"redirects to the issuer, got %q", resp.Header.Get("Location"))
-	r.Contains(resp.Header.Get("Location"), "client_id=acme-client")
+	status, location := env.oidcLogin(t)
+	r.Equal(http.StatusFound, status)
+	r.True(strings.HasPrefix(location, env.issuer+"/authorize?"), "redirects to the issuer, got %q", location)
+	r.Contains(location, "client_id=acme-client")
 
 	_, err = env.sys.SetParameter(ctx, localLogin, false, false)
 	r.NoError(err, "local login may be switched off once OIDC is live")
@@ -174,7 +185,7 @@ func TestSSOProviderSavedIsLiveWithoutRestart(t *testing.T) {
 	env.set(t, string(systemconfig.KeyOIDCEnabled), false, false)
 
 	r.NotContains(env.providerTypes(t), "oidc")
-	r.Equal(http.StatusNotFound, env.oidcLogin(t).StatusCode)
+	r.Equal(http.StatusNotFound, env.oidcLoginStatus(t))
 
 	_, err = env.sys.SetParameter(ctx, localLogin, false, false)
 	r.ErrorIs(err, systemconfig.ErrNoSSOProvider)
@@ -182,6 +193,8 @@ func TestSSOProviderSavedIsLiveWithoutRestart(t *testing.T) {
 
 // The OIDC routes follow Configured(): without a client secret they stay 404,
 // like the login page that does not list the provider.
+//
+//nolint:paralleltest // NewServer writes package-level hooks, see above.
 func TestOIDCRoutesNeedTheClientSecret(t *testing.T) {
 	r := require.New(t)
 	env := newSSOLiveEnv(t)
@@ -191,15 +204,17 @@ func TestOIDCRoutesNeedTheClientSecret(t *testing.T) {
 	env.set(t, string(systemconfig.KeyOIDCEnabled), true, false)
 
 	r.NotContains(env.providerTypes(t), "oidc")
-	r.Equal(http.StatusNotFound, env.oidcLogin(t).StatusCode)
+	r.Equal(http.StatusNotFound, env.oidcLoginStatus(t))
 
 	env.set(t, string(systemconfig.KeyOIDCClientSecret), "acme-secret", true)
 
 	r.Contains(env.providerTypes(t), "oidc")
-	r.Equal(http.StatusFound, env.oidcLogin(t).StatusCode)
+	r.Equal(http.StatusFound, env.oidcLoginStatus(t))
 }
 
 // Deleting a provider's parameters falls back to the startup config.
+//
+//nolint:paralleltest // NewServer writes package-level hooks, see above.
 func TestSSOParameterDeleteIsLive(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
@@ -214,6 +229,8 @@ func TestSSOParameterDeleteIsLive(t *testing.T) {
 
 // Login requests read the SSO snapshot while a super admin rewrites it; run
 // under -race this asserts the snapshot is published, not mutated in place.
+//
+//nolint:paralleltest // NewServer writes package-level hooks, see above.
 func TestSSOSnapshotConcurrentSaveAndList(t *testing.T) {
 	r := require.New(t)
 	env := newSSOLiveEnv(t)
