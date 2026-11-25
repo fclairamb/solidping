@@ -88,7 +88,13 @@
     "providerDescription": "OAuth-Anmeldedaten für {{provider}} konfigurieren.",
     "enabled": "Aktiviert",
     "unsavedChanges": "Nicht gespeicherte Änderungen",
-    "helpText": "Änderungen an den Anmeldedaten werden nach einem Server-Neustart wirksam. Der Schalter \"Aktiviert\" wirkt nach dem Speichern sofort auf die Anmeldeseite.",
+    "providerStatus": {
+      "enabled": "Aktiviert",
+      "configured": "Konfiguriert",
+      "notConfigured": "Nicht konfiguriert"
+    },
+    "toggleProvider": "Einstellungen für {{provider}} ein- oder ausblenden",
+    "helpText": "Änderungen an den Anmeldeanbietern werden mit dem Speichern wirksam, ohne Neustart. LDAP-Änderungen werden nach einem Server-Neustart wirksam.",
     "samlSpInfo": "Geben Sie diese URLs an Ihren IdP-Administrator weiter, um die SAML-Verbindung zu konfigurieren.",
     "samlMetadataUrlLabel": "SP-Metadaten-/Entitäts-ID-URL",
     "samlAcsUrlLabel": "ACS-URL (Assertion Consumer Service)",
@@ -152,7 +158,8 @@
     },
     "localLogin": {
       "title": "Lokale Anmeldung",
-      "description": "Anmeldung per Passwort und LDAP, Registrierung und Passwort-Zurücksetzung. Lässt sich nur abschalten, solange ein SSO-Anbieter aktiv ist."
+      "description": "Anmeldung per Passwort und LDAP, Registrierung und Passwort-Zurücksetzung. Lässt sich nur abschalten, solange ein SSO-Anbieter aktiv ist.",
+      "noProviderHint": "Richten Sie unten einen SSO-Anbieter ein, aktivieren und speichern Sie ihn, bevor Sie die lokale Anmeldung abschalten."
     }
   },
   "hashing": {

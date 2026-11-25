@@ -88,7 +88,13 @@
     "providerDescription": "Configure {{provider}} OAuth credentials.",
     "enabled": "Enabled",
     "unsavedChanges": "Unsaved changes",
-    "helpText": "Credential changes take effect after a server restart. The Enabled toggle takes effect immediately for the login page once saved.",
+    "providerStatus": {
+      "enabled": "Enabled",
+      "configured": "Configured",
+      "notConfigured": "Not configured"
+    },
+    "toggleProvider": "Show or hide the {{provider}} settings",
+    "helpText": "Sign-in provider changes take effect as soon as they are saved, without a restart. LDAP changes take effect after a server restart.",
     "samlSpInfo": "Give these URLs to your IdP administrator to configure the SAML connection.",
     "samlMetadataUrlLabel": "SP metadata / entity ID URL",
     "samlAcsUrlLabel": "ACS (Assertion Consumer Service) URL",
@@ -152,7 +158,8 @@
     },
     "localLogin": {
       "title": "Local login",
-      "description": "Password and LDAP sign-in, sign-up and password reset. It can only be turned off while an SSO provider is enabled."
+      "description": "Password and LDAP sign-in, sign-up and password reset. It can only be turned off while an SSO provider is enabled.",
+      "noProviderHint": "Configure, enable and save an SSO provider below before turning local login off."
     }
   },
   "hashing": {

@@ -71,6 +71,8 @@ test.describe("Server Admin", () => {
     // Click Authentication tab
     await page.getByRole("link", { name: "Authentication" }).click();
     await page.waitForURL(/\/server\/auth/);
+    // Unconfigured cards load collapsed: expand Google to see its fields.
+    await page.getByTestId("provider-card-toggle-google").click();
     await expect(page.getByTestId("provider-label-auth.google.client_id")).toBeVisible();
   });
 
@@ -284,6 +286,8 @@ test.describe("Server Admin — Microsoft Tenant ID", () => {
     await page.waitForLoadState("networkidle");
 
     await navigateToAuth(page);
+    // Unconfigured cards load collapsed; a tenant ID alone does not count.
+    await page.getByTestId("provider-card-toggle-microsoft").click();
 
     // The Microsoft card carries a Tenant ID label and a plain-text (non-secret)
     // input defaulting its placeholder to "common".
@@ -308,6 +312,7 @@ test.describe("Server Admin — Microsoft Tenant ID", () => {
     await page.waitForLoadState("networkidle");
 
     await navigateToAuth(page);
+    await page.getByTestId("provider-card-toggle-microsoft").click();
 
     const input = page.getByTestId(tenantField);
     await expect(input).toBeVisible();
@@ -329,6 +334,7 @@ test.describe("Server Admin — Microsoft Tenant ID", () => {
     // Reload and confirm the non-secret value round-trips from GET
     // /system/parameters (it is not masked).
     await page.reload();
+    await page.getByTestId("provider-card-toggle-microsoft").click();
     await expect(page.getByTestId(tenantField)).toHaveValue(tenant);
   });
 });

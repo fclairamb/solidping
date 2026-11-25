@@ -468,6 +468,12 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
               placeholder="solidping-alerts"
             />
           </div>
+          <SecretPanel
+            id="ch-ntfy-token"
+            label={t("form.ntfyAccessToken", "Access token (optional)")}
+            value={(settings.auth_token as string) || ""}
+            onChange={(v) => update("auth_token", v)}
+          />
           <div className="space-y-2">
             <Label htmlFor="ch-priority">
               {t("form.ntfyPriority", "Priority (1-5, default 3)")}

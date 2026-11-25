@@ -5287,6 +5287,9 @@ export function useSetSystemParameter() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["system-parameters"] });
+      // auth.* parameters are applied live (spec 2026-11-25-02): refresh the
+      // sign-in providers the login page and the auth settings page show.
+      queryClient.invalidateQueries({ queryKey: ["providers"] });
     },
   });
 }

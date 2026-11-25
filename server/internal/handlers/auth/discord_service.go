@@ -241,8 +241,8 @@ func (s *DiscordOAuthService) exchangeCode(
 	ctx context.Context, code string,
 ) (*DiscordTokenResponse, error) {
 	data := url.Values{}
-	data.Set("client_id", s.cfg.Discord.ClientID)
-	data.Set("client_secret", s.cfg.Discord.ClientSecret)
+	data.Set("client_id", s.cfg.SSO().Discord.ClientID)
+	data.Set("client_secret", s.cfg.SSO().Discord.ClientSecret)
 	data.Set("grant_type", "authorization_code")
 	data.Set("code", code)
 	data.Set("redirect_uri", s.getCallbackURL())

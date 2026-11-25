@@ -776,6 +776,10 @@ type Config struct {
 
 	// StatusSubscribers budgets the public status-page subscribe confirm mail.
 	StatusSubscribers StatusSubscribersConfig `koanf:"status_subscribers"`
+
+	// sso is the live snapshot of the sign-in provider configs (SSO, spec
+	// 2026-11-25-02). Nil until EnableLiveSSO: SSO() then reads the fields above.
+	sso *ssoState
 }
 
 // ACMEConfig turns on in-server TLS: certmagic obtains and renews Let's Encrypt

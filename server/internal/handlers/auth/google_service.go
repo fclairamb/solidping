@@ -190,8 +190,8 @@ func (s *GoogleOAuthService) HandleCallback(ctx context.Context, code, orgSlug s
 // exchangeCode exchanges an authorization code for tokens with Google.
 func (s *GoogleOAuthService) exchangeCode(ctx context.Context, code string) (*GoogleTokenResponse, error) {
 	data := url.Values{}
-	data.Set("client_id", s.cfg.Google.ClientID)
-	data.Set("client_secret", s.cfg.Google.ClientSecret)
+	data.Set("client_id", s.cfg.SSO().Google.ClientID)
+	data.Set("client_secret", s.cfg.SSO().Google.ClientSecret)
 	data.Set("code", code)
 	data.Set("grant_type", "authorization_code")
 	data.Set("redirect_uri", s.getCallbackURL())
