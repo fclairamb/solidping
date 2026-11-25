@@ -14,6 +14,25 @@ const SHORTCUTS: { keys: string[]; labelKey: string }[] = [
   { keys: ["?"], labelKey: "shortcuts.help" },
 ];
 
+/** The list of shortcuts, shared by the dialog and the design reference page. */
+export function ShortcutsList() {
+  const { t } = useTranslation("common");
+  return (
+    <ul className="space-y-2" data-testid="shortcuts-list">
+      {SHORTCUTS.map((s) => (
+        <li key={s.labelKey} className="flex items-center justify-between gap-4 text-sm">
+          <span>{t(s.labelKey)}</span>
+          <span className="flex items-center gap-1">
+            {s.keys.map((k) => (
+              <Kbd key={k}>{k}</Kbd>
+            ))}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** The `?` dialog listing keyboard shortcuts. Mounted once in the org layout. */
 export function ShortcutsHelp() {
   const { t } = useTranslation("common");
@@ -27,18 +46,7 @@ export function ShortcutsHelp() {
         <DialogHeader>
           <DialogTitle>{t("shortcuts.title")}</DialogTitle>
         </DialogHeader>
-        <ul className="space-y-2">
-          {SHORTCUTS.map((s) => (
-            <li key={s.labelKey} className="flex items-center justify-between gap-4 text-sm">
-              <span>{t(s.labelKey)}</span>
-              <span className="flex items-center gap-1">
-                {s.keys.map((k) => (
-                  <Kbd key={k}>{k}</Kbd>
-                ))}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <ShortcutsList />
       </DialogContent>
     </Dialog>
   );

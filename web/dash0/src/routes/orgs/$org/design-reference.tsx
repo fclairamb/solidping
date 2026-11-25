@@ -2,6 +2,7 @@
 // hardcoded English — do not add i18n keys for the showcase content.
 // Only the sidebar entry (nav:designReference) is translated.
 
+import { ShortcutsList } from "@/components/shortcuts-help";
 import { asTranslateFn } from "@/lib/i18n-types";
 import { useMemo, useState } from "react";
 import { Chip } from "@/components/ui/chip";
@@ -4161,6 +4162,19 @@ function KeyboardShortcutsSection() {
         <Kbd>?</Kbd>
         <Kbd>Ctrl/Cmd</Kbd>
         <Kbd>Enter</Kbd>
+      </div>
+      <div className="mt-3 max-w-md space-y-2 rounded-md border p-3" data-testid="design-shortcuts-help-content">
+        <ShortcutsList />
+        <Button
+          size="sm"
+          variant="outline"
+          data-testid="design-open-shortcuts-help"
+          onClick={() =>
+            document.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true }))
+          }
+        >
+          Open the ? dialog
+        </Button>
       </div>
       <pre className="mt-3 overflow-x-auto rounded-md border bg-muted p-3 text-xs">{`useHotkey("n", () => navigate(...));
 useHotkey("Escape", onEsc, { allowInEditable: true });

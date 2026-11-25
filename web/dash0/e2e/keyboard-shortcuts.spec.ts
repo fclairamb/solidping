@@ -35,12 +35,12 @@ test.describe("Keyboard shortcuts", () => {
     await expect(page).toHaveURL(/q=kbd/);
   });
 
-  test("Esc with status and type facets clears both", async ({ authenticatedPage: page }) => {
-    await page.goto("orgs/test/checks?status=up&type=http");
+  test("Esc with status and labels facets clears both", async ({ authenticatedPage: page }) => {
+    await page.goto("orgs/test/checks?status=up&labels=env:prod");
     await expect(page.getByTestId("reset-filters")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("reset-filters")).toBeHidden();
-    await expect(page).not.toHaveURL(/status=|type=/);
+    await expect(page).not.toHaveURL(/status=|labels=/);
   });
 
   test("Esc closes an open filter dropdown first and keeps the filters", async ({ authenticatedPage: page }) => {
