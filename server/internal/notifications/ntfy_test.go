@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -59,4 +60,44 @@ func TestNtfySender_NoClickWithoutBaseURL(t *testing.T) {
 
 	r.Equal("[DOWN] API health", headers.Get("Title"))
 	r.Empty(headers.Get("Click"))
+}
+
+// TestNtfySender_LegacyAccessTokenAfterMerge pins that a token stored under the
+// legacy accessToken key keeps authenticating once that key is a declared
+// secret: it now lives in settings_private, and the settings the sender gets
+// are the public ones merged with the private envelope.
+func TestNtfySender_LegacyAccessTokenAfterMerge(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var gotAuth string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		gotAuth = req.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	sealed, err := credentials.SealConnectionSettings(t.Context(), nil, models.ConnectionTypeNtfy, "org-1",
+		map[string]any{"server_url": srv.URL, "topic": "solidping-alerts", "accessToken": "tk_legacy"})
+	r.NoError(err)
+	r.NotContains(sealed.Public, "accessToken", "the legacy token must be split out of the public settings")
+	r.NotNil(sealed.Private)
+
+	conn := &models.Integration{
+		UID: "chan-1", OrganizationUID: "org-1",
+		Type:            models.ConnectionTypeNtfy,
+		Settings:        models.JSONMap(sealed.Public),
+		SettingsPrivate: sealed.Private,
+	}
+
+	merged, err := credentials.OpenConnectionSettings(t.Context(), nil, conn)
+	r.NoError(err)
+	conn.Settings = models.JSONMap(merged)
+
+	payload := gotifyPayload(eventTypeIncidentCreated, nil)
+	payload.Integration = conn
+
+	r.NoError((&NtfySender{}).Send(context.Background(), &jobdef.JobContext{}, payload))
+	r.Equal("Bearer tk_legacy", gotAuth)
 }

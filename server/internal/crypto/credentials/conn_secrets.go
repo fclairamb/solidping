@@ -30,7 +30,10 @@ var connectionSecretFields = map[models.ConnectionType][]string{
 	models.ConnectionTypeSlack:   {"access_token"},
 	models.ConnectionTypeWebhook: {secretKeyAuthToken, "signingSecret", "signingSecretPrevious"},
 	models.ConnectionTypeEmail:   {"smtp_password"},
-	models.ConnectionTypeNtfy:    {secretKeyAuthToken},
+	// ntfy: auth_token is the canonical key. accessToken is the legacy name
+	// the sender read from 2026-03-29 to 2026-10-09 and still reads as a
+	// fallback, so it is a live bearer credential too.
+	models.ConnectionTypeNtfy: {secretKeyAuthToken, "accessToken"},
 	// Gotify: the application token. server_url stays public (self-hosted
 	// endpoint URL, same reasoning as the webhook/Discord/GoogleChat/
 	// Mattermost/MSTeams URLs above).
