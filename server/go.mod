@@ -236,7 +236,7 @@ require (
 	github.com/crewjam/saml v0.6.3
 	github.com/dlclark/regexp2/v2 v2.13.2
 	github.com/docker/go-units v0.5.0
-	github.com/dop251/goja v0.0.0-20261125174615-70dc34d6aa89
+	github.com/dop251/goja v0.0.0-20261125210501-5e92a7e24d0c
 	github.com/dreamscached/minequery/v2 v2.5.0
 	github.com/dustin/go-humanize v1.1.0
 	github.com/eclipse/paho.mqtt.golang v1.5.2
@@ -333,8 +333,8 @@ require (
 	golang.org/x/time v0.16.0
 	google.golang.org/grpc v1.85.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.37.2
-	k8s.io/apimachinery v0.37.2
-	k8s.io/client-go v0.37.2
+	k8s.io/api v0.37.3
+	k8s.io/apimachinery v0.37.3
+	k8s.io/client-go v0.37.3
 	modernc.org/sqlite v1.63.0
 )
