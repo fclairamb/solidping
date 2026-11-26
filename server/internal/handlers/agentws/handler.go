@@ -1284,6 +1284,7 @@ func (h *Handler) handleClaim(
 	// its capabilities (spec 2026-10-17-05 §17).
 	scope := agentClaimScope(state.agent)
 	scope.PluginTypes = checkjobsvc.PluginTypesFromCapabilities(frame.Capabilities)
+	scope.CheckTypes = checkjobsvc.CheckTypesFromCapabilities(frame.Capabilities)
 	scope.NoICMP = checkjobsvc.NoICMPFromCapabilities(frame.Capabilities)
 
 	jobs, nextIn, err := h.checkJobSvc.ClaimJobsForAgent(

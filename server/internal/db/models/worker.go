@@ -96,7 +96,18 @@ const (
 	// datagram or raw), self-probed at start (spec 2026-10-28-06). Without it
 	// every ICMP check fails on that worker.
 	CapabilityICMP = "icmp"
+	// CheckTypeCapabilityPrefix prefixes one capability per built-in check type
+	// the worker can run (`check-type-http`). A slug, not `check-type:http`:
+	// capability names are `[a-z0-9-]+`.
+	CheckTypeCapabilityPrefix = "check-type-"
 )
+
+// CheckTypeCapability is the capability name reporting that a worker can run
+// the built-in check type checkType (`_` becomes `-`: a capability is
+// a `[a-z0-9-]+` slug).
+func CheckTypeCapability(checkType string) string {
+	return CheckTypeCapabilityPrefix + strings.ReplaceAll(checkType, "_", "-")
+}
 
 // CapabilityState is the THREE-state answer to "does this worker have X?".
 // A distinct type rather than a bool, so a caller physically cannot collapse

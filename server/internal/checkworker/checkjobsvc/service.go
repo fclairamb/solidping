@@ -476,6 +476,10 @@ type AgentScope struct {
 	// capability report). A plugin-type job is only handed to an agent that
 	// advertises its type (spec 2026-10-17-05 §17).
 	PluginTypes []string
+	// CheckTypes are the built-in check types the agent reported
+	// (`check-type-*` capabilities). Empty means a legacy agent: it only gets
+	// the frozen legacyCheckTypes.
+	CheckTypes []string
 	// NoICMP is set when the agent reported it cannot open an ICMP socket: it
 	// is not handed icmp jobs (spec 2026-10-28-06).
 	NoICMP bool
@@ -520,7 +524,9 @@ func (s AgentScope) apply(query *bun.SelectQuery) *bun.SelectQuery {
 		query = query.Where("organization_uid = ?", s.OrgUID)
 	}
 
-	return icmpScope(pluginTypeScope(excludePassiveTypes(query.Where("region = ?", s.Region)), s.PluginTypes), s.NoICMP)
+	query = checkTypeScope(excludePassiveTypes(query.Where("region = ?", s.Region)), s.CheckTypes)
+
+	return icmpScope(pluginTypeScope(query, s.PluginTypes), s.NoICMP)
 }
 
 // sealFingerprintsKey carries the X25519 recipient fingerprints a claiming
