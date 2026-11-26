@@ -212,6 +212,8 @@
   "apiErrors": {
     "generic": "Se ha producido un error",
     "rateLimited": "Demasiadas solicitudes",
+    "quotaExceeded": "Límite del plan alcanzado: {{limitName}} ({{currentUsage}} de {{limit}})",
+    "quotaExceededName": "Límite del plan alcanzado: {{limitName}}",
     "sessionExpired": "Sesión caducada",
     "sessionChanged": "La sesión ha cambiado",
     "network": "Falló la conexión de red"
@@ -221,6 +223,7 @@
     "commandMenu": "Abrir el menú de comandos",
     "focusSearch": "Enfocar el cuadro de búsqueda",
     "resetFilters": "Borrar la búsqueda y luego restablecer los filtros",
+    "leaveEmptyForm": "Salir de un formulario de comprobación vacío",
     "newCheck": "Nueva comprobación",
     "submitForm": "Enviar el formulario",
     "help": "Mostrar esta ayuda",

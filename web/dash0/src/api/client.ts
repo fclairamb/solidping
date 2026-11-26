@@ -233,6 +233,31 @@ export interface ApiErrorField {
   rule?: string;
 }
 
+/**
+ * The message of a QUOTA_EXCEEDED body (entitlements.FormatQuotaError: no
+ * title, the limit's name and numbers instead), or undefined for any other
+ * body. Names the limit hit, so the user knows which one to raise.
+ */
+function quotaExceededMessage(error: {
+  code?: unknown;
+  limitName?: unknown;
+  limit?: unknown;
+  currentUsage?: unknown;
+}): string | undefined {
+  if (error.code !== "QUOTA_EXCEEDED" || typeof error.limitName !== "string" || !error.limitName) {
+    return undefined;
+  }
+  if (typeof error.limit !== "number" || typeof error.currentUsage !== "number") {
+    return i18n.t("apiErrors.quotaExceededName", { ns: "common", limitName: error.limitName });
+  }
+  return i18n.t("apiErrors.quotaExceeded", {
+    ns: "common",
+    limitName: error.limitName,
+    limit: error.limit,
+    currentUsage: error.currentUsage,
+  });
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -644,7 +669,12 @@ export async function handleResponse<T>(
       ? i18n.t("demo.writeRefused", { ns: "org" })
       : isImpersonationForbidden
         ? i18n.t("impersonation.forbidden", { ns: "server" })
-        : error.title || i18n.t("apiErrors.generic", { ns: "common" });
+        : quotaExceededMessage(error) ||
+          error.title ||
+          // A body with no title still says what went wrong in `detail`;
+          // "An error occurred" hid it (solidping-business#116).
+          error.detail ||
+          i18n.t("apiErrors.generic", { ns: "common" });
 
     if (isDemoReadOnly) {
       announceDemoReadOnly(message);

@@ -23,6 +23,7 @@ import {
   Settings,
   Users,
   Search,
+  Server,
   PlusCircle,
   Building2,
   CircleUser,
@@ -42,6 +43,8 @@ interface PageEntry {
   icon: typeof LayoutDashboard;
   group: GroupKey;
   testId?: string;
+  /** Only listed for a super admin (the sidebar's user menu gates it the same way). */
+  superAdminOnly?: boolean;
 }
 
 const pages: PageEntry[] = [
@@ -81,6 +84,14 @@ const pages: PageEntry[] = [
     icon: Bot,
     group: "account",
     testId: "command-menu-ai",
+  },
+  {
+    titleKey: "common:server",
+    path: "/orgs/$org/server",
+    icon: Server,
+    group: "account",
+    testId: "command-menu-server",
+    superAdminOnly: true,
   },
   {
     titleKey: "organization",
@@ -143,7 +154,7 @@ export interface CommandMenuProps {
 
 export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuProps = {}) {
   const { t } = useTranslation(["nav", "account"]);
-  const { organizations, switchOrg } = useAuth();
+  const { user, organizations, switchOrg } = useAuth();
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : uncontrolledOpen;
@@ -234,7 +245,9 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
     }
   }
 
-  const enrichedPages = pages.map((p) => ({
+  const enrichedPages = pages
+    .filter((p) => !p.superAdminOnly || !!user?.isSuperAdmin)
+    .map((p) => ({
     ...p,
     title: t(p.titleKey),
     description: p.descriptionKey ? t(p.descriptionKey) : undefined,
