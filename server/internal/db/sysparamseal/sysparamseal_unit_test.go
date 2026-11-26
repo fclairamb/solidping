@@ -347,3 +347,24 @@ func TestSealedEnvelope(t *testing.T) {
 		require.False(t, ok, name)
 	}
 }
+
+func TestSealedAppSettingEnvelope(t *testing.T) {
+	t.Parallel()
+
+	for value, want := range map[string]bool{
+		`{"$sp_sealed":"abc"}`:            true,
+		`{"$sp_sealed":""}`:               false,
+		`{"$sp_sealed":"abc","x":"y"}`:    false,
+		`{"other":"abc"}`:                 false,
+		`-----BEGIN RSA PRIVATE KEY-----`: false,
+		`{not json`:                       false,
+		``:                                false,
+	} {
+		_, got := sysparamseal.SealedAppSettingEnvelope(value)
+		require.Equal(t, want, got, value)
+	}
+
+	require.True(t, sysparamseal.IsSecretAppSetting(sysparamseal.AppSettingVAPIDPrivateKey))
+	require.True(t, sysparamseal.IsSecretAppSetting(sysparamseal.AppSettingSAMLSPPrivateKey))
+	require.False(t, sysparamseal.IsSecretAppSetting("webpush.vapid_public_key"))
+}

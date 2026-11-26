@@ -62,6 +62,7 @@ func runSuite(t *testing.T, raw db.Service) {
 	t.Run("NonSecretParameterStaysPlain", func(t *testing.T) { testNonSecretParameterStaysPlain(t, raw, key) })
 	t.Run("ReservedDEKKey", func(t *testing.T) { testReservedDEKKey(t, raw, key) })
 	t.Run("MigrationSealsPlaintextJWTSecret", func(t *testing.T) { testMigrationSealsPlaintextJWT(t, raw, key) })
+	t.Run("MigrationSealsPlaintextAppSettingKeys", func(t *testing.T) { testMigrationSealsAppSettings(t, raw, key) })
 }
 
 func newMasterKey(t *testing.T) []byte {
@@ -304,4 +305,101 @@ func TestShouldSealParameter(t *testing.T) {
 	require.True(t, systemconfig.ShouldSealParameter("auth.oidc.client_secret", false))
 	require.True(t, systemconfig.ShouldSealParameter("custom.anything", true))
 	require.False(t, systemconfig.ShouldSealParameter(string(systemconfig.KeyLocalLoginEnabled), false))
+}
+
+// testMigrationSealsAppSettings covers spec 2026-11-26-06: the plaintext SAML
+// SP and VAPID private keys are sealed at startup, read back byte-identical,
+// and the public halves stay as they were.
+func testMigrationSealsAppSettings(t *testing.T, raw db.Service, key []byte) {
+	t.Helper()
+
+	ctx := t.Context()
+
+	const (
+		spCertKey   = "saml.sp_certificate_pem"
+		vapidPubKey = "webpush.vapid_public_key"
+		spPEM       = "-----BEGIN RSA PRIVATE KEY-----\nacme-legacy-sp-key\n-----END RSA PRIVATE KEY-----\n"
+		spCert      = "-----BEGIN CERTIFICATE-----\nacme-legacy-cert\n-----END CERTIFICATE-----\n"
+		vapidPriv   = "acme-legacy-vapid-private-key-base64url"
+		vapidPub    = "acme-legacy-vapid-public-key-base64url"
+	)
+
+	legacy := map[string]string{
+		sysparamseal.AppSettingSAMLSPPrivateKey: spPEM,
+		spCertKey:                               spCert,
+		sysparamseal.AppSettingVAPIDPrivateKey:  vapidPriv,
+		vapidPubKey:                             vapidPub,
+	}
+	require.NoError(t, raw.SetAppSettings(ctx, legacy))
+
+	allKeys := []string{sysparamseal.AppSettingSAMLSPPrivateKey, spCertKey, sysparamseal.AppSettingVAPIDPrivateKey, vapidPubKey}
+	svc := wrap(t, raw, key)
+
+	// The transition still reads the plaintext rows.
+	before, err := svc.GetAppSettings(ctx, allKeys)
+	require.NoError(t, err)
+	require.Equal(t, legacy, before)
+
+	plain, err := svc.PlaintextAppSettingKeys(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{sysparamseal.AppSettingSAMLSPPrivateKey, sysparamseal.AppSettingVAPIDPrivateKey}, plain)
+
+	sealed, err := svc.SealPlaintextAppSettings(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, sealed)
+
+	stored, err := raw.GetAppSettings(ctx, allKeys)
+	require.NoError(t, err)
+	require.NotContains(t, stored[sysparamseal.AppSettingSAMLSPPrivateKey], "acme-legacy-sp-key")
+	require.NotContains(t, stored[sysparamseal.AppSettingVAPIDPrivateKey], vapidPriv)
+	require.Contains(t, stored[sysparamseal.AppSettingVAPIDPrivateKey], sysparamseal.SealedMarkerKey)
+	require.Equal(t, spCert, stored[spCertKey])
+	require.Equal(t, vapidPub, stored[vapidPubKey])
+
+	// Idempotent.
+	again, err := svc.SealPlaintextAppSettings(ctx)
+	require.NoError(t, err)
+	require.Zero(t, again)
+
+	plain, err = svc.PlaintextAppSettingKeys(ctx)
+	require.NoError(t, err)
+	require.Empty(t, plain)
+
+	// After the restart, the keys read back byte-identical.
+	after, err := wrap(t, raw, key).GetAppSettings(ctx, allKeys)
+	require.NoError(t, err)
+	require.Equal(t, legacy, after)
+
+	single, err := wrap(t, raw, key).GetAppSetting(ctx, sysparamseal.AppSettingSAMLSPPrivateKey)
+	require.NoError(t, err)
+	require.Equal(t, spPEM, single)
+
+	// A wrong master key or none fails the read, never "missing".
+	for name, other := range map[string][]byte{"wrong key": newMasterKey(t), "no key": nil} {
+		_, err = wrap(t, raw, other).GetAppSettings(ctx, allKeys)
+		require.ErrorIs(t, err, sysparamseal.ErrSealedUnavailable, name)
+
+		_, err = wrap(t, raw, other).GetAppSetting(ctx, sysparamseal.AppSettingVAPIDPrivateKey)
+		require.ErrorIs(t, err, sysparamseal.ErrSealedUnavailable, name)
+
+		// The non-secret halves still read.
+		cert, certErr := wrap(t, raw, other).GetAppSetting(ctx, spCertKey)
+		require.NoError(t, certErr, name)
+		require.Equal(t, spCert, cert)
+	}
+
+	// Without a master key, writes stay plaintext and the sweep is a no-op.
+	noKey := wrap(t, raw, nil)
+	require.NoError(t, noKey.SetAppSetting(ctx, sysparamseal.AppSettingVAPIDPrivateKey, vapidPriv))
+	storedPlain, err := raw.GetAppSetting(ctx, sysparamseal.AppSettingVAPIDPrivateKey)
+	require.NoError(t, err)
+	require.Equal(t, vapidPriv, storedPlain)
+
+	count, err := noKey.SealPlaintextAppSettings(ctx)
+	require.NoError(t, err)
+	require.Zero(t, count)
+
+	noKeyPlain, err := noKey.PlaintextAppSettingKeys(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{sysparamseal.AppSettingVAPIDPrivateKey}, noKeyPlain)
 }

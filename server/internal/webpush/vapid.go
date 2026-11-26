@@ -9,13 +9,15 @@ import (
 	webpushgo "github.com/SherClockHolmes/webpush-go"
 
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/sysparamseal"
 )
 
 const (
 	// keyPublic is the app_settings key for the VAPID public key.
 	keyPublic = "webpush.vapid_public_key"
-	// keyPrivate is the app_settings key for the VAPID private key.
-	keyPrivate = "webpush.vapid_private_key"
+	// keyPrivate is the app_settings key for the VAPID private key, sealed at
+	// rest by sysparamseal when a master key is set (spec 2026-11-26-06).
+	keyPrivate = sysparamseal.AppSettingVAPIDPrivateKey
 )
 
 // ErrIncompleteVAPIDKeys is returned when, right after a write, app_settings
