@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Activity, Bot, Copy, Check as CheckIcon, KeyRound, Plus, Trash2 } from "lucide-react";
+import { Activity, Bot, Copy, Check as CheckIcon, KeyRound, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -379,6 +379,21 @@ function RegionsCard({ org }: { org: string }) {
                           <KeyRound className="h-4 w-4" />
                         </Button>
                         <Button
+                          asChild
+                          variant="ghost"
+                          size="icon"
+                          title={t("privateLocations.regions.edit")}
+                          data-testid={`edit-region-button-${region.slug}`}
+                        >
+                          <Link
+                            to="/orgs/$org/organization/private-locations/regions/$slug"
+                            params={{ org, slug: region.slug }}
+                            data-testid={`edit-region-${region.slug}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                        <Button
                           variant="ghost"
                           size="icon"
                           title={t("privateLocations.regions.delete", "Delete location")}
@@ -596,7 +611,7 @@ function AgentsCard({ org }: { org: string }) {
                   <TableHead>{t("privateLocations.agents.version", "Version")}</TableHead>
                   <TableHead>{t("privateLocations.agents.lastSeen", "Last seen")}</TableHead>
                   <TableHead>{t("privateLocations.agents.status", "Status")}</TableHead>
-                  <TableHead className="w-16 text-right">
+                  <TableHead className="w-24 text-right">
                     {t("privateLocations.agents.actions", "Actions")}
                   </TableHead>
                 </TableRow>
@@ -667,19 +682,36 @@ function AgentsCard({ org }: { org: string }) {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title={
-                          agent.status === "active"
-                            ? t("privateLocations.agents.revoke", "Revoke agent")
-                            : t("privateLocations.agents.remove", "Remove agent")
-                        }
-                        data-testid={`revoke-agent-${agent.uid}`}
-                        onClick={() => setPendingRevoke(agent.uid)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          asChild
+                          variant="ghost"
+                          size="icon"
+                          title={t("privateLocations.agents.edit")}
+                          data-testid={`edit-agent-button-${agent.uid}`}
+                        >
+                          <Link
+                            to="/orgs/$org/organization/private-locations/agents/$uid"
+                            params={{ org, uid: agent.uid }}
+                            data-testid={`edit-agent-${agent.uid}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={
+                            agent.status === "active"
+                              ? t("privateLocations.agents.revoke", "Revoke agent")
+                              : t("privateLocations.agents.remove", "Remove agent")
+                          }
+                          data-testid={`revoke-agent-${agent.uid}`}
+                          onClick={() => setPendingRevoke(agent.uid)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

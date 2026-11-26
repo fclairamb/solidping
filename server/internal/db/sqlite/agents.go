@@ -304,6 +304,27 @@ func (s *Service) RevokeAgent(ctx context.Context, orgUID, uid string) error {
 	return nil
 }
 
+// RenameAgent sets an org agent's display name.
+func (s *Service) RenameAgent(ctx context.Context, orgUID, uid, name string) error {
+	res, err := s.db.NewUpdate().
+		Model((*models.Agent)(nil)).
+		Set("name = ?", name).
+		Set("updated_at = ?", time.Now()).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to rename agent: %w", err)
+	}
+
+	if n, rowsErr := res.RowsAffected(); rowsErr == nil && n == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
 // ListPurgeableRevokedAgents returns live agents (any kind) whose revocation
 // is older than cutoff — a revoked agent is dead by admin decision, and
 // nobody is waiting for it to come back. The clock is revoked_at, not

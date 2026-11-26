@@ -1443,6 +1443,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
 	orgAgentsAdmin.GET("/private-regions", agentsAdminHandler.ListPrivateRegions)
 	orgAgentsAdmin.POST("/private-regions", agentsAdminHandler.CreatePrivateRegion)
+	orgAgentsAdmin.PATCH("/private-regions/:slug", agentsAdminHandler.UpdatePrivateRegion)
 	orgAgentsAdmin.DELETE("/private-regions/:slug", agentsAdminHandler.DeletePrivateRegion)
 	orgAgentsAdmin.POST("/private-regions/:slug/liveness-monitor", agentsAdminHandler.EnableLivenessMonitor)
 	// Shared region key (spec 2026-11-08-01 §2): only the public recipient.
@@ -1452,6 +1453,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgAgentsAdmin.POST("/agent-enrollment-tokens", agentsAdminHandler.MintEnrollmentToken)
 	orgAgentsAdmin.DELETE("/agent-enrollment-tokens/:uid", agentsAdminHandler.DeleteEnrollmentToken)
 	orgAgentsAdmin.GET("/agents", agentsAdminHandler.ListAgents)
+	orgAgentsAdmin.PATCH("/agents/:uid", agentsAdminHandler.UpdateAgent)
 	orgAgentsAdmin.DELETE("/agents/:uid", agentsAdminHandler.RevokeAgent)
 
 	// Files + attachments. Created HERE rather than next to the /files routes
