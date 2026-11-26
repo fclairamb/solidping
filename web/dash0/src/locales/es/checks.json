@@ -1105,6 +1105,7 @@
   "secretHeaders": "Encabezados secretos",
   "secretHeadersDescription": "Valores de encabezado almacenados cifrados — úselo para claves API y tokens Bearer.",
   "docker": {
+    "daemonModeHelp": "Déjelo vacío para comprobar solo el demonio de Docker.",
     "containerName": "Nombre del contenedor",
     "containerIdOptional": "ID del contenedor (opcional, alternativa al nombre)",
     "dockerHostOptional": "Host de Docker (opcional)",
@@ -1502,7 +1503,6 @@
     "urlRequired": "La URL es obligatoria",
     "domainRequired": "El dominio es obligatorio",
     "targetRequired": "La IP o el nombre de host de destino es obligatorio",
-    "containerRequired": "El nombre o ID del contenedor es obligatorio",
     "freeboxConnectionRequired": "La conexión Freebox es obligatoria",
     "linkTypeInvalid": "El tipo de línea debe ser xdsl o ftth",
     "promqlRequired": "La consulta PromQL es obligatoria",

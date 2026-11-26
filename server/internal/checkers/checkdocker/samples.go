@@ -17,5 +17,11 @@ func (c *DockerChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []chec
 				ContainerName: "postgres",
 			}).GetConfig(),
 		},
+		{
+			Name:   "Docker daemon",
+			Slug:   "docker-daemon",
+			Period: time.Minute,
+			Config: (&DockerConfig{}).GetConfig(),
+		},
 	}
 }
