@@ -124,6 +124,18 @@ func TestResultOutputMasksResolvedReferenceValues(t *testing.T) {
 		r.Equal(output, resultOutput(job, output))
 	})
 
+	t.Run("a value is also masked in its Go-quoted spelling", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		job := &models.CheckJob{ResolvedRefValues: []string{"acme\nkey"}}
+		output := map[string]any{"error": `parse "https://a/?k=acme\nkey": invalid control character`}
+
+		got := resultOutput(job, output)
+
+		r.Equal(`parse "https://a/?k=***": invalid control character`, got["error"])
+	})
+
 	t.Run("the longest value is masked first", func(t *testing.T) {
 		t.Parallel()
 

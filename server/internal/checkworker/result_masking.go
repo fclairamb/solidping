@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -25,12 +26,25 @@ const (
 
 // maskableValues returns the resolved values worth masking, longest first so a
 // value that contains another one is masked whole.
+//
+// A value is also kept in its Go-quoted spelling when that differs: an error
+// such as url.Error quotes the text it failed on with %q, so a value holding a
+// control character, a quote or a backslash reaches the output as `a\nb`, not
+// as itself.
 func maskableValues(values []string) []string {
 	var kept []string
 
-	for _, value := range values {
+	keep := func(value string) {
 		if len(value) >= minMaskedValueLen && !slices.Contains(kept, value) {
 			kept = append(kept, value)
+		}
+	}
+
+	for _, value := range values {
+		keep(value)
+
+		if quoted := strconv.Quote(value); quoted[1:len(quoted)-1] != value {
+			keep(quoted[1 : len(quoted)-1])
 		}
 	}
 

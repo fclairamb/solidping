@@ -2052,6 +2052,12 @@ func NewDeploymentGate(cfg *config.Config) checkjs.DeploymentGateFunc {
 
 // saveErrorResult submits an error result (with a plain lease release) when
 // check execution fails before/without a probe result.
+//
+// The error text is masked like any other output: a config that only fails to
+// parse once its references are resolved (a `%` or a control character in a
+// `${param:…}` value substituted into a URL) gets an error quoting the
+// resolved text. Before materializeConfig succeeded ResolvedRefValues is empty
+// and the text is stored as is.
 func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.CheckJob, err error) error {
 	// Use a fallback context for cleanup operations if the main context is canceled
 	saveCtx := ctx //nolint:contextcheck // Conditional context assignment is intentional
@@ -2066,7 +2072,7 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 		Status:          int(checkerdef.StatusError),
 		Duration:        0,
 		Metrics:         map[string]any{},
-		Output:          map[string]any{checkerdef.OutputKeyError: err.Error()},
+		Output:          maskResolvedValues(checkJob, map[string]any{checkerdef.OutputKeyError: err.Error()}),
 		Region:          r.resolveResultRegion(checkJob),
 		NextScheduledAt: r.calculateNextScheduledAt(checkJob),
 	}
