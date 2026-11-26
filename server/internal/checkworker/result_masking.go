@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -49,6 +50,32 @@ func maskString(text string, secrets []string) string {
 
 func containsAny(text string, secrets []string) bool {
 	return slices.ContainsFunc(secrets, func(secret string) bool { return strings.Contains(text, secret) })
+}
+
+// maskErrorText returns the text of an error result with every resolved secret
+// reference value of the job masked. An error written before the probe (a
+// config that fails to parse once its references are resolved) describes the
+// resolved text: `url.Parse` quotes the whole URL. A value is masked in its
+// raw spelling and in its Go-quoted one (`%q`, which escapes a control
+// character or a quote the value may hold).
+func maskErrorText(checkJob *models.CheckJob, text string) string {
+	secrets := maskableValues(checkJob.ResolvedRefValues)
+	if len(secrets) == 0 {
+		return text
+	}
+
+	spellings := slices.Clone(secrets)
+
+	for _, secret := range secrets {
+		quoted := strconv.Quote(secret)
+		if inner := quoted[1 : len(quoted)-1]; inner != secret && !slices.Contains(spellings, inner) {
+			spellings = append(spellings, inner)
+		}
+	}
+
+	slices.SortFunc(spellings, func(a, b string) int { return len(b) - len(a) })
+
+	return maskString(text, spellings)
 }
 
 // maskResolvedValues returns output with every resolved secret reference value

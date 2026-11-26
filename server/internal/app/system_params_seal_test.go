@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/db/sysparamseal"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
@@ -35,6 +37,13 @@ func TestStartupSealsPlaintextSystemSecrets(t *testing.T) {
 
 	const legacy = "acme-plaintext-jwt-secret-from-a-keyless-install"
 	r.NoError(raw.SetSystemParameter(ctx, string(systemconfig.KeyJWTSecret), legacy, true))
+
+	// The SAML SP and VAPID private keys of spec 2026-11-26-06.
+	legacySettings := map[string]string{
+		sysparamseal.AppSettingSAMLSPPrivateKey: "-----BEGIN RSA PRIVATE KEY-----\nacme\n-----END RSA PRIVATE KEY-----\n",
+		sysparamseal.AppSettingVAPIDPrivateKey:  "acme-plaintext-vapid-private-key",
+	}
+	r.NoError(raw.SetAppSettings(ctx, legacySettings))
 
 	kek := make([]byte, 32)
 	_, err = rand.Read(kek)
@@ -66,6 +75,19 @@ func TestStartupSealsPlaintextSystemSecrets(t *testing.T) {
 	opened, err := sysParams.GetSystemParameter(ctx, string(systemconfig.KeyJWTSecret))
 	r.NoError(err)
 	r.Equal(legacy, opened.Value["value"])
+
+	for key, value := range legacySettings {
+		storedSetting, getErr := raw.GetAppSetting(ctx, key)
+		r.NoError(getErr)
+		r.NotEqual(value, storedSetting)
+
+		_, settingSealed := sysparamseal.SealedAppSettingEnvelope(storedSetting)
+		r.True(settingSealed, "the startup pass must seal %s", key)
+
+		openedSetting, openErr := sysParams.GetAppSetting(ctx, key)
+		r.NoError(openErr)
+		r.Equal(value, openedSetting)
+	}
 }
 
 // TestBuildSystemParamSealerWithoutKey keeps today's plaintext fallback.
@@ -225,6 +247,7 @@ func TestWarnPlaintextSystemSecrets(t *testing.T) {
 
 	raw := newSealTestDB(t)
 	r.NoError(raw.SetSystemParameter(ctx, string(systemconfig.KeyJWTSecret), "acme-plain", true))
+	r.NoError(raw.SetAppSetting(ctx, sysparamseal.AppSettingVAPIDPrivateKey, "acme-plain-vapid"))
 
 	keyless, err := BuildSystemParamSealer(&config.Config{}, raw)
 	r.NoError(err)
@@ -233,6 +256,7 @@ func TestWarnPlaintextSystemSecrets(t *testing.T) {
 	server.warnPlaintextSystemSecrets(ctx)
 	r.Contains(logs.String(), "secret system parameters stored in plaintext")
 	r.Contains(logs.String(), string(systemconfig.KeyJWTSecret))
+	r.Contains(logs.String(), sysparamseal.AppSettingVAPIDPrivateKey)
 
 	// With a master key the warning does not apply.
 	logs.Reset()
@@ -262,4 +286,42 @@ func TestWarnPlaintextSystemSecrets(t *testing.T) {
 	logs.Reset()
 	(&Server{sysParams: clean}).warnPlaintextSystemSecrets(ctx)
 	r.Empty(logs.String())
+}
+
+var errSettingsRead = errors.New("settings read failed")
+
+// failingSettingsDB reads system parameters normally but fails the app_settings
+// bulk read, as a database that loses the table mid-boot would.
+type failingSettingsDB struct {
+	db.Service
+}
+
+func (failingSettingsDB) GetAppSettings(context.Context, []string) (map[string]string, error) {
+	return nil, errSettingsRead
+}
+
+// TestSealPlaintextSystemParametersSurfacesAppSettingsFailure: a failed
+// app_settings sweep stops the startup pass with a wrapped error.
+func TestSealPlaintextSystemParametersSurfacesAppSettingsFailure(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	r := require.New(t)
+
+	raw := newSealTestDB(t)
+
+	kek := make([]byte, 32)
+	_, err := rand.Read(kek)
+	r.NoError(err)
+
+	cfg := &config.Config{}
+	cfg.Encryption.MasterKey = base64.StdEncoding.EncodeToString(kek)
+
+	sysParams, err := BuildSystemParamSealer(cfg, failingSettingsDB{Service: raw})
+	r.NoError(err)
+
+	server := &Server{config: cfg, sysParams: sysParams}
+	err = server.sealPlaintextSystemParameters(ctx)
+	r.ErrorIs(err, errSettingsRead)
+	r.ErrorContains(err, "auto-migrate app settings")
 }

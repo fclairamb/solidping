@@ -27,6 +27,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sysparamseal"
 )
 
 // SAML specific errors.
@@ -57,7 +58,8 @@ const (
 	// IdP can encrypt assertions to it) and decrypt them if it does.
 	// AuthnRequests themselves are left unsigned — see serviceProvider's doc.
 	appSettingKeySPCertificate = "saml.sp_certificate_pem"
-	appSettingKeySPPrivateKey  = "saml.sp_private_key_pem"
+	// The private key is sealed at rest by sysparamseal (spec 2026-11-26-06).
+	appSettingKeySPPrivateKey = sysparamseal.AppSettingSAMLSPPrivateKey
 
 	samlSPKeyValidity = 10 * 365 * 24 * time.Hour // 10 years
 
