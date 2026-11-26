@@ -20,7 +20,10 @@ func TestReportedCapabilitiesListBuiltinTypes(t *testing.T) {
 
 	r := require.New(t)
 
-	selfHosted := newCheckWorker(&config.Config{Deployment: config.DeploymentConfig{Mode: config.DeploymentModeSelfHosted}}, newClaimFailBackend(nil))
+	selfHosted := newCheckWorker(
+		&config.Config{Deployment: config.DeploymentConfig{Mode: config.DeploymentModeSelfHosted}},
+		newClaimFailBackend(nil),
+	)
 	types := selfHosted.advertisedBuiltinTypes()
 	caps := backend.Capabilities(checkjobsvc.WithBuiltinTypes(context.Background(), types), nil)
 
@@ -34,7 +37,10 @@ func TestReportedCapabilitiesListBuiltinTypes(t *testing.T) {
 	r.Empty(checkjobsvc.CheckTypesFromCapabilities(backend.Capabilities(context.Background(), nil)))
 
 	// A type the activation gate disables is not advertised.
-	saas := newCheckWorker(&config.Config{Deployment: config.DeploymentConfig{Mode: config.DeploymentModeSaaS}}, newClaimFailBackend(nil))
+	saas := newCheckWorker(
+		&config.Config{Deployment: config.DeploymentConfig{Mode: config.DeploymentModeSaaS}},
+		newClaimFailBackend(nil),
+	)
 	if saas.activation != nil {
 		for _, checkType := range checkerdef.ListCheckTypes(nil) {
 			if !saas.activation.IsTypeEnabled(checkType, nil) {
