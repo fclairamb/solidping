@@ -212,6 +212,8 @@
   "apiErrors": {
     "generic": "An error occurred",
     "rateLimited": "Too many requests",
+    "quotaExceeded": "Plan limit reached: {{limitName}} ({{currentUsage}} of {{limit}})",
+    "quotaExceededName": "Plan limit reached: {{limitName}}",
     "sessionExpired": "Session expired",
     "sessionChanged": "Session changed",
     "network": "Network connection failed"

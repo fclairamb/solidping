@@ -212,6 +212,8 @@
   "apiErrors": {
     "generic": "Une erreur est survenue",
     "rateLimited": "Trop de requêtes",
+    "quotaExceeded": "Limite de l'offre atteinte : {{limitName}} ({{currentUsage}} sur {{limit}})",
+    "quotaExceededName": "Limite de l'offre atteinte : {{limitName}}",
     "sessionExpired": "Session expirée",
     "sessionChanged": "La session a changé",
     "network": "La connexion réseau a échoué"
