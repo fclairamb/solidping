@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/db/sysparamseal"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
@@ -284,4 +286,42 @@ func TestWarnPlaintextSystemSecrets(t *testing.T) {
 	logs.Reset()
 	(&Server{sysParams: clean}).warnPlaintextSystemSecrets(ctx)
 	r.Empty(logs.String())
+}
+
+var errSettingsRead = errors.New("settings read failed")
+
+// failingSettingsDB reads system parameters normally but fails the app_settings
+// bulk read, as a database that loses the table mid-boot would.
+type failingSettingsDB struct {
+	db.Service
+}
+
+func (failingSettingsDB) GetAppSettings(context.Context, []string) (map[string]string, error) {
+	return nil, errSettingsRead
+}
+
+// TestSealPlaintextSystemParametersSurfacesAppSettingsFailure: a failed
+// app_settings sweep stops the startup pass with a wrapped error.
+func TestSealPlaintextSystemParametersSurfacesAppSettingsFailure(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	r := require.New(t)
+
+	raw := newSealTestDB(t)
+
+	kek := make([]byte, 32)
+	_, err := rand.Read(kek)
+	r.NoError(err)
+
+	cfg := &config.Config{}
+	cfg.Encryption.MasterKey = base64.StdEncoding.EncodeToString(kek)
+
+	sysParams, err := BuildSystemParamSealer(cfg, failingSettingsDB{Service: raw})
+	r.NoError(err)
+
+	server := &Server{config: cfg, sysParams: sysParams}
+	err = server.sealPlaintextSystemParameters(ctx)
+	r.ErrorIs(err, errSettingsRead)
+	r.ErrorContains(err, "auto-migrate app settings")
 }
