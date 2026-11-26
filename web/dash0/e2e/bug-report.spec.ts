@@ -69,6 +69,26 @@ test.describe("Bug report", () => {
     );
   });
 
+  // solidping-business#115: Cmd/Ctrl+Enter in the dialog sends the report.
+  test("Ctrl+Enter in the comment sends the report", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    await stubBugReport(page, true);
+    let submitted = "";
+    await page.route("**/api/mgmt/report", async (route) => {
+      submitted = route.request().postData() || "";
+      await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    });
+    await page.reload();
+
+    await openFeedback(page);
+    const comment = page.getByTestId("feedback-comment");
+    await comment.fill("Sent with the keyboard");
+    await comment.press("Control+Enter");
+
+    await expect.poll(() => submitted).toContain("Sent with the keyboard");
+    await expect(comment).toBeHidden();
+  });
+
   test("keyboard shortcut opens the dialog", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
 

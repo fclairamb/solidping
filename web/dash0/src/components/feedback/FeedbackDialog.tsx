@@ -111,6 +111,22 @@ export function FeedbackDialog({
             event.preventDefault();
           }
         }}
+        // Cmd/Ctrl+Enter sends the report (solidping-business#115). Handled
+        // here and stopped, so the page's own submit shortcut underneath
+        // (useSubmitShortcut) never fires instead.
+        onKeyDown={(event) => {
+          if (
+            event.key !== "Enter" ||
+            !(event.metaKey || event.ctrlKey) ||
+            event.altKey ||
+            event.nativeEvent.isComposing
+          ) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          if (!submitting && !isCapturing) void handleSubmit();
+        }}
       >
         <DialogHeader>
           <DialogTitle>{t("dialog_title")}</DialogTitle>
