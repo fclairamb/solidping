@@ -20309,6 +20309,12 @@ components:
           $ref: "#/components/schemas/EntitlementsChecksPerMinute"
         upgradeUrl:
           type: string
+        contactUrl:
+          type: string
+          description: >-
+            "Ask for more" link shown on the usage page, built from
+            `entitlements.contact_url_template` (`{org}` is the org slug).
+            Typically a `mailto:`. Only mailto, http and https are returned.
         applied:
           type: boolean
           description: >-

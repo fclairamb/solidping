@@ -424,6 +424,55 @@ func TestGetAdminUpgradeURLHasSignedBillingToken(t *testing.T) {
 	r.InDelta(3600, exp-iat, 5)
 }
 
+func TestGetContactURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		template string
+		want     string
+	}{
+		{
+			"mailto with org", "mailto:contact@acme.com?subject=Raise%20limits%20for%20{org}",
+			"mailto:contact@acme.com?subject=Raise%20limits%20for%20",
+		},
+		{"https", "https://acme.com/contact", "https://acme.com/contact"},
+		{"javascript refused", "javascript:alert(1)", ""},
+		{"unset", "", ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+			h := newEntHandlerSetup(t)
+
+			if tc.template != "" {
+				r.NoError(h.dbSvc.SetSystemParameter(t.Context(), enthandler.ParamContactURLTemplate,
+					tc.template, false))
+			}
+
+			// A plain member gets it too: the link carries no secret.
+			rec := h.doWithRole(t, http.MethodGet, h.path(), nil, "user")
+			r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+			var body map[string]any
+			r.NoError(json.Unmarshal(rec.Body.Bytes(), &body))
+
+			want := tc.want
+			if strings.HasSuffix(tc.template, "{org}") {
+				want += h.org.Slug
+			}
+
+			if want == "" {
+				r.NotContains(body, "contactUrl")
+			} else {
+				r.Equal(want, body["contactUrl"])
+			}
+		})
+	}
+}
+
 func TestGetAdminUpgradeURLNoSecretHasNoFragment(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

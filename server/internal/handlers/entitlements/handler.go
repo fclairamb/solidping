@@ -12,6 +12,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,6 +52,10 @@ const (
 	ParamAllowLegacyServiceToken = "entitlements.allow_legacy_service_token"
 	ParamAdminWritesEnabled      = "entitlements.admin_writes_enabled"
 	ParamUpgradeURLTemplate      = entcore.ParamUpgradeURLTemplate
+	// ParamContactURLTemplate is the "Ask for more" link target on the usage
+	// page, with `{org}` standing for the org slug. Free-form (typically a
+	// `mailto:`), it carries no secret, so every member gets it.
+	ParamContactURLTemplate = "entitlements.contact_url_template"
 	// ParamBillingInboundSecret is the shared BEARER credential presented on
 	// service calls between this instance and the billing service. Set to the
 	// same value as the billing service's BILLING_INBOUND_SECRET. It is NOT
@@ -195,6 +200,8 @@ func (h *Handler) Get(writer http.ResponseWriter, req *http.Request) error {
 		upgradeURL, _ = h.adminUpgradeURL(req.Context(), org.Slug)
 	}
 
+	contactURL := h.contactURL(req.Context(), org.Slug)
+
 	// Usage is opt-in via ?with=usage (comma-separated, consistent with the
 	// checks endpoint's ?with=last_result,last_status_change). Without it,
 	// no usage is computed — the cheap path stays cheap.
@@ -229,7 +236,8 @@ func (h *Handler) Get(writer http.ResponseWriter, req *http.Request) error {
 		Usage           *entcore.Usage           `json:"usage,omitempty"`
 		ChecksPerMinute *entcore.ChecksPerMinute `json:"checksPerMinute,omitempty"`
 		UpgradeURL      string                   `json:"upgradeUrl,omitempty"`
-	}{Resolved: resolved, Usage: usagePtr, ChecksPerMinute: cpmPtr, UpgradeURL: upgradeURL})
+		ContactURL      string                   `json:"contactUrl,omitempty"`
+	}{Resolved: resolved, Usage: usagePtr, ChecksPerMinute: cpmPtr, UpgradeURL: upgradeURL, ContactURL: contactURL})
 }
 
 // Put handles PUT /api/v1/orgs/:org/entitlements — replaces the row.
@@ -565,6 +573,40 @@ func (h *Handler) upgradeURL(ctx context.Context, orgSlug string) (string, error
 	}
 
 	return interpolateURL(template, orgSlug), nil
+}
+
+// contactURL builds the "Ask for more" link. The dashboard renders it as an
+// href, so only mailto, http and https are let through: anything else
+// (javascript:, data:) is dropped with a warning rather than served.
+func (h *Handler) contactURL(ctx context.Context, orgSlug string) string {
+	param, err := h.db.GetSystemParameter(ctx, ParamContactURLTemplate)
+	if err != nil || param == nil {
+		return ""
+	}
+
+	template, ok := param.Value["value"].(string)
+	if !ok || template == "" {
+		return ""
+	}
+
+	contactURL := interpolateURL(template, orgSlug)
+
+	parsed, err := url.Parse(contactURL)
+	if err != nil {
+		slog.WarnContext(ctx, "ignoring unparsable contact URL", "key", ParamContactURLTemplate, "error", err)
+
+		return ""
+	}
+
+	switch strings.ToLower(parsed.Scheme) {
+	case "mailto", "http", "https":
+		return contactURL
+	default:
+		slog.WarnContext(ctx, "ignoring contact URL with a disallowed scheme",
+			"key", ParamContactURLTemplate, "scheme", parsed.Scheme)
+
+		return ""
+	}
 }
 
 // interpolateURL replaces {org} with the slug. Lightweight by design — no
