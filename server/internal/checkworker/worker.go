@@ -1611,7 +1611,7 @@ func (r *CheckWorker) executeJob(
 				},
 			}
 		} else {
-			logger.ErrorContext(ctx, "Check execution failed", "error", err)
+			logger.ErrorContext(ctx, "Check execution failed", "error", maskErrorText(checkJob, err.Error()))
 			result = &checkerdef.Result{
 				Status:   checkerdef.StatusError,
 				Duration: duration,
@@ -2092,7 +2092,7 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 		Status:          int(checkerdef.StatusError),
 		Duration:        0,
 		Metrics:         map[string]any{},
-		Output:          map[string]any{checkerdef.OutputKeyError: err.Error()},
+		Output:          map[string]any{checkerdef.OutputKeyError: maskErrorText(checkJob, err.Error())},
 		Region:          r.resolveResultRegion(checkJob),
 		NextScheduledAt: r.calculateNextScheduledAt(checkJob),
 	}
