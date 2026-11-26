@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 func TestDockerConfig_FromMap_RestartLoop(t *testing.T) {
@@ -143,4 +145,31 @@ func TestDockerConfig_ResolveRestartLoopWindow(t *testing.T) {
 
 	withWindow := &DockerConfig{RestartLoopMinRestarts: 3, RestartLoopWindow: 90 * time.Second}
 	r.Equal(90*time.Second, withWindow.ResolveRestartLoopWindow())
+}
+
+func TestDockerConfig_Validate_DaemonMode(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no container validates", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &DockerConfig{}
+		require.NoError(t, cfg.Validate())
+		require.True(t, cfg.DaemonMode())
+	})
+
+	t.Run("bad host still fails without container", func(t *testing.T) {
+		t.Parallel()
+
+		require.Error(t, (&DockerConfig{Host: "http://x"}).Validate())
+	})
+
+	t.Run("spec defaults", func(t *testing.T) {
+		t.Parallel()
+
+		spec := &checkerdef.CheckSpec{Config: map[string]any{}}
+		require.NoError(t, ValidateSpec(spec))
+		require.Equal(t, "Docker daemon", spec.Name)
+		require.Equal(t, "docker-daemon", spec.Slug)
+	})
 }

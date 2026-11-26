@@ -70,6 +70,10 @@ func (c *DockerChecker) Execute(
 
 	defer func() { _ = cli.Close() }()
 
+	if cfg.DaemonMode() {
+		return executePing(ctx, cli, cfg, start, metrics), nil
+	}
+
 	inspected, err := cli.ContainerInspect(ctx, cfg.ResolveContainerRef(), client.ContainerInspectOptions{})
 	if err != nil {
 		return handleInspectError(ctx, err, cfg.ResolveHost(), start, metrics), nil
@@ -126,8 +130,51 @@ func createClient(ctx context.Context, cfg *DockerConfig) (*client.Client, error
 	return client.New(opts...)
 }
 
+// executePing checks the Docker daemon itself, with no container involved.
+func executePing(
+	ctx context.Context,
+	cli *client.Client,
+	cfg *DockerConfig,
+	start time.Time,
+	metrics map[string]any,
+) *checkerdef.Result {
+	pinged, err := cli.Ping(ctx, client.PingOptions{})
+	if err != nil {
+		return handleError(ctx, "docker daemon ping failed: ", err, cfg.ResolveHost(), start, metrics)
+	}
+
+	metrics["ping_time_ms"] = durationMs(time.Since(start))
+
+	output := map[string]any{"mode": "daemon"}
+	if pinged.APIVersion != "" {
+		output["apiVersion"] = pinged.APIVersion
+	}
+
+	if pinged.OSType != "" {
+		output["osType"] = pinged.OSType
+	}
+
+	return &checkerdef.Result{
+		Status:   checkerdef.StatusUp,
+		Duration: time.Since(start),
+		Metrics:  metrics,
+		Output:   output,
+	}
+}
+
 func handleInspectError(
 	ctx context.Context,
+	err error,
+	host string,
+	start time.Time,
+	metrics map[string]any,
+) *checkerdef.Result {
+	return handleError(ctx, "container inspect failed: ", err, host, start, metrics)
+}
+
+func handleError(
+	ctx context.Context,
+	prefix string,
 	err error,
 	host string,
 	start time.Time,
@@ -142,7 +189,7 @@ func handleInspectError(
 		}
 	}
 
-	msg := "container inspect failed: " + err.Error() + socketPermissionHint(err, host)
+	msg := prefix + err.Error() + socketPermissionHint(err, host)
 
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusDown,
