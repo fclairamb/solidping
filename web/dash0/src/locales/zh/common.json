@@ -212,6 +212,8 @@
   "apiErrors": {
     "generic": "发生错误",
     "rateLimited": "请求过多",
+    "quotaExceeded": "已达到套餐上限：{{limitName}}（{{currentUsage}}/{{limit}}）",
+    "quotaExceededName": "已达到套餐上限：{{limitName}}",
     "sessionExpired": "会话已过期",
     "sessionChanged": "会话已变更",
     "network": "网络连接失败"
@@ -221,6 +223,7 @@
     "commandMenu": "打开命令菜单",
     "focusSearch": "聚焦搜索框",
     "resetFilters": "清除搜索，然后重置筛选",
+    "leaveEmptyForm": "离开未填写的新建检查表单",
     "newCheck": "新建检查",
     "submitForm": "提交表单",
     "help": "显示此帮助",

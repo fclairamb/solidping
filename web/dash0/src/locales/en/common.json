@@ -212,6 +212,8 @@
   "apiErrors": {
     "generic": "An error occurred",
     "rateLimited": "Too many requests",
+    "quotaExceeded": "Plan limit reached: {{limitName}} ({{currentUsage}} of {{limit}})",
+    "quotaExceededName": "Plan limit reached: {{limitName}}",
     "sessionExpired": "Session expired",
     "sessionChanged": "Session changed",
     "network": "Network connection failed"
@@ -221,6 +223,7 @@
     "commandMenu": "Open the command menu",
     "focusSearch": "Focus the search box",
     "resetFilters": "Clear search, then reset filters",
+    "leaveEmptyForm": "Leave a new check form left empty",
     "newCheck": "New check",
     "submitForm": "Submit the form",
     "help": "Show this help",

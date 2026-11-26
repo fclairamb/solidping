@@ -462,6 +462,21 @@ test.describe("Command Menu (Cmd+K)", () => {
     });
   });
 
+  // solidping-business#115: the Server settings of the user menu are in the
+  // palette too, for a super admin (the default test user is one).
+  test("a super admin finds the Server entry and lands on the server settings", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const input = await openPalette(page, { fromDashboard: true });
+    const serverItem = page.getByTestId("command-menu-server");
+    await input.fill("server");
+    await expect(serverItem).toBeVisible();
+    await serverItem.click();
+    await page.waitForURL(/\/server\//, { timeout: 5000 });
+    await expect(input).not.toBeVisible();
+  });
+
   test("should show checks and navigate to a check", async ({
     authenticatedPage,
   }) => {
@@ -645,7 +660,9 @@ test.describe("Command Menu (Cmd+K)", () => {
     // not even as an empty heading.
     await expect(
       page.getByTestId("command-menu-group-switch-org"),
-    ).toHaveCount(0);
+    ).toHaveCount(0);    // Not a super admin: no Server entry either (solidping-business#115).
+    await expect(page.getByTestId("command-menu-account")).toBeVisible();
+    await expect(page.getByTestId("command-menu-server")).toHaveCount(0);
   });
 
   test("lists the user's other organizations, searchable by name and slug, and switching lands on its dashboard", async ({

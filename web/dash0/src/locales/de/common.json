@@ -212,6 +212,8 @@
   "apiErrors": {
     "generic": "Ein Fehler ist aufgetreten",
     "rateLimited": "Zu viele Anfragen",
+    "quotaExceeded": "Tariflimit erreicht: {{limitName}} ({{currentUsage}} von {{limit}})",
+    "quotaExceededName": "Tariflimit erreicht: {{limitName}}",
     "sessionExpired": "Sitzung abgelaufen",
     "sessionChanged": "Sitzung gewechselt",
     "network": "Netzwerkverbindung fehlgeschlagen"
@@ -221,6 +223,7 @@
     "commandMenu": "Befehlsmenü öffnen",
     "focusSearch": "Suchfeld fokussieren",
     "resetFilters": "Suche leeren, dann Filter zurücksetzen",
+    "leaveEmptyForm": "Leeres Formular einer neuen Prüfung verlassen",
     "newCheck": "Neue Prüfung",
     "submitForm": "Formular absenden",
     "help": "Diese Hilfe anzeigen",

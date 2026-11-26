@@ -149,6 +149,51 @@ describe("handleResponse", () => {
   });
 });
 
+// solidping-business#116: a QUOTA_EXCEEDED body has no title, and the user saw
+// "An error occurred" instead of which plan limit they hit.
+describe("handleResponse — error message", () => {
+  const opts = { skipAuth: true, suppress401Redirect: true };
+  const errorOf = async (status: number, body: unknown) => {
+    const response = new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+    return handleResponse(response, opts).catch((e: unknown) => e);
+  };
+
+  beforeEach(async () => {
+    await i18n.changeLanguage("en");
+  });
+
+  it("names the limit of a QUOTA_EXCEEDED body", async () => {
+    const err = await errorOf(402, {
+      code: "QUOTA_EXCEEDED",
+      currentUsage: 1,
+      detail: "MaxDeportedAgents limit reached",
+      limit: 1,
+      limitName: "MaxDeportedAgents",
+    });
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).message).toBe("Plan limit reached: MaxDeportedAgents (1 of 1)");
+    expect((err as ApiError).code).toBe("QUOTA_EXCEEDED");
+  });
+
+  it("falls back on detail when the body has no title", async () => {
+    const err = await errorOf(409, { code: "CONFLICT", detail: "Slug already taken" });
+    expect((err as ApiError).message).toBe("Slug already taken");
+  });
+
+  it("keeps the title when there is one (positive control)", async () => {
+    const err = await errorOf(409, { title: "Conflict", code: "CONFLICT", detail: "Slug already taken" });
+    expect((err as ApiError).message).toBe("Conflict");
+  });
+
+  it("keeps the generic message for an empty body", async () => {
+    const err = await errorOf(500, {});
+    expect((err as ApiError).message).toBe("An error occurred");
+  });
+});
+
 // The forced-rotation backstop (spec 2026-08-23-04). A flagged session's only
 // reachable endpoints are the rotation itself, /auth/me and /auth/logout;
 // everything else answers 403 PASSWORD_CHANGE_REQUIRED, and every one of those

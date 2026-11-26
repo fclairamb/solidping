@@ -92,6 +92,26 @@ test.describe("Keyboard shortcuts", () => {
     await expect(page).toHaveURL(/checks\/new/);
   });
 
+  // solidping-business#114: Esc leaves an untouched create form, never one the
+  // user started filling (that would throw the input away).
+  test("Esc leaves an empty new check form but not a filled one", async ({ authenticatedPage: page }) => {
+    await page.goto("orgs/test/checks/new");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+    await page.locator("body").click({ position: { x: 1, y: 1 } });
+    await page.keyboard.press("Escape");
+    await expect(page).toHaveURL(/\/checks(\?|$)/);
+
+    // Positive control: once something is typed, Esc stays on the form.
+    await page.goto("orgs/test/checks/new");
+    const name = page.getByTestId("check-name-input");
+    await name.fill("Kbd draft");
+    await page.locator("body").click({ position: { x: 1, y: 1 } });
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    await expect(page).toHaveURL(/\/checks\/new/);
+    await expect(name).toHaveValue("Kbd draft");
+  });
+
   test("Ctrl+Enter saves a valid edit form and not an invalid one", async ({ authenticatedPage: page }) => {
     const token = await getAuthToken(page);
     const name = `Kbd${Date.now()}`;

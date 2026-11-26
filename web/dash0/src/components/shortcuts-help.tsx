@@ -9,6 +9,7 @@ const SHORTCUTS: { keys: string[]; labelKey: string }[] = [
   { keys: ["Ctrl/Cmd", "K"], labelKey: "shortcuts.commandMenu" },
   { keys: ["/"], labelKey: "shortcuts.focusSearch" },
   { keys: ["Esc"], labelKey: "shortcuts.resetFilters" },
+  { keys: ["Esc"], labelKey: "shortcuts.leaveEmptyForm" },
   { keys: ["n"], labelKey: "shortcuts.newCheck" },
   { keys: ["Ctrl/Cmd", "Enter"], labelKey: "shortcuts.submitForm" },
   { keys: ["?"], labelKey: "shortcuts.help" },
