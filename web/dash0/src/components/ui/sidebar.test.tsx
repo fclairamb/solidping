@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   Sidebar,
+  SidebarContent,
   SidebarGroup,
   SidebarGroupLabel,
   SidebarMenu,
@@ -11,6 +12,7 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from "./sidebar";
+import { sidebarOverflow } from "@/lib/sidebar-overflow";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
 
 // Spec 2026-09-24-02: the sidebar is always dark navy. These pin the class
@@ -126,5 +128,34 @@ describe("LiveStatusDot on the navy", () => {
     const c = classesAt(dot, 'data-testid="live-status-dot"');
     expect(c).toContain("bg-muted-foreground");
     expect(c).not.toContain("bg-gray-300");
+  });
+});
+
+describe("SidebarContent scroll cues", () => {
+  it("reports which edges hide menu items", () => {
+    expect(sidebarOverflow(0, 600, 600)).toBe("none");
+    expect(sidebarOverflow(0, 800, 600)).toBe("bottom");
+    expect(sidebarOverflow(200, 800, 600)).toBe("top");
+    expect(sidebarOverflow(100, 800, 600)).toBe("both");
+    // Fractional scroll positions on scaled displays are not an overflow.
+    expect(sidebarOverflow(199.5, 800, 600)).toBe("top");
+    expect(sidebarOverflow(0.5, 600.5, 600)).toBe("none");
+  });
+
+  it("fades the hidden edges, pads the end and keeps the scrollbar thin", () => {
+    const markup = renderToStaticMarkup(
+      <SidebarProvider>
+        <Sidebar>
+          <SidebarContent>items</SidebarContent>
+        </Sidebar>
+      </SidebarProvider>,
+    );
+    const classes = classesAt(markup, 'data-slot="sidebar-content"');
+    expect(markup).toContain('data-overflow="none"');
+    expect(classes).toContain("pb-2");
+    expect(classes).toContain("[scrollbar-width:thin]");
+    for (const edge of ["top", "bottom", "both"]) {
+      expect(classes.some((c) => c.startsWith(`data-[overflow=${edge}]:[mask-image:`))).toBe(true);
+    }
   });
 });
