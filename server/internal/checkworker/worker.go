@@ -1273,29 +1273,33 @@ func (r *CheckWorker) materializeConfig(checkJob *models.CheckJob) error {
 // Output["url"], the echo is replaced by the display rendering, so the stored
 // result (and the incident built from it) shows `${param:…}` and never the
 // secret. The checker's own map is left untouched.
+//
+// Any other place the checker echoed a resolved `${env:…}` / `${param:…}`
+// value is masked as well: a dnsbl check whose zone is
+// `${param:key}.zen.example.net` lists the queried zones in its output, and
+// would otherwise store the key in clear.
 func resultOutput(checkJob *models.CheckJob, output map[string]any) map[string]any {
-	if checkJob.DisplayURL == "" || output == nil {
+	if output == nil {
 		return output
 	}
 
-	echoed, ok := output["url"].(string)
-	if !ok {
-		return output
+	out := output
+
+	if checkJob.DisplayURL != "" {
+		echoed, echoedOK := output["url"].(string)
+		resolved, resolvedOK := checkJob.Config["url"].(string)
+
+		if echoedOK && resolvedOK && echoed == resolved {
+			out = make(map[string]any, len(output))
+			for key, value := range output {
+				out[key] = value
+			}
+
+			out["url"] = checkJob.DisplayURL
+		}
 	}
 
-	resolved, ok := checkJob.Config["url"].(string)
-	if !ok || echoed != resolved {
-		return output
-	}
-
-	out := make(map[string]any, len(output))
-	for key, value := range output {
-		out[key] = value
-	}
-
-	out["url"] = checkJob.DisplayURL
-
-	return out
+	return maskResolvedValues(checkJob, out)
 }
 
 // executeJob executes a single check job.
@@ -1988,9 +1992,9 @@ func (r *CheckWorker) buildSubmitRequest(
 	return &backend.SubmitResultRequest{
 		Status:          int(result.Status),
 		Duration:        float32(result.Duration.Seconds() * 1000),
-		Metrics:         result.Metrics,
+		Metrics:         maskMetricKeys(result.Metrics, maskableValues(checkJob.ResolvedRefValues)),
 		Output:          resultOutput(checkJob, result.Output),
-		Diagnostics:     result.Diagnostics,
+		Diagnostics:     maskDiagnostics(result.Diagnostics, maskableValues(checkJob.ResolvedRefValues)),
 		Region:          r.resolveResultRegion(checkJob),
 		NextScheduledAt: nextScheduledAt,
 		ExecStart:       execStart,
