@@ -76,7 +76,7 @@ func TestMinSupportedAgentVersionRespectsCompatWindow(t *testing.T) {
 
 	raw, err := os.ReadFile("../../../CHANGELOG.md")
 	require.NoError(t, err)
-	require.True(t, changelogHeading.MatchString(string(raw)), "changelog headings must carry a date")
+	require.True(t, changelogHeading.Match(raw), "changelog headings must carry a date")
 	require.NoError(t, checkCompatWindow(string(raw), agents.MinSupportedAgentVersion))
 }
 
