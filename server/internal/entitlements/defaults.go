@@ -92,10 +92,11 @@ const (
 	// bring-your-own integration.
 	defaultMaxSmsPerMonthSaaS   = 0
 	defaultMaxCallsPerMonthSaaS = 0
-	// defaultMaxWhatsappPerMonthSaaS is 0 for the same reason: the Free plan
-	// ships no WhatsApp alerts. Self-hosted stays unlimited (nil) — the
-	// operator pays Meta directly for their own WABA.
-	defaultMaxWhatsappPerMonthSaaS = 0
+	// defaultMaxWhatsappPerMonthSaaS lets the Free plan try WhatsApp alerts:
+	// 5 template messages a month (decision of 2026-11-27, ladder
+	// 5/50/150/500 across Free/Starter/Pro/Scale). Self-hosted stays
+	// unlimited (nil): the operator pays Meta directly for their own WABA.
+	defaultMaxWhatsappPerMonthSaaS = 5
 	// defaultMaxSlosSaaS mirrors the Free SKU's SLO allowance (spec
 	// 2026-08-20-01). Self-hosted stays unlimited (nil) — an operator running
 	// their own instance has no reason to be metered on objectives.
