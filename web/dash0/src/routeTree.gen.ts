@@ -162,6 +162,8 @@ import { Route as OrgsOrgAccountOrganizationsNewRouteImport } from './routes/org
 import { Route as OrgsOrgOrganizationDiscoveryJobUidIndexRouteImport } from './routes/orgs/$org/organization.discovery.$jobUid.index'
 import { Route as OrgsOrgStatusPagesStatusPageUidIncidentsUidRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.incidents.$uid'
 import { Route as OrgsOrgSlosUidAlertPoliciesPolicyUidRouteImport } from './routes/orgs/$org/slos.$uid.alert-policies.$policyUid'
+import { Route as OrgsOrgOrganizationPrivateLocationsRegionsSlugRouteImport } from './routes/orgs/$org/organization.private-locations.regions.$slug'
+import { Route as OrgsOrgOrganizationPrivateLocationsAgentsUidRouteImport } from './routes/orgs/$org/organization.private-locations.agents.$uid'
 import { Route as OrgsOrgOrganizationMembersMemberUidPagingRouteImport } from './routes/orgs/$org/organization.members_.$memberUid.paging'
 import { Route as OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid_.notifications.$notificationUid'
 import { Route as OrgsOrgChecksCheckUidResultsResultUidRouteImport } from './routes/orgs/$org/checks.$checkUid.results.$resultUid'
@@ -993,6 +995,18 @@ const OrgsOrgSlosUidAlertPoliciesPolicyUidRoute =
     path: '/alert-policies/$policyUid',
     getParentRoute: () => OrgsOrgSlosUidRoute,
   } as any)
+const OrgsOrgOrganizationPrivateLocationsRegionsSlugRoute =
+  OrgsOrgOrganizationPrivateLocationsRegionsSlugRouteImport.update({
+    id: '/regions/$slug',
+    path: '/regions/$slug',
+    getParentRoute: () => OrgsOrgOrganizationPrivateLocationsRoute,
+  } as any)
+const OrgsOrgOrganizationPrivateLocationsAgentsUidRoute =
+  OrgsOrgOrganizationPrivateLocationsAgentsUidRouteImport.update({
+    id: '/agents/$uid',
+    path: '/agents/$uid',
+    getParentRoute: () => OrgsOrgOrganizationPrivateLocationsRoute,
+  } as any)
 const OrgsOrgOrganizationMembersMemberUidPagingRoute =
   OrgsOrgOrganizationMembersMemberUidPagingRouteImport.update({
     id: '/members_/$memberUid/paging',
@@ -1166,6 +1180,8 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
   '/orgs/$org/organization/members/$memberUid/paging': typeof OrgsOrgOrganizationMembersMemberUidPagingRoute
+  '/orgs/$org/organization/private-locations/agents/$uid': typeof OrgsOrgOrganizationPrivateLocationsAgentsUidRoute
+  '/orgs/$org/organization/private-locations/regions/$slug': typeof OrgsOrgOrganizationPrivateLocationsRegionsSlugRoute
   '/orgs/$org/slos/$uid/alert-policies/$policyUid': typeof OrgsOrgSlosUidAlertPoliciesPolicyUidRoute
   '/orgs/$org/status-pages/$statusPageUid/incidents/$uid': typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute
   '/orgs/$org/organization/discovery/$jobUid/': typeof OrgsOrgOrganizationDiscoveryJobUidIndexRoute
@@ -1297,6 +1313,8 @@ export interface FileRoutesByTo {
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
   '/orgs/$org/organization/members/$memberUid/paging': typeof OrgsOrgOrganizationMembersMemberUidPagingRoute
+  '/orgs/$org/organization/private-locations/agents/$uid': typeof OrgsOrgOrganizationPrivateLocationsAgentsUidRoute
+  '/orgs/$org/organization/private-locations/regions/$slug': typeof OrgsOrgOrganizationPrivateLocationsRegionsSlugRoute
   '/orgs/$org/slos/$uid/alert-policies/$policyUid': typeof OrgsOrgSlosUidAlertPoliciesPolicyUidRoute
   '/orgs/$org/status-pages/$statusPageUid/incidents/$uid': typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute
   '/orgs/$org/organization/discovery/$jobUid': typeof OrgsOrgOrganizationDiscoveryJobUidIndexRoute
@@ -1456,6 +1474,8 @@ export interface FileRoutesById {
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
   '/orgs/$org/organization/members_/$memberUid/paging': typeof OrgsOrgOrganizationMembersMemberUidPagingRoute
+  '/orgs/$org/organization/private-locations/agents/$uid': typeof OrgsOrgOrganizationPrivateLocationsAgentsUidRoute
+  '/orgs/$org/organization/private-locations/regions/$slug': typeof OrgsOrgOrganizationPrivateLocationsRegionsSlugRoute
   '/orgs/$org/slos/$uid/alert-policies/$policyUid': typeof OrgsOrgSlosUidAlertPoliciesPolicyUidRoute
   '/orgs/$org/status-pages/$statusPageUid/incidents/$uid': typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute
   '/orgs/$org/organization/discovery/$jobUid/': typeof OrgsOrgOrganizationDiscoveryJobUidIndexRoute
@@ -1616,6 +1636,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
     | '/orgs/$org/organization/members/$memberUid/paging'
+    | '/orgs/$org/organization/private-locations/agents/$uid'
+    | '/orgs/$org/organization/private-locations/regions/$slug'
     | '/orgs/$org/slos/$uid/alert-policies/$policyUid'
     | '/orgs/$org/status-pages/$statusPageUid/incidents/$uid'
     | '/orgs/$org/organization/discovery/$jobUid/'
@@ -1747,6 +1769,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
     | '/orgs/$org/organization/members/$memberUid/paging'
+    | '/orgs/$org/organization/private-locations/agents/$uid'
+    | '/orgs/$org/organization/private-locations/regions/$slug'
     | '/orgs/$org/slos/$uid/alert-policies/$policyUid'
     | '/orgs/$org/status-pages/$statusPageUid/incidents/$uid'
     | '/orgs/$org/organization/discovery/$jobUid'
@@ -1905,6 +1929,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid'
     | '/orgs/$org/organization/members_/$memberUid/paging'
+    | '/orgs/$org/organization/private-locations/agents/$uid'
+    | '/orgs/$org/organization/private-locations/regions/$slug'
     | '/orgs/$org/slos/$uid/alert-policies/$policyUid'
     | '/orgs/$org/status-pages/$statusPageUid/incidents/$uid'
     | '/orgs/$org/organization/discovery/$jobUid/'
@@ -3002,6 +3028,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgSlosUidAlertPoliciesPolicyUidRouteImport
       parentRoute: typeof OrgsOrgSlosUidRoute
     }
+    '/orgs/$org/organization/private-locations/regions/$slug': {
+      id: '/orgs/$org/organization/private-locations/regions/$slug'
+      path: '/regions/$slug'
+      fullPath: '/orgs/$org/organization/private-locations/regions/$slug'
+      preLoaderRoute: typeof OrgsOrgOrganizationPrivateLocationsRegionsSlugRouteImport
+      parentRoute: typeof OrgsOrgOrganizationPrivateLocationsRoute
+    }
+    '/orgs/$org/organization/private-locations/agents/$uid': {
+      id: '/orgs/$org/organization/private-locations/agents/$uid'
+      path: '/agents/$uid'
+      fullPath: '/orgs/$org/organization/private-locations/agents/$uid'
+      preLoaderRoute: typeof OrgsOrgOrganizationPrivateLocationsAgentsUidRouteImport
+      parentRoute: typeof OrgsOrgOrganizationPrivateLocationsRoute
+    }
     '/orgs/$org/organization/members_/$memberUid/paging': {
       id: '/orgs/$org/organization/members_/$memberUid/paging'
       path: '/members/$memberUid/paging'
@@ -3328,6 +3368,8 @@ interface OrgsOrgOrganizationPrivateLocationsRouteChildren {
   OrgsOrgOrganizationPrivateLocationsRegisterRoute: typeof OrgsOrgOrganizationPrivateLocationsRegisterRoute
   OrgsOrgOrganizationPrivateLocationsResealRoute: typeof OrgsOrgOrganizationPrivateLocationsResealRoute
   OrgsOrgOrganizationPrivateLocationsIndexRoute: typeof OrgsOrgOrganizationPrivateLocationsIndexRoute
+  OrgsOrgOrganizationPrivateLocationsAgentsUidRoute: typeof OrgsOrgOrganizationPrivateLocationsAgentsUidRoute
+  OrgsOrgOrganizationPrivateLocationsRegionsSlugRoute: typeof OrgsOrgOrganizationPrivateLocationsRegionsSlugRoute
 }
 
 const OrgsOrgOrganizationPrivateLocationsRouteChildren: OrgsOrgOrganizationPrivateLocationsRouteChildren =
@@ -3338,6 +3380,10 @@ const OrgsOrgOrganizationPrivateLocationsRouteChildren: OrgsOrgOrganizationPriva
       OrgsOrgOrganizationPrivateLocationsResealRoute,
     OrgsOrgOrganizationPrivateLocationsIndexRoute:
       OrgsOrgOrganizationPrivateLocationsIndexRoute,
+    OrgsOrgOrganizationPrivateLocationsAgentsUidRoute:
+      OrgsOrgOrganizationPrivateLocationsAgentsUidRoute,
+    OrgsOrgOrganizationPrivateLocationsRegionsSlugRoute:
+      OrgsOrgOrganizationPrivateLocationsRegionsSlugRoute,
   }
 
 const OrgsOrgOrganizationPrivateLocationsRouteWithChildren =

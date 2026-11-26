@@ -417,7 +417,8 @@
       "onlineCount": "{{online}}/{{total}} verbunden",
       "monitor": "Agentenüberwachung",
       "monitorOff": "Agentenüberwachung aus",
-      "monitorEnable": "Einschalten"
+      "monitorEnable": "Einschalten",
+      "edit": "Standort bearbeiten"
     },
     "cancel": "Abbrechen",
     "token": {
@@ -449,7 +450,8 @@
       "offline": "Getrennt",
       "identityKey": "Identität:",
       "sealingKey": "Versiegelung:",
-      "regionKeys": "Regionsschlüssel:"
+      "regionKeys": "Regionsschlüssel:",
+      "edit": "Agent bearbeiten"
     },
     "tokens": {
       "title": "Ausstehende Registrierungstoken",
@@ -530,6 +532,22 @@
         "cancelled": "abgebrochen: der Check hat sich geändert",
         "unknown": "fehlgeschlagen ({{code}})"
       }
+    },
+    "agentEdit": {
+      "title": "Agent bearbeiten",
+      "description": "Der Name wird nur in SolidPing angezeigt. Der Agent wird nicht neu gestartet, und sein SP_AGENT_NAME wird nur bei der Registrierung gelesen.",
+      "notFound": "Dieser Agent existiert nicht oder wurde entfernt.",
+      "saved": "Agent umbenannt",
+      "saveFailed": "Agent konnte nicht umbenannt werden"
+    },
+    "regionEdit": {
+      "title": "Privaten Standort bearbeiten",
+      "description": "Ändern Sie, wie dieser Standort angezeigt wird. Sein Verfügbarkeitsmonitor wird mit umbenannt, außer Sie haben ihn selbst umbenannt.",
+      "emoji": "Symbol (Emoji)",
+      "slugHelp": "Der Slug kann nicht geändert werden: Agents, Registrierungstokens, Regionsschlüssel und Checks verweisen darauf.",
+      "notFound": "Dieser private Standort existiert nicht oder wurde gelöscht.",
+      "saved": "Privater Standort aktualisiert",
+      "saveFailed": "Privater Standort konnte nicht aktualisiert werden"
     }
   },
   "accessRedirect": {

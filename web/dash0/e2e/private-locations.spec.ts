@@ -278,6 +278,69 @@ test.describe("Private locations", () => {
     await expect.poll(() => deleteCalled).toBe(true);
   });
 
+  test("rename a private location from its edit page", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/private-regions`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { slug: "e2e-dc", name: "E2E Datacenter" },
+    });
+    expect(resp.ok()).toBeTruthy();
+
+    await page.goto("orgs/test/organization/private-locations");
+    await page.getByTestId("edit-region-e2e-dc").click();
+
+    await expect(page.getByTestId("region-edit-form")).toBeVisible();
+    // The slug is shown, read-only.
+    await expect(page.getByTestId("region-edit-slug-input")).toBeDisabled();
+    await expect(page.getByTestId("region-edit-slug-input")).toHaveValue("@e2e-dc");
+    await expect(page.getByTestId("region-edit-name-input")).toHaveValue("E2E Datacenter");
+
+    await page.getByTestId("region-edit-name-input").fill("E2E Paris office");
+    await page.getByTestId("region-edit-emoji-input").fill("🏢");
+    await page.getByTestId("region-edit-submit").click();
+
+    const row = page.getByTestId("private-region-e2e-dc");
+    await expect(row).toContainText("E2E Paris office");
+    await expect(row).toContainText("🏢");
+  });
+
+  test("rename an agent from its edit page", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+
+    const agent = {
+      uid: "e2e-rename-agent",
+      name: "3f2a9c1b7d4e",
+      region: "@e2e-dc",
+      fingerprint: "fp-rename",
+      status: "active",
+      enrolledAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+      lastSeenAt: new Date().toISOString(),
+    };
+    let patchedName: string | undefined;
+
+    await page.route("**/api/v1/orgs/test/agents", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({ json: { data: [{ ...agent, name: patchedName ?? agent.name }] } });
+    });
+    await page.route(`**/api/v1/orgs/test/agents/${agent.uid}`, async (route) => {
+      if (route.request().method() !== "PATCH") return route.fallback();
+      patchedName = (route.request().postDataJSON() as { name: string }).name;
+      await route.fulfill({ json: { ...agent, name: patchedName } });
+    });
+
+    await page.goto("orgs/test/organization/private-locations");
+    await page.getByTestId(`edit-agent-${agent.uid}`).click();
+
+    await expect(page.getByTestId("agent-edit-name-input")).toHaveValue(agent.name);
+    await page.getByTestId("agent-edit-name-input").fill("  nas-paris  ");
+    await page.getByTestId("agent-edit-submit").click();
+
+    await expect.poll(() => patchedName).toBe("nas-paris");
+    await expect(page.getByTestId(`agent-row-${agent.uid}`)).toContainText("nas-paris");
+  });
+
   test("private region appears in the check-form region picker", async ({
     authenticatedPage,
   }) => {

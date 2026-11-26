@@ -417,7 +417,8 @@
       "onlineCount": "{{online}}/{{total}} en línea",
       "monitor": "Supervisión de agentes",
       "monitorOff": "Supervisión de agentes desactivada",
-      "monitorEnable": "Activar"
+      "monitorEnable": "Activar",
+      "edit": "Editar ubicación"
     },
     "cancel": "Cancelar",
     "token": {
@@ -449,7 +450,8 @@
       "offline": "Sin conexión",
       "identityKey": "Identidad:",
       "sealingKey": "Sellado:",
-      "regionKeys": "Claves de región:"
+      "regionKeys": "Claves de región:",
+      "edit": "Editar agente"
     },
     "tokens": {
       "title": "Tokens de inscripción pendientes",
@@ -530,6 +532,22 @@
         "cancelled": "cancelado: el check cambió",
         "unknown": "error ({{code}})"
       }
+    },
+    "agentEdit": {
+      "title": "Editar agente",
+      "description": "El nombre solo se muestra en SolidPing. El agente no se reinicia, y su SP_AGENT_NAME solo se lee al inscribirse.",
+      "notFound": "Este agente no existe o fue eliminado.",
+      "saved": "Agente renombrado",
+      "saveFailed": "No se pudo renombrar el agente"
+    },
+    "regionEdit": {
+      "title": "Editar ubicación privada",
+      "description": "Cambie cómo se muestra esta ubicación. Su monitor de disponibilidad se renombra con ella, salvo que usted lo haya renombrado.",
+      "emoji": "Icono (emoji)",
+      "slugHelp": "El slug no puede cambiar: los agentes, los tokens de inscripción, las claves de región y los checks hacen referencia a él.",
+      "notFound": "Esta ubicación privada no existe o fue eliminada.",
+      "saved": "Ubicación privada actualizada",
+      "saveFailed": "No se pudo actualizar la ubicación privada"
     }
   },
   "accessRedirect": {

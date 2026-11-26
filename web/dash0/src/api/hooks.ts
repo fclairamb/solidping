@@ -8612,6 +8612,40 @@ export function useRevokeAgent(org: string) {
   });
 }
 
+export function useUpdateAgent(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ uid, name }: { uid: string; name: string }) =>
+      apiFetch<AgentInfo>(`/api/v1/orgs/${org}/agents/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents", org] });
+    },
+  });
+}
+
+/** Changes a private location's name and/or emoji. The slug cannot change. */
+export function useUpdatePrivateRegion(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ slug, ...body }: { slug: string; name?: string; emoji?: string }) =>
+      apiFetch<PrivateRegion>(`/api/v1/orgs/${org}/private-regions/${slug}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["private-regions", org] });
+      queryClient.invalidateQueries({ queryKey: ["regions", org] });
+      // The location's liveness monitor is renamed with it.
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+    },
+  });
+}
+
 export function useEnrollmentTokens(
   org: string,
   options?: { refetchInterval?: number; enabled?: boolean },

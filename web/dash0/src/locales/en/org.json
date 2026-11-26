@@ -417,7 +417,8 @@
       "onlineCount": "{{online}}/{{total}} online",
       "monitor": "Liveness monitor",
       "monitorOff": "Liveness monitor off",
-      "monitorEnable": "Turn on"
+      "monitorEnable": "Turn on",
+      "edit": "Edit location"
     },
     "cancel": "Cancel",
     "token": {
@@ -449,7 +450,8 @@
       "offline": "Offline",
       "identityKey": "Identity:",
       "sealingKey": "Sealing:",
-      "regionKeys": "Region keys:"
+      "regionKeys": "Region keys:",
+      "edit": "Edit agent"
     },
     "tokens": {
       "title": "Pending enrollment tokens",
@@ -530,6 +532,22 @@
         "cancelled": "cancelled: the check changed",
         "unknown": "failed ({{code}})"
       }
+    },
+    "agentEdit": {
+      "title": "Edit agent",
+      "description": "The name is only shown in SolidPing. The agent is not restarted, and its SP_AGENT_NAME is only read when it enrolls.",
+      "notFound": "This agent does not exist, or it was removed.",
+      "saved": "Agent renamed",
+      "saveFailed": "Could not rename the agent"
+    },
+    "regionEdit": {
+      "title": "Edit private location",
+      "description": "Change how this location is shown. Its liveness monitor is renamed with it, unless you renamed the monitor yourself.",
+      "emoji": "Icon (emoji)",
+      "slugHelp": "The slug cannot change: agents, enrollment tokens, region keys and checks refer to it.",
+      "notFound": "This private location does not exist, or it was deleted.",
+      "saved": "Private location updated",
+      "saveFailed": "Could not update the private location"
     }
   },
   "accessRedirect": {

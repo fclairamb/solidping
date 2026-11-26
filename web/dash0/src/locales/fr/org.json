@@ -417,7 +417,8 @@
       "onlineCount": "{{online}}/{{total}} en ligne",
       "monitor": "Surveillance des agents",
       "monitorOff": "Surveillance des agents désactivée",
-      "monitorEnable": "Activer"
+      "monitorEnable": "Activer",
+      "edit": "Modifier l'emplacement"
     },
     "cancel": "Annuler",
     "token": {
@@ -449,7 +450,8 @@
       "offline": "Hors ligne",
       "identityKey": "Identité :",
       "sealingKey": "Scellement :",
-      "regionKeys": "Clés de région :"
+      "regionKeys": "Clés de région :",
+      "edit": "Modifier l'agent"
     },
     "tokens": {
       "title": "Jetons d'inscription en attente",
@@ -530,6 +532,22 @@
         "cancelled": "annulé : le check a changé",
         "unknown": "échec ({{code}})"
       }
+    },
+    "agentEdit": {
+      "title": "Modifier l'agent",
+      "description": "Le nom n'est affiché que dans SolidPing. L'agent n'est pas redémarré, et son SP_AGENT_NAME n'est lu qu'à son inscription.",
+      "notFound": "Cet agent n'existe pas, ou il a été supprimé.",
+      "saved": "Agent renommé",
+      "saveFailed": "Impossible de renommer l'agent"
+    },
+    "regionEdit": {
+      "title": "Modifier l'emplacement privé",
+      "description": "Changez l'affichage de cet emplacement. Sa surveillance est renommée avec lui, sauf si vous l'avez renommée vous-même.",
+      "emoji": "Icône (émoji)",
+      "slugHelp": "Le slug ne peut pas changer : les agents, les jetons d'inscription, les clés de région et les checks y font référence.",
+      "notFound": "Cet emplacement privé n'existe pas, ou il a été supprimé.",
+      "saved": "Emplacement privé mis à jour",
+      "saveFailed": "Impossible de mettre à jour l'emplacement privé"
     }
   },
   "accessRedirect": {
