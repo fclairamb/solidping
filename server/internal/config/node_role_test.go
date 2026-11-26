@@ -469,3 +469,61 @@ func TestAgentInsecureServerOverride(t *testing.T) {
 	r.NoError(cfg.validateNodeConfig())
 	r.False(cfg.Agent.RewrapDisabled)
 }
+
+// TestApplyAgentDefaults: an enrollment token or SP_AGENT_KEYS implies
+// SP_NODE_ROLE=agent, unless a role was chosen explicitly (env or config file),
+// and an agent with no server URL connects to the hosted SolidPing.
+func TestApplyAgentDefaults(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		envRole    string
+		configRole string
+		token      string
+		keys       string
+		serverURL  string
+		wantRole   string
+		wantURL    string
+	}{
+		{
+			name: "token alone means agent", configRole: NodeRoleAll, token: "spe_x",
+			wantRole: NodeRoleAgent, wantURL: DefaultAgentServerURL,
+		},
+		{
+			name: "keys alone mean agent", configRole: NodeRoleAll, keys: "e30=",
+			wantRole: NodeRoleAgent, wantURL: DefaultAgentServerURL,
+		},
+		{name: "no credentials keep the default", configRole: NodeRoleAll, wantRole: NodeRoleAll},
+		{
+			name: "explicit env role wins", envRole: NodeRoleAll, configRole: NodeRoleAll, token: "spe_x",
+			wantRole: NodeRoleAll,
+		},
+		{name: "explicit config role wins", configRole: NodeRoleChecks, token: "spe_x", wantRole: NodeRoleChecks},
+		{
+			name: "explicit agent role gets the default URL", envRole: NodeRoleAgent, configRole: NodeRoleAgent,
+			wantRole: NodeRoleAgent, wantURL: DefaultAgentServerURL,
+		},
+		{
+			name: "an explicit server URL is kept", configRole: NodeRoleAll, token: "spe_x",
+			serverURL: "https://sp.acme.com", wantRole: NodeRoleAgent, wantURL: "https://sp.acme.com",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			cfg := &Config{}
+			cfg.Node.Role = tc.configRole
+			cfg.Agent.EnrollmentToken = tc.token
+			cfg.Agent.Keys = tc.keys
+			cfg.Agent.ServerURL = tc.serverURL
+
+			applyAgentDefaults(cfg, tc.envRole)
+			r.Equal(tc.wantRole, cfg.Node.Role)
+			r.Equal(tc.wantURL, cfg.Agent.ServerURL)
+		})
+	}
+}
