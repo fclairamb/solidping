@@ -263,3 +263,72 @@ func TestWarnPlaintextSystemSecrets(t *testing.T) {
 	(&Server{sysParams: clean}).warnPlaintextSystemSecrets(ctx)
 	r.Empty(logs.String())
 }
+
+// TestStartupSealsPlaintextAppSettingKeys covers spec 2026-11-26-06: the
+// startup pass seals the SAML SP and VAPID private keys a key-less install
+// left in app_settings, without changing them.
+//
+//nolint:paralleltest // swaps the process-wide default logger
+func TestStartupSealsPlaintextAppSettingKeys(t *testing.T) {
+	ctx := context.Background()
+	r := require.New(t)
+
+	raw := newSealTestDB(t)
+
+	const (
+		vapidPriv = "acme-vapid-private-key"
+		samlKey   = "-----BEGIN RSA PRIVATE KEY-----\nacme\n-----END RSA PRIVATE KEY-----\n"
+	)
+
+	r.NoError(raw.SetAppSetting(ctx, sysparamseal.AppSettingWebPushVAPIDPrivKey, vapidPriv))
+	r.NoError(raw.SetAppSetting(ctx, sysparamseal.AppSettingSAMLSPPrivateKey, samlKey))
+
+	// Key-less: the startup warning names both keys.
+	var logs bytes.Buffer
+
+	prev := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
+
+	keyless, err := BuildSystemParamSealer(&config.Config{}, raw)
+	r.NoError(err)
+	(&Server{sysParams: keyless}).warnPlaintextSystemSecrets(ctx)
+	r.Contains(logs.String(), sysparamseal.AppSettingWebPushVAPIDPrivKey)
+	r.Contains(logs.String(), sysparamseal.AppSettingSAMLSPPrivateKey)
+
+	kek := make([]byte, 32)
+	_, err = rand.Read(kek)
+	r.NoError(err)
+
+	cfg := &config.Config{}
+	cfg.Encryption.MasterKey = base64.StdEncoding.EncodeToString(kek)
+	cfg.Encryption.AutoMigrate = true
+
+	sysParams, err := BuildSystemParamSealer(cfg, raw)
+	r.NoError(err)
+
+	creds, err := BuildCredentialsService(cfg, sysParams)
+	r.NoError(err)
+
+	registry := services.NewRegistry()
+	registry.Credentials = creds
+
+	server := &Server{config: cfg, dbService: sysParams, sysParams: sysParams, services: registry}
+	r.NoError(server.MaybeAutoMigrateEncryption(ctx))
+
+	for key, want := range map[string]string{
+		sysparamseal.AppSettingWebPushVAPIDPrivKey: vapidPriv,
+		sysparamseal.AppSettingSAMLSPPrivateKey:    samlKey,
+	} {
+		stored, getErr := raw.GetAppSetting(ctx, key)
+		r.NoError(getErr)
+		r.NotContains(stored, want, key)
+
+		_, sealed := sysparamseal.SealedAppSettingEnvelope(stored)
+		r.True(sealed, key)
+
+		opened, getErr := sysParams.GetAppSetting(ctx, key)
+		r.NoError(getErr)
+		r.Equal(want, opened, key)
+	}
+}

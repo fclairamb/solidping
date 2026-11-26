@@ -34,13 +34,14 @@ With a master key set, these values are stored encrypted:
 
 - check configuration secrets (passwords, tokens, private keys);
 - integration and notification channel credentials;
-- the secret server settings: the JWT signing key (`auth.jwt_secret`), the SMTP password, the SSO client secrets (Google, GitHub, GitLab, Microsoft, Slack, Discord, OIDC), the Slack signing secret and app token, the Discord bot token, the MS Teams app secret, the LDAP bind password, the PostHog personal API key, the metrics scrape token, and the email inbox configuration (`email.inbox`, which holds its password).
+- the secret server settings: the JWT signing key (`auth.jwt_secret`), the SMTP password, the SSO client secrets (Google, GitHub, GitLab, Microsoft, Slack, Discord, OIDC), the Slack signing secret and app token, the Discord bot token, the MS Teams app secret, the LDAP bind password, the PostHog personal API key, the metrics scrape token, and the email inbox configuration (`email.inbox`, which holds its password);
+- the server's generated private keys: the SAML service provider key (`saml.sp_private_key_pem`) and the Web Push VAPID private key (`webpush.vapid_private_key`, unless `SP_WEBPUSH_VAPID_PRIVATE_KEY` provides it). The SP certificate and the VAPID public key are public and stay in plaintext.
 
 Because the master key lives outside the database, a dump of a database encrypted this way does not reveal these secrets.
 
-On startup, `SP_ENCRYPTION_AUTO_MIGRATE` also encrypts the server settings that are still stored in plaintext. The values stay the same, so signed-in users stay signed in.
+On startup, `SP_ENCRYPTION_AUTO_MIGRATE` also encrypts the server settings that are still stored in plaintext. The values stay the same, so signed-in users stay signed in, browsers subscribed to Web Push keep receiving notifications, and the IdP's copy of the SP certificate stays valid.
 
-A server that finds an encrypted setting it cannot open, because the master key is missing or different, refuses to start and names the variable to fix. It never replaces the JWT signing key with a new one.
+A server that finds an encrypted setting it cannot open, because the master key is missing or different, refuses to start and names the variable to fix. It never replaces the JWT signing key with a new one. An encrypted SAML SP key or VAPID key it cannot open is never replaced either: SAML sign-in and Web Push stay unavailable, with an error naming the variable, until the right master key is set.
 
 ### The JWT signing key
 

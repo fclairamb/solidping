@@ -4707,6 +4707,19 @@ func (s *Server) sealPlaintextSystemParameters(ctx context.Context) error {
 		slog.InfoContext(ctx, "encrypted plaintext secret system parameters at startup", "parametersSealed", sealed)
 	}
 
+	// The SAML SP and VAPID private keys live in app_settings (spec
+	// 2026-11-26-06). Same values, so push subscriptions and the IdP's copy of
+	// the SP certificate keep working.
+	sealedSettings, err := s.sysParams.SealPlaintextAppSettings(ctx)
+	if err != nil {
+		return fmt.Errorf("auto-migrate app settings: %w", err)
+	}
+
+	if sealedSettings > 0 {
+		slog.InfoContext(ctx, "encrypted plaintext private keys in app_settings at startup",
+			"appSettingsSealed", sealedSettings)
+	}
+
 	return nil
 }
 
@@ -4719,7 +4732,15 @@ func (s *Server) warnPlaintextSystemSecrets(ctx context.Context) {
 	}
 
 	keys, err := s.sysParams.PlaintextSecretKeys(ctx)
-	if err != nil || len(keys) == 0 {
+	if err != nil {
+		return
+	}
+
+	if settingKeys, settingsErr := s.sysParams.PlaintextSecretAppSettingKeys(ctx); settingsErr == nil {
+		keys = append(keys, settingKeys...)
+	}
+
+	if len(keys) == 0 {
 		return
 	}
 
