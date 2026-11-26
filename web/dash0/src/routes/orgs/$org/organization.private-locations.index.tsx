@@ -91,7 +91,7 @@ function PrivateLocationsPage() {
 // Out-of-date agents (spec 2026-11-26-03): the same text and fix as the email
 // the org's admins get.
 function OutdatedAgentsBanner({ org }: { org: string }) {
-  const { t } = useTranslation(["common"]);
+  const { t } = useTranslation(["org", "common"]);
   const { data: agents } = useAgents(org);
   const { data: versionData } = useVersion();
 
