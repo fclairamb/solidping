@@ -438,6 +438,7 @@ func TestGetContactURL(t *testing.T) {
 		},
 		{"https", "https://acme.com/contact", "https://acme.com/contact"},
 		{"javascript refused", "javascript:alert(1)", ""},
+		{"unparsable dropped", "https://acme.com/%zz", ""},
 		{"unset", "", ""},
 	}
 
