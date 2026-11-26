@@ -16,19 +16,22 @@ import (
 // TestWSBackendReEnrollsAWithdrawnIdentity: an agent started on a volume that
 // still holds a deleted agent's identity gets a 401 on reconnect. With an
 // enrollment token configured it enrolls again and persists the new identity.
-// A 403 (revoked) never re-enrolls, and neither does a 401 without a token.
+// A 403 (revoked) never re-enrolls, and neither does a 401 without a token. A
+// refused re-enrollment leaves the stored identity untouched.
 func TestWSBackendReEnrollsAWithdrawnIdentity(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
 		name           string
 		reconnectCode  int
+		enrollCode     int
 		token          string
 		wantReEnrolled bool
 	}{
-		{"deleted agent re-enrolls", http.StatusUnauthorized, "spe_token", true},
-		{"revoked agent stays out", http.StatusForbidden, "spe_token", false},
-		{"no token stays out", http.StatusUnauthorized, "", false},
+		{"deleted agent re-enrolls", http.StatusUnauthorized, 0, "spe_token", true},
+		{"revoked agent stays out", http.StatusForbidden, 0, "spe_token", false},
+		{"no token stays out", http.StatusUnauthorized, 0, "", false},
+		{"refused re-enrollment keeps the identity", http.StatusUnauthorized, http.StatusUnauthorized, "spe_used", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -39,6 +42,12 @@ func TestWSBackendReEnrollsAWithdrawnIdentity(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				if req.Header.Get("X-Sp-Agent-Uid") != "" {
 					w.WriteHeader(tc.reconnectCode)
+
+					return
+				}
+
+				if tc.enrollCode != 0 {
+					w.WriteHeader(tc.enrollCode)
 
 					return
 				}
@@ -70,6 +79,11 @@ func TestWSBackendReEnrollsAWithdrawnIdentity(t *testing.T) {
 
 			if !tc.wantReEnrolled {
 				r.Error(err)
+
+				if tc.enrollCode != 0 {
+					r.ErrorContains(err, "enrolling again failed")
+				}
+
 				r.Nil(persisted)
 				r.Equal("deleted-agent", ws.Identity().AgentUID)
 
