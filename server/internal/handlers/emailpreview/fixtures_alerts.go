@@ -120,7 +120,7 @@ func customDomainDemotedFixture(_ i18n.Locale) map[string]any {
 // agentOutdatedFixture covers the outdated private-location agent notice
 // (agentws, spec 2026-11-26-03). Operator mail: no unsubscribe, no ack.
 func agentOutdatedFixture(_ i18n.Locale) map[string]any {
-	data := agentws.OutdatedEmailData("paris-dc1", "0.49.3", "0.55.0", true,
+	data := agentws.OutdatedEmailData("paris-dc1", "0.49.3", "0.55.0", true, false,
 		"app.acme.com", fixtureDashboardURL+"/orgs/acme/organization/private-locations")
 	data[keyOrgName] = fixtureOrgName
 

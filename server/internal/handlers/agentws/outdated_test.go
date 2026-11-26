@@ -214,3 +214,53 @@ func TestSystemAgentIsNeverReported(t *testing.T) {
 		r.Nil(w.VersionDriftedSince)
 	}
 }
+
+// An agent below MinSupportedAgentVersion is told it is unsupported, not just
+// outdated: the event carries the flag and the email says so.
+//
+//nolint:paralleltest // mutates version.Version
+func TestUnsupportedAgentNoticeSaysUnsupported(t *testing.T) {
+	withServerVersion(t, outdatedServer)
+
+	r := require.New(t)
+	e := outdatedEnv(t)
+
+	conn, _, _ := e.enroll(e.mintToken(), "paris-dc1")
+	resp := roundTrip(t, conn, legacyClaim("c1", "0.40.0"))
+	r.Equal(agentcrypto.MsgTypeJobs, resp.Type)
+
+	events := e.agentEvents(models.EventTypeAgentOutdated)
+	r.Len(events, 1)
+	r.Equal(true, events[0].Payload["unsupported"])
+
+	var jobs []*models.Job
+
+	r.NoError(e.dbSvc.DB().NewSelect().Model(&jobs).Where("type = ?", "email").Scan(t.Context()))
+
+	found := false
+
+	for _, job := range jobs {
+		if job.Config["template"] != "agent-outdated.html" {
+			continue
+		}
+
+		data, ok := job.Config["templateData"].(map[string]any)
+		r.True(ok)
+		r.Equal(true, data["Unsupported"])
+		r.Equal(agentcrypto.MinSupportedAgentVersion, data["MinVersion"])
+
+		found = true
+	}
+
+	r.True(found)
+}
+
+func TestOutdatedEmailDataUnsupportedFlag(t *testing.T) {
+	t.Parallel()
+
+	data := agentws.OutdatedEmailData("a", "0.40.0", "0.55.0", true, true, "h", "")
+	require.Equal(t, true, data["Unsupported"])
+
+	data = agentws.OutdatedEmailData("a", "0.49.3", "0.55.0", true, false, "h", "")
+	require.Equal(t, false, data["Unsupported"])
+}

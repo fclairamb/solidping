@@ -10,8 +10,10 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailpreview"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // shippedTemplates enumerates every template file
@@ -285,4 +287,34 @@ func TestPreview_RendersTheBrandedHeader(t *testing.T) {
 	r.Contains(body, "background-color:#ffffff;border-radius:12px")
 	// The logo sits above the card on the page background, not on a navy bar.
 	r.NotContains(body, "#07112a")
+}
+
+// TestAgentOutdatedEmail_SaysUnsupportedBelowTheWindow: an agent below the
+// supported window gets the "no longer supported" wording, in every locale,
+// while a merely outdated one does not.
+func TestAgentOutdatedEmail_SaysUnsupportedBelowTheWindow(t *testing.T) {
+	t.Parallel()
+
+	formatter, err := email.NewFormatter(email.WithBaseURL("https://preview.example"))
+	require.NoError(t, err)
+
+	for _, lang := range []string{"en", "fr", "de", "es", "zh"} {
+		t.Run(lang, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			loc := i18n.New(lang, "UTC")
+
+			data := agentws.OutdatedEmailData("paris-dc1", "0.40.0", "0.55.0", true, true, "app.acme.com", "")
+			_, htmlBody, text, fmtErr := formatter.Format("agent-outdated.html", loc, data)
+			r.NoError(fmtErr)
+			r.Contains(htmlBody, "0.41.0", "the minimum supported version is shown")
+			r.Contains(text, "0.41.0")
+
+			plain := agentws.OutdatedEmailData("paris-dc1", "0.49.3", "0.55.0", true, false, "app.acme.com", "")
+			_, plainHTML, _, fmtErr := formatter.Format("agent-outdated.html", loc, plain)
+			r.NoError(fmtErr)
+			r.NotContains(plainHTML, "0.41.0")
+		})
+	}
 }

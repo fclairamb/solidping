@@ -9,7 +9,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import "@/i18n";
-import { AgentVersionCell, agentVersionState, isAgentOutdated } from "./agent-version";
+import { AgentVersionCell, agentVersionState, isAgentOutdated, isAgentUnsupported } from "./agent-version";
 
 afterEach(cleanup);
 
@@ -135,5 +135,17 @@ describe("isAgentOutdated", () => {
       isAgentOutdated({ status: "active", version: "0.49.3", versionPinned: true }, "0.55.0")
     ).toBe(false);
     expect(isAgentOutdated({ status: "revoked", version: "0.49.3" }, "0.55.0")).toBe(false);
+  });
+});
+
+describe("isAgentUnsupported", () => {
+  it("flags an active agent below the supported window", () => {
+    expect(isAgentUnsupported({ status: "active", versionSupported: false })).toBe(true);
+  });
+
+  it("does not flag supported, unknown or revoked agents", () => {
+    expect(isAgentUnsupported({ status: "active", versionSupported: true })).toBe(false);
+    expect(isAgentUnsupported({ status: "active" })).toBe(false);
+    expect(isAgentUnsupported({ status: "revoked", versionSupported: false })).toBe(false);
   });
 });

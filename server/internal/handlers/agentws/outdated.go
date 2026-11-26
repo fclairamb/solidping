@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -149,6 +150,7 @@ func (h *Handler) notifyOutdated(
 	ctx context.Context, agent *models.Agent, report versionReport, serverVersion string,
 ) {
 	orgUID := agent.OrgUID()
+	unsupported := !agents.VersionSupported(report.version)
 
 	audit.Record(ctx, h.dbService, orgUID, models.EventTypeAgentOutdated,
 		audit.Target{Type: auditTargetAgent, UID: agent.UID, Name: agent.Name},
@@ -157,6 +159,7 @@ func (h *Handler) notifyOutdated(
 			"version":        report.version,
 			"server_version": serverVersion,
 			"legacy":         report.legacy,
+			"unsupported":    unsupported,
 		})
 
 	h.logger.InfoContext(ctx, "agent is outdated: its organization's admins were told",
@@ -183,7 +186,7 @@ func (h *Handler) notifyOutdated(
 		return
 	}
 
-	data := OutdatedEmailData(agent.Name, report.version, serverVersion, report.legacy,
+	data := OutdatedEmailData(agent.Name, report.version, serverVersion, report.legacy, unsupported,
 		imageHost(h.outdated.BaseURL), privateLocationsURL(h.outdated.BaseURL, org.Slug))
 	email.ApplyOrgBranding(data, org.Name, org.Slug, org.LogoURL)
 
@@ -218,13 +221,15 @@ func (h *Handler) notifyOutdated(
 // OutdatedEmailData is the agent-outdated.html view model, without the org
 // branding. The email preview builds its fixture through it too.
 func OutdatedEmailData(
-	agentName, agentVersion, serverVersion string, legacy bool, imageHost, locationsURL string,
+	agentName, agentVersion, serverVersion string, legacy, unsupported bool, imageHost, locationsURL string,
 ) map[string]any {
 	return map[string]any{
 		"AgentName":     agentName,
 		"AgentVersion":  agentVersion,
 		"ServerVersion": serverVersion,
 		"Legacy":        legacy,
+		"Unsupported":   unsupported,
+		"MinVersion":    agents.MinSupportedAgentVersion,
 		"Image":         imageHost + outdatedImagePath,
 		"LocationsURL":  locationsURL,
 	}

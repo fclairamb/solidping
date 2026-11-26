@@ -51,6 +51,14 @@ export function isAgentOutdated(
 }
 
 /**
+ * Whether an active agent runs a version below the server's supported window
+ * (spec 2026-11-26-04): the API says so through `versionSupported: false`.
+ */
+export function isAgentUnsupported(agent: { status: string; versionSupported?: boolean }): boolean {
+  return agent.status === "active" && agent.versionSupported === false;
+}
+
+/**
  * Renders an agent's version against this server's own. Matching and
  * unknown render as plain text (no badge — a match is not noteworthy, and
  * "we don't know" is not a warning); only "drifted" gets an amber badge,

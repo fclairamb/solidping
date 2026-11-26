@@ -64,7 +64,7 @@ import {
   BrowserCapabilityIcon,
   browserCapability,
 } from "@/components/shared/browser-capability";
-import { AgentVersionCell, isAgentOutdated } from "@/components/shared/agent-version";
+import { AgentVersionCell, isAgentOutdated, isAgentUnsupported } from "@/components/shared/agent-version";
 import { LiveDurationAgo } from "@/components/shared/relative-time";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { RegionKeyCell } from "@/components/shared/region-key-cell";
@@ -96,16 +96,29 @@ function OutdatedAgentsBanner({ org }: { org: string }) {
   const { data: versionData } = useVersion();
 
   const outdated = (agents ?? []).filter((agent) => isAgentOutdated(agent, versionData?.version));
-  if (outdated.length === 0) return null;
+  const unsupported = (agents ?? []).filter((agent) => isAgentUnsupported(agent));
+  if (outdated.length === 0 && unsupported.length === 0) return null;
 
   return (
     <Alert variant="warning" data-testid="outdated-agents-banner">
-      <AlertTitle>{t("common:agentVersion.outdatedTitle")}</AlertTitle>
+      <AlertTitle>
+        {unsupported.length > 0
+          ? t("common:agentVersion.unsupportedTitle")
+          : t("common:agentVersion.outdatedTitle")}
+      </AlertTitle>
       <AlertDescription>
-        {t("common:agentVersion.outdatedBody", {
-          names: outdated.map((agent) => agent.name).join(", "),
-          image: `${window.location.host}/solidping:current`,
-        })}
+        {unsupported.length > 0 && (
+          <p data-testid="unsupported-agents-text">
+            {t("common:agentVersion.unsupportedBody", {
+              names: unsupported.map((agent) => agent.name).join(", "),
+            })}
+          </p>
+        )}
+        {outdated.length > 0 &&
+          t("common:agentVersion.outdatedBody", {
+            names: outdated.map((agent) => agent.name).join(", "),
+            image: `${window.location.host}/solidping:current`,
+          })}
       </AlertDescription>
     </Alert>
   );
