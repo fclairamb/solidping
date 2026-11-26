@@ -646,12 +646,14 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 	agentVersion := version.Get().Version
 
 	worker := &models.Worker{
-		UID:          uuid.New().String(),
-		Slug:         identity.Slug,
-		Name:         identity.Name,
-		Region:       &region,
-		Capabilities: backend.Capabilities(ctx, r.advertisedPluginTypes()),
-		Version:      &agentVersion,
+		UID:    uuid.New().String(),
+		Slug:   identity.Slug,
+		Name:   identity.Name,
+		Region: &region,
+		Capabilities: backend.Capabilities(
+			checkjobsvc.WithBuiltinTypes(ctx, r.advertisedBuiltinTypes()), r.advertisedPluginTypes(),
+		),
+		Version: &agentVersion,
 	}
 
 	// Taken before Register: nothing this process claims can predate it, so
@@ -717,7 +719,9 @@ func (r *CheckWorker) heartbeatLoop(ctx context.Context) {
 // process, so re-sending it every beat is just a cheap package-level read.
 func (r *CheckWorker) updateHeartbeat(ctx context.Context) {
 	if err := r.backend.Heartbeat(
-		ctx, r.getWorker().UID, backend.Capabilities(ctx, r.advertisedPluginTypes()), version.Get().Version,
+		ctx, r.getWorker().UID,
+		backend.Capabilities(checkjobsvc.WithBuiltinTypes(ctx, r.advertisedBuiltinTypes()), r.advertisedPluginTypes()),
+		version.Get().Version,
 	); err != nil {
 		r.logger.ErrorContext(ctx, "Failed to update heartbeat", "error", err)
 	}
@@ -842,6 +846,28 @@ func (r *CheckWorker) advertisedPluginTypes() []string {
 		if r.activation.IsTypeEnabled(checkerdef.CheckType(checkType), nil) {
 			out = append(out, checkType)
 		}
+	}
+
+	return out
+}
+
+// advertisedBuiltinTypes is the built-in check types this process can run: the
+// registered ones its activation gate enables. An agent older than a type
+// does not list it, so the server keeps that type's jobs away from it.
+func (r *CheckWorker) advertisedBuiltinTypes() []string {
+	all := checkerdef.ListCheckTypes(nil)
+	out := make([]string, 0, len(all))
+
+	for _, checkType := range all {
+		if _, ok := r.getChecker(checkType); !ok {
+			continue
+		}
+
+		if r.activation != nil && !r.activation.IsTypeEnabled(checkType, nil) {
+			continue
+		}
+
+		out = append(out, string(checkType))
 	}
 
 	return out
@@ -2668,6 +2694,8 @@ func (r *CheckWorker) reportStats(reported stats.ReportedStats) {
 // loaded, and whether its ICMP probe said it cannot ping.
 func (r *CheckWorker) claimContext(ctx context.Context) context.Context {
 	ctx = checkjobsvc.WithNoICMP(ctx, checkjobsvc.NoICMPFromCapabilities(egressreport.Current(ctx)))
+
+	ctx = checkjobsvc.WithBuiltinTypes(ctx, r.advertisedBuiltinTypes())
 
 	return checkjobsvc.WithPluginTypes(ctx, r.advertisedPluginTypes())
 }

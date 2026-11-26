@@ -125,3 +125,37 @@ func TestListAgentsSurfacesVersionPin(t *testing.T) {
 	r.Len(fleet.Data, 1)
 	r.True(fleet.Data[0].VersionPinned)
 }
+
+// TestListAgentsFlagsUnsupportedVersion: a version below
+// agentcrypto.MinSupportedAgentVersion surfaces versionSupported=false; a newer
+// one and an unreported one stay supported (unknown is never unsupported).
+func TestListAgentsFlagsUnsupportedVersion(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newSetup(t)
+	ctx := t.Context()
+
+	for name, reported := range map[string]*string{
+		"old-agent": ptr("0.1.0"), "new-agent": ptr("99.0.0"), "silent-agent": nil,
+	} {
+		agent := models.NewAgent(env.org.UID, "@dc1", name, "ed-"+name, "age-"+name, "fp-"+name)
+		_, err := env.dbSvc.DB().NewInsert().Model(agent).Exec(ctx)
+		r.NoError(err)
+
+		_, err = env.dbSvc.RegisterOrUpdateWorker(ctx, &models.Worker{
+			UID: agent.UID, Slug: agentcrypto.WorkerSlug(agent.UID), Name: "agent:" + agent.Name, Version: reported,
+		})
+		r.NoError(err)
+	}
+
+	list, err := env.svc.ListAgents(ctx, env.org.Slug)
+	r.NoError(err)
+	r.Len(list.Data, 3)
+
+	for _, item := range list.Data {
+		r.Equal(item.Name != "old-agent", item.VersionSupported, item.Name)
+	}
+}
+
+func ptr(s string) *string { return &s }

@@ -20,6 +20,7 @@ Key properties:
   submit results*: check jobs, and, when its operator opts in, discovery scans
   and crawls. It cannot read configuration, list checks, or touch any other org
   data, and the server enforces this — it does not trust the agent.
+- **Version-aware** — an agent only receives the check types it reports it can run, so an agent older than a new check type never fails its checks; the check form warns when a location's agents need an upgrade.
 - **Region-sealed credentials** — secrets for checks that target *only* your
   private location are encrypted (with [age](https://age-encryption.org)
   X25519) to your agents' public keys **at write time**. The server cannot
@@ -429,6 +430,28 @@ when one stops.
 - **Connection events.** Each agent connection and disconnection is recorded in
   the [audit log](./audit-log.md), with the disconnect reason. The monitor's
   down result quotes the last one.
+
+## Keeping agents up to date
+
+Agents of v0.54 and later follow the server's version on their own (see
+[Keeping agents on the server's version](#keeping-agents-on-the-servers-version)).
+Older agents never restart on request, and agents installed from a moving tag do
+not move on restart. SolidPing tells you when that happens:
+
+- the **Private locations** page shows an "Some of your agents are out of date"
+  banner;
+- an `agent.outdated` event is added to your organization's events, and your
+  owners and admins get one email per agent and per server version, once an
+  agent is on an older build than the server and either predates automatic
+  upgrades or has stayed behind for 72 hours.
+
+The fix is the same everywhere. With Docker, run
+`docker compose pull && docker compose up -d`, then switch the image to
+`<your-server-host>/solidping:current` and add the pull timer described above.
+With Kubernetes, set `imagePullPolicy: Always` and the image to
+`<your-server-host>/solidping:current`. Agents pinned on purpose
+(`SP_AGENT_IGNORE_VERSION_DRIFT=true`) and SolidPing's own cloud agents are never
+reported.
 
 ## 4. Target the location from a check
 

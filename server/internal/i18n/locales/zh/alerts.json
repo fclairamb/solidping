@@ -114,5 +114,22 @@
     "fix": "修复方法：确认这个域名的 CNAME 记录仍指向状态页设置中显示的目标，然后点击{verify}。如果 DNS 自行恢复正确解析，SolidPing 也会在连续多次验证成功后自动恢复这个域名。",
     "verify": "验证",
     "openSettings": "打开状态页设置"
+  },
+  "agentOutdated": {
+    "subject": "您的 SolidPing 代理 {agent} 运行 {version},服务器运行 {server}",
+    "preheader": "该私有位置代理不会自行升级。解决方法如下。",
+    "pill": "代理已过期",
+    "heading": "代理 {agent} 已过期",
+    "body": "私有位置代理 {agent} 运行版本 {version},而您的 SolidPing 服务器运行 {server}。",
+    "pillUnsupported": "代理不再受支持",
+    "headingUnsupported": "代理 {agent} 不再受支持",
+    "unsupported": "此代理版本已不再受支持：服务器仅支持 {min} 及以上版本的代理，它可能随时停止工作。请立即升级。",
+    "legacy": "该代理早于自动升级功能:服务器无法要求它重启,必须手动升级。",
+    "stuck": "该代理已过期超过 72 小时,且不会自行升级。",
+    "dockerHeading": "Docker",
+    "dockerBody": "拉取新镜像并重启代理,然后将其镜像切换为 {image},使其今后跟随服务器(配合拉取定时器,参见私有位置文档):",
+    "k8sHeading": "Kubernetes",
+    "k8sBody": "设置 imagePullPolicy: Always 并将镜像设为 {image},然后重启 Pod。",
+    "open": "打开私有位置"
   }
 }

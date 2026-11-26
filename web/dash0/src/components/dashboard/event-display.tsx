@@ -20,6 +20,7 @@ import {
   MessageSquare,
   Pencil,
   Plug,
+  Clock,
   Rocket,
   RotateCcw,
   Settings,
@@ -134,6 +135,7 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   // "ran out", distinct from the region pair above, which is SolidPing's own.
   "agent.connected": { emoji: "🔌", tone: TONE_EMERALD },
   "agent.disconnected": { emoji: "🪫", tone: TONE_AMBER },
+  "agent.outdated": { emoji: "⏳", tone: TONE_AMBER },
   // Discovery scans run from a private location (spec 2026-10-22-04). A refused
   // chunk is amber: the agent's allow-list said no, nothing is broken.
   "discovery.scan_started": { emoji: "📡", tone: TONE_SLATE },
@@ -400,6 +402,7 @@ export const EVENT_TYPE_MARKS: Record<string, EventMark> = {
   "check.ai_usage": { icon: Cpu, tone: MARK_QUIET },
   "agent.connected": { icon: Plug, tone: MARK_SUCCESS },
   "agent.disconnected": { icon: Unplug, tone: MARK_WARNING },
+  "agent.outdated": { icon: Clock, tone: MARK_WARNING },
   "discovery.scan_started": { icon: Radar, tone: MARK_QUIET },
   "discovery.scan_canceled": { icon: Radar, tone: MARK_QUIET },
   "discovery.chunk_refused": { icon: ShieldX, tone: MARK_WARNING },

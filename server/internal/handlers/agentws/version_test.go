@@ -393,3 +393,28 @@ func TestVersionDriftWarnsOnClaimWhenEnrollOmittedVersion(t *testing.T) {
 	r.Equal(1, strings.Count(logs.String(), "agent build version differs"),
 		"the first claim must still get its chance to warn when enrollment had nothing to check")
 }
+
+// TestUnsupportedAgentVersionWarnsOnceAndStillClaims: an agent below
+// MinSupportedAgentVersion is never refused: it gets one "no longer supported"
+// WARN for the connection and keeps claiming jobs.
+//
+//nolint:paralleltest // mutates process-wide slog.Default() and version.Version
+func TestUnsupportedAgentVersionWarnsOnceAndStillClaims(t *testing.T) {
+	withServerVersion(t, "1.0.0")
+	logs := captureLogs(t)
+
+	r := require.New(t)
+	e := newEnv(t)
+	conn, _, _ := e.enroll(e.mintToken(), "dc1-agent")
+
+	for i := range 3 {
+		resp := roundTrip(t, conn, agentcrypto.ClientFrame{
+			Type: agentcrypto.MsgTypeClaim, ID: fmt.Sprintf("c%d", i+1), MaxJobs: 5, Version: "0.1.0",
+		})
+		r.Equal(agentcrypto.MsgTypeJobs, resp.Type)
+	}
+
+	out := logs.String()
+	r.Equal(1, strings.Count(out, "agent version is no longer supported"))
+	r.NotContains(out, "agent build version differs")
+}

@@ -91,6 +91,7 @@
     "auth.super_admin_changed": "Super-Admin geändert",
     "agent.connected": "Agent verbunden",
     "agent.disconnected": "Agent getrennt",
+    "agent.outdated": "Agent veraltet",
     "discovery.scan_started": "Erkennungsscan gestartet",
     "discovery.scan_canceled": "Erkennungsscan abgebrochen",
     "discovery.chunk_refused": "Erkennungsabschnitt abgelehnt"

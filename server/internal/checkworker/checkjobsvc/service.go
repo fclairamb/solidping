@@ -476,6 +476,10 @@ type AgentScope struct {
 	// capability report). A plugin-type job is only handed to an agent that
 	// advertises its type (spec 2026-10-17-05 §17).
 	PluginTypes []string
+	// CheckTypes are the built-in check types the agent reported
+	// (`check-type-*` capabilities). Empty means a legacy agent: it only gets
+	// the frozen legacyCheckTypes.
+	CheckTypes []string
 	// NoICMP is set when the agent reported it cannot open an ICMP socket: it
 	// is not handed icmp jobs (spec 2026-10-28-06).
 	NoICMP bool
@@ -489,7 +493,7 @@ var ErrInvalidAgentScope = errors.New("invalid agent claim scope")
 // shapes: an org agent MUST carry an org, and a system agent must serve a real
 // (non-private) cloud region — a system scope pointed at an `@org/region` slug
 // would be a cross-tenant read, so it is rejected outright.
-func (s AgentScope) validate() error {
+func (s AgentScope) validate() error { //nolint:gocritic // immutable scope
 	if s.Region == "" {
 		return fmt.Errorf("%w: empty region", ErrInvalidAgentScope)
 	}
@@ -515,12 +519,14 @@ func (s AgentScope) validate() error {
 
 // apply adds the scope's predicates to a check_jobs query. A system scope
 // deliberately omits the organization predicate — that IS the generalization.
-func (s AgentScope) apply(query *bun.SelectQuery) *bun.SelectQuery {
+func (s AgentScope) apply(query *bun.SelectQuery) *bun.SelectQuery { //nolint:gocritic // immutable scope
 	if !s.System {
 		query = query.Where("organization_uid = ?", s.OrgUID)
 	}
 
-	return icmpScope(pluginTypeScope(excludePassiveTypes(query.Where("region = ?", s.Region)), s.PluginTypes), s.NoICMP)
+	query = checkTypeScope(excludePassiveTypes(query.Where("region = ?", s.Region)), s.CheckTypes)
+
+	return icmpScope(pluginTypeScope(query, s.PluginTypes), s.NoICMP)
 }
 
 // sealFingerprintsKey carries the X25519 recipient fingerprints a claiming
@@ -665,7 +671,7 @@ func applyCloudRegionScope(ctx context.Context, query *bun.SelectQuery, region *
 func (s *serviceImpl) ClaimJobsForAgent(
 	ctx context.Context,
 	workerUID string,
-	scope AgentScope,
+	scope AgentScope, //nolint:gocritic // passed by value on purpose: the scope is immutable
 	checkUID string,
 	limit int,
 	maxAhead time.Duration,
@@ -811,7 +817,7 @@ func (s *serviceImpl) ClaimPassiveJobs(
 func selectAvailableJobsForAgent(
 	ctx context.Context,
 	tx bun.Tx,
-	scope AgentScope,
+	scope AgentScope, //nolint:gocritic // passed by value on purpose: the scope is immutable
 	checkUID string,
 	limit int,
 	maxAhead time.Duration,

@@ -1,0 +1,34 @@
+{{define "subject"}}🟠 {{t "alerts.agentOutdated.subject" "agent" .AgentName "version" .AgentVersion "server" .ServerVersion}}{{end}}
+{{define "preheader"}}{{t "alerts.agentOutdated.preheader"}}{{end}}
+{{template "base.html" .}}
+{{define "statusbanner"}}{{if .Unsupported}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" (t "alerts.agentOutdated.pillUnsupported")}}{{else}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" (t "alerts.agentOutdated.pill")}}{{end}}{{end}}
+{{define "content"}}
+    {{- $agent := nolink .AgentName}}
+    <h1>{{if .Unsupported}}{{tHTML "alerts.agentOutdated.headingUnsupported" "agent" $agent}}{{else}}{{tHTML "alerts.agentOutdated.heading" "agent" $agent}}{{end}}</h1>
+    <p>{{tHTML "alerts.agentOutdated.body" "agent" (tHTML "alerts.emphasis" "text" $agent) "version" (tHTML "alerts.emphasis" "text" .AgentVersion) "server" (tHTML "alerts.emphasis" "text" .ServerVersion)}}</p>
+    {{if .Unsupported}}<p>{{t "alerts.agentOutdated.unsupported" "min" .MinVersion}}</p>{{end}}
+    {{if .Legacy}}<p>{{t "alerts.agentOutdated.legacy"}}</p>{{else}}<p>{{t "alerts.agentOutdated.stuck"}}</p>{{end}}
+    <h2>{{t "alerts.agentOutdated.dockerHeading"}}</h2>
+    <p>{{t "alerts.agentOutdated.dockerBody" "image" (nolink .Image)}}</p>
+    <pre>docker compose pull &amp;&amp; docker compose up -d</pre>
+    <h2>{{t "alerts.agentOutdated.k8sHeading"}}</h2>
+    <p>{{t "alerts.agentOutdated.k8sBody" "image" (nolink .Image)}}</p>
+    {{if .LocationsURL}}
+    <div class="cta-wrap">{{template "button" dict "URL" .LocationsURL "Label" (t "alerts.agentOutdated.open") "Variant" "primary"}}</div>
+    {{end}}
+{{end}}
+{{define "text"}}{{if .Unsupported}}{{t "alerts.agentOutdated.headingUnsupported" "agent" .AgentName}}{{else}}{{t "alerts.agentOutdated.heading" "agent" .AgentName}}{{end}}
+
+{{t "alerts.agentOutdated.body" "agent" .AgentName "version" .AgentVersion "server" .ServerVersion}}
+{{if .Unsupported}}{{t "alerts.agentOutdated.unsupported" "min" .MinVersion}}
+{{end}}{{if .Legacy}}{{t "alerts.agentOutdated.legacy"}}{{else}}{{t "alerts.agentOutdated.stuck"}}{{end}}
+
+{{t "alerts.agentOutdated.dockerHeading"}}
+{{t "alerts.agentOutdated.dockerBody" "image" .Image}}
+    docker compose pull && docker compose up -d
+
+{{t "alerts.agentOutdated.k8sHeading"}}
+{{t "alerts.agentOutdated.k8sBody" "image" .Image}}
+{{if .LocationsURL}}
+{{.LocationsURL}}
+{{end}}{{end}}

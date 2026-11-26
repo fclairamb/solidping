@@ -305,6 +305,13 @@ const (
 	// socket closes: before it, a disconnect left no trace at all and
 	// last_seen_at simply stopped moving.
 	EventTypeAgentDisconnected EventType = "agent.disconnected"
+	// EventTypeAgentOutdated tells an organization that one of its
+	// private-location agents runs an older build than the server and is not
+	// upgrading on its own (spec 2026-11-26-03): it predates the rolling
+	// upgrade, or has stayed drifted for 72 h. Payload: `agent`, `version`,
+	// `server_version`, `legacy`. Written once per agent and server version,
+	// alongside an email to the org's owners and admins. Never pages.
+	EventTypeAgentOutdated EventType = "agent.outdated"
 
 	// EventTypeDiscoveryScanStarted records a discovery scan being started
 	// (spec 2026-10-22-04). The payload carries scan_type, region, cidr_count,

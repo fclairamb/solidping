@@ -157,7 +157,13 @@
     "drifted": "Desactualizado",
     "serverRuns": "Este servidor ejecuta la v{{version}}.",
     "pinned": "Fijada",
-    "pinnedHint": "Este agente ignora las solicitudes de actualización (SP_AGENT_IGNORE_VERSION_DRIFT=true): se queda en su versión."
+    "unsupported": "No compatible",
+    "unsupportedHint": "Esta versión del agente ya no es compatible. Actualícela.",
+    "pinnedHint": "Este agente ignora las solicitudes de actualización (SP_AGENT_IGNORE_VERSION_DRIFT=true): se queda en su versión.",
+    "unsupportedTitle": "Algunos de tus agentes ya no son compatibles",
+    "unsupportedBody": "{{names}} ejecutan una versión que el servidor ya no admite: actualízalos ahora, pueden dejar de funcionar en cualquier momento.",
+    "outdatedTitle": "Algunos de tus agentes están desactualizados",
+    "outdatedBody": "{{names}} no se actualizarán solos. Con Docker, ejecuta `docker compose pull && docker compose up -d` y cambia la imagen a {{image}} con un temporizador de descarga. Con Kubernetes, establece `imagePullPolicy: Always` y la imagen {{image}}."
   },
   "noData": "Sin datos",
   "labelPicker": {

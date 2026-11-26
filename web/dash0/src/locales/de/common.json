@@ -157,7 +157,13 @@
     "drifted": "Abweichend",
     "serverRuns": "Dieser Server läuft mit v{{version}}.",
     "pinned": "Fixiert",
-    "pinnedHint": "Dieser Agent ignoriert Update-Anfragen (SP_AGENT_IGNORE_VERSION_DRIFT=true): Er bleibt auf seiner Version."
+    "unsupported": "Nicht unterstützt",
+    "unsupportedHint": "Diese Agent-Version wird nicht mehr unterstützt. Bitte aktualisieren.",
+    "pinnedHint": "Dieser Agent ignoriert Update-Anfragen (SP_AGENT_IGNORE_VERSION_DRIFT=true): Er bleibt auf seiner Version.",
+    "unsupportedTitle": "Einige Ihrer Agenten werden nicht mehr unterstützt",
+    "unsupportedBody": "{{names}} laufen mit einer Version, die der Server nicht mehr unterstützt: Aktualisieren Sie sie jetzt, sie können jederzeit ausfallen.",
+    "outdatedTitle": "Einige Ihrer Agenten sind veraltet",
+    "outdatedBody": "{{names}} aktualisieren sich nicht selbst. Für Docker führen Sie `docker compose pull && docker compose up -d` aus und stellen das Image dann mit einem Pull-Timer auf {{image}} um. Für Kubernetes setzen Sie `imagePullPolicy: Always` und das Image {{image}}."
   },
   "noData": "Keine Daten",
   "labelPicker": {

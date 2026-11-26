@@ -114,5 +114,22 @@
     "fix": "So beheben Sie das Problem: Prüfen Sie, ob der CNAME-Eintrag der Domain noch auf das Ziel zeigt, das in den Einstellungen der Statusseite angegeben ist, und klicken Sie dann auf {verify}. Wenn das DNS von selbst wieder korrekt auflöst, stellt SolidPing die Domain nach mehreren erfolgreichen DNS-Prüfungen in Folge auch automatisch wieder her.",
     "verify": "Überprüfen",
     "openSettings": "Einstellungen der Statusseite öffnen"
+  },
+  "agentOutdated": {
+    "subject": "Ihr SolidPing-Agent {agent} läuft mit {version}, der Server mit {server}",
+    "preheader": "Dieser Agent eines privaten Standorts aktualisiert sich nicht selbst. So beheben Sie das.",
+    "pill": "Agent veraltet",
+    "heading": "Agent {agent} ist veraltet",
+    "body": "Der Agent {agent} Ihres privaten Standorts läuft mit Version {version}, Ihr SolidPing-Server mit {server}.",
+    "pillUnsupported": "Agent nicht mehr unterstützt",
+    "headingUnsupported": "Agent {agent} wird nicht mehr unterstützt",
+    "unsupported": "Diese Agent-Version wird nicht mehr unterstützt: Der Server unterstützt nur Agents ab {min}, daher kann sie jederzeit ausfallen. Aktualisieren Sie ihn jetzt.",
+    "legacy": "Dieser Agent kennt automatische Updates noch nicht: Der Server kann ihn nicht zum Neustart auffordern, er muss von Hand aktualisiert werden.",
+    "stuck": "Dieser Agent ist seit über 72 Stunden veraltet und aktualisiert sich nicht selbst.",
+    "dockerHeading": "Docker",
+    "dockerBody": "Laden Sie das neue Image und starten Sie den Agenten neu. Stellen Sie sein Image dann auf {image} um, damit er künftig dem Server folgt (mit einem Pull-Timer, siehe Dokumentation der privaten Standorte):",
+    "k8sHeading": "Kubernetes",
+    "k8sBody": "Setzen Sie imagePullPolicy: Always und das Image {image}, und starten Sie die Pods neu.",
+    "open": "Private Standorte öffnen"
   }
 }

@@ -114,5 +114,22 @@
     "fix": "To fix it: confirm the domain's CNAME record still points at the target shown on the status page's settings, then click {verify}. If DNS starts resolving correctly again on its own, SolidPing will also restore the domain by itself after several consecutive successful checks.",
     "verify": "Verify",
     "openSettings": "Open status page settings"
+  },
+  "agentOutdated": {
+    "subject": "Your SolidPing agent {agent} runs {version}, the server runs {server}",
+    "preheader": "This private-location agent will not upgrade on its own. Here is the fix.",
+    "pill": "Agent out of date",
+    "heading": "Agent {agent} is out of date",
+    "body": "The private-location agent {agent} runs version {version}, while your SolidPing server runs {server}.",
+    "pillUnsupported": "Agent out of date (unsupported)",
+    "headingUnsupported": "Agent {agent} is no longer supported",
+    "unsupported": "This agent version is no longer supported: the server only supports agents from {min} on, so it may stop working at any time. Upgrade it now.",
+    "legacy": "This agent predates automatic upgrades: the server cannot ask it to restart, so it has to be upgraded by hand.",
+    "stuck": "This agent has been out of date for over 72 hours and is not upgrading on its own.",
+    "dockerHeading": "Docker",
+    "dockerBody": "Pull the new image and restart the agent, then switch its image to {image} so it follows the server from now on (with a pull timer, see the Private locations documentation):",
+    "k8sHeading": "Kubernetes",
+    "k8sBody": "Set imagePullPolicy: Always and the image to {image}, then restart the pods.",
+    "open": "Open Private locations"
   }
 }

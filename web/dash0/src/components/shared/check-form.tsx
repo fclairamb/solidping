@@ -2192,6 +2192,12 @@ const showSlugFromNameOffer =
                           // "unknown" (no live agent yet) stays selectable.
                           const crawlUnsupported =
                             type === "crawl" && !!region.private && region.capabilities?.crawl === "no";
+                          // Customer-run agents drift from the server's version:
+                          // one that predates this check type would fail its jobs.
+                          // Only a definite "no" speaks up; saving stays allowed.
+                          const typeUnsupported =
+                            !!region.private &&
+                            region.capabilities?.[`check-type-${type.replace(/_/g, "-")}`] === "no";
                           const selected = selectedRegions.includes(region.slug);
                           // A `required` org with a secret typed: a shared
                           // region would make the check unsealable.
@@ -2277,6 +2283,14 @@ const showSlugFromNameOffer =
                                   data-testid={`region-ipv6-${region.slug}`}
                                 />
                               </span>
+                              {typeUnsupported && (
+                                <span
+                                  className="w-full text-xs text-muted-foreground"
+                                  data-testid={`region-check-type-unsupported-${region.slug}`}
+                                >
+                                  {t("form.checkTypeAgentUpgradeHint", { type })}
+                                </span>
+                              )}
                               {crawlUnsupported && (
                                 <span
                                   className="w-full text-xs text-muted-foreground"

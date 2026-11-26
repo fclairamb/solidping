@@ -85,6 +85,7 @@ audit of every path that matches a private region, done as part of the change.
 | 8 | Aggregation per region | `jobtypes.job_aggregation` | every query takes `orgUID` |
 | 9 | Results read filters (`?region=`) | `handlers/results` | org comes from the `/orgs/:org/…` path; the filter is ALSO normalized like any other input (legacy `@<org>/<slug>` folded for this org's current/previous slug, `400` for a foreign one) so a pre-rename bookmark does not silently return an empty series |
 | 10 | **Cloud** worker claim | `checkjobsvc.ClaimJobs` / `ClaimJobsForCheck` (`cloudScope`) | **no org predicate — by design**, a cloud region is shared across orgs. Safe because it now *explicitly* excludes `region LIKE '@%'` in SQL, on top of `ValidateWorkerRegion` refusing an `@` worker region and `MatchesRegion` being exact-only for private regions |
+| 11a | Agent claim, built-in types | `AgentScope.CheckTypes` | a built-in job only goes to an agent reporting `check-type-<type>`; no report = the frozen `legacyCheckTypes` (spec 2026-11-26-02) |
 | 11 | System (platform) agent claim | `AgentScope{System: true}` | no org predicate, and `validate()` **rejects** a system scope pointed at an `@…` region outright |
 | 12 | Worker task claim (`workertasks.Service.Claim`, `/api/v1/agent/tasks/claim`) | `workertasks.Service.Claim` | Org agents: `organization_uid = identity.OrgUID` **and** the exact region. Cloud workers: the exact region, no org predicate. System agents are excluded (the routes refuse them) |
 

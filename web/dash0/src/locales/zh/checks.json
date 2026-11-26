@@ -314,6 +314,7 @@
     "emailIntervalHint": "如果在此间隔内未收到邮件，监控项将被标记为故障",
     "privateRegionTitle": "运行在你自己部署的代理上",
     "crawlAgentUpgradeHint": "此位置的代理尚不能运行网站爬取。请升级代理后再选择它。",
+    "checkTypeAgentUpgradeHint": "此区域的代理不支持 {{type}}：请升级它们。",
     "icmpNoPingBadge": "无 ping",
     "icmpNoPingTitle": "此区域没有可打开 ICMP 套接字的在线工作节点（缺少 CAP_NET_RAW 或 ping 组）。",
     "privateRegionBadge": "私有",

@@ -2040,6 +2040,7 @@ func (s *Service) queueLifecycleNotifications(
 		// them to ignore theirs.
 		models.EventTypeRegionOffline, models.EventTypeRegionRecovered,
 		models.EventTypeAgentConnected, models.EventTypeAgentDisconnected,
+		models.EventTypeAgentOutdated,
 		models.EventTypeOrgActivationSignupCompleted,
 		models.EventTypeOrgActivationFirstCheckCreated,
 		models.EventTypeOrgActivationFirstResultReceived,

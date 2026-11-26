@@ -7,8 +7,10 @@ import (
 	"slices"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
 	"github.com/fclairamb/solidping/server/internal/checkworker/tasks"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/plugins"
 	"github.com/fclairamb/solidping/server/internal/plugins/protocol"
 )
@@ -17,19 +19,26 @@ import (
 // self-probed, the worker-task executors it runs (spec 2026-10-22-02), then the
 // plugin check types it can run (spec 2026-10-17-05 §17): the ones it loaded
 // and its activation gate enables (§19). A plugin type is an `x-` slug, so it
-// is a valid capability name.
+// is a valid capability name. The built-in types it can run (ctx, see
+// checkjobsvc.WithBuiltinTypes) go out as `check-type-*`, so the server never
+// hands it a job of a type it has no parser for.
 func Capabilities(ctx context.Context, pluginTypes []string) []string {
 	egressCaps := WithTaskCapabilities(egressreport.Current(ctx), tasks.Capabilities())
 
 	// Without plugins the set is exactly that, nil ("unknown") included. With
 	// plugins it is always non-nil: the claim needs the types even when the
 	// egress probe has not answered yet.
-	if len(pluginTypes) == 0 {
+	builtin := checkjobsvc.BuiltinTypesFromContext(ctx)
+	if len(pluginTypes) == 0 && len(builtin) == 0 {
 		return egressCaps
 	}
 
-	out := make([]string, 0, len(egressCaps)+len(pluginTypes))
+	out := make([]string, 0, len(egressCaps)+len(pluginTypes)+len(builtin))
 	out = append(out, egressCaps...)
+
+	for _, checkType := range builtin {
+		out = append(out, models.CheckTypeCapability(checkType))
+	}
 
 	return append(out, pluginTypes...)
 }

@@ -85,6 +85,7 @@ Project-wide standards and naming rules.
 - [conventions/frontend-urls.md](conventions/frontend-urls.md) — SPA base paths (`/d`, `/s`), the legacy `/dash0` / `/status0` redirects, and dashboard URL routing (`/d/orgs/{orgSlug}/...`)
 - [conventions/migrations.md](conventions/migrations.md) — Migration file naming and release-time consolidation rules.
 - [conventions/specs-workflow.md](conventions/specs-workflow.md) — The `specs/` directory layout, lifecycle, filename and template.
+- [conventions/agent-compatibility.md](conventions/agent-compatibility.md) — How long the server supports old agents (1 month hard minimum, 6 months aim), `MinSupportedAgentVersion`, the changelog-date test, the "Unsupported" badge
 - [conventions/agent-commands.md](conventions/agent-commands.md) — Agent-neutral bodies of the `/idea` and `/sync-pg-to-sqlite` slash commands.
 - [conventions/dash0-translations.md](conventions/dash0-translations.md) — dash0 i18n rules: locale parity tests, the untranslated-JSX lint rule, per-locale terminology.
 - [conventions/email-templates.md](conventions/email-templates.md) — Transactional email templates: required blocks (preheader, text), the label/value fact grid, and why the subject and plaintext parts render through text/template

@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -142,7 +144,7 @@ func stripCapabilities(capabilities, names []string) []string {
 // worker advertises the plugin types it can run, spec 2026-10-17-05 §17), plus
 // the extra capability names the caller asks about (an org's agent-reported
 // plugin types, which only that org may see).
-func (s *Service) capabilitiesFor(workers []*models.Worker, extra []string) map[string]string {
+func (s *Service) capabilitiesFor(workers []*models.Worker, extra []string, checkTypes bool) map[string]string {
 	out := make(map[string]string, len(aggregatedCapabilities)+len(s.taskCaps))
 	for _, name := range aggregatedCapabilities {
 		out[name] = aggregate(workers, name)
@@ -159,11 +161,57 @@ func (s *Service) capabilitiesFor(workers []*models.Worker, extra []string) map[
 		}
 	}
 
+	// Private locations only: their agents are customer-run and drift from the
+	// server's version. A cloud region runs the server's own build.
+	if checkTypes {
+		for _, checkType := range checkerdef.ListCheckTypes(nil) {
+			out[models.CheckTypeCapability(string(checkType))] = aggregateCheckType(workers, string(checkType))
+		}
+	}
+
 	for _, name := range extra {
 		out[name] = aggregate(workers, name)
 	}
 
 	return out
+}
+
+// aggregateCheckType is the region's verdict for one built-in check type
+// (`check-type-<type>`). A worker that reports at least one `check-type-*` is
+// authoritative. A worker reporting a set with none is a legacy agent, which
+// the claim treats as running exactly checkjobsvc.LegacyCheckTypes. A worker
+// reporting nothing (nil) is "unknown", as everywhere else.
+func aggregateCheckType(workers []*models.Worker, checkType string) string {
+	name := models.CheckTypeCapability(checkType)
+	reported := false
+
+	for _, worker := range workers {
+		if worker.Capabilities == nil {
+			continue
+		}
+
+		reported = true
+
+		if slices.Contains(worker.Capabilities, name) {
+			return CapabilityYes
+		}
+
+		if !hasCheckTypeCapability(worker.Capabilities) && slices.Contains(checkjobsvc.LegacyCheckTypes(), checkType) {
+			return CapabilityYes
+		}
+	}
+
+	if reported {
+		return CapabilityNo
+	}
+
+	return CapabilityUnknown
+}
+
+func hasCheckTypeCapability(capabilities []string) bool {
+	return slices.ContainsFunc(capabilities, func(name string) bool {
+		return strings.HasPrefix(name, models.CheckTypeCapabilityPrefix)
+	})
 }
 
 // liveWorkers loads every worker that has checked in inside the liveness
@@ -214,7 +262,7 @@ func (s *Service) annotateGlobal(ctx context.Context, defs []RegionDefinition, e
 			}
 		}
 
-		defs[i].Capabilities = s.capabilitiesFor(matched, extra)
+		defs[i].Capabilities = s.capabilitiesFor(matched, extra, false)
 	}
 
 	return nil
@@ -270,7 +318,7 @@ func (s *Service) annotatePrivate(
 			}
 		}
 
-		defs[i].Capabilities = s.capabilitiesFor(matched, extra)
+		defs[i].Capabilities = s.capabilitiesFor(matched, extra, true)
 	}
 
 	return nil

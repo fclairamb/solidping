@@ -9,7 +9,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import "@/i18n";
-import { AgentVersionCell, agentVersionState } from "./agent-version";
+import { AgentVersionCell, agentVersionState, isAgentOutdated, isAgentUnsupported } from "./agent-version";
 
 afterEach(cleanup);
 
@@ -55,6 +55,34 @@ describe("AgentVersionCell", () => {
     expect(screen.getByText("Drifted")).toBeTruthy();
   });
 
+  it("renders Unsupported instead of Drifted below the minimum (spec 2026-11-26-04)", () => {
+    render(
+      <AgentVersionCell
+        agentVersion="0.1.0"
+        serverVersion="0.17.0"
+        supported={false}
+        data-testid="v"
+      />
+    );
+
+    expect(screen.getByTestId("v-unsupported").textContent).toBe("Unsupported");
+    expect(screen.queryByText("Drifted")).toBeNull();
+  });
+
+  it("renders Drifted, not Unsupported, above the minimum", () => {
+    render(<AgentVersionCell agentVersion="0.16.2" serverVersion="0.17.0" supported data-testid="v" />);
+
+    expect(screen.getByText("Drifted")).toBeTruthy();
+    expect(screen.queryByTestId("v-unsupported")).toBeNull();
+  });
+
+  it("renders null as unknown even when flagged unsupported", () => {
+    render(<AgentVersionCell agentVersion={null} serverVersion="0.17.0" supported={false} data-testid="v" />);
+
+    expect(screen.getByTestId("v").getAttribute("data-agent-version")).toBe("unknown");
+    expect(screen.queryByTestId("v-unsupported")).toBeNull();
+  });
+
   it("renders a pinned drifted agent with Drifted plus Pinned (spec 2026-11-22-04)", () => {
     render(
       <AgentVersionCell agentVersion="0.16.2" serverVersion="0.17.0" pinned data-testid="v" />
@@ -91,5 +119,33 @@ describe("AgentVersionCell", () => {
 
     const badge = screen.getByText("Drifted");
     expect(badge.className).not.toContain("destructive");
+  });
+});
+
+describe("isAgentOutdated", () => {
+  it("flags an active, drifted, unpinned agent", () => {
+    expect(isAgentOutdated({ status: "active", version: "0.49.3" }, "0.55.0")).toBe(true);
+  });
+
+  it("never flags matching, unknown, pinned or revoked agents", () => {
+    expect(isAgentOutdated({ status: "active", version: "0.55.0" }, "0.55.0")).toBe(false);
+    expect(isAgentOutdated({ status: "active", version: null }, "0.55.0")).toBe(false);
+    expect(isAgentOutdated({ status: "active", version: "0.49.3" }, undefined)).toBe(false);
+    expect(
+      isAgentOutdated({ status: "active", version: "0.49.3", versionPinned: true }, "0.55.0")
+    ).toBe(false);
+    expect(isAgentOutdated({ status: "revoked", version: "0.49.3" }, "0.55.0")).toBe(false);
+  });
+});
+
+describe("isAgentUnsupported", () => {
+  it("flags an active agent below the supported window", () => {
+    expect(isAgentUnsupported({ status: "active", versionSupported: false })).toBe(true);
+  });
+
+  it("does not flag supported, unknown or revoked agents", () => {
+    expect(isAgentUnsupported({ status: "active", versionSupported: true })).toBe(false);
+    expect(isAgentUnsupported({ status: "active" })).toBe(false);
+    expect(isAgentUnsupported({ status: "revoked", versionSupported: false })).toBe(false);
   });
 });

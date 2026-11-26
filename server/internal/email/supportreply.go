@@ -71,6 +71,7 @@ const (
 	TemplateMembershipReqDecision   = "membership-request-decision.html"
 	TemplateMembershipReqNew        = "membership-request-new.html"
 	TemplatePagingNudge             = "paging-nudge.html"
+	TemplateAgentOutdated           = "agent-outdated.html"
 	TemplatePasswordChanged         = "password-changed.html"
 	TemplatePasswordReset           = "password-reset.html"
 	TemplatePasswordResetSSO        = "password-reset-sso.html"
@@ -138,7 +139,10 @@ var supportReplyableTemplates = map[string]bool{
 	// A region outage notice (spec 2026-09-25-03) is the platform telling a
 	// customer it could not watch their checks: exactly the mail someone
 	// answers with a question.
-	TemplateRegionOffline:          true,
+	TemplateRegionOffline: true,
+	// An outdated-agent notice (spec 2026-11-26-03) is operator mail with a fix
+	// to apply: the natural reply is a question about it.
+	TemplateAgentOutdated:          true,
 	TemplateRegionRecovered:        true,
 	TemplateStatusSubscriberUpdate: true,
 	TemplateTestEmail:              true,

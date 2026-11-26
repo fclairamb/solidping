@@ -246,6 +246,7 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     // the pairing outright.
     ["agent.connected", "🔌"],
     ["agent.disconnected", "🪫"],
+    ["agent.outdated", "⏳"],
     // Discovery scans (spec 2026-10-22-05).
     ["discovery.scan_started", "📡"],
     ["discovery.scan_canceled", "🛑"],
