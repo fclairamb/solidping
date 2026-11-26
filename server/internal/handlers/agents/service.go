@@ -687,6 +687,10 @@ type AgentResponse struct {
 	// SP_AGENT_IGNORE_VERSION_DRIFT=true (spec 2026-11-22-04): the server
 	// never asks it to upgrade, and the dashboard labels its drift "Pinned".
 	VersionPinned bool `json:"versionPinned"`
+	// VersionSupported is false when the agent reports a version below
+	// agents.MinSupportedAgentVersion: the dashboard shows "Unsupported" instead
+	// of "Drifted". True when the version is unknown.
+	VersionSupported bool `json:"versionSupported"`
 	// Online reports whether the agent is connected: active and seen within
 	// the liveness window — regions.IsAgentLive, the rule the location's
 	// liveness monitor uses (spec 2026-09-25-05). Computed server-side so the
@@ -744,6 +748,7 @@ func (s *Service) ListAgents(ctx context.Context, orgSlug string) (*ListAgentsRe
 			RevokedAt:             row.RevokedAt,
 			Version:               versions[row.UID].version,
 			VersionPinned:         versions[row.UID].pinned,
+			VersionSupported:      versionSupported(versions[row.UID].version),
 			Online:                regions.IsAgentLive(row.Status, row.LastSeenAt, cutoff),
 		})
 	}
@@ -829,18 +834,19 @@ func (s *Service) ListAllAgents(ctx context.Context) (*ListAgentsResponse, error
 		}
 
 		data = append(data, AgentResponse{
-			UID:           row.UID,
-			Name:          row.Name,
-			Kind:          row.Kind,
-			Org:           orgSlug,
-			Region:        row.Region,
-			Fingerprint:   row.Fingerprint,
-			Status:        row.Status,
-			LastSeenAt:    row.LastSeenAt,
-			EnrolledAt:    row.EnrolledAt,
-			RevokedAt:     row.RevokedAt,
-			Version:       versions[row.UID].version,
-			VersionPinned: versions[row.UID].pinned,
+			UID:              row.UID,
+			Name:             row.Name,
+			Kind:             row.Kind,
+			Org:              orgSlug,
+			Region:           row.Region,
+			Fingerprint:      row.Fingerprint,
+			Status:           row.Status,
+			LastSeenAt:       row.LastSeenAt,
+			EnrolledAt:       row.EnrolledAt,
+			RevokedAt:        row.RevokedAt,
+			Version:          versions[row.UID].version,
+			VersionPinned:    versions[row.UID].pinned,
+			VersionSupported: versionSupported(versions[row.UID].version),
 		})
 	}
 
@@ -1020,4 +1026,9 @@ func filterPrivate(regionList []string) []string {
 	}
 
 	return out
+}
+
+// versionSupported is agents.VersionSupported for a possibly-unreported version.
+func versionSupported(version *string) bool {
+	return version == nil || agentcrypto.VersionSupported(*version)
 }

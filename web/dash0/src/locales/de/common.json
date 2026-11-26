@@ -157,6 +157,8 @@
     "drifted": "Abweichend",
     "serverRuns": "Dieser Server läuft mit v{{version}}.",
     "pinned": "Fixiert",
+    "unsupported": "Nicht unterstützt",
+    "unsupportedHint": "Diese Agent-Version wird nicht mehr unterstützt. Bitte aktualisieren.",
     "pinnedHint": "Dieser Agent ignoriert Update-Anfragen (SP_AGENT_IGNORE_VERSION_DRIFT=true): Er bleibt auf seiner Version.",
     "outdatedTitle": "Einige Ihrer Agenten sind veraltet",
     "outdatedBody": "{{names}} aktualisieren sich nicht selbst. Für Docker führen Sie `docker compose pull && docker compose up -d` aus und stellen das Image dann mit einem Pull-Timer auf {{image}} um. Für Kubernetes setzen Sie `imagePullPolicy: Always` und das Image {{image}}."

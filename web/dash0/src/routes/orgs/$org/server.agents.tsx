@@ -108,6 +108,7 @@ function AgentsFleetPage() {
                           agentVersion={agent.version}
                           serverVersion={versionData?.version}
                           pinned={agent.versionPinned}
+                          supported={agent.versionSupported !== false}
                           data-testid={`fleet-agent-version-${agent.uid}`}
                         />
                       </TableCell>

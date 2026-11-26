@@ -199,6 +199,10 @@ r := require.New(t)
 - Use `r.Contains(haystack, needle)` for substring checks
 - Use `r.Len(slice, expectedLen)` for length checks
 
+## Old agents
+
+Before removing an old-agent shim, check [wiki/conventions/agent-compatibility.md](../wiki/conventions/agent-compatibility.md).
+
 ## API testing with curl
 
 Log in at `POST /api/v1/auth/login`, save the token to a file, send `Authorization: Bearer $(cat /tmp/token.txt)`. Recipes, default credentials, forced password rotation and troubleshooting: [wiki/runbooks/api-testing-with-curl.md](../wiki/runbooks/api-testing-with-curl.md).

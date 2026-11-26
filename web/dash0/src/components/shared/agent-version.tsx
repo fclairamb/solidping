@@ -61,6 +61,7 @@ export function AgentVersionCell({
   agentVersion,
   serverVersion,
   pinned,
+  supported = true,
   className,
   "data-testid": testId,
 }: {
@@ -69,6 +70,10 @@ export function AgentVersionCell({
   /** The agent runs with SP_AGENT_IGNORE_VERSION_DRIFT=true (spec
    * 2026-11-22-04): its drift is deliberate, labelled "Pinned". */
   pinned?: boolean;
+  /** `false` when the server says the version is below its minimum supported
+   * agent version (spec 2026-11-26-04): red "Unsupported" instead of "Drifted".
+   * Ignored when the version is unknown. */
+  supported?: boolean;
   className?: string;
   "data-testid"?: string;
 }) {
@@ -95,6 +100,8 @@ export function AgentVersionCell({
     );
   }
 
+  const unsupported = !supported;
+
   return (
     <TooltipProvider>
       <Tooltip>
@@ -102,10 +109,19 @@ export function AgentVersionCell({
           <span
             className={`inline-flex items-center gap-1.5 ${className ?? ""}`}
             data-testid={testId}
-            data-agent-version="drifted"
+            data-agent-version={unsupported ? "unsupported" : "drifted"}
           >
             <span className="text-sm">{agentVersion}</span>
-            <Badge variant="warning">{t("agentVersion.drifted")}</Badge>
+            {unsupported ? (
+              <Badge
+                variant="destructive"
+                data-testid={testId ? `${testId}-unsupported` : undefined}
+              >
+                {t("agentVersion.unsupported")}
+              </Badge>
+            ) : (
+              <Badge variant="warning">{t("agentVersion.drifted")}</Badge>
+            )}
             {pinned && (
               <Badge
                 variant="secondary"
@@ -118,6 +134,7 @@ export function AgentVersionCell({
           </span>
         </TooltipTrigger>
         <TooltipContent className="max-w-xs">
+          {unsupported && <>{t("agentVersion.unsupportedHint")} </>}
           {t("agentVersion.serverRuns", { version: serverVersion })}
           {pinned && <> {t("agentVersion.pinnedHint")}</>}
         </TooltipContent>

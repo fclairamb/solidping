@@ -1,7 +1,10 @@
 package agents
 
 import (
+	"strings"
 	"time"
+
+	"golang.org/x/mod/semver"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -12,6 +15,14 @@ import (
 // ProtocolVersion is announced in the `hello` frame so agents can detect
 // incompatible server upgrades and force a clean reconnect.
 const ProtocolVersion = 1
+
+// MinSupportedAgentVersion is the oldest agent release the server still
+// serves in full. Raised only when a compatibility shim for older agents is
+// removed, and never past a release less than 30 days old: see
+// wiki/conventions/agent-compatibility.md. An agent below it is still
+// accepted (the server only refuses a connection on a ProtocolVersion break);
+// it is flagged "Unsupported" in the dashboard and logged once per connection.
+const MinSupportedAgentVersion = "0.41.0"
 
 // HeaderBootID carries the agent's boot ID on a signed reconnect, which has
 // no frame of its own (the enroll frame carries it as BootID). See
@@ -380,4 +391,20 @@ func (j *AgentJob) ToCheckJob() *models.CheckJob {
 	}
 
 	return job
+}
+
+// VersionSupported reports whether an agent's self-reported build version is at
+// or above MinSupportedAgentVersion. An empty or unparsable version (never
+// reported, dev build) is never "unsupported": we do not know.
+func VersionSupported(agentVersion string) bool {
+	return versionAtLeast(agentVersion, MinSupportedAgentVersion)
+}
+
+func versionAtLeast(agentVersion, minimum string) bool {
+	canonical := "v" + strings.TrimPrefix(agentVersion, "v")
+	if !semver.IsValid(canonical) {
+		return true
+	}
+
+	return semver.Compare(canonical, "v"+strings.TrimPrefix(minimum, "v")) >= 0
 }

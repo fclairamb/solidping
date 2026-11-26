@@ -157,6 +157,8 @@
     "drifted": "Décalée",
     "serverRuns": "Ce serveur exécute la version v{{version}}.",
     "pinned": "Épinglée",
+    "unsupported": "Non supportée",
+    "unsupportedHint": "Cette version de l'agent n'est plus supportée. Mettez-la à jour.",
     "pinnedHint": "Cet agent ignore les demandes de mise à jour (SP_AGENT_IGNORE_VERSION_DRIFT=true) : il reste sur sa version.",
     "outdatedTitle": "Certains de vos agents sont obsolètes",
     "outdatedBody": "{{names}} ne se mettront pas à jour tout seuls. Pour Docker, lancez `docker compose pull && docker compose up -d`, puis passez l'image à {{image}} avec un minuteur de récupération. Pour Kubernetes, définissez `imagePullPolicy: Always` et l'image {{image}}."

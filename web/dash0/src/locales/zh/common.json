@@ -157,6 +157,8 @@
     "drifted": "版本漂移",
     "serverRuns": "此服务器运行 v{{version}}。",
     "pinned": "已固定",
+    "unsupported": "不受支持",
+    "unsupportedHint": "此代理版本已不再受支持，请升级。",
     "pinnedHint": "这个代理会忽略升级请求（SP_AGENT_IGNORE_VERSION_DRIFT=true）：它会保持在当前版本。",
     "outdatedTitle": "部分代理已过期",
     "outdatedBody": "{{names}} 不会自行升级。Docker:运行 `docker compose pull && docker compose up -d`,然后借助拉取定时器将镜像切换为 {{image}}。Kubernetes:设置 `imagePullPolicy: Always` 并将镜像设为 {{image}}。"

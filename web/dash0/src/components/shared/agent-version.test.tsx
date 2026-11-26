@@ -55,6 +55,34 @@ describe("AgentVersionCell", () => {
     expect(screen.getByText("Drifted")).toBeTruthy();
   });
 
+  it("renders Unsupported instead of Drifted below the minimum (spec 2026-11-26-04)", () => {
+    render(
+      <AgentVersionCell
+        agentVersion="0.1.0"
+        serverVersion="0.17.0"
+        supported={false}
+        data-testid="v"
+      />
+    );
+
+    expect(screen.getByTestId("v-unsupported").textContent).toBe("Unsupported");
+    expect(screen.queryByText("Drifted")).toBeNull();
+  });
+
+  it("renders Drifted, not Unsupported, above the minimum", () => {
+    render(<AgentVersionCell agentVersion="0.16.2" serverVersion="0.17.0" supported data-testid="v" />);
+
+    expect(screen.getByText("Drifted")).toBeTruthy();
+    expect(screen.queryByTestId("v-unsupported")).toBeNull();
+  });
+
+  it("renders null as unknown even when flagged unsupported", () => {
+    render(<AgentVersionCell agentVersion={null} serverVersion="0.17.0" supported={false} data-testid="v" />);
+
+    expect(screen.getByTestId("v").getAttribute("data-agent-version")).toBe("unknown");
+    expect(screen.queryByTestId("v-unsupported")).toBeNull();
+  });
+
   it("renders a pinned drifted agent with Drifted plus Pinned (spec 2026-11-22-04)", () => {
     render(
       <AgentVersionCell agentVersion="0.16.2" serverVersion="0.17.0" pinned data-testid="v" />

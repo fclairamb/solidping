@@ -8459,6 +8459,9 @@ export interface AgentInfo {
   /** The agent runs with SP_AGENT_IGNORE_VERSION_DRIFT=true (spec
    * 2026-11-22-04): never asked to upgrade, its drift is deliberate. */
   versionPinned?: boolean;
+  /** `false` when the version is below the server's minimum supported agent
+   * version (spec 2026-11-26-04). Absent/true otherwise. */
+  versionSupported?: boolean;
   /** Active and seen within the liveness window — the same rule the
    * location's liveness monitor uses, computed server-side (spec
    * 2026-09-25-05). */

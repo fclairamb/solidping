@@ -876,6 +876,14 @@ func (h *Handler) warnIfVersionDrift(ctx context.Context, agentUID, reportedVers
 		return
 	}
 
+	if !isDevBuild(reportedVersion) && !agentcrypto.VersionSupported(reportedVersion) {
+		h.logger.WarnContext(ctx, "agent version is no longer supported, please upgrade it",
+			"agent", agentUID, "agent_version", reportedVersion,
+			"min_supported_version", agentcrypto.MinSupportedAgentVersion)
+
+		return
+	}
+
 	serverVersion := version.Get().Version
 	if isDevBuild(serverVersion) || isDevBuild(reportedVersion) {
 		return
