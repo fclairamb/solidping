@@ -1,6 +1,7 @@
 package dbcontract
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
@@ -69,6 +70,12 @@ func runAgents(t *testing.T, fix *fixture) {
 	must.NoError(svc.UpdateAgentLastSeen(ctx, agent.UID, seen))
 
 	must.NoError(svc.RetireAgentWorkerRow(ctx, agent.UID))
+
+	must.NoError(svc.RenameAgent(ctx, fix.org.UID, agent.UID, "renamed"))
+	got, err = svc.GetAgent(ctx, agent.UID)
+	must.NoError(err)
+	must.Equal("renamed", got.Name)
+	must.ErrorIs(svc.RenameAgent(ctx, "00000000-0000-0000-0000-000000000000", agent.UID, "x"), sql.ErrNoRows)
 
 	must.NoError(svc.RevokeAgent(ctx, fix.org.UID, agent.UID))
 	got, err = svc.GetAgent(ctx, agent.UID)

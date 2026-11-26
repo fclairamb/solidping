@@ -417,7 +417,8 @@
       "onlineCount": "{{online}}/{{total}} 在线",
       "monitor": "存活监控",
       "monitorOff": "存活监控已关闭",
-      "monitorEnable": "开启"
+      "monitorEnable": "开启",
+      "edit": "编辑位置"
     },
     "cancel": "取消",
     "token": {
@@ -449,7 +450,8 @@
       "offline": "离线",
       "identityKey": "身份：",
       "sealingKey": "加密密钥：",
-      "regionKeys": "区域密钥："
+      "regionKeys": "区域密钥：",
+      "edit": "编辑代理"
     },
     "tokens": {
       "title": "待处理的注册令牌",
@@ -530,6 +532,22 @@
         "cancelled": "已取消：监控项发生了变化",
         "unknown": "失败（{{code}}）"
       }
+    },
+    "agentEdit": {
+      "title": "编辑代理",
+      "description": "名称仅在 SolidPing 中显示。代理不会重启，其 SP_AGENT_NAME 仅在注册时读取。",
+      "notFound": "该代理不存在或已被移除。",
+      "saved": "代理已重命名",
+      "saveFailed": "无法重命名代理"
+    },
+    "regionEdit": {
+      "title": "编辑私有位置",
+      "description": "更改此位置的显示方式。其存活监控会随之重命名，除非您已手动重命名该监控。",
+      "emoji": "图标（表情符号）",
+      "slugHelp": "Slug 无法更改：代理、注册令牌、区域密钥和检查都引用它。",
+      "notFound": "该私有位置不存在或已被删除。",
+      "saved": "私有位置已更新",
+      "saveFailed": "无法更新私有位置"
     }
   },
   "accessRedirect": {

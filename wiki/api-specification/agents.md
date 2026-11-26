@@ -121,6 +121,13 @@ List the org's private regions.
 ### POST /api/v1/orgs/:org/private-regions
 Create a private region.
 
+### PATCH /api/v1/orgs/:org/private-regions/:slug
+Change a private region's `name` (1 to 100 characters, trimmed) and/or `emoji`
+(at most 16 characters, empty resets it to 🏠). An omitted field is left
+unchanged. The slug cannot change: agents, tokens, region keys and checks
+reference it. The liveness monitor is renamed with the region, unless its
+name was edited by hand. Returns the region row, as in the list.
+
 ### DELETE /api/v1/orgs/:org/private-regions/:slug
 Delete a private region. Note the path parameter is the region **slug**, not a
 uid.
@@ -155,6 +162,11 @@ version (spec 2026-08-19-07), resolved from its `workers` row (the
 a claim frame yet — and must be rendered as **unknown**, never as drifted.
 Detection only: nothing about this field gates, throttles or disconnects an
 agent.
+
+### PATCH /api/v1/orgs/:org/agents/:uid
+Rename an agent: body `{"name": "..."}` (1 to 100 characters, trimmed). The
+name is display only; the agent is not told, and its `SP_AGENT_NAME` is only
+read at enrollment. Returns the agent row, as in the list.
 
 ### DELETE /api/v1/orgs/:org/agents/:uid
 Deregister an agent. Its key is invalidated and further connects are refused.

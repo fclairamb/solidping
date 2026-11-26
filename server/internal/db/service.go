@@ -399,6 +399,8 @@ type Service interface {
 	UpdateAgentLastSeen(ctx context.Context, uid string, at time.Time) error
 	// RevokeAgent marks an agent revoked (it can no longer authenticate).
 	RevokeAgent(ctx context.Context, orgUID, uid string) error
+	// RenameAgent sets an org agent's display name (sql.ErrNoRows when absent).
+	RenameAgent(ctx context.Context, orgUID, uid, name string) error
 	// ListPurgeableRevokedAgents returns live agents (any kind) revoked before
 	// cutoff (falling back to updated_at when revoked_at is NULL) — the
 	// agent_gc job's purge candidates.

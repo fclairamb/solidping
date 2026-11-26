@@ -59,6 +59,21 @@ func (h *Handler) CreatePrivateRegion(writer http.ResponseWriter, req *http.Requ
 	return h.WriteJSON(writer, http.StatusCreated, resp)
 }
 
+// UpdatePrivateRegion handles PATCH /api/v1/orgs/:org/private-regions/:slug.
+func (h *Handler) UpdatePrivateRegion(writer http.ResponseWriter, req *http.Request) error {
+	var body UpdatePrivateRegionRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid request body")
+	}
+
+	resp, err := h.svc.UpdatePrivateRegion(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "slug"), &body)
+	if err != nil {
+		return h.writeServiceError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
 // DeletePrivateRegion handles DELETE /api/v1/orgs/:org/private-regions/:slug.
 func (h *Handler) DeletePrivateRegion(writer http.ResponseWriter, req *http.Request) error {
 	if err := h.svc.DeletePrivateRegion(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "slug")); err != nil {
@@ -142,6 +157,21 @@ func (h *Handler) ListAllAgents(writer http.ResponseWriter, req *http.Request) e
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
+// UpdateAgent handles PATCH /api/v1/orgs/:org/agents/:uid.
+func (h *Handler) UpdateAgent(writer http.ResponseWriter, req *http.Request) error {
+	var body UpdateAgentRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid request body")
+	}
+
+	resp, err := h.svc.UpdateAgent(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"), &body)
+	if err != nil {
+		return h.writeServiceError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
 // RevokeAgent handles DELETE /api/v1/orgs/:org/agents/:uid.
 func (h *Handler) RevokeAgent(writer http.ResponseWriter, req *http.Request) error {
 	if err := h.svc.RevokeAgent(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid")); err != nil {
@@ -177,7 +207,8 @@ func (h *Handler) writeServiceError(writer http.ResponseWriter, request *http.Re
 		return h.WriteErrorErr(writer, request, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
 	case errors.Is(err, ErrRegionHasAgents):
 		return h.WriteErrorErr(writer, request, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
-	case errors.Is(err, regions.ErrInvalidPrivateRegionSlug), errors.Is(err, ErrInvalidExpiresIn):
+	case errors.Is(err, regions.ErrInvalidPrivateRegionSlug), errors.Is(err, ErrInvalidExpiresIn),
+		errors.Is(err, ErrInvalidName), errors.Is(err, ErrInvalidEmoji):
 		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	default:
 		return h.WriteInternalError(writer, request, err)

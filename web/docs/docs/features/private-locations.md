@@ -172,7 +172,7 @@ drain.
 | `SP_AGENT_ENROLLMENT_TOKEN` | — | One-shot `spe_` token (first run only) |
 | `SP_AGENT_KEYS_FILE` | `/data/agent-keys.json` | Where the identity JSON is persisted |
 | `SP_AGENT_KEYS` | — | Base64 identity JSON for env-only deployments (wins over the file) |
-| `SP_AGENT_NAME` | hostname | Display name shown in the dashboard |
+| `SP_AGENT_NAME` | hostname | Display name shown in the dashboard, sent at enrollment. Rename the agent later with the pencil icon on the Private locations page |
 | `SP_NODE_NAME` | hostname | Pins the worker identity. Without it the worker slug is derived from the (truncated) hostname, so a pod that gets a new name on every restart lands on a new `workers` row each time |
 | `SP_EGRESS_ALLOW_PRIVATE` | `true` on an agent | Whether checks may reach non-public addresses. An agent exists to reach your private network, so it allows them unless you set `false`. See [Egress policy](/configuration/egress-policy) |
 | `SP_AGENT_DISCOVERY_ENABLED` | `false` | Lets this agent run [network discovery](#scan-the-locations-network) scans. Never set it on a system agent |
