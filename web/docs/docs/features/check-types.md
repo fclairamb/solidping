@@ -1400,6 +1400,17 @@ docker://hostname:2375
 | TLS | Enable TLS | `true` / `false` |
 | Timeout | Connection timeout | `10s` |
 
+**Daemon mode.** Leave `containerName` and `containerId` empty and the check
+pings the Docker daemon itself (`/_ping`): it is up when the daemon answers, and
+the output carries the daemon's API version and OS type, plus a `ping_time_ms`
+metric. It is the natural parent of your per-container checks: make each
+container check depend on a "Docker daemon" check, and a Docker restart raises
+one alert instead of one per container. The default name and slug are
+`Docker daemon` and `docker-daemon`. Daemon mode reaches the socket through the
+docker client, so `/var/run/docker.sock` does **not** need to be in
+`checkers.unix_socket_paths` (never put it there); the same egress rules apply as
+for a container check.
+
 **Local socket in a container.** The default host is
 `unix:///var/run/docker.sock`. The SolidPing image runs as uid `65532`, and the
 host's socket is usually owned by `root:docker` with mode `0660`, so mounting it

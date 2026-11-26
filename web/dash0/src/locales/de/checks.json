@@ -1105,6 +1105,7 @@
   "secretHeaders": "Geheime Header",
   "secretHeadersDescription": "Header-Werte werden verschlüsselt gespeichert — für API-Schlüssel und Bearer-Token verwenden.",
   "docker": {
+    "daemonModeHelp": "Leer lassen, um nur den Docker-Daemon zu prüfen.",
     "containerName": "Container-Name",
     "containerIdOptional": "Container-ID (optional, Alternative zum Namen)",
     "dockerHostOptional": "Docker-Host (optional)",
@@ -1502,7 +1503,6 @@
     "urlRequired": "URL ist erforderlich",
     "domainRequired": "Domain ist erforderlich",
     "targetRequired": "Ziel-IP oder Hostname ist erforderlich",
-    "containerRequired": "Containername oder -ID ist erforderlich",
     "freeboxConnectionRequired": "Freebox-Verbindung ist erforderlich",
     "linkTypeInvalid": "Der Leitungstyp muss xdsl oder ftth sein",
     "promqlRequired": "PromQL-Abfrage ist erforderlich",

@@ -143,10 +143,7 @@ func (c *DockerConfig) GetConfig() map[string]any {
 
 // Validate checks if the configuration is valid.
 func (c *DockerConfig) Validate() error {
-	if c.ContainerName == "" && c.ContainerID == "" {
-		return checkerdef.NewConfigError("containerName", "at least one of containerName or containerID is required")
-	}
-
+	// No container means daemon mode: the check pings the Docker daemon itself.
 	host := c.ResolveHost()
 	if !strings.HasPrefix(host, "unix://") && !strings.HasPrefix(host, "tcp://") {
 		return checkerdef.NewConfigError("host", "must start with unix:// or tcp://")
@@ -171,6 +168,12 @@ func (c *DockerConfig) Validate() error {
 	}
 
 	return nil
+}
+
+// DaemonMode reports whether the check watches the Docker daemon itself
+// (no container configured).
+func (c *DockerConfig) DaemonMode() bool {
+	return c.ContainerName == "" && c.ContainerID == ""
 }
 
 // RestartLoopEnabled reports whether opt-in restart-loop detection is active.
