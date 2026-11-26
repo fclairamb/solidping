@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.56.0](https://github.com/fclairamb/solidping/compare/v0.55.0...v0.56.0) (2026-11-26)
+
+
+### Features
+
+* **agents:** check-type capabilities, out-of-date agent notices and a compatibility window ([#1058](https://github.com/fclairamb/solidping/issues/1058)) ([f95e4f8](https://github.com/fclairamb/solidping/commit/f95e4f814dcdd915f2ca4220d150f35742d082e3))
+* **dash0:** keyboard shortcuts (Esc resets filters, / search, Cmd+Enter save) ([#1050](https://github.com/fclairamb/solidping/issues/1050)) ([322dc8d](https://github.com/fclairamb/solidping/commit/322dc8d7a5f8cd45062a82254db137f4b4ed96a7))
+* **docker:** daemon mode, ping the Docker daemon when no container is set ([#1057](https://github.com/fclairamb/solidping/issues/1057)) ([fc6309d](https://github.com/fclairamb/solidping/commit/fc6309d0e59fcc9ed5387928c768d39b4709da71))
+
+
+### Bug Fixes
+
+* **auth:** accept an OIDC issuer URL with or without its trailing slash ([#1052](https://github.com/fclairamb/solidping/issues/1052)) ([f1806c2](https://github.com/fclairamb/solidping/commit/f1806c2d69c9e1a321ec24d574a7c41001b3dcc7))
+* **checkworker:** mask resolved secret reference values in stored results ([#1045](https://github.com/fclairamb/solidping/issues/1045)) ([a4dec9b](https://github.com/fclairamb/solidping/commit/a4dec9b4f12cbdf1c91feff438332f5e2b1cbec2))
+* **dash0:** show that the sidebar menu scrolls, keep its scrollbar off the items ([#1056](https://github.com/fclairamb/solidping/issues/1056)) ([2860ce8](https://github.com/fclairamb/solidping/commit/2860ce84b36781c69e0256837dc6bc1d742e8cf8))
+* **deps:** update go dependencies (non-major) ([#1049](https://github.com/fclairamb/solidping/issues/1049)) ([2d29aa2](https://github.com/fclairamb/solidping/commit/2d29aa2141785df481d64c9cb5ae4a463f96e5b3))
+* **deps:** update go dependencies (non-major) ([#1054](https://github.com/fclairamb/solidping/issues/1054)) ([f0c07c7](https://github.com/fclairamb/solidping/commit/f0c07c73fd7636ec37203613ecd50ab0942810d4))
+* **deps:** update go dependencies (non-major) ([#1059](https://github.com/fclairamb/solidping/issues/1059)) ([fa1cb4e](https://github.com/fclairamb/solidping/commit/fa1cb4ecced8d8b63c3cd5e4f78774c1e340c850))
+* **i18n:** restore the SAML term 断言 in Simplified Chinese ([#1051](https://github.com/fclairamb/solidping/issues/1051)) ([9229687](https://github.com/fclairamb/solidping/commit/922968776659f43d550ca1d866564d08144e0691))
+* **i18n:** update Simplified Chinese translations ([#1043](https://github.com/fclairamb/solidping/issues/1043)) ([fe47c1d](https://github.com/fclairamb/solidping/commit/fe47c1d53022f26e4ccf9f99fb4f6e223341556c))
+* **security:** mask secret refs in error results, seal SAML and VAPID private keys ([#1060](https://github.com/fclairamb/solidping/issues/1060)) ([7e52c7f](https://github.com/fclairamb/solidping/commit/7e52c7f86eb51d6084bf6b2d7558e2aed5ade8ee))
+* **security:** mask secret refs in pre-probe error results, seal SAML and VAPID private keys ([#1061](https://github.com/fclairamb/solidping/issues/1061)) ([5d8d244](https://github.com/fclairamb/solidping/commit/5d8d24474e5f02d3ccbf172e35368beff4b3648a))
+* show the Unix socket path as the check target, read OIDC email from userinfo ([#1053](https://github.com/fclairamb/solidping/issues/1053)) ([344783c](https://github.com/fclairamb/solidping/commit/344783c9fcc2ab567091258aa9b7dc51d023c446))
+
 ## [0.55.0](https://github.com/fclairamb/solidping/compare/v0.54.1...v0.55.0) (2026-11-25)
 
 
