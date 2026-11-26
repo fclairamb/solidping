@@ -20,17 +20,13 @@ const (
 )
 
 // secretAppSettingKeys lists the sealed app_settings keys, sorted.
-var secretAppSettingKeys = []string{AppSettingSAMLSPPrivateKey, AppSettingVAPIDPrivateKey}
+func secretAppSettingKeys() []string {
+	return []string{AppSettingSAMLSPPrivateKey, AppSettingVAPIDPrivateKey}
+}
 
 // IsSecretAppSetting reports whether the app_settings key is sealed at rest.
 func IsSecretAppSetting(key string) bool {
-	for _, secret := range secretAppSettingKeys {
-		if key == secret {
-			return true
-		}
-	}
-
-	return false
+	return key == AppSettingSAMLSPPrivateKey || key == AppSettingVAPIDPrivateKey
 }
 
 // GetAppSetting returns the setting with its value opened.
@@ -134,7 +130,7 @@ func (s *Service) PlaintextAppSettingKeys(ctx context.Context) ([]string, error)
 }
 
 func (s *Service) plaintextAppSettings(ctx context.Context) ([]string, map[string]string, error) {
-	values, err := s.Service.GetAppSettings(ctx, secretAppSettingKeys)
+	values, err := s.Service.GetAppSettings(ctx, secretAppSettingKeys())
 	if err != nil {
 		return nil, nil, fmt.Errorf("read secret app settings: %w", err)
 	}

@@ -332,7 +332,9 @@ func testMigrationSealsAppSettings(t *testing.T, raw db.Service, key []byte) {
 	}
 	require.NoError(t, raw.SetAppSettings(ctx, legacy))
 
-	allKeys := []string{sysparamseal.AppSettingSAMLSPPrivateKey, spCertKey, sysparamseal.AppSettingVAPIDPrivateKey, vapidPubKey}
+	allKeys := []string{
+		sysparamseal.AppSettingSAMLSPPrivateKey, spCertKey, sysparamseal.AppSettingVAPIDPrivateKey, vapidPubKey,
+	}
 	svc := wrap(t, raw, key)
 
 	// The transition still reads the plaintext rows.
