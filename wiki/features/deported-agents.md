@@ -354,6 +354,21 @@ restart, because the probe runs at report time rather than at process start.
 and on the region list, and rendered as a badge on the private-locations page
 and in the check form's region picker.
 
+**Built-in check types (spec 2026-11-26-02).** Customer-run agents drift from the
+server's version, and an agent older than a check type would claim its jobs and
+save a false failure. Each agent therefore reports one `check-type-<type>`
+capability per built-in type it can run (`_` becomes `-`: a capability name is
+`[a-z0-9-]+`, so not `check-type:http`), filtered by its activation gate. The
+claim (`AgentScope.CheckTypes`, `checkjobsvc.CheckTypesFromCapabilities`) only
+hands it jobs of those types, plus its plugin types and NULL types. An agent
+reporting no `check-type-*` at all (built before this, or `capabilities: null`) is
+legacy and only gets the frozen `legacyCheckTypes` (the v0.55.0 types, never
+extended; a test fails if it lists an unregistered type). In-process cloud workers
+are not filtered. `GET /private-regions` adds a `check-type-<type>` yes/no/unknown
+verdict per type to `capabilities` (a legacy agent counts as running the legacy
+list), and the check form marks a private region whose agents cannot run the type.
+Saving stays allowed.
+
 | Value | Means |
 |---|---|
 | `yes` | At least one **live** worker in the region reports IPv6 egress. Any-not-all: a job lands on one worker, so one capable worker is enough. |

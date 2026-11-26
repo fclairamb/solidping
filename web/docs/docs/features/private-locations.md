@@ -20,6 +20,7 @@ Key properties:
   submit results*: check jobs, and, when its operator opts in, discovery scans
   and crawls. It cannot read configuration, list checks, or touch any other org
   data, and the server enforces this — it does not trust the agent.
+- **Version-aware** — an agent only receives the check types it reports it can run, so an agent older than a new check type never fails its checks; the check form warns when a location's agents need an upgrade.
 - **Region-sealed credentials** — secrets for checks that target *only* your
   private location are encrypted (with [age](https://age-encryption.org)
   X25519) to your agents' public keys **at write time**. The server cannot

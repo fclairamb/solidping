@@ -314,6 +314,7 @@
     "emailIntervalHint": "Der Check wird als ausgefallen markiert, wenn innerhalb dieses Intervalls keine E-Mail empfangen wird",
     "privateRegionTitle": "Läuft auf Ihren eigenen ausgelagerten Agenten",
     "crawlAgentUpgradeHint": "Die Agenten dieses Standorts können noch keine Website-Crawls ausführen. Aktualisieren Sie den Agenten, um ihn auszuwählen.",
+    "checkTypeAgentUpgradeHint": "Die Agenten dieser Region unterstützen {{type}} nicht: Aktualisieren Sie sie.",
     "icmpNoPingBadge": "Kein Ping",
     "icmpNoPingTitle": "Kein aktiver Worker dieser Region kann einen ICMP-Socket öffnen (CAP_NET_RAW oder Ping-Gruppe fehlt).",
     "privateRegionBadge": "Privat",
