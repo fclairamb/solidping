@@ -31,8 +31,11 @@ import (
 
 // Errors returned by WSBackend.
 var (
-	ErrNotEnrolled        = errors.New("agent is not enrolled yet")
-	ErrEnrollNoToken      = errors.New("no enrollment token configured (SP_AGENT_ENROLLMENT_TOKEN)")
+	ErrNotEnrolled   = errors.New("agent is not enrolled yet")
+	ErrEnrollNoToken = errors.New("no enrollment token configured (SP_AGENT_ENROLLMENT_TOKEN)")
+	// ErrAuthRefused is a 401 on the WebSocket handshake: the server refused the
+	// enrollment token, or the persisted identity (deleted agent, bad signature).
+	ErrAuthRefused        = errors.New("server refused the agent credentials")
 	ErrRequestTimeout     = errors.New("agent request timed out")
 	ErrServerError        = errors.New("server rejected the request")
 	ErrPassiveUnsupported = errors.New("passive checks are not supported on deported agents")
@@ -652,10 +655,37 @@ func (b *WSBackend) dialOnce(ctx context.Context, paced bool) error {
 	b.mu.Unlock()
 
 	if enrolled {
-		return b.dialReconnect(ctx)
+		return b.dialReconnectOrEnroll(ctx)
 	}
 
 	return b.dialEnroll(ctx)
+}
+
+// dialReconnectOrEnroll reconnects with the persisted identity. When the server
+// answers 401 (the agent was deleted, typically while its volume kept the old
+// identity) and an enrollment token is configured, it enrolls again with it:
+// that is what an operator who registered a new agent on the same volume
+// expects. A 403 (revoked) never re-enrolls, so a multi-use token cannot undo a
+// revocation. A refused enrollment leaves the persisted identity untouched.
+func (b *WSBackend) dialReconnectOrEnroll(ctx context.Context) error {
+	err := b.dialReconnect(ctx)
+	if err == nil || !errors.Is(err, ErrAuthRefused) || b.enrollmentToken == "" {
+		return err
+	}
+
+	b.mu.Lock()
+	oldUID := b.identity.AgentUID
+	b.mu.Unlock()
+
+	b.logger.WarnContext(ctx,
+		"Server refused the persisted agent identity, enrolling again with SP_AGENT_ENROLLMENT_TOKEN",
+		"agent_uid", oldUID, "error", err)
+
+	if enrollErr := b.dialEnroll(ctx); enrollErr != nil {
+		return fmt.Errorf("%w; enrolling again failed: %w", err, enrollErr)
+	}
+
+	return nil
 }
 
 // reconnectSupervisor is the single owner of proactive reconnection. It idles
@@ -907,6 +937,10 @@ func (b *WSBackend) dial(ctx context.Context, headers http.Header) (*websocket.C
 		// worker logs once at WARN and recovers from.
 		if status >= http.StatusInternalServerError {
 			return nil, fmt.Errorf("dial %s (status %d): %w: %w", wsPath, status, ErrConnLost, err)
+		}
+
+		if status == http.StatusUnauthorized {
+			return nil, fmt.Errorf("dial %s (status %d): %w: %w", wsPath, status, ErrAuthRefused, err)
 		}
 
 		return nil, fmt.Errorf("dial %s (status %d): %w", wsPath, status, err)
