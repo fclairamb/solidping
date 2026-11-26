@@ -2754,6 +2754,7 @@ func Load() (*Config, error) {
 	applyRateLimitingEnv(&cfg.Server.RateLimiting)
 	applyCheckersEnv(&cfg.Checkers)
 	applyAgentEnv(&cfg.Agent)
+	applyAgentDefaults(&cfg, os.Getenv("SP_NODE_ROLE"))
 	applyAgentsEnv(&cfg.Agents)
 	applyAuthEnv(&cfg.Auth)
 	resolveRegistrationLimit(&cfg, fileKoanf.Exists(registrationLimitFileKey))
@@ -3085,6 +3086,26 @@ func applyAgentSecurityEnv(cfg *AgentConfig) {
 		if b, err := strconv.ParseBool(v); err == nil {
 			cfg.IgnoreVersionDrift = b
 		}
+	}
+}
+
+// DefaultAgentServerURL is the server an agent connects to when
+// SP_AGENT_SERVER_URL is not set: the hosted SolidPing.
+const DefaultAgentServerURL = "https://solidping.io"
+
+// applyAgentDefaults makes SP_NODE_ROLE=agent implicit: a node given an
+// enrollment token or an agent identity (SP_AGENT_KEYS) is a deported agent
+// unless a role was chosen explicitly (an SP_NODE_ROLE value, or a node.role
+// other than the default in config.yml). An agent with no SP_AGENT_SERVER_URL
+// connects to DefaultAgentServerURL.
+func applyAgentDefaults(cfg *Config, envRole string) {
+	hasAgentCredentials := cfg.Agent.EnrollmentToken != "" || cfg.Agent.Keys != ""
+	if envRole == "" && cfg.Node.Role == NodeRoleAll && hasAgentCredentials {
+		cfg.Node.Role = NodeRoleAgent
+	}
+
+	if roles, err := ParseNodeRoles(cfg.Node.Role); err == nil && roles.Has(NodeRoleAgent) && cfg.Agent.ServerURL == "" {
+		cfg.Agent.ServerURL = DefaultAgentServerURL
 	}
 }
 
