@@ -123,6 +123,7 @@ import {
 import type { DependencyDraft } from "@/lib/dependency-diff";
 import { moduleFor, authFieldsRegistry, advancedFieldsRegistry } from "@/components/checks/form/types";
 import { isFieldTouched, touchIdentifiers } from "@/hooks/touched-fields";
+import { useHotkey } from "@/hooks/use-hotkey";
 import { portForTypeSwitch, withDefaultPort } from "@/components/checks/form/types/ports";
 import { CheckFormFieldsProvider } from "@/components/checks/form/types/context";
 import { TunnelSelect } from "@/components/checks/form/tunnel-select";
@@ -967,6 +968,27 @@ const showSlugFromNameOffer =
       ids.every((id) => prev.includes(id)) ? prev : [...prev, ...ids],
     );
   };
+  // Whether the user changed anything yet (typed, toggled, picked). A blur
+  // alone does not count, unlike touchedFields. While it is false, Escape on
+  // the create form leaves it (solidping-business#114): there is nothing to lose.
+  const [hasEdits, setHasEdits] = useState(false);
+  const markEdited = (e: React.SyntheticEvent) => {
+    if (hasEdits) return;
+    if (e.type === "click") {
+      const target = e.target instanceof Element ? e.target : null;
+      if (
+        !target?.closest(
+          '[role="switch"],[role="checkbox"],[role="radio"],[role="option"],[role="menuitemradio"],input[type="checkbox"],input[type="radio"]',
+        )
+      ) {
+        return;
+      }
+    }
+    setHasEdits(true);
+  };
+  useHotkey("Escape", () => onCancel(), {
+    enabled: mode === "create" && !hasEdits,
+  });
 
   // Check type combobox state
   const [typeSearchOpen, setTypeSearchOpen] = useState(false);
@@ -1272,6 +1294,7 @@ const showSlugFromNameOffer =
     setTouchedFields((prev) =>
       prev.includes("regionsedited") ? prev : [...prev, "regionsedited"],
     );
+    setHasEdits(true);
     setSelectedRegions((prev) =>
       prev.includes(slug) ? prev.filter((r) => r !== slug) : [...prev, slug]
     );
@@ -1864,7 +1887,12 @@ const showSlugFromNameOffer =
         <form
           onSubmit={handleSubmit}
           onBlur={markTouched}
-          onInput={markTouched}
+          onInput={(e) => {
+            markTouched(e);
+            markEdited(e);
+          }}
+          onChange={markEdited}
+          onClick={markEdited}
           className="space-y-4"
         >
           {error && (

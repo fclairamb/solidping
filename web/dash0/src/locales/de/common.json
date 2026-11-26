@@ -221,6 +221,7 @@
     "commandMenu": "Befehlsmenü öffnen",
     "focusSearch": "Suchfeld fokussieren",
     "resetFilters": "Suche leeren, dann Filter zurücksetzen",
+    "leaveEmptyForm": "Leeres Formular einer neuen Prüfung verlassen",
     "newCheck": "Neue Prüfung",
     "submitForm": "Formular absenden",
     "help": "Diese Hilfe anzeigen",

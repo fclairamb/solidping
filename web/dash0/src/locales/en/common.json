@@ -221,6 +221,7 @@
     "commandMenu": "Open the command menu",
     "focusSearch": "Focus the search box",
     "resetFilters": "Clear search, then reset filters",
+    "leaveEmptyForm": "Leave a new check form left empty",
     "newCheck": "New check",
     "submitForm": "Submit the form",
     "help": "Show this help",

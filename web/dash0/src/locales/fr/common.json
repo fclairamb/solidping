@@ -221,6 +221,7 @@
     "commandMenu": "Ouvrir le menu de commandes",
     "focusSearch": "Placer le curseur dans la recherche",
     "resetFilters": "Vider la recherche, puis réinitialiser les filtres",
+    "leaveEmptyForm": "Quitter un formulaire de vérification resté vide",
     "newCheck": "Nouvelle vérification",
     "submitForm": "Valider le formulaire",
     "help": "Afficher cette aide",
