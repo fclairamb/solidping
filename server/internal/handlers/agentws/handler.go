@@ -125,6 +125,8 @@ type Handler struct {
 	// uploads.go.
 	conns  *connRegistry
 	logger *slog.Logger
+	// outdated is the email side of the outdated-agent notice (outdated.go).
+	outdated OutdatedNotifier
 	// traceRounds / traceMaxHops / traceBudget are the path-trace settings the
 	// server hands to an agent on a trace-request frame (spec 2026-08-21-10).
 	// They live here rather than on the agent so an operator tunes them in one
@@ -743,6 +745,8 @@ type connState struct {
 	// connection, independent of the egress throttle above — a chatty agent
 	// must not spam the log once per claim.
 	versionChecked bool
+	// outdatedCheckedAt throttles the outdated-agent check (outdated.go).
+	outdatedCheckedAt time.Time
 	// closeReason is why the server ended the connection, when it did
 	// (models.AgentDisconnectReason*). Empty means the socket itself failed.
 	closeReason string
@@ -802,7 +806,9 @@ func (h *Handler) recordAgentEgress(
 	// cadence is — a busy agent claiming several times a second must not spam
 	// the log once per claim.
 	h.warnOnVersionDrift(ctx, state, frame.Version)
-	h.noteAgentVersion(ctx, state, versionReportOf(frame))
+	report := versionReportOf(frame)
+	h.noteAgentVersion(ctx, state, report)
+	h.maybeNotifyOutdated(ctx, state, report)
 
 	now := time.Now()
 	if !state.egressWrittenAt.IsZero() && now.Sub(state.egressWrittenAt) < agentEgressReportInterval {
@@ -933,6 +939,7 @@ func (h *Handler) runAgentConnection(
 	// The enroll frame's version feeds the rolling upgrade (spec
 	// 2026-11-22-04); a reconnect reports its version on the first claim.
 	h.noteAgentVersion(ctx, state, enrollReport)
+	h.maybeNotifyOutdated(ctx, state, enrollReport)
 
 	// Publish the connection so the incident pipeline can reach this agent, and
 	// retire it on the way out. The registration is identity-checked on removal
@@ -1092,7 +1099,7 @@ func (h *Handler) writeConnectionEvent(
 	defer cancel()
 
 	audit.Record(writeCtx, h.dbService, agent.OrgUID(), eventType,
-		audit.Target{Type: "agent", UID: agent.UID, Name: agent.Name}, payload)
+		audit.Target{Type: auditTargetAgent, UID: agent.UID, Name: agent.Name}, payload)
 }
 
 // ensureLivenessMonitor re-ensures, after an org agent enrolled, that its

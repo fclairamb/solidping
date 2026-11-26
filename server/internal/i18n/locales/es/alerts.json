@@ -114,5 +114,19 @@
     "fix": "Para solucionarlo: confirma que el registro CNAME del dominio sigue apuntando al destino que aparece en los ajustes de la página de estado y luego haz clic en {verify}. Si el DNS vuelve a resolver correctamente por sí solo, SolidPing también restablecerá el dominio automáticamente tras varias comprobaciones DNS correctas seguidas.",
     "verify": "Verificar",
     "openSettings": "Abrir los ajustes de la página de estado"
+  },
+  "agentOutdated": {
+    "subject": "Tu agente SolidPing {agent} ejecuta {version}, el servidor ejecuta {server}",
+    "preheader": "Este agente de ubicación privada no se actualizará solo. Esta es la solución.",
+    "pill": "Agente desactualizado",
+    "heading": "El agente {agent} está desactualizado",
+    "body": "El agente de ubicación privada {agent} ejecuta la versión {version}, mientras que tu servidor SolidPing ejecuta la {server}.",
+    "legacy": "Este agente es anterior a las actualizaciones automáticas: el servidor no puede pedirle que se reinicie, hay que actualizarlo a mano.",
+    "stuck": "Este agente lleva más de 72 horas desactualizado y no se actualiza solo.",
+    "dockerHeading": "Docker",
+    "dockerBody": "Descarga la nueva imagen y reinicia el agente; después cambia su imagen a {image} para que siga al servidor en adelante (con un temporizador de descarga, consulta la documentación de ubicaciones privadas):",
+    "k8sHeading": "Kubernetes",
+    "k8sBody": "Establece imagePullPolicy: Always y la imagen {image}, y reinicia los pods.",
+    "open": "Abrir ubicaciones privadas"
   }
 }

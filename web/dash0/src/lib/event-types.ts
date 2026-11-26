@@ -77,6 +77,7 @@ export const ALL_EVENT_TYPES = [
 
   "agent.connected",
   "agent.disconnected",
+  "agent.outdated",
 
   "discovery.scan_started",
   "discovery.scan_canceled",

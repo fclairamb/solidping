@@ -60,6 +60,13 @@ type Worker struct {
 	// autoUpgrade: false (SP_AGENT_IGNORE_VERSION_DRIFT, spec 2026-11-22-04):
 	// it is never asked to upgrade, and its drift is shown as deliberate.
 	VersionPinned bool `bun:"version_pinned,notnull"`
+	// VersionDriftedSince is when this agent first reported a version other
+	// than the server's (spec 2026-11-26-03); nil while it matches. The
+	// "still drifted 72 h later" rule of the outdated-agent notice reads it.
+	VersionDriftedSince *time.Time `bun:"version_drifted_since"`
+	// OutdatedNotifiedVersion is the server version the org was last told this
+	// agent is outdated against: the once-per-agent-per-server-version dedup.
+	OutdatedNotifiedVersion *string `bun:"outdated_notified_version"`
 	// BootID is the random ID of the deported agent process that last
 	// connected under this row (spec 2026-11-14-03). The agent sends it on
 	// enroll and reconnect; a change means a new process, whose predecessor's

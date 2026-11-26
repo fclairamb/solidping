@@ -91,6 +91,7 @@
     "auth.super_admin_changed": "Super Admin Changed",
     "agent.connected": "Agent Connected",
     "agent.disconnected": "Agent Disconnected",
+    "agent.outdated": "Agent Outdated",
     "discovery.scan_started": "Discovery Scan Started",
     "discovery.scan_canceled": "Discovery Scan Canceled",
     "discovery.chunk_refused": "Discovery Chunk Refused"

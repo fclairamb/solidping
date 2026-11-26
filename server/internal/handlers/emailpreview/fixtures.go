@@ -101,6 +101,7 @@ var fixtureBuilders = map[string]func(i18n.Locale) map[string]any{
 	"incident-comment.html":            commentIncidentFixture,
 	"custom-domain-demoted.html":       customDomainDemotedFixture,
 	"region-offline.html":              regionOfflineFixture,
+	"agent-outdated.html":              agentOutdatedFixture,
 	"region-recovered.html":            regionRecoveredFixture,
 	"usage-cap-reached.html":           usageCapReachedFixture,
 }

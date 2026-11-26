@@ -12,6 +12,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/customdomain"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/domainverify"
+	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
@@ -111,6 +112,16 @@ func customDomainDemotedFixture(_ i18n.Locale) map[string]any {
 
 	data := customdomain.DemotedEmailData(fixtureStatusPageName, diagnosis.Domain, diagnosis.String(),
 		fixtureDashboardURL+"/orgs/acme/status-pages/3f1c9a2e-77b1-4f0a-9a1e-6c2f0b8d4e51")
+	data[keyOrgName] = fixtureOrgName
+
+	return data
+}
+
+// agentOutdatedFixture covers the outdated private-location agent notice
+// (agentws, spec 2026-11-26-03). Operator mail: no unsubscribe, no ack.
+func agentOutdatedFixture(_ i18n.Locale) map[string]any {
+	data := agentws.OutdatedEmailData("paris-dc1", "0.49.3", "0.55.0", true,
+		"app.acme.com", fixtureDashboardURL+"/orgs/acme/organization/private-locations")
 	data[keyOrgName] = fixtureOrgName
 
 	return data

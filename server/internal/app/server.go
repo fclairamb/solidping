@@ -1491,6 +1491,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		agentsAdminSvc.ResealRegion,
 	)
 	agentWSHandler.SetLivenessMonitors(checksService)
+	agentWSHandler.SetOutdatedNotifier(agentws.OutdatedNotifier{Jobs: s.services.Jobs, BaseURL: s.config.Server.BaseURL})
 	api.GET("/agent/ws", agentWSHandler.Serve)
 	s.agentWS = agentWSHandler
 

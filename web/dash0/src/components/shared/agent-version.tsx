@@ -35,6 +35,22 @@ export function agentVersionState(
 }
 
 /**
+ * Whether an agent needs a hand-made upgrade notice (spec 2026-11-26-03): live
+ * (active), reporting a version that differs from the server's, and not
+ * pinned on purpose. Unknown is never outdated.
+ */
+export function isAgentOutdated(
+  agent: { status: string; version?: string | null; versionPinned?: boolean },
+  serverVersion?: string | null
+): boolean {
+  return (
+    agent.status === "active" &&
+    !agent.versionPinned &&
+    agentVersionState(agent.version, serverVersion) === "drifted"
+  );
+}
+
+/**
  * Renders an agent's version against this server's own. Matching and
  * unknown render as plain text (no badge — a match is not noteworthy, and
  * "we don't know" is not a warning); only "drifted" gets an amber badge,

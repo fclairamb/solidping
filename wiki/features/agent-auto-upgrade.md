@@ -65,6 +65,31 @@ that predates it drops it in its read pump's default case.
   `docker compose pull && docker compose up -d`. Fly system agents restart on
   their deployed image, so they still need a `fly deploy` per server upgrade.
 
+## Telling the customer an agent is out of date
+
+Spec 2026-11-26-03. An agent that predates the rolling upgrade (no `autoUpgrade`
+field in its frames) is never asked to restart, and an agent installed from a
+moving tag does not move on restart either. The only signal used to be the amber
+"Drifted" badge on Organization → Private locations. Now the org is told.
+
+- **When**: an org agent connects (or claims, rechecked every 10 minutes per
+  connection) and is either legacy, or has stayed drifted for 72 h since its
+  first drifted report. Pinned agents (`autoUpgrade: false`), system agents (no
+  org), dev builds and agents on the server's version are never reported.
+- **State** (`workers`, migration `042_v0_56_0`): `version_drifted_since` is the
+  first drifted report (cleared when the agent matches the server again);
+  `outdated_notified_version` is the server version the org was last told about.
+  The claim is one conditional `UPDATE`, so replicas racing on an agent write one
+  notice. A server upgrade changes the version, so the agent is reported again.
+- **Event**: `agent.outdated` (payload `agent`, `version`, `server_version`,
+  `legacy`), picked up by the org's private Atom feed like any org event. Never
+  pages.
+- **Email**: `agent-outdated.html` to the org's owners and admins, with the Docker
+  and Kubernetes fix and a link to Private locations
+  (`server/internal/handlers/agentws/outdated.go`).
+- **Banner**: Organization → Private locations shows `outdated-agents-banner` for
+  any active, unpinned agent whose version differs from the server's.
+
 ## Agent image registry
 
 `internal/agentregistry`, mounted by `app/agent_registry_routes.go` at the host

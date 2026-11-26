@@ -22,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,7 +64,7 @@ import {
   BrowserCapabilityIcon,
   browserCapability,
 } from "@/components/shared/browser-capability";
-import { AgentVersionCell } from "@/components/shared/agent-version";
+import { AgentVersionCell, isAgentOutdated } from "@/components/shared/agent-version";
 import { LiveDurationAgo } from "@/components/shared/relative-time";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { RegionKeyCell } from "@/components/shared/region-key-cell";
@@ -79,10 +80,34 @@ function PrivateLocationsPage() {
 
   return (
     <div className="space-y-6">
+      <OutdatedAgentsBanner org={org} />
       <RegionsCard org={org} />
       <AgentsCard org={org} />
       <TokensCard org={org} />
     </div>
+  );
+}
+
+// Out-of-date agents (spec 2026-11-26-03): the same text and fix as the email
+// the org's admins get.
+function OutdatedAgentsBanner({ org }: { org: string }) {
+  const { t } = useTranslation(["common"]);
+  const { data: agents } = useAgents(org);
+  const { data: versionData } = useVersion();
+
+  const outdated = (agents ?? []).filter((agent) => isAgentOutdated(agent, versionData?.version));
+  if (outdated.length === 0) return null;
+
+  return (
+    <Alert variant="warning" data-testid="outdated-agents-banner">
+      <AlertTitle>{t("common:agentVersion.outdatedTitle")}</AlertTitle>
+      <AlertDescription>
+        {t("common:agentVersion.outdatedBody", {
+          names: outdated.map((agent) => agent.name).join(", "),
+          image: `${window.location.host}/solidping:current`,
+        })}
+      </AlertDescription>
+    </Alert>
   );
 }
 

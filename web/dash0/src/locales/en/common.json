@@ -157,7 +157,9 @@
     "drifted": "Drifted",
     "serverRuns": "This server runs v{{version}}.",
     "pinned": "Pinned",
-    "pinnedHint": "This agent ignores upgrade requests (SP_AGENT_IGNORE_VERSION_DRIFT=true): it stays on its version."
+    "pinnedHint": "This agent ignores upgrade requests (SP_AGENT_IGNORE_VERSION_DRIFT=true): it stays on its version.",
+    "outdatedTitle": "Some of your agents are out of date",
+    "outdatedBody": "{{names}} will not upgrade on their own. For Docker, run `docker compose pull && docker compose up -d`, then switch the image to {{image}} with a pull timer. For Kubernetes, set `imagePullPolicy: Always` and the image to {{image}}."
   },
   "noData": "No data",
   "labelPicker": {

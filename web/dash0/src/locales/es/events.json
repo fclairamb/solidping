@@ -91,6 +91,7 @@
     "auth.super_admin_changed": "Superadministrador cambiado",
     "agent.connected": "Agente conectado",
     "agent.disconnected": "Agente desconectado",
+    "agent.outdated": "Agente desactualizado",
     "discovery.scan_started": "Escaneo de descubrimiento iniciado",
     "discovery.scan_canceled": "Escaneo de descubrimiento cancelado",
     "discovery.chunk_refused": "Lote de descubrimiento rechazado"

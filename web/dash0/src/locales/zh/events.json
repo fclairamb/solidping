@@ -91,6 +91,7 @@
     "auth.super_admin_changed": "超级管理员变更",
     "agent.connected": "代理连接",
     "agent.disconnected": "代理断开",
+    "agent.outdated": "代理已过期",
     "discovery.scan_started": "发现扫描开始",
     "discovery.scan_canceled": "发现扫描取消",
     "discovery.chunk_refused": "拒绝发现分块"

@@ -2,5 +2,7 @@
   "alerts.emphasis": {"fr": "markup only, no words", "de": "markup only, no words", "es": "markup only, no words", "zh": "markup only, no words"},
   "alerts.link": {"fr": "markup only, no words", "de": "markup only, no words", "es": "markup only, no words", "zh": "markup only, no words"},
   "alerts.regionOffline.pill": {"de": "German uses the English word offline, as dash0 does (Region offline)"},
-  "alerts.regionRecovered.offline": {"de": "German uses the English word offline, as dash0 does"}
+  "alerts.regionRecovered.offline": {"de": "German uses the English word offline, as dash0 does"},
+  "alerts.agentOutdated.dockerHeading": {"fr": "product name", "de": "product name", "es": "product name", "zh": "product name"},
+  "alerts.agentOutdated.k8sHeading": {"fr": "product name", "de": "product name", "es": "product name", "zh": "product name"}
 }

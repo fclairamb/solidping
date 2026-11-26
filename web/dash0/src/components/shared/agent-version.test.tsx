@@ -9,7 +9,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import "@/i18n";
-import { AgentVersionCell, agentVersionState } from "./agent-version";
+import { AgentVersionCell, agentVersionState, isAgentOutdated } from "./agent-version";
 
 afterEach(cleanup);
 
@@ -91,5 +91,21 @@ describe("AgentVersionCell", () => {
 
     const badge = screen.getByText("Drifted");
     expect(badge.className).not.toContain("destructive");
+  });
+});
+
+describe("isAgentOutdated", () => {
+  it("flags an active, drifted, unpinned agent", () => {
+    expect(isAgentOutdated({ status: "active", version: "0.49.3" }, "0.55.0")).toBe(true);
+  });
+
+  it("never flags matching, unknown, pinned or revoked agents", () => {
+    expect(isAgentOutdated({ status: "active", version: "0.55.0" }, "0.55.0")).toBe(false);
+    expect(isAgentOutdated({ status: "active", version: null }, "0.55.0")).toBe(false);
+    expect(isAgentOutdated({ status: "active", version: "0.49.3" }, undefined)).toBe(false);
+    expect(
+      isAgentOutdated({ status: "active", version: "0.49.3", versionPinned: true }, "0.55.0")
+    ).toBe(false);
+    expect(isAgentOutdated({ status: "revoked", version: "0.49.3" }, "0.55.0")).toBe(false);
   });
 });
