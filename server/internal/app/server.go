@@ -2290,13 +2290,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgReports.DELETE("/:uid", reportSchedulesHandler.Delete)
 	orgReports.POST("/:uid/test", reportSchedulesHandler.TestSend)
 
-	// Public status page endpoints (no authentication)
-	publicOrgAPI.GET("/status-pages/:org", statusPagesHandler.ViewDefaultStatusPage)
-	publicOrgAPI.GET("/status-pages/:org/:slug", statusPagesHandler.ViewStatusPage)
+	// Public status page endpoints (no authentication required). The reads
+	// are soft-authenticated (spec 2026-11-27-01): a signed-in member of the
+	// page's organization may read its `private` and `password` pages, while
+	// a missing or invalid credential continues as anonymous, never 401. The
+	// unlock POSTs keep the plain public chain: the password is their
+	// credential.
+	publicStatusPageRead := publicOrgAPI.Use(authMiddleware.StatusPageMemberGrant)
+	publicStatusPageRead.GET("/status-pages/:org", statusPagesHandler.ViewDefaultStatusPage)
+	publicStatusPageRead.GET("/status-pages/:org/:slug", statusPagesHandler.ViewStatusPage)
 	// Lightweight "is it up?" rollup — cheap alternative to the full page view
 	// above, with a Cache-Control header the full view doesn't set (spec
 	// 2026-08-08-06).
-	publicOrgAPI.GET("/status-pages/:org/:slug/summary", statusPagesHandler.ViewStatusPageSummary)
+	publicStatusPageRead.GET("/status-pages/:org/:slug/summary", statusPagesHandler.ViewStatusPageSummary)
 	// Unlock a password-protected page (spec 2026-08-21-07). Public and
 	// unauthenticated by design: the password IS the credential. It sets a
 	// host-only cookie so it works identically on a custom domain.
@@ -2305,12 +2311,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Public SVG badge (page-level rollup) — same sibling as the per-check
 	// badge under /orgs/:org/checks/:check/badges/:components (spec
 	// 2026-08-08-07).
-	publicOrgAPI.GET("/status-pages/:org/:slug/badge", statusPagesHandler.GetBadge)
+	publicStatusPageRead.GET("/status-pages/:org/:slug/badge", statusPagesHandler.GetBadge)
 	// Public Atom/RSS feed of the status-update timeline.
-	publicOrgAPI.GET("/status-pages/:org/:slug/feed.xml", statusSubscribersHandler.Feed)
+	publicStatusPageRead.GET("/status-pages/:org/:slug/feed.xml", statusSubscribersHandler.Feed)
 	// Public incident history (spec 2026-08-19-08). `?active=true` returns only
 	// the open ones; the default returns the page's history window.
-	publicOrgAPI.GET("/status-pages/:org/:slug/incidents", incidentPublicationsHandler.ViewPublicIncidents)
+	publicStatusPageRead.GET("/status-pages/:org/:slug/incidents", incidentPublicationsHandler.ViewPublicIncidents)
 
 	// Edge-TLS "ask" endpoint (public, no auth): 204 when the queried domain is a
 	// verified+enabled+public custom domain, 404 otherwise. Contract for Caddy

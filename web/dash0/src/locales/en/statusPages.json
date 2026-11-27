@@ -360,7 +360,7 @@
     "private": "Private",
     "password": "Password protected",
     "publicHint": "Anyone with the link can see this page.",
-    "privateHint": "The page is hidden entirely — public URLs answer as if it did not exist.",
+    "privateHint": "Only signed-in members of the organization can see the page; everyone else, and every custom domain, gets “not found”.",
     "passwordHint": "Visitors must enter a password before they can see the page. Set it below.",
     "passwordLabel": "Page password",
     "passwordPlaceholder": "At least 6 characters",

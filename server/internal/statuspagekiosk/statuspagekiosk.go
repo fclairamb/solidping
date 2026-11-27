@@ -8,7 +8,8 @@
 //
 //   - `password` issues a 12 h unlock cookie (internal/statuspagelock), so
 //     somebody re-types the password on the wallboard every morning;
-//   - `private` answers 404 on every public endpoint, by design.
+//   - `private` answers 404 on every public endpoint to anyone but a
+//     signed-in member of the organization, and a wallboard is not one.
 //
 // The kiosk token is the third answer: one long-lived, revocable, per-page
 // secret that grants READ-ONLY view of exactly one page. It bypasses the
@@ -147,6 +148,55 @@ func Allows(ctx context.Context, page *models.StatusPage) bool {
 	return grant(page)
 }
 
+// --- Member grant (spec 2026-11-27-01) ---
+
+// memberKey carries the UID of the organization the caller is a signed-in
+// member of, as established by the public routes' soft authentication.
+type memberKey struct{}
+
+// noMemberKey marks a request on which member access must not apply at all:
+// a status page served on a custom domain (see WithoutMemberAccess).
+type noMemberKey struct{}
+
+// WithMemberOrg records that the caller behind ctx is an authenticated member
+// of the organization orgUID, with read access to its status pages. Only the
+// status-page member middleware calls it, after authenticating the request and
+// checking that membership; nothing else may, since it is a grant.
+func WithMemberOrg(ctx context.Context, orgUID string) context.Context {
+	if orgUID == "" {
+		return ctx
+	}
+
+	return context.WithValue(ctx, memberKey{}, orgUID)
+}
+
+// WithoutMemberAccess disables the member grant for the rest of the request.
+// Custom-domain routing sets it: the dashboard session cookie is host-only on
+// the app host and never reaches a custom domain, so a `private` page there
+// stays a 404 whatever credential the request carries.
+func WithoutMemberAccess(ctx context.Context) context.Context {
+	return context.WithValue(ctx, noMemberKey{}, true)
+}
+
+// MemberAccessDisabled reports whether WithoutMemberAccess applies to ctx.
+func MemberAccessDisabled(ctx context.Context) bool {
+	disabled, _ := ctx.Value(noMemberKey{}).(bool)
+
+	return disabled
+}
+
+// IsMember reports whether the caller behind ctx is a signed-in member of the
+// page's organization. No grant means no, like Allows.
+func IsMember(ctx context.Context, page *models.StatusPage) bool {
+	if page == nil || MemberAccessDisabled(ctx) {
+		return false
+	}
+
+	orgUID, ok := ctx.Value(memberKey{}).(string)
+
+	return ok && orgUID != "" && orgUID == page.OrganizationUID
+}
+
 // --- The gate ---
 
 // Decision is the outcome of the public access gate for one page.
@@ -157,7 +207,7 @@ const (
 	// DecisionAllow means the caller may read the page.
 	DecisionAllow Decision = iota
 	// DecisionNotFound means the caller must be told the page does not exist:
-	// it is disabled, `private` without a valid kiosk token, or an
+	// it is disabled, `private` without a valid kiosk token or membership, or an
 	// inconsistent `password` row with no hash. Callers map it to their own
 	// ErrStatusPageNotFound.
 	DecisionNotFound
@@ -178,16 +228,24 @@ const (
 //     kiosk screen is exactly the audience that must stop seeing it.
 //  2. A valid kiosk token allows everything below. This is what turns
 //     `private` into "unlisted for this one screen" and skips the password.
-//  3. Otherwise the ordinary visibility gate applies, unchanged.
+//  3. A signed-in member of the page's organization (spec 2026-11-27-01) is
+//     allowed too: `private` means "visible only to the members", and a
+//     member does not have to type the password of their own page.
+//  4. Otherwise the ordinary visibility gate applies, unchanged.
 //
-// Because step 2 is a plain boolean, an invalid or revoked token produces
-// byte-identical behavior to no token at all.
+// Because steps 2 and 3 are plain booleans, an invalid or revoked token, an
+// invalid session and a member of another organization all produce
+// byte-identical behavior to an anonymous caller.
 func Decide(ctx context.Context, page *models.StatusPage) Decision {
 	if page == nil || !page.Enabled {
 		return DecisionNotFound
 	}
 
 	if Allows(ctx, page) {
+		return DecisionAllow
+	}
+
+	if IsMember(ctx, page) {
 		return DecisionAllow
 	}
 

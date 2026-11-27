@@ -107,7 +107,7 @@ func TestPublicIncidentsCacheControlFollowsVisibility(t *testing.T) {
 	r.Equal(incidentCount(open), incidentCount(unlocked), "same narrative as the public control")
 	r.Equal("private, no-store", unlocked.Header().Get("Cache-Control"))
 	r.NotContains(unlocked.Header().Get("Cache-Control"), "public")
-	r.Equal("Cookie, X-Forwarded-Proto", unlocked.Header().Get("Vary"))
+	r.Equal("Cookie, Authorization, X-Forwarded-Proto", unlocked.Header().Get("Vary"))
 
 	// And the 404 for a page that does not exist is not cacheable either.
 	missing := get("no-such-page", nil)

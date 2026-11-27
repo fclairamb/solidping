@@ -289,7 +289,7 @@ func TestGatedDirectiveIsWhatTheHelperSays(t *testing.T) {
 	r.Equal("public, max-age=60, stale-while-revalidate=30",
 		statuspagecache.Control(models.StatusPageVisibilityPublic, statuspagecache.PageMaxAge))
 	r.Equal("X-Forwarded-Proto", statuspagecache.VaryPublic)
-	r.Equal("Cookie, X-Forwarded-Proto", statuspagecache.VaryGated)
+	r.Equal("Cookie, Authorization, X-Forwarded-Proto", statuspagecache.VaryGated)
 }
 
 // TestGatedResponseCarriesNoStaleWhileRevalidate pins the one asymmetry spec

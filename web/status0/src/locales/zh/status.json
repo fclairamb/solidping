@@ -79,6 +79,7 @@
     "critical": "严重"
   },
   "resourceAffected": "受影响",
+  "privateBanner": "私密：仅 {{org}} 的成员可见。",
   "unlockTitle": "需要密码",
   "unlockDescription": "此状态页为私有。输入你收到的密码即可查看。",
   "unlockPasswordLabel": "密码",

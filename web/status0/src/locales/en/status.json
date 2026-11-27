@@ -79,6 +79,7 @@
     "critical": "Critical"
   },
   "resourceAffected": "Affected",
+  "privateBanner": "Private: only visible to members of {{org}}.",
   "unlockTitle": "Password required",
   "unlockDescription": "This status page is private. Enter the password you were given to view it.",
   "unlockPasswordLabel": "Password",

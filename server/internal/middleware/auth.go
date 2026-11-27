@@ -63,91 +63,156 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 			return next(writer, req)
 		}
 
-		token := extractToken(req)
-		if token == "" {
-			return m.WriteError(
-				writer, http.StatusUnauthorized, base.ErrorCodeNoToken, "Authorization token is required")
+		authed, failure := m.authenticate(req)
+		if failure != nil {
+			if failure.err != nil {
+				return m.WriteErrorErr(writer, req, failure.status, failure.code, failure.message, failure.err)
+			}
+
+			return m.WriteError(writer, failure.status, failure.code, failure.message)
 		}
 
-		claims, err := m.authService.ValidateToken(req.Context(), token)
-		if err != nil {
-			return m.WriteErrorErr(
-				writer, req, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid or expired token", err)
-		}
-
-		// An MCP credential (OAuth access token, scoped PAT) only works on
-		// the MCP resource server (spec 2026-10-16-12): its consent is
-		// narrower than the user's REST role, and it must not mint a PAT or
-		// a session. 401 like RequireMCPAuth's wrong-audience answer: the
-		// credential is not valid here, whoever holds it.
-		if claims.IsMCPCredential() &&
-			!auth.IsMCPCredentialRouteAllowed(claims, req.Method, httpx.RoutePattern(req)) {
-			return m.WriteError(writer, http.StatusUnauthorized,
-				base.ErrorCodeInvalidToken, auth.MCPCredentialRESTMessage)
-		}
-
-		// Load user
-		user, err := m.dbService.GetUser(req.Context(), claims.UserUID)
-		if err != nil {
-			return m.WriteErrorErr(
-				writer, req, http.StatusUnauthorized, base.ErrorCodeUserNotFound, "User not found", err)
-		}
-
-		// Forced password rotation (spec 2026-08-23-04). This is THE choke
-		// point: every authenticated REST surface — the dashboard, the CLI,
-		// PAT creation, every org route — runs through RequireAuth, so one
-		// check here covers them all rather than each login form growing its
-		// own. The credential is valid; what is denied is using it for
-		// anything but the rotation.
-		if auth.PasswordRotationRequired(user) &&
-			!auth.IsPasswordRotationExempt(req.Method, req.URL.Path) {
-			return m.WriteError(writer, http.StatusForbidden,
-				base.ErrorCodePasswordChangeRequired, auth.PasswordRotationMessage)
-		}
-
-		// The shared public demo (spec 2026-09-06-02). Same reasoning as the
-		// rotation gate above: RequireAuth is THE choke point every
-		// authenticated route passes through — the orgGroup helper, the
-		// admin/owner groups that spell their chain out by hand, and the
-		// user-level rootAuthProtected routes — so one rule here covers a
-		// route table nobody could enumerate reliably. Putting it anywhere
-		// narrower reintroduces the "forgot one group" failure the orgGroup
-		// comment describes.
-		if applyDemoClaim(claims, user) &&
-			!auth.IsDemoWriteAllowed(req.Method, httpx.RoutePattern(req)) {
-			return m.WriteError(writer, http.StatusForbidden,
-				base.ErrorCodeDemoReadOnly, auth.DemoWriteMessage)
-		}
-
-		// Super-admin impersonation (spec 2026-09-29-03). Same choke-point
-		// reasoning as the demo guard, reusing its route-pattern mechanism:
-		// the token acts as the target everywhere except the
-		// credential-changing surface.
-		//
-		// A personal access token is bound to the org it was created in
-		// (spec 2026-10-28-01). Same choke point and same route-pattern
-		// mechanism: it may do anything in its org but open a session,
-		// approve a device grant or change how the account signs in.
-		if code, denied := credentialDenial(claims, user, httpx.RoutePattern(req), req.Method); denied != "" {
-			return m.WriteError(writer, http.StatusForbidden, code, denied)
-		}
-
-		// Add claims and user to context
-		ctx := req.Context()
-		ctx = context.WithValue(ctx, base.ContextKeyClaims, claims)
-		ctx = context.WithValue(ctx, base.ContextKeyUser, user)
-		// Name the audit actor now that the credential is known. A personal
-		// access token is a materially different principal from an interactive
-		// session — "a token acting as alice" and "alice at a keyboard" must
-		// not read the same in a security trail — so the token form is
-		// recorded as such while ActorUID still names the owning user.
-		ctx = audit.WithUser(ctx, user.UID, actorTypeForToken(token))
-		ctx = withCredentialMarkers(ctx, claims)
-
-		setSentryIdentity(ctx, claims)
-
-		return next(writer, req.WithContext(ctx))
+		return next(writer, authed)
 	}
+}
+
+// SoftAuth authenticates a request when it can and NEVER refuses it.
+//
+// It serves the public status-page reads (spec 2026-11-27-01), which an
+// anonymous visitor must keep reaching whatever cookie their browser holds:
+// a request with no credential, or with one RequireAuth would refuse (stale or
+// garbage cookie, expired bearer, forced rotation, an MCP-only credential,
+// ...), goes to the handler unchanged, as anonymous. Only a credential that
+// passes every RequireAuth gate puts the user and claims on the context.
+//
+// This is deliberately NOT AuthIfPresented: its 401 on a stale cookie would
+// lock anonymous visitors of a public page out because they once signed in on
+// the same host. Only the access_token cookie and the Authorization header
+// count, exactly as for RequireAuth.
+func (m *AuthMiddleware) SoftAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
+		if !PresentsCredentials(req) {
+			return next(writer, req)
+		}
+
+		authed, failure := m.authenticate(req)
+		if failure != nil {
+			return next(writer, req)
+		}
+
+		return next(writer, authed)
+	}
+}
+
+// authFailure is why authenticate refused a request: the status, code and
+// message RequireAuth answers with, plus the underlying error when there is one.
+type authFailure struct {
+	status  int
+	code    base.ErrorCode
+	message string
+	err     error
+}
+
+// authenticate validates the request's credential and runs every gate
+// RequireAuth enforces. On success it returns the request whose context carries
+// the claims, the user and the audit actor; on failure, what to answer.
+func (m *AuthMiddleware) authenticate(req *http.Request) (*http.Request, *authFailure) {
+	token := extractToken(req)
+	if token == "" {
+		return nil, &authFailure{
+			status: http.StatusUnauthorized, code: base.ErrorCodeNoToken,
+			message: "Authorization token is required",
+		}
+	}
+
+	claims, err := m.authService.ValidateToken(req.Context(), token)
+	if err != nil {
+		return nil, &authFailure{
+			status: http.StatusUnauthorized, code: base.ErrorCodeInvalidToken,
+			message: "Invalid or expired token", err: err,
+		}
+	}
+
+	// An MCP credential (OAuth access token, scoped PAT) only works on
+	// the MCP resource server (spec 2026-10-16-12): its consent is
+	// narrower than the user's REST role, and it must not mint a PAT or
+	// a session. 401 like RequireMCPAuth's wrong-audience answer: the
+	// credential is not valid here, whoever holds it.
+	if claims.IsMCPCredential() &&
+		!auth.IsMCPCredentialRouteAllowed(claims, req.Method, httpx.RoutePattern(req)) {
+		return nil, &authFailure{
+			status: http.StatusUnauthorized, code: base.ErrorCodeInvalidToken,
+			message: auth.MCPCredentialRESTMessage,
+		}
+	}
+
+	// Load user
+	user, err := m.dbService.GetUser(req.Context(), claims.UserUID)
+	if err != nil {
+		return nil, &authFailure{
+			status: http.StatusUnauthorized, code: base.ErrorCodeUserNotFound,
+			message: "User not found", err: err,
+		}
+	}
+
+	// Forced password rotation (spec 2026-08-23-04). This is THE choke
+	// point: every authenticated REST surface — the dashboard, the CLI,
+	// PAT creation, every org route — runs through RequireAuth, so one
+	// check here covers them all rather than each login form growing its
+	// own. The credential is valid; what is denied is using it for
+	// anything but the rotation.
+	if auth.PasswordRotationRequired(user) &&
+		!auth.IsPasswordRotationExempt(req.Method, req.URL.Path) {
+		return nil, &authFailure{
+			status: http.StatusForbidden, code: base.ErrorCodePasswordChangeRequired,
+			message: auth.PasswordRotationMessage,
+		}
+	}
+
+	// The shared public demo (spec 2026-09-06-02). Same reasoning as the
+	// rotation gate above: RequireAuth is THE choke point every
+	// authenticated route passes through — the orgGroup helper, the
+	// admin/owner groups that spell their chain out by hand, and the
+	// user-level rootAuthProtected routes — so one rule here covers a
+	// route table nobody could enumerate reliably. Putting it anywhere
+	// narrower reintroduces the "forgot one group" failure the orgGroup
+	// comment describes.
+	if applyDemoClaim(claims, user) &&
+		!auth.IsDemoWriteAllowed(req.Method, httpx.RoutePattern(req)) {
+		return nil, &authFailure{
+			status: http.StatusForbidden, code: base.ErrorCodeDemoReadOnly,
+			message: auth.DemoWriteMessage,
+		}
+	}
+
+	// Super-admin impersonation (spec 2026-09-29-03). Same choke-point
+	// reasoning as the demo guard, reusing its route-pattern mechanism:
+	// the token acts as the target everywhere except the
+	// credential-changing surface.
+	//
+	// A personal access token is bound to the org it was created in
+	// (spec 2026-10-28-01). Same choke point and same route-pattern
+	// mechanism: it may do anything in its org but open a session,
+	// approve a device grant or change how the account signs in.
+	if code, denied := credentialDenial(claims, user, httpx.RoutePattern(req), req.Method); denied != "" {
+		return nil, &authFailure{status: http.StatusForbidden, code: code, message: denied}
+	}
+
+	// Add claims and user to context
+	ctx := req.Context()
+	ctx = context.WithValue(ctx, base.ContextKeyClaims, claims)
+	ctx = context.WithValue(ctx, base.ContextKeyUser, user)
+	// Name the audit actor now that the credential is known. A personal
+	// access token is a materially different principal from an interactive
+	// session — "a token acting as alice" and "alice at a keyboard" must
+	// not read the same in a security trail — so the token form is
+	// recorded as such while ActorUID still names the owning user.
+	ctx = audit.WithUser(ctx, user.UID, actorTypeForToken(token))
+	ctx = withCredentialMarkers(ctx, claims)
+
+	setSentryIdentity(ctx, claims)
+
+	return req.WithContext(ctx), nil
 }
 
 // credentialDenial returns the error code and refusal message for a request the

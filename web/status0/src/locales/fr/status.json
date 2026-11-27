@@ -79,6 +79,7 @@
     "critical": "Critique"
   },
   "resourceAffected": "Impacté",
+  "privateBanner": "Privée : visible uniquement par les membres de {{org}}.",
   "unlockTitle": "Mot de passe requis",
   "unlockDescription": "Cette page de statut est privée. Saisissez le mot de passe qui vous a été communiqué pour la consulter.",
   "unlockPasswordLabel": "Mot de passe",

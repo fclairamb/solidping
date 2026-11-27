@@ -360,7 +360,7 @@
     "private": "Privée",
     "password": "Protégée par mot de passe",
     "publicHint": "Toute personne disposant du lien peut voir cette page.",
-    "privateHint": "La page est entièrement masquée — les URL publiques répondent comme si elle n’existait pas.",
+    "privateHint": "Seuls les membres connectés de l’organisation voient la page ; pour tous les autres, et sur tout domaine personnalisé, elle n’existe pas.",
     "passwordHint": "Les visiteurs doivent saisir un mot de passe pour voir la page. Définissez-le ci-dessous.",
     "passwordLabel": "Mot de passe de la page",
     "passwordPlaceholder": "6 caractères minimum",

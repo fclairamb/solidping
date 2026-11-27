@@ -12,7 +12,7 @@
 //
 //	public   → "public, max-age=<n>"  — world-readable; shared caches welcome
 //	password → "private, no-store"    — never retained by anything shared
-//	private  → "private, no-store"    — ditto (it 404s anyway, but fail closed)
+//	private  → "private, no-store"    — ditto (only members read it, 404 otherwise)
 //
 // Anything that is not exactly `public` is gated. New visibilities therefore
 // arrive locked rather than world-cacheable, which is the only safe default
@@ -97,12 +97,15 @@ const Gated = "private, no-store"
 // payloads requires; the pinning tests fail loudly if one lands without it.
 const VaryPublic = "X-Forwarded-Proto"
 
-// VaryGated is the Vary header on a gated response. It adds Cookie, where the
-// header is genuinely correct: the host-only unlock cookie is what decides
-// whether a `password` page renders or 401s. Belt and braces next to
-// `no-store` — nothing should be storing these at all — but the two travel
-// together so a future relaxation of the directive cannot silently drop it.
-const VaryGated = "Cookie, " + VaryPublic
+// VaryGated is the Vary header on a gated response. It adds Cookie and
+// Authorization, where they are genuinely correct: the host-only unlock cookie
+// decides whether a `password` page renders or 401s, and the dashboard session
+// (the access_token cookie or a bearer token) decides whether a signed-in
+// member of the organization reads a `private` page or gets a 404 (spec
+// 2026-11-27-01). Belt and braces next to `no-store` — nothing should be
+// storing these at all — but they travel together so a future relaxation of
+// the directive cannot silently drop them.
+const VaryGated = "Cookie, Authorization, " + VaryPublic
 
 // PageMaxAge is the freshness budget for the page, summary and badge. Sixty
 // seconds is what the summary and badge already promised, and it matches the
