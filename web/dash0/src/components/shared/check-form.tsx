@@ -202,6 +202,7 @@ export const checkTypes: {
   { value: "snmp", label: "SNMP", description: "Monitor devices via SNMP" },
   { value: "prometheus", label: "Prometheus", description: "Alert on Prometheus metric thresholds" },
   { value: "docker", label: "Docker", description: "Monitor Docker container health" },
+  { value: "host", label: "Host resources", description: "Check the disk, memory and CPU usage of the host" },
   { value: "systemd", label: "systemd unit", description: "Check the state of a systemd unit" },
   { value: "browser", label: "Browser", description: "Monitor pages with headless Chrome" },
   { value: "freebox_line", label: "Freebox Line", description: "Monitor xDSL/FTTH line quality via Freebox OS" },

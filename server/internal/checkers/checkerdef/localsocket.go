@@ -80,10 +80,10 @@ func IsHostLocal(checkType CheckType, cfg Config) bool {
 }
 
 // IsHostLocalType reports whether every check of checkType is host-local,
-// whatever its config: docker (the Docker daemon) and systemd (the units of
-// the executing host, issue #1000).
+// whatever its config: docker (the Docker daemon) systemd (the units of
+// the executing host, issue #1000) and host (its disk, memory and CPU).
 func IsHostLocalType(checkType CheckType) bool {
-	return checkType == CheckTypeDocker || checkType == CheckTypeSystemd
+	return checkType == CheckTypeDocker || checkType == CheckTypeSystemd || checkType == CheckTypeHost
 }
 
 // ValidateLocalSocketPath is the syntax rule: an absolute, already-clean path

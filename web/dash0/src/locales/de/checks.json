@@ -467,6 +467,8 @@
     "dockerDescription": "Zustand von Docker-Containern überwachen",
     "systemd": "systemd-Unit",
     "systemdDescription": "Den Zustand einer systemd-Unit prüfen",
+    "host": "Host-Ressourcen",
+    "hostDescription": "Festplatten-, Speicher- und CPU-Auslastung des Hosts prüfen",
     "browser": "Browser",
     "browserDescription": "Seiten mit Headless-Chrome überwachen",
     "dnsbl": "DNSBL",
@@ -1546,7 +1548,10 @@
     "fieldRequired": "Dieses Feld ist erforderlich",
     "socketRequired": "Socket-Pfad ist erforderlich",
     "systemdUnitRequired": "Unit-Name ist erforderlich",
-    "systemdUnitInvalid": "Der Unit-Name darf nur Buchstaben, Ziffern und :_.@- enthalten (höchstens 256 Zeichen, nicht mit - beginnend)"
+    "systemdUnitInvalid": "Der Unit-Name darf nur Buchstaben, Ziffern und :_.@- enthalten (höchstens 256 Zeichen, nicht mit - beginnend)",
+    "hostDiskPathInvalid": "Der Festplattenpfad muss absolut sein",
+    "hostPercentInvalid": "Der Prozentwert muss eine Zahl in (0, 100] sein",
+    "hostOrderInvalid": "Warnung muss unter dem kritischen Wert liegen"
   },
   "health": {
     "format": "Health-Format",
@@ -1919,5 +1924,15 @@
     "expectedState": "Erwarteter Zustand",
     "state_active": "Aktiv (läuft)",
     "state_inactive": "Inaktiv (darf nicht laufen)"
+  },
+  "host": {
+    "diskPath": "Festplattenpfad",
+    "diskPathHelp": "Dateisystem, das auf dem Host von SolidPing gemessen wird. Standard: / (unter Windows das Systemlaufwerk, z. B. D:\\ für ein anderes).",
+    "disk": "Festplatte belegt (%)",
+    "memory": "Speicher belegt (%)",
+    "cpu": "CPU ausgelastet (%)",
+    "warning": "Warnung",
+    "critical": "Kritisch",
+    "help": "Einen Schwellenwert leer lassen, um nur die Metrik aufzuzeichnen. Die CPU wird über eine Sekunde gemessen."
   }
 }

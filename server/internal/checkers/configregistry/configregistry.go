@@ -29,6 +29,7 @@ import (
 	grpcconfig "github.com/fclairamb/solidping/server/internal/checkers/checkgrpc/config"
 	healthconfig "github.com/fclairamb/solidping/server/internal/checkers/checkhealth/config"
 	heartbeatconfig "github.com/fclairamb/solidping/server/internal/checkers/checkheartbeat/config"
+	hostconfig "github.com/fclairamb/solidping/server/internal/checkers/checkhost/config"
 	httpconfig "github.com/fclairamb/solidping/server/internal/checkers/checkhttp/config"
 	icmpconfig "github.com/fclairamb/solidping/server/internal/checkers/checkicmp/config"
 	imapconfig "github.com/fclairamb/solidping/server/internal/checkers/checkimap/config"
@@ -139,6 +140,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &dockerconfig.DockerConfig{}, true
 	case checkerdef.CheckTypeSystemd:
 		return &systemdconfig.SystemdConfig{}, true
+	case checkerdef.CheckTypeHost:
+		return &hostconfig.HostConfig{}, true
 	case checkerdef.CheckTypeBrowser:
 		return &browserconfig.BrowserConfig{}, true
 	case checkerdef.CheckTypeFreeboxLine:
@@ -263,6 +266,8 @@ func ValidateSpec(checkType checkerdef.CheckType, spec *checkerdef.CheckSpec) er
 		return dockerconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeSystemd:
 		return systemdconfig.ValidateSpec(spec)
+	case checkerdef.CheckTypeHost:
+		return hostconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeBrowser:
 		return browserconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeFreeboxLine:

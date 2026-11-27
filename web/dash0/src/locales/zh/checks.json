@@ -467,6 +467,8 @@
     "dockerDescription": "监控 Docker 容器健康状况",
     "systemd": "systemd 单元",
     "systemdDescription": "检查 systemd 单元的状态",
+    "host": "主机资源",
+    "hostDescription": "检查主机的磁盘、内存和 CPU 使用率",
     "browser": "浏览器",
     "browserDescription": "使用无头 Chrome 监控页面",
     "freebox_line": "Freebox 线路",
@@ -1546,7 +1548,10 @@
     "fieldRequired": "此字段为必填项",
     "socketRequired": "套接字路径为必填项",
     "systemdUnitRequired": "单元名称为必填项",
-    "systemdUnitInvalid": "单元名称只能包含字母、数字和 :_.@-（最多 256 个字符，且不能以 - 开头）"
+    "systemdUnitInvalid": "单元名称只能包含字母、数字和 :_.@-（最多 256 个字符，且不能以 - 开头）",
+    "hostDiskPathInvalid": "磁盘路径必须是绝对路径",
+    "hostPercentInvalid": "百分比必须是 (0, 100] 范围内的数字",
+    "hostOrderInvalid": "警告阈值必须低于严重阈值"
   },
   "health": {
     "format": "健康检查格式",
@@ -1919,5 +1924,15 @@
     "expectedState": "预期状态",
     "state_active": "运行中",
     "state_inactive": "未运行（不应运行）"
+  },
+  "host": {
+    "diskPath": "磁盘路径",
+    "diskPathHelp": "在运行 SolidPing 的主机上测量的文件系统。默认：/（Windows 上为系统盘，例如其他盘 D:\\）。",
+    "disk": "磁盘使用率 (%)",
+    "memory": "内存使用率 (%)",
+    "cpu": "CPU 使用率 (%)",
+    "warning": "警告",
+    "critical": "严重",
+    "help": "将阈值留空则只记录指标。CPU 在一秒内采样。"
   }
 }

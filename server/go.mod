@@ -158,7 +158,6 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/russellhaering/goxmldsig v1.6.1 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
-	github.com/shirou/gopsutil/v4 v4.26.6 // indirect
 	github.com/shopspring/decimal v1.6.0 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
@@ -293,6 +292,7 @@ require (
 	github.com/redis/go-redis/v9 v9.24.1
 	github.com/rumblefrog/go-a2s v1.0.3
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
+	github.com/shirou/gopsutil/v4 v4.26.6
 	github.com/sijms/go-ora/v3 v3.0.1
 	github.com/slack-go/slack v0.36.0
 	github.com/standard-webhooks/standard-webhooks/libraries v1.3.0
