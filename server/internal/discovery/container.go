@@ -10,6 +10,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
@@ -92,14 +93,22 @@ func containerClientOpts(ctx context.Context, endpoint string) ([]client.Opt, er
 	opts := make([]client.Opt, 0, 2) // host + the optional guarded dialer
 	opts = append(opts, client.WithHost(endpoint))
 
-	guard := egress.FromContext(ctx)
-	if !guard.Enforcing() {
-		return opts, nil
-	}
-
 	hostURL, err := client.ParseHostURL(endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("parse docker endpoint %q: %w", endpoint, err)
+	}
+
+	guard := egress.FromContext(ctx)
+	if !guard.Enforcing() {
+		// The client dials a unix:// endpoint itself: it must be a listed
+		// Docker socket, like a docker check's host (spec 2026-11-27-03).
+		if hostURL.Scheme == "unix" {
+			if err := checkerdef.DockerSocketAllowed(checkerdef.DockerSocketAllowlistFrom(ctx), hostURL.Host); err != nil {
+				return nil, err
+			}
+		}
+
+		return opts, nil
 	}
 
 	if hostURL.Scheme != "tcp" {

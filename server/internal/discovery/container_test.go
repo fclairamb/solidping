@@ -2,14 +2,20 @@ package discovery
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 // fakeDockerAPI starts an httptest server that answers the Docker API calls
@@ -135,4 +141,49 @@ func TestParseHealthStatus(t *testing.T) {
 			require.Equal(t, tc.want, parseHealthStatus(tc.status))
 		})
 	}
+}
+
+// A unix:// discovery endpoint the client would dial itself must be a listed
+// Docker socket (spec 2026-11-27-03): an unlisted one is refused before any
+// dial.
+func TestListContainersRefusesAnUnlistedSocket(t *testing.T) {
+	t.Parallel()
+
+	dir, err := os.MkdirTemp("", "spdisc")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
+	sock := filepath.Join(dir, "other.sock")
+
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "unix", sock)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+
+	var accepted atomic.Int32
+
+	go func() {
+		for {
+			conn, acceptErr := ln.Accept()
+			if acceptErr != nil {
+				return
+			}
+
+			accepted.Add(1)
+
+			_ = conn.Close()
+		}
+	}()
+
+	_, err = ListContainers(t.Context(), "unix://"+sock, time.Second)
+	require.ErrorIs(t, err, checkerdef.ErrLocalSocketNotAllowed)
+	require.ErrorContains(t, err, checkerdef.DockerSocketSetting)
+	require.Zero(t, accepted.Load())
+
+	// Positive control: listed, the socket is dialed (nothing speaks the
+	// Docker API on it, so the listing itself fails).
+	ctx := checkerdef.WithDockerSocketAllowlist(t.Context(), []string{sock})
+	_, err = ListContainers(ctx, "unix://"+sock, time.Second)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, checkerdef.ErrLocalSocketNotAllowed)
+	require.Eventually(t, func() bool { return accepted.Load() > 0 }, time.Second, 10*time.Millisecond)
 }
