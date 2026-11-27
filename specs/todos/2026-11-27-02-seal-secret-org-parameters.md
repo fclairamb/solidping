@@ -78,6 +78,12 @@ encrypted. The same secret moved into a `${param:…}` for reuse is not.
   row (itself in `parameters`) from inside the decorator that reads `parameters`. Org-DEK separation
   only matters against an attacker who already holds the KEK.
 
+## Resolved open questions
+
+- Seal secret org parameters with the **system DEK**, through the existing `sysparamseal` decorator
+  (one wrapper, one fail-closed path, one startup sweep; no org-DEK lookup from inside the decorator).
+  (autopilot: recommended answer)
+
 ## To verify
 
 - Every production path that reads org parameters goes through the decorated service (as
