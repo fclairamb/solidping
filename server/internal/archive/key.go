@@ -18,8 +18,7 @@ func HourFileID(checkUID string, start time.Time) string {
 }
 
 // DayFileID is the fileID of the long-term archive of one day, every raw row
-// of the day (plus the hour rollups of the hours that had no raw row in the
-// archive): <checkUID>/<YYYY-MM-DD>.vortex, in UTC.
+// of the day: <checkUID>/<YYYY-MM-DD>.vortex, in UTC.
 func DayFileID(checkUID string, start time.Time) string {
 	return checkUID + "/" + start.UTC().Format(time.DateOnly) + Extension
 }

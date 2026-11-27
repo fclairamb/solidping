@@ -44,6 +44,27 @@ func isValidRecurrence(recurrence string) bool {
 // Service provides business logic for maintenance window management.
 type Service struct {
 	db db.Service
+	// pageMemo evicts the org's memoized public status pages after a window
+	// write (spec 2026-11-27-06). Optional; nil means no memo.
+	pageMemo PageMemoInvalidator
+}
+
+// PageMemoInvalidator evicts memoized public status-page views. Injected to
+// avoid an import cycle with the statuspages package.
+type PageMemoInvalidator interface {
+	// InvalidateOrg drops every memoized view in an organization.
+	InvalidateOrg(orgUID string)
+}
+
+// SetPageMemoInvalidator wires the status-page view memo. Optional.
+func (s *Service) SetPageMemoInvalidator(inv PageMemoInvalidator) {
+	s.pageMemo = inv
+}
+
+func (s *Service) invalidatePages(orgUID string) {
+	if s.pageMemo != nil {
+		s.pageMemo.InvalidateOrg(orgUID)
+	}
 }
 
 // NewService creates a new maintenance windows service.
@@ -204,6 +225,8 @@ func (s *Service) CreateMaintenanceWindow(
 		return MaintenanceWindowResponse{}, err
 	}
 
+	s.invalidatePages(org.UID)
+
 	audit.Record(ctx, s.db, org.UID, models.EventTypeMaintenanceWindowCreated,
 		auditTarget(window), models.JSONMap{
 			"start_at":      window.StartAt.UTC().Format(time.RFC3339),
@@ -322,6 +345,8 @@ func (s *Service) UpdateMaintenanceWindow(
 		return MaintenanceWindowResponse{}, errUpdate
 	}
 
+	s.invalidatePages(org.UID)
+
 	// Fetch updated window
 	updatedWindow, errFetch := s.db.GetMaintenanceWindow(ctx, org.UID, window.UID)
 	if errFetch != nil {
@@ -355,6 +380,8 @@ func (s *Service) DeleteMaintenanceWindow(ctx context.Context, orgSlug, uid stri
 	if err := s.db.DeleteMaintenanceWindow(ctx, org.UID, window.UID); err != nil {
 		return err
 	}
+
+	s.invalidatePages(org.UID)
 
 	audit.Record(ctx, s.db, org.UID, models.EventTypeMaintenanceWindowDeleted, auditTarget(window), nil)
 
@@ -429,6 +456,8 @@ func (s *Service) SetChecks(
 	if err := s.db.SetMaintenanceWindowChecks(ctx, windowUID, checkUIDs, groupUIDs); err != nil {
 		return err
 	}
+
+	s.invalidatePages(org.UID)
 
 	// A window with zero attached checks suppresses NOTHING, so "who changed
 	// the attachment set, and to how many" is exactly the fact an operator
