@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -43,44 +44,65 @@ func (c *captureHeartbeatDB) UpdateWorkerHeartbeat(
 	return nil
 }
 
-// TestAgentRefreshWritesCapabilitiesAndVersionOnce proves the claim path
-// writes the capability set and the version on the connection's first refresh,
-// then only liveness, then the set again only when it changes. A failed write
-// is retried on the next refresh.
-func TestAgentRefreshWritesCapabilitiesAndVersionOnce(t *testing.T) {
-	t.Parallel()
+// newReportHarness is a handler whose UpdateWorkerHeartbeat calls are
+// captured, and a refresh func that feeds it one claim frame past the throttle.
+func newReportHarness(t *testing.T) (*captureHeartbeatDB, *connState, func(*agentcrypto.ClientFrame) heartbeatCall) {
+	t.Helper()
 
-	r := require.New(t)
 	h := newUpgradeHarness(t)
 	capture := &captureHeartbeatDB{Service: h.svc}
 	h.handler.dbService = capture
-
 	state := newUpgradeState(newOrgAgent())
-	frame := &agentcrypto.ClientFrame{Version: "1.2.0", Capabilities: []string{"ipv4", "ipv6"}}
 
-	refresh := func() heartbeatCall {
-		state.egressWrittenAt = state.egressWrittenAt.AddDate(-1, 0, 0) // past the throttle
+	return capture, state, func(frame *agentcrypto.ClientFrame) heartbeatCall {
+		noteAgentReport(state, frame)
+		state.egressWrittenAt = time.Time{} // past the throttle
 		h.handler.recordAgentEgress(t.Context(), state, frame)
 
 		return capture.calls[len(capture.calls)-1]
 	}
+}
 
-	// The first write fails: nothing is recorded as stored, so the next refresh
-	// sends everything again.
+// TestCurrentAgentReportIsWrittenOnce proves an agent that reports its set and
+// version only when they are new gets them written once, then only liveness,
+// and that a claim omitting them keeps the connection's set for scoping. A
+// failed write is retried on the next refresh.
+func TestCurrentAgentReportIsWrittenOnce(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	capture, state, refresh := newReportHarness(t)
+	caps := []string{"ipv4", "ipv6"}
+
+	// The first claim of the connection carries both; its write fails.
 	capture.failNext = true
-	r.Equal(heartbeatCall{[]string{"ipv4", "ipv6"}, "1.2.0"}, refresh())
-	r.Equal(heartbeatCall{[]string{"ipv4", "ipv6"}, "1.2.0"}, refresh())
+	r.Equal(heartbeatCall{caps, "1.2.0"}, refresh(&agentcrypto.ClientFrame{Version: "1.2.0", Capabilities: caps}))
 
-	// Stored: from now on only liveness.
-	r.Equal(heartbeatCall{nil, ""}, refresh())
+	// Later claims carry neither: the unstored report is retried, then only
+	// liveness is written.
+	r.Equal(heartbeatCall{caps, "1.2.0"}, refresh(&agentcrypto.ClientFrame{}))
+	r.Equal(heartbeatCall{nil, ""}, refresh(&agentcrypto.ClientFrame{}))
+	r.Equal(caps, state.caps, "claims that omit the set still scope with it")
+	r.Equal("1.2.0", state.version)
 
-	// The set changed: it is written once, the version is not.
-	frame.Capabilities = []string{"ipv4"}
-	r.Equal(heartbeatCall{[]string{"ipv4"}, ""}, refresh())
-	r.Equal(heartbeatCall{nil, ""}, refresh())
+	// The agent's set changed: it sends it again, without the version.
+	r.Equal(heartbeatCall{[]string{"ipv4"}, ""}, refresh(&agentcrypto.ClientFrame{Capabilities: []string{"ipv4"}}))
+	r.Equal(heartbeatCall{nil, ""}, refresh(&agentcrypto.ClientFrame{}))
 
-	// An empty set ("none") is a different report from nil ("unknown").
-	frame.Capabilities = []string{}
-	r.Equal(heartbeatCall{[]string{}, ""}, refresh())
-	r.Equal(heartbeatCall{nil, ""}, refresh())
+	// An empty set ("none") is a report, unlike nil.
+	r.Equal(heartbeatCall{[]string{}, ""}, refresh(&agentcrypto.ClientFrame{Capabilities: []string{}}))
+}
+
+// TestOlderAgentReportIsWrittenEveryRefresh proves an agent that sends its set
+// and version on every claim (older than ReportsOnce) gets both written on
+// every refresh, as before.
+func TestOlderAgentReportIsWrittenEveryRefresh(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	_, _, refresh := newReportHarness(t)
+	frame := &agentcrypto.ClientFrame{Version: "0.56.0", Capabilities: []string{"ipv4"}}
+
+	r.Equal(heartbeatCall{[]string{"ipv4"}, "0.56.0"}, refresh(frame))
+	r.Equal(heartbeatCall{[]string{"ipv4"}, "0.56.0"}, refresh(frame))
 }

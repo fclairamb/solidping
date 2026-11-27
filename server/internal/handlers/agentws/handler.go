@@ -738,13 +738,15 @@ type connState struct {
 	// egressWrittenAt throttles the workers-row refresh driven by claim frames
 	// (see recordAgentEgress). Zero means "never written on this connection".
 	egressWrittenAt time.Time
-	// writtenCaps and capsWritten are the capability set this connection last
-	// stored; versionWritten is set once it stored the version. The claim path
-	// rewrites the set only when it changed, and the version once per
-	// connection.
-	writtenCaps    []string
-	capsWritten    bool
-	versionWritten bool
+	// caps and version are the agent's last report on this connection. A
+	// current agent sends them on its first claim (and the set again when it
+	// changes), an older one on every claim; claims that omit them use these.
+	// capsDirty and versionDirty mark a report the workers row has not stored
+	// yet.
+	caps         []string
+	version      string
+	capsDirty    bool
+	versionDirty bool
 	// pluginsRecorded is set once this connection's plugin report is stored:
 	// one report per connection, whatever the agent sends after it.
 	pluginsRecorded bool
@@ -812,8 +814,10 @@ func (h *Handler) recordAgentEgress(
 	// not liveness, and must fire once per connection whatever the claim
 	// cadence is — a busy agent claiming several times a second must not spam
 	// the log once per claim.
-	h.warnOnVersionDrift(ctx, state, frame.Version)
-	report := versionReportOf(frame)
+	h.warnOnVersionDrift(ctx, state, state.version)
+	report := versionReport{
+		version: state.version, pinned: frame.VersionPinned(), legacy: frame.PredatesAutoUpgrade(),
+	}
 	h.noteAgentVersion(ctx, state, report)
 	h.maybeNotifyOutdated(ctx, state, report)
 
@@ -830,7 +834,13 @@ func (h *Handler) recordAgentEgress(
 	// keeps running checks. Drop the bad set instead and still write the
 	// heartbeat: nil means "not reported", which leaves whatever is stored
 	// exactly as it was.
-	capabilities := frame.Capabilities
+	// Only what this connection has not stored yet: nil and "" leave the
+	// stored values untouched.
+	var capabilities []string
+	if state.capsDirty {
+		capabilities = state.caps
+	}
+
 	if err := models.ValidateCapabilitySet(capabilities); err != nil {
 		h.logger.WarnContext(ctx, "agent reported an unstorable capability set; ignoring it",
 			"error", err, "agent", state.agent.UID)
@@ -844,16 +854,9 @@ func (h *Handler) recordAgentEgress(
 		capabilities = regions.StripTaskCapabilities(capabilities)
 	}
 
-	// The set and the version are written once per connection, then the set
-	// again only when it changes: rewriting them on every refresh costs a
-	// ~1 KB array per agent for nothing.
-	if state.capsWritten && models.SameCapabilitySet(capabilities, state.writtenCaps) {
-		capabilities = nil
-	}
-
-	reportedVersion := frame.Version
-	if state.versionWritten {
-		reportedVersion = ""
+	var reportedVersion string
+	if state.versionDirty {
+		reportedVersion = state.version
 	}
 
 	if err := h.dbService.UpdateWorkerHeartbeat(ctx, state.workerUID, capabilities, reportedVersion); err != nil {
@@ -863,12 +866,19 @@ func (h *Handler) recordAgentEgress(
 		return
 	}
 
-	if capabilities != nil {
-		state.writtenCaps, state.capsWritten = capabilities, true
+	// Stored (an unstorable set is dropped, not retried).
+	state.capsDirty, state.versionDirty = false, false
+}
+
+// noteAgentReport keeps what a claim frame reported of the agent's capability
+// set and version. A field the frame omits keeps the connection's last value.
+func noteAgentReport(state *connState, frame *agentcrypto.ClientFrame) {
+	if frame.Capabilities != nil {
+		state.caps, state.capsDirty = frame.Capabilities, true
 	}
 
-	if reportedVersion != "" {
-		state.versionWritten = true
+	if frame.Version != "" {
+		state.version, state.versionDirty = frame.Version, true
 	}
 }
 
@@ -970,6 +980,8 @@ func (h *Handler) runAgentConnection(
 
 	state := &connState{
 		agent: agent, workerUID: workerUID, versionChecked: enrollReport.version != "",
+		// ensureWorkerRow stored the enroll frame's version already.
+		version:   enrollReport.version,
 		keepalive: keepalive{sensor: live},
 	}
 
@@ -1010,6 +1022,8 @@ func (h *Handler) runAgentConnection(
 		// Same rule as the agenttasks routes, which answer a system agent 403.
 		NoWorkerTasks: agent.IsSystem(),
 		ServerVersion: version.Get().Version,
+		// connState keeps the agent's capability set and version.
+		ReportsOnce: true,
 	}); err != nil {
 		return
 	}
@@ -1312,6 +1326,7 @@ func agentClaimScope(agent *models.Agent) checkjobsvc.AgentScope {
 func (h *Handler) handleClaim(
 	ctx context.Context, conn *websocket.Conn, state *connState, frame *agentcrypto.ClientFrame,
 ) {
+	noteAgentReport(state, frame)
 	h.recordAgentEgress(ctx, state, frame)
 	h.recordAgentPlugins(ctx, state, frame)
 
@@ -1327,12 +1342,12 @@ func (h *Handler) handleClaim(
 	// A plugin-type job only goes to an agent that reports the type among
 	// its capabilities (spec 2026-10-17-05 §17).
 	scope := agentClaimScope(state.agent)
-	scope.PluginTypes = checkjobsvc.PluginTypesFromCapabilities(frame.Capabilities)
-	scope.CheckTypes = checkjobsvc.CheckTypesFromCapabilities(frame.Capabilities)
-	scope.NoICMP = checkjobsvc.NoICMPFromCapabilities(frame.Capabilities)
+	scope.PluginTypes = checkjobsvc.PluginTypesFromCapabilities(state.caps)
+	scope.CheckTypes = checkjobsvc.CheckTypesFromCapabilities(state.caps)
+	scope.NoICMP = checkjobsvc.NoICMPFromCapabilities(state.caps)
 
 	jobs, nextIn, err := h.checkJobSvc.ClaimJobsForAgent(
-		withAgentSealFingerprints(ctx, state.agent, frame.Capabilities), state.workerUID, scope,
+		withAgentSealFingerprints(ctx, state.agent, state.caps), state.workerUID, scope,
 		frame.CheckUID, maxJobs, claimMaxAhead,
 	)
 	if err != nil {
