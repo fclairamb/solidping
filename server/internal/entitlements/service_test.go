@@ -64,6 +64,11 @@ func TestDefaultsForSaaS(t *testing.T) {
 	// Mirrors the Free SKU's private-location agent cap (ladder 1/3/6/9).
 	r.NotNil(defaults.Limits.MaxDeportedAgents)
 	r.Equal(1, *defaults.Limits.MaxDeportedAgents)
+	// Free gets a WhatsApp trial (ladder 5/50/150/500), but still no SMS/voice.
+	r.NotNil(defaults.Limits.MaxWhatsappPerMonth)
+	r.Equal(5, *defaults.Limits.MaxWhatsappPerMonth)
+	r.NotNil(defaults.Limits.MaxSmsPerMonth)
+	r.Equal(0, *defaults.Limits.MaxSmsPerMonth)
 	r.NotNil(defaults.DisplayName)
 	r.Equal("Free", *defaults.DisplayName)
 	r.NotNil(defaults.DisplayEmoji)

@@ -143,7 +143,7 @@ after an upgrade or after deleting another agent.
 | Mode | maxChecks | maxUsers | maxChecksPerMinute | maxDeportedAgents | maxCustomDomains | maxSmsPerMonth | maxCallsPerMonth | maxWhatsappPerMonth | maxSlos | maxAiTokensPerDay | whiteLabel | Display identity |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Self-hosted | unlimited | 30 | unlimited | unlimited | unlimited | unlimited | unlimited | unlimited | unlimited | unlimited | **true** | 🏠 Self-hosted |
-| SaaS | 100 | 5 | 10 | 1 | 0 | 0 | 0 | 0 | 2 | 200000 | **false** | 🆓 Free |
+| SaaS | 100 | 5 | 10 | 1 | 0 | 0 | 0 | 5 | 2 | 200000 | **false** | 🆓 Free |
 
 Self-hosted gets `whiteLabel` unconditionally: an operator running their own
 instance should never have to pay to take our badge off their own status page.
@@ -309,7 +309,7 @@ second one is the dangerous half:
   would flip from the deployment default to **unlimited** — on SaaS
   `maxChecksPerMinute` 10 → ∞ (the very cap this feature exists to manage),
   `maxUsers` 5 → ∞, `maxSlos` 2 → ∞, and
-  `maxSmsPerMonth`/`maxCallsPerMonth`/`maxWhatsappPerMonth` 0 → ∞, i.e.
+  `maxSmsPerMonth`/`maxCallsPerMonth` 0 → ∞ and `maxWhatsappPerMonth` 5 → ∞, i.e.
   unbounded spend on the instance's own Twilio/Meta credentials. On
   self-hosted, where that door is the *normal* one because
   `entitlements.admin_writes_enabled` defaults to true, `maxUsers` 30 → ∞
