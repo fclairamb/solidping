@@ -246,7 +246,17 @@ sp incidents list --state active --watch
 
 The command subscribes to the organization live socket (`/api/v1/orgs/<org>/events/ws`), refetches when the server reports a change (bursts are merged, 500 ms) and redraws the screen. The header shows the last refresh time and `live`. If the socket drops, the client reconnects with exponential backoff (up to 30 s); if it cannot be used at all (older server, rejected handshake), it polls every 10 s and the header shows `polling`. Press Ctrl-C to exit (status 0).
 
-`--watch` only works with table output: combined with `--output json` or `jsonl` it fails immediately.
+### Streaming snapshots (`--watch -o jsonl`)
+
+With `--output jsonl` the screen is not cleared: each refresh writes one flushed line to stdout, a full snapshot of the list:
+
+```json
+{"refreshedAt":"2026-11-27T18:40:00Z","source":"live","data":[...]}
+```
+
+`source` is `live` or `polling`, and `data` is the same array the non-watch `json`/`jsonl` output returns, so `sp checks list --watch -o jsonl | jq` works. Connection notices (reconnecting, fallback to polling) and refresh errors go to stderr, never stdout.
+
+`--watch --output json` fails immediately (a single pretty-printed document cannot be streamed): use `jsonl`.
 
 ## Configuration
 

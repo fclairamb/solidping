@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -265,25 +266,112 @@ func TestWatchCancelClosesSocket(t *testing.T) {
 }
 
 //nolint:paralleltest // t.Setenv
-func TestWatchRejectsNonTableOutput(t *testing.T) {
-	for _, format := range []string{"json", "jsonl"} {
-		var calls atomic.Int32
+func TestWatchRejectsJSONOutput(t *testing.T) {
+	var calls atomic.Int32
 
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			calls.Add(1)
-			w.WriteHeader(http.StatusInternalServerError)
-		}))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
 
-		for _, sub := range [][]string{{"checks", "list"}, {"incidents", "list"}} {
-			t.Setenv("HOME", t.TempDir())
+	for _, sub := range [][]string{{"checks", "list"}, {"incidents", "list"}} {
+		t.Setenv("HOME", t.TempDir())
 
-			root := &cli.Command{Name: "sp", Flags: GetGlobalFlags(), Commands: GetCommands()}
-			args := append([]string{"sp", "--url", srv.URL, "-o", format}, sub...)
-			err := root.Run(t.Context(), append(args, "--watch"))
-			require.ErrorIs(t, err, ErrWatchNeedsTable, format)
+		root := &cli.Command{Name: "sp", Flags: GetGlobalFlags(), Commands: GetCommands()}
+		args := append([]string{"sp", "--url", srv.URL, "-o", "json"}, sub...)
+		err := root.Run(t.Context(), append(args, "--watch"))
+		require.ErrorIs(t, err, ErrWatchJSONUnsupported)
+		require.Contains(t, err.Error(), "jsonl")
+	}
+
+	require.Zero(t, calls.Load(), "no network call expected")
+}
+
+func TestWatchJSONLWritesOneSnapshotLinePerRefresh(t *testing.T) {
+	t.Parallel()
+
+	ls := newLiveServer(t)
+
+	var refreshes atomic.Int32
+
+	out := &lockedBuffer{}
+	errOut := &lockedBuffer{}
+	cfg := testWatchConfig(ls.srv.URL, &refreshes, out)
+	cfg.JSONL = true
+	cfg.Err = errOut
+	cfg.Fetch = func(context.Context) (json.RawMessage, error) {
+		n := refreshes.Add(1)
+		if n == 3 {
+			return nil, context.DeadlineExceeded
 		}
 
-		require.Zero(t, calls.Load(), "no network call expected")
-		srv.Close()
+		return json.RawMessage(`[{"slug":"a"}]`), nil
 	}
+
+	cancel, done := startWatch(t, cfg)
+
+	conn := ls.next(t)
+	waitFor(t, func() bool { return refreshes.Load() == 1 })
+
+	require.NoError(t, conn.Write(t.Context(), websocket.MessageText, []byte(`{"type":"update"}`)))
+	waitFor(t, func() bool { return refreshes.Load() == 2 })
+
+	// A failing refresh writes nothing on stdout, a notice on stderr.
+	require.NoError(t, conn.Write(t.Context(), websocket.MessageText, []byte(`{"type":"update"}`)))
+	waitFor(t, func() bool { return refreshes.Load() == 3 })
+	waitFor(t, func() bool { return errOut.String() != "" })
+
+	stopWatch(t, cancel, done)
+
+	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
+	require.Len(t, lines, 2)
+
+	for _, line := range lines {
+		var snap struct {
+			RefreshedAt string           `json:"refreshedAt"`
+			Source      string           `json:"source"`
+			Data        []map[string]any `json:"data"`
+		}
+
+		require.NoError(t, json.Unmarshal([]byte(line), &snap))
+		_, err := time.Parse(time.RFC3339, snap.RefreshedAt)
+		require.NoError(t, err)
+		require.Equal(t, "live", snap.Source)
+		require.Len(t, snap.Data, 1)
+	}
+
+	require.NotContains(t, out.String(), "\x1b")
+	require.Contains(t, errOut.String(), "refresh failed")
+}
+
+func TestWatchJSONLPollingNoticeGoesToStderr(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	var refreshes atomic.Int32
+
+	out := &lockedBuffer{}
+	errOut := &lockedBuffer{}
+	cfg := testWatchConfig(srv.URL, &refreshes, out)
+	cfg.JSONL = true
+	cfg.Err = errOut
+	cfg.Fetch = func(context.Context) (json.RawMessage, error) {
+		refreshes.Add(1)
+
+		return json.RawMessage(`[]`), nil
+	}
+
+	cancel, done := startWatch(t, cfg)
+
+	waitFor(t, func() bool { return refreshes.Load() >= 2 })
+	stopWatch(t, cancel, done)
+
+	require.Contains(t, errOut.String(), "polling")
+	require.Contains(t, out.String(), `"source":"polling"`)
+	require.NotContains(t, out.String(), "polling every")
 }

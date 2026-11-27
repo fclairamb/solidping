@@ -15,6 +15,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/urfave/cli/v3"
+
+	"github.com/fclairamb/solidping/server/pkg/cli/output"
 )
 
 const (
@@ -33,8 +35,9 @@ const (
 	modePolling = "polling"
 )
 
-// ErrWatchNeedsTable is returned when --watch is combined with json/jsonl output.
-var ErrWatchNeedsTable = errors.New("--watch only works with table output (not --output json or jsonl)")
+// ErrWatchJSONUnsupported is returned when --watch is combined with json output.
+var ErrWatchJSONUnsupported = errors.New(
+	"--watch cannot stream a single json document: use --output jsonl (or table output)")
 
 // errLiveProtocol reports an unexpected frame during the live socket handshake.
 var errLiveProtocol = errors.New("live socket protocol error")
@@ -52,8 +55,15 @@ type watchConfig struct {
 	Token func(ctx context.Context) (string, error)
 	// Refresh fetches the data and prints the table.
 	Refresh func(ctx context.Context) error
-	// Out receives the clear sequence and the header.
+	// Out receives the clear sequence and the header (or the jsonl lines).
 	Out io.Writer
+	// JSONL switches to one snapshot line per refresh on Out, without any
+	// screen clearing. Fetch must then be set; notices go to Err.
+	JSONL bool
+	// Fetch returns the raw data array of the list (jsonl mode only).
+	Fetch func(ctx context.Context) (json.RawMessage, error)
+	// Err receives connection state notices and refresh errors in jsonl mode.
+	Err io.Writer
 
 	Debounce     time.Duration
 	PollInterval time.Duration
@@ -76,10 +86,10 @@ func (c *watchConfig) applyDefaults() {
 	}
 }
 
-// validateWatch rejects --watch with a non-table output format.
+// validateWatch rejects --watch with json output (jsonl and table are streamable).
 func validateWatch(cmd *cli.Command, cliCtx *Context) error {
-	if cmd.Bool("watch") && !cliCtx.IsText() {
-		return ErrWatchNeedsTable
+	if cmd.Bool("watch") && cliCtx.OutputFormat == output.FormatJSON {
+		return ErrWatchJSONUnsupported
 	}
 
 	return nil
@@ -92,7 +102,7 @@ func runWatchCommand(ctx context.Context, cliCtx *Context, title, entity string,
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	return runWatch(ctx, &watchConfig{
+	cfg := &watchConfig{
 		Title:   title,
 		BaseURL: cliCtx.Config.URL,
 		Org:     cliCtx.GetOrg(),
@@ -100,7 +110,79 @@ func runWatchCommand(ctx context.Context, cliCtx *Context, title, entity string,
 		Token:   cliCtx.APIHelper.Token,
 		Refresh: refresh,
 		Out:     os.Stdout,
-	})
+		Err:     os.Stderr,
+	}
+
+	if cliCtx.OutputFormat == output.FormatJSONL {
+		cfg.JSONL = true
+		cfg.Fetch = func(ctx context.Context) (json.RawMessage, error) {
+			return captureData(ctx, cliCtx, refresh)
+		}
+	}
+
+	return runWatch(ctx, cfg)
+}
+
+// captureOutputter records what a list action would print instead of writing it.
+type captureOutputter struct {
+	payload interface{}
+	err     error
+}
+
+func (o *captureOutputter) Print(data interface{}) error {
+	o.payload = data
+
+	return nil
+}
+
+func (o *captureOutputter) PrintError(err error) error {
+	o.err = err
+
+	return nil
+}
+
+func (o *captureOutputter) Success(string) error { return nil }
+
+// captureData runs the list action with a capturing outputter and returns the
+// "data" array of the response it would have printed.
+func captureData(ctx context.Context, cliCtx *Context, run func(ctx context.Context) error) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("canceled: %w", err)
+	}
+
+	capture := &captureOutputter{}
+	// run closes over cliCtx, so swap the outputter in place for this call.
+	saved := cliCtx.Outputter
+	cliCtx.Outputter = capture
+
+	defer func() { cliCtx.Outputter = saved }()
+
+	if err := run(ctx); err != nil {
+		return nil, err
+	}
+
+	if capture.err != nil {
+		return nil, capture.err
+	}
+
+	raw, err := json.Marshal(capture.payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal: %w", err)
+	}
+
+	var envelope struct {
+		Data json.RawMessage `json:"data"`
+	}
+
+	if err = json.Unmarshal(raw, &envelope); err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+
+	if len(envelope.Data) == 0 || string(envelope.Data) == "null" {
+		return json.RawMessage("[]"), nil
+	}
+
+	return envelope.Data, nil
 }
 
 // runWatch drives the live view: it redraws on live hints, reconnects with
@@ -116,6 +198,8 @@ func runWatch(ctx context.Context, cfg *watchConfig) error {
 		if err != nil {
 			var rejected *handshakeRejectedError
 			if errors.As(err, &rejected) {
+				cfg.noticef("%v: falling back to polling every %s", err, cfg.PollInterval)
+
 				return cfg.pollLoop(ctx)
 			}
 
@@ -124,6 +208,7 @@ func runWatch(ctx context.Context, cfg *watchConfig) error {
 			}
 
 			// Network error: keep the screen fresh while retrying.
+			cfg.noticef("live socket unavailable (%v): retrying in %s", err, backoff)
 			cfg.redraw(ctx, modePolling)
 
 			if !sleepCtx(ctx, backoff) {
@@ -316,6 +401,12 @@ func (c *watchConfig) redraw(ctx context.Context, mode string) {
 		return
 	}
 
+	if c.JSONL {
+		c.emitSnapshot(ctx, mode)
+
+		return
+	}
+
 	_, _ = fmt.Fprint(c.Out, clearScreen)
 	_, _ = fmt.Fprintf(c.Out, "sp %s --watch | org: %s | refreshed: %s | %s\n\n",
 		c.Title, c.Org, time.Now().Format("15:04:05"), mode)
@@ -323,6 +414,42 @@ func (c *watchConfig) redraw(ctx context.Context, mode string) {
 	if err := c.Refresh(ctx); err != nil && err.Error() != "" {
 		_, _ = fmt.Fprintf(c.Out, "Error: %v\n", err)
 	}
+}
+
+// emitSnapshot writes one flushed jsonl line: a full snapshot of the list.
+func (c *watchConfig) emitSnapshot(ctx context.Context, mode string) {
+	data, err := c.Fetch(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			c.noticef("refresh failed: %v", err)
+		}
+
+		return
+	}
+
+	line, err := json.Marshal(struct {
+		RefreshedAt string          `json:"refreshedAt"`
+		Source      string          `json:"source"`
+		Data        json.RawMessage `json:"data"`
+	}{time.Now().Format(time.RFC3339), mode, data})
+	if err != nil {
+		c.noticef("refresh failed: %v", err)
+
+		return
+	}
+
+	// One Write per line keeps it atomic; os.Stdout is unbuffered (flushed).
+	_, _ = c.Out.Write(append(line, '\n'))
+}
+
+// notice prints a connection state message to stderr (jsonl mode only: the
+// table view shows the state in its header).
+func (c *watchConfig) noticef(format string, args ...any) {
+	if !c.JSONL || c.Err == nil {
+		return
+	}
+
+	_, _ = fmt.Fprintf(c.Err, "sp %s --watch: %s\n", c.Title, fmt.Sprintf(format, args...))
 }
 
 // sleepCtx waits for d; it returns false when ctx ended first.
