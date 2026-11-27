@@ -59,6 +59,8 @@ func TestCache_TTLExpiration(t *testing.T) {
 	if _, found := cache.Get("key1"); found {
 		t.Error("expected key1 to be expired")
 	}
+
+	runtime.KeepAlive(&value)
 }
 
 func TestCache_NoTTL(t *testing.T) {
@@ -74,6 +76,8 @@ func TestCache_NoTTL(t *testing.T) {
 	if _, found := cache.Get("key1"); !found {
 		t.Error("expected key1 to still exist (no TTL)")
 	}
+
+	runtime.KeepAlive(&value)
 }
 
 func TestCache_WeakReference(t *testing.T) {
@@ -117,6 +121,8 @@ func TestCache_Delete(t *testing.T) {
 	if _, found := cache.Get("key1"); found {
 		t.Error("expected key1 to be deleted")
 	}
+
+	runtime.KeepAlive(&value)
 }
 
 func TestCache_Clear(t *testing.T) {
@@ -175,6 +181,8 @@ func TestCache_Cleanup(t *testing.T) {
 	if _, found := cache.Get("valid"); !found {
 		t.Error("expected valid entry to still exist")
 	}
+
+	runtime.KeepAlive(&val3)
 }
 
 func TestCache_CleanupTimer(t *testing.T) {
