@@ -162,18 +162,8 @@ func (c *DockerConfig) Validate() error {
 		return checkerdef.NewConfigError("host", "must start with unix:// or tcp://")
 	}
 
-	if path, isUnix := strings.CutPrefix(host, unixScheme); isUnix {
-		if err := checkerdef.ValidateLocalSocketPath(path); err != nil {
-			return checkerdef.NewConfigError("host", err.Error())
-		}
-	}
-
-	if c.ContainerName != "" && !containerNameRe.MatchString(c.ContainerName) {
-		return checkerdef.NewConfigError("containerName", "must be a Docker container name ([a-zA-Z0-9][a-zA-Z0-9_.-]*)")
-	}
-
-	if c.ContainerID != "" && !containerIDRe.MatchString(c.ContainerID) {
-		return checkerdef.NewConfigError("containerId", "must be a hexadecimal container ID")
+	if err := c.validateTarget(host); err != nil {
+		return err
 	}
 
 	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > maxTimeout) {
@@ -192,6 +182,26 @@ func (c *DockerConfig) Validate() error {
 		return checkerdef.NewConfigErrorf(
 			"restartLoopWindow", "must be > 0 and <= 24h, got %s", c.RestartLoopWindow.String(),
 		)
+	}
+
+	return nil
+}
+
+// validateTarget checks the socket path of a unix:// host and the syntax of
+// the container reference, which the client splices into the API path.
+func (c *DockerConfig) validateTarget(host string) error {
+	if path, isUnix := strings.CutPrefix(host, unixScheme); isUnix {
+		if err := checkerdef.ValidateLocalSocketPath(path); err != nil {
+			return checkerdef.NewConfigError("host", err.Error())
+		}
+	}
+
+	if c.ContainerName != "" && !containerNameRe.MatchString(c.ContainerName) {
+		return checkerdef.NewConfigError("containerName", "must be a Docker container name ([a-zA-Z0-9][a-zA-Z0-9_.-]*)")
+	}
+
+	if c.ContainerID != "" && !containerIDRe.MatchString(c.ContainerID) {
+		return checkerdef.NewConfigError("containerId", "must be a hexadecimal container ID")
 	}
 
 	return nil

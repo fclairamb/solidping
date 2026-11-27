@@ -111,7 +111,8 @@ func (c *DockerChecker) Execute(
 // without DialLocalSocket, so checkers.unix_socket_paths does not apply.
 func createClient(ctx context.Context, cfg *DockerConfig) (*client.Client, error) {
 	host := cfg.ResolveHost()
-	opts := []client.Opt{client.WithHost(host)}
+	opts := make([]client.Opt, 0, 2) // host + the optional pinned dialer
+	opts = append(opts, client.WithHost(host))
 
 	hostURL, err := client.ParseHostURL(host)
 	if err != nil {
