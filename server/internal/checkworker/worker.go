@@ -231,6 +231,13 @@ type CheckWorker struct {
 	getChecker  func(checkerdef.CheckType) (checkerdef.Checker, bool)
 	parseConfig func(checkerdef.CheckType) (checkerdef.Config, bool)
 
+	// writtenCaps is the capability set last stored for this worker, by
+	// registerWorker and then by the heartbeat loop (the only goroutines that
+	// touch it, one after the other). A heartbeat rewrites the set only when it
+	// differs, and never rewrites the version: it is written at registration
+	// and does not change for the life of the process.
+	writtenCaps []string
+
 	// activation is this process's server-level check-type gate. It filters
 	// the plugin types the worker advertises, so a SaaS cloud worker never
 	// claims an unsafe (exec, nagios) plugin type (spec 2026-10-17-05 §19).
@@ -667,6 +674,7 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 	}
 
 	r.setWorker(registeredWorker)
+	r.writtenCaps = worker.Capabilities
 
 	// A restarted process comes back under the same worker UID (registration
 	// matches by slug) but does not know it holds its predecessor's leases.
@@ -712,19 +720,30 @@ func (r *CheckWorker) heartbeatLoop(ctx context.Context) {
 	}
 }
 
-// updateHeartbeat updates the worker's last_active_at timestamp and re-reports
-// this host's egress families and build version. The egress probe runs HERE,
-// at report time, rather than once at process start: a node that gains or
-// loses an IPv6 route then stops advertising the wrong thing within one beat,
-// with no restart. The build version never changes for the life of the
-// process, so re-sending it every beat is just a cheap package-level read.
+// updateHeartbeat updates the worker's last_active_at timestamp. The capability
+// set and the build version are written at registration; a beat rewrites the
+// set only when it changed since (the egress probe answering after startup, a
+// node gaining or losing an IPv6 route, the browser becoming reachable), and
+// never the version, which is fixed for the life of the process. The set is
+// still computed every beat, so a change is stored within one beat.
 func (r *CheckWorker) updateHeartbeat(ctx context.Context) {
-	if err := r.backend.Heartbeat(
-		ctx, r.getWorker().UID,
-		backend.Capabilities(checkjobsvc.WithBuiltinTypes(ctx, r.advertisedBuiltinTypes()), r.advertisedPluginTypes()),
-		version.Get().Version,
-	); err != nil {
+	caps := backend.Capabilities(
+		checkjobsvc.WithBuiltinTypes(ctx, r.advertisedBuiltinTypes()), r.advertisedPluginTypes(),
+	)
+
+	report := caps
+	if models.SameCapabilitySet(caps, r.writtenCaps) {
+		report = nil // nil leaves the stored set untouched
+	}
+
+	if err := r.backend.Heartbeat(ctx, r.getWorker().UID, report, ""); err != nil {
 		r.logger.ErrorContext(ctx, "Failed to update heartbeat", "error", err)
+
+		return
+	}
+
+	if report != nil {
+		r.writtenCaps = caps
 	}
 }
 

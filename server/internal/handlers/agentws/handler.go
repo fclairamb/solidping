@@ -738,6 +738,13 @@ type connState struct {
 	// egressWrittenAt throttles the workers-row refresh driven by claim frames
 	// (see recordAgentEgress). Zero means "never written on this connection".
 	egressWrittenAt time.Time
+	// writtenCaps and capsWritten are the capability set this connection last
+	// stored; versionWritten is set once it stored the version. The claim path
+	// rewrites the set only when it changed, and the version once per
+	// connection.
+	writtenCaps    []string
+	capsWritten    bool
+	versionWritten bool
 	// pluginsRecorded is set once this connection's plugin report is stored:
 	// one report per connection, whatever the agent sends after it.
 	pluginsRecorded bool
@@ -837,9 +844,31 @@ func (h *Handler) recordAgentEgress(
 		capabilities = regions.StripTaskCapabilities(capabilities)
 	}
 
-	if err := h.dbService.UpdateWorkerHeartbeat(ctx, state.workerUID, capabilities, frame.Version); err != nil {
+	// The set and the version are written once per connection, then the set
+	// again only when it changes: rewriting them on every refresh costs a
+	// ~1 KB array per agent for nothing.
+	if state.capsWritten && models.SameCapabilitySet(capabilities, state.writtenCaps) {
+		capabilities = nil
+	}
+
+	reportedVersion := frame.Version
+	if state.versionWritten {
+		reportedVersion = ""
+	}
+
+	if err := h.dbService.UpdateWorkerHeartbeat(ctx, state.workerUID, capabilities, reportedVersion); err != nil {
 		h.logger.WarnContext(ctx, "failed to refresh agent worker row",
 			"error", err, "agent", state.agent.UID)
+
+		return
+	}
+
+	if capabilities != nil {
+		state.writtenCaps, state.capsWritten = capabilities, true
+	}
+
+	if reportedVersion != "" {
+		state.versionWritten = true
 	}
 }
 

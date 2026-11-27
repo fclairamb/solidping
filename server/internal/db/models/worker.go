@@ -145,6 +145,13 @@ func (w *Worker) Capability(name string) CapabilityState {
 	return CapabilityStateAbsent
 }
 
+// SameCapabilitySet reports whether two capability sets are the same report.
+// nil ("unknown") and an empty set ("none") are different reports, so the
+// nil-ness is compared before the elements.
+func SameCapabilitySet(a, b []string) bool {
+	return (a == nil) == (b == nil) && slices.Equal(a, b)
+}
+
 // ValidateCapabilitySet reports whether a reported set is storable: every name
 // a lowercase `[a-z0-9-]+` slug, and no duplicates. It is the Go mirror of the
 // database CHECK constraint (Postgres) and triggers (SQLite).
