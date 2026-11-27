@@ -3023,8 +3023,13 @@ type AcknowledgeIncidentRequest struct {
 	// these land on the event payload and AcknowledgedBy stays empty.
 	DiscordUserID   string
 	DiscordUsername string
-	Note            string // Optional free-text note
-	Via             string // "slack", "web", "email", "phone", etc.
+	// MattermostUserID / MattermostUsername attribute a Mattermost Blocks
+	// button ack. Mattermost users have no SolidPing mapping, so the payload
+	// is the only record of who pressed the button.
+	MattermostUserID   string
+	MattermostUsername string
+	Note               string // Optional free-text note
+	Via                string // "slack", "web", "email", "phone", etc.
 	// EchoOriginTeamID names the Slack workspace where this acknowledgment is
 	// ALREADY visible, and is therefore the workspace the ack-notice fan-out
 	// must skip: the message whose button was pressed is rewritten in place
@@ -3038,6 +3043,10 @@ type AcknowledgeIncidentRequest struct {
 	// EchoOriginGuildID is the Discord counterpart of EchoOriginTeamID, set
 	// only by the Discord button path for the same reason.
 	EchoOriginGuildID string
+	// EchoOriginMattermostUID names the Mattermost integration whose post was
+	// clicked. Its ack notice is skipped because the original post is updated
+	// in place with "Acknowledged by @them".
+	EchoOriginMattermostUID string
 }
 
 // AcknowledgeIncident marks an incident as acknowledged. Accepts the org
@@ -3177,6 +3186,11 @@ func (s *Service) buildAcknowledgmentEvent(
 	if req.DiscordUserID != "" {
 		event.Payload[payloadKeyAckDiscordUserID] = req.DiscordUserID
 		event.Payload[payloadKeyAckDiscordUser] = req.DiscordUsername
+	}
+
+	if req.MattermostUserID != "" {
+		event.Payload[payloadKeyMattermostUserID] = req.MattermostUserID
+		event.Payload[payloadKeyMattermostUsername] = req.MattermostUsername
 	}
 
 	if req.AcknowledgedBy != "" {
@@ -3408,6 +3422,26 @@ func (s *Service) AcknowledgeIncidentFromDiscord(
 		DiscordUsername:   discordUsername,
 		Via:               CommentSourceDiscord,
 		EchoOriginGuildID: guildID,
+	})
+}
+
+// AcknowledgeIncidentFromMattermost marks an incident acknowledged from a
+// Mattermost Blocks button. Same idempotent, escalation-canceling path as the
+// Slack and Discord variants; only the attribution differs. Mattermost users
+// have no SolidPing account mapping, so the username lives on the event
+// payload and AcknowledgedBy stays empty.
+//
+// integrationUID is the connection whose post was clicked, skipped by the
+// ack-notice fan-out because the action response rewrites that post in place.
+func (s *Service) AcknowledgeIncidentFromMattermost(
+	ctx context.Context, orgUID, incidentUID, mattermostUserID, mattermostUsername, integrationUID string,
+) (*models.Incident, error) {
+	return s.acknowledgeIncidentByOrgUID(ctx, orgUID, &AcknowledgeIncidentRequest{
+		IncidentUID:             incidentUID,
+		MattermostUserID:        mattermostUserID,
+		MattermostUsername:      mattermostUsername,
+		Via:                     "mattermost",
+		EchoOriginMattermostUID: integrationUID,
 	})
 }
 
@@ -3949,6 +3983,26 @@ func (s *Service) snoozeIncidentByOrgUID(
 		incident.AcknowledgedBy = update.AcknowledgedBy
 	}
 
+	event := s.buildSnoozeEvent(ctx, orgUID, incident, until, req)
+
+	if err := s.db.CreateEvent(ctx, event); err != nil {
+		slog.WarnContext(ctx, "Failed to create snooze event",
+			"incident_uid", incident.UID, "error", err)
+	}
+
+	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
+
+	s.cancelForSnooze(ctx, incident.UID, until)
+
+	return incident, nil
+}
+
+// buildSnoozeEvent assembles the append-only snooze event. Split out so the
+// state transition above stays readable and the payload has one home.
+func (s *Service) buildSnoozeEvent(
+	ctx context.Context, orgUID string, incident *models.Incident,
+	until time.Time, req *SnoozeIncidentRequest,
+) *models.Event {
 	event := models.NewEvent(orgUID, models.EventTypeIncidentSnoozed, models.ActorTypeUser)
 	event.IncidentUID = &incident.UID
 	event.CheckUID = &incident.CheckUID
@@ -3969,16 +4023,7 @@ func (s *Service) snoozeIncidentByOrgUID(
 		event.ActorUID = &req.ActorUID
 	}
 
-	if err := s.db.CreateEvent(ctx, event); err != nil {
-		slog.WarnContext(ctx, "Failed to create snooze event",
-			"incident_uid", incident.UID, "error", err)
-	}
-
-	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
-
-	s.cancelForSnooze(ctx, incident.UID, until)
-
-	return incident, nil
+	return event
 }
 
 // resolveSnoozeUntil normalizes Until / Duration into a single timestamp and

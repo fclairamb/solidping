@@ -220,6 +220,7 @@ var demoUnauthenticatedRoutes = map[string]string{
 	"POST /api/v1/integrations/slack/events":         "Slack webhook (signature-verified)",
 	"POST /api/v1/integrations/slack/interaction":    "Slack webhook (signature-verified)",
 	"POST /api/v1/integrations/discord/interactions": "Discord webhook (signature-verified)",
+	"POST /api/v1/integrations/mattermost/actions":   "Mattermost Blocks action (signed token)",
 	"POST /api/v1/integrations/msteams/messages":     "MS Teams webhook",
 	"POST /api/v1/integrations/twilio/message":       "Twilio webhook (signature-verified)",
 	"POST /api/v1/integrations/twilio/status":        "Twilio webhook (signature-verified)",
