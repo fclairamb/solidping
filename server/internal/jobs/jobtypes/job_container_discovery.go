@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
 	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
@@ -77,6 +78,10 @@ func (r *ContainerDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobCont
 	// tcp:// endpoints dial through the process egress guard and unix://
 	// sockets are refused when it is enforcing (spec 2026-10-16-10).
 	ctx = egress.WithGuard(ctx, egressGuardFrom(jctx))
+	// unix:// endpoints must be listed Docker sockets (spec 2026-11-27-03).
+	if jctx.AppConfig != nil {
+		ctx = checkerdef.WithDockerSocketAllowlist(ctx, jctx.AppConfig.Checkers.DockerSocketPaths)
+	}
 
 	orgUID := *jctx.OrganizationUID
 	jobUID := jctx.Job.UID

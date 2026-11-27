@@ -56,8 +56,10 @@ func StringValue(param *models.Parameter) (string, bool) {
 // denylist). A platform key — org-scoped like `encryption.dek`, or instance-wide
 // like `msteams.app_secret` — is unreachable because it is not in the namespace.
 //
-// The `secret` flag only masks API responses, so the plaintext value is read
-// directly here.
+// The `secret` flag masks API responses. At rest a secret value is sealed
+// (sysparamseal, with a master key): store is the decorated db.Service, which
+// hands back the clear value. A sealed row it cannot open is an error, and so
+// an unresolved reference here, never an empty value.
 func LookupParam(ctx context.Context, store ParamStore, orgUID, key string) (string, error) {
 	if store == nil {
 		return "", Unresolvedf(SchemeParam, key)
