@@ -91,15 +91,30 @@ func formatAPIError(err *client.Error, statusCode int) string {
 	return msg
 }
 
-// checksListAction handles listing all checks
-//
-//nolint:gocognit,cyclop,funlen // CLI output formatting requires conditional logic
+// checksListAction handles listing all checks.
 func checksListAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
 		return err
 	}
 
+	if err = validateWatch(cmd, cliCtx); err != nil {
+		return err
+	}
+
+	if cmd.Bool("watch") {
+		return runWatchCommand(ctx, cliCtx, "checks list", "checks", func(ctx context.Context) error {
+			return checksListRun(ctx, cmd, cliCtx)
+		})
+	}
+
+	return checksListRun(ctx, cmd, cliCtx)
+}
+
+// checksListRun fetches the checks once and prints them.
+//
+//nolint:gocognit,cyclop,funlen // CLI output formatting requires conditional logic
+func checksListRun(ctx context.Context, cmd *cli.Command, cliCtx *Context) error {
 	// Get API client
 	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
 	if err != nil {

@@ -182,6 +182,10 @@ func GetCommands() []*cli.Command {
 							Name:  flagAll,
 							Usage: "Show all checks (internal + non-internal)",
 						},
+						&cli.BoolFlag{
+							Name:  "watch",
+							Usage: "Live view: redraw on server changes (table output only)",
+						},
 					},
 					Action: checksListAction,
 				},
@@ -646,6 +650,10 @@ func GetCommands() []*cli.Command {
 							Name:  flagSize,
 							Usage: usageResultsPerPage,
 							Value: 20,
+						},
+						&cli.BoolFlag{
+							Name:  "watch",
+							Usage: "Live view: redraw on server changes (table output only)",
 						},
 					},
 					Action: incidentsListAction,

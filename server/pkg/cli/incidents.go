@@ -19,14 +19,29 @@ import (
 const stateUnknown = "unknown"
 
 // incidentsListAction handles listing incidents.
-//
-//nolint:funlen,cyclop // CLI parameter parsing and output formatting
 func incidentsListAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
 		return err
 	}
 
+	if err = validateWatch(cmd, cliCtx); err != nil {
+		return err
+	}
+
+	if cmd.Bool("watch") {
+		return runWatchCommand(ctx, cliCtx, "incidents list", "incidents", func(ctx context.Context) error {
+			return incidentsListRun(ctx, cmd, cliCtx)
+		})
+	}
+
+	return incidentsListRun(ctx, cmd, cliCtx)
+}
+
+// incidentsListRun fetches the incidents once and prints them.
+//
+//nolint:funlen,cyclop // CLI parameter parsing and output formatting
+func incidentsListRun(ctx context.Context, cmd *cli.Command, cliCtx *Context) error {
 	// Get API client
 	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
 	if err != nil {
