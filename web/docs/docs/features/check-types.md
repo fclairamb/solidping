@@ -1411,6 +1411,24 @@ docker client, so `/var/run/docker.sock` does **not** need to be in
 `checkers.unix_socket_paths` (never put it there); the same egress rules apply as
 for a container check.
 
+**Docker socket allowlist.** A docker check (daemon or container mode) reaches
+its `unix://` host through the docker client, not through
+`checkers.unix_socket_paths`, so it has its own list:
+`checkers.docker_socket_paths` (`SP_CHECKERS_DOCKER_SOCKET_PATHS`,
+comma-separated). It defaults to `/var/run/docker.sock,/run/docker.sock`, and
+uses the same rules as `checkers.unix_socket_paths`: an exact path, or a
+directory prefix ending in `/`. A `unix://` host outside the list is refused at
+save time (on regions this server runs) and at run time, with a down result
+naming the setting; set the variable to an empty string to refuse every
+`unix://` host. A [private location agent](./private-locations.md) applies its
+own list. For rootless Docker or Podman, add their sockets, for example
+`/run/user/1000/docker.sock` (rootless Docker), `/run/podman/podman.sock`
+(rootful Podman) or `/run/user/1000/podman/podman.sock` (rootless Podman).
+Container discovery applies the same list to its `unix://` endpoints.
+`containerName` must be a Docker container name
+(`[a-zA-Z0-9][a-zA-Z0-9_.-]*`, optionally with a leading `/`) and `containerId`
+a hexadecimal container ID.
+
 **Local socket in a container.** The default host is
 `unix:///var/run/docker.sock`. The SolidPing image runs as uid `65532`, and the
 host's socket is usually owned by `root:docker` with mode `0660`, so mounting it
