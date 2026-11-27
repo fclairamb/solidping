@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -104,6 +105,52 @@ func TestStorageArchiverCorruptFileFails(t *testing.T) {
 	err = archive.New(storage).Archive(ctx, orgUID.String(), "check-1", models.PeriodTypeHour, hour,
 		[]*models.Result{rawResult("r1", hour)})
 	r.ErrorContains(err, "decode archive")
+}
+
+// TestStorageArchiverCorruptDayFileFails: an unreadable day file fails the day
+// step and the hour files stay, so their rows are not lost.
+func TestStorageArchiverCorruptDayFileFails(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	storage := localfs.New(t.TempDir())
+	archiver := archive.New(storage)
+	orgUID := uuid.New()
+	day := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
+	hour := day.Add(10 * time.Hour)
+
+	r.NoError(archiver.Archive(ctx, orgUID.String(), "check-1", models.PeriodTypeHour, hour,
+		[]*models.Result{rawResult("r1", hour)}))
+
+	_, err := storage.WriteFile(ctx, orgUID, filestorage.GroupTypeArchives, archive.DayFileID("check-1", day),
+		strings.NewReader("not a vortex file"), filestorage.FileMetadata{})
+	r.NoError(err)
+
+	err = archiver.Archive(ctx, orgUID.String(), "check-1", models.PeriodTypeDay, day,
+		[]*models.Result{hourRollup("hour-10", nil, hour)})
+	r.ErrorContains(err, "decode archive")
+	r.True(archiveExists(t, storage, orgUID, archive.HourFileID("check-1", hour)))
+}
+
+// TestStorageArchiverUnencodableResultFails: a result whose JSON cannot be
+// encoded fails the hour step before anything is written.
+func TestStorageArchiverUnencodableResultFails(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	storage := localfs.New(t.TempDir())
+	orgUID := uuid.New()
+	hour := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)
+
+	res := rawResult("r1", hour)
+	res.Metrics = models.JSONMap{"ttfb": math.Inf(1)}
+
+	err := archive.New(storage).Archive(ctx, orgUID.String(), "check-1", models.PeriodTypeHour, hour,
+		[]*models.Result{res})
+	r.ErrorContains(err, "metrics of r1")
+	r.False(archiveExists(t, storage, orgUID, archive.HourFileID("check-1", hour)))
 }
 
 func TestDeleteOrganizationArchives(t *testing.T) {
