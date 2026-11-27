@@ -64,6 +64,8 @@
     "default": "Par défaut pour les nouveaux contrôles",
     "defaultHelp": "Pré-coché à la création d'un contrôle. Les contrôles existants ne sont pas affectés.",
     "webhookUrl": "URL du webhook",
+    "mattermostBlocks": "Utiliser Mattermost Blocks",
+    "mattermostBlocksHint": "Envoyez des cartes riches et interactives avec Acquitter et un lien vers le tableau de bord. Nécessite Mattermost v11.10+ avec Mattermost Blocks activé ; les clients plus anciens n'affichent pas la carte. Acquitter nécessite que Mattermost puisse joindre l'URL publique de cette instance SolidPing.",
     "msteamsWebhookHint": "Dans Teams, ouvrez Workflows → « Publier dans un canal lors de la réception d'une requête webhook », terminez l'assistant, puis collez ici l'URL de workflow obtenue. Le connecteur historique « Webhook entrant » est retiré et ne fonctionnera pas.",
     "recipients": "Destinataires",
     "recipientsPlaceholder": "ops@example.com, oncall@example.com",

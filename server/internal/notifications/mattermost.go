@@ -11,10 +11,28 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/httpclientpool"
+	"github.com/fclairamb/solidping/server/internal/incidentlinks"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
 const mattermostTimeout = 30 * time.Second
+
+// Mattermost message formats. Attachments is the historical format and stays
+// the default so an existing integration keeps its exact rendering. Blocks is
+// the v11.10+ card format with layout and interactive controls.
+const (
+	MattermostFormatAttachments = "attachments"
+	MattermostFormatBlocks      = "mm_blocks"
+)
+
+// Mattermost Blocks action IDs and the values carried in the signed action
+// token. IDs are per post, so the short names are enough.
+const (
+	MattermostActionAcknowledge = "ack"
+
+	mattermostActionIDAck  = "solidping_ack"
+	mattermostActionIDOpen = "solidping_open"
+)
 
 // Mattermost attachment colors.
 const (
@@ -38,6 +56,10 @@ const (
 var (
 	// ErrMattermostWebhookURLNotConfigured is returned when the Mattermost webhook URL is missing.
 	ErrMattermostWebhookURLNotConfigured = newConfigError("mattermost webhook URL not configured", "webhook URL")
+	// ErrMattermostMessageFormatInvalid is returned when message_format is set
+	// to anything other than attachments or mm_blocks. Validation at save time
+	// catches the normal path; this guards a hand-written row.
+	ErrMattermostMessageFormatInvalid = newConfigError("mattermost message format is invalid", "message_format")
 	// errMattermostWebhookFailed is returned when the Mattermost webhook request fails.
 	errMattermostWebhookFailed = errors.New("mattermost webhook failed")
 )
@@ -57,7 +79,7 @@ func (s *MattermostSender) Send(ctx context.Context, jctx *jobdef.JobContext, pa
 		return urlErr
 	}
 
-	msg := s.buildMessage(settings, payload)
+	msg := s.buildOutgoingMessage(settings, payload, jctx)
 
 	body, err := json.Marshal(msg)
 	if err != nil {
@@ -97,6 +119,10 @@ type mattermostSettings struct {
 	Channel    string `json:"channel"`
 	Username   string `json:"username"`
 	IconURL    string `json:"icon_url"` //nolint:tagliatelle // aligned with the outgoing Mattermost payload field
+	// MessageFormat selects attachments (default) or mm_blocks. Empty is
+	// attachments, so every row written before this setting existed keeps
+	// its exact legacy behavior without a migration.
+	MessageFormat string `json:"message_format,omitempty"` //nolint:tagliatelle // matches dashboard form key
 }
 
 func (s *MattermostSender) parseSettings(payload *Payload) (*mattermostSettings, error) {
@@ -123,7 +149,59 @@ func (s *MattermostSender) parseSettings(payload *Payload) (*mattermostSettings,
 		settings.Username = productName
 	}
 
+	switch settings.MessageFormat {
+	case "":
+		settings.MessageFormat = MattermostFormatAttachments
+	case MattermostFormatAttachments, MattermostFormatBlocks:
+	default:
+		return nil, ErrMattermostMessageFormatInvalid
+	}
+
 	return &settings, nil
+}
+
+// buildOutgoingMessage picks the wire shape for one delivery. Attachments stay
+// a separate struct so the legacy body is byte-for-byte what it always was;
+// only the blocks branch adds props/priority.
+func (s *MattermostSender) buildOutgoingMessage(
+	settings *mattermostSettings, payload *Payload, jctx *jobdef.JobContext,
+) any {
+	if settings.MessageFormat == MattermostFormatBlocks {
+		return BuildMattermostBlocksPost(payload, s.blocksRenderOptions(settings, payload, jctx))
+	}
+
+	return s.buildMessage(settings, payload)
+}
+
+// blocksRenderOptions mints the signed action tokens for one post. Actions are
+// deliberately absent for the dashboard test message (EventKey is empty): its
+// incident UID is synthetic, so a click would land on a 404.
+func (s *MattermostSender) blocksRenderOptions(
+	settings *mattermostSettings, payload *Payload, jctx *jobdef.JobContext,
+) *MattermostBlocksRenderOptions {
+	opts := &MattermostBlocksRenderOptions{
+		Channel:   settings.Channel,
+		Username:  settings.Username,
+		IconURL:   settings.IconURL,
+		ActionURL: MattermostActionURL(payload.AppBaseURL),
+	}
+
+	if payload.EventKey == "" || opts.ActionURL == "" ||
+		payload.Incident == nil || payload.Integration == nil ||
+		payload.Integration.OrganizationUID == "" || jctx == nil || jctx.AppConfig == nil ||
+		jctx.AppConfig.Auth.JWTSecret == "" {
+		return opts
+	}
+
+	secret := []byte(jctx.AppConfig.Auth.JWTSecret)
+	exp := jctx.ClockNow().Add(incidentlinks.MattermostActionTTL)
+	opts.EnableActions = true
+	opts.AckToken = incidentlinks.SignMattermostAction(
+		secret, payload.Integration.OrganizationUID, payload.Incident.UID, payload.Integration.UID,
+		MattermostActionAcknowledge, exp,
+	)
+
+	return opts
 }
 
 type mattermostMessage struct {
@@ -131,6 +209,7 @@ type mattermostMessage struct {
 	Username    string                 `json:"username,omitempty"`
 	IconURL     string                 `json:"icon_url,omitempty"` //nolint:tagliatelle // Mattermost API format
 	Attachments []mattermostAttachment `json:"attachments"`
+	Priority    *MattermostPriority    `json:"priority,omitempty"`
 }
 
 type mattermostAttachment struct {
@@ -166,6 +245,7 @@ func (s *MattermostSender) buildMessage(settings *mattermostSettings, payload *P
 				Ts:       payload.Incident.StartedAt.Unix(),
 			},
 		},
+		Priority: mattermostPriorityFor(payload),
 	}
 
 	if settings.Channel != "" {

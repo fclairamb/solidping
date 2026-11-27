@@ -104,6 +104,7 @@ func (s *Service) ackActorName(ctx context.Context, req *AcknowledgeIncidentRequ
 	for _, candidate := range []string{
 		req.SlackUsername,
 		req.DiscordUsername,
+		req.MattermostUsername,
 		// The bare first name, not the whole `via Telegram (Carol)` label —
 		// otherwise the notice reads "via Telegram (Carol) acknowledged this
 		// incident via Telegram".
@@ -129,6 +130,7 @@ func (s *Service) ackActorName(ctx context.Context, req *AcknowledgeIncidentRequ
 		req.PhoneNumber,
 		req.SlackUserID,
 		req.DiscordUserID,
+		req.MattermostUserID,
 	} {
 		if candidate != "" {
 			return candidate
@@ -162,6 +164,12 @@ func isAckEchoOrigin(conn *models.Integration, req *AcknowledgeIncidentRequest) 
 		}
 
 		return settings.GuildID == req.EchoOriginGuildID
+	case req.EchoOriginMattermostUID != "" && conn.Type == models.ConnectionTypeMattermost:
+		// Mattermost has no workspace identity stored on the connection and
+		// one webhook maps to one channel, so the connection UID is the exact
+		// origin. Matching by host would skip unrelated channels on the same
+		// server.
+		return conn.UID == req.EchoOriginMattermostUID
 	default:
 		return false
 	}
