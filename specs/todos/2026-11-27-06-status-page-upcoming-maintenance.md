@@ -125,6 +125,13 @@ unless the open question below says otherwise.
    already gives the chronological history with updates; revisit only if users ask for a
    shareable `/history` URL or month grouping.
 
+## Resolved open questions
+
+1. Always on, no new column, no migration: every public status page lists the upcoming windows of the resources it shows. (autopilot: recommended answer)
+2. Fixed 7-day horizon. (autopilot: recommended answer)
+3. Publish the window's description, rendered as plain text (no markdown). (autopilot: recommended answer)
+4. No dedicated incident-timeline page: the existing "Past incidents" section covers it. (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes #1084. The implementing PR body **must** carry one `Closes #1084` line so
