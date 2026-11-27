@@ -133,6 +133,7 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   "discovery:method.kubernetes": ["fr", "de", "es", "zh"], // "Kubernetes"
   "incidents:timeline.ackChannels.slack": ["fr", "de", "es", "zh"], // "Slack"
   "incidents:timeline.ackChannels.discord": ["fr", "de", "es", "zh"], // "Discord"
+  "incidents:timeline.ackChannels.mattermost": ["fr", "de", "es", "zh"], // "Mattermost"
   "incidents:timeline.ackChannels.telegram": ["fr", "de", "es", "zh"], // "Telegram"
   "integrations:freebox.name": ["fr", "de", "es", "zh"], // "Freebox"
   "integrations:kubernetes.name": ["fr", "de", "es", "zh"], // "Kubernetes"

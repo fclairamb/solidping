@@ -70,7 +70,7 @@ func channelNameIn(loc i18n.Locale, channel string) string {
 // dashboard and for unknown channels.
 func channelKey(channel string) string {
 	switch key := strings.ToLower(strings.TrimSpace(channel)); key {
-	case "slack", "discord", "telegram", "email", "phone":
+	case "slack", "discord", "telegram", "mattermost", "email", "phone":
 		return key
 	default:
 		return ""

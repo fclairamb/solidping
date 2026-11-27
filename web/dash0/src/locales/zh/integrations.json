@@ -64,6 +64,8 @@
     "default": "新监控项的默认渠道",
     "defaultHelp": "创建新监控项时默认勾选。现有监控项不受影响。",
     "webhookUrl": "Webhook URL",
+    "mattermostBlocks": "使用 Mattermost Blocks",
+    "mattermostBlocksHint": "发送可交互的告警卡片，支持确认和仪表盘链接。需要 Mattermost v11.10+ 并启用 Mattermost Blocks；旧客户端不会显示卡片。确认需要 Mattermost 能访问此 SolidPing 实例的公网地址。",
     "msteamsWebhookHint": "在 Teams 中打开“工作流”→“当收到 Webhook 请求时发布到频道”，完成向导，然后把生成的工作流 URL 粘贴到这里。旧版“传入 Webhook”连接器已停用，不再可用。",
     "recipients": "收件人",
     "recipientsPlaceholder": "ops@example.com, oncall@example.com",

@@ -204,6 +204,7 @@
     "ackChannels": {
       "slack": "Slack",
       "discord": "Discord",
+      "mattermost": "Mattermost",
       "telegram": "Telegram",
       "email": "邮件",
       "phone": "电话"

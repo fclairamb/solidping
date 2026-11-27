@@ -820,11 +820,13 @@ export const ACK_EVENT_TYPE = "incident.acknowledged";
 const ACK_ACTOR_PAYLOAD_KEYS = [
   "slack_username",
   "discord_username",
+  "mattermost_username",
   "acknowledged_by_telegram",
   "acknowledged_by_email",
   "acknowledged_by_phone",
   "slack_user_id",
   "discord_user_id",
+  "mattermost_user_id",
 ] as const;
 
 // isAckEvent reports whether an event is an incident acknowledgment.

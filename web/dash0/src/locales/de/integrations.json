@@ -64,6 +64,8 @@
     "default": "Standard für neue Checks",
     "defaultHelp": "Vorausgewählt bei neuen Checks. Bestehende Checks bleiben unverändert.",
     "webhookUrl": "Webhook-URL",
+    "mattermostBlocks": "Mattermost Blocks verwenden",
+    "mattermostBlocksHint": "Reiche, interaktive Karten mit Bestätigen und einem Dashboard-Link senden. Erfordert Mattermost v11.10+ mit aktivierten Mattermost Blocks; ältere Clients zeigen die Karte nicht an. Bestätigen erfordert, dass Mattermost die öffentliche URL dieser SolidPing-Instanz erreichen kann.",
     "msteamsWebhookHint": "Öffnen Sie in Teams Workflows → „In einem Kanal posten, wenn eine Webhook-Anfrage eingeht“, schließen Sie den Assistenten ab und fügen Sie hier die erhaltene Workflow-URL ein. Der veraltete „Incoming Webhook“-Connector ist abgeschaltet und funktioniert nicht mehr.",
     "recipients": "Empfänger",
     "recipientsPlaceholder": "ops@example.com, oncall@example.com",

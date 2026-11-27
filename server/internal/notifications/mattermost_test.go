@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -207,4 +208,80 @@ func TestMattermostSender_NonSuccessStatusErrors(t *testing.T) {
 
 	err := sender.Send(context.Background(), &jobdef.JobContext{}, payload)
 	r.ErrorIs(err, errMattermostWebhookFailed)
+}
+
+func TestMattermostSettings_MessageFormatDefaultsToAttachments(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	payload := mattermostPayload(models.JSONMap{"webhook_url": "https://mattermost.example.com/hooks/abc"})
+
+	settings, err := (&MattermostSender{}).parseSettings(payload)
+	r.NoError(err)
+	r.Equal(MattermostFormatAttachments, settings.MessageFormat)
+}
+
+func TestMattermostSettings_MessageFormatBlocks(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	payload := mattermostPayload(models.JSONMap{
+		"webhook_url":    "https://mattermost.example.com/hooks/abc",
+		"message_format": MattermostFormatBlocks,
+	})
+
+	settings, err := (&MattermostSender{}).parseSettings(payload)
+	r.NoError(err)
+	r.Equal(MattermostFormatBlocks, settings.MessageFormat)
+}
+
+func TestMattermostSettings_InvalidMessageFormat(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	payload := mattermostPayload(models.JSONMap{
+		"webhook_url":    "https://mattermost.example.com/hooks/abc",
+		"message_format": "slack_blocks",
+	})
+
+	_, err := (&MattermostSender{}).parseSettings(payload)
+	r.ErrorIs(err, ErrMattermostMessageFormatInvalid)
+}
+
+func TestMattermostSender_BlocksPostsExpectedPayload(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	fake, url := newMattermostFake(t, http.StatusOK)
+	payload := mattermostPayload(models.JSONMap{
+		"webhook_url":    url,
+		"message_format": MattermostFormatBlocks,
+		"channel":        "#alerts",
+		"username":       "SolidPing Bot",
+	})
+	payload.AppBaseURL = "https://sp.acme.com"
+	payload.EventKey = "job-1"
+
+	jctx := &jobdef.JobContext{AppConfig: &config.Config{
+		Auth:   config.AuthConfig{JWTSecret: "test-secret"},
+		Server: config.ServerConfig{BaseURL: "https://sp.acme.com"},
+	}}
+
+	err := (&MattermostSender{}).Send(context.Background(), jctx, payload)
+	r.NoError(err)
+
+	fake.mu.Lock()
+	body := fake.bodies[len(fake.bodies)-1]
+	fake.mu.Unlock()
+
+	var msg MattermostBlocksPost
+	r.NoError(json.Unmarshal(body, &msg))
+	r.Equal("#alerts", msg.Channel)
+	r.Equal("SolidPing Bot", msg.Username)
+	r.Contains(string(body), "[DOWN]")
+	r.Contains(string(body), "API health")
+	r.Equal("urgent", msg.Priority.Priority)
+	r.NotEmpty(msg.Props.Blocks)
+	r.Contains(msg.Props.Actions, mattermostActionIDAck)
+	r.Contains(msg.Props.Actions, mattermostActionIDOpen)
 }
