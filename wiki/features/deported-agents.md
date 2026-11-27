@@ -424,6 +424,18 @@ upgrade below.
 **`serverVersion` in `hello`.** Every hello frame carries the server's
 version (`ServerFrame.ServerVersion`, `omitempty`); older agents ignore it.
 
+**`reportsOnce` in the identity `hello`.** A server that sets it keeps the
+agent's capability set and version for the whole connection (`connState`). The
+agent then sends them on the first claim of each connection, and the set again
+only when it changes (`WSBackend.capabilityReport`); later claims omit both,
+and the server scopes them with the connection's last set. It writes the set
+and the version to the worker row only when a claim brought them, so a current
+agent costs one write of each per connection. An older server omits the flag
+and the agent sends both on every claim; an older agent ignores it, sends both
+every time, and both are written on every throttled refresh, as before.
+In-process workers write both at registration, and a heartbeat rewrites the set
+only when it changed (`CheckWorker.updateHeartbeat`).
+
 ### Rolling upgrade and agent image registry
 
 Drifted agents are asked to restart on the server's version, one per region at

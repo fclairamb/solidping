@@ -2,8 +2,9 @@
 // and the verdict the database must return for each of them.
 //
 // IT EXISTS SO THE TWO DIALECTS CANNOT DRIFT. Postgres enforces the shape with
-// a regex CHECK over the array's text rendering; SQLite enforces it with a
-// json_valid CHECK plus a pair of json_each triggers. Those are completely
+// a CHECK (a regex over the array's text rendering, plus an unnest-based
+// duplicate test); SQLite enforces it with a json_valid CHECK plus a pair of
+// json_each triggers. Those are completely
 // different mechanisms, and the whole point of spec 2026-08-16-02 is that a
 // value one of them refuses must not be storable in the other. Two hand-written
 // per-dialect case lists would silently diverge the first time someone edits
@@ -12,6 +13,13 @@
 // It is a plain (non-_test) package only because Go cannot import a _test file
 // across packages; nothing in the server links it.
 package dbcaptest
+
+import (
+	"crypto/md5"
+	"encoding/hex"
+	"strconv"
+	"strings"
+)
 
 // Case is one candidate value and whether the database must accept it.
 type Case struct {
@@ -78,6 +86,40 @@ func SharedCases() []Case {
 		{"embedded-space", `'{"a b"}'`, `'["a b"]'`, false},
 		{"separator-inside-a-name", `'{"a,b"}'`, `'["a,b"]'`, false},
 		{"non-ascii", "'{ipv6é}'", `'["ipv6é"]'`, false},
+
+		// --- the size an agent really reports, and well beyond ---
+		largeSetCase("large-set", false, true),
+		largeSetCase("large-set-duplicate-last", true, false),
+	}
+}
+
+// largeSetSize is well above the ~55 capabilities an agent reports since
+// v0.56.0 (one check-type-* entry per check type). Until v0.57.0 the Postgres
+// CHECK found duplicates with a back-reference regex: ~400 ms per row at 52
+// entries, growing much faster than the set, and paid by every heartbeat. At
+// this size that regex does not finish within the parity tests' timeout.
+const largeSetSize = 200
+
+// largeSetCase is a set of largeSetSize distinct capabilities. The names are
+// long on purpose (the regex cost grew with name length too: short names such
+// as `cap-001` stayed fast). With dupLast, the last element repeats the first
+// one, the worst case for a scan.
+func largeSetCase(name string, dupLast bool, accepted bool) Case {
+	names := make([]string, largeSetSize)
+	for i := range names {
+		sum := md5.Sum([]byte(strconv.Itoa(i)))
+		names[i] = "check-type-" + hex.EncodeToString(sum[:])
+	}
+
+	if dupLast {
+		names[len(names)-1] = names[0]
+	}
+
+	return Case{
+		Name:            name,
+		PostgresLiteral: "'{" + strings.Join(names, ",") + "}'",
+		SQLiteLiteral:   `'["` + strings.Join(names, `","`) + `"]'`,
+		Accepted:        accepted,
 	}
 }
 
