@@ -105,3 +105,30 @@ func TestUnixSocketPathsEnv(t *testing.T) {
 	r.NoError(err)
 	r.Empty(cfg.Checkers.UnixSocketPaths)
 }
+
+// TestDockerSocketPathsEnv binds SP_CHECKERS_DOCKER_SOCKET_PATHS through Load()
+// (spec 2026-11-27-03). Unset, the default lists the two usual Docker sockets;
+// set but empty, it refuses every unix:// docker host.
+func TestDockerSocketPathsEnv(t *testing.T) {
+	r := require.New(t)
+
+	r.NoError(os.Unsetenv(EnvCheckersDockerSocketPaths))
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal([]string{"/var/run/docker.sock", "/run/docker.sock"}, cfg.Checkers.DockerSocketPaths)
+	r.Contains(RecognizedEnvVars(), EnvCheckersDockerSocketPaths)
+
+	t.Setenv(EnvCheckersDockerSocketPaths, " /run/user/1000/docker.sock , /run/podman/")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.Equal([]string{"/run/user/1000/docker.sock", "/run/podman/"}, cfg.Checkers.DockerSocketPaths)
+
+	t.Setenv(EnvCheckersDockerSocketPaths, "")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.NotNil(cfg.Checkers.DockerSocketPaths)
+	r.Empty(cfg.Checkers.DockerSocketPaths)
+}

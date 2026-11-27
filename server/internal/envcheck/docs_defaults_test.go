@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/defaults"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
@@ -95,6 +96,9 @@ var docsDefaultAccessors = map[string]func(*config.Config) string{
 	"SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD": durOf(func(c *config.Config) time.Duration {
 		return c.Server.CheckWorker.FetchMaxAhead
 	}),
+	"SP_CHECKERS_DOCKER_SOCKET_PATHS": func(*config.Config) string {
+		return strings.Join(checkerdef.DefaultDockerSocketPaths(), ",")
+	},
 	"SP_ADMIN_EMAIL":            fixed(defaults.Email),
 	"SP_FILESTORAGE_LOCAL_ROOT": func(c *config.Config) string { return c.FileStorage.LocalRoot },
 	"SP_LOG_LEVEL": func(c *config.Config) string {

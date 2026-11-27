@@ -555,7 +555,27 @@ func (s *Service) validateHostLocalDeploymentConfig(
 // own workers may run the check (a non-private region, or no region). A check
 // pinned to private regions only runs on agents, whose allowlist the server
 // does not know: the agent refuses at dial time.
+//
+// A docker check's unix:// host is held to checkers.docker_socket_paths the
+// same way (spec 2026-11-27-03): the docker client dials it itself, so the
+// checker applies that list at dial time and the save path mirrors it.
 func (s *Service) validateLocalSocketConfig(cfg checkerdef.Config, checkRegions []string) error {
+	if field, path, ok := checkerdef.DockerSocketOf(cfg); ok {
+		if err := checkerdef.ValidateLocalSocketPath(path); err != nil {
+			return checkerdef.NewConfigError(field, err.Error())
+		}
+
+		if onlyPrivateRegions(checkRegions) {
+			return nil
+		}
+
+		if err := checkerdef.DockerSocketAllowed(s.dockerSocketAllowlistOrDefault(), path); err != nil {
+			return checkerdef.NewConfigError(field, err.Error())
+		}
+
+		return nil
+	}
+
 	field, path, ok := checkerdef.LocalSocketOf(cfg)
 	if !ok {
 		return nil

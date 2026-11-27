@@ -656,6 +656,11 @@ type Service struct {
 	// 2026-11-24-01). nil = refuse every socket target its own workers would
 	// run. See SetLocalSocketAllowlist.
 	localSocketAllowlist []string
+	// dockerSocketAllowlist is this server's checkers.docker_socket_paths
+	// (spec 2026-11-27-03). Unwired (dockerSocketAllowlistSet false), the
+	// default list applies. See SetDockerSocketAllowlist.
+	dockerSocketAllowlist    []string
+	dockerSocketAllowlistSet bool
 }
 
 // StatusPageReconciler re-materializes the org's selector-driven status page
@@ -721,6 +726,23 @@ func (s *Service) cancelRuns(ctx context.Context, checkUID string) bool {
 // refused at save time rather than failing on every run.
 func (s *Service) SetLocalSocketAllowlist(allowlist []string) {
 	s.localSocketAllowlist = allowlist
+}
+
+// SetDockerSocketAllowlist wires this server's Docker socket allowlist
+// (config.CheckersConfig.DockerSocketPaths), so a docker check whose unix://
+// host is outside it is refused at save time. An empty list refuses every
+// unix:// docker host.
+func (s *Service) SetDockerSocketAllowlist(allowlist []string) {
+	s.dockerSocketAllowlist = allowlist
+	s.dockerSocketAllowlistSet = true
+}
+
+func (s *Service) dockerSocketAllowlistOrDefault() []string {
+	if !s.dockerSocketAllowlistSet {
+		return checkerdef.DefaultDockerSocketPaths()
+	}
+
+	return s.dockerSocketAllowlist
 }
 
 // SetEnvRefAllow wires the operator allowlist of `${env:NAME}` names

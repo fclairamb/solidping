@@ -481,11 +481,29 @@ type CheckersConfig struct {
 	// SP_CHECKERS_UNIX_SOCKET_PATHS (comma-separated) is bound by hand in
 	// applyCheckersEnv.
 	UnixSocketPaths []string `koanf:"unix_socket_paths"`
+	// DockerSocketPaths is the allowlist of Unix sockets a docker check's
+	// unix:// host may name on THIS process (spec 2026-11-27-03), with the
+	// matching rules of UnixSocketPaths. Default: /var/run/docker.sock and
+	// /run/docker.sock. Empty refuses every unix:// docker host. A
+	// private-location agent reads its own. snake_case:
+	// SP_CHECKERS_DOCKER_SOCKET_PATHS (comma-separated) is bound by hand in
+	// applyCheckersEnv.
+	DockerSocketPaths []string `koanf:"docker_socket_paths"`
 }
 
 // EnvCheckersUnixSocketPaths is the comma-separated env override of
 // checkers.unix_socket_paths (spec 2026-11-24-01).
 const EnvCheckersUnixSocketPaths = "SP_CHECKERS_UNIX_SOCKET_PATHS"
+
+// EnvCheckersDockerSocketPaths is the comma-separated env override of
+// checkers.docker_socket_paths (spec 2026-11-27-03).
+const EnvCheckersDockerSocketPaths = "SP_CHECKERS_DOCKER_SOCKET_PATHS"
+
+// defaultDockerSocketPaths is the default of checkers.docker_socket_paths.
+// It mirrors checkerdef.DefaultDockerSocketPaths (config cannot import it).
+func defaultDockerSocketPaths() []string {
+	return []string{"/var/run/docker.sock", "/run/docker.sock"}
+}
 
 // LeaseConfig sizes the lease a check worker holds on a claimed check job:
 // max(scheduled_at, now) + max(period, check timeout) + Margin. Single-word
@@ -2647,7 +2665,8 @@ func Load() (*Config, error) {
 			CallRunawayPerHour: 10,
 		},
 		Checkers: CheckersConfig{
-			Lease: LeaseConfig{Margin: 30 * time.Second},
+			Lease:             LeaseConfig{Margin: 30 * time.Second},
+			DockerSocketPaths: defaultDockerSocketPaths(),
 			Traceroute: TracerouteConfig{
 				// ON by deployment default, per the spec's "org-level default
 				// (on)". A check still has to be opted in through its org or
@@ -2888,6 +2907,14 @@ func applyCheckersEnv(cfg *CheckersConfig) {
 
 	if raw, present := os.LookupEnv(EnvCheckersUnixSocketPaths); present {
 		cfg.UnixSocketPaths = parseEnvRefAllowlist(raw)
+	}
+
+	if raw, present := os.LookupEnv(EnvCheckersDockerSocketPaths); present {
+		cfg.DockerSocketPaths = parseEnvRefAllowlist(raw)
+		if cfg.DockerSocketPaths == nil {
+			// Present but empty: the operator turned docker unix sockets off.
+			cfg.DockerSocketPaths = []string{}
+		}
 	}
 }
 

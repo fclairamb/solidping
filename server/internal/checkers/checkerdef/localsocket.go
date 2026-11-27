@@ -109,6 +109,23 @@ func ValidateLocalSocketPath(path string) error {
 // under an entry ending in "/". Both sides are compared after filepath.Clean,
 // so `..` cannot climb out of a prefix. An empty allowlist refuses every path.
 func LocalSocketAllowed(allowlist []string, path string) error {
+	if socketPathListed(allowlist, path) {
+		return nil
+	}
+
+	if len(allowlist) == 0 {
+		return fmt.Errorf(
+			"%w: unix sockets are off; an operator can list allowed paths in %s (SP_CHECKERS_UNIX_SOCKET_PATHS)",
+			ErrLocalSocketNotAllowed, LocalSocketSetting)
+	}
+
+	return fmt.Errorf("%w: %s is not covered by %s", ErrLocalSocketNotAllowed, path, LocalSocketSetting)
+}
+
+// socketPathListed is the matching rule shared by every socket allowlist:
+// path equals an entry, or sits under an entry ending in "/", both sides
+// compared after filepath.Clean.
+func socketPathListed(allowlist []string, path string) bool {
 	cleaned := filepath.Clean(path)
 
 	for _, entry := range allowlist {
@@ -124,24 +141,18 @@ func LocalSocketAllowed(allowlist []string, path string) error {
 			}
 
 			if strings.HasPrefix(cleaned, prefix) && cleaned != prefix {
-				return nil
+				return true
 			}
 
 			continue
 		}
 
 		if filepath.Clean(entry) == cleaned {
-			return nil
+			return true
 		}
 	}
 
-	if len(allowlist) == 0 {
-		return fmt.Errorf(
-			"%w: unix sockets are off; an operator can list allowed paths in %s (SP_CHECKERS_UNIX_SOCKET_PATHS)",
-			ErrLocalSocketNotAllowed, LocalSocketSetting)
-	}
-
-	return fmt.Errorf("%w: %s is not covered by %s", ErrLocalSocketNotAllowed, path, LocalSocketSetting)
+	return false
 }
 
 type localSocketAllowlistCtxKey struct{}

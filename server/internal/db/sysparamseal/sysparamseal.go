@@ -10,6 +10,9 @@
 // envelope holds the JSON of the value as the raw service would have stored
 // it (`{"value": …}`), so opening restores the row exactly.
 //
+// The secret organization parameters (the `usr.` rows behind `${param:…}`)
+// are sealed the same way, under the same system DEK (orgparams.go).
+//
 // Like the rest of the credential envelope, this only protects against a read
 // of the database (a dump, a backup, a replica credential).
 package sysparamseal
@@ -30,11 +33,12 @@ const SealedMarkerKey = "$sp_sealed"
 
 // Errors returned by the decorator.
 var (
-	// ErrSealedUnavailable marks a sealed system parameter this process cannot
-	// open: no master key configured, or a different one. It fails the boot
+	// ErrSealedUnavailable marks a sealed system (or secret organization)
+	// parameter this process cannot open: no master key configured, or a
+	// different one. It fails the boot
 	// (systemconfig lists every system parameter) rather than letting a reader
 	// treat the row as missing and, for the JWT key, generate a new one.
-	ErrSealedUnavailable = errors.New("encrypted system parameter cannot be opened")
+	ErrSealedUnavailable = errors.New("encrypted parameter cannot be opened")
 	// ErrReservedKey refuses writes to the system DEK row through the API path:
 	// overwriting or deleting it would make every sealed row unreadable.
 	ErrReservedKey = errors.New("system parameter is reserved for the encryption key")
@@ -95,7 +99,7 @@ func (s *Service) GetSystemParameter(ctx context.Context, key string) (*models.P
 		return param, err
 	}
 
-	return s.open(ctx, param)
+	return s.open(ctx, kindSystem, param)
 }
 
 // ListSystemParameters returns every system parameter with its value opened.
@@ -106,7 +110,7 @@ func (s *Service) ListSystemParameters(ctx context.Context) ([]*models.Parameter
 	}
 
 	for i, param := range params {
-		opened, openErr := s.open(ctx, param)
+		opened, openErr := s.open(ctx, kindSystem, param)
 		if openErr != nil {
 			return nil, openErr
 		}
@@ -151,7 +155,7 @@ func (s *Service) GetOrCreateSystemParameter(
 		return param, created, err
 	}
 
-	opened, err := s.open(ctx, param)
+	opened, err := s.open(ctx, kindSystem, param)
 	if err != nil {
 		return nil, false, err
 	}
@@ -251,23 +255,30 @@ func (s *Service) sealValue(ctx context.Context, key string, value any, secret b
 	return map[string]any{SealedMarkerKey: envelope}, nil
 }
 
+// Labels of the parameter kinds, for errors and logs.
+const (
+	kindSystem = "system parameter"
+	kindOrg    = "organization parameter"
+)
+
 // open replaces a sealed value with its plaintext; plaintext rows (the
-// transition, or no master key) are returned unchanged.
-func (s *Service) open(ctx context.Context, param *models.Parameter) (*models.Parameter, error) {
+// transition, or no master key) are returned unchanged. kind names the row in
+// errors and logs.
+func (s *Service) open(ctx context.Context, kind string, param *models.Parameter) (*models.Parameter, error) {
 	envelope, isSealed := SealedEnvelope(param.Value)
 	if !isSealed {
 		return param, nil
 	}
 
 	if !s.Enabled() {
-		return nil, fmt.Errorf("%w: %q: %s", ErrSealedUnavailable, param.Key, hintNoKey)
+		return nil, fmt.Errorf("%w: %s %q: %s", ErrSealedUnavailable, kind, param.Key, hintNoKey)
 	}
 
 	plain, err := s.sealer.Open(ctx, envelope)
 	if err != nil {
-		slog.ErrorContext(ctx, "cannot open encrypted system parameter", "key", param.Key, "error", err)
+		slog.ErrorContext(ctx, "cannot open encrypted "+kind, "key", param.Key, "error", err)
 
-		return nil, fmt.Errorf("%w: %q: %s: %w", ErrSealedUnavailable, param.Key, hintWrongKey, err)
+		return nil, fmt.Errorf("%w: %s %q: %s: %w", ErrSealedUnavailable, kind, param.Key, hintWrongKey, err)
 	}
 
 	opened := *param

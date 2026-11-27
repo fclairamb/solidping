@@ -2,16 +2,19 @@ package orgparams_test
 
 import (
 	"context"
+	"crypto/rand"
 	"os"
 	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/db/sysparamseal"
 	"github.com/fclairamb/solidping/server/internal/handlers/orgparams"
 	"github.com/fclairamb/solidping/server/internal/paramkeys"
 	"github.com/fclairamb/solidping/server/internal/testsupport"
@@ -330,4 +333,62 @@ func TestPlatformParameterKeysSurviveOnSQLite(t *testing.T) {
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
 	assertPlatformKeysAreWritable(ctx, r, dbSvc, org.UID)
+}
+
+// assertSealedRoundTrip runs the API round trip through the sealing decorator
+// (spec 2026-11-27-02): List/Get still elide secret values and still return
+// non-secret ones, while the secret row is sealed at rest.
+func assertSealedRoundTrip(ctx context.Context, t *testing.T, raw db.Service, org *models.Organization) {
+	t.Helper()
+	r := require.New(t)
+
+	kek := make([]byte, 32)
+	_, err := rand.Read(kek)
+	r.NoError(err)
+
+	sealer, err := credentials.NewSystemSealer(kek, raw)
+	r.NoError(err)
+
+	sealed := sysparamseal.Wrap(raw, sealer, nil)
+
+	assertHyphenatedKeyRoundTrips(ctx, t, sealed, org.Slug)
+
+	stored, err := raw.GetOrgParameter(ctx, org.UID, paramkeys.StorageKey(documentedKey))
+	r.NoError(err)
+
+	_, isSealed := sysparamseal.SealedEnvelope(stored.Value)
+	r.True(isSealed, "the secret value must be sealed at rest")
+
+	// A secret turned non-secret is returned by the API again, in clear.
+	svc := orgparams.NewService(sealed)
+	_, err = svc.Set(ctx, org.Slug, documentedKey, &orgparams.SetRequest{Value: "public", Secret: boolPtr(false)})
+	r.NoError(err)
+
+	got, err := svc.Get(ctx, org.Slug, documentedKey)
+	r.NoError(err)
+	r.NotNil(got.Value)
+	r.Equal("public", *got.Value)
+}
+
+func TestOrgParametersSealedRoundTripOnPostgres(t *testing.T) {
+	t.Parallel()
+
+	dbSvc, org := newPostgresOrg(t, "orgparams-sealed")
+	assertSealedRoundTrip(t.Context(), t, dbSvc, org)
+}
+
+func TestOrgParametersSealedRoundTripOnSQLite(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("orgparams-sealed-sq", "Org Params Sealed")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	assertSealedRoundTrip(ctx, t, dbSvc, org)
 }
