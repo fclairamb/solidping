@@ -127,13 +127,5 @@ several disks in one check (one check per path).
 
 - Linux, macOS and Windows are all supported, through gopsutil.
 - The CPU metric is CPU % sampled over one second, not load average.
-
-## Open questions
-
-- One check with the three metrics, or one check per metric? Recommended: one check with
-  the three metrics (one incident per host, fewer checks against plan limits).
-
-## Resolved open questions
-
-- One check with the three metrics, not one check per metric: one incident per host, fewer
-  checks against plan limits. (autopilot: recommended answer)
+- One check carries the three metrics (one incident per host, fewer checks against plan
+  limits), not one check per metric.
