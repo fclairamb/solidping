@@ -156,6 +156,21 @@ export interface StatusCounts {
  * names. The server never puts probe output, error strings or internal
  * hostnames on this shape, and this client never asks for them.
  */
+/**
+ * One announced maintenance occurrence (spec 2026-11-27-06): in progress, or
+ * starting within the next 7 days, on a resource this page shows.
+ */
+export interface PublicMaintenance {
+  uid: string;
+  title: string;
+  /** Operator-authored plain text; render as text, never markdown. */
+  description?: string;
+  startsAt: string;
+  endsAt: string;
+  active: boolean;
+  affectedResources: string[];
+}
+
 export interface PublicIncident {
   uid: string;
   title: string;
@@ -243,6 +258,8 @@ export interface StatusPage {
    * rule as overallStatus: public view endpoints only.
    */
   activeIncidents?: PublicIncident[];
+  /** Upcoming / in-progress maintenance on this page's resources. */
+  upcomingMaintenance?: PublicMaintenance[];
   /**
    * PAGE-level uptime over `historyPeriod` (spec 2026-08-29-08): the mean of
    * the per-resource `availability.overallAvailabilityPct` values, resources

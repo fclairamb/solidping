@@ -727,6 +727,11 @@ type StatusPageResponse struct {
 	// only. Every field on them is operator-authored or templated from the
 	// page's own public resource names; no probe diagnostics can reach here.
 	ActiveIncidents []PublicIncident `json:"activeIncidents,omitempty"`
+	// UpcomingMaintenance lists the maintenance windows (spec
+	// 2026-11-27-06) that are in progress or start within
+	// upcomingMaintenanceHorizon and target a resource this page shows.
+	// Public view paths only, like ActiveIncidents; never on admin listings.
+	UpcomingMaintenance []PublicMaintenance `json:"upcomingMaintenance,omitempty"`
 	// OverallAvailabilityPct is the PAGE-level uptime over the page's own
 	// history period (spec 2026-08-29-08) — the mean of the per-resource
 	// `availability.overallAvailabilityPct` values, resources with no data
@@ -2712,6 +2717,8 @@ func (s *Service) computeStatusPageView(
 		Maintenance: statusCounts.Maintenance,
 		Unknown:     statusCounts.Unknown,
 	}
+
+	response.UpcomingMaintenance = s.loadUpcomingMaintenance(ctx, sections, time.Now())
 
 	// The `include` query param can only NARROW what the page's own settings
 	// would produce, never widen it — ANDed into a shallow copy of the page

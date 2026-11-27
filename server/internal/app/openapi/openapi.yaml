@@ -16161,6 +16161,15 @@ components:
             never reach this payload.
           items:
             $ref: "#/components/schemas/PublicIncident"
+        upcomingMaintenance:
+          type: array
+          description: >-
+            Maintenance windows that are in progress or start within the next 7
+            days and target a resource this page shows, in start order, capped
+            at 10. Recurring windows contribute their next occurrences. Public
+            view paths only, like activeIncidents; absent when there are none.
+          items:
+            $ref: "#/components/schemas/PublicMaintenance"
         overallAvailabilityPct:
           type: number
           format: double
@@ -16172,6 +16181,37 @@ components:
             Omitted when `showAvailability` is false, when no resource has any
             data, and on the authenticated admin payloads. Public view paths
             only, like overallStatus.
+
+    PublicMaintenance:
+      type: object
+      description: >-
+        One announced maintenance occurrence on a public status page.
+      required: [uid, title, startsAt, endsAt, active, affectedResources]
+      properties:
+        uid:
+          type: string
+          description: Maintenance window UID (repeated by a recurring window's occurrences).
+        title:
+          type: string
+        description:
+          type: string
+          description: Operator-authored plain text (no markdown). Omitted when empty.
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        active:
+          type: boolean
+          description: True while the occurrence is in progress.
+        affectedResources:
+          type: array
+          description: >-
+            Public names of the page's own resources the window targets. A
+            resource the page does not show never appears.
+          items:
+            type: string
 
     PublicIncident:
       type: object

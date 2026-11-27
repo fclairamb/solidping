@@ -29,6 +29,7 @@ import { LanguageSwitcher } from "./language-switcher";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { StatusUpdatesTimeline } from "./status-updates-timeline";
 import { ActiveIncidents } from "./active-incidents";
+import { UpcomingMaintenance } from "./upcoming-maintenance";
 import { IncidentHistory } from "./incident-history";
 import { SubscribeWidget } from "./subscribe-widget";
 import {
@@ -686,6 +687,8 @@ export function StatusPageView({
             arrived because something is broken should read the explanation
             before hunting for a red dot. Renders nothing when all is well. */}
         <ActiveIncidents incidents={activeIncidents} />
+
+        <UpcomingMaintenance items={page.upcomingMaintenance} />
 
         {/* Sections */}
         <DetailsLoadingContext.Provider value={stages?.detailsLoading ?? false}>

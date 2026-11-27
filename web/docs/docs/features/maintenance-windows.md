@@ -41,6 +41,13 @@ A maintenance window can apply to:
 - **Check groups** — every check in the group is suppressed
 - **The whole organization** — when no checks or groups are attached, all checks are suppressed
 
+## Status page announcements
+
+Windows targeting a status page's resources (a check or a check group the page
+shows) are announced on that page up to 7 days ahead, and while they are in
+progress. The title and description are public, so keep internal notes out of
+them. See [Status pages](./status-pages.md).
+
 ## Behavior
 
 When a check fails while a window covering it is active, SolidPing **skips incident processing entirely** — no incident is opened, escalated, or notified. Results are still recorded, so your history and uptime metrics remain accurate; you simply won't be paged.
