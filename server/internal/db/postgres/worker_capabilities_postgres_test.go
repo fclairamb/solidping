@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -164,9 +165,14 @@ func capHeartbeatKeepsSetPG(t *testing.T, svc *Service) {
 	r.Equal([]string{}, reloadCapsPG(ctx, t, svc, worker.UID).Capabilities)
 }
 
+// capCheckTimeout bounds one capability update in the parity test. The CHECK
+// answers in about a millisecond; the back-reference regex it replaced needed
+// ~400 ms at 52 entries and far longer on dbcaptest's large set.
+const capCheckTimeout = 10 * time.Second
+
 // capConstraintParityPG runs the SAME shared verdict table as the SQLite twin.
 // The two dialects enforce the shape with entirely different machinery — a
-// regex CHECK here, json_each triggers there — and this pair is what pins them
+// CHECK here, json_each triggers there — and this pair is what pins them
 // to the same answers.
 func capConstraintParityPG(t *testing.T, svc *Service) {
 	t.Helper()
@@ -181,7 +187,13 @@ func capConstraintParityPG(t *testing.T, svc *Service) {
 			slug := fmt.Sprintf("shape-%03d", i)
 			worker := seedCapWorkerPG(ctx, t, svc, slug)
 
-			_, err := svc.DB().ExecContext(ctx,
+			// The CHECK runs on every update of the row, heartbeats included,
+			// so it must stay cheap: a check that needs seconds fails here
+			// instead of slowing every heartbeat in production.
+			updateCtx, cancel := context.WithTimeout(ctx, capCheckTimeout)
+			defer cancel()
+
+			_, err := svc.DB().ExecContext(updateCtx,
 				"update workers set capabilities = "+tc.PostgresLiteral+" where uid = ?",
 				worker.UID)
 
@@ -191,7 +203,8 @@ func capConstraintParityPG(t *testing.T, svc *Service) {
 				return
 			}
 
-			require.Error(t, err,
+			// Rejected by the constraint itself, not by the timeout.
+			require.ErrorContains(t, err, "workers_capabilities_shape",
 				"%s must be rejected by the database, not merely by the writers", tc.Name)
 		})
 	}

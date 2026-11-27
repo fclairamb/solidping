@@ -255,6 +255,11 @@ type ServerFrame struct {
 	// regions' tasks), so it never starts its task loop. Absent from old
 	// servers, which keeps the loop on.
 	NoWorkerTasks bool `json:"noWorkerTasks,omitempty"`
+	// ReportsOnce, on the identity hello, tells the agent the server keeps its
+	// capability set and version for the whole connection: the agent sends
+	// them on its first claim, then the set again only when it changes.
+	// Absent from old servers, so the agent keeps sending both on every claim.
+	ReportsOnce bool `json:"reportsOnce,omitempty"`
 	// ServerVersion is the server's build version (version.Get().Version),
 	// carried on every hello (spec 2026-11-22-04). Informational: older
 	// agents ignore it, older servers omit it.
