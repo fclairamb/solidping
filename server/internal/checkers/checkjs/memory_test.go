@@ -184,16 +184,34 @@ func requireRefusalWithin(t *testing.T, script string, bound time.Duration) {
 func requireRefusalAllocating(t *testing.T, script, baseline string) {
 	t.Helper()
 
+	requireRefusalAllocatingAfter(t, "", script, baseline)
+}
+
+// requireRefusalAllocatingAfter is requireRefusalAllocating for a script and a
+// baseline that both start with setup, which spends part of the budget so the
+// refusal comes sooner. What setup allocates on its own is left out of both
+// counts, so it does not loosen the bound.
+func requireRefusalAllocatingAfter(t *testing.T, setup, script, baseline string) {
+	t.Helper()
+
 	var result *checkerdef.Result
+
+	var spent uint64
+	if setup != "" {
+		spent = allocatedDuring(t, func() { result = runScript(t, setup+"\nreturn { status: \"up\" };") })
+		require.Equal(t, checkerdef.StatusUp, result.Status, "setup must fit the budget: %v", result.Output)
+	}
+
 	permitted := allocatedDuring(t, func() {
-		result = runScript(t, baseline+"\nreturn { status: \"up\" };")
+		result = runScript(t, setup+baseline+"\nreturn { status: \"up\" };")
 	})
 	require.Equal(t, checkerdef.StatusUp, result.Status, "baseline must fit the budget: %v", result.Output)
 
 	const margin = 16 << 20
-	used := allocatedDuring(t, func() { requireRefusalWithin(t, script, 10*time.Second) })
-	require.Less(t, used, 3*permitted+margin,
-		"the refusal must come before the allocation: %d bytes allocated, the permitted work takes %d", used, permitted)
+	used := allocatedDuring(t, func() { requireRefusalWithin(t, setup+script, 10*time.Second) })
+	require.Less(t, used, spent+3*(permitted-spent)+margin,
+		"the refusal must come before the allocation: %d bytes allocated, the permitted work takes %d after %d of setup",
+		used, permitted-spent, spent)
 }
 
 // requireRefusalBelowUnguarded is for a refusal that comes after goja has
@@ -273,12 +291,14 @@ type heavyCase struct {
 
 // TestMemoryBudgetReadsLengthOnce: an array-like whose length getter answers
 // 0 to the charge and 4e9 afterwards is read once, so goja works on the length
-// that was charged instead of preallocating from the second answer.
+// that was charged instead of preallocating from the second answer. The
+// lengths in the output say which answer goja used: preallocating 4e9 slots
+// would end the run (the isolated child's memory limit) or show up there. No
+// wall clock bound, which measured the machine's load.
 func TestMemoryBudgetReadsLengthOnce(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	start := time.Now()
 	result := runScript(t, `
 function like() { var n = 0; return { get length() { return n++ ? 4e9 : 0; } }; }
 var o = like();
@@ -299,17 +319,17 @@ return {
 	r.EqualValues(0, result.Output["toReversed"])
 	r.EqualValues(0, result.Output["from"])
 	r.Equal("4000000000", result.Output["sortedReads"], "the getter ran once inside sort")
-	r.Less(time.Since(start), time.Second)
 }
 
 // TestMemoryBudgetPinsLengthsTheGojaReadsAgain: a length getter, or a
 // Symbol.isConcatSpreadable getter, that answers one thing to the charge and
-// another to goja gets the answer that was charged (spec 2026-11-01-01).
+// another to goja gets the answer that was charged (spec 2026-11-01-01). As
+// in TestMemoryBudgetReadsLengthOnce, the output says which answer goja used:
+// Math.max of no argument is -Infinity, of 3e8 undefined ones NaN.
 func TestMemoryBudgetPinsLengthsTheGojaReadsAgain(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	start := time.Now()
 	result := runScript(t, `
 function like(first, then) { var n = 0; return { get length() { return n++ ? then : first; } }; }
 var refused = "";
@@ -328,7 +348,7 @@ return {
     concat: [].concat(spread).length,
     flipped: flipped.length,
     flippedSame: flipped[0] === flip,
-    apply: Math.max.apply(null, like(0, 3e8)),
+    apply: String(Math.max.apply(null, like(0, 3e8))),
   },
 };
 `)
@@ -339,7 +359,7 @@ return {
 	r.EqualValues(0, result.Output["concat"])
 	r.EqualValues(1, result.Output["flipped"])
 	r.Equal(true, result.Output["flippedSame"])
-	r.Less(time.Since(start), time.Second)
+	r.Equal("-Infinity", result.Output["apply"])
 }
 
 // TestMemoryBudgetPositiveControlCopiesAndStrings: ordinary use of concat,
@@ -872,13 +892,18 @@ var s = /a/g[Symbol.replace]("a".repeat(100), function () { return big; });`)
 	}
 
 	// A global match is charged as exec finds each match, so the refusal
-	// comes after the matches the budget allows (2 Mi of them): that work
-	// is permitted, and sized by a baseline that fits, as for the heavy
-	// copies.
+	// comes after the matches the budget allows: that work is permitted, and
+	// sized by a baseline that fits, as for the heavy copies. On a fresh
+	// budget that is 2 Mi matches through goja's spec loop, over 1 GB
+	// allocated and past the 10s timeout with 6 test binaries running at
+	// once. A typed array spends all of the budget but 1 MiB first (one
+	// allocation, where repeat appends its string once per count), leaving
+	// room for about 24 Ki matches of the 256 Ki the subject has.
 	t.Run("match global empty regexp", func(t *testing.T) {
 		const match = `var s = RegExp.prototype[Symbol.match].call(/(?:)/g, "x".repeat(%d));`
 
-		requireRefusalAllocating(t, fmt.Sprintf(match, 4*1024*1024), fmt.Sprintf(match, 1024*1024))
+		setup := fmt.Sprintf(`var spent = new Uint8Array(%d);`, maxScriptAllocBytes-(1<<20))
+		requireRefusalAllocatingAfter(t, setup, fmt.Sprintf(match, 256*1024), fmt.Sprintf(match, 8*1024))
 	})
 }
 
