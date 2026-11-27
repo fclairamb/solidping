@@ -195,3 +195,63 @@ func TestWithRequestGrantReadsTheQueryParameter(t *testing.T) {
 	headered.Header.Set("X-Kiosk-Token", token)
 	r.False(statuspagekiosk.Allows(statuspagekiosk.WithRequestGrant(headered).Context(), page))
 }
+
+// TestDecideMemberMatrix — spec 2026-11-27-01: a signed-in member of the
+// page's organization reads its `private` and `password` pages; anybody else,
+// including a member of another organization, gets exactly what an anonymous
+// caller gets.
+func TestDecideMemberMatrix(t *testing.T) {
+	t.Parallel()
+
+	const orgUID = "org-acme"
+
+	member := func(ctx context.Context) context.Context { return statuspagekiosk.WithMemberOrg(ctx, orgUID) }
+	otherOrg := func(ctx context.Context) context.Context { return statuspagekiosk.WithMemberOrg(ctx, "org-other") }
+	anonymous := func(ctx context.Context) context.Context { return ctx }
+	customHost := func(ctx context.Context) context.Context {
+		return statuspagekiosk.WithoutMemberAccess(statuspagekiosk.WithMemberOrg(ctx, orgUID))
+	}
+
+	cases := []struct {
+		name       string
+		visibility string
+		enabled    bool
+		caller     func(context.Context) context.Context
+		want       statuspagekiosk.Decision
+	}{
+		{"private anonymous", models.StatusPageVisibilityPrivate, true, anonymous, statuspagekiosk.DecisionNotFound},
+		{"private member", models.StatusPageVisibilityPrivate, true, member, statuspagekiosk.DecisionAllow},
+		{"private other org", models.StatusPageVisibilityPrivate, true, otherOrg, statuspagekiosk.DecisionNotFound},
+		{"private custom host", models.StatusPageVisibilityPrivate, true, customHost, statuspagekiosk.DecisionNotFound},
+		{"password anonymous", models.StatusPageVisibilityPassword, true, anonymous, statuspagekiosk.DecisionLocked},
+		{"password member", models.StatusPageVisibilityPassword, true, member, statuspagekiosk.DecisionAllow},
+		{"password other org", models.StatusPageVisibilityPassword, true, otherOrg, statuspagekiosk.DecisionLocked},
+		{"public anonymous", models.StatusPageVisibilityPublic, true, anonymous, statuspagekiosk.DecisionAllow},
+		{"public member", models.StatusPageVisibilityPublic, true, member, statuspagekiosk.DecisionAllow},
+		{"disabled member", models.StatusPageVisibilityPrivate, false, member, statuspagekiosk.DecisionNotFound},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			page := pageWithToken(tc.visibility, "")
+			page.OrganizationUID = orgUID
+			page.Enabled = tc.enabled
+
+			require.Equal(t, tc.want, statuspagekiosk.Decide(tc.caller(requestCtx("")), page))
+		})
+	}
+}
+
+// TestWithMemberOrgIgnoresAnEmptyOrg — an empty UID must never match a page
+// whose organization column happens to be empty too.
+func TestWithMemberOrgIgnoresAnEmptyOrg(t *testing.T) {
+	t.Parallel()
+
+	page := pageWithToken(models.StatusPageVisibilityPrivate, "")
+	ctx := statuspagekiosk.WithMemberOrg(context.Background(), "")
+
+	require.False(t, statuspagekiosk.IsMember(ctx, page))
+	require.Equal(t, statuspagekiosk.DecisionNotFound, statuspagekiosk.Decide(ctx, page))
+}

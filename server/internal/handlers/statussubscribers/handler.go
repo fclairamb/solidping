@@ -24,6 +24,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/securityheaders"
 	"github.com/fclairamb/solidping/server/internal/statuspagecache"
+	"github.com/fclairamb/solidping/server/internal/statuspagekiosk"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
@@ -435,18 +436,29 @@ func (h *Handler) Feed(writer http.ResponseWriter, req *http.Request) error {
 	}
 
 	page, err := h.dbService.GetStatusPageBySlug(ctx, org.UID, slug)
-	if err != nil || !statuspagelock.Visible(page) {
+	if err != nil || page == nil {
 		return h.writeFeedNotFound(writer)
 	}
 
-	// The feed is a read of the page, so it is gated like the page. A feed
-	// reader that followed the URL after unlocking in a browser carries the
-	// cookie; one that never unlocked gets a 401 it can surface to its user.
-	if !statuspagelock.RequestUnlocks(req, page) {
+	// The feed is a read of the page, so it is gated like the page, by the
+	// same single gate (statuspagekiosk.Decide): disabled or `private` is not
+	// found unless the caller is a signed-in member of the org (spec
+	// 2026-11-27-01) or holds the kiosk token. A feed reader that followed the
+	// URL after unlocking in a browser carries the cookie; one that never
+	// unlocked gets a 401 it can surface to its user.
+	//
+	// The unlock cookie is read off this very request, as the feed always
+	// did, so the handler does not depend on the grant middleware being
+	// mounted in front of it.
+	switch statuspagekiosk.Decide(statuspagelock.WithGrant(ctx, statuspagelock.FromRequest(req)), page) {
+	case statuspagekiosk.DecisionNotFound:
+		return h.writeFeedNotFound(writer)
+	case statuspagekiosk.DecisionLocked:
 		statuspagecache.ApplyGated(writer.Header())
 
 		return h.WriteError(writer, http.StatusUnauthorized,
 			base.ErrorCodeStatusPageLocked, "This status page is password protected")
+	case statuspagekiosk.DecisionAllow:
 	}
 
 	// Same bound as the page's own recentUpdates: a row written before the
