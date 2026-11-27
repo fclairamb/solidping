@@ -172,6 +172,7 @@ function TotalDuration({
 const ACK_CHANNEL_KEYS = [
   "slack",
   "discord",
+  "mattermost",
   "telegram",
   "email",
   "phone",

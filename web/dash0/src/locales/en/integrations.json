@@ -64,6 +64,8 @@
     "default": "Default for new checks",
     "defaultHelp": "Pre-checked when creating a new check. Existing checks are unaffected.",
     "webhookUrl": "Webhook URL",
+    "mattermostBlocks": "Use Mattermost Blocks",
+    "mattermostBlocksHint": "Send rich, interactive cards with Acknowledge and a dashboard link. Requires Mattermost v11.10+ with Mattermost Blocks enabled; older clients do not render the card. Acknowledge needs Mattermost to reach this SolidPing instance's public URL.",
     "msteamsWebhookHint": "In Teams, open Workflows → \"Post to a channel when a webhook request is received\", finish the wizard, then paste the workflow URL it gives you here. The legacy \"Incoming Webhook\" connector is retired and will not work.",
     "recipients": "Recipients",
     "recipientsPlaceholder": "ops@example.com, oncall@example.com",
