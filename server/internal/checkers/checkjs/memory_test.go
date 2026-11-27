@@ -19,9 +19,11 @@ import (
 // 2026-10-31-01). goja's interrupt does not reach inside such a call, so
 // without the cap these ran to completion whatever the timeout. 512 MiB stays
 // harmless even when the cap is missing: the test then fails on its status
-// and its duration instead of taking the process down.
+// and on what it allocated instead of taking the process down.
+//
+//nolint:paralleltest // In process and sequential: the allocation bound reads this process's counters.
 func TestMemoryBudgetRefusesNativeAmplifiers(t *testing.T) {
-	t.Parallel()
+	inProcess(t)
 
 	const (
 		huge  = "512 * 1024 * 1024"
@@ -64,8 +66,6 @@ func TestMemoryBudgetRefusesNativeAmplifiers(t *testing.T) {
 		{"split empty", `var s = "x".repeat(` + slots + `).split("");`},
 		{"split regexp", `var s = "x".repeat(` + slots + `).split(/(?:)/);`},
 		{"replaceAll expanding", `var s = "a".repeat(1024 * 1024).replaceAll("a", "$&".repeat(128));`},
-		{"replace function returning a big string", `var big = "x".repeat(1024 * 1024);
-var s = "a".repeat(100).replace(/a/g, function () { return big; });`},
 		{"apply array-like", `Math.max.apply(null, { length: ` + slots + ` });`},
 		{"Reflect.apply array-like", `Reflect.apply(Math.max, null, { length: ` + slots + ` });`},
 		{"typed array array-like", `var s = new Uint8Array({ length: ` + huge + ` });`},
@@ -77,21 +77,21 @@ var s = "a".repeat(100).replace(/a/g, function () { return big; });`},
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			requireRefusal(t, tt.script)
 		})
 	}
 
-	// goja finds the 16 Ki matches of a global regexp before it expands any
-	// replacement, so even the refusal costs that matching: under the race
-	// detector or a loaded runner it alone exceeds a fixed second (1.007s on
-	// CI). The bound follows what the matching costs right now instead.
-	t.Run("replace suffix per match", func(t *testing.T) {
-		t.Parallel()
-		requireRefusalNear(t,
-			`var s = "a".repeat(16 * 1024).replace(/a/g, "$'");`,
-			`var s = "a".repeat(16 * 1024).replace(/a/g, "");`)
-	})
+	expanding := []refusalCase{
+		{"replace function returning a big string", `var big = "x".repeat(1024 * 1024);
+var s = "a".repeat(100).replace(/a/g, function () { return big; });`},
+		{"replace suffix per match", `var s = "a".repeat(16 * 1024).replace(/a/g, "$'");`},
+	}
+
+	for _, tt := range expanding {
+		t.Run(tt.name, func(t *testing.T) {
+			requireRefusalBelowUnguarded(t, tt.script)
+		})
+	}
 }
 
 // TestMemoryBudgetRefusesHeavyCopies: the amplifiers whose refusal only comes
@@ -104,8 +104,10 @@ var s = "a".repeat(100).replace(/a/g, function () { return big; });`},
 // work costs on this machine right now, not the refused allocation, which is
 // several times bigger (concat doubling would copy 16M slots, not 2M).
 //
-//nolint:paralleltest // sequential on purpose, the timings must not compete
+//nolint:paralleltest // In process and sequential: the allocation bound reads this process's counters.
 func TestMemoryBudgetRefusesHeavyCopies(t *testing.T) {
+	inProcess(t)
+
 	tests := []heavyCase{
 		{
 			"concat doubling", `var a = [1]; for (var i = 0; i < 24; i++) a = a.concat(a);`,
@@ -139,27 +141,22 @@ var s = Array(1).fill(0).flatMap(function () { return b; });`,
 	}
 }
 
-// requireRefusal runs the script and requires the memory budget refusal, well
-// before the allocation it asks for.
+// refusalAllocBound is what a refusal with no baseline may allocate in this
+// process: the run itself and the permitted work before the refusal (an
+// 8 MiB string for the split cases) take a few MiB, the refused allocations
+// 128 MiB and up.
+const refusalAllocBound = 32 << 20
+
+// requireRefusal runs the script and requires the memory budget refusal
+// before the allocation it asks for. It counts allocated bytes, not time: a
+// wall clock bound measured the machine's load (1.1s under a parallel
+// Postgres run for a refusal that allocates 8 MiB).
 func requireRefusal(t *testing.T, script string) {
 	t.Helper()
-	requireRefusalWithin(t, script, time.Second)
-}
 
-// requireRefusalNear runs baseline (the same matching work with nothing to
-// refuse, which succeeds), then requires the refusal of script within a second
-// plus a few times what the baseline took on this machine right now.
-func requireRefusalNear(t *testing.T, script, baseline string) {
-	t.Helper()
-
-	const factor = 5
-
-	start := time.Now()
-	result := runScript(t, baseline+"\nreturn { status: \"up\" };")
-	permitted := time.Since(start)
-
-	require.Equal(t, checkerdef.StatusUp, result.Status, "baseline must fit the budget: %v", result.Output)
-	requireRefusalWithin(t, script, time.Second+factor*permitted)
+	used := allocatedDuring(t, func() { requireRefusalWithin(t, script, 10*time.Second) })
+	require.Less(t, used, uint64(refusalAllocBound),
+		"the refusal must come before the allocation: %d bytes allocated", used)
 }
 
 func requireRefusalWithin(t *testing.T, script string, bound time.Duration) {
@@ -187,20 +184,90 @@ func requireRefusalWithin(t *testing.T, script string, bound time.Duration) {
 func requireRefusalAllocating(t *testing.T, script, baseline string) {
 	t.Helper()
 
+	requireRefusalAllocatingAfter(t, "", script, baseline)
+}
+
+// requireRefusalAllocatingAfter is requireRefusalAllocating for a script and a
+// baseline that both start with setup, which spends part of the budget so the
+// refusal comes sooner. What setup allocates on its own is left out of both
+// counts, so it does not loosen the bound.
+func requireRefusalAllocatingAfter(t *testing.T, setup, script, baseline string) {
+	t.Helper()
+
 	var result *checkerdef.Result
-	permitted := allocatedDuring(func() {
-		result = runScript(t, baseline+"\nreturn { status: \"up\" };")
+
+	var spent uint64
+	if setup != "" {
+		spent = allocatedDuring(t, func() { result = runScript(t, setup+"\nreturn { status: \"up\" };") })
+		require.Equal(t, checkerdef.StatusUp, result.Status, "setup must fit the budget: %v", result.Output)
+	}
+
+	permitted := allocatedDuring(t, func() {
+		result = runScript(t, setup+baseline+"\nreturn { status: \"up\" };")
 	})
 	require.Equal(t, checkerdef.StatusUp, result.Status, "baseline must fit the budget: %v", result.Output)
 
 	const margin = 16 << 20
-	used := allocatedDuring(func() { requireRefusalWithin(t, script, 10*time.Second) })
-	require.Less(t, used, 3*permitted+margin,
-		"the refusal must come before the allocation: %d bytes allocated, the permitted work takes %d", used, permitted)
+	used := allocatedDuring(t, func() { requireRefusalWithin(t, setup+script, 10*time.Second) })
+	require.Less(t, used, spent+3*(permitted-spent)+margin,
+		"the refusal must come before the allocation: %d bytes allocated, the permitted work takes %d after %d of setup",
+		used, permitted-spent, spent)
 }
 
-// allocatedDuring returns the bytes the process allocated while f ran.
-func allocatedDuring(f func()) uint64 {
+// requireRefusalBelowUnguarded is for a refusal that comes after goja has
+// produced what the budget lets through, and whose producing allocates several
+// times that (338 MiB for the 64 MiB a replacer function may return): no fixed
+// bound tells it from a refusal that came too late. It requires the refusal,
+// and well under what the same script allocates on a bare goja runtime, which
+// has no budget and runs it to the end (534 MiB). The refused runs measure
+// half to two thirds of that.
+func requireRefusalBelowUnguarded(t *testing.T, script string) {
+	t.Helper()
+
+	unguarded := allocatedDuring(t, func() {
+		_, err := goja.New().RunString(script)
+		require.NoError(t, err)
+	})
+
+	used := allocatedDuring(t, func() { requireRefusalWithin(t, script, 10*time.Second) })
+	require.Less(t, used, unguarded/4*3,
+		"the refusal must come before the allocation: %d bytes allocated, %d without the budget", used, unguarded)
+}
+
+// TestAllocatedDuringSeesScripts is the positive control of the allocation
+// bounds: a permitted script that allocates more than refusalAllocBound is
+// counted above it, so a refusal that came after its allocation would fail.
+//
+//nolint:paralleltest // Swaps the package-level isolation settings.
+func TestAllocatedDuringSeesScripts(t *testing.T) {
+	inProcess(t)
+
+	var result *checkerdef.Result
+	used := allocatedDuring(t, func() {
+		result = runScript(t, `var s = "x".repeat(48 * 1024 * 1024); return { status: "up" };`)
+	})
+
+	require.Equal(t, checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+	require.Greater(t, used, uint64(refusalAllocBound))
+}
+
+// inProcess runs the test's scripts in this process, where allocatedDuring
+// sees what they allocate. It swaps the package-level isolation settings, so
+// its caller must not run in parallel.
+func inProcess(t *testing.T) {
+	t.Helper()
+
+	previous := SetIsolation(IsolationSettings{Enabled: false})
+	t.Cleanup(func() { SetIsolation(previous) })
+}
+
+// allocatedDuring returns the bytes the process allocated while f ran. An
+// isolated script allocates in its child process, which this count never
+// sees: it requires isolation off (inProcess).
+func allocatedDuring(t *testing.T, f func()) uint64 {
+	t.Helper()
+	require.False(t, currentIsolation().Enabled, "allocations of an isolated script are not counted here")
+
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
 	f()
@@ -224,12 +291,14 @@ type heavyCase struct {
 
 // TestMemoryBudgetReadsLengthOnce: an array-like whose length getter answers
 // 0 to the charge and 4e9 afterwards is read once, so goja works on the length
-// that was charged instead of preallocating from the second answer.
+// that was charged instead of preallocating from the second answer. The
+// lengths in the output say which answer goja used: preallocating 4e9 slots
+// would end the run (the isolated child's memory limit) or show up there. No
+// wall clock bound, which measured the machine's load.
 func TestMemoryBudgetReadsLengthOnce(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	start := time.Now()
 	result := runScript(t, `
 function like() { var n = 0; return { get length() { return n++ ? 4e9 : 0; } }; }
 var o = like();
@@ -250,17 +319,17 @@ return {
 	r.EqualValues(0, result.Output["toReversed"])
 	r.EqualValues(0, result.Output["from"])
 	r.Equal("4000000000", result.Output["sortedReads"], "the getter ran once inside sort")
-	r.Less(time.Since(start), time.Second)
 }
 
 // TestMemoryBudgetPinsLengthsTheGojaReadsAgain: a length getter, or a
 // Symbol.isConcatSpreadable getter, that answers one thing to the charge and
-// another to goja gets the answer that was charged (spec 2026-11-01-01).
+// another to goja gets the answer that was charged (spec 2026-11-01-01). As
+// in TestMemoryBudgetReadsLengthOnce, the output says which answer goja used:
+// Math.max of no argument is -Infinity, of 3e8 undefined ones NaN.
 func TestMemoryBudgetPinsLengthsTheGojaReadsAgain(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	start := time.Now()
 	result := runScript(t, `
 function like(first, then) { var n = 0; return { get length() { return n++ ? then : first; } }; }
 var refused = "";
@@ -279,7 +348,7 @@ return {
     concat: [].concat(spread).length,
     flipped: flipped.length,
     flippedSame: flipped[0] === flip,
-    apply: Math.max.apply(null, like(0, 3e8)),
+    apply: String(Math.max.apply(null, like(0, 3e8))),
   },
 };
 `)
@@ -290,7 +359,7 @@ return {
 	r.EqualValues(0, result.Output["concat"])
 	r.EqualValues(1, result.Output["flipped"])
 	r.Equal(true, result.Output["flippedSame"])
-	r.Less(time.Since(start), time.Second)
+	r.Equal("-Infinity", result.Output["apply"])
 }
 
 // TestMemoryBudgetPositiveControlCopiesAndStrings: ordinary use of concat,
@@ -784,12 +853,9 @@ func TestMemoryBudgetKeepsShortThrownMessage(t *testing.T) {
 //
 //nolint:paralleltest // Swaps the package-level isolation settings.
 func TestMemoryBudgetChargesRegexpSymbolMethods(t *testing.T) {
-	previous := SetIsolation(IsolationSettings{Enabled: false})
-	t.Cleanup(func() { SetIsolation(previous) })
+	inProcess(t)
 
 	tests := []refusalCase{
-		{"replace function returning a big string", `var big = "x".repeat(1024 * 1024);
-var s = /a/g[Symbol.replace]("a".repeat(100), function () { return big; });`},
 		{"replace non-global", `var s = /x/[Symbol.replace]("x".repeat(1024 * 1024), "$'".repeat(128));`},
 		{"split empty regexp", `var s = RegExp.prototype[Symbol.split].call(/(?:)/, "x".repeat(8 * 1024 * 1024));`},
 	}
@@ -799,6 +865,11 @@ var s = /a/g[Symbol.replace]("a".repeat(100), function () { return big; });`},
 			requireRefusal(t, tt.script)
 		})
 	}
+
+	t.Run("replace function returning a big string", func(t *testing.T) {
+		requireRefusalBelowUnguarded(t, `var big = "x".repeat(1024 * 1024);
+var s = /a/g[Symbol.replace]("a".repeat(100), function () { return big; });`)
+	})
 
 	// The `$'` and `$`+"`"+` replacements are refused only after the matches the
 	// budget allows were processed: that work is permitted, so the bound is
@@ -821,13 +892,18 @@ var s = /a/g[Symbol.replace]("a".repeat(100), function () { return big; });`},
 	}
 
 	// A global match is charged as exec finds each match, so the refusal
-	// comes after the matches the budget allows (2 Mi of them): that work
-	// is permitted, and sized by a baseline that fits, as for the heavy
-	// copies.
+	// comes after the matches the budget allows: that work is permitted, and
+	// sized by a baseline that fits, as for the heavy copies. On a fresh
+	// budget that is 2 Mi matches through goja's spec loop, over 1 GB
+	// allocated and past the 10s timeout with 6 test binaries running at
+	// once. A typed array spends all of the budget but 1 MiB first (one
+	// allocation, where repeat appends its string once per count), leaving
+	// room for about 24 Ki matches of the 256 Ki the subject has.
 	t.Run("match global empty regexp", func(t *testing.T) {
 		const match = `var s = RegExp.prototype[Symbol.match].call(/(?:)/g, "x".repeat(%d));`
 
-		requireRefusalAllocating(t, fmt.Sprintf(match, 4*1024*1024), fmt.Sprintf(match, 1024*1024))
+		setup := fmt.Sprintf(`var spent = new Uint8Array(%d);`, maxScriptAllocBytes-(1<<20))
+		requireRefusalAllocatingAfter(t, setup, fmt.Sprintf(match, 256*1024), fmt.Sprintf(match, 8*1024))
 	})
 }
 
@@ -837,8 +913,7 @@ var s = /a/g[Symbol.replace]("a".repeat(100), function () { return big; });`},
 //
 //nolint:paralleltest // Swaps the package-level isolation settings.
 func TestMemoryBudgetPositiveControlRegexpSymbolMethods(t *testing.T) {
-	previous := SetIsolation(IsolationSettings{Enabled: false})
-	t.Cleanup(func() { SetIsolation(previous) })
+	inProcess(t)
 
 	r := require.New(t)
 
