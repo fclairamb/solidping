@@ -63,6 +63,7 @@ func runSuite(t *testing.T, raw db.Service) {
 	t.Run("ReservedDEKKey", func(t *testing.T) { testReservedDEKKey(t, raw, key) })
 	t.Run("MigrationSealsPlaintextJWTSecret", func(t *testing.T) { testMigrationSealsPlaintextJWT(t, raw, key) })
 	t.Run("MigrationSealsPlaintextAppSettingKeys", func(t *testing.T) { testMigrationSealsAppSettings(t, raw, key) })
+	runOrgSuite(t, raw, key)
 }
 
 func newMasterKey(t *testing.T) []byte {

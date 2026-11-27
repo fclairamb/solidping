@@ -4722,11 +4722,25 @@ func (s *Server) sealPlaintextSystemParameters(ctx context.Context) error {
 			"appSettingsSealed", sealedSettings)
 	}
 
+	// The secret organization parameters behind `${param:…}` (spec
+	// 2026-11-27-02). Same values, so every check that references them keeps
+	// resolving.
+	sealedOrgParams, err := s.sysParams.SealPlaintextOrgParameters(ctx)
+	if err != nil {
+		return fmt.Errorf("auto-migrate organization parameters: %w", err)
+	}
+
+	if sealedOrgParams > 0 {
+		slog.InfoContext(ctx, "encrypted plaintext secret organization parameters at startup",
+			"orgParametersSealed", sealedOrgParams)
+	}
+
 	return nil
 }
 
 // warnPlaintextSystemSecrets names the secret system parameters stored in
-// plaintext because no master key is configured, the JWT signing key first:
+// plaintext because no master key is configured, and counts the secret
+// organization parameters in the same state. The JWT signing key comes first:
 // a read of the database alone lets anyone sign tokens with it.
 func (s *Server) warnPlaintextSystemSecrets(ctx context.Context) {
 	if s.sysParams == nil || s.sysParams.Enabled() {
@@ -4742,12 +4756,20 @@ func (s *Server) warnPlaintextSystemSecrets(ctx context.Context) {
 		keys = append(keys, settingKeys...)
 	}
 
-	if len(keys) == 0 {
+	// The organizations' own secret parameters are counted, not named: their
+	// keys belong to the organizations.
+	orgParams, orgErr := s.sysParams.PlaintextSecretOrgParameterCount(ctx)
+	if orgErr != nil {
+		orgParams = 0
+	}
+
+	if len(keys) == 0 && orgParams == 0 {
 		return
 	}
 
 	slog.WarnContext(ctx, "secret system parameters stored in plaintext",
 		"keys", keys,
+		"secretOrgParameters", orgParams,
 		"how_to_fix", "set SP_ENCRYPTION_MASTER_KEY (or SP_ENCRYPTION_MASTER_KEY_FILE) to encrypt them, "+
 			"and set SP_AUTH_JWT_SECRET to keep the JWT signing key out of the database")
 }

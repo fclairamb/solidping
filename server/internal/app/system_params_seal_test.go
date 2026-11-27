@@ -16,8 +16,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/db/sysparamseal"
+	"github.com/fclairamb/solidping/server/internal/paramkeys"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 )
 
@@ -44,6 +47,15 @@ func TestStartupSealsPlaintextSystemSecrets(t *testing.T) {
 		sysparamseal.AppSettingVAPIDPrivateKey:  "acme-plaintext-vapid-private-key",
 	}
 	r.NoError(raw.SetAppSettings(ctx, legacySettings))
+
+	// A secret org parameter behind `${param:…}` (spec 2026-11-27-02).
+	org := models.NewOrganization("acme-startup-seal", "Acme")
+	r.NoError(raw.CreateOrganization(ctx, org))
+
+	const legacyOrgSecret = "acme-plaintext-org-api-token"
+
+	orgKey := paramkeys.StorageKey("api-token")
+	r.NoError(raw.SetOrgParameter(ctx, org.UID, orgKey, legacyOrgSecret, true))
 
 	kek := make([]byte, 32)
 	_, err = rand.Read(kek)
@@ -88,6 +100,21 @@ func TestStartupSealsPlaintextSystemSecrets(t *testing.T) {
 		r.NoError(openErr)
 		r.Equal(value, openedSetting)
 	}
+
+	storedOrg, err := raw.GetOrgParameter(ctx, org.UID, orgKey)
+	r.NoError(err)
+
+	_, orgSealed := sysparamseal.SealedEnvelope(storedOrg.Value)
+	r.True(orgSealed, "the startup pass must seal the plaintext secret org parameter")
+
+	resolved, err := secretref.LookupParam(ctx, sysParams, org.UID, "api-token")
+	r.NoError(err)
+	r.Equal(legacyOrgSecret, resolved, "the value a check resolves does not change")
+
+	// A second boot seals nothing.
+	again, err := sysParams.SealPlaintextOrgParameters(ctx)
+	r.NoError(err)
+	r.Zero(again)
 }
 
 // TestBuildSystemParamSealerWithoutKey keeps today's plaintext fallback.
@@ -249,6 +276,10 @@ func TestWarnPlaintextSystemSecrets(t *testing.T) {
 	r.NoError(raw.SetSystemParameter(ctx, string(systemconfig.KeyJWTSecret), "acme-plain", true))
 	r.NoError(raw.SetAppSetting(ctx, sysparamseal.AppSettingVAPIDPrivateKey, "acme-plain-vapid"))
 
+	org := models.NewOrganization("acme-warn", "Acme")
+	r.NoError(raw.CreateOrganization(ctx, org))
+	r.NoError(raw.SetOrgParameter(ctx, org.UID, paramkeys.StorageKey("acme-private-name"), "acme-v", true))
+
 	keyless, err := BuildSystemParamSealer(&config.Config{}, raw)
 	r.NoError(err)
 
@@ -257,6 +288,22 @@ func TestWarnPlaintextSystemSecrets(t *testing.T) {
 	r.Contains(logs.String(), "secret system parameters stored in plaintext")
 	r.Contains(logs.String(), string(systemconfig.KeyJWTSecret))
 	r.Contains(logs.String(), sysparamseal.AppSettingVAPIDPrivateKey)
+	r.Contains(logs.String(), "secretOrgParameters=1")
+	r.NotContains(logs.String(), "acme-private-name", "an org's own keys are counted, not named")
+
+	// Org parameters alone are enough to warn.
+	onlyOrg := newSealTestDB(t)
+	orgOnly := models.NewOrganization("acme-warn-only", "Acme")
+	r.NoError(onlyOrg.CreateOrganization(ctx, orgOnly))
+	r.NoError(onlyOrg.SetOrgParameter(ctx, orgOnly.UID, paramkeys.StorageKey("k"), "v", true))
+
+	onlyOrgSealer, err := BuildSystemParamSealer(&config.Config{}, onlyOrg)
+	r.NoError(err)
+
+	logs.Reset()
+	(&Server{sysParams: onlyOrgSealer}).warnPlaintextSystemSecrets(ctx)
+	r.Contains(logs.String(), "secretOrgParameters=1")
+	logs.Reset()
 
 	// With a master key the warning does not apply.
 	logs.Reset()
@@ -324,4 +371,38 @@ func TestSealPlaintextSystemParametersSurfacesAppSettingsFailure(t *testing.T) {
 	err = server.sealPlaintextSystemParameters(ctx)
 	r.ErrorIs(err, errSettingsRead)
 	r.ErrorContains(err, "auto-migrate app settings")
+}
+
+var errOrgsRead = errors.New("organizations read failed")
+
+// failingOrgsDB fails the organization listing the org parameter sweep needs.
+type failingOrgsDB struct {
+	db.Service
+}
+
+func (failingOrgsDB) ListOrganizations(context.Context) ([]*models.Organization, error) {
+	return nil, errOrgsRead
+}
+
+// TestSealPlaintextSystemParametersSurfacesOrgParamsFailure: a failed sweep of
+// the secret org parameters fails the boot with a wrapped error.
+func TestSealPlaintextSystemParametersSurfacesOrgParamsFailure(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	r := require.New(t)
+
+	kek := make([]byte, 32)
+	_, err := rand.Read(kek)
+	r.NoError(err)
+
+	cfg := &config.Config{}
+	cfg.Encryption.MasterKey = base64.StdEncoding.EncodeToString(kek)
+
+	sysParams, err := BuildSystemParamSealer(cfg, failingOrgsDB{Service: newSealTestDB(t)})
+	r.NoError(err)
+
+	err = (&Server{config: cfg, sysParams: sysParams}).sealPlaintextSystemParameters(ctx)
+	r.ErrorIs(err, errOrgsRead)
+	r.ErrorContains(err, "auto-migrate organization parameters")
 }
