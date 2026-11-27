@@ -45,14 +45,16 @@ func TestUnreadableSocketGetsAPermissionHint(t *testing.T) {
 	}()
 
 	cfg := &DockerConfig{Host: "unix://" + sock, ContainerName: "web"}
+	// The temp socket must be listed (spec 2026-11-27-03).
+	ctx := checkerdef.WithDockerSocketAllowlist(t.Context(), []string{sock})
 
-	result, err := (&DockerChecker{}).Execute(t.Context(), cfg)
+	result, err := (&DockerChecker{}).Execute(ctx, cfg)
 	require.NoError(t, err)
 	require.NotContains(t, result.Output[checkerdef.OutputKeyError], "group_add", "positive control")
 
 	require.NoError(t, os.Chmod(sock, 0o000))
 
-	result, err = (&DockerChecker{}).Execute(t.Context(), cfg)
+	result, err = (&DockerChecker{}).Execute(ctx, cfg)
 	require.NoError(t, err)
 	require.Equal(t, checkerdef.StatusDown, result.Status)
 	require.Contains(t, result.Output[checkerdef.OutputKeyError], "permission denied")

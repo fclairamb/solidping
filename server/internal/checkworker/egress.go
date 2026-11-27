@@ -50,6 +50,8 @@ func (r *CheckWorker) withEgress(ctx context.Context) (context.Context, *egress.
 	// agent's own, never the control plane's.
 	if r.config != nil {
 		ctx = checkerdef.WithLocalSocketAllowlist(ctx, r.config.Checkers.UnixSocketPaths)
+		// The docker check's own socket allowlist (spec 2026-11-27-03).
+		ctx = checkerdef.WithDockerSocketAllowlist(ctx, r.config.Checkers.DockerSocketPaths)
 	}
 
 	return egress.WithRecorder(ctx)

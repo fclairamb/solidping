@@ -173,3 +173,44 @@ func TestDockerConfig_Validate_DaemonMode(t *testing.T) {
 		require.Equal(t, "docker-daemon", spec.Slug)
 	})
 }
+
+// The container reference is spliced into the API path, which the client
+// cleans, so `../` would reach another endpoint (spec 2026-11-27-03).
+func TestDockerConfig_Validate_ContainerRefAndSocketSyntax(t *testing.T) {
+	t.Parallel()
+
+	ok := []*DockerConfig{
+		{ContainerName: "web"},
+		{ContainerName: "/test-container"},
+		{ContainerName: "my_app.1-x"},
+		{ContainerID: "abc123"},
+		{ContainerID: "4f66ad9a0b2e"},
+		{Host: "unix:///run/docker.sock", ContainerName: "web"},
+	}
+	for _, cfg := range ok {
+		require.NoError(t, cfg.Validate(), "%+v", cfg)
+	}
+
+	bad := []struct {
+		field string
+		cfg   *DockerConfig
+	}{
+		{"containerName", &DockerConfig{ContainerName: "../../_ping"}},
+		{"containerName", &DockerConfig{ContainerName: "a/../../b"}},
+		{"containerName", &DockerConfig{ContainerName: ".hidden"}},
+		{"containerName", &DockerConfig{ContainerName: "web?x=1"}},
+		{"containerId", &DockerConfig{ContainerID: "../info"}},
+		{"containerId", &DockerConfig{ContainerID: "web"}},
+		{"host", &DockerConfig{Host: "unix://relative.sock"}},
+		{"host", &DockerConfig{Host: "unix:///run/../tmp/x.sock"}},
+		{"host", &DockerConfig{Host: "unix://"}},
+	}
+	for _, tc := range bad {
+		err := tc.cfg.Validate()
+		require.Error(t, err, "%+v", tc.cfg)
+
+		var cfgErr *checkerdef.ConfigError
+		require.ErrorAs(t, err, &cfgErr)
+		require.Equal(t, tc.field, cfgErr.Parameter, "%+v", tc.cfg)
+	}
+}
