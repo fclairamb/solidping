@@ -63,7 +63,7 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 			return next(writer, req)
 		}
 
-		ctx, failure := m.authenticate(req)
+		authed, failure := m.authenticate(req)
 		if failure != nil {
 			if failure.err != nil {
 				return m.WriteErrorErr(writer, req, failure.status, failure.code, failure.message, failure.err)
@@ -72,7 +72,7 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 			return m.WriteError(writer, failure.status, failure.code, failure.message)
 		}
 
-		return next(writer, req.WithContext(ctx))
+		return next(writer, authed)
 	}
 }
 
@@ -95,12 +95,12 @@ func (m *AuthMiddleware) SoftAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 			return next(writer, req)
 		}
 
-		ctx, failure := m.authenticate(req)
+		authed, failure := m.authenticate(req)
 		if failure != nil {
 			return next(writer, req)
 		}
 
-		return next(writer, req.WithContext(ctx))
+		return next(writer, authed)
 	}
 }
 
@@ -114,9 +114,9 @@ type authFailure struct {
 }
 
 // authenticate validates the request's credential and runs every gate
-// RequireAuth enforces. On success it returns the context carrying the claims,
-// the user and the audit actor; on failure, what to answer.
-func (m *AuthMiddleware) authenticate(req *http.Request) (context.Context, *authFailure) {
+// RequireAuth enforces. On success it returns the request whose context carries
+// the claims, the user and the audit actor; on failure, what to answer.
+func (m *AuthMiddleware) authenticate(req *http.Request) (*http.Request, *authFailure) {
 	token := extractToken(req)
 	if token == "" {
 		return nil, &authFailure{
@@ -212,7 +212,7 @@ func (m *AuthMiddleware) authenticate(req *http.Request) (context.Context, *auth
 
 	setSentryIdentity(ctx, claims)
 
-	return ctx, nil
+	return req.WithContext(ctx), nil
 }
 
 // credentialDenial returns the error code and refusal message for a request the

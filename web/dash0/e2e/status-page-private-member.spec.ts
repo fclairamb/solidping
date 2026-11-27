@@ -77,9 +77,10 @@ test.describe("Private status page, member view", () => {
       try {
         const visitor = await anonymous.newPage();
         await visitor.goto(`${API_BASE}${STATUS_BASE}/test/${slug}`);
-        await expect(visitor.getByText("Status Page Not Found")).toBeVisible({
-          timeout: 30_000,
-        });
+        await expect(visitor.getByTestId("status-page-not-found")).toHaveText(
+          "Status Page Not Found",
+          { timeout: 30_000 },
+        );
         await expect(
           visitor.getByTestId("status-page-private-banner"),
         ).toHaveCount(0);

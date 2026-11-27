@@ -54,7 +54,9 @@ export function StatusPageRoute() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold">{t("statusPageNotFound")}</h1>
+          <h1 className="text-2xl font-bold" data-testid="status-page-not-found">
+            {t("statusPageNotFound")}
+          </h1>
           <p className="mt-2 text-muted-foreground">
             {t("statusPageNotFoundDescription")}
           </p>

@@ -150,7 +150,14 @@ type caller struct {
 	kiosk  string
 }
 
-func (f *memberAccessFixture) get(t *testing.T, path string, who caller) *http.Response {
+// memberResponse is what the assertions read of a response, whose body is
+// already drained and closed.
+type memberResponse struct {
+	StatusCode int
+	Header     http.Header
+}
+
+func (f *memberAccessFixture) get(t *testing.T, path string, who caller) memberResponse {
 	t.Helper()
 
 	url := f.ts.URL + path
@@ -175,7 +182,7 @@ func (f *memberAccessFixture) get(t *testing.T, path string, who caller) *http.R
 	_, _ = io.Copy(io.Discard, resp.Body)
 	_ = resp.Body.Close()
 
-	return resp
+	return memberResponse{StatusCode: resp.StatusCode, Header: resp.Header}
 }
 
 // surfaces are every public read of a page that goes through the gate.
