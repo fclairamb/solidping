@@ -3433,8 +3433,9 @@ paths:
       summary: View an organization's default public status page
       description: >-
         Renders the same payload as GET /api/v1/status-pages/{org}/{slug},
-        resolved to the organization's default page. No authentication
-        required.
+        resolved to the organization's default page, with the same gate: no
+        authentication required, and a signed-in member of the organization
+        also reads a `private` or `password` default page.
       operationId: viewDefaultStatusPage
       parameters:
         - $ref: "#/components/parameters/OrgPath"
@@ -3463,7 +3464,10 @@ paths:
         Full public rendering of a status page: sections, per-resource live
         status, and (when enabled) availability/response-time history. A
         disabled or non-public page returns 404, identical to a page that
-        doesn't exist. No authentication required. Caching follows the page's
+        doesn't exist. No authentication required; a signed-in member of the page's
+        organization (access_token cookie or bearer token, app host only, never
+        a custom domain) also reads its `private` and `password` pages, without
+        unlocking. Caching follows the page's
         visibility: a `public` page carries Cache-Control: public, max-age=60,
         stale-while-revalidate=30 — a cache may serve an expired copy for up to
         30 s while it refreshes in the background — while a `password` or
@@ -3513,7 +3517,10 @@ paths:
         no-store (no grace window) for a `password` or
         `private` one (unlocked or not) and for every 401/404 answer. A
         disabled or non-public page returns 404, identical to a page that
-        doesn't exist. No authentication required.
+        doesn't exist. No authentication required; a signed-in member of the page's
+        organization (access_token cookie or bearer token, app host only, never
+        a custom domain) also reads its `private` and `password` pages, without
+        unlocking.
       operationId: viewStatusPageSummary
       parameters:
         - $ref: "#/components/parameters/OrgPath"
@@ -3550,7 +3557,10 @@ paths:
         stale-while-revalidate=30 for a `public` page, private, no-store for a
         `password` or `private` one —
         the badge renders the rollup status of a page the requester may not be
-        entitled to see. No authentication required.
+        entitled to see. No authentication required; a signed-in member of the page's
+        organization (access_token cookie or bearer token, app host only, never
+        a custom domain) also reads its `private` and `password` pages, without
+        unlocking.
       operationId: getStatusPageBadge
       parameters:
         - $ref: "#/components/parameters/OrgPath"
@@ -3640,7 +3650,10 @@ paths:
         stale-while-revalidate=30 for a `public` page, private, no-store for a
         `password` or `private` one (unlocked or not),
         since this payload quotes incident titles and update bodies verbatim.
-        No authentication required.
+        No authentication required; a signed-in member of the page's
+        organization (access_token cookie or bearer token, app host only, never
+        a custom domain) also reads its `private` and `password` pages, without
+        unlocking.
 
         Every field is operator-authored or templated from the page's own
         public resource names. Probe output, error strings and internal
@@ -3682,8 +3695,10 @@ paths:
         view, and the same visibility-driven caching: Cache-Control: public,
         max-age=300, stale-while-revalidate=30 for a `public` page, private,
         no-store for a `password` or `private` one — the feed quotes update
-        titles and bodies verbatim. No
-        authentication required.
+        titles and bodies verbatim. No authentication required; a signed-in member of the page's
+        organization (access_token cookie or bearer token, app host only, never
+        a custom domain) also reads its `private` and `password` pages, without
+        unlocking.
       operationId: statusPageFeed
       parameters:
         - $ref: "#/components/parameters/OrgPath"
@@ -15938,9 +15953,11 @@ components:
           type: string
           enum: [public, private, password]
           description: >-
-            public = world-readable; private = hidden entirely (public
-            endpoints answer 404); password = shared with a secret (public
-            endpoints answer 401 STATUS_PAGE_LOCKED until unlocked).
+            public = world-readable; private = visible only to signed-in
+            members of the organization (public endpoints answer 404 to
+            everyone else, and always on a custom domain); password = shared
+            with a secret (public endpoints answer 401 STATUS_PAGE_LOCKED until
+            unlocked; signed-in members of the organization skip the unlock).
         hasPassword:
           type: boolean
           description: >-

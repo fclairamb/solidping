@@ -54,9 +54,11 @@ func PeriodFromDays(days int) StatusPagePeriod {
 }
 
 // Status page visibility values. `public` is world-readable, `private` is
-// fully hidden (the public endpoints 404 as if it did not exist), and
-// `password` is shared-with-a-secret: the public endpoints answer 401 until
-// the visitor unlocks the page (spec 2026-08-21-07).
+// visible only to signed-in members of the organization (the public endpoints
+// 404 to everyone else as if it did not exist, and always on a custom domain;
+// spec 2026-11-27-01), and `password` is shared-with-a-secret: the public
+// endpoints answer 401 until the visitor unlocks the page (spec 2026-08-21-07),
+// except to a signed-in member of the organization.
 const (
 	StatusPageVisibilityPublic   = "public"
 	StatusPageVisibilityPrivate  = "private"
