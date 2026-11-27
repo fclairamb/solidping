@@ -124,7 +124,14 @@ type WSBackend struct {
 	// that already received this agent's plugin manifests (spec 2026-10-17-05
 	// §18).
 	pluginsReportedFor pluginReportKey
-	workerUID          string
+	// reportsOnce is the identity hello's flag: the server keeps this agent's
+	// capability set and version per connection. capsReportedAt is the
+	// connection (its connectedAt) that received them, capsReported the set it
+	// received.
+	reportsOnce    bool
+	capsReportedAt time.Time
+	capsReported   []string
+	workerUID      string
 	// noWorkerTasks is the identity hello's flag: the server refuses this
 	// agent worker tasks (a system agent).
 	noWorkerTasks     bool
@@ -341,18 +348,21 @@ func (b *WSBackend) claim(
 ) ([]*models.CheckJob, time.Duration, error) {
 	// The claim frame doubles as this agent's capability report: it is the only
 	// frame an idle-but-connected agent sends regularly, and Heartbeat below is
-	// a no-op. The probe behind Current() is cached for well under a heartbeat,
-	// so a claim-per-second costs nothing while a host that gains or loses IPv6
-	// still converges without a restart.
+	// a no-op. The set is computed on every claim (the probe behind Current()
+	// is cached for well under a heartbeat), so a host that gains or loses IPv6
+	// still converges without a restart; capabilityReport decides whether this
+	// claim carries it.
 	manifests, reportFor := b.pluginReport()
+	// The worker put the plugin types its activation gate enables on ctx.
+	caps := b.claimCapabilities(ctx)
+	sendCaps, sendVersion, capsFor := b.capabilityReport(caps)
 
 	resp, err := b.request(ctx, &agents.ClientFrame{
-		Type:     agents.MsgTypeClaim,
-		MaxJobs:  maxJobs,
-		CheckUID: checkUID,
-		// The worker put the plugin types its activation gate enables on ctx.
-		Capabilities: b.claimCapabilities(ctx),
-		Version:      version.Get().Version,
+		Type:         agents.MsgTypeClaim,
+		MaxJobs:      maxJobs,
+		CheckUID:     checkUID,
+		Capabilities: sendCaps,
+		Version:      sendVersion,
 		AutoUpgrade:  b.autoUpgrade(),
 		Plugins:      manifests,
 	})
@@ -360,11 +370,15 @@ func (b *WSBackend) claim(
 		return nil, 0, err
 	}
 
+	b.mu.Lock()
 	if manifests != nil && !reportFor.connectedAt.IsZero() {
-		b.mu.Lock()
 		b.pluginsReportedFor = reportFor
-		b.mu.Unlock()
 	}
+
+	if sendCaps != nil && !capsFor.IsZero() {
+		b.capsReportedAt, b.capsReported = capsFor, caps
+	}
+	b.mu.Unlock()
 
 	jobs := make([]*models.CheckJob, 0, len(resp.Jobs))
 
@@ -519,6 +533,27 @@ func (b *WSBackend) unsealIdentities() []string {
 	defer b.mu.Unlock()
 
 	return append([]string{b.identity.X25519Identity}, b.regionIdentities...)
+}
+
+// capabilityReport is what a claim carries of caps (the set just computed) and
+// of the version. Against a server that keeps them per connection
+// (reportsOnce), the first claim of a connection carries both, later claims
+// the set only when it differs from the one this connection received, and
+// never the version. Against an older server, every claim carries both. The
+// returned time is the connection the report is for (zero when none).
+func (b *WSBackend) capabilityReport(caps []string) ([]string, string, time.Time) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if !b.reportsOnce || b.connectedAt.IsZero() || !b.connectedAt.Equal(b.capsReportedAt) {
+		return caps, version.Get().Version, b.connectedAt
+	}
+
+	if models.SameCapabilitySet(caps, b.capsReported) {
+		return nil, "", b.connectedAt
+	}
+
+	return caps, "", b.connectedAt
 }
 
 // claimCapabilities is the capability report of a claim frame: the worker's
@@ -828,7 +863,7 @@ func (b *WSBackend) dialEnroll(ctx context.Context) error {
 	identityCopy := *b.identity
 	b.mu.Unlock()
 
-	b.activateConn(ctx, conn, enrolled.WorkerUID, identityHello.NoWorkerTasks)
+	b.activateConn(ctx, conn, enrolled.WorkerUID, &identityHello)
 
 	if b.onIdentityChange != nil {
 		b.onIdentityChange(&identityCopy)
@@ -855,12 +890,15 @@ func (b *WSBackend) Connected() bool {
 // and keepalive ping loop. Both loops run on WithoutCancel so a per-request ctx
 // cancellation cannot tear down the shared connection; they end when the conn
 // is retired (read error, ping failure, or an explicit drop).
-func (b *WSBackend) activateConn(ctx context.Context, conn *websocket.Conn, workerUID string, noWorkerTasks bool) {
+func (b *WSBackend) activateConn(
+	ctx context.Context, conn *websocket.Conn, workerUID string, hello *agents.ServerFrame,
+) {
 	pumpCtx := context.WithoutCancel(ctx)
 
 	b.mu.Lock()
 	b.workerUID = workerUID
-	b.noWorkerTasks = noWorkerTasks
+	b.noWorkerTasks = hello.NoWorkerTasks
+	b.reportsOnce = hello.ReportsOnce
 	b.conn = conn
 	b.connectedAt = time.Now()
 	b.mu.Unlock()
@@ -907,7 +945,7 @@ func (b *WSBackend) dialReconnect(ctx context.Context) error {
 		return fmt.Errorf("read hello: %w", err)
 	}
 
-	b.activateConn(ctx, conn, hello.WorkerUID, hello.NoWorkerTasks)
+	b.activateConn(ctx, conn, hello.WorkerUID, &hello)
 
 	b.logger.InfoContext(ctx, "agent reconnected", "agent_uid", identity.AgentUID, "region", hello.Region)
 
