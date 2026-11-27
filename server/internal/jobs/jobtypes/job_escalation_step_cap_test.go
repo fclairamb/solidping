@@ -176,6 +176,10 @@ func TestCap_WhatsAppCountedWhateverTwilioMode(t *testing.T) {
 		fake, baseURL := newFakeGraphAPI(t, http.StatusOK, graphOK)
 		enableWhatsApp(env, baseURL)
 		entSvc := saasEntitlements(env, time.Now)
+		r.NoError(entSvc.Set(ctx, env.org.UID, entitlements.Entitlements{
+			Limits: entitlements.Limits{MaxWhatsappPerMonth: entitlements.Int(0)},
+			Source: models.EntitlementSourceAdmin,
+		}, "tester", "no WhatsApp"))
 
 		filter := map[string]bool{"whatsapp": true}
 
