@@ -117,6 +117,13 @@ save actions. The form's buttons therefore land mid-page.
    so the save stays reachable whatever is added below. Trade-off: it takes a strip of the
    viewport on small screens.
 
+## Resolved open questions
+
+1. A signed-in member of the page's organization also bypasses the `password` gate, like a kiosk token. (autopilot: recommended answer)
+2. Any member of the page's organization with read access to status pages (every role today) gets access. (autopilot: recommended answer)
+3. No member access on custom domains: a `private` page stays 404 there. (autopilot: recommended answer)
+4. Edit page: make the Cancel / Save action row sticky. (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes #1072. The implementing PR body **must** carry a `Closes #1072` line so the
