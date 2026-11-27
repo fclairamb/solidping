@@ -162,3 +162,25 @@ func TestSeedOnlyInboundSecretLogsNoEqualityError(t *testing.T) {
 	r.NoError(srv.SeedSaaSEntitlements(ctx))
 	r.NotContains(buf.String(), "level=ERROR")
 }
+
+// TestSeedURLTemplates covers the dashboard link templates seeded from env.
+func TestSeedURLTemplates(t *testing.T) {
+	ctx := context.Background()
+	r := require.New(t)
+
+	srv, dbSvc := newSaaSSeedServer(ctx, t)
+	t.Setenv(envEntitlementsUpgradeURL, "https://billing.acme.com/{org}")
+	t.Setenv(envEntitlementsContactURL, "mailto:contact@acme.com?subject={org}")
+
+	r.NoError(srv.SeedSaaSEntitlements(ctx))
+
+	for param, want := range map[string]string{
+		entitlements.ParamUpgradeURLTemplate: "https://billing.acme.com/{org}",
+		entitlements.ParamContactURLTemplate: "mailto:contact@acme.com?subject={org}",
+	} {
+		got, err := dbSvc.GetSystemParameter(ctx, param)
+		r.NoError(err)
+		r.NotNil(got, param)
+		r.Equal(want, got.Value["value"], param)
+	}
+}

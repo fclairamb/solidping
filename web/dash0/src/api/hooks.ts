@@ -7676,6 +7676,8 @@ export interface EntitlementsResponse {
   source: string;
   stale: boolean;
   upgradeUrl?: string;
+  /** "Ask for more" link (often a mailto:), from `entitlements.contact_url_template`. */
+  contactUrl?: string;
   /** Plan identity supplied by the billing service (display-only). */
   displayName?: string | null;
   displayEmoji?: string | null;
