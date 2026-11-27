@@ -91,7 +91,7 @@
           var reads = (window.__spPrefetch = {});
           var read = function (include) {
             var url = "/api/v1/status-pages/" + page.trim() + "?include=" + include;
-            var response = fetch(url, { cache: "no-cache" });
+            var response = fetch(url, { cache: "no-cache", credentials: "same-origin" });
             response.catch(function () {});
             reads[url] = response;
             return response;

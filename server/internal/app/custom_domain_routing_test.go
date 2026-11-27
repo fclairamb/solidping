@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/statuspagekiosk"
 )
 
 // newTestStatus0FS returns a minimal but real HTML shell with a </head>
@@ -259,6 +260,15 @@ func newCustomHostTestServer(t *testing.T) *Server {
 		// handler intact (spec 2026-09-22-07: custom-domain passthrough of
 		// `include`).
 		_, _ = w.Write([]byte("api-view?" + req.URL.RawQuery))
+
+		return nil
+	})
+
+	// Echoes whether member access was switched off for the request (spec
+	// 2026-11-27-01: no member access on a custom domain).
+	api.GET("/status-pages/:org/:slug/summary", func(w http.ResponseWriter, req *http.Request) error {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, "member-access-disabled=%t", statuspagekiosk.MemberAccessDisabled(req.Context()))
 
 		return nil
 	})
@@ -595,7 +605,7 @@ func TestCustomHostShellCacheControl(t *testing.T) {
 	r.Equal(http.StatusOK, lockedRec.Code)
 	r.Equal("private, no-store", lockedRec.Header().Get("Cache-Control"))
 	r.NotContains(lockedRec.Header().Get("Cache-Control"), "public")
-	r.Equal("Cookie, X-Forwarded-Proto", lockedRec.Header().Get("Vary"))
+	r.Equal("Cookie, Authorization, X-Forwarded-Proto", lockedRec.Header().Get("Vary"))
 }
 
 // TestLookupCustomDomainCarriesVisibility closes the gap the test above cannot
@@ -800,5 +810,34 @@ func TestReservedHostWithTrailingDotSkipsLookup(t *testing.T) {
 
 		_, cached := server.customDomainCache.get(hostOnly(host))
 		r.False(cached, "reserved host %q must not reach the custom-domain lookup", host)
+	}
+}
+
+// TestCustomHostDisablesMemberAccess — spec 2026-11-27-01: the dashboard
+// session never reaches a custom domain, so a `private` page stays a 404 there
+// even for a request carrying a member's bearer token. The custom-host router
+// switches the member grant off before the API sees the request; the app host
+// leaves it on.
+func TestCustomHostDisablesMemberAccess(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	server := newCustomHostTestServer(t)
+	handler := server.handlerWithCustomDomains(server.router)
+
+	for host, want := range map[string]string{
+		"status.acme.com": "member-access-disabled=true",
+		"solidping.io":    "member-access-disabled=false",
+	} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet,
+			"/api/v1/status-pages/acme/main/summary", nil)
+		req.Host = host
+		req.Header.Set("Authorization", "Bearer member-token")
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		r.Equal(http.StatusOK, rec.Code, host)
+		r.Equal(want, rec.Body.String(), host)
 	}
 }

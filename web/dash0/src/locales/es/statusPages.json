@@ -360,7 +360,7 @@
     "private": "Privada",
     "password": "Protegida con contraseña",
     "publicHint": "Cualquiera con el enlace puede ver esta página.",
-    "privateHint": "La página queda totalmente oculta: las URL públicas responden como si no existiera.",
+    "privateHint": "Solo los miembros de la organización con sesión iniciada ven la página; para todos los demás, y en cualquier dominio personalizado, no existe.",
     "passwordHint": "Los visitantes deben introducir una contraseña para ver la página. Defínela abajo.",
     "passwordLabel": "Contraseña de la página",
     "passwordPlaceholder": "Al menos 6 caracteres",

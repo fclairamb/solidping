@@ -19,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
 	"github.com/fclairamb/solidping/server/internal/statuspagecache"
+	"github.com/fclairamb/solidping/server/internal/statuspagekiosk"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
@@ -424,7 +425,7 @@ func (s *Server) serveCustomHost(writer http.ResponseWriter, req *http.Request, 
 		// allowlisted below. Without this the default branch below hands the
 		// request to the status SPA, and the customer's <script> tag receives
 		// text/html — which fails to parse, silently, on their site.
-		s.router.ServeHTTP(writer, req)
+		s.router.ServeHTTP(writer, req.WithContext(statuspagekiosk.WithoutMemberAccess(req.Context())))
 	case strings.HasPrefix(reqPath, statuspageassets.PublicPathPrefix):
 		// The page's logo and favicon (`logoUrl` / `faviconUrl` are same-origin
 		// paths). Without this the default branch answers with the SPA shell and
@@ -433,7 +434,10 @@ func (s *Server) serveCustomHost(writer http.ResponseWriter, req *http.Request, 
 		s.router.ServeHTTP(writer, req.WithContext(files.WithStatusPageScope(req.Context(), page.UID)))
 	case strings.HasPrefix(reqPath, "/api/"):
 		if isCustomHostAPIAllowed(reqPath) {
-			s.router.ServeHTTP(writer, req)
+			// No member access on a custom domain (spec 2026-11-27-01): the
+			// dashboard session is host-only on the app host, so a `private`
+			// page stays a 404 here whatever credential the request carries.
+			s.router.ServeHTTP(writer, req.WithContext(statuspagekiosk.WithoutMemberAccess(req.Context())))
 		} else {
 			http.NotFound(writer, req)
 		}

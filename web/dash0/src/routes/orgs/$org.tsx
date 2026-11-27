@@ -1263,8 +1263,16 @@ function OrgLayout() {
           />
         )}
         {/* A 16px gutter on a phone, more air from sm up, and a max width so
-            lines and tables stay readable on a very wide monitor. */}
-        <div className="relative flex-1 overflow-auto px-4 py-4 sm:px-6 sm:py-6">
+            lines and tables stay readable on a very wide monitor.
+
+            overflow-x-clip, not overflow-auto: the window is what scrolls
+            (this box grows with its content), and any non-visible overflow
+            other than `clip` makes this box a scroll container that never
+            scrolls, which silently disables every `position: sticky` inside
+            it (the check form's and the status page form's sticky action
+            rows, spec 2026-11-27-01). Wide content still never widens the
+            page; tables scroll in their own wrapper. */}
+        <div className="relative flex-1 overflow-x-clip px-4 py-4 sm:px-6 sm:py-6">
           <div className="mx-auto w-full max-w-[1400px]">
             {/* Above the content on EVERY page of the org, not just the
                 dashboard: a visitor who deep-links into a check detail must

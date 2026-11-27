@@ -360,7 +360,7 @@
     "private": "私有",
     "password": "密码保护",
     "publicHint": "任何拿到链接的人都能看到此页面。",
-    "privateHint": "页面完全隐藏：公开 URL 的响应如同它不存在。",
+    "privateHint": "仅组织中已登录的成员可以查看此页面；对其他人以及任何自定义域名，它如同不存在。",
     "passwordHint": "访客必须输入密码才能看到页面。在下方设置密码。",
     "passwordLabel": "页面密码",
     "passwordPlaceholder": "至少 6 个字符",

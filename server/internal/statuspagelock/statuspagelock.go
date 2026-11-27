@@ -2,10 +2,12 @@
 // password-protected status pages (spec 2026-08-21-07).
 //
 // A status page has three visibilities. `public` is world-readable, `private`
-// is fully hidden (the public endpoints answer 404, as if the page did not
-// exist), and `password` is shared-with-a-secret: the page is known to exist,
-// but every public read answers 401 until the visitor proves they hold the
-// password.
+// is visible only to signed-in members of the organization (the public
+// endpoints answer 404 to everyone else, as if the page did not exist), and
+// `password` is shared-with-a-secret: the page is known to exist, but every
+// public read answers 401 until the visitor proves they hold the password.
+// The member and kiosk-token grants live in statuspagekiosk.Decide, the single
+// public gate; this package only knows the visibility and the unlock cookie.
 //
 // # The unlock cookie
 //

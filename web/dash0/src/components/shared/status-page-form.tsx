@@ -641,11 +641,29 @@ export function StatusPageForm({
         </CardContent>
       </Card>
 
-      <div className="flex gap-3">
-        <Button type="button" variant="outline" onClick={onCancel}>
+      {/*
+        Sticky: on the edit route, more cards (appearance, branding, custom
+        domain, subscribers) follow the form, so a plain row would sit in the
+        middle of the page. Pinned to the bottom of the viewport while the form
+        is on screen, it stays reachable whatever is added below.
+      */}
+      <div
+        className="sticky bottom-0 z-10 flex gap-3 border-t bg-background py-3"
+        data-testid="status-page-form-actions"
+      >
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          data-testid="status-page-form-cancel"
+        >
           {t("form.cancel")}
         </Button>
-        <Button type="submit" disabled={isPending || !name || !slug}>
+        <Button
+          type="submit"
+          disabled={isPending || !name || !slug}
+          data-testid="status-page-form-submit"
+        >
           {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {mode === "create" ? t("form.createStatusPage") : t("form.saveChanges")}
         </Button>
