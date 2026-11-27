@@ -42,8 +42,12 @@ export async function apiFetch<T>(url: string): Promise<T> {
     // was answered from its own disk cache and showed data up to 90 s old.
     // The CDN in front still caches; the server's 15 s memo absorbs the rest.
     // index.html's early reads use the same mode.
+    // "same-origin": the dashboard session cookie rides along, so a
+    // signed-in member of the organization can read its `private` page
+    // (spec 2026-11-27-01). It never reaches a custom domain or another host.
     response =
-      (await takePrefetched(url)) ?? (await fetch(url, { cache: "no-cache" }));
+      (await takePrefetched(url)) ??
+      (await fetch(url, { cache: "no-cache", credentials: "same-origin" }));
   } catch {
     throw new NetworkError();
   }

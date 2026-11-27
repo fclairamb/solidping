@@ -88,6 +88,6 @@ func TestApplySetsBothHeaders(t *testing.T) {
 	statuspagecache.ApplyGated(gated)
 
 	r.Equal("private, no-store", gated.Get("Cache-Control"))
-	r.Equal("Cookie, X-Forwarded-Proto", gated.Get("Vary"))
+	r.Equal("Cookie, Authorization, X-Forwarded-Proto", gated.Get("Vary"))
 	r.Equal(gated, viaApply)
 }

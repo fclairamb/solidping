@@ -290,7 +290,7 @@ Status pages are managed per organization from the dashboard (**Settings → Sta
 | Show Response Time | Display per-check response-time history |
 | History Days | Size of the lookback window (default 90 days) |
 | Language | Locale used for date formatting on the public page |
-| Visibility | `Public`, `Private` (hidden entirely) or `Password protected` (see below) |
+| Visibility | `Public`, `Private` (signed-in members only) or `Password protected` (see below) |
 | Logo / Favicon | Your own brand assets, replacing the SolidPing mark (see below) |
 | Hide "Powered by SolidPing" | White-label the footer, when your plan includes it (see below) |
 | Custom CSS | Your own stylesheet, applied to the public page (see below) |
@@ -376,8 +376,17 @@ Visibility has three settings:
 | Setting | What visitors see |
 |---|---|
 | **Public** | Anyone with the link sees the page. |
-| **Private** | The page is hidden entirely — its public URLs answer exactly as if the page did not exist. |
+| **Private** | Only signed-in members of your organization see the page. To everyone else its public URLs answer exactly as if the page did not exist. |
 | **Password protected** | The page asks for a password, then shows normally. |
+
+**Private** is the one to use for an internal page. A member of the
+organization who is signed in to the dashboard opens it with **View** and sees it
+like any visitor, with a "Private" notice at the top. Anyone else, including a
+member of another organization, gets "Status Page Not Found". A private page is
+never served to members on a custom domain: the dashboard session lives on the
+SolidPing host only, so use the SolidPing URL for an internal page. Signed-in
+members also skip the password of a password-protected page of their own
+organization.
 
 **Password protected** is the one to use for a status page you share with
 customers but not with the internet. Set a password (at least 6 characters) and

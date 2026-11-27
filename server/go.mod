@@ -226,7 +226,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.22
 	github.com/aws/aws-sdk-go-v2/credentials v1.21.4
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.116.1
-	github.com/aws/smithy-go v1.28.10
+	github.com/aws/smithy-go v1.28.11
 	github.com/beevik/ntp v1.6.0
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/chromedp/cdproto v0.0.0-20260922220944-a19bff23514f
@@ -250,7 +250,7 @@ require (
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-jose/go-jose/v4 v4.1.9
 	github.com/go-ldap/ldap/v3 v3.4.15
-	github.com/go-sql-driver/mysql v1.10.2
+	github.com/go-sql-driver/mysql v1.11.0
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
@@ -283,14 +283,14 @@ require (
 	github.com/pires/go-proxyproto v0.16.0
 	github.com/pkg/sftp v1.13.13
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
-	github.com/posthog/posthog-go/v2 v2.3.1
+	github.com/posthog/posthog-go/v2 v2.4.0
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
 	github.com/prometheus/common v0.74.0
 	github.com/quic-go/quic-go v0.66.0
 	github.com/rabbitmq/amqp091-go v1.17.0
-	github.com/redis/go-redis/v9 v9.24.0
+	github.com/redis/go-redis/v9 v9.24.1
 	github.com/rumblefrog/go-a2s v1.0.3
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/sijms/go-ora/v3 v3.0.1

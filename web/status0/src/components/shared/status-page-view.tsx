@@ -584,6 +584,18 @@ export function StatusPageView({
             </p>
           )}
 
+          {/* A `private` page only renders for a signed-in member of its
+              organization (or a kiosk screen): say so, so nobody mistakes it
+              for a page they can share (spec 2026-11-27-01). */}
+          {page.visibility === "private" && (
+            <p
+              className="sp-private-banner mt-4 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
+              data-testid="status-page-private-banner"
+            >
+              {t("privateBanner", { org: page.orgName ?? page.name })}
+            </p>
+          )}
+
           <div
             className={`sp-status-banner relative overflow-hidden mt-5 rounded-xl border p-3.5 sm:p-4 shadow-sm ${
               bannerSeverity?.bannerSurface ?? overallStyle.bannerSurface

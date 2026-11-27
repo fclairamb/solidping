@@ -1387,6 +1387,7 @@ function StatusPageDetailPage() {
                 href={`${STATUS_BASE}/${org}/${page.slug}`}
                 target="_blank"
                 rel="noopener noreferrer"
+                data-testid="status-page-view-link"
               >
                 <Button
                   variant="outline"

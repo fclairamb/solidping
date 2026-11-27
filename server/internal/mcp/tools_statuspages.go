@@ -184,7 +184,8 @@ func createStatusPageDef() ToolDefinition {
 			schemaKeySlug:        stringProp("URL-friendly slug (required, unique per org), e.g. \"public\"."),
 			schemaKeyDescription: stringProp("Optional free-text description shown in the UI."),
 			propVisibility: stringProp(
-				"Visibility setting. Allowed: \"public\", \"private\". Default \"public\".",
+				"Visibility setting. Allowed: \"public\" (world-readable), \"private\" (visible only to " +
+					"signed-in members of the organization). Default \"public\".",
 			),
 			propIsDefault:        boolProp("Whether this is the org's default status page (only one allowed)."),
 			propShowAvailability: boolProp("Display availability percentage on the public page."),
@@ -265,7 +266,8 @@ func updateStatusPageDef() ToolDefinition {
 			schemaKeyName:        stringProp("New display name, e.g. \"Public status page\"."),
 			schemaKeySlug:        stringProp("New URL-friendly slug, e.g. \"public\"."),
 			schemaKeyDescription: stringProp("New free-text description shown in the UI."),
-			propVisibility:       stringProp("Visibility setting. Allowed: \"public\", \"private\"."),
+			propVisibility: stringProp("Visibility setting. Allowed: \"public\" (world-readable), " +
+				"\"private\" (visible only to signed-in members of the organization)."),
 			propIsDefault:        boolProp("Mark as the org's default page (only one allowed)."),
 			schemaKeyEnabled:     boolProp("Enable or disable the public-facing page."),
 			propShowAvailability: boolProp("Toggle availability percentage on the public page."),
@@ -731,10 +733,11 @@ func (h *Handler) toolDeleteStatusPageResource(
 // single-page tools and the list's items.
 func statusPageResponseOutputProps() map[string]any {
 	return map[string]any{
-		propUID:            stringProp("Status page UID."),
-		schemaKeyName:      stringProp("Display name."),
-		schemaKeySlug:      stringProp("URL-friendly slug."),
-		"visibility":       stringProp("\"public\", \"private\" or \"password\"."),
+		propUID:       stringProp("Status page UID."),
+		schemaKeyName: stringProp("Display name."),
+		schemaKeySlug: stringProp("URL-friendly slug."),
+		"visibility": stringProp("\"public\" (world-readable), \"private\" (visible only to signed-in " +
+			"members of the organization) or \"password\" (shared with a secret)."),
 		propIsDefault:      boolProp("Whether this is the organization's default page."),
 		schemaKeyEnabled:   boolProp("Whether the public page is served."),
 		"historyPeriod":    stringProp("History window: \"24h\", \"7d\", \"30d\" or \"90d\"."),
