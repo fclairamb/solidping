@@ -235,6 +235,19 @@ sp checks list --output json
 sp results list --output jsonl
 ```
 
+## Live View (`--watch`)
+
+`sp checks list` and `sp incidents list` accept `--watch` to keep the table up to date. It combines with their other flags (`--with-last-result`, `--internal`, `--all`, `--check`, `--state`, ...).
+
+```bash
+sp checks list --with-last-result --watch
+sp incidents list --state active --watch
+```
+
+The command subscribes to the organization live socket (`/api/v1/orgs/<org>/events/ws`), refetches when the server reports a change (bursts are merged, 500 ms) and redraws the screen. The header shows the last refresh time and `live`. If the socket drops, the client reconnects with exponential backoff (up to 30 s); if it cannot be used at all (older server, rejected handshake), it polls every 10 s and the header shows `polling`. Press Ctrl-C to exit (status 0).
+
+`--watch` only works with table output: combined with `--output json` or `jsonl` it fails immediately.
+
 ## Configuration
 
 The client is configured through `SOLIDPING_`-prefixed environment variables:
