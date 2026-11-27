@@ -1,6 +1,7 @@
 package archive_test
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"strings"
@@ -229,8 +230,8 @@ func TestStorageArchiverDayStepMergesHourFiles(t *testing.T) {
 		rollups = append(rollups, hourRollup(fmt.Sprintf("hour-eu-%02d", hour), &eu, start))
 	}
 
-	// The day compaction of region eu: its hour rollups all have raw rows in
-	// the archive, so none of them lands in the day file.
+	// The day compaction of region eu: the hour rollups it compacts are never
+	// archived, the day file is the union of the hour files.
 	r.NoError(archiver.Archive(ctx, orgUID.String(), "check-1", models.PeriodTypeDay, day, rollups))
 
 	rows := readArchive(t, storage, orgUID, archive.DayFileID("check-1", day))
@@ -246,17 +247,18 @@ func TestStorageArchiverDayStepMergesHourFiles(t *testing.T) {
 			"hour file %02d must be deleted once in the day file", hour)
 	}
 
-	// The day compaction of region us comes next: the hour files are gone but
-	// the day file holds its raw rows, so no rollup is added either.
+	// The day compaction of region us comes next: the hour files are gone, so
+	// the day file is left as it is.
 	usRollup := hourRollup("hour-us-05", &us, day.Add(5*time.Hour))
 	r.NoError(archiver.Archive(ctx, orgUID.String(), "check-1", models.PeriodTypeDay, day,
 		[]*models.Result{usRollup}))
 	r.ElementsMatch(wantUIDs, uidsOf(readArchive(t, storage, orgUID, archive.DayFileID("check-1", day))))
 }
 
-// TestStorageArchiverDayStepRollupFallback: an hour with no hour file (compacted
-// before archiving was on) contributes its hour rollup row to the day file.
-func TestStorageArchiverDayStepRollupFallback(t *testing.T) {
+// TestStorageArchiverDayStepNeverArchivesRollups: an hour with no hour file
+// (compacted before archiving was on) is absent from the day file, and a day
+// with no hour file at all gets no day file: an archive never holds a rollup.
+func TestStorageArchiverDayStepNeverArchivesRollups(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -274,14 +276,47 @@ func TestStorageArchiverDayStepRollupFallback(t *testing.T) {
 	r.NoError(archiver.Archive(ctx, orgUID.String(), "check-1", models.PeriodTypeDay, day, rollups))
 
 	rows := readArchive(t, storage, orgUID, archive.DayFileID("check-1", day))
-	r.Equal([]string{"raw-3a", "raw-3b", "hour-4"}, uidsOf(rows))
-	r.Equal(models.PeriodTypeHour, rows[2].PeriodType)
-	r.Equal(int64(60), rows[2].TotalChecks.V)
+	r.Equal([]string{"raw-3a", "raw-3b"}, uidsOf(rows))
+
+	before := day.AddDate(0, 0, -1)
+	r.NoError(archiver.Archive(ctx, orgUID.String(), "check-1", models.PeriodTypeDay, before,
+		[]*models.Result{hourRollup("hour-before", nil, before)}))
+	r.False(archiveExists(t, storage, orgUID, archive.DayFileID("check-1", before)),
+		"a day with no hour file must get no day file")
+}
+
+// TestStorageArchiverDayStepDropsLegacyRollups: a day file written by
+// v0.55/v0.56 held hour rollups; merging hour files into it drops them.
+func TestStorageArchiverDayStepDropsLegacyRollups(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	storage := localfs.New(t.TempDir())
+	archiver := archive.New(storage)
+	orgUID := uuid.New()
+	day := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
+	hour1, hour2 := day.Add(time.Hour), day.Add(2*time.Hour)
+	dayFileID := archive.DayFileID("check-1", day)
+
+	legacy := encodeLegacy(t, []legacyRow{
+		{UID: "raw-1a", CheckUID: "check-1", PeriodType: models.PeriodTypeRaw, PeriodStart: hour1, CreatedAt: hour1},
+		{UID: "hour-2", CheckUID: "check-1", PeriodType: models.PeriodTypeHour, PeriodStart: hour2, CreatedAt: hour2},
+	})
+	_, err := storage.WriteFile(ctx, orgUID, filestorage.GroupTypeArchives, dayFileID, bytes.NewReader(legacy),
+		filestorage.FileMetadata{Filename: dayFileID, MimeType: archive.MimeType, Size: int64(len(legacy))})
+	r.NoError(err)
+
+	r.NoError(archiver.Archive(ctx, orgUID.String(), "check-1", models.PeriodTypeHour, hour1,
+		[]*models.Result{rawResult("raw-1late", hour1.Add(30*time.Minute))}))
+	r.NoError(archiver.Archive(ctx, orgUID.String(), "check-1", models.PeriodTypeDay, day,
+		[]*models.Result{hourRollup("hour-1", nil, hour1)}))
+
+	r.Equal([]string{"raw-1a", "raw-1late"}, uidsOf(readArchive(t, storage, orgUID, dayFileID)))
 }
 
 // TestStorageArchiverDayStepTwice: a late row compacted after the day file was
-// written gives the same day file plus the late row, without duplicates; a
-// rollup row upserted again (new uid) replaces the first one.
+// written gives the same day file plus the late row, without duplicates.
 func TestStorageArchiverDayStepTwice(t *testing.T) {
 	t.Parallel()
 
@@ -306,6 +341,6 @@ func TestStorageArchiverDayStepTwice(t *testing.T) {
 		[]*models.Result{hourRollup("hour-1-bis", nil, hour1), hourRollup("hour-2-bis", nil, hour2)}))
 
 	rows := readArchive(t, storage, orgUID, archive.DayFileID("check-1", day))
-	r.Equal([]string{"raw-1a", "raw-1late", "hour-2-bis"}, uidsOf(rows))
+	r.Equal([]string{"raw-1a", "raw-1late"}, uidsOf(rows))
 	r.False(archiveExists(t, storage, orgUID, archive.HourFileID("check-1", hour1)))
 }
