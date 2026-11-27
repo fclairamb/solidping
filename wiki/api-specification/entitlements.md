@@ -167,6 +167,11 @@ resend both on every PATCH, or use PUT.
 - `entitlements.upgrade_url_template` — template URL with `{org}` placed
   for the slug; surfaced on GET as `upgradeUrl` so the frontend can
   render an upgrade affordance. Empty in self-hosted.
+- `entitlements.contact_url_template` — "Ask for more" link with `{org}`
+  placed for the slug, typically a `mailto:` (e.g.
+  `mailto:contact@acme.com?subject=Raise%20limits%20for%20{org}`); surfaced
+  on GET as `contactUrl` to every member. Only `mailto`, `http` and `https`
+  are returned. Seeded from `SP_ENTITLEMENTS_CONTACT_URL_TEMPLATE` in SaaS mode.
 - `entitlements.billing_inbound_secret` — the shared **bearer** credential
   presented on service calls between this instance and the billing service
   (its `BILLING_INBOUND_SECRET`). It is a bearer **only**. It is still

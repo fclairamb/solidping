@@ -9,6 +9,7 @@
 package config
 
 import (
+	"regexp"
 	"strings"
 	"time"
 
@@ -27,6 +28,18 @@ const (
 	// rate signal; an unbounded window would let a single restart far in the
 	// past trip the heuristic, defeating the recency guard.
 	maxRestartLoopWindow = 24 * time.Hour
+
+	unixScheme = "unix://"
+)
+
+var (
+	// containerNameRe is Docker's container name syntax, with the leading
+	// "/" the daemon reports. No "/" past it and no leading ".": the name is
+	// spliced into the API path, which the client cleans, so `../` would
+	// reach another endpoint (spec 2026-11-27-03).
+	containerNameRe = regexp.MustCompile(`^/?[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
+	// containerIDRe is a full or abbreviated container ID.
+	containerIDRe = regexp.MustCompile(`^[a-fA-F0-9]{1,64}$`)
 )
 
 // DockerConfig holds the configuration for Docker container health checks.
@@ -145,8 +158,12 @@ func (c *DockerConfig) GetConfig() map[string]any {
 func (c *DockerConfig) Validate() error {
 	// No container means daemon mode: the check pings the Docker daemon itself.
 	host := c.ResolveHost()
-	if !strings.HasPrefix(host, "unix://") && !strings.HasPrefix(host, "tcp://") {
+	if !strings.HasPrefix(host, unixScheme) && !strings.HasPrefix(host, "tcp://") {
 		return checkerdef.NewConfigError("host", "must start with unix:// or tcp://")
+	}
+
+	if err := c.validateTarget(host); err != nil {
+		return err
 	}
 
 	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > maxTimeout) {
@@ -165,6 +182,26 @@ func (c *DockerConfig) Validate() error {
 		return checkerdef.NewConfigErrorf(
 			"restartLoopWindow", "must be > 0 and <= 24h, got %s", c.RestartLoopWindow.String(),
 		)
+	}
+
+	return nil
+}
+
+// validateTarget checks the socket path of a unix:// host and the syntax of
+// the container reference, which the client splices into the API path.
+func (c *DockerConfig) validateTarget(host string) error {
+	if path, isUnix := strings.CutPrefix(host, unixScheme); isUnix {
+		if err := checkerdef.ValidateLocalSocketPath(path); err != nil {
+			return checkerdef.NewConfigError("host", err.Error())
+		}
+	}
+
+	if c.ContainerName != "" && !containerNameRe.MatchString(c.ContainerName) {
+		return checkerdef.NewConfigError("containerName", "must be a Docker container name ([a-zA-Z0-9][a-zA-Z0-9_.-]*)")
+	}
+
+	if c.ContainerID != "" && !containerIDRe.MatchString(c.ContainerID) {
+		return checkerdef.NewConfigError("containerId", "must be a hexadecimal container ID")
 	}
 
 	return nil
@@ -200,6 +237,17 @@ func (c *DockerConfig) ResolveHost() string {
 	}
 
 	return defaultHost
+}
+
+// DockerSocket implements checkerdef.DockerSocketTarget: the Unix socket a
+// unix:// host names, empty for a tcp:// host.
+func (c *DockerConfig) DockerSocket() (string, string) {
+	path, ok := strings.CutPrefix(c.ResolveHost(), unixScheme)
+	if !ok {
+		return "host", ""
+	}
+
+	return "host", path
 }
 
 // ResolveTimeout resolves the effective value, applying this config's default when the

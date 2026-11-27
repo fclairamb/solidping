@@ -210,6 +210,8 @@ func manualReaderServerEnvVars() []string {
 		EnvCheckEnvAllowlist,
 		// checkers.unix_socket_paths is snake_case (spec 2026-11-24-01).
 		EnvCheckersUnixSocketPaths,
+		// checkers.docker_socket_paths is snake_case (spec 2026-11-27-03).
+		EnvCheckersDockerSocketPaths,
 		// applyRateLimitingEnv
 		"SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE",
 		"SP_SERVER_RATE_LIMITING_BURST",

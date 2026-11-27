@@ -53,6 +53,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/plugins"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/secretref"
+	"github.com/fclairamb/solidping/server/internal/secretref/mask"
 	"github.com/fclairamb/solidping/server/internal/stats"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/version"
@@ -1992,9 +1993,9 @@ func (r *CheckWorker) buildSubmitRequest(
 	return &backend.SubmitResultRequest{
 		Status:          int(result.Status),
 		Duration:        float32(result.Duration.Seconds() * 1000),
-		Metrics:         maskMetricKeys(result.Metrics, maskableValues(checkJob.ResolvedRefValues)),
+		Metrics:         mask.MetricKeys(result.Metrics, mask.Values(checkJob.ResolvedRefValues)),
 		Output:          resultOutput(checkJob, result.Output),
-		Diagnostics:     maskDiagnostics(result.Diagnostics, maskableValues(checkJob.ResolvedRefValues)),
+		Diagnostics:     mask.Diagnostics(result.Diagnostics, mask.Values(checkJob.ResolvedRefValues)),
 		Region:          r.resolveResultRegion(checkJob),
 		NextScheduledAt: nextScheduledAt,
 		ExecStart:       execStart,

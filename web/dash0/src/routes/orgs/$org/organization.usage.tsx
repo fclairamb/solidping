@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { createFileRoute } from "@tanstack/react-router";
-import { AlertTriangle, Check, ExternalLink, Minus } from "lucide-react";
+import { AlertTriangle, Check, ExternalLink, Mail, Minus } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Card,
@@ -261,14 +261,34 @@ function UsagePage() {
                   </AlertDescription>
                 </Alert>
               )}
-            {data.upgradeUrl && (
-              <div className="flex justify-end pt-2">
-                <Button asChild>
-                  <a href={data.upgradeUrl} target="_blank" rel="noreferrer">
-                    {t("usage.upgrade")}
-                    <ExternalLink className="ml-2 h-4 w-4" />
-                  </a>
-                </Button>
+            {(data.upgradeUrl || data.contactUrl) && (
+              <div className="flex flex-wrap justify-end gap-2 pt-2">
+                {data.contactUrl && (
+                  <Button asChild variant="outline">
+                    <a
+                      href={data.contactUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="usage-ask-for-more"
+                    >
+                      {t("usage.askForMore")}
+                      <Mail className="ml-2 h-4 w-4" />
+                    </a>
+                  </Button>
+                )}
+                {data.upgradeUrl && (
+                  <Button asChild>
+                    <a
+                      href={data.upgradeUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="usage-upgrade"
+                    >
+                      {t("usage.upgrade")}
+                      <ExternalLink className="ml-2 h-4 w-4" />
+                    </a>
+                  </Button>
+                )}
               </div>
             )}
           </>

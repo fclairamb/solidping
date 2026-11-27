@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -61,6 +62,16 @@ func (c *DockerChecker) Execute(
 
 	cli, err := createClient(ctx, cfg)
 	if err != nil {
+		if errors.Is(err, checkerdef.ErrLocalSocketNotAllowed) || errors.Is(err, checkerdef.ErrLocalSocketPath) {
+			// A socket the operator did not list is a refusal, reported like
+			// the other socket refusals: a down result naming the setting.
+			return &checkerdef.Result{
+				Status:   checkerdef.StatusDown,
+				Duration: time.Since(start),
+				Output:   map[string]any{checkerdef.OutputKeyError: err.Error()},
+			}, nil
+		}
+
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
@@ -95,39 +106,63 @@ func (c *DockerChecker) Execute(
 // dialed by the guard, so a private target is refused with an egress denial
 // instead of becoming an internal connect oracle, and a local socket
 // (unix://, npipe://) is refused outright. With no guard or tunnel the client
-// keeps its own transport byte-for-byte.
+// keeps its own transport byte-for-byte, but a unix:// host must be listed in
+// checkers.docker_socket_paths (spec 2026-11-27-03): the client dials it
+// without DialLocalSocket, so checkers.unix_socket_paths does not apply.
 func createClient(ctx context.Context, cfg *DockerConfig) (*client.Client, error) {
 	host := cfg.ResolveHost()
-	opts := []client.Opt{client.WithHost(host)}
+	opts := make([]client.Opt, 0, 2) // host + the optional pinned dialer
+	opts = append(opts, client.WithHost(host))
 
-	if dialer := checkerdef.OutboundDialer(ctx); dialer != nil {
-		hostURL, err := client.ParseHostURL(host)
-		if err != nil {
+	hostURL, err := client.ParseHostURL(host)
+	if err != nil {
+		return nil, err
+	}
+
+	dialer := checkerdef.OutboundDialer(ctx)
+	if dialer == nil {
+		if err := checkDirectHost(ctx, hostURL, host); err != nil {
 			return nil, err
 		}
 
-		if hostURL.Scheme != "tcp" {
-			if egress.FromContext(ctx).Enforcing() {
-				denied := &egress.DeniedError{Host: host}
-				egress.RecordDenial(ctx, denied)
-
-				return nil, denied
-			}
-
-			return nil, fmt.Errorf("%w: %s", errLocalSocketNotDialable, host)
-		}
-
-		// Pin the dialed address to the configured host rather than trusting
-		// whatever the HTTP transport asks for.
-		addr := hostURL.Host
-		opts = append(opts, client.WithDialContext(
-			func(dialCtx context.Context, network, _ string) (net.Conn, error) {
-				return dialer.DialContext(dialCtx, network, addr)
-			},
-		))
+		return client.New(opts...)
 	}
 
+	if hostURL.Scheme != "tcp" {
+		if egress.FromContext(ctx).Enforcing() {
+			denied := &egress.DeniedError{Host: host}
+			egress.RecordDenial(ctx, denied)
+
+			return nil, denied
+		}
+
+		return nil, fmt.Errorf("%w: %s", errLocalSocketNotDialable, host)
+	}
+
+	// Pin the dialed address to the configured host rather than trusting
+	// whatever the HTTP transport asks for.
+	addr := hostURL.Host
+	opts = append(opts, client.WithDialContext(
+		func(dialCtx context.Context, network, _ string) (net.Conn, error) {
+			return dialer.DialContext(dialCtx, network, addr)
+		},
+	))
+
 	return client.New(opts...)
+}
+
+// checkDirectHost gates a host the client dials with its own transport: a
+// unix:// socket must be in the process's Docker socket allowlist, and only
+// tcp:// is accepted otherwise.
+func checkDirectHost(ctx context.Context, hostURL *url.URL, host string) error {
+	switch hostURL.Scheme {
+	case "tcp":
+		return nil
+	case "unix":
+		return checkerdef.DockerSocketAllowed(checkerdef.DockerSocketAllowlistFrom(ctx), hostURL.Host)
+	default:
+		return fmt.Errorf("%w: %s", checkerdef.ErrLocalSocketNotAllowed, host)
+	}
 }
 
 // executePing checks the Docker daemon itself, with no container involved.

@@ -234,7 +234,7 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/crewjam/saml v0.6.3
-	github.com/dlclark/regexp2/v2 v2.13.2
+	github.com/dlclark/regexp2/v2 v2.13.3
 	github.com/docker/go-units v0.5.0
 	github.com/dop251/goja v0.0.0-20261125210501-5e92a7e24d0c
 	github.com/dreamscached/minequery/v2 v2.5.0
@@ -283,7 +283,7 @@ require (
 	github.com/pires/go-proxyproto v0.16.0
 	github.com/pkg/sftp v1.13.13
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
-	github.com/posthog/posthog-go/v2 v2.3.1
+	github.com/posthog/posthog-go/v2 v2.4.0
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3

@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
@@ -59,6 +60,8 @@ func TestCreateClientHonorsTheEgressGuard(t *testing.T) {
 		t.Parallel()
 
 		ctx, rec := egress.WithRecorder(egress.WithGuard(t.Context(), egress.New(true)))
+		// The unix host must be listed to get a client (spec 2026-11-27-03).
+		ctx = checkerdef.WithDockerSocketAllowlist(ctx, []string{"/should-never-be-dialed-2026-10-16-09.sock"})
 
 		for _, cfg := range []*DockerConfig{tcpCfg, unixCfg} {
 			cli, err := createClient(ctx, cfg)

@@ -35,11 +35,12 @@ With a master key set, these values are stored encrypted:
 - check configuration secrets (passwords, tokens, private keys);
 - integration and notification channel credentials;
 - the secret server settings: the JWT signing key (`auth.jwt_secret`), the SMTP password, the SSO client secrets (Google, GitHub, GitLab, Microsoft, Slack, Discord, OIDC), the Slack signing secret and app token, the Discord bot token, the MS Teams app secret, the LDAP bind password, the PostHog personal API key, the metrics scrape token, and the email inbox configuration (`email.inbox`, which holds its password);
+- secret organization parameters (`${param:…}` values). A parameter saved as not secret stays in plaintext, since the API returns its value anyway;
 - the private keys SolidPing generates for itself: the SAML service provider key (`saml.sp_private_key_pem`) and the Web Push VAPID key (`webpush.vapid_private_key`). Their public halves, the SP certificate and the VAPID public key, stay in plaintext.
 
 Because the master key lives outside the database, a dump of a database encrypted this way does not reveal these secrets.
 
-On startup, `SP_ENCRYPTION_AUTO_MIGRATE` also encrypts the server settings and the two private keys that are still stored in plaintext. The values stay the same, so signed-in users stay signed in, existing Web Push subscriptions keep receiving notifications, and the IdP's copy of the SP certificate stays valid.
+On startup, `SP_ENCRYPTION_AUTO_MIGRATE` also encrypts the server settings, the two private keys and the secret organization parameters that are still stored in plaintext. The values stay the same, so signed-in users stay signed in, checks that use `${param:…}` keep running, existing Web Push subscriptions keep receiving notifications, and the IdP's copy of the SP certificate stays valid.
 
 A server that finds an encrypted setting it cannot open, because the master key is missing or different, refuses to start and names the variable to fix. It never replaces the JWT signing key, the SAML SP key or the VAPID key with a new one: an unreadable SAML SP key fails SAML sign-in and the metadata endpoint, and an unreadable VAPID key leaves Web Push disabled, with an error naming the variable.
 
@@ -47,7 +48,7 @@ A server that finds an encrypted setting it cannot open, because the master key 
 
 When `SP_AUTH_JWT_SECRET` is unset, SolidPing generates the signing key on first start and stores it in the database: encrypted with a master key, in plaintext without one. Anyone who can read that key can sign a valid session token for any user. To keep it out of the database entirely, set `SP_AUTH_JWT_SECRET` from your secret store: the environment value always wins over the stored one.
 
-Without a master key, the server logs a warning at startup that lists the secret settings stored in plaintext.
+Without a master key, the server logs a warning at startup that lists the secret settings stored in plaintext and counts the secret organization parameters in the same state.
 
 ## Configuration
 

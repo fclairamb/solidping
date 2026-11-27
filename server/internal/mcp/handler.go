@@ -160,6 +160,7 @@ func NewHandler(
 		checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
 		checksSvc.SetEnvRefAllow(cfg.EnvRefAllowed)
 		checksSvc.SetLocalSocketAllowlist(cfg.Checkers.UnixSocketPaths)
+		checksSvc.SetDockerSocketAllowlist(cfg.Checkers.DockerSocketPaths)
 	}
 
 	handler := &Handler{

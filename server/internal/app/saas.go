@@ -18,6 +18,7 @@ import (
 const (
 	envEntitlementsServiceToken  = "SP_ENTITLEMENTS_SERVICE_TOKEN"
 	envEntitlementsUpgradeURL    = "SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE"
+	envEntitlementsContactURL    = "SP_ENTITLEMENTS_CONTACT_URL_TEMPLATE"
 	envEntitlementsAdminWrites   = "SP_ENTITLEMENTS_ADMIN_WRITES_ENABLED"
 	envEntitlementsBillingSecret = "SP_ENTITLEMENTS_BILLING_INBOUND_SECRET"
 	// envEntitlementsUpgradeTokenSecret carries the DEDICATED HS256 key that
@@ -57,12 +58,8 @@ func (s *Server) SeedSaaSEntitlements(ctx context.Context) error {
 		slog.InfoContext(ctx, "SaaS: seeded entitlements service token", "key", entitlements.ParamServiceToken)
 	}
 
-	if tmpl := os.Getenv(envEntitlementsUpgradeURL); tmpl != "" {
-		if err := s.dbService.SetSystemParameter(ctx, entitlements.ParamUpgradeURLTemplate, tmpl, false); err != nil {
-			return err
-		}
-		slog.InfoContext(ctx, "SaaS: seeded entitlements upgrade URL template",
-			"key", entitlements.ParamUpgradeURLTemplate, "template", tmpl)
+	if err := s.seedURLTemplates(ctx); err != nil {
+		return err
 	}
 
 	if secret := os.Getenv(envEntitlementsBillingSecret); secret != "" {
@@ -152,6 +149,30 @@ func (s *Server) systemParameterString(ctx context.Context, key string) string {
 // The legacy flag is intentionally NOT defaulted here: absent the env var, the
 // parameter stays unset and the readers default it to true. Turning it off is
 // step 3 of the cross-repo migration and must be a deliberate operator action.
+// seedURLTemplates seeds the dashboard link templates: "Upgrade" (the billing
+// service) and "Ask for more" (free-form, often a mailto:).
+func (s *Server) seedURLTemplates(ctx context.Context) error {
+	templates := []struct{ env, param string }{
+		{envEntitlementsUpgradeURL, entitlements.ParamUpgradeURLTemplate},
+		{envEntitlementsContactURL, entitlements.ParamContactURLTemplate},
+	}
+	for i := range templates {
+		tmpl := &templates[i]
+		value := os.Getenv(tmpl.env)
+		if value == "" {
+			continue
+		}
+
+		if err := s.dbService.SetSystemParameter(ctx, tmpl.param, value, false); err != nil {
+			return err
+		}
+
+		slog.InfoContext(ctx, "SaaS: seeded entitlements URL template", "key", tmpl.param, "template", value)
+	}
+
+	return nil
+}
+
 func (s *Server) seedSigningKeys(ctx context.Context) error {
 	keySets := []struct {
 		env      string
