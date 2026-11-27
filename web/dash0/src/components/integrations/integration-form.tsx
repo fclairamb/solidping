@@ -385,7 +385,6 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
         />
       );
     case "googlechat":
-    case "mattermost":
     case "slack-webhook":
       return (
         <UrlPanel
@@ -393,6 +392,37 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
           value={(settings.webhook_url as string) || ""}
           onChange={(v) => update("webhook_url", v)}
         />
+      );
+    case "mattermost":
+      return (
+        <div className="space-y-3">
+          <UrlPanel
+            label={t("form.webhookUrl", "Webhook URL")}
+            value={(settings.webhook_url as string) || ""}
+            onChange={(v) => update("webhook_url", v)}
+          />
+          <div className="flex items-start justify-between gap-3 rounded border p-3">
+            <div className="space-y-1">
+              <Label htmlFor="ch-mattermost-blocks">
+                {t("form.mattermostBlocks", "Use Mattermost Blocks")}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "form.mattermostBlocksHint",
+                  "Send rich, interactive cards with Acknowledge and a dashboard link. Requires Mattermost v11.10+ with Mattermost Blocks enabled; older clients do not render the card. Acknowledge needs Mattermost to reach this SolidPing instance's public URL.",
+                )}
+              </p>
+            </div>
+            <Switch
+              id="ch-mattermost-blocks"
+              checked={settings.message_format === "mm_blocks"}
+              onCheckedChange={(checked) =>
+                update("message_format", checked ? "mm_blocks" : "attachments")
+              }
+              data-testid="mattermost-use-blocks"
+            />
+          </div>
+        </div>
       );
     case "msteams":
       return (

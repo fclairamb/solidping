@@ -38,6 +38,11 @@ const (
 	PurposeAck = "ack"
 	// PurposeUnsubscribe prefixes unsubscribe tokens.
 	PurposeUnsubscribe = "unsub"
+	// PurposeMattermostAction prefixes the signed context tokens embedded in a
+	// Mattermost Blocks action registry. The callback body is posted by the
+	// Mattermost server, so the token is the only proof that the action came
+	// from a post SolidPing created.
+	PurposeMattermostAction = "mm_action"
 )
 
 // Magic-link token errors. Kept as sentinels so the handler can map each
@@ -61,6 +66,16 @@ var (
 	// domain-separation guarantee: signature validity alone is not enough,
 	// the purpose must match too.
 	ErrPurposeMismatch = errors.New("magic-link token: purpose mismatch")
+	// ErrOrganizationMismatch means the org slug embedded in a Mattermost
+	// action token does not match the connection the callback resolved to.
+	ErrOrganizationMismatch = errors.New("magic-link token: organization mismatch")
+	// ErrIntegrationMismatch means the Mattermost connection named by an
+	// action token is not the connection that owns the post.
+	ErrIntegrationMismatch = errors.New("magic-link token: integration mismatch")
+	// ErrActionMismatch means the action named by the callback context is not
+	// the action the token was signed for. It stops a snooze token from being
+	// replayed as an acknowledge action.
+	ErrActionMismatch = errors.New("magic-link token: action mismatch")
 )
 
 // AckTokenPayload is the verified payload returned to the handler for an ack
@@ -253,4 +268,81 @@ func VerifyUnsubscribe(secret []byte, token string) (*UnsubscribeTokenPayload, e
 		CheckUID: fields[3],
 		Expiry:   time.Unix(expUnix, 0),
 	}, nil
+}
+
+// MattermostActionTTL is how long an action button on a Mattermost card keeps
+// working. Seven days matches the emailed acknowledge link: long enough for an
+// incident that runs through a weekend, short enough that a token copied out
+// of an old channel is not a permanent capability.
+const MattermostActionTTL = 7 * 24 * time.Hour
+
+// MattermostActionTokenPayload is the verified context of a Mattermost Blocks
+// action. The callback handler compares Action with the action ID in the
+// request context, so a token signed for one control cannot drive another.
+type MattermostActionTokenPayload struct {
+	OrgUID         string
+	IncidentUID    string
+	IntegrationUID string
+	Action         string
+	Expiry         time.Time
+}
+
+// SignMattermostAction builds the token embedded in a Mattermost Blocks action
+// registry entry. Shape:
+//
+//	mm_action|<org-uid>|<incident-uid>|<integration-uid>|<action>|<unix-exp>
+//
+// The leading purpose segment is checked before any other field, exactly like
+// Sign and SignUnsubscribe, so an ack or unsubscribe token can never be
+// replayed against the Mattermost callback endpoint.
+func SignMattermostAction(
+	secret []byte, orgUID, incidentUID, integrationUID, action string, exp time.Time,
+) string {
+	payload := PurposeMattermostAction + "|" + orgUID + "|" + incidentUID + "|" +
+		integrationUID + "|" + action + "|" + strconv.FormatInt(exp.Unix(), 10)
+
+	return sign(secret, payload)
+}
+
+// VerifyMattermostAction parses and validates an action token issued by
+// SignMattermostAction. The caller still has to resolve the org/connection and
+// compare the returned Action with the action ID in the callback context.
+func VerifyMattermostAction(secret []byte, token string) (*MattermostActionTokenPayload, error) {
+	fields, err := verify(secret, token, PurposeMattermostAction, 6) // mm_action|org|incident|integration|action|exp
+	if err != nil {
+		return nil, err
+	}
+
+	expUnix, _ := strconv.ParseInt(fields[5], 10, 64) // already validated by verify()
+
+	return &MattermostActionTokenPayload{
+		OrgUID:         fields[1],
+		IncidentUID:    fields[2],
+		IntegrationUID: fields[3],
+		Action:         fields[4],
+		Expiry:         time.Unix(expUnix, 0),
+	}, nil
+}
+
+// Validate checks the verified payload against the values the callback
+// resolved from the request. A mismatch means the token was minted for another
+// org, incident, connection or action, and the callback must not act on it.
+func (p *MattermostActionTokenPayload) Validate(orgUID, incidentUID, integrationUID, action string) error {
+	if p.OrgUID != orgUID {
+		return ErrOrganizationMismatch
+	}
+
+	if p.IncidentUID != incidentUID {
+		return ErrIncidentMismatch
+	}
+
+	if p.IntegrationUID != integrationUID {
+		return ErrIntegrationMismatch
+	}
+
+	if p.Action != action {
+		return ErrActionMismatch
+	}
+
+	return nil
 }

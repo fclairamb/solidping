@@ -246,3 +246,72 @@ func TestAckURL(t *testing.T) {
 		})
 	}
 }
+
+// --- Mattermost action token tests ---
+
+func TestSignVerifyMattermostActionRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	secret := []byte("top-secret-key")
+	exp := time.Now().Add(incidentlinks.MattermostActionTTL)
+
+	token := incidentlinks.SignMattermostAction(secret, "org-1", "inc-1", "conn-1", "ack", exp)
+	r.NotEmpty(token)
+
+	payload, err := incidentlinks.VerifyMattermostAction(secret, token)
+	r.NoError(err)
+	r.Equal("org-1", payload.OrgUID)
+	r.Equal("inc-1", payload.IncidentUID)
+	r.Equal("conn-1", payload.IntegrationUID)
+	r.Equal("ack", payload.Action)
+	r.WithinDuration(exp, payload.Expiry, time.Second)
+}
+
+func TestMattermostActionValidate(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	payload := &incidentlinks.MattermostActionTokenPayload{
+		OrgUID: "org-1", IncidentUID: "inc-1", IntegrationUID: "conn-1", Action: "ack",
+	}
+
+	r.NoError(payload.Validate("org-1", "inc-1", "conn-1", "ack"))
+	r.ErrorIs(payload.Validate("other", "inc-1", "conn-1", "ack"), incidentlinks.ErrOrganizationMismatch)
+	r.ErrorIs(payload.Validate("org-1", "inc-2", "conn-1", "ack"), incidentlinks.ErrIncidentMismatch)
+	r.ErrorIs(payload.Validate("org-1", "inc-1", "conn-2", "ack"), incidentlinks.ErrIntegrationMismatch)
+	r.ErrorIs(payload.Validate("org-1", "inc-1", "conn-1", "snooze"), incidentlinks.ErrActionMismatch)
+}
+
+func TestVerifyMattermostActionRejectsWrongSecret(t *testing.T) {
+	t.Parallel()
+
+	token := incidentlinks.SignMattermostAction(
+		[]byte("secret-a"), "org-1", "inc-1", "conn-1", "ack", time.Now().Add(time.Hour),
+	)
+
+	_, err := incidentlinks.VerifyMattermostAction([]byte("secret-b"), token)
+	require.ErrorIs(t, err, incidentlinks.ErrSignature)
+}
+
+func TestVerifyMattermostActionRejectsExpired(t *testing.T) {
+	t.Parallel()
+
+	secret := []byte("k")
+	token := incidentlinks.SignMattermostAction(
+		secret, "org-1", "inc-1", "conn-1", "ack", time.Now().Add(-time.Minute),
+	)
+
+	_, err := incidentlinks.VerifyMattermostAction(secret, token)
+	require.ErrorIs(t, err, incidentlinks.ErrExpired)
+}
+
+func TestVerifyMattermostActionRejectsCrossPurposeToken(t *testing.T) {
+	t.Parallel()
+
+	secret := []byte("k")
+	ackToken := incidentlinks.Sign(secret, "inc-1", "alice@example.com", time.Now().Add(time.Hour))
+
+	_, err := incidentlinks.VerifyMattermostAction(secret, ackToken)
+	require.ErrorIs(t, err, incidentlinks.ErrPurposeMismatch)
+}
