@@ -132,3 +132,8 @@ several disks in one check (one check per path).
 
 - One check with the three metrics, or one check per metric? Recommended: one check with
   the three metrics (one incident per host, fewer checks against plan limits).
+
+## Resolved open questions
+
+- One check with the three metrics, not one check per metric: one incident per host, fewer
+  checks against plan limits. (autopilot: recommended answer)
