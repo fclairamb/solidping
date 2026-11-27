@@ -598,7 +598,8 @@ var validConnectionTypes = map[models.ConnectionType]bool{
 }
 
 // validateConnectionType checks the type is known and, for types with per-type
-// settings invariants (Twilio, SMS Factor), validates those too.
+// settings invariants (Email, Twilio, SMS Factor, Mattermost), validates those
+// too.
 func validateConnectionType(connType models.ConnectionType, settings models.JSONMap) error {
 	if !validConnectionTypes[connType] {
 		return ErrInvalidConnectionType
@@ -615,6 +616,10 @@ func validateConnectionType(connType models.ConnectionType, settings models.JSON
 
 	if connType == models.ConnectionTypeSMSFactor {
 		return validateSMSFactorSettings(settings)
+	}
+
+	if connType == models.ConnectionTypeMattermost {
+		return validateMattermostSettings(settings)
 	}
 
 	return nil
@@ -825,6 +830,29 @@ func (s *Service) egressGuard() *egress.Guard {
 	}
 
 	return s.registry.EgressGuard
+}
+
+// validateMattermostSettings rejects a message_format the sender does not
+// understand. Without this, a typo saved through the API would only surface as
+// a delivery-time config error.
+func validateMattermostSettings(settings models.JSONMap) error {
+	raw, ok := settings["message_format"]
+	if !ok {
+		return nil
+	}
+
+	format, isString := raw.(string)
+	if !isString {
+		return fmt.Errorf("%w: message_format must be a string", ErrInvalidSettings)
+	}
+
+	switch format {
+	case "", notifications.MattermostFormatAttachments, notifications.MattermostFormatBlocks:
+		return nil
+	default:
+		return fmt.Errorf("%w: message_format must be %q or %q",
+			ErrInvalidSettings, notifications.MattermostFormatAttachments, notifications.MattermostFormatBlocks)
+	}
 }
 
 // validateFreeboxSettings enforces the Freebox baseUrl contract (spec
@@ -1328,6 +1356,12 @@ func (s *Service) applyUpdateSettings(
 
 	if conn.Type == models.ConnectionTypeEmail {
 		if vErr := validateEmailSettings(models.JSONMap(merged)); vErr != nil {
+			return vErr
+		}
+	}
+
+	if conn.Type == models.ConnectionTypeMattermost {
+		if vErr := validateMattermostSettings(models.JSONMap(merged)); vErr != nil {
 			return vErr
 		}
 	}

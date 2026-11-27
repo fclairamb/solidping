@@ -64,6 +64,8 @@
     "default": "Predeterminado para nuevas comprobaciones",
     "defaultHelp": "Preseleccionado al crear una comprobación. Las existentes no se ven afectadas.",
     "webhookUrl": "URL del webhook",
+    "mattermostBlocks": "Usar Mattermost Blocks",
+    "mattermostBlocksHint": "Envía tarjetas ricas e interactivas con Confirmar y un enlace al panel. Requiere Mattermost v11.10+ con Mattermost Blocks activado; los clientes antiguos no muestran la tarjeta. Confirmar requiere que Mattermost pueda alcanzar la URL pública de esta instancia de SolidPing.",
     "msteamsWebhookHint": "En Teams, abre Workflows → \"Publicar en un canal cuando se reciba una solicitud de webhook\", termina el asistente y pega aquí la URL del flujo de trabajo que te da. El conector antiguo \"Webhook entrante\" está retirado y no funcionará.",
     "recipients": "Destinatarios",
     "recipientsPlaceholder": "ops@example.com, oncall@example.com",

@@ -25,6 +25,10 @@ const (
 	payloadKeyAckPhone         = "acknowledged_by_phone"
 	payloadKeyAckTelegram      = "acknowledged_by_telegram"
 	payloadKeyAckNote          = "note"
+	// Mattermost acknowledgments have no `users` row to point at, so the
+	// username is the only identity the audit trail has.
+	payloadKeyMattermostUserID   = "mattermost_user_id"
+	payloadKeyMattermostUsername = "mattermost_username"
 )
 
 // IncidentActorResponse is the display-oriented identity of whoever performed
@@ -109,7 +113,7 @@ func (s *Service) resolveAckActor(
 // ackChatIdentity returns the chat username the acknowledgment was performed
 // under, or "" when the ack did not come from a chat platform.
 func ackChatIdentity(payload models.JSONMap) string {
-	for _, key := range []string{payloadKeyAckSlackUsername, payloadKeyAckDiscordUser} {
+	for _, key := range []string{payloadKeyAckSlackUsername, payloadKeyAckDiscordUser, payloadKeyMattermostUsername} {
 		if v := payloadString(payload, key); v != "" {
 			return v
 		}
@@ -127,6 +131,7 @@ func ackWeakIdentity(payload models.JSONMap) string {
 		payloadKeyAckPhone,
 		payloadKeyAckSlackUserID,
 		payloadKeyAckDiscordUserID,
+		payloadKeyMattermostUserID,
 	} {
 		if v := payloadString(payload, key); v != "" {
 			return v

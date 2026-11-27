@@ -6,6 +6,7 @@
     "slack": "Slack",
     "discord": "Discord",
     "telegram": "Telegram",
+    "mattermost": "Mattermost",
     "email": "E-Mail",
     "phone": "Telefon"
   },
@@ -13,6 +14,7 @@
     "slack": "über Slack",
     "discord": "über Discord",
     "telegram": "über Telegram",
+    "mattermost": "über Mattermost",
     "email": "per E-Mail",
     "phone": "telefonisch"
   },

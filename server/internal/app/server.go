@@ -97,6 +97,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/labels"
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	"github.com/fclairamb/solidping/server/internal/handlers/manifestapply"
+	"github.com/fclairamb/solidping/server/internal/handlers/mattermost"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
 	"github.com/fclairamb/solidping/server/internal/handlers/orglogo"
@@ -2435,6 +2436,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	}
 
 	s.mountDiscordBotRoutes(ctx, api, discordHandler)
+
+	// Mattermost Blocks action callback (inbound from a Mattermost server —
+	// no org auth). Authenticity is the HMAC token embedded in the block's
+	// action context; the handler verifies it before touching the incident.
+	mattermostHandler := mattermost.NewHandler(s.dbService, incidentsService, s.config)
+	api.NewGroup("/integrations/mattermost").POST("/actions", mattermostHandler.HandleAction)
 
 	// Microsoft Teams bot routes (inbound from Bot Framework — no org auth;
 	// authenticity is the per-request JWT check against Microsoft's JWKS in

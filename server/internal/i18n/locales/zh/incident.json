@@ -6,6 +6,7 @@
     "slack": "Slack",
     "discord": "Discord",
     "telegram": "Telegram",
+    "mattermost": "Mattermost",
     "email": "邮件",
     "phone": "电话"
   },
@@ -13,6 +14,7 @@
     "slack": "通过 Slack",
     "discord": "通过 Discord",
     "telegram": "通过 Telegram",
+    "mattermost": "通过 Mattermost",
     "email": "通过邮件",
     "phone": "通过电话"
   },

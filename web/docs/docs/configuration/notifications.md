@@ -724,6 +724,35 @@ Mattermost notifications use incoming webhooks, similar to Slack.
 4. Copy the webhook URL
 5. Add the webhook URL in SolidPing's integration settings
 
+### Mattermost Blocks
+
+Mattermost v11.10 and later can render **Mattermost Blocks**, the structured
+card format that replaces legacy message attachments. Turn on **Use Mattermost
+Blocks** in the integration settings to send:
+
+- a card with the check name linked to its dashboard page;
+- buttons for **Acknowledge** and **Open incident**;
+- a click-through link to the incident.
+
+Mattermost Blocks are controlled by the `MmBlocksEnabled` feature flag, which
+is enabled by default. The card needs Mattermost v11.10+ and a current web,
+desktop or mobile client. If the flag is off or the client is older, the card
+is not rendered, so leave this option off on a server that cannot display
+Blocks.
+
+Acknowledge is a server-to-server callback: the Mattermost server must be able
+to reach SolidPing's public `SP_BASE_URL` .
+
+Acknowledging from Mattermost records the Mattermost username on the incident
+event. Mattermost accounts are not mapped to SolidPing users, so the
+attribution is a chat identity rather than a dashboard account. The connection
+whose card was clicked is not sent a second acknowledgment notice; its original
+post is updated in place instead.
+
+Down, escalated, reopened and reminder messages are sent with Mattermost's
+`urgent` priority; a degraded incident is `important`; recovery and comment
+messages keep the default priority.
+
 ## ntfy
 
 [ntfy](https://ntfy.sh) is a simple HTTP-based pub/sub notification service. SolidPing can push notifications to any ntfy topic.
