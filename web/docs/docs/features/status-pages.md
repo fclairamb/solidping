@@ -623,6 +623,17 @@ an oversized text answer `VALIDATION_ERROR`.
 The public page payload also gains an `activeIncidents[]` array, so a single
 request renders the banner, the components and the incidents together.
 
+### Upcoming maintenance
+
+A public page announces the maintenance windows that target its resources, both
+the ones in progress and the ones that start within the next 7 days (recurring
+windows contribute their next occurrences, up to 10 entries). The section sits
+below the active incidents and shows the title, the time range in the visitor's
+timezone, a relative hint ("starts in 2 h"), the window's description as plain
+text and the page's own names of the affected resources. It is always on and
+needs no setting. The payload carries it as `upcomingMaintenance[]`. The TV
+board keeps showing live state only.
+
 ### Webhooks
 
 Publication lifecycle fires its own events on your `webhook` connections,

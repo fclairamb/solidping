@@ -2225,6 +2225,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Maintenance windows routes (authentication required)
 	mwService := maintenancewindows.NewService(s.dbService)
+	mwService.SetPageMemoInvalidator(statusPagesService)
 	mwHandler := maintenancewindows.NewHandler(mwService, s.config)
 	manifestApplyHandler.SetService(manifestapply.NewService(
 		s.dbService, checksService, integrationsService, mwService, statusPagesService))
