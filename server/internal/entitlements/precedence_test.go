@@ -446,7 +446,7 @@ func TestLegacyPartialRowResolvesToDefaultsAfterRelabel(t *testing.T) {
 		r.NotNil(resolved.Limits.MaxCallsPerMonth)
 		r.Equal(0, *resolved.Limits.MaxCallsPerMonth)
 		r.NotNil(resolved.Limits.MaxWhatsappPerMonth)
-		r.Equal(0, *resolved.Limits.MaxWhatsappPerMonth)
+		r.Equal(5, *resolved.Limits.MaxWhatsappPerMonth)
 
 		// And the caps it did state are honored, so the row is still doing its job.
 		r.NotNil(resolved.Limits.MaxChecks)

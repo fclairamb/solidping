@@ -385,11 +385,12 @@ Two independent limits apply:
 
 | Limit | Default | Purpose |
 |---|---|---|
-| `maxWhatsappPerMonth` entitlement | unlimited (self-hosted) | Per-organization monthly cap, shown on **Organization → Usage** |
+| `maxWhatsappPerMonth` entitlement | unlimited (self-hosted), set by the plan on the hosted service | Per-organization monthly cap, shown on **Organization → Usage** |
 | `SP_ENTITLEMENTS_WHATSAPP_RUNAWAY_PER_HOUR` | `30` | Per-organization hourly guard against a broken escalation loop |
 
 Self-hosted installations are unlimited by default — you pay Meta directly, so
-SolidPing does not meter you. The hourly runaway guard still applies, because a
+SolidPing does not meter you. On the hosted service the monthly cap comes with
+the plan: 5 messages on Free, 50 on Starter, 150 on Pro and 500 on Scale. The hourly runaway guard still applies, because a
 bug should not be able to run up an unbounded bill.
 
 Exceeding either limit skips the send and records it in the notification

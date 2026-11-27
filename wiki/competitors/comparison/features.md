@@ -128,13 +128,14 @@ Input formats differ, and it matters:
 **SolidPing Remaining Gaps**: Signal, and Apprise-scale breadth. Teams, Telegram and PagerDuty
 all shipped — the earlier "spec ready" entries were stale.
 
-**The gap that is real, and commercial rather than technical**: SMS, voice and WhatsApp are
+**The gap that is real, and commercial rather than technical**: SMS and voice are
 implemented (one `Twilio` sender in `server/internal/notifications/registry.go`) but are
-**not included on any hosted plan** — the carriers bill per message and the plans do not
-price them in, so the hosted entitlements set `MaxSmsPerMonth` / `MaxCallsPerMonth` /
-`MaxWhatsappPerMonth` to 0. They work self-hosted, on the operator's own Twilio account.
-Any hosted comparison against BetterStack, UptimeRobot, Pingdom, StatusCake or Site24x7
-must score this as a loss; any self-hosted comparison must not.
+**not included on any hosted plan**: the carriers bill per message and the plans do not
+price them in, so the hosted entitlements set `MaxSmsPerMonth` / `MaxCallsPerMonth` to 0.
+They work self-hosted, on the operator's own Twilio account. Any hosted comparison against
+BetterStack, UptimeRobot, Pingdom, StatusCake or Site24x7 must score this as a loss; any
+self-hosted comparison must not. WhatsApp is included on every hosted plan since
+2026-11-27, with a monthly cap: Free 5, Starter 50, Pro 150, Scale 500.
 
 ## Advanced Features
 
