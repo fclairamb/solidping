@@ -28,9 +28,10 @@ it sits under `filestorage.s3_prefix`:
 - hour to day: `<orgUID>/archives/<checkUID>/<YYYY-MM-DD>.vortex`, every raw row of the day: the
   existing day file merged with the day's 24 hour files, then the hour files are deleted
   (`DeletePrefix(org, archives, "<checkUID>/<YYYY-MM-DD>/")`). After it only the day file remains.
-  A (region, hour) with no raw row in the archive (compacted before archiving was on) contributes
-  its hour rollup row instead (`WithRollupFallback`); a rollup row whose hour later gets raw rows
-  is dropped. `period_type` tells raw rows from rollups.
+  The hour rollups the day step compacts are never archived: an hour compacted before archiving
+  was on is absent, and a day with no hour file gets no day file (the step writes nothing).
+  Archives hold raw results only (Florent, 2026-11-27); v0.55/v0.56 added hour rollups to day
+  files, and `Merge` drops any non-raw row it reads.
 - day to month: nothing (month rows stay in the database).
 
 UTC. Regions are a column, not part of the path: the per-region buckets of a
@@ -41,10 +42,13 @@ with `FileStorage.DeletePrefix(org, archives, "")`.
 
 ## Schema
 
-`archive.Row`: one row per result, the data columns of `models.Result`
-(`uid`, `check_uid`, `region`, `period_type`, `period_start`, `period_end`,
-`worker_uid`, `status`, `duration`, `metrics`, `output`, `maintenance`, the
-rollup counters and duration stats, `created_at`). Nullable columns are
+`archive.Row`: one row per raw result, the columns of `models.Result` a raw
+result fills (`uid`, `check_uid`, `region`, `period_type`, `period_start`,
+`worker_uid`, `status`, `duration`, `metrics`, `output`, `maintenance`,
+`created_at`). `period_type` is always `raw`; it stays so `Merge` can drop the
+rollup rows of a v0.55/v0.56 day file. Those files also have `period_end` and
+the rollup counters and duration stats: `vortex.Rows` reads only the columns of
+`Row`, so they still decode (`TestDecodeLegacySchema`). Nullable columns are
 nullable in the file; `metrics` and `output` are JSON text; timestamps are
 microseconds UTC. Rows are sorted by `period_start`, then `uid`. Written with
 `vortex.Compact` compression, newest edition.
@@ -64,8 +68,8 @@ microseconds UTC. Rows are sorted by `period_start`, then `uid`. Written with
   climbs) rather than losing history.
 - **Merge, never overwrite.** A bucket can be compacted again after a late row,
   and two regions share a file: `Archive` reads the existing file
-  (`ErrFileNotFound` means none), merges (raw rows by `uid`, rollup rows by
-  region, `period_type`, `period_start`; the new row wins) and writes the union. An existing file that cannot be decoded is an error, not an
+  (`ErrFileNotFound` means none), merges raw rows by `uid` (the new row wins,
+  non-raw rows are dropped) and writes the union. An existing file that cannot be decoded is an error, not an
   overwrite.
 - **Write-only.** Nothing in SolidPing reads the files except that merge.
 
@@ -89,8 +93,9 @@ microseconds UTC. Rows are sorted by `period_start`, then `uid`. Written with
 - `server/internal/archive/*_test.go`: keys (UTC boundaries, month rollover,
   `BuildPath`/`ParsePath` round trip), encode/decode round trip with nulls and
   JSON, merge, archiver on `localfs` (late row union, corrupt file fails,
-  no-ops, day step from 24 hour files with the hour files gone, rollup fallback
-  for an hour with no hour file, day step twice with a late row), org reap.
+  no-ops, day step from 24 hour files with the hour files gone, rollups never
+  archived and no day file without hour files, legacy rollups dropped from a
+  v0.56 day file, legacy schema decode, day step twice with a late row), org reap.
 - `server/internal/jobs/jobtypes/job_aggregation_archive_test.go`: failing
   archiver keeps the bucket raw then the next run succeeds; day step with a
   storage failing on write, read and delete in turn keeps the bucket (hour

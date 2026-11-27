@@ -217,8 +217,8 @@ func TestAggregatePeriod_ArchiveDisabledWritesNothing(t *testing.T) {
 
 // TestAggregatePeriod_ArchiveEnabledFromConfig runs both archived tiers
 // through archive.enabled and the local file storage: the raw rows of an hour
-// land in <date>/<hour>.vortex; the hours of the day compacted before
-// archiving have no hour file, so their hour rollups land in <date>.vortex.
+// land in <date>/<hour>.vortex; the hours of a day compacted before archiving
+// have no hour file, and their hour rollups are never archived: no <date>.vortex.
 func TestAggregatePeriod_ArchiveEnabledFromConfig(t *testing.T) {
 	t.Parallel()
 
@@ -239,8 +239,8 @@ func TestAggregatePeriod_ArchiveEnabledFromConfig(t *testing.T) {
 
 	// Hour rollups old enough for the hour to day compaction (7 days kept).
 	baseDay := time.Now().UTC().AddDate(0, 0, -10).Truncate(24 * time.Hour)
-	hourA := fx.addResult(t, models.PeriodTypeHour, models.ResultStatusUp, baseDay.Add(3*time.Hour))
-	hourB := fx.addResult(t, models.PeriodTypeHour, models.ResultStatusUp, baseDay.Add(4*time.Hour))
+	fx.addResult(t, models.PeriodTypeHour, models.ResultStatusUp, baseDay.Add(3*time.Hour))
+	fx.addResult(t, models.PeriodTypeHour, models.ResultStatusUp, baseDay.Add(4*time.Hour))
 
 	run := &AggregationJobRun{}
 
@@ -258,11 +258,9 @@ func TestAggregatePeriod_ArchiveEnabledFromConfig(t *testing.T) {
 	r.Len(hourRows, 1)
 	r.Equal(raw.UID, hourRows[0].UID)
 
-	dayRows := readArchiveRows(t, storage, fx.org.UID, archive.DayFileID(fx.check.UID, baseDay))
-	r.Len(dayRows, 2)
-	r.Equal([]string{hourA.UID, hourB.UID}, []string{dayRows[0].UID, dayRows[1].UID})
-	r.Equal(models.PeriodTypeHour, dayRows[0].PeriodType)
-	r.Equal(int64(60), dayRows[0].TotalChecks.V)
+	r.Equal(1, fx.countRows(t, periodDay), "the day is compacted even with nothing to archive")
+	r.False(archiveFileExists(t, storage, fx.org.UID, archive.DayFileID(fx.check.UID, baseDay)),
+		"a day of hour rollups only must get no day file")
 }
 
 // TestAggregatePeriod_ArchiveSkipsMarkerOnlyBucket: a bucket of lifecycle
@@ -374,7 +372,7 @@ func TestAggregatePeriod_DayArchiveAllOrNothing(t *testing.T) {
 			baseDay := time.Now().UTC().AddDate(0, 0, -10).Truncate(24 * time.Hour)
 			hour3, hour4 := baseDay.Add(3*time.Hour), baseDay.Add(4*time.Hour)
 			fx.addResult(t, models.PeriodTypeHour, models.ResultStatusUp, hour3)
-			rollup4 := fx.addResult(t, models.PeriodTypeHour, models.ResultStatusUp, hour4)
+			fx.addResult(t, models.PeriodTypeHour, models.ResultStatusUp, hour4)
 
 			raw := models.NewResult(fx.org.UID, fx.check.UID, models.ResultStatusUp, 0.1)
 			raw.PeriodStart = hour3.Add(time.Minute)
@@ -403,11 +401,9 @@ func TestAggregatePeriod_DayArchiveAllOrNothing(t *testing.T) {
 			r.False(archiveFileExists(t, storage, fx.org.UID, hourFile), "the hour file must be gone")
 
 			rows := readArchiveRows(t, storage, fx.org.UID, dayFile)
-			r.Len(rows, 2)
+			r.Len(rows, 1, "the hour with no hour file is absent: rollups are never archived")
 			r.Equal(raw.UID, rows[0].UID)
 			r.Equal(models.PeriodTypeRaw, rows[0].PeriodType)
-			r.Equal(rollup4.UID, rows[1].UID, "the hour with no hour file contributes its rollup row")
-			r.Equal(models.PeriodTypeHour, rows[1].PeriodType)
 		})
 	}
 }
