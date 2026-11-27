@@ -21,6 +21,18 @@ describe("apiFetch", () => {
     expect(calls[0].init?.cache).toBe("no-cache");
   });
 
+  test("sends the same-origin session cookie, so members read a private page", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as typeof fetch;
+
+    await apiFetch("/api/v1/status-pages/acme/internal");
+
+    expect(calls[0].init?.credentials).toBe("same-origin");
+  });
+
   test("takes a read the shell started once, then goes to the network", async () => {
     const calls: string[] = [];
     globalThis.fetch = (async (url: string) => {

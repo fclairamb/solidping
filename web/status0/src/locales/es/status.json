@@ -79,6 +79,7 @@
     "critical": "Crítica"
   },
   "resourceAffected": "Afectado",
+  "privateBanner": "Privada: solo visible para los miembros de {{org}}.",
   "unlockTitle": "Se requiere contraseña",
   "unlockDescription": "Esta página de estado es privada. Introduce la contraseña que te han facilitado para verla.",
   "unlockPasswordLabel": "Contraseña",
