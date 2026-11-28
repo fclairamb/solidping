@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/paramkeys"
@@ -27,6 +28,13 @@ type ParamStore interface {
 
 // StringValue extracts the stringified value from a parameter's `{"value": …}`
 // envelope — the single shape both engines write.
+//
+// Only a scalar has a string form: a string, a fmt.Stringer, a boolean or a
+// number. Anything else (a map, a slice) is not a value a reference can
+// substitute, so it is reported as not resolvable rather than printed: a sealed
+// envelope (`{"$sp_sealed": …}`) read by a process that cannot open it, or a
+// malformed row, must fail the check explicitly, never hand it the Go
+// rendering of the map (spec 2026-11-28-01).
 func StringValue(param *models.Parameter) (string, bool) {
 	if param == nil {
 		return "", false
@@ -42,8 +50,26 @@ func StringValue(param *models.Parameter) (string, bool) {
 		return val, true
 	case fmt.Stringer:
 		return val.String(), true
+	case bool:
+		return strconv.FormatBool(val), true
+	case float64:
+		return strconv.FormatFloat(val, 'g', -1, 64), true
+	case float32:
+		return strconv.FormatFloat(float64(val), 'g', -1, 32), true
+	case int:
+		return strconv.Itoa(val), true
+	case int64:
+		return strconv.FormatInt(val, 10), true
+	case int32:
+		return strconv.FormatInt(int64(val), 10), true
+	case uint:
+		return strconv.FormatUint(uint64(val), 10), true
+	case uint64:
+		return strconv.FormatUint(val, 10), true
+	case uint32:
+		return strconv.FormatUint(uint64(val), 10), true
 	default:
-		return fmt.Sprintf("%v", val), true
+		return "", false
 	}
 }
 
