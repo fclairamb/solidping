@@ -309,8 +309,11 @@ func incidentDashURL(baseURL, orgSlug string, incident *models.Incident) string 
 }
 
 // slackLink wraps text in a Slack mrkdwn hyperlink when a URL is available,
-// falling back to the plain text unchanged when url is empty.
+// falling back to the plain text when url is empty. The text is escaped
+// either way: a check name holding `>` must not end the link and open a
+// second `<url|label>` token. Callers pass the raw text, never escaped text.
 func slackLink(url, text string) string {
+	text = escapeSlackText(text)
 	if url == "" {
 		return text
 	}
@@ -346,7 +349,7 @@ func getFailureReason(incident *models.Incident) string {
 	}
 
 	if reason := incident.FailureReason(); reason != "" {
-		return reason
+		return truncateRunes(reason, maxInsertedFailureReason)
 	}
 
 	return defaultFailureReason
@@ -517,7 +520,7 @@ func (s *SlackSender) buildIncidentCreatedMessage(payload *Payload) *slack.Messa
 	}
 
 	return &slack.MessageResponse{
-		Text: fallbackText,
+		Text: escapeSlackText(fallbackText),
 		Attachments: []slack.Attachment{
 			{Color: color, Fallback: fallbackText, Blocks: blocks},
 		},
@@ -530,7 +533,7 @@ func (s *SlackSender) buildIncidentFields(payload *Payload, checkName, checkURL 
 	// the reader needs all three before they can decide anything.
 	if burn := BurnInfoFor(payload.Incident); burn != nil {
 		return []slack.Text{
-			{Type: slack.BlockTypeMrkdwn, Text: "*Objective:*\n" + burn.SLOName},
+			{Type: slack.BlockTypeMrkdwn, Text: "*Objective:*\n" + escapeSlackText(burn.SLOName)},
 			{Type: slack.BlockTypeMrkdwn, Text: fmt.Sprintf(
 				"*Burn rate:*\n%s over %s (%s over %s), threshold %s",
 				burn.RateText(), humanDuration(burn.LongWindow),
@@ -558,14 +561,14 @@ func (s *SlackSender) buildIncidentFields(payload *Payload, checkName, checkURL 
 
 	fields := []slack.Text{
 		{Type: slack.BlockTypeMrkdwn, Text: "*Monitor:*\n" + slackLink(checkURL, checkName)},
-		{Type: slack.BlockTypeMrkdwn, Text: "*Cause:*\n" + getFailureReason(payload.Incident)},
+		{Type: slack.BlockTypeMrkdwn, Text: "*Cause:*\n" + escapeSlackText(getFailureReason(payload.Incident))},
 	}
 
 	if url := getCheckURL(payload.Check); url != "" {
 		method := getCheckMethod(payload.Check)
 		fields = append(fields, slack.Text{
 			Type: slack.BlockTypeMrkdwn,
-			Text: fmt.Sprintf("*Check:*\n%s `%s`", method, url),
+			Text: fmt.Sprintf("*Check:*\n%s `%s`", method, escapeSlackText(url)),
 		})
 	}
 
@@ -660,7 +663,7 @@ func (s *SlackSender) buildAckThreadReply(payload *Payload) *slack.MessageRespon
 	text := fmt.Sprintf(
 		":white_check_mark: %s%s — %s. Escalation stopped; the incident is still open.",
 		incidentRefLink(payload.Incident, incidentURL), checkNameLink(checkURL, incidentURL, checkName, payload.Incident),
-		ackSentence(payload),
+		escapeSlackText(ackSentence(payload)),
 	)
 
 	return &slack.MessageResponse{Text: text}
@@ -678,7 +681,7 @@ func (s *SlackSender) buildReminderThreadReply(payload *Payload) *slack.MessageR
 	text := fmt.Sprintf(
 		":alarm_clock: %s%s — %s.",
 		incidentRefLink(payload.Incident, incidentURL), checkNameLink(checkURL, incidentURL, checkName, payload.Incident),
-		reminderSentence(payload),
+		escapeSlackText(reminderSentence(payload)),
 	)
 
 	if line := RegionLine(payload); line != "" {
@@ -707,7 +710,7 @@ func (s *SlackSender) buildUnackThreadReply(payload *Payload) *slack.MessageResp
 	text := fmt.Sprintf(
 		":warning: %s%s — %s. %s",
 		incidentRefLink(payload.Incident, incidentURL), checkNameLink(checkURL, incidentURL, checkName, payload.Incident),
-		unackSentence(payload), unackCallToAction,
+		escapeSlackText(unackSentence(payload)), unackCallToAction,
 	)
 
 	return &slack.MessageResponse{Text: text}
@@ -781,7 +784,7 @@ func (s *SlackSender) buildUnackUpdateMessage(payload *Payload) *slack.MessageRe
 			Type: slack.BlockTypeSection,
 			Text: &slack.Text{
 				Type: slack.BlockTypeMrkdwn,
-				Text: ":warning: " + unackHeadline(payload) + ". " + unackCallToAction,
+				Text: ":warning: " + escapeSlackText(unackHeadline(payload)) + ". " + unackCallToAction,
 			},
 		},
 		s.buildIncidentActionButtons(payload.Incident.UID),
@@ -807,7 +810,7 @@ func (s *SlackSender) buildUnackUpdateMessage(payload *Payload) *slack.MessageRe
 	}
 
 	return &slack.MessageResponse{
-		Text: fallbackText,
+		Text: escapeSlackText(fallbackText),
 		Attachments: []slack.Attachment{
 			{
 				Color:    colorDanger,
@@ -837,7 +840,7 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 	if burn := BurnInfoFor(payload.Incident); burn != nil {
 		return &slack.MessageResponse{Text: fmt.Sprintf(
 			":large_green_circle: %s%s stopped burning after %s — now %s, %s budget remaining.",
-			incidentRefLink(payload.Incident, incidentURL), burn.SLOName, duration,
+			incidentRefLink(payload.Incident, incidentURL), escapeSlackText(burn.SLOName), duration,
 			burn.RateText(), burn.BudgetRemainingText(),
 		)}
 	}
@@ -895,7 +898,7 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 		s.buildIncidentEscalatedBlocks(payload, checkName), payload.OnCallMentions)
 
 	return &slack.MessageResponse{
-		Text: fallbackText,
+		Text: escapeSlackText(fallbackText),
 		Attachments: []slack.Attachment{
 			{
 				Color:    colorWarning,
@@ -919,7 +922,7 @@ func (s *SlackSender) buildIncidentEscalatedFields(payload *Payload, checkURL, c
 		method := getCheckMethod(payload.Check)
 		fields = append(fields, slack.Text{
 			Type: slack.BlockTypeMrkdwn,
-			Text: fmt.Sprintf("*Check:*\n%s `%s`", method, url),
+			Text: fmt.Sprintf("*Check:*\n%s `%s`", method, escapeSlackText(url)),
 		})
 	}
 
@@ -992,7 +995,7 @@ func (s *SlackSender) buildCommentThreadReply(payload *Payload) *slack.MessageRe
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
 	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
-	author := commentAuthor(payload.Comment)
+	author := escapeSlackText(commentAuthor(payload.Comment))
 	refLink := incidentRefLink(payload.Incident, incidentURL)
 	nameLink := checkNameLink(checkURL, incidentURL, checkName, payload.Incident)
 
@@ -1005,7 +1008,7 @@ func (s *SlackSender) buildCommentThreadReply(payload *Payload) *slack.MessageRe
 		header += " _(" + label + ")_"
 	}
 
-	body := commentText(payload.Comment)
+	body := escapeSlackText(commentText(payload.Comment))
 	text := header
 	if body != "" {
 		text += "\n> " + strings.ReplaceAll(body, "\n", "\n> ")
@@ -1028,7 +1031,7 @@ func (s *SlackSender) buildCommentThreadReply(payload *Payload) *slack.MessageRe
 // buildSimpleMessage builds a simple fallback message for unknown event types.
 func (s *SlackSender) buildSimpleMessage(payload *Payload) *slack.MessageResponse {
 	checkName := getCheckName(payload.Check)
-	text := fmt.Sprintf("Incident update for *%s*", checkName)
+	text := fmt.Sprintf("Incident update for *%s*", escapeSlackText(checkName))
 
 	return &slack.MessageResponse{
 		Text: text,
@@ -1120,7 +1123,7 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 	// Build section fields
 	fields := []slack.Text{
 		{Type: slack.BlockTypeMrkdwn, Text: "*Monitor:*\n" + slackLink(checkURL, checkName)},
-		{Type: slack.BlockTypeMrkdwn, Text: "*Cause:*\n" + getFailureReason(payload.Incident)},
+		{Type: slack.BlockTypeMrkdwn, Text: "*Cause:*\n" + escapeSlackText(getFailureReason(payload.Incident))},
 		{Type: slack.BlockTypeMrkdwn, Text: "*Length:*\n" + duration},
 	}
 
@@ -1129,7 +1132,7 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 		method := getCheckMethod(payload.Check)
 		fields = append(fields, slack.Text{
 			Type: slack.BlockTypeMrkdwn,
-			Text: "*Checked URL:*\n" + method + " `" + url + "`",
+			Text: "*Checked URL:*\n" + method + " `" + escapeSlackText(url) + "`",
 		})
 	}
 
@@ -1176,7 +1179,7 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 	}
 
 	return &slack.MessageResponse{
-		Text: fallbackText,
+		Text: escapeSlackText(fallbackText),
 		Attachments: []slack.Attachment{
 			{
 				Color:    colorSuccess,
@@ -1293,7 +1296,7 @@ func (s *SlackSender) buildReopenedUpdateMessage(payload *Payload) *slack.Messag
 	}
 
 	return &slack.MessageResponse{
-		Text: fallbackText,
+		Text: escapeSlackText(fallbackText),
 		Attachments: []slack.Attachment{
 			{
 				Color:    colorDanger,

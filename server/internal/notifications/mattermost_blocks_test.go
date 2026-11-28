@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -261,4 +262,136 @@ func TestMattermostActionURL(t *testing.T) {
 		"https://sp.acme.com/api/v1/integrations/mattermost/actions",
 		MattermostActionURL("https://sp.acme.com/"))
 	require.Empty(t, MattermostActionURL(""))
+}
+
+// mattermostTitleBlockText is the card's first text block: the linked title.
+func mattermostTitleBlockText(t *testing.T, post *MattermostBlocksPost) string {
+	t.Helper()
+
+	require.NotEmpty(t, post.Props.Blocks)
+	require.NotEmpty(t, post.Props.Blocks[0].Content)
+
+	return post.Props.Blocks[0].Content[0].Text
+}
+
+// mattermostFieldText finds the text block of one field ("**Cause**\n…"),
+// whether it stands alone or sits in a column.
+func mattermostFieldText(blocks []MattermostBlock, title string) string {
+	prefix := "**" + title + "**\n"
+
+	for i := range blocks {
+		if strings.HasPrefix(blocks[i].Text, prefix) {
+			return blocks[i].Text
+		}
+
+		for _, nested := range [][]MattermostBlock{blocks[i].Content, blocks[i].Items} {
+			if text := mattermostFieldText(nested, title); text != "" {
+				return text
+			}
+		}
+
+		for j := range blocks[i].Columns {
+			if text := mattermostFieldText(blocks[i].Columns[j].Items, title); text != "" {
+				return text
+			}
+		}
+	}
+
+	return ""
+}
+
+// TestMattermostBlocksTitleEscapesCheckName pins finding BA1: a check name
+// holding markdown link syntax must not add a second link to the title, and
+// the only link left points to the check's dashboard page.
+func TestMattermostBlocksTitleEscapesCheckName(t *testing.T) {
+	t.Parallel()
+
+	payload := regionsTestPayload(eventTypeIncidentCreated, false)
+	evil := "API](https://evil.example) [x"
+	payload.Check.Name = &evil
+
+	title := mattermostTitleBlockText(t, BuildMattermostBlocksPost(payload, mattermostBlocksOptions()))
+	checkURL := "https://sp.acme.com/d/orgs/acme/checks/chk-1"
+
+	r := require.New(t)
+	unescapedLinks := strings.Count(title, "](") - strings.Count(title, `\](`)
+	r.Equal(1, unescapedLinks, "exactly one link in %q", title)
+	r.Contains(title, `[API\](https://evil.example) \[x](`+checkURL+`)`)
+	r.NotContains(strings.ReplaceAll(title, `\](`, ""), "](https://evil.example)")
+
+	t.Run("plain name keeps its link", func(t *testing.T) {
+		t.Parallel()
+
+		plain := regionsTestPayload(eventTypeIncidentCreated, false)
+		got := mattermostTitleBlockText(t, BuildMattermostBlocksPost(plain, mattermostBlocksOptions()))
+		require.Equal(t, "**:red_circle: [DOWN] [API health]("+checkURL+")**", got)
+	})
+}
+
+// TestMattermostFailureReasonFromTLSIsEscaped covers the target-controlled
+// path: a TLS handshake error quotes the certificate names the endpoint
+// presented, which reach the Cause field of both Mattermost formats.
+func TestMattermostFailureReasonFromTLSIsEscaped(t *testing.T) {
+	t.Parallel()
+
+	reason := "TLS handshake failed: x509: certificate is valid for [login](https://evil.example), *.acme.com, " +
+		"not api.acme.com"
+	want := `TLS handshake failed: x509: certificate is valid for \[login\](https://evil.example), \*.acme.com, ` +
+		"not api.acme.com"
+
+	payload := regionsTestPayload(eventTypeIncidentCreated, false)
+	payload.Incident.Details = models.JSONMap{"failure_reason": reason}
+
+	r := require.New(t)
+
+	post := BuildMattermostBlocksPost(payload, mattermostBlocksOptions())
+	r.Equal("**"+mmFieldCause+"**\n"+want, mattermostFieldText(post.Props.Blocks, mmFieldCause))
+
+	msg := (&MattermostSender{}).buildMessage(&mattermostSettings{Username: productName}, payload)
+	r.Len(msg.Attachments, 1)
+
+	var cause string
+
+	for _, field := range msg.Attachments[0].Fields {
+		if field.Title == mmFieldCause {
+			cause = field.Value
+		}
+	}
+
+	r.Equal(want, cause)
+
+	t.Run("plain reason is unchanged", func(t *testing.T) {
+		t.Parallel()
+
+		plain := regionsTestPayload(eventTypeIncidentCreated, false)
+		got := mattermostFieldText(BuildMattermostBlocksPost(plain, mattermostBlocksOptions()).Props.Blocks, mmFieldCause)
+		require.Equal(t, "**"+mmFieldCause+"**\nconnection refused", got)
+	})
+}
+
+// TestMattermostAttachmentsEscapeCheckNameAndComment covers the legacy
+// attachment format: title and field values render as markdown there too.
+func TestMattermostAttachmentsEscapeCheckNameAndComment(t *testing.T) {
+	t.Parallel()
+
+	payload := regionsTestPayload(eventTypeIncidentComment, false)
+	evil := "API](https://evil.example) [x"
+	payload.Check.Name = &evil
+	payload.Comment = &CommentInfo{Text: "see [here](https://evil.example) @channel", AuthorName: "bob_*"}
+
+	msg := (&MattermostSender{}).buildMessage(&mattermostSettings{Username: productName}, payload)
+
+	r := require.New(t)
+	r.Len(msg.Attachments, 1)
+	r.Equal(`:speech_balloon: [COMMENT] API\](https://evil.example) \[x`, msg.Attachments[0].Title)
+
+	values := map[string]string{}
+	for _, field := range msg.Attachments[0].Fields {
+		values[field.Title] = field.Value
+	}
+
+	r.Equal(`API\](https://evil.example) \[x`, values[mmFieldCheck])
+	r.Equal(`bob\_\*`, values[fieldLabelAuthor])
+	r.Equal(`see \[here\](https://evil.example) \@channel`, values[fieldLabelComment])
+	r.Contains(msg.Attachments[0].Fallback, evil, "the plain-text fallback stays raw")
 }

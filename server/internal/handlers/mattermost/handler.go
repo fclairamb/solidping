@@ -13,7 +13,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -109,6 +111,11 @@ func (h *Handler) HandleAction(writer http.ResponseWriter, req *http.Request) er
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 		return h.respond(writer, nil, "Invalid action request.")
 	}
+
+	// The callback is authenticated only by the signed action token, not the
+	// user fields: cap them before they reach the ack trail and the card.
+	body.UserID = capActionUserField(body.UserID)
+	body.UserName = capActionUserField(body.UserName)
 
 	token, _ := body.Context["token"].(string)
 	action, _ := body.Context["action"].(string)
@@ -267,6 +274,25 @@ func (h *Handler) respond(
 	})
 }
 
+// maxActionUserField is the most runes kept from the request's user_id and
+// user_name. A genuine Mattermost username is at most 22 characters and an ID
+// 26, so this only trims forged values.
+const maxActionUserField = 64
+
+// capActionUserField trims a user field and keeps its first
+// maxActionUserField runes.
+func capActionUserField(value string) string {
+	value = strings.TrimSpace(value)
+
+	if utf8.RuneCountInString(value) > maxActionUserField {
+		value = strings.TrimSpace(string([]rune(value)[:maxActionUserField]))
+	}
+
+	return value
+}
+
+// mattermostActor is the acknowledgment's actor name, kept raw: the ack event
+// stores it as data, and the card renderer escapes it as markdown.
 func mattermostActor(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -282,5 +308,16 @@ func mattermostMention(name string) string {
 		return "someone"
 	}
 
-	return "@" + name
+	// The ephemeral text renders as markdown. A genuine username (letters,
+	// digits, `.`, `_`, `-`) is a mention as is; anything else is escaped so
+	// it cannot add a link or formatting.
+	if mattermostUsernamePattern.MatchString(name) {
+		return "@" + name
+	}
+
+	return "@" + notifications.EscapeMattermostMarkdown(name)
 }
+
+// mattermostUsernamePattern is the character set Mattermost allows in a
+// username.
+var mattermostUsernamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)

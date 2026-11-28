@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
 	"strconv"
 	"time"
@@ -273,6 +274,15 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 		widgets = append(widgets, googleChatWidget{
 			DecoratedText: &googleChatDecoratedText{TopLabel: title, Text: text},
 		})
+	}
+
+	// decoratedText renders Google Chat's HTML subset (<a href>, <b>…), and
+	// every value above is plain text, some of it user-controlled (check name,
+	// comment, actor, failure reason): escape them all so none can add a link.
+	for i := range widgets {
+		if widgets[i].DecoratedText != nil {
+			widgets[i].DecoratedText.Text = html.EscapeString(widgets[i].DecoratedText.Text)
+		}
 	}
 
 	return widgets

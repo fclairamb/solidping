@@ -560,8 +560,8 @@ func (ds *DiscordSender) buildAckEmbed(payload *Payload) discord.Embed {
 	checkName := getCheckName(payload.Check)
 
 	fields := []discord.Field{
-		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
-		{Name: fieldLabelAcknowledgedBy, Value: ackActor(payload.Acknowledgment), Inline: true},
+		{Name: fieldLabelMonitor, Value: escapeDiscordMarkdown(checkName), Inline: true},
+		{Name: fieldLabelAcknowledgedBy, Value: escapeDiscordMarkdown(ackActor(payload.Acknowledgment)), Inline: true},
 	}
 
 	if via := ackViaName(payload.Acknowledgment); via != "" {
@@ -570,7 +570,7 @@ func (ds *DiscordSender) buildAckEmbed(payload *Payload) discord.Embed {
 
 	return discord.Embed{
 		Title:       ackTitle(payload),
-		Description: ackPlainBody(payload) + " Escalation has stopped; the incident is still open.",
+		Description: escapeDiscordMarkdown(ackPlainBody(payload)) + " Escalation has stopped; the incident is still open.",
 		Color:       discord.ColorBlue,
 		Fields:      fields,
 		Timestamp:   time.Now().Format(time.RFC3339),
@@ -586,8 +586,8 @@ func (ds *DiscordSender) buildUnackEmbed(payload *Payload) discord.Embed {
 	checkName := getCheckName(payload.Check)
 
 	fields := []discord.Field{
-		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
-		{Name: fieldLabelUnacknowledgedBy, Value: ackActor(payload.Acknowledgment), Inline: true},
+		{Name: fieldLabelMonitor, Value: escapeDiscordMarkdown(checkName), Inline: true},
+		{Name: fieldLabelUnacknowledgedBy, Value: escapeDiscordMarkdown(ackActor(payload.Acknowledgment)), Inline: true},
 	}
 
 	if via := ackViaName(payload.Acknowledgment); via != "" {
@@ -596,7 +596,7 @@ func (ds *DiscordSender) buildUnackEmbed(payload *Payload) discord.Embed {
 
 	return discord.Embed{
 		Title:       unackTitle(payload),
-		Description: unackPlainBody(payload),
+		Description: escapeDiscordMarkdown(unackPlainBody(payload)),
 		Color:       discord.ColorRed,
 		Fields:      fields,
 		Timestamp:   time.Now().Format(time.RFC3339),
@@ -619,13 +619,13 @@ func (ds *DiscordSender) buildCommentEmbed(payload *Payload) discord.Embed {
 	checkName := getCheckName(payload.Check)
 
 	fields := []discord.Field{
-		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
-		{Name: fieldLabelAuthor, Value: commentAuthor(payload.Comment), Inline: true},
+		{Name: fieldLabelMonitor, Value: escapeDiscordMarkdown(checkName), Inline: true},
+		{Name: fieldLabelAuthor, Value: escapeDiscordMarkdown(commentAuthor(payload.Comment)), Inline: true},
 	}
 
 	return discord.Embed{
 		Title:       commentTitle(payload),
-		Description: commentText(payload.Comment),
+		Description: escapeDiscordMarkdown(commentText(payload.Comment)),
 		Color:       discord.ColorBlue,
 		Fields:      fields,
 		Timestamp:   time.Now().Format(time.RFC3339),
@@ -638,7 +638,7 @@ func (ds *DiscordSender) buildIncidentResolvedEmbed(payload *Payload) discord.Em
 	checkName := getCheckName(payload.Check)
 
 	fields := []discord.Field{
-		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
+		{Name: fieldLabelMonitor, Value: escapeDiscordMarkdown(checkName), Inline: true},
 	}
 
 	if payload.Incident.ResolvedAt != nil {
@@ -679,7 +679,7 @@ func (ds *DiscordSender) buildIncidentEscalatedEmbed(payload *Payload) discord.E
 	duration := formatDuration(time.Since(payload.Incident.StartedAt))
 
 	fields := []discord.Field{
-		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
+		{Name: fieldLabelMonitor, Value: escapeDiscordMarkdown(checkName), Inline: true},
 		{Name: "Failures", Value: strconv.Itoa(payload.Incident.FailureCount), Inline: true},
 		{Name: mmFieldDuration, Value: duration, Inline: true},
 	}
@@ -688,7 +688,9 @@ func (ds *DiscordSender) buildIncidentEscalatedEmbed(payload *Payload) discord.E
 
 	if isDegradedIncident(payload.Incident) {
 		title = "Degraded incident escalated: " + checkName
-		fields[1] = discord.Field{Name: mmFieldCause, Value: degradedCause(payload.Incident), Inline: true}
+		fields[1] = discord.Field{
+			Name: mmFieldCause, Value: escapeDiscordMarkdown(degradedCause(payload.Incident)), Inline: true,
+		}
 	}
 
 	if url := getCheckURL(payload.Check); url != "" {
@@ -717,14 +719,14 @@ func (ds *DiscordSender) buildReminderEmbed(payload *Payload) discord.Embed {
 	checkName := getCheckName(payload.Check)
 
 	fields := []discord.Field{
-		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
+		{Name: fieldLabelMonitor, Value: escapeDiscordMarkdown(checkName), Inline: true},
 		{Name: mmFieldDuration, Value: formatDuration(time.Since(payload.Incident.StartedAt)), Inline: true},
 	}
 	fields = appendDiscordRegionField(fields, payload)
 
 	return discord.Embed{
 		Title:       reminderTitle(payload),
-		Description: reminderSentence(payload) + ".",
+		Description: escapeDiscordMarkdown(reminderSentence(payload)) + ".",
 		URL:         incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident),
 		Color:       discord.ColorOrange,
 		Fields:      fields,
@@ -783,16 +785,20 @@ func (ds *DiscordSender) buildDefaultEmbed(payload *Payload) discord.Embed {
 // buildCommonFields builds fields common to created and reopened embeds.
 func (ds *DiscordSender) buildCommonFields(payload *Payload, checkName string) []discord.Field {
 	fields := []discord.Field{
-		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
+		{Name: fieldLabelMonitor, Value: escapeDiscordMarkdown(checkName), Inline: true},
 	}
 
 	if isDegradedIncident(payload.Incident) {
 		facts := degradedFacts(payload.Incident)
 		for i := range facts {
-			fields = append(fields, discord.Field{Name: facts[i].Label, Value: facts[i].Value, Inline: true})
+			fields = append(fields, discord.Field{
+				Name: facts[i].Label, Value: escapeDiscordMarkdown(facts[i].Value), Inline: true,
+			})
 		}
 	} else {
-		fields = append(fields, discord.Field{Name: mmFieldCause, Value: getFailureReason(payload.Incident), Inline: true})
+		fields = append(fields, discord.Field{
+			Name: mmFieldCause, Value: escapeDiscordMarkdown(getFailureReason(payload.Incident)), Inline: true,
+		})
 	}
 
 	if url := getCheckURL(payload.Check); url != "" {
@@ -829,8 +835,8 @@ func (ds *DiscordSender) buildResolvedUpdateMessage(payload *Payload) *discord.M
 	}
 
 	fields := []discord.Field{
-		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
-		{Name: mmFieldCause, Value: getFailureReason(payload.Incident), Inline: true},
+		{Name: fieldLabelMonitor, Value: escapeDiscordMarkdown(checkName), Inline: true},
+		{Name: mmFieldCause, Value: escapeDiscordMarkdown(getFailureReason(payload.Incident)), Inline: true},
 	}
 
 	if duration != "" {
