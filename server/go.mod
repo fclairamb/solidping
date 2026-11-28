@@ -56,7 +56,7 @@ require (
 	github.com/dlclark/regexp2 v1.12.0 // indirect
 	github.com/docker/go-connections v0.8.2 // indirect
 	github.com/eapache/go-resiliency v1.7.0 // indirect
-	github.com/ebitengine/purego v0.10.1 // indirect
+	github.com/ebitengine/purego v0.11.2 // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
@@ -149,7 +149,7 @@ require (
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.33 // indirect
-	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
+	github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
@@ -235,7 +235,7 @@ require (
 	github.com/crewjam/saml v0.6.3
 	github.com/dlclark/regexp2/v2 v2.13.3
 	github.com/docker/go-units v0.5.0
-	github.com/dop251/goja v0.0.0-20261125210501-5e92a7e24d0c
+	github.com/dop251/goja v0.0.0-20261127213540-516d13cfa287
 	github.com/dreamscached/minequery/v2 v2.5.0
 	github.com/dustin/go-humanize v1.1.0
 	github.com/eclipse/paho.mqtt.golang v1.5.2
@@ -292,7 +292,7 @@ require (
 	github.com/redis/go-redis/v9 v9.24.1
 	github.com/rumblefrog/go-a2s v1.0.3
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
-	github.com/shirou/gopsutil/v4 v4.26.6
+	github.com/shirou/gopsutil/v4 v4.26.10
 	github.com/sijms/go-ora/v3 v3.0.1
 	github.com/slack-go/slack v0.36.0
 	github.com/standard-webhooks/standard-webhooks/libraries v1.3.0
