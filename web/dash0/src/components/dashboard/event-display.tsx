@@ -733,6 +733,40 @@ export function getEscalatedDetail(event: {
   };
 }
 
+// EventMemberDetail is who a member.* event is about and the role(s) it
+// records (solidping-business#119).
+export interface EventMemberDetail {
+  /** The member's display name, when the API resolved one. */
+  name?: string;
+  /** The account email (payload.email, falling back to target_name). */
+  email?: string;
+  /** The role before a member.role_changed. */
+  previousRole?: string;
+  /** The role granted, kept or held when the member was removed. */
+  role?: string;
+}
+
+// getEventMember reads a member.invited / .joined / .removed / .role_changed
+// row: the member's name (targetUserName, resolved by the API from
+// payload.target_uid), the email recorded with the event, and the roles.
+// Undefined for other event types and for rows that carry none of them.
+export function getEventMember(event: {
+  eventType?: string;
+  payload?: Record<string, unknown>;
+  targetUserName?: string;
+}): EventMemberDetail | undefined {
+  if (!event.eventType?.startsWith("member.")) return undefined;
+  const p = event.payload;
+  const str = (v: unknown) => (typeof v === "string" && v.length > 0 ? v : undefined);
+  const detail: EventMemberDetail = {
+    name: str(event.targetUserName),
+    email: str(p?.email) ?? str(p?.target_name),
+    previousRole: event.eventType === "member.role_changed" ? str(p?.previous_role) : undefined,
+    role: str(p?.role),
+  };
+  return detail.name || detail.email || detail.role ? detail : undefined;
+}
+
 // EventPublicationRef is what a statuspage.incident.* event put on a status
 // page: the public title readers saw, and the incident behind it.
 export interface EventPublicationRef {

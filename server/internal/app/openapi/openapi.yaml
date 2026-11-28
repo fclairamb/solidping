@@ -15290,6 +15290,9 @@ components:
             whose account was tried. Admin/owner only; absent when the typed
             email (`payload.email`) matches no member. Non-admin members only
             receive the `auth.login_failed` rows against their own account.
+            On a `member.*` row, the display name of the member the event is
+            about (`payload.target_uid`), for every reader; absent when that
+            user has no name or no longer exists.
         createdAt:
           type: string
           format: date-time
