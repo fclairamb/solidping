@@ -81,3 +81,111 @@ func TestGoogleChatEscapesDecoratedText(t *testing.T) {
 	plain := regionsTestPayload(eventTypeIncidentCreated, false)
 	r.Equal("API health (http)", (&GoogleChatSender{}).buildWidgets(plain, "API health")[0].DecoratedText.Text)
 }
+
+func TestEscapeZulipMarkdown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in, want string
+	}{
+		{"API health", "API health"},
+		{"relapse #2 (eu-west)", "relapse #2 (eu-west)"},
+		{"# Big", `\# Big`},
+		{"[x](https://evil.example)", "\\[x\\]\u200b(https://evil.example)"},
+		{"@**all** #**ops**", `@\*\*all\*\* #\*\*ops\*\*`},
+		{"_a_ `b` back\\slash", "\\_a\\_ \\`b\\` back\\\\slash"},
+		{"a@b.c ~x~ |y| <z>", "a@b.c ~x~ |y| <z>"},
+	}
+
+	for _, tt := range tests {
+		require.Equal(t, tt.want, escapeZulipMarkdown(tt.in), "input %q", tt.in)
+	}
+}
+
+func TestEscapeMSTeamsText(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "[x]\u200b(https://evil.example)", escapeMSTeamsText("[x](https://evil.example)"))
+	require.Equal(t, "API health (http) [DOWN] *a*", escapeMSTeamsText("API health (http) [DOWN] *a*"))
+}
+
+func TestSplitEmojiPrefix(t *testing.T) {
+	t.Parallel()
+
+	emoji, rest := splitEmojiPrefix(":red_circle: [DOWN] API")
+	require.Equal(t, ":red_circle: ", emoji)
+	require.Equal(t, "[DOWN] API", rest)
+
+	emoji, rest = splitEmojiPrefix("[UPDATE] API")
+	require.Empty(t, emoji)
+	require.Equal(t, "[UPDATE] API", rest)
+
+	emoji, rest = splitEmojiPrefix(":not an emoji: x")
+	require.Empty(t, emoji)
+	require.Equal(t, ":not an emoji: x", rest)
+}
+
+// TestZulipEscapesUserValues: a check name, comment or actor cannot add a
+// link or a mention to a Zulip message; SolidPing's emoji stays an emoji.
+func TestZulipEscapesUserValues(t *testing.T) {
+	t.Parallel()
+
+	evil := "API [login](https://evil.example) @**all**"
+	payload := regionsTestPayload(eventTypeIncidentCreated, false)
+	payload.Check.Name = &evil
+	payload.Incident.Details["failure_reason"] = "[x](https://evil.example)"
+
+	content := (&ZulipSender{}).buildContent(payload)
+
+	r := require.New(t)
+	r.NotContains(content, "](https://evil.example)")
+	r.NotContains(content, "@**all**")
+	r.Contains(content, "**:red_circle: \\[DOWN\\] API \\[login\\]\u200b(https://evil.example) @\\*\\*all\\*\\***")
+	r.Contains(content, "\\[x\\]\u200b(https://evil.example)")
+
+	comment := regionsTestPayload(eventTypeIncidentComment, false)
+	comment.Comment = &CommentInfo{Text: "see [here](https://evil.example)", AuthorName: "[bob](https://evil.example)"}
+	r.NotContains((&ZulipSender{}).buildContent(comment), "](https://evil.example)")
+}
+
+// TestMSTeamsEscapesUserValues: the title TextBlock and the FactSet values
+// cannot carry a markdown link built by a user value.
+func TestMSTeamsEscapesUserValues(t *testing.T) {
+	t.Parallel()
+
+	evil := "API [login](https://evil.example)"
+	payload := regionsTestPayload(eventTypeIncidentComment, false)
+	payload.Check.Name = &evil
+	payload.Comment = &CommentInfo{Text: "see [here](https://evil.example)", AuthorName: "[bob](https://evil.example)"}
+
+	msg := (&MSTeamsSender{}).buildMessage(payload)
+	body := msg.Attachments[0].Content.Body
+
+	r := require.New(t)
+	r.NotContains(body[0].Text, "](")
+	r.Contains(body[0].Text, "[login]\u200b(https://evil.example)")
+
+	for _, fact := range body[1].Facts {
+		r.NotContains(fact.Value, "](", "fact %q", fact.Title)
+	}
+
+	failure := regionsTestPayload(eventTypeIncidentCreated, false)
+	failure.Incident.Details["failure_reason"] = "[x](https://evil.example)"
+
+	for _, fact := range (&MSTeamsSender{}).buildMessage(failure).Attachments[0].Content.Body[1].Facts {
+		r.NotContains(fact.Value, "](", "fact %q", fact.Title)
+	}
+}
+
+// TestMattermostTitleFallbackEscapes: without a check name suffix to link,
+// the title is still escaped, past SolidPing's emoji shortcode.
+func TestMattermostTitleFallbackEscapes(t *testing.T) {
+	t.Parallel()
+
+	payload := regionsTestPayload(eventTypeIncidentCreated, false)
+
+	got := mattermostTitleWithCheckLink(payload, ":red_circle: [DOWN] [x](https://evil.example) by @bob", "other")
+	require.Equal(t, "**:red_circle: \\[DOWN\\] \\[x\\](https://evil.example) by \\@bob**", got)
+	require.Equal(t, "**:red_circle: \\[DOWN\\] API**",
+		mattermostTitleWithCheckLink(payload, ":red_circle: [DOWN] API", ""))
+}

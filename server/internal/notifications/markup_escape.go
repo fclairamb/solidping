@@ -33,6 +33,12 @@ const commonMarkInline = "\\`*_~[]|@<>"
 // of a line, leaving everything else alone so "#3" or "relapse #2" read as
 // they always did.
 func escapeChatMarkdown(text string) string {
+	return escapeMarkdownChars(text, commonMarkInline)
+}
+
+// escapeMarkdownChars backslash-escapes every character of inline and a
+// heading marker at the start of a line.
+func escapeMarkdownChars(text, inline string) string {
 	runes := []rune(text)
 
 	var builder strings.Builder
@@ -42,7 +48,7 @@ func escapeChatMarkdown(text string) string {
 	lineStart := true
 
 	for i, char := range runes {
-		if strings.ContainsRune(commonMarkInline, char) || (char == '#' && lineStart && headingMarkerAt(runes, i)) {
+		if strings.ContainsRune(inline, char) || (char == '#' && lineStart && headingMarkerAt(runes, i)) {
 			builder.WriteByte('\\')
 		}
 
@@ -89,6 +95,55 @@ func EscapeMattermostMarkdown(text string) string {
 // backslash before `<`, so `<@id>` mentions and `<https://…>` cannot form.
 func escapeDiscordMarkdown(text string) string {
 	return escapeChatMarkdown(text)
+}
+
+// zulipInline is the inline set for Zulip, whose renderer is Python-Markdown:
+// it only honors a backslash before its ESCAPED_CHARS and shows it literally
+// before anything else, so `@`, `~`, `|`, `<` and `>` are not escaped here.
+// Escaping `*` is what stops mentions (`@**name**`, `@**all**`) and stream
+// links (`#**stream**`); escaping `[` and `]` stops `[text](url)` links.
+const zulipInline = "\\`*_[]"
+
+// escapeZulipMarkdown makes a value render literally in a Zulip message.
+// Zulip's backslash escaping is backed by breakLinkSyntax, so a link cannot
+// form even on a renderer that ignored the backslashes.
+func escapeZulipMarkdown(text string) string {
+	return breakLinkSyntax(escapeMarkdownChars(text, zulipInline))
+}
+
+// escapeMSTeamsText makes a value safe in an Adaptive Card TextBlock or
+// FactSet value. Teams renders a markdown subset there (emphasis, lists,
+// `[text](url)` links) but documents no escape character: a backslash shows
+// up literally and does not stop a link. A markdown link needs `](` with
+// nothing in between, so breakLinkSyntax is what stops a value from adding
+// its own link; emphasis is left alone, it cannot mislead a reader the way a
+// link to another site can. A bare URL is still autolinked by Teams, which
+// shows the real target, as it would in any message.
+func escapeMSTeamsText(text string) string {
+	return breakLinkSyntax(text)
+}
+
+// breakLinkSyntax puts a zero-width space between `]` and `(`, so
+// `[text](url)` renders as plain text whatever the renderer does with
+// backslashes. The text reads the same.
+func breakLinkSyntax(text string) string {
+	return strings.ReplaceAll(text, "](", "]\u200b(")
+}
+
+// splitEmojiPrefix splits a title built by eventColorAndTitle into its
+// leading `:shortcode: ` (SolidPing's own, kept raw: escaping the `_` of
+// `:red_circle:` would stop the emoji rendering) and the rest.
+func splitEmojiPrefix(title string) (string, string) {
+	if !strings.HasPrefix(title, ":") {
+		return "", title
+	}
+
+	end := strings.Index(title[1:], ": ")
+	if end < 0 || strings.ContainsAny(title[1:end+1], " []()") {
+		return "", title
+	}
+
+	return title[:end+3], title[end+3:]
 }
 
 // maxInsertedFailureReason caps a failure reason in a notification. The text

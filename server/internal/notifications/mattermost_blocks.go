@@ -163,7 +163,11 @@ func BuildMattermostBlocksPost(
 // name, so this stays correct for every event without a second title switch.
 func mattermostTitleWithCheckLink(payload *Payload, title, checkName string) string {
 	if checkName == "" || !strings.HasSuffix(title, checkName) {
-		return "**" + title + "**"
+		// No check name to link: the title may still hold user values, so
+		// escape everything after SolidPing's emoji shortcode.
+		emoji, rest := splitEmojiPrefix(title)
+
+		return "**" + emoji + escapeMattermostMarkdown(rest) + "**"
 	}
 
 	// The prefix is SolidPing's own tag and emoji shortcode (":red_circle:
