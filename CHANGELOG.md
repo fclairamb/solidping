@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.57.1](https://github.com/fclairamb/solidping/compare/v0.57.0...v0.57.1) (2026-11-28)
+
+
+### Upgrade note
+
+Secret organization parameters are no longer sealed while a direct-DB worker older than 0.57.0 is still running: the server logs a warning, keeps new secret values in plaintext, and seals them once every worker has caught up (retried every 5 minutes). Upgrade the workers to finish the rollout.
+
+### Bug Fixes
+
+* **security:** secret organization parameters are sealed safely during rolling upgrades, a `${param:}` value that is not a scalar fails as unresolved, and a DNSBL check with an invalid zone reports `error` instead of `up` ([#1096](https://github.com/fclairamb/solidping/issues/1096)) ([013b78e](https://github.com/fclairamb/solidping/commit/013b78e4f2557b12757fc81063586074026c8a2b))
+* **security:** user values (check names, incident comments, actor names, failure reasons) are escaped in chat notification markup ([#1093](https://github.com/fclairamb/solidping/issues/1093)) ([6bd9dfa](https://github.com/fclairamb/solidping/commit/6bd9dfa7a798a202e494c717b89debace0c612a4))
+* **activity:** member and role-change entries name the member and show the role change, such as `Viewer → Admin` ([#1096](https://github.com/fclairamb/solidping/issues/1096)) ([013b78e](https://github.com/fclairamb/solidping/commit/013b78e4f2557b12757fc81063586074026c8a2b))
+* **dash0:** an expanded check group loads its checks without scrolling to the bottom of the list, and the MCP page shows its self-hosted caveat only on self-hosted instances ([#1096](https://github.com/fclairamb/solidping/issues/1096)) ([013b78e](https://github.com/fclairamb/solidping/commit/013b78e4f2557b12757fc81063586074026c8a2b))
+* **deps:** Go dependencies updated, including goja 516d13c and posthog-go v2.6.0 ([#1090](https://github.com/fclairamb/solidping/issues/1090), [#1095](https://github.com/fclairamb/solidping/issues/1095))
+
 ## [0.57.0](https://github.com/fclairamb/solidping/compare/v0.56.0...v0.57.0) (2026-11-28)
 
 
