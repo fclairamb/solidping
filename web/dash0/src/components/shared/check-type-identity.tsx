@@ -174,6 +174,7 @@ export const CHECK_TYPE_IDENTITY: Partial<Record<string, CheckTypeIdentity>> = {
 
   // Infra.
   docker: { label: "Docker", tone: TONE_SKY, icon: Container },
+  host: { label: "Host resources", tone: TONE_SKY, icon: Cog },
   systemd: { label: "systemd unit", tone: TONE_SKY, icon: Cog },
   prometheus: { label: "Prometheus", tone: TONE_SKY, icon: Flame },
   freebox_line: { label: "Freebox Line", tone: TONE_SKY, icon: Wifi },

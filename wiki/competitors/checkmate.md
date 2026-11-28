@@ -25,7 +25,7 @@ windows and a wide set of notification channels.
 | Check types | 40+ | ~12 (HTTP, ping, TCP/port, DNS, gRPC, WebSocket, SSL, Docker, page speed, game server, JSON query, hardware) |
 | Multi-region probing | First-party regions/workers you deploy and control | Via the public [GlobalPing](https://globalping.io/) probe network (HTTP, ping, TCP only) |
 | Private networks | Org-scoped deported agents, outbound-only WebSocket, any check type | Capture agent reports hardware metrics outbound |
-| Hardware metrics (CPU/RAM/disk) | No dedicated agent (nearest: `prometheus` check on node_exporter) | Yes — the Capture agent (Go; Linux, Windows, macOS, RPi) |
+| Hardware metrics (CPU/RAM/disk) | Yes, natively on the host that runs the check (`host` check: disk, memory, CPU % through gopsutil, Linux/macOS/Windows; no agent to install beyond a private location agent for remote hosts) | Yes — the Capture agent (Go; Linux, Windows, macOS, RPi) |
 | Page speed / Lighthouse scores | No (browser check measures load timing, not scores) | Yes |
 | On-call schedules & escalation | Yes, built in | No |
 | Heartbeat (push) checks | Yes | No |

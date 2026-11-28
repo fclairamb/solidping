@@ -467,6 +467,8 @@
     "dockerDescription": "Surveiller la santé des conteneurs Docker",
     "systemd": "Unité systemd",
     "systemdDescription": "Vérifier l'état d'une unité systemd",
+    "host": "Ressources de l'hôte",
+    "hostDescription": "Vérifier l'utilisation du disque, de la mémoire et du CPU de l'hôte",
     "browser": "Navigateur",
     "browserDescription": "Surveiller les pages avec Chrome headless",
     "freebox_line": "Qualité de ligne Freebox",
@@ -1546,7 +1548,10 @@
     "fieldRequired": "Ce champ est obligatoire",
     "socketRequired": "Le chemin du socket est requis",
     "systemdUnitRequired": "Le nom de l'unité est requis",
-    "systemdUnitInvalid": "Le nom de l'unité ne peut contenir que des lettres, des chiffres et :_.@- (256 caractères au plus, sans - au début)"
+    "systemdUnitInvalid": "Le nom de l'unité ne peut contenir que des lettres, des chiffres et :_.@- (256 caractères au plus, sans - au début)",
+    "hostDiskPathInvalid": "Le chemin du disque doit être absolu",
+    "hostPercentInvalid": "Le pourcentage doit être un nombre dans ]0, 100]",
+    "hostOrderInvalid": "L'avertissement doit être inférieur au seuil critique"
   },
   "health": {
     "format": "Format de santé",
@@ -1919,5 +1924,15 @@
     "expectedState": "État attendu",
     "state_active": "Active (en marche)",
     "state_inactive": "Inactive (ne doit pas tourner)"
+  },
+  "host": {
+    "diskPath": "Chemin du disque",
+    "diskPathHelp": "Système de fichiers à mesurer sur l'hôte où tourne SolidPing. Par défaut : / (le lecteur système sous Windows, par ex. D:\\ pour un autre).",
+    "disk": "Disque utilisé (%)",
+    "memory": "Mémoire utilisée (%)",
+    "cpu": "CPU utilisé (%)",
+    "warning": "Avertissement",
+    "critical": "Critique",
+    "help": "Laissez un seuil vide pour seulement enregistrer la métrique. Le CPU est échantillonné sur une seconde."
   }
 }

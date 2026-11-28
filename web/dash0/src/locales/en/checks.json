@@ -467,6 +467,8 @@
     "dockerDescription": "Monitor Docker container health",
     "systemd": "systemd unit",
     "systemdDescription": "Check the state of a systemd unit",
+    "host": "Host resources",
+    "hostDescription": "Check the disk, memory and CPU usage of the host",
     "browser": "Browser",
     "browserDescription": "Monitor pages with headless Chrome",
     "freebox_line": "Freebox Line",
@@ -1546,7 +1548,10 @@
     "fieldRequired": "This field is required",
     "socketRequired": "Socket path is required",
     "systemdUnitRequired": "Unit name is required",
-    "systemdUnitInvalid": "Unit name may only contain letters, digits and :_.@- (at most 256 characters, not starting with -)"
+    "systemdUnitInvalid": "Unit name may only contain letters, digits and :_.@- (at most 256 characters, not starting with -)",
+    "hostDiskPathInvalid": "Disk path must be absolute",
+    "hostPercentInvalid": "Percent must be a number in (0, 100]",
+    "hostOrderInvalid": "Warning must be below critical"
   },
   "health": {
     "format": "Health format",
@@ -1919,5 +1924,15 @@
     "expectedState": "Expected state",
     "state_active": "Active (running)",
     "state_inactive": "Inactive (must not run)"
+  },
+  "host": {
+    "diskPath": "Disk path",
+    "diskPathHelp": "Filesystem to measure on the host SolidPing runs on. Default: / (the system drive on Windows, e.g. D:\\ for another).",
+    "disk": "Disk used (%)",
+    "memory": "Memory used (%)",
+    "cpu": "CPU used (%)",
+    "warning": "Warning",
+    "critical": "Critical",
+    "help": "Leave a threshold empty to only record the metric. The CPU figure is sampled over one second."
   }
 }

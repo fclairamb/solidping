@@ -20,6 +20,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkgrpc"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkhealth"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkheartbeat"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkhost"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkhttp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkicmp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkimap"
@@ -100,6 +101,7 @@ var builtinCheckers = []struct {
 	{checkerdef.CheckTypeRabbitMQ, func() checkerdef.Checker { return &checkrabbitmq.RabbitMQChecker{} }},
 	{checkerdef.CheckTypeSNMP, func() checkerdef.Checker { return &checksnmp.SNMPChecker{} }},
 	{checkerdef.CheckTypeDocker, func() checkerdef.Checker { return &checkdocker.DockerChecker{} }},
+	{checkerdef.CheckTypeHost, func() checkerdef.Checker { return &checkhost.HostChecker{} }},
 	{checkerdef.CheckTypeSystemd, func() checkerdef.Checker { return &checksystemd.SystemdChecker{} }},
 	{checkerdef.CheckTypeBrowser, func() checkerdef.Checker { return &checkbrowser.BrowserChecker{} }},
 	{checkerdef.CheckTypeFreeboxLine, func() checkerdef.Checker { return &checkfreeboxline.FreeboxLineChecker{} }},

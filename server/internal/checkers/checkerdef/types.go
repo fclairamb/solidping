@@ -247,6 +247,9 @@ const (
 	// CheckTypeSystemd reports the state of a systemd unit of the host that
 	// runs the check, through `systemctl show`.
 	CheckTypeSystemd CheckType = "systemd"
+	// CheckTypeHost reports the disk, memory and CPU usage of the host that
+	// runs the check.
+	CheckTypeHost CheckType = "host"
 	// CheckTypeBrowser performs headless Chrome browser health checks.
 	CheckTypeBrowser CheckType = "browser"
 	// CheckTypeFreeboxLine monitors xDSL/FTTH line quality via the Freebox OS API.
@@ -509,6 +512,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeRabbitMQ, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check RabbitMQ server health", SupportsTunnel: true},
 	{Type: CheckTypeSNMP, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor devices via SNMP"},
 	{Type: CheckTypeDocker, Labels: []string{labelUnsafe, labelReqDockerSocket, labelCatInfrastructure}, Description: "Monitor Docker container health"},
+	{Type: CheckTypeHost, Labels: []string{labelUnsafe, labelCatInfrastructure}, Description: "Check the disk, memory and CPU usage of the host"},
 	{Type: CheckTypeSystemd, Labels: []string{labelUnsafe, labelReqSystemd, labelCatInfrastructure}, Description: "Check the state of a systemd unit"},
 	{Type: CheckTypeBrowser, Labels: []string{labelUnsafe, labelReqChrome, labelCatOther}, Description: "Monitor pages with headless Chrome", MinPeriod: time.Minute, DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeFreeboxLine, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor Freebox xDSL/FTTH line quality", DefaultPeriod: 5 * time.Minute},
@@ -703,6 +707,7 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeSNMP,
 		CheckTypeDocker,
 		CheckTypeSystemd,
+		CheckTypeHost,
 		CheckTypeBrowser,
 		CheckTypeFreeboxLine,
 		CheckTypeDNSBL,

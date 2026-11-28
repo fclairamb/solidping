@@ -467,6 +467,8 @@
     "dockerDescription": "Monitoriza el estado de contenedores Docker",
     "systemd": "Unidad systemd",
     "systemdDescription": "Comprobar el estado de una unidad systemd",
+    "host": "Recursos del host",
+    "hostDescription": "Comprueba el uso de disco, memoria y CPU del host",
     "browser": "Navegador",
     "browserDescription": "Monitoriza páginas con Chrome headless",
     "dnsbl": "DNSBL",
@@ -1546,7 +1548,10 @@
     "fieldRequired": "Este campo es obligatorio",
     "socketRequired": "La ruta del socket es obligatoria",
     "systemdUnitRequired": "El nombre de la unidad es obligatorio",
-    "systemdUnitInvalid": "El nombre de la unidad solo puede contener letras, dígitos y :_.@- (256 caracteres como máximo, sin - al principio)"
+    "systemdUnitInvalid": "El nombre de la unidad solo puede contener letras, dígitos y :_.@- (256 caracteres como máximo, sin - al principio)",
+    "hostDiskPathInvalid": "La ruta del disco debe ser absoluta",
+    "hostPercentInvalid": "El porcentaje debe ser un número en (0, 100]",
+    "hostOrderInvalid": "La advertencia debe ser inferior al umbral crítico"
   },
   "health": {
     "format": "Formato de salud",
@@ -1919,5 +1924,15 @@
     "expectedState": "Estado esperado",
     "state_active": "Activa (en ejecución)",
     "state_inactive": "Inactiva (no debe ejecutarse)"
+  },
+  "host": {
+    "diskPath": "Ruta del disco",
+    "diskPathHelp": "Sistema de archivos a medir en el host donde corre SolidPing. Por defecto: / (la unidad del sistema en Windows, p. ej. D:\\ para otra).",
+    "disk": "Disco usado (%)",
+    "memory": "Memoria usada (%)",
+    "cpu": "CPU usada (%)",
+    "warning": "Advertencia",
+    "critical": "Crítico",
+    "help": "Deja un umbral vacío para solo registrar la métrica. La CPU se muestrea durante un segundo."
   }
 }

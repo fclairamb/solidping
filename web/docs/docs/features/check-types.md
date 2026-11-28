@@ -5,7 +5,7 @@ title: Check Types
 
 # Check Types
 
-SolidPing supports **45 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
+SolidPing supports **46 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
 
 <!--
   Keep this number equal to the number of `###` sections above "Common Options"
@@ -1492,6 +1492,47 @@ On SolidPing Cloud (SaaS), a systemd check must run from one of your
 organization's [private locations](./private-locations.md) installed on the
 host, and a shared region never reports on its own host. A systemd check
 cannot run through an SSH tunnel either.
+:::
+
+### Host resources {#host}
+
+Report the disk, memory and CPU usage of the host SolidPing runs on, natively:
+no exporter, no SNMP daemon. All options are optional.
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `diskPath` | Path whose filesystem is measured. Default `/` (the system drive, usually `C:\`, on Windows) | `/var/lib`, `D:\` |
+| `diskWarningPercent` / `diskCriticalPercent` | Disk used % thresholds | `80` / `90` |
+| `memoryWarningPercent` / `memoryCriticalPercent` | Memory used % thresholds (total minus available) | `85` / `95` |
+| `cpuWarningPercent` / `cpuCriticalPercent` | Whole-host CPU busy %, sampled over one second | `80` / `95` |
+
+A threshold is breached at `>=`: a warning threshold gives a warning status, a
+critical one gives down. Percents are in `(0, 100]` and the warning must be below
+the critical one. Every metric is stored even when it has no threshold:
+`disk_used_percent`, `disk_free_bytes`, `memory_used_percent`,
+`memory_available_bytes` and `cpu_percent`. The check takes at least one second
+(the CPU sample). If one source cannot be read (a missing path, an unsupported
+system) the result is an error naming it. One check watches one disk path: create
+one check per path.
+
+```json
+{ "type": "host", "config": { "diskPath": "/", "diskWarningPercent": 80, "diskCriticalPercent": 90, "cpuCriticalPercent": 95 } }
+```
+
+- **Containers, disk.** Inside a container `/` is the overlay filesystem. Mount the
+  host path read-only (e.g. `-v /:/host:ro`) and set `diskPath` to `/host`.
+- **Containers, memory and CPU.** `/proc` is the host's under plain Docker, but a
+  runtime that virtualises `/proc` (lxcfs) shows the container's limits.
+- **Kubernetes agents.** The figures are the node's, not the pod's.
+- **macOS.** Memory used % stays high by design (the system keeps RAM full of
+  cache): set the memory thresholds accordingly or leave them unset.
+- **Windows.** `diskPath` is a drive or folder path such as `D:\`.
+
+:::note Private locations only on SolidPing Cloud
+On SolidPing Cloud (SaaS), a host check must run from one of your organization's
+[private locations](./private-locations.md) installed on the host, and a shared
+region never reports on its own host. A host check cannot run through an SSH
+tunnel either.
 :::
 
 ### A2S Game Server (Source / Steam) {#a2s-game-server-source--steam}

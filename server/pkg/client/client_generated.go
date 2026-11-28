@@ -466,6 +466,7 @@ const (
 	CheckTypeDnsbl           CheckType = "dnsbl"
 	CheckTypeDocker          CheckType = "docker"
 	CheckTypeSystemd         CheckType = "systemd"
+	CheckTypeHost            CheckType = "host"
 	CheckTypeDomain          CheckType = "domain"
 	CheckTypeEmail           CheckType = "email"
 	CheckTypeFreeboxLine     CheckType = "freebox_line"
@@ -525,6 +526,8 @@ func (e CheckType) Valid() bool {
 	case CheckTypeDocker:
 		return true
 	case CheckTypeSystemd:
+		return true
+	case CheckTypeHost:
 		return true
 	case CheckTypeDomain:
 		return true
@@ -787,6 +790,7 @@ const (
 	CheckListItemTypeDnsbl           CheckListItemType = "dnsbl"
 	CheckListItemTypeDocker          CheckListItemType = "docker"
 	CheckListItemTypeSystemd         CheckListItemType = "systemd"
+	CheckListItemTypeHost            CheckListItemType = "host"
 	CheckListItemTypeDomain          CheckListItemType = "domain"
 	CheckListItemTypeEmail           CheckListItemType = "email"
 	CheckListItemTypeFreeboxLine     CheckListItemType = "freebox_line"
@@ -846,6 +850,8 @@ func (e CheckListItemType) Valid() bool {
 	case CheckListItemTypeDocker:
 		return true
 	case CheckListItemTypeSystemd:
+		return true
+	case CheckListItemTypeHost:
 		return true
 	case CheckListItemTypeDomain:
 		return true
@@ -1093,6 +1099,7 @@ const (
 	CreateCheckRequestTypeDnsbl           CreateCheckRequestType = "dnsbl"
 	CreateCheckRequestTypeDocker          CreateCheckRequestType = "docker"
 	CreateCheckRequestTypeSystemd         CreateCheckRequestType = "systemd"
+	CreateCheckRequestTypeHost            CreateCheckRequestType = "host"
 	CreateCheckRequestTypeDomain          CreateCheckRequestType = "domain"
 	CreateCheckRequestTypeEmail           CreateCheckRequestType = "email"
 	CreateCheckRequestTypeFreeboxLine     CreateCheckRequestType = "freebox_line"
@@ -1152,6 +1159,8 @@ func (e CreateCheckRequestType) Valid() bool {
 	case CreateCheckRequestTypeDocker:
 		return true
 	case CreateCheckRequestTypeSystemd:
+		return true
+	case CreateCheckRequestTypeHost:
 		return true
 	case CreateCheckRequestTypeDomain:
 		return true
@@ -3394,6 +3403,7 @@ const (
 	UpsertCheckRequestTypeDnsbl           UpsertCheckRequestType = "dnsbl"
 	UpsertCheckRequestTypeDocker          UpsertCheckRequestType = "docker"
 	UpsertCheckRequestTypeSystemd         UpsertCheckRequestType = "systemd"
+	UpsertCheckRequestTypeHost            UpsertCheckRequestType = "host"
 	UpsertCheckRequestTypeDomain          UpsertCheckRequestType = "domain"
 	UpsertCheckRequestTypeEmail           UpsertCheckRequestType = "email"
 	UpsertCheckRequestTypeFreeboxLine     UpsertCheckRequestType = "freebox_line"
@@ -3453,6 +3463,8 @@ func (e UpsertCheckRequestType) Valid() bool {
 	case UpsertCheckRequestTypeDocker:
 		return true
 	case UpsertCheckRequestTypeSystemd:
+		return true
+	case UpsertCheckRequestTypeHost:
 		return true
 	case UpsertCheckRequestTypeDomain:
 		return true

@@ -678,6 +678,9 @@ jobs:
       - name: Test
         run: go test -run 'Service' .
 
+      - name: Test the host resource check on the real host
+        run: go test -count=1 ./internal/checkers/checkhost/...
+
       - name: Install, start, stop and uninstall the service
         run: |
           $ErrorActionPreference = 'Stop'
@@ -777,6 +780,9 @@ jobs:
 
       - name: Test
         run: go test -run 'Service|Launchd' .
+
+      - name: Test the host resource check on the real host
+        run: go test -count=1 ./internal/checkers/checkhost/...
 
       # The daemon path (sudo): the plist in /Library/LaunchDaemons, a root-only
       # data folder, launchd starting and stopping the server.

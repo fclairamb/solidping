@@ -542,6 +542,8 @@ func (s *Service) validateHostLocalDeploymentConfig(
 		return checkerdef.NewConfigError("host", ErrDockerNotAvailableInSaaS.Error())
 	case checkerdef.CheckTypeSystemd:
 		return checkerdef.NewConfigError("unit", ErrSystemdNotAvailableInSaaS.Error())
+	case checkerdef.CheckTypeHost:
+		return checkerdef.NewConfigError("diskPath", ErrHostLocalNotAvailableInSaaS.Error())
 	}
 
 	field, _, _ := checkerdef.LocalSocketOf(cfg)
