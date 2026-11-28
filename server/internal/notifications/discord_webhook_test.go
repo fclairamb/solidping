@@ -331,3 +331,56 @@ func TestDiscordSender_BotReminderRepliesWithButtons(t *testing.T) {
 	r.Contains(string(rendered), "components")
 	r.Contains(string(rendered), payload.Incident.UID, "the buttons address this incident")
 }
+
+// TestDiscordSender_WebhookEscapesComment pins finding BA1 for Discord: a
+// comment holding a masked link is escaped in the embed the webhook posts,
+// and the check name and author fields are escaped too.
+func TestDiscordSender_WebhookEscapesComment(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	hook := newDiscordWebhookFake(t, nil, nil)
+
+	payload := discordWebhookPayload(t, eventTypeIncidentComment, hook.server.URL+"/api/webhooks/1/tok")
+	payload.Comment = &CommentInfo{Text: "see [x](https://evil.example) <@123>", AuthorName: "*bob*"}
+
+	r.NoError((&DiscordSender{}).Send(t.Context(), &jobdef.JobContext{}, payload))
+
+	reqs := hook.recorded()
+	r.Len(reqs, 1)
+
+	embeds, ok := reqs[0].Body["embeds"].([]any)
+	r.True(ok)
+	r.Len(embeds, 1)
+
+	embed, ok := embeds[0].(map[string]any)
+	r.True(ok)
+	r.Equal(`see \[x\](https://evil.example) \<\@123\>`, embed["description"])
+
+	fields, ok := embed["fields"].([]any)
+	r.True(ok)
+
+	values := map[string]any{}
+
+	for _, raw := range fields {
+		field, isMap := raw.(map[string]any)
+		r.True(isMap)
+
+		name, isString := field["name"].(string)
+		r.True(isString)
+
+		values[name] = field["value"]
+	}
+
+	r.Equal(`\*bob\*`, values[fieldLabelAuthor])
+
+	t.Run("plain text is unchanged", func(t *testing.T) {
+		t.Parallel()
+
+		plain := discordWebhookPayload(t, eventTypeIncidentComment, "https://discord.example/api/webhooks/1/tok")
+		plain.Comment = &CommentInfo{Text: "Restarted the pod, watching it.", AuthorName: "bob"}
+
+		embed := (&DiscordSender{}).buildEmbed(plain)
+		require.Equal(t, "Restarted the pod, watching it.", embed.Description)
+	})
+}
