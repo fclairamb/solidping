@@ -16,13 +16,12 @@ import (
 func listChecksDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolListChecks,
-		Description: "List monitoring checks for the organization, optionally filtered by " +
-			"name/slug substring, labels, or check group; the filters combine with AND. " +
-			"Pages hold 20 checks by default, 100 at most; pass pagination.cursor back as cursor " +
-			"for the next one, with the same filters. Use this for browsing or " +
-			"filtering a fleet of checks. To investigate a single check's current health, " +
-			"use diagnose_check instead; if you already know its UID or slug, " +
-			"get_check is more direct. Read-only: works with mcp:read tokens.",
+		Description: "List the organization's monitoring checks, optionally filtered by " +
+			"name or slug words, labels and check group. The filters combine with AND. " +
+			"To get the next page, pass pagination.cursor back as cursor with the same filters. " +
+			"Use this to browse or filter a fleet. For one check's current health, use " +
+			"diagnose_check; if you already know its UID or slug, get_check is more direct. " +
+			"Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			"q": stringProp(
 				"Case-insensitive substring match on check name or slug; several words must all match, e.g. \"api prod\".",
