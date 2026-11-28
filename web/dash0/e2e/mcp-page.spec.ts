@@ -155,4 +155,29 @@ test.describe("MCP page (AI assistants / MCP connector setup)", () => {
     await expect(page.getByTestId("cursor-install-link")).toBeVisible();
     await expect(page.getByTestId("vscode-install-link")).toBeVisible();
   });
+
+  // fclairamb/solidping-business#121: the "local or VPN-only" caveat makes no
+  // sense on a SaaS instance, which is public over HTTPS by construction.
+  for (const [mode, visible] of [
+    ["saas", false],
+    ["self-hosted", true],
+  ] as const) {
+    test(`self-hosted caveat is ${visible ? "shown" : "hidden"} in ${mode} mode`, async ({
+      authenticatedPage,
+    }) => {
+      const page = authenticatedPage;
+      await page.route("**/api/v1/config", async (route) => {
+        const response = await route.fetch();
+        const body = await response.json();
+        await route.fulfill({ response, json: { ...body, deploymentMode: mode } });
+      });
+
+      await page.goto("orgs/test/account/mcp");
+      await page.waitForLoadState("networkidle");
+
+      // Positive control: the read-only alert just above always renders.
+      await expect(page.getByTestId("mcp-read-only-alert")).toBeVisible();
+      await expect(page.getByTestId("mcp-self-hosted-alert")).toHaveCount(visible ? 1 : 0);
+    });
+  }
 });

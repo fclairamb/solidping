@@ -123,3 +123,28 @@ func TestParamOverlayNeverMutatesTheStoredConfig(t *testing.T) {
 	r.NoError(err)
 	r.Equal("password=${param:sso-password}", config["body"])
 }
+
+// sealedParamStore hands back a sealed envelope unopened, as a reader that
+// does not know `$sp_sealed` (or has no master key on a decorator-less path)
+// would.
+type sealedParamStore struct{}
+
+func (sealedParamStore) GetOrgParameter(_ context.Context, _, key string) (*models.Parameter, error) {
+	return &models.Parameter{Key: key, Value: models.JSONMap{
+		models.ParameterValueKey: map[string]any{"$sp_sealed": `{"v":1,"alg":"AES-256-GCM"}`},
+	}}, nil
+}
+
+// TestParamOverlayFailsOnANonScalarValue covers spec 2026-11-28-01: an
+// unopened sealed envelope fails the overlay (an explicit error result for the
+// check) instead of substituting the Go rendering of the map.
+func TestParamOverlayFailsOnANonScalarValue(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	overlay, err := checkjobsvc.ParamOverlay(t.Context(), sealedParamStore{}, "org-1", map[string]any{
+		"zone": "${param:dq-key}.zen.dq.acme.example",
+	})
+	r.ErrorIs(err, secretref.ErrUnresolved)
+	r.Nil(overlay)
+}

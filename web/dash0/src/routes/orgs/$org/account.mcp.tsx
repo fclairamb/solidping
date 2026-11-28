@@ -23,6 +23,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CopyableCode, CollapsibleCode } from "@/components/shared/copyable-code";
 import { DocsLink } from "@/components/shared/docs-link";
+import { useDeploymentMode } from "@/api/public-config";
 
 type McpSearch = {
   /** "get" when the user landed here from opening GET /api/v1/mcp in a browser. */
@@ -67,6 +68,9 @@ function McpPage() {
   const { t } = useTranslation(["org", "common"]);
   const { org } = Route.useParams();
   const { from } = Route.useSearch();
+  // A SaaS instance is public over HTTPS by construction, so the
+  // "local or VPN-only" caveat only applies to self-hosted ones.
+  const isSelfHosted = useDeploymentMode() === "self-hosted";
 
   const mcpUrl = useMemo(() => `${window.location.origin}/api/v1/mcp`, []);
   const genericConfig = useMemo(
@@ -240,7 +244,7 @@ function McpPage() {
             </Card>
           </div>
 
-          <Alert>
+          <Alert data-testid="mcp-read-only-alert">
             <Eye className="h-4 w-4" />
             <AlertTitle>{t("ai.readOnly.title")}</AlertTitle>
             <AlertDescription className="space-y-1">
@@ -259,11 +263,13 @@ function McpPage() {
             </AlertDescription>
           </Alert>
 
-          <Alert variant="warning">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>{t("ai.selfHosted.title")}</AlertTitle>
-            <AlertDescription>{t("ai.selfHosted.description")}</AlertDescription>
-          </Alert>
+          {isSelfHosted && (
+            <Alert variant="warning" data-testid="mcp-self-hosted-alert">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>{t("ai.selfHosted.title")}</AlertTitle>
+              <AlertDescription>{t("ai.selfHosted.description")}</AlertDescription>
+            </Alert>
+          )}
         </CardContent>
       </Card>
     </div>

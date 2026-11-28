@@ -752,11 +752,39 @@ function ChecksTable({
 // Presentational: the checks it shows come from the page-level batched query
 // (bucketed by checkGroupUid), not from its own request. Collapsing no longer
 // affects request cost — there is a single query for the whole page.
+/**
+ * An invisible marker that asks the page-level stream for its next page while
+ * it is near the viewport. An expanded group whose bucket is not settled
+ * renders one, so opening it loads its checks right away instead of waiting
+ * for the page-level sentinel, which can sit many sections below
+ * (fclairamb/solidping-business#120). The observer is re-created whenever
+ * `onVisible` changes identity (it does when a fetch starts or ends), and a
+ * fresh observer reports the current intersection, so the loading chains until
+ * the group settles or the marker leaves the viewport.
+ */
+function LoadMoreSentinel({ onVisible }: { onVisible: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) onVisible();
+      },
+      { rootMargin: "600px 0px", threshold: 0 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [onVisible]);
+  return <div ref={ref} aria-hidden className="h-px" data-testid="group-load-more-sentinel" />;
+}
+
 function CheckGroupSection({
   group,
   org,
   checks,
   isLoading,
+  onLoadMore,
   error,
   search,
   isFiltering,
@@ -777,6 +805,8 @@ function CheckGroupSection({
   onFilterGroup: (slug: string) => void;
   /** True while a group filter is active: the single shown section opens. */
   forceExpanded: boolean;
+  /** Fetches the stream's next page, if any and none is in flight. */
+  onLoadMore: () => void;
   org: string;
   checks: Check[];
   isLoading: boolean;
@@ -1053,6 +1083,7 @@ function CheckGroupSection({
               )}
             </div>
           )}
+          {isLoading && !error && <LoadMoreSentinel onVisible={onLoadMore} />}
         </div>
       )}
     </div>
@@ -1482,6 +1513,11 @@ function ChecksIndexPage() {
     const noHost = entries.find(([key]) => key === null);
     return noHost ? [...withHost, noHost] : withHost;
   }, [checksData]);
+
+  // Same guard for the per-group sentinels of expanded, unsettled groups.
+  const loadMoreChecks = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   // One page-level infinite-scroll sentinel (below the last section) instead of
   // one IntersectionObserver per group section.
@@ -2124,6 +2160,7 @@ function ChecksIndexPage() {
                   org={org}
                   checks={checksByGroup.get(group.uid) ?? []}
                   isLoading={!isGroupBucketSettled(group, checksFrontier, checksStreaming)}
+                  onLoadMore={loadMoreChecks}
                   error={checksError}
                   search={debouncedSearch}
                   isFiltering={isFiltering}

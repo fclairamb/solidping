@@ -51,11 +51,23 @@ func (s *Service) ListOrgParametersByKey(ctx context.Context, key string) ([]*mo
 
 // SetOrgParameter seals a secret `usr.` value when a master key is configured,
 // then writes it. Any other row is written as given, so a row turned from
-// secret to non-secret is rewritten in clear by the same call.
+// secret to non-secret is rewritten in clear by the same call. While the seal
+// gate is closed (a live direct-DB worker cannot open `$sp_sealed`), a secret
+// value is written in plaintext too, and the next sweep seals it.
 func (s *Service) SetOrgParameter(ctx context.Context, orgUID, key string, value any, secret bool) error {
 	stored := value
 
-	if s.Enabled() && ShouldSealOrgParameter(key, secret) {
+	seal := s.Enabled() && ShouldSealOrgParameter(key, secret)
+	if seal {
+		if gateErr := s.checkOrgSealGate(ctx); gateErr != nil {
+			logGatedWrite(ctx, key, gateErr)
+			s.orgSealPending.Store(true)
+
+			seal = false
+		}
+	}
+
+	if seal {
 		envelope, err := s.sealer.Seal(ctx, models.ParameterValue(value))
 		if err != nil {
 			return fmt.Errorf("seal %s %q: %w", kindOrg, key, err)
@@ -70,10 +82,23 @@ func (s *Service) SetOrgParameter(ctx context.Context, orgUID, key string, value
 // SealPlaintextOrgParameters seals every secret organization parameter of the
 // live organizations still stored in plaintext. Idempotent; a no-op without a
 // master key. Returns how many rows it sealed.
+//
+// While the seal gate is closed it seals nothing and returns an
+// *OrgSealDeferredError (errors.Is ErrOrgSealDeferred): the caller logs it and
+// retries later.
 func (s *Service) SealPlaintextOrgParameters(ctx context.Context) (int, error) {
 	if !s.Enabled() {
 		return 0, nil
 	}
+
+	if gateErr := s.checkOrgSealGate(ctx); gateErr != nil {
+		s.orgSealPending.Store(true)
+
+		return 0, gateErr
+	}
+
+	// Cleared before the sweep: a gated write racing it sets the flag again.
+	s.orgSealPending.Store(false)
 
 	sealed := 0
 
@@ -93,6 +118,9 @@ func (s *Service) SealPlaintextOrgParameters(ctx context.Context) (int, error) {
 
 		return nil
 	})
+	if err != nil {
+		s.orgSealPending.Store(true)
+	}
 
 	return sealed, err
 }

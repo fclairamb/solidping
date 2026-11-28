@@ -279,5 +279,15 @@ func WorkerSlug(agentUID string) string {
 		compact = compact[:12]
 	}
 
-	return "ag-" + strings.ToLower(compact)
+	return workerSlugPrefix + strings.ToLower(compact)
+}
+
+// workerSlugPrefix starts the workers.slug of every enrolled agent's row.
+const workerSlugPrefix = "ag-"
+
+// IsWorkerSlug reports whether a workers.slug is an enrolled agent's (see
+// WorkerSlug). Such a worker gets its jobs over the agent protocol, with every
+// `${param:…}` already resolved by the server, unlike a direct-DB worker.
+func IsWorkerSlug(slug string) bool {
+	return strings.HasPrefix(slug, workerSlugPrefix)
 }

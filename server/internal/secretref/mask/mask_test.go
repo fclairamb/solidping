@@ -61,3 +61,28 @@ func TestMaskDiagnostics(t *testing.T) {
 	r.Nil(Diagnostics(nil, secrets))
 	r.Same(diagnostics, Diagnostics(diagnostics, nil))
 }
+
+// TestMaskDNSBLInvalidZoneOutput covers spec 2026-11-28-01: the zone of a DNSBL
+// check named in its configuration error, when it came from a `${param:…}`
+// reference, is stored masked, in the list and in the message, even when the
+// resolved value holds quotes.
+func TestMaskDNSBLInvalidZoneOutput(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	resolved := `acme"dq-key"`
+	zone := resolved + ".zen.dq.acme.example"
+	output := map[string]any{
+		"invalid_zones": []string{zone},
+		"error":         "invalid blocklist zone, not queried (not a valid DNS name): " + zone,
+		"clean":         []string{},
+	}
+
+	got := Output([]string{resolved}, output, "check-uid")
+
+	blob, err := json.Marshal(got)
+	r.NoError(err)
+	r.NotContains(string(blob), "dq-key")
+	r.Equal([]any{"***.zen.dq.acme.example"}, got["invalid_zones"])
+	r.Equal("invalid blocklist zone, not queried (not a valid DNS name): ***.zen.dq.acme.example", got["error"])
+}

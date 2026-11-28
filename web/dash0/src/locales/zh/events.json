@@ -107,6 +107,12 @@
     "escalated_all_admins": "所有管理员",
     "org.activation.first_incident_paged": "你的第一条故障通知已送达。"
   },
+  "memberRoles": {
+    "owner": "所有者",
+    "admin": "管理员",
+    "user": "用户",
+    "viewer": "查看者"
+  },
   "links": {
     "check": "监控项",
     "incident": "故障",

@@ -6529,7 +6529,7 @@ type Event struct {
 	// SourceIp Client address the action came from. Returned to org admins and owners only, and absent entirely when `audit.capture_ip` is off.
 	SourceIp *string `json:"sourceIp,omitempty"`
 
-	// TargetUserName On an `auth.login_failed` row, the display name of the org member whose account was tried. Admin/owner only; absent when the typed email (`payload.email`) matches no member. Non-admin members only receive the `auth.login_failed` rows against their own account.
+	// TargetUserName On an `auth.login_failed` row, the display name of the org member whose account was tried. Admin/owner only; absent when the typed email (`payload.email`) matches no member. Non-admin members only receive the `auth.login_failed` rows against their own account. On a `member.*` row, the display name of the member the event is about (`payload.target_uid`), for every reader; absent when that user has no name or no longer exists.
 	TargetUserName *string             `json:"targetUserName,omitempty"`
 	Uid            *openapi_types.UUID `json:"uid,omitempty"`
 

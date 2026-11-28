@@ -116,6 +116,9 @@ type EventResponse struct {
 	// org member whose account was tried. Admin-only and absent when the typed
 	// email matches no member: the email as typed (payload.email) is what the
 	// UI shows, the name is a hint next to it.
+	// On a member.* row it is the display name of the member the event is
+	// about (payload.target_uid), for every reader: the email is already in
+	// the payload. Absent when the user has no name or no longer exists.
 	TargetUserName *string   `json:"targetUserName,omitempty"`
 	CreatedAt      time.Time `json:"createdAt"`
 }
@@ -251,7 +254,8 @@ func (s *Service) ListEvents(
 func (s *Service) renderPage(
 	ctx context.Context, orgUID string, events []*models.Event, isAdmin bool,
 ) []EventResponse {
-	actors := s.resolveActors(ctx, events)
+	// Actors and the members that member.* events are about, in one pass.
+	actors := s.resolveUsers(ctx, append(actorUIDs(events), memberTargetUIDs(events)...))
 
 	var tried map[string]*string
 	if isAdmin {
@@ -264,6 +268,10 @@ func (s *Service) renderPage(
 		item := toResponse(evt, actors, isAdmin)
 		if evt.EventType == models.EventTypeAuthLoginFailed {
 			item.TargetUserName = tried[triedEmail(evt)]
+		}
+
+		if uid := memberTargetUID(evt); uid != "" {
+			item.TargetUserName = actors[uid].name
 		}
 
 		items = append(items, item)
@@ -374,28 +382,64 @@ type actorIdentity struct {
 	email *string
 }
 
-// resolveActors loads the display identity for every distinct actor on the
-// page. One lookup per DISTINCT actor, bounded by the page size (max 100) and
-// in practice far below it — an audit page is usually a handful of people.
-func (s *Service) resolveActors(ctx context.Context, events []*models.Event) map[string]actorIdentity {
-	actors := make(map[string]actorIdentity)
+// actorUIDs lists the actor of every event on the page.
+func actorUIDs(events []*models.Event) []string {
+	uids := make([]string, 0, len(events))
 
 	for _, evt := range events {
-		if evt.ActorUID == nil || *evt.ActorUID == "" {
+		if evt.ActorUID != nil {
+			uids = append(uids, *evt.ActorUID)
+		}
+	}
+
+	return uids
+}
+
+// memberTargetUID is the user a member.* event is about (its audit target), or
+// "" for any other event and for rows without one (an invitation has no user
+// yet).
+func memberTargetUID(evt *models.Event) string {
+	if !strings.HasPrefix(string(evt.EventType), "member.") {
+		return ""
+	}
+
+	uid, _ := evt.Payload["target_uid"].(string)
+
+	return uid
+}
+
+func memberTargetUIDs(events []*models.Event) []string {
+	uids := make([]string, 0, len(events))
+	for _, evt := range events {
+		uids = append(uids, memberTargetUID(evt))
+	}
+
+	return uids
+}
+
+// resolveUsers loads the display identity of every distinct user UID on the
+// page. One lookup per DISTINCT user, bounded by twice the page size (max 100)
+// and in practice far below it — an audit page is usually a handful of people.
+// Empty UIDs are skipped.
+func (s *Service) resolveUsers(ctx context.Context, uids []string) map[string]actorIdentity {
+	actors := make(map[string]actorIdentity)
+
+	for _, uid := range uids {
+		if uid == "" {
 			continue
 		}
 
-		if _, seen := actors[*evt.ActorUID]; seen {
+		if _, seen := actors[uid]; seen {
 			continue
 		}
 
-		user, err := s.db.GetUser(ctx, *evt.ActorUID)
+		user, err := s.db.GetUser(ctx, uid)
 		if err != nil || user == nil {
 			// A deleted user leaves an unresolvable actor_uid. The row still
 			// belongs in the trail — an audit log that erases entries when the
 			// person leaves is worthless — so it is recorded as seen with no
 			// identity rather than skipped.
-			actors[*evt.ActorUID] = actorIdentity{}
+			actors[uid] = actorIdentity{}
 
 			continue
 		}
@@ -411,7 +455,7 @@ func (s *Service) resolveActors(ctx context.Context, events []*models.Event) map
 			identity.email = &email
 		}
 
-		actors[*evt.ActorUID] = identity
+		actors[uid] = identity
 	}
 
 	return actors

@@ -870,3 +870,50 @@ func TestFailedSignInNameHintIsOrgScoped(t *testing.T) {
 	r.Len(resp.Data, 1)
 	r.Nil(resp.Data[0].TargetUserName)
 }
+
+// TestMemberEventsNameTheMember is solidping-business#119: a member.* row
+// carries the display name of the member it is about (its audit target), for
+// any reader, so the activity feed can say who joined, left or changed role.
+func TestMemberEventsNameTheMember(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	base := time.Date(2026, time.November, 28, 6, 0, 0, 0, time.UTC)
+	target := func(uid, email string) models.JSONMap {
+		return models.JSONMap{
+			"target_type": "member", "target_uid": uid, "target_name": email,
+			"email": email, "previous_role": "viewer", "role": "admin",
+		}
+	}
+
+	f.seedWithPayload(ctx, t, models.EventTypeMemberRoleChanged, base, target(f.viewer.UID, "viewer@acme.com"))
+	f.seedWithPayload(ctx, t, models.EventTypeMemberRemoved, base.Add(time.Minute), target("gone-user", "gone@acme.com"))
+	// An invitation has no user yet: no target_uid.
+	f.seedWithPayload(ctx, t, models.EventTypeMemberInvited, base.Add(2*time.Minute),
+		models.JSONMap{"target_type": "member", "target_name": "new@acme.com", "email": "new@acme.com"})
+	// A non-member event pointing at a user is left alone.
+	f.seedWithPayload(ctx, t, models.EventTypeCheckCreated, base.Add(3*time.Minute),
+		models.JSONMap{"target_type": "check", "target_uid": f.admin.UID})
+
+	for _, caller := range []string{f.admin.UID, f.viewer.UID} {
+		resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+			Size: 50, Caller: events.Caller{UserUID: caller},
+		})
+		r.NoError(err)
+
+		names := map[string]*string{}
+		for _, item := range resp.Data {
+			names[item.EventType] = item.TargetUserName
+		}
+
+		r.Len(names, 4)
+		r.NotNil(names["member.role_changed"])
+		r.Equal("Viewer Person", *names["member.role_changed"])
+		r.Nil(names["member.removed"], "a deleted user has no name to resolve")
+		r.Nil(names["member.invited"])
+		r.Nil(names["check.created"])
+	}
+}

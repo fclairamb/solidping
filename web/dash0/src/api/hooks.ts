@@ -805,8 +805,9 @@ export interface Event {
   sourceIp?: string;
   userAgent?: string;
   /**
-   * auth.login_failed only: the name of the org member whose account was
-   * tried. Admin/owner only; absent when the typed email matches no member.
+   * auth.login_failed: the name of the org member whose account was tried.
+   * Admin/owner only; absent when the typed email matches no member.
+   * member.*: the name of the member the event is about, for every reader.
    */
   targetUserName?: string;
   checkUid?: string;

@@ -73,3 +73,55 @@ describe("EventLogTable failed sign-in detail", () => {
     expect(screen.getByTestId("event-detail-auth-account").textContent).toBe("ghost@acme.com");
   });
 });
+
+// solidping-business#119: member rows said "Member Role Changed" and nothing
+// about whom, nor which role moved.
+const memberEvent = (
+  eventType: string,
+  payload: Record<string, unknown>,
+  targetUserName?: string,
+) => ({
+  uid: `evt-${eventType}`,
+  eventType,
+  actorType: "user" as const,
+  createdAt: new Date().toISOString(),
+  targetUserName,
+  payload: { target_type: "member", ...payload },
+});
+
+describe("EventLogTable member detail", () => {
+  it("names the member and the role change", () => {
+    render(
+      <EventLogTable
+        org="acme"
+        t={t}
+        events={[
+          memberEvent(
+            "member.role_changed",
+            { email: "bob@acme.com", target_name: "bob@acme.com", previous_role: "viewer", role: "admin" },
+            "Bob",
+          ),
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("event-detail-member").textContent).toBe(
+      "Bob (bob@acme.com) · Viewer → Admin",
+    );
+  });
+
+  it("falls back to the email and shows the single role of a removal", () => {
+    render(
+      <EventLogTable
+        org="acme"
+        t={t}
+        events={[memberEvent("member.removed", { email: "bob@acme.com", role: "user" })]}
+      />,
+    );
+    expect(screen.getByTestId("event-detail-member").textContent).toBe("bob@acme.com · User");
+  });
+
+  it("renders nothing extra for a member row without any detail", () => {
+    render(<EventLogTable org="acme" t={t} events={[memberEvent("member.removed", {})]} />);
+    expect(screen.queryByTestId("event-detail-member")).toBeNull();
+  });
+});

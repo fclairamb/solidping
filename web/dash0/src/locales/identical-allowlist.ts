@@ -215,6 +215,7 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   "events:audit.families.check": ["de"], // "Checks"
   "events:audit.targetTypes.check": ["de"], // "Check"
   "events:links.check": ["de"], // "Check"
+  "events:memberRoles.admin": ["de"], // "Admin"
   "incidents:detail.checkLabel": ["de"], // "Check"
   "incidents:table.check": ["de"], // "Check"
   "jobs:columns.check": ["de"], // "Check"

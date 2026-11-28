@@ -107,6 +107,12 @@
     "escalated_all_admins": "alle Admins",
     "org.activation.first_incident_paged": "Ihre erste Vorfallbenachrichtigung wurde zugestellt."
   },
+  "memberRoles": {
+    "owner": "Eigentümer",
+    "admin": "Admin",
+    "user": "Benutzer",
+    "viewer": "Betrachter"
+  },
   "links": {
     "check": "Check",
     "incident": "Vorfall",

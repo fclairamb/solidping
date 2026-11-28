@@ -107,6 +107,12 @@
     "escalated_all_admins": "tous les admins",
     "org.activation.first_incident_paged": "Votre première notification d'incident a été délivrée."
   },
+  "memberRoles": {
+    "owner": "Propriétaire",
+    "admin": "Administrateur",
+    "user": "Utilisateur",
+    "viewer": "Lecteur"
+  },
   "links": {
     "check": "Contrôle",
     "incident": "Incident",

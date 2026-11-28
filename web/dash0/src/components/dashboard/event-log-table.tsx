@@ -17,6 +17,7 @@ import {
   getEventFailedLogin,
   getEventIntegration,
   getEventLucideIcon,
+  getEventMember,
   getEscalatedDetail,
   getEventPublication,
   getEventRowStripe,
@@ -104,6 +105,29 @@ function getEventDetail(
         {failedLogin.count > 1
           ? ` ${t("descriptions.login_failed_count", { count: failedLogin.count })}`
           : null}
+      </span>
+    );
+  }
+
+  // member.*: who joined, left, was invited or changed role, and the role
+  // change itself (solidping-business#119). The name when the API resolved
+  // one, with the email next to it; the email alone otherwise.
+  const member = getEventMember(event);
+  if (member) {
+    const roleLabel = (role: string) => t(`memberRoles.${role}`, { defaultValue: role });
+    const who = member.name
+      ? member.email
+        ? `${member.name} (${member.email})`
+        : member.name
+      : member.email;
+    const roles = member.role
+      ? member.previousRole
+        ? `${roleLabel(member.previousRole)} → ${roleLabel(member.role)}`
+        : roleLabel(member.role)
+      : undefined;
+    return (
+      <span data-testid="event-detail-member">
+        {[who, roles].filter(Boolean).join(" · ")}
       </span>
     );
   }
