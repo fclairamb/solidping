@@ -188,6 +188,18 @@ func (s *Server) retryDeferredOrgParamSeal(ctx context.Context) bool {
 	return pending
 }
 
+// startOrgParamSealRetry starts runOrgParamSealRetry when there can be
+// something to seal: a master key and the auto-migration on.
+func (s *Server) startOrgParamSealRetry(ctx context.Context) {
+	if s.sysParams == nil || !s.sysParams.Enabled() || !s.config.Encryption.AutoMigrate {
+		return
+	}
+
+	s.workersWg.Add(1)
+
+	go s.runOrgParamSealRetry(ctx)
+}
+
 // runOrgParamSealRetry retries a deferred seal of the secret org parameters
 // every orgParamSealRetryInterval until ctx ends (spec 2026-11-28-01). It
 // keeps running after a successful sweep: a secret written while a later

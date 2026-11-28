@@ -4007,14 +4007,7 @@ func (s *Server) Start(ctx context.Context) error {
 		go s.runJMAPManager(runnerCtx)
 	}
 
-	// Retry the seal of the secret org parameters the gate deferred (spec
-	// 2026-11-28-01): once the old direct-DB workers are gone, the sweep runs.
-	if s.sysParams != nil && s.sysParams.Enabled() && s.config.Encryption.AutoMigrate {
-		s.workersWg.Add(1)
-
-		//nolint:contextcheck // runnerCtx is intentionally separate from request context
-		go s.runOrgParamSealRetry(runnerCtx)
-	}
+	s.startOrgParamSealRetry(runnerCtx) //nolint:contextcheck // runnerCtx is intentionally separate from request context
 
 	// Start Slack Socket Mode supervisor when configured. The supervisor
 	// dials Slack's outgoing WebSocket and dispatches events through the

@@ -47,8 +47,8 @@ clusters, secrets) live in the operator's private infrastructure repo, not here.
   organization parameters deferred` naming the workers, secrets stay plaintext, and the seal is
   retried every 5 minutes once they are upgraded. Agents are not concerned (the server resolves
   their references). Upgrade the workers with the API anyway: until then the secrets are
-  plaintext at rest. A version older than these checks still fails open, so upgrade the workers
-  before an API at 0.57.0 if they are older.
+  plaintext at rest. The 0.57.0 API itself has no such gate: moving to it from an older release,
+  upgrade the workers together with the API.
 - Bump every deployment of one environment to the same image tag. Never deploy
   `:latest` (it drifted once with nothing forcing a re-pull).
 

@@ -122,12 +122,6 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 	refused := refusedZones(inconclusive, res.errorCodes)
 	status := classifyStatus(len(listedOn), len(clean), len(inconclusive), len(refused))
 
-	// An invalid zone is a configuration error: it overrides every verdict but
-	// a real listing, which stays the more urgent news.
-	if len(invalidZones) > 0 && status != checkerdef.StatusDown {
-		status = checkerdef.StatusError
-	}
-
 	result := &checkerdef.Result{
 		Status:   status,
 		Duration: duration,
@@ -146,16 +140,27 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 	}
 
 	addOptionalOutput(result.Output, res, refused, cfg.Nameserver, status)
-
-	if len(invalidZones) > 0 {
-		// The zone is named as resolved: when it came from a `${param:…}`
-		// reference, the worker's output masking replaces the value with ***
-		// before the result is stored.
-		result.Output["invalid_zones"] = invalidZones
-		result.Output[checkerdef.OutputKeyError] = invalidZonesMessage(invalidZones)
-	}
+	applyInvalidZones(result, invalidZones)
 
 	return result, nil
+}
+
+// applyInvalidZones reports the zones that could not be queried. An invalid
+// zone is a configuration error: it overrides every verdict but a real
+// listing, which stays the more urgent news. The zone is named as resolved:
+// when it came from a `${param:…}` reference, the worker's output masking
+// replaces the value with *** before the result is stored.
+func applyInvalidZones(result *checkerdef.Result, invalidZones []string) {
+	if len(invalidZones) == 0 {
+		return
+	}
+
+	if result.Status != checkerdef.StatusDown {
+		result.Status = checkerdef.StatusError
+	}
+
+	result.Output["invalid_zones"] = invalidZones
+	result.Output[checkerdef.OutputKeyError] = invalidZonesMessage(invalidZones)
 }
 
 // DNS name limits (RFC 1035): a label is 1 to 63 bytes, a name at most 253
@@ -167,7 +172,9 @@ const (
 
 // partitionZones splits the configured zones into the queryable ones and the
 // ones that cannot be a DNS name, both in configuration order.
-func partitionZones(zones []string) (valid, invalid []string) {
+func partitionZones(zones []string) ([]string, []string) {
+	var valid, invalid []string
+
 	for _, zone := range zones {
 		if isValidZone(zone) {
 			valid = append(valid, zone)
