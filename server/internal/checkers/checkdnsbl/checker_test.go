@@ -3,6 +3,7 @@ package checkdnsbl
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -580,4 +581,120 @@ func TestDNSBLChecker_GetSampleConfigs(t *testing.T) {
 	for _, s := range samples {
 		r.NotEmpty(s.Config["target"])
 	}
+}
+
+// TestDNSBLChecker_Execute_InvalidZone covers spec 2026-11-28-01: a zone that
+// cannot be a DNS name (a `${param:…}` resolved to a Go map rendering, a
+// 64-byte label) is never queried and never counted clean; the result is an
+// error naming the zone.
+func TestDNSBLChecker_Execute_InvalidZone(t *testing.T) {
+	t.Parallel()
+
+	leaked := `map[$sp_sealed:{"v":1,"alg":"AES-256-GCM"}].zen.dq.acme.example`
+	longLabel := strings.Repeat("a", 64) + ".acme.example"
+
+	tests := []struct {
+		name       string
+		zones      []string
+		lookuper   *fakeLookuper
+		wantStatus checkerdef.Status
+		wantClean  []string
+		wantListed []string
+		wantBad    []string
+	}{
+		{
+			name:       "map rendering with spaces and brackets",
+			zones:      []string{leaked, "map [x] zen.acme.example"},
+			lookuper:   &fakeLookuper{fallback: fakeResp{err: errNXDOMAIN}},
+			wantStatus: checkerdef.StatusError,
+			wantClean:  []string{},
+			wantBad:    []string{leaked, "map [x] zen.acme.example"},
+		},
+		{
+			name:       "64-byte label next to a clean zone",
+			zones:      []string{zoneSpamcop, longLabel},
+			lookuper:   &fakeLookuper{fallback: fakeResp{err: errNXDOMAIN}},
+			wantStatus: checkerdef.StatusError,
+			wantClean:  []string{zoneSpamcop},
+			wantBad:    []string{longLabel},
+		},
+		{
+			name:  "a real listing still wins",
+			zones: []string{zoneSpamhaus, leaked},
+			lookuper: &fakeLookuper{responses: map[string]fakeResp{
+				reverseIP(sampleMailServerIP) + "." + zoneSpamhaus: {addrs: []string{"127.0.0.2"}},
+			}, fallback: fakeResp{err: errNXDOMAIN}},
+			wantStatus: checkerdef.StatusDown,
+			wantListed: []string{zoneSpamhaus},
+			wantBad:    []string{leaked},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			lookuper := &recordingLookuper{inner: tt.lookuper}
+			checker := &DNSBLChecker{lookuper: lookuper}
+
+			result, err := checker.Execute(context.Background(),
+				&DNSBLConfig{Target: sampleMailServerIP, Blocklists: tt.zones})
+			r.NoError(err)
+			r.Equal(tt.wantStatus, result.Status)
+			r.Equal(tt.wantBad, result.Output["invalid_zones"])
+			r.Equal(len(tt.zones), result.Metrics["blocklists_checked"])
+
+			if tt.wantClean != nil {
+				r.ElementsMatch(tt.wantClean, result.Output["clean"])
+			}
+
+			if tt.wantListed != nil {
+				r.Equal(tt.wantListed, result.Output["listed_on"])
+			}
+
+			msg, _ := result.Output[checkerdef.OutputKeyError].(string)
+			for _, bad := range tt.wantBad {
+				r.Contains(msg, bad)
+				r.NotContains(result.Output["clean"], bad)
+
+				for _, queried := range lookuper.queried {
+					r.NotContains(queried, bad, "an invalid zone is never queried")
+				}
+			}
+		})
+	}
+}
+
+func TestIsValidZone(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	for _, zone := range []string{
+		zoneSpamhaus, "zen.spamhaus.org.", "abc_def.dq.acme.example", "A-1.acme.example",
+		strings.Repeat("a", 63) + ".acme.example",
+	} {
+		r.True(isValidZone(zone), zone)
+	}
+
+	for _, zone := range []string{
+		"", ".", "acme..example", ".acme.example", "acme example", "map[x].acme.example",
+		"$sp.acme.example", `"acme".example`, strings.Repeat("a", 64) + ".acme.example",
+		strings.Repeat("abcdefghi.", 26) + "example",
+	} {
+		r.False(isValidZone(zone), zone)
+	}
+}
+
+// recordingLookuper records every queried host.
+type recordingLookuper struct {
+	inner   hostLookuper
+	queried []string
+}
+
+func (l *recordingLookuper) LookupHost(ctx context.Context, host string) ([]string, error) {
+	l.queried = append(l.queried, host)
+
+	return l.inner.LookupHost(ctx, host)
 }

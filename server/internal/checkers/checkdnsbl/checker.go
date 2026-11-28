@@ -75,7 +75,10 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 		lookuper = createResolver(cfg.Nameserver, timeout)
 	}
 
-	zones := cfg.ResolveBlocklists()
+	// A zone that cannot be a DNS name (a `${param:…}` that resolved to
+	// garbage) is never queried: its NXDOMAIN would say nothing about the
+	// target, and counting it clean reports a check that checks nothing as up.
+	zones, invalidZones := partitionZones(cfg.ResolveBlocklists())
 	start := time.Now()
 
 	// 1. Resolve the target to one or more IPv4 addresses.
@@ -119,12 +122,18 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 	refused := refusedZones(inconclusive, res.errorCodes)
 	status := classifyStatus(len(listedOn), len(clean), len(inconclusive), len(refused))
 
+	// An invalid zone is a configuration error: it overrides every verdict but
+	// a real listing, which stays the more urgent news.
+	if len(invalidZones) > 0 && status != checkerdef.StatusDown {
+		status = checkerdef.StatusError
+	}
+
 	result := &checkerdef.Result{
 		Status:   status,
 		Duration: duration,
 		Metrics: map[string]any{
 			"listings":           len(listedOn),
-			"blocklists_checked": len(zones),
+			"blocklists_checked": len(zones) + len(invalidZones),
 			"query_time_ms":      float64(duration.Milliseconds()),
 		},
 		Output: map[string]any{
@@ -138,7 +147,69 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 
 	addOptionalOutput(result.Output, res, refused, cfg.Nameserver, status)
 
+	if len(invalidZones) > 0 {
+		// The zone is named as resolved: when it came from a `${param:…}`
+		// reference, the worker's output masking replaces the value with ***
+		// before the result is stored.
+		result.Output["invalid_zones"] = invalidZones
+		result.Output[checkerdef.OutputKeyError] = invalidZonesMessage(invalidZones)
+	}
+
 	return result, nil
+}
+
+// DNS name limits (RFC 1035): a label is 1 to 63 bytes, a name at most 253
+// bytes in its dotted text form.
+const (
+	maxZoneLabelLen = 63
+	maxZoneLen      = 253
+)
+
+// partitionZones splits the configured zones into the queryable ones and the
+// ones that cannot be a DNS name, both in configuration order.
+func partitionZones(zones []string) (valid, invalid []string) {
+	for _, zone := range zones {
+		if isValidZone(zone) {
+			valid = append(valid, zone)
+		} else {
+			invalid = append(invalid, zone)
+		}
+	}
+
+	return valid, invalid
+}
+
+// isValidZone reports whether zone is a DNS name a DNSBL can be queried under:
+// non-empty labels of 1 to 63 bytes made of letters, digits, `-` and `_`, at
+// most 253 bytes in all. One trailing dot (a fully qualified name) is allowed.
+func isValidZone(zone string) bool {
+	zone = strings.TrimSuffix(zone, ".")
+	if zone == "" || len(zone) > maxZoneLen {
+		return false
+	}
+
+	for label := range strings.SplitSeq(zone, ".") {
+		if label == "" || len(label) > maxZoneLabelLen {
+			return false
+		}
+
+		for _, char := range []byte(label) {
+			isAlnum := (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9')
+			if !isAlnum && char != '-' && char != '_' {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+// invalidZonesMessage renders the configuration error of the invalid zones.
+// The zones are written raw, never Go-quoted: output masking looks for a
+// resolved `${param:…}` value in its raw spelling, and quoting would escape a
+// `"` it holds out of reach of the mask.
+func invalidZonesMessage(invalid []string) string {
+	return "invalid blocklist zone, not queried (not a valid DNS name): " + strings.Join(invalid, ", ")
 }
 
 // addOptionalOutput adds the output keys that only appear when relevant: the
