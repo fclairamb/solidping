@@ -10,13 +10,16 @@ import (
 func runCheckDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolRunCheck,
-		Description: "Run a check once, now, in every region, instead of waiting for its next " +
-			"period (use it right after a fix, or on a freshly created check). The run goes " +
-			"through the normal result path: it can open or resolve an incident like any " +
-			"scheduled run. Rate limited per check and per organization. A region status of " +
-			"queued means due now, or right after the run in progress; read the outcome with diagnose_check or " +
-			"list_results (a result with periodStart >= requestedAt). Requires the mcp scope " +
-			"(mcp:read tokens are refused) and at least the user role in the organization.",
+		Description: "Run an existing check once, now, in every one of its regions, instead of " +
+			"waiting for its next period, e.g. right after a fix or on a freshly created check. " +
+			"identifier is the check UID or slug as list_checks returns; an unknown one fails " +
+			"with not found and queues nothing, and a paused check (enabled:false) is refused. " +
+			"The run takes the normal result path, so it " +
+			"can open or resolve an incident like a scheduled run. It is rate limited per check " +
+			"and per organization. A region status of queued means due now, or right after the " +
+			"run in progress. Read the outcome with diagnose_check or list_results: a result " +
+			"with periodStart >= requestedAt. To try a target without a saved check, use probe. " +
+			"Requires the mcp scope (mcp:read tokens are refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier: stringProp(descIdentifier),
 		}, []string{propIdentifier}),

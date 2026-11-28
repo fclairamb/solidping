@@ -72,12 +72,12 @@ func (h *Handler) toolListStatusPages(ctx context.Context, orgSlug string, _ map
 func getStatusPageDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolGetStatusPage,
-		Description: "Get one status page by identifier (UID or slug). with=sections embeds the sections " +
-			"and their resources in the page; include returns separate lists next to it instead, and " +
-			"include=resources needs sectionIdentifier to name the section. state and active filter " +
-			"only include=incidents. with=sections and include=sections are refused together " +
-			"(pick one). Use list_status_pages to browse every page, and " +
-			"manage_status_page_section / _resource / _incident to change them. " +
+		Description: "Get one status page by identifier (UID or slug). with=sections embeds the " +
+			"sections, and their resources, inside the page. include instead returns separate " +
+			"lists next to the page. include=resources returns the resources of one section, " +
+			"named by sectionIdentifier. state and active filter only include=incidents. " +
+			"with=sections and include=sections are refused together. Use list_status_pages to " +
+			"browse pages, and manage_status_page_section, _resource or _incident to change them. " +
 			"Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
@@ -340,14 +340,14 @@ func buildUpdateStatusPageRequest(args map[string]any) *statuspages.UpdateStatus
 func deleteStatusPageDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolDeleteStatusPage,
-		Description: "Soft-delete one status page, named by identifier (its UID or slug, as " +
-			"list_status_pages returns; an unknown one fails with not found and changes nothing). The " +
-			"page disappears from the API and the public site with its sections and resources, and its " +
-			"uploaded brand assets are deleted. Not quota-limited. There is no undelete (permanent, not reversible): use " +
-			"update_status_page with enabled:false to take a page down without destroying it, and " +
-			"manage_status_page_section or manage_status_page_resource with action=delete to remove " +
-			"part of a page. Requires the mcp scope (mcp:read tokens are " +
-			"refused) and at least the user role in the organization.",
+		Description: "Delete one status page, named by its UID or slug as list_status_pages " +
+			"returns. An unknown identifier fails with not found and changes nothing. The page " +
+			"leaves the API and the public site with its sections and resources, and its " +
+			"uploaded brand assets are erased. The deletion is permanent. To take a page offline " +
+			"and keep it, use update_status_page with enabled:false. To remove only part of a " +
+			"page, use manage_status_page_section or manage_status_page_resource with " +
+			"action=delete. Requires the mcp scope (mcp:read tokens are refused) and at least " +
+			"the user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 		}, []string{propIdentifier}),

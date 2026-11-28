@@ -140,12 +140,12 @@ func getIncidentDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolGetIncident,
 		Description: "Get one incident by UID (incidents have no slug); an unknown UID fails with " +
-			"\"incident not found\". Returns the incident: number, state, timestamps and failure counts. " +
-			"with=check adds its check and with=events up to 50 timeline events. " +
-			"include=notifications adds its notification attempts, newest first; status and limit " +
-			"filter only that list, and with and include combine freely. Use list_incidents to " +
-			"search across incidents, and diagnose_check " +
-			"for a check's full triage briefing. Read-only: works with mcp:read tokens.",
+			"\"incident not found\". Returns its number, state, timestamps and failure counts. " +
+			"with=check adds its check, and with=events up to 50 timeline events. " +
+			"include=notifications adds its notification attempts, newest first. status and " +
+			"limit filter only that list; with and include combine freely. Use list_incidents " +
+			"to search incidents, and diagnose_check for a check's full triage briefing. " +
+			"Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propUID: stringProp("Incident UID returned by list_incidents or diagnose_check."),
 			propWith: stringProp(

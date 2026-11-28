@@ -3325,3 +3325,77 @@ func TestReminderDurationWording(t *testing.T) {
 	r.Equal("2 d", reminderDurationIn(i18n.English, 48*time.Hour))
 	r.Equal("1 d 3 h", reminderDurationIn(i18n.English, 27*time.Hour+10*time.Minute))
 }
+
+// TestSlackLinkEscapesCheckName pins finding BA1: a check name holding `>`
+// and a `<url|label>` token must not end the check link and open a second
+// one. Slack wants `&`, `<` and `>` as entities.
+func TestSlackLinkEscapesCheckName(t *testing.T) {
+	t.Parallel()
+
+	payload := regionsTestPayload(eventTypeIncidentCreated, false)
+	evil := "API> <https://evil.example|Acknowledge here> & co"
+	payload.Check.Name = &evil
+	checkURL := "https://sp.acme.com/d/orgs/acme/checks/chk-1"
+
+	msg := (&SlackSender{}).buildIncidentCreatedMessage(payload)
+	text := collectBlockText(msg)
+
+	r := require.New(t)
+	r.Contains(text, "<"+checkURL+"|API&gt; &lt;https://evil.example|Acknowledge here&gt; &amp; co>")
+	// The header is plain_text, which Slack shows literally: only the mrkdwn
+	// parts can form a link.
+	r.NotContains(collectMrkdwnText(msg), "<https://evil.example", "no second link token")
+	r.NotContains(msg.Text, "<https://evil.example", "the mrkdwn fallback text is escaped too")
+
+	t.Run("plain name keeps its link", func(t *testing.T) {
+		t.Parallel()
+
+		plain := (&SlackSender{}).buildIncidentCreatedMessage(regionsTestPayload(eventTypeIncidentCreated, false))
+		require.Contains(t, collectBlockText(plain), "<"+checkURL+"|API health>")
+	})
+}
+
+// TestSlackCommentAndCauseAreEscaped covers the other user and target values
+// placed in mrkdwn: the comment author and body, and the failure reason.
+func TestSlackCommentAndCauseAreEscaped(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	comment := regionsTestPayload(eventTypeIncidentComment, false)
+	comment.Comment = &CommentInfo{Text: "go to <https://evil.example|the runbook> <!channel>", AuthorName: "<@U123>"}
+	text := (&SlackSender{}).buildCommentThreadReply(comment).Text
+	r.Contains(text, "*&lt;@U123&gt;* commented on")
+	r.Contains(text, "> go to &lt;https://evil.example|the runbook&gt; &lt;!channel&gt;")
+
+	created := regionsTestPayload(eventTypeIncidentCreated, false)
+	created.Incident.Details = models.JSONMap{"failure_reason": "x509: certificate is valid for <https://evil.example|x>"}
+	r.Contains(collectBlockText((&SlackSender{}).buildIncidentCreatedMessage(created)),
+		"*Cause:*\nx509: certificate is valid for &lt;https://evil.example|x&gt;")
+}
+
+// collectMrkdwnText is collectBlockText without the plain_text header, the
+// parts Slack parses for links and mentions.
+func collectMrkdwnText(msg *slack.MessageResponse) string {
+	var sb strings.Builder
+
+	for _, att := range msg.Attachments {
+		for _, block := range att.Blocks {
+			if block.Text != nil && block.Text.Type == slack.BlockTypeMrkdwn {
+				sb.WriteString(block.Text.Text + "\n")
+			}
+
+			for _, field := range block.Fields {
+				sb.WriteString(field.Text + "\n")
+			}
+
+			for _, el := range block.Elements {
+				if ce, ok := el.(slack.ContextElement); ok {
+					sb.WriteString(ce.Text + "\n")
+				}
+			}
+		}
+	}
+
+	return sb.String()
+}

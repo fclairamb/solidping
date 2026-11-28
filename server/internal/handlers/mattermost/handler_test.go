@@ -254,3 +254,59 @@ func TestHandleActionRefusesUnknownIntegration(t *testing.T) {
 	r.Contains(resp.EphemeralText, "no longer exists")
 	r.False(svc.ackCalled)
 }
+
+// TestHandleActionCapsAndEscapesUserName pins finding BA1 for the action
+// callback: user_name is not authenticated beyond the signed token, so a
+// forged value with markdown and over 64 characters is capped before the ack
+// trail and escaped in the ephemeral text and the updated card.
+func TestHandleActionCapsAndEscapesUserName(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	incident := &models.Incident{
+		UID: "inc-1", OrganizationUID: "org-1", CheckUID: "chk-1",
+		State: models.IncidentStateActive, StartedAt: time.Now().Add(-time.Minute),
+	}
+	handler, _, svc, cfg := newActionTest(t, incident)
+
+	forged := "  [login](https://evil.example) " + strings.Repeat("x", 80)
+	userID := strings.Repeat("u", 100)
+
+	body, err := json.Marshal(postActionRequest{
+		UserID: userID, UserName: forged, Type: "button",
+		Context: map[string]any{
+			"token": mattermostActionToken(t, cfg), "action": notifications.MattermostActionAcknowledge,
+		},
+	})
+	r.NoError(err)
+
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodPost, "/api/v1/integrations/mattermost/actions", strings.NewReader(string(body)),
+	)
+	rec := httptest.NewRecorder()
+	r.NoError(handler.HandleAction(rec, req))
+
+	capped := strings.TrimSpace(forged)[:maxActionUserField]
+	r.Equal(capped+"/"+userID[:maxActionUserField], svc.ackUser, "the ack trail gets the capped, raw values")
+
+	resp := decodeActionResponse(t, rec)
+	escaped := notifications.EscapeMattermostMarkdown(capped)
+	r.Equal("Acknowledged by @"+escaped+".", resp.EphemeralText)
+	r.NotContains(resp.EphemeralText, "[login](https://evil.example)")
+	r.NotContains(resp.EphemeralText, strings.Repeat("x", 80))
+
+	r.NotNil(resp.Update)
+	card, err := json.Marshal(resp.Update.Props)
+	r.NoError(err)
+	r.Contains(string(card), `\\[login\\](https://evil.example)`, "the card escapes the actor")
+	r.NotContains(string(card), "[login](https://evil.example)")
+}
+
+func TestMattermostMention(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "@alice", mattermostMention("alice"))
+	require.Equal(t, "@john_doe.ops-1", mattermostMention(" john_doe.ops-1 "), "a real username stays a mention")
+	require.Equal(t, `@\*bob\*`, mattermostMention("*bob*"))
+	require.Equal(t, "someone", mattermostMention(""))
+}

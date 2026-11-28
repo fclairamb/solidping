@@ -226,10 +226,14 @@ func (s *ZulipSender) buildContent(payload *Payload) string {
 
 	var builder strings.Builder
 
-	fmt.Fprintf(&builder, "**%s**\n", title)
+	// The emoji shortcode and the field titles are SolidPing's; the rest of
+	// the title (check name) and the field values (check name, comment,
+	// actor, failure reason) are user values, escaped where inserted.
+	emoji, rest := splitEmojiPrefix(title)
+	fmt.Fprintf(&builder, "**%s%s**\n", emoji, escapeZulipMarkdown(rest))
 
 	for i := range fields {
-		fmt.Fprintf(&builder, "* **%s:** %s\n", fields[i].Title, fields[i].Value)
+		fmt.Fprintf(&builder, "* **%s:** %s\n", fields[i].Title, escapeZulipMarkdown(fields[i].Value))
 	}
 
 	return builder.String()

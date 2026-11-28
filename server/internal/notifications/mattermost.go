@@ -230,7 +230,11 @@ type mattermostField struct {
 func (s *MattermostSender) buildMessage(settings *mattermostSettings, payload *Payload) *mattermostMessage {
 	checkName := getCheckName(payload.Check)
 	color, title := s.eventColorAndTitle(payload, checkName)
-	fields := s.buildFields(payload, checkName)
+	// The title and fields render as markdown, so their user values are
+	// escaped; the fallback is the plain-text notification preview and stays
+	// raw. The title keeps SolidPing's own emoji shortcodes and tags.
+	_, markdownTitle := s.eventColorAndTitle(payload, escapeMattermostMarkdown(checkName))
+	fields := escapeMattermostFields(s.buildFields(payload, checkName))
 	fallback := title + " -- " + getFailureReason(payload.Incident)
 
 	msg := &mattermostMessage{
@@ -239,7 +243,7 @@ func (s *MattermostSender) buildMessage(settings *mattermostSettings, payload *P
 			{
 				Fallback: fallback,
 				Color:    color,
-				Title:    title,
+				Title:    markdownTitle,
 				Fields:   fields,
 				Footer:   productName,
 				Ts:       payload.Incident.StartedAt.Unix(),
@@ -287,6 +291,19 @@ func (s *MattermostSender) eventColorAndTitle(payload *Payload, checkName string
 	default:
 		return mattermostColorOrange, "[UPDATE] " + checkName
 	}
+}
+
+// escapeMattermostFields returns a copy of fields whose values render
+// literally as Mattermost markdown. buildFields stays raw because the Zulip
+// sender reuses it with its own markup.
+func escapeMattermostFields(fields []mattermostField) []mattermostField {
+	escaped := make([]mattermostField, len(fields))
+	for i := range fields {
+		escaped[i] = fields[i]
+		escaped[i].Value = escapeMattermostMarkdown(fields[i].Value)
+	}
+
+	return escaped
 }
 
 // buildFields is the event's fields plus the region line. The Zulip sender

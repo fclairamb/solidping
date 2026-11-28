@@ -116,12 +116,14 @@ func (h *Handler) toolGetCheckTypeSamples(_ context.Context, _ string, args map[
 func validateCheckDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolValidateCheck,
-		Description: "Dry-run validate a check config without creating or changing " +
-			"anything — a pure read, no side effects. valid is false exactly when " +
-			"fields lists the blocking findings (every one of them, not just the " +
-			"first), while warnings are advisory notes that never block. Use this before create_check when " +
-			"you've assembled a config from scratch or modified a sample, to catch " +
-			"problems early. Read-only: works with mcp:read tokens.",
+		Description: "Dry-run validate a check config without creating or changing anything. " +
+			"config is checked against the rules of type, so take type from list_check_types " +
+			"and start config from one of its samples; an unknown type comes back as a type " +
+			"finding, not an error. valid is false exactly when fields lists the blocking " +
+			"findings, all of them at once; warnings are advisory and never block. Use it " +
+			"before create_check or update_check to fix a config without retries. It never " +
+			"contacts the target: use probe to try a URL or script, and run_check or " +
+			"diagnose_check for a check that already exists. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyType: stringProp(
 				"Check type (e.g. \"http\", \"dns\", \"tcp\", \"icmp\", \"ssl\").",
