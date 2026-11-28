@@ -163,22 +163,27 @@ func BuildMattermostBlocksPost(
 // name, so this stays correct for every event without a second title switch.
 func mattermostTitleWithCheckLink(payload *Payload, title, checkName string) string {
 	if checkName == "" || !strings.HasSuffix(title, checkName) {
-		return "**" + title + "**"
+		// No check name to link: the title may still hold user values, so
+		// escape everything after SolidPing's emoji shortcode.
+		emoji, rest := splitEmojiPrefix(title)
+
+		return "**" + emoji + escapeMattermostMarkdown(rest) + "**"
 	}
 
-	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
-	if checkURL == "" {
-		return "**" + title + "**"
-	}
-
+	// The prefix is SolidPing's own tag and emoji shortcode (":red_circle:
+	// [DOWN] "), kept as is; only the check name is a user value.
 	prefix := strings.TrimSuffix(title, checkName)
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
 
 	return "**" + prefix + mattermostLink(checkURL, checkName) + "**"
 }
 
 // mattermostLink is Mattermost's markdown link form. Slack's `<url|text>` is
-// deliberately not reused: it renders literally in Mattermost.
+// deliberately not reused: it renders literally in Mattermost. The text is
+// raw and escaped here, so a check name cannot close the link and add its own;
+// the URL is one SolidPing built.
 func mattermostLink(url, text string) string {
+	text = escapeMattermostMarkdown(text)
 	if url == "" {
 		return text
 	}
@@ -234,7 +239,7 @@ func mattermostFieldBlocks(fields []mattermostField) []MattermostBlock {
 				Type:  mattermostBlockTypeColumn,
 				Width: "stretch",
 				Items: []MattermostBlock{{
-					Type: mattermostBlockTypeText, Text: "**" + short[i].Title + "**\n" + short[i].Value,
+					Type: mattermostBlockTypeText, Text: "**" + short[i].Title + "**\n" + escapeMattermostMarkdown(short[i].Value),
 				}},
 			})
 		}
@@ -259,7 +264,7 @@ func mattermostFieldBlocks(fields []mattermostField) []MattermostBlock {
 		}
 
 		blocks = append(blocks, MattermostBlock{
-			Type: mattermostBlockTypeText, Text: "**" + fields[i].Title + "**\n" + fields[i].Value,
+			Type: mattermostBlockTypeText, Text: "**" + fields[i].Title + "**\n" + escapeMattermostMarkdown(fields[i].Value),
 		})
 	}
 

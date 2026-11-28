@@ -154,9 +154,17 @@ func (s *MSTeamsSender) buildMessage(payload *Payload) *msTeamsMessage {
 	checkName := getCheckName(payload.Check)
 	title, color := s.eventTitleAndColor(payload, checkName)
 
+	// The title (check name, actor) and every fact value (check name,
+	// comment, actor, failure reason) carry user values: escape them all,
+	// SolidPing's own text reads the same after escaping.
+	facts := s.buildFacts(payload, checkName)
+	for i := range facts {
+		facts[i].Value = escapeMSTeamsText(facts[i].Value)
+	}
+
 	titleBlock := msTeamsBodyElement{
 		Type:   "TextBlock",
-		Text:   title,
+		Text:   escapeMSTeamsText(title),
 		Size:   "Large",
 		Weight: "Bolder",
 		Color:  color,
@@ -165,7 +173,7 @@ func (s *MSTeamsSender) buildMessage(payload *Payload) *msTeamsMessage {
 
 	factSet := msTeamsBodyElement{
 		Type:  "FactSet",
-		Facts: s.buildFacts(payload, checkName),
+		Facts: facts,
 	}
 
 	return &msTeamsMessage{
