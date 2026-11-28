@@ -121,6 +121,11 @@ The report is right on all three mechanisms; the code below confirms them.
    the gate is closed and are swept when it opens. Trade-off: a short window of
    plaintext at rest, which is today's behaviour without a master key.
 
+## Resolved open questions
+
+1. **Gate, or refuse/alert?** Gate the in-place sealing (proposal step 1): retry it at boot and on a periodic tick once the workers catch up, log a startup warning while it is deferred, and count only workers seen within the liveness window as active, so a stale worker row cannot hold the seal back forever. (autopilot: recommended answer)
+2. **Writes while gated?** Keep new secret values in plaintext while the gate is closed, and seal them in the sweep once it opens. (autopilot: recommended answer)
+
 ## Closing the issue
 
 This spec closes fclairamb/solidping-business#118. The implementing PR body
