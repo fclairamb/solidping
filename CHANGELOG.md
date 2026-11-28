@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.57.0](https://github.com/fclairamb/solidping/compare/v0.56.0...v0.57.0) (2026-11-28)
+
+
+### Features
+
+* **checks:** a native host resource check watches disk, memory and CPU usage ([#1088](https://github.com/fclairamb/solidping/issues/1088)) ([72e38e5](https://github.com/fclairamb/solidping/commit/72e38e505e22b6bc4685fd85f36cdc6553fd13c1))
+* **status-pages:** signed-in organization members can view private status pages, with a "private page" banner, and the status page form keeps its actions sticky, reported by [@Jared-Is-Coding](https://github.com/Jared-Is-Coding) ([#1074](https://github.com/fclairamb/solidping/issues/1074), [#1082](https://github.com/fclairamb/solidping/issues/1082)) ([12134b3](https://github.com/fclairamb/solidping/commit/12134b34312f223c61c42f687bc0dace735817ee), [e0fc135](https://github.com/fclairamb/solidping/commit/e0fc13555bbe3df5d91ef4b325ba96a22c21df4f))
+* **status-page:** upcoming maintenance windows are shown on the status page ([#1087](https://github.com/fclairamb/solidping/issues/1087)) ([e54a3ae](https://github.com/fclairamb/solidping/commit/e54a3ae44ecfa77a28ba70bb2464a8bebf49e7fe))
+* **notifications:** interactive Mattermost notifications built with Blocks, contributed by [@YANANEER](https://github.com/YANANEER) ([#1085](https://github.com/fclairamb/solidping/issues/1085)) ([8914bdb](https://github.com/fclairamb/solidping/commit/8914bdb7b7256d7fe759d440562f79f98f300aaa))
+* **cli:** `sp checks list --watch` and `sp incidents list --watch` give a live view over the org event socket, polling when it is unavailable, with a `-o jsonl` output ([#1082](https://github.com/fclairamb/solidping/issues/1082)) ([e0fc135](https://github.com/fclairamb/solidping/commit/e0fc13555bbe3df5d91ef4b325ba96a22c21df4f))
+* **agent:** agents and private locations can be renamed ([#1066](https://github.com/fclairamb/solidping/issues/1066)) ([6bc8c2a](https://github.com/fclairamb/solidping/commit/6bc8c2a889d7e9df251e0be5e7e0ac3a9ac631ee))
+* **entitlements:** the Free plan includes 5 WhatsApp alerts a month ([#1069](https://github.com/fclairamb/solidping/issues/1069)) ([cf44c5a](https://github.com/fclairamb/solidping/commit/cf44c5a2f2d2f71b27972cb109a044019df4ef26))
+* **dash0:** the usage page has an "Ask for more" link ([#1070](https://github.com/fclairamb/solidping/issues/1070)) ([b76e758](https://github.com/fclairamb/solidping/commit/b76e758392285cf9484320bea2bca705aab1a6ab))
+
+
+### Bug Fixes
+
+* **security:** secret organization parameters are sealed at rest, the Docker socket check uses an allowlist, and agent results are masked server-side ([#1075](https://github.com/fclairamb/solidping/issues/1075)) ([b0d4b30](https://github.com/fclairamb/solidping/commit/b0d4b30188888322e559b2bf47ecc2e5e3a4f9b1))
+* **db:** worker heartbeats no longer take 0.5 to 2 s on PostgreSQL ([#1077](https://github.com/fclairamb/solidping/issues/1077)) ([cd5562e](https://github.com/fclairamb/solidping/commit/cd5562e67f806b69f9412857d09c40a526073e95))
+* **agent:** a deleted agent can enroll again, and the agent role and server URL are inferred ([#1065](https://github.com/fclairamb/solidping/issues/1065)) ([11259fd](https://github.com/fclairamb/solidping/commit/11259fdc8605c638b2999b08774041e475f3c137))
+* **archive:** only raw results are archived, never hour summaries ([#1080](https://github.com/fclairamb/solidping/issues/1080)) ([5c07a1d](https://github.com/fclairamb/solidping/commit/5c07a1d49936544537fbbf60b9ecac82dea813dd))
+* **dash0:** Esc leaves an empty new-check form, "Server" is in the command palette, and API errors are shown explicitly ([#1068](https://github.com/fclairamb/solidping/issues/1068)) ([e403f69](https://github.com/fclairamb/solidping/commit/e403f69fdf6a9bc75821beb259d6560acee6b7b5))
+* **deps:** Go dependencies updated, including vortex-go v0.2.0, posthog-go v2.5.0 and regexp2 v2.13.3 ([#1062](https://github.com/fclairamb/solidping/issues/1062), [#1064](https://github.com/fclairamb/solidping/issues/1064), [#1073](https://github.com/fclairamb/solidping/issues/1073), [#1076](https://github.com/fclairamb/solidping/issues/1076), [#1081](https://github.com/fclairamb/solidping/issues/1081), [#1086](https://github.com/fclairamb/solidping/issues/1086), [#1089](https://github.com/fclairamb/solidping/issues/1089))
+
 ## [0.56.0](https://github.com/fclairamb/solidping/compare/v0.55.0...v0.56.0) (2026-11-26)
 
 
