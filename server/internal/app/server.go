@@ -376,6 +376,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("init system parameter encryption: %w", err)
 	}
+	// A direct-DB worker older than the first version that opens sealed org
+	// parameters resolves `${param:…}` itself: keep them in plaintext while
+	// one is live (spec 2026-11-28-01).
+	sysParams.SetOrgSealGate(directWorkerOrgSealGate(dbService, version.Get().Version, time.Now))
 	dbService = sysParams
 
 	// Initialize services
@@ -4003,6 +4007,15 @@ func (s *Server) Start(ctx context.Context) error {
 		go s.runJMAPManager(runnerCtx)
 	}
 
+	// Retry the seal of the secret org parameters the gate deferred (spec
+	// 2026-11-28-01): once the old direct-DB workers are gone, the sweep runs.
+	if s.sysParams != nil && s.sysParams.Enabled() && s.config.Encryption.AutoMigrate {
+		s.workersWg.Add(1)
+
+		//nolint:contextcheck // runnerCtx is intentionally separate from request context
+		go s.runOrgParamSealRetry(runnerCtx)
+	}
+
 	// Start Slack Socket Mode supervisor when configured. The supervisor
 	// dials Slack's outgoing WebSocket and dispatches events through the
 	// shared Dispatch* functions; the HTTPS webhook handlers stay registered
@@ -4740,18 +4753,11 @@ func (s *Server) sealPlaintextSystemParameters(ctx context.Context) error {
 
 	// The secret organization parameters behind `${param:…}` (spec
 	// 2026-11-27-02). Same values, so every check that references them keeps
-	// resolving.
-	sealedOrgParams, err := s.sysParams.SealPlaintextOrgParameters(ctx)
-	if err != nil {
-		return fmt.Errorf("auto-migrate organization parameters: %w", err)
-	}
+	// resolving. Deferred while a live direct-DB worker cannot open them (spec
+	// 2026-11-28-01), and retried by runOrgParamSealRetry.
+	_, err = s.sealOrgParameters(ctx, true)
 
-	if sealedOrgParams > 0 {
-		slog.InfoContext(ctx, "encrypted plaintext secret organization parameters at startup",
-			"orgParametersSealed", sealedOrgParams)
-	}
-
-	return nil
+	return err
 }
 
 // warnPlaintextSystemSecrets names the secret system parameters stored in

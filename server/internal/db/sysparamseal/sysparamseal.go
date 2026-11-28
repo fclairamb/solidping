@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -69,6 +70,13 @@ type Service struct {
 
 	sealer     Sealer
 	shouldSeal Predicate
+
+	// orgSealGate defers sealing the secret org parameters while a live
+	// reader cannot open them (orggate.go); nil is always open.
+	orgSealGate OrgSealGate
+	// orgSealPending is set when the gate kept a secret org parameter in
+	// plaintext, cleared by a sweep that went through.
+	orgSealPending atomic.Bool
 }
 
 // Wrap installs the decorator. sealer may be disabled (no master key): writes

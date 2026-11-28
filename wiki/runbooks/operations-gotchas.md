@@ -37,6 +37,18 @@ clusters, secrets) live in the operator's private infrastructure repo, not here.
   `unknown job type: ...`) and crash-loop. When `git diff vA..vB -- server/internal/db/*/migrations`
   is non-empty, bump every worker right after the API. A worker must never be ahead of
   its API: it would run the migration under the old API.
+- **Sealed secret org parameters wait for the direct-DB workers** (fclairamb/solidping-business#118).
+  A direct-DB worker resolves `${param:…}` itself, so one older than 0.57.0 cannot open a sealed
+  (`$sp_sealed`) secret org parameter. 0.57.0 sealed them at boot regardless and old workers
+  substituted the Go rendering of the envelope (`map[$sp_sealed:…]`) for the secret: OIDC
+  `invalid_grant`, DNSBL checks "clean" on an impossible zone, the envelope in stored outputs.
+  Since spec 2026-11-28-01 the seal (at boot and on write) waits while a direct-DB worker seen in
+  the last 5 minutes reports no version or one below 0.57.0: the boot logs `sealing secret
+  organization parameters deferred` naming the workers, secrets stay plaintext, and the seal is
+  retried every 5 minutes once they are upgraded. Agents are not concerned (the server resolves
+  their references). Upgrade the workers with the API anyway: until then the secrets are
+  plaintext at rest. A version older than these checks still fails open, so upgrade the workers
+  before an API at 0.57.0 if they are older.
 - Bump every deployment of one environment to the same image tag. Never deploy
   `:latest` (it drifted once with nothing forcing a re-pull).
 
